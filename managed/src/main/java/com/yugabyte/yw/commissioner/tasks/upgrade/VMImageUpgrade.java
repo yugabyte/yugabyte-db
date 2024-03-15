@@ -99,6 +99,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             .setSubTaskGroupType(getTaskSubGroupType());
       }
     }
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
   }
 
   @Override

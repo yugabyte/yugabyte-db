@@ -44,7 +44,8 @@ public class ImageBundleController extends AuthenticatedController {
   @Inject ImageBundleHandler imageBundleHandler;
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Create a image bundle",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Create a image bundle",
       response = ImageBundle.class,
       nickname = "createImageBundle")
   @ApiImplicitParams(
@@ -76,7 +77,8 @@ public class ImageBundleController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. List image bundles",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List image bundles",
       response = ImageBundle.class,
       responseContainer = "List",
       nickname = "getListOfImageBundles")
@@ -105,7 +107,8 @@ public class ImageBundleController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Get a image bundle",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get a image bundle",
       response = ImageBundle.class,
       nickname = "getImageBundle")
   @AuthzPath({
@@ -122,7 +125,8 @@ public class ImageBundleController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Update a image bundle",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Update a image bundle",
       response = ImageBundle.class,
       nickname = "editImageBundle")
   @ApiImplicitParams(
@@ -155,7 +159,8 @@ public class ImageBundleController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Delete a image bundle",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Delete a image bundle",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(

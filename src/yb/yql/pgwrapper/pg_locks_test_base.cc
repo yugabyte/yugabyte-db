@@ -20,6 +20,7 @@
 #include "yb/client/yb_table_name.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/rpc/rpc_controller.h"
 

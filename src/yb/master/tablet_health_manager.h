@@ -89,6 +89,14 @@ class AreNodesSafeToTakeDownDriver {
 
   Result<std::unordered_map<TabletServerId, std::vector<TabletId>>> FindTserversToContact(
       ReplicaCountMap* required_replicas);
+
+  Status ScheduleTServerTasks(
+      std::unordered_map<TabletServerId, std::vector<TabletId>>&& tservers,
+      std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler);
+
+  Status ScheduleMasterTasks(
+      std::vector<consensus::RaftPeerPB>&& masters,
+      std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler);
 };
 
 class TabletHealthManager {
@@ -103,6 +111,9 @@ class TabletHealthManager {
 
   Status CheckMasterTabletHealth(
       const CheckMasterTabletHealthRequestPB* req, CheckMasterTabletHealthResponsePB* resp);
+
+  Status GetMasterHeartbeatDelays(
+      const GetMasterHeartbeatDelaysRequestPB* req, GetMasterHeartbeatDelaysResponsePB* resp);
 
  private:
   Master* master_;

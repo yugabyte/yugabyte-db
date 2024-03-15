@@ -1,0 +1,68 @@
+#!/bin/bash
+
+################### Config ###################
+is_acceptable_clock_skew_wait_enabled="{{ is_acceptable_clock_skew_wait_enabled | default(true) }}"  # Whether check clock skew
+acceptable_clock_skew_sec="{{ acceptable_clock_skew_sec | default(0.5) }}"  # In seconds
+max_tries="{{ acceptable_clock_skew_max_tries | default(120) }}"  # Maximum number of tries before returning failure
+retry_wait_time_s=1  # How long waits before retry in seconds
+
+if [[ "$is_acceptable_clock_skew_wait_enabled" != true && "$is_acceptable_clock_skew_wait_enabled" != "True" ]]; then
+  echo "Wait for clock skew to go below the acceptable threshold is disabled. Returning success."
+  exit 0
+fi
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+check_clock_sync_chrony() {
+  local skew=$(chronyc tracking | awk '/System time/ {print $4}')
+  
+  if awk 'BEGIN{exit !('"$skew"' < '"$acceptable_clock_skew_sec"')}'; then
+    echo "Clock skew is within acceptable limits: $skew ms"
+    return 0
+  else
+    echo "Clock skew exceeds acceptable limits: $skew ms"
+    return 1
+  fi
+}
+
+check_clock_sync_ntpd() {
+  #local skew=$(ntpq -c "rv 0 clock" | awk -F'[=,]' '/offset/ {print $3}')
+  local skew=$(ntpq -p | awk 'NR==3 {print $9}')
+  
+  if awk 'BEGIN{exit !('"$skew"' < '"$acceptable_clock_skew_sec"')}'; then
+    echo "Clock skew is within acceptable limits: $skew ms"
+    return 0
+  else
+    echo "Clock skew exceeds acceptable limits: $skew ms"
+    return 1
+  fi
+}
+
+iter=0
+while true; do
+  # If chrony is available, use it for clock sync.
+  if command_exists chronyc; then
+    check_clock_sync_chrony
+    res=$?
+  # If ntpd is available, use it for clock sync.
+  elif command_exists ntpd; then
+    check_clock_sync_ntpd
+    res=$?
+  # User has a custom way for clock sync.
+  else
+    echo "Chrony and NTPd are not available. Returning success, assuming the user has a custom way for clock sync."
+    exit 0
+  fi
+  ((iter++))
+  if [ $res -eq 0 ]; then
+    echo "Success! Clock skew is within acceptable limits."
+    exit 0
+  fi
+  if [ $iter -ge $max_tries ]; then
+    echo "Failure! Maximum number of tries reached."
+    exit 1
+  fi
+  sleep "$retry_wait_time_s"
+done

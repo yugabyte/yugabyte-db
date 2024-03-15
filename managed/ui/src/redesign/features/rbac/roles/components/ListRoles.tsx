@@ -276,7 +276,7 @@ const ListRoles = () => {
             dataSort
             dataField="description"
             width="35%"
-            dataFormat={(desc) => (desc ? desc : '-')}
+            dataFormat={(desc) => (desc ? <span title={desc}>{desc}</span> : '-')}
           >
             {t('table.description')}
           </TableHeaderColumn>

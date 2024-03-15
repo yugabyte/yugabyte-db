@@ -12,7 +12,6 @@ package com.yugabyte.yw.common.ha;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import akka.actor.Cancellable;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
@@ -44,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.pekko.actor.Cancellable;
 
 @Singleton
 @Slf4j

@@ -386,7 +386,7 @@ public class EncryptionAtRestManager {
       for (HostAndPort hp : masterAddrs) {
         if (!client.waitForMasterHasUniverseKeyInMemory(KEY_IN_MEMORY_TIMEOUT, dbKeyId, hp)) {
           throw new RuntimeException(
-              "Timeout occurred waiting for universe encryption key to be " + "set in memory");
+              "Timeout occurred waiting for universe encryption key to be set in memory");
         }
       }
 

@@ -3,7 +3,6 @@ title: Supported versions
 linkTitle: Supported versions
 description: Supported versions for Java drivers, ORMs and AppDev frameworks
 headcontent: Supported versions for Java drivers, ORMs and AppDev frameworks
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: java-compatibility

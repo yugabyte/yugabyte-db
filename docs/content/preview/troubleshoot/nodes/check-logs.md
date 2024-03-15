@@ -21,7 +21,7 @@ The logs for each node are written to a subdirectory of the YugabyteDB `yugabyte
 - When using the `--fs_data_dirs` flag with multiple directories, logs are saved in the first directory in the list.
 - When using YugabyteDB Anywhere, logs are located in `/home/yugabyte/{master,tserver}/logs`. This is a symlink to the first directory in `--fs_data_dirs` list.
 - When using the Docker container, logs are located in `/root/var/logs` inside the container.
-- When using the `yugabyted` command-line interface to create the local YugabyteDB cluster, logs are located in `~/var/logs`.
+- When using the `yugabyted` command-line interface to create the local YugabyteDB cluster, by default logs are located in `~/var/logs`.
 
 In this document, the YugabyteDB `yugabyte-data` directory is represented by `<yugabyte-data-directory>`.
 

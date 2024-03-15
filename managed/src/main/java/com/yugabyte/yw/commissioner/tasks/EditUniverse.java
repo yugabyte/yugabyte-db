@@ -33,7 +33,15 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -62,7 +70,13 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   }
 
   @Override
-  protected void freezeUniverseInTxn(Universe universe) {
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  private void freezeUniverseInTxn(Universe universe) {
     // The universe parameter in this callback has local changes which may be needed by
     // the methods inside e.g updateInProgress field.
     // Fetch the task params from the DB to start from fresh on retry.
@@ -106,13 +120,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    super.runUpdateTasks(this::runTask);
-  }
-
-  private void runTask() {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
+    checkUniverseVersion();
     String errorString = null;
-    Universe universe = getUniverse();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
     try {
       if (taskParams().getPrimaryCluster() != null) {
         dedicatedNodesChanged.set(
@@ -501,7 +514,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               nodesToBeRemoved,
               false /* isForceDelete */,
               true /* deleteNode */,
-              true /* deleteRootVolumes */)
+              true /* deleteRootVolumes */,
+              false /* skipDestroyPrecheck */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
 

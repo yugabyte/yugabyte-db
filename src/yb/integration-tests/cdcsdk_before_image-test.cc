@@ -15,7 +15,12 @@
 namespace yb {
 namespace cdc {
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage)) {
+class CDCSDKBeforeImageTest : public CDCSDKYsqlTest {
+ public:
+  void SetUp() override { CDCSDKYsqlTest::SetUp(); }
+};
+
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
@@ -58,7 +63,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage))
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageRetention)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageRetention)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -114,7 +119,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageRetention)) {
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageExpiration)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageExpiration)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -200,7 +205,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageExpiration)) {
 
 // Insert one row, update the inserted row twice and verify before image.
 // Expected records: (DDL, INSERT, UPDATE).
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImage)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
@@ -244,7 +249,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImage)
 }
 
 // For CHANGE mode
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageChangeMode)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageChangeMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
@@ -298,7 +303,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageC
 }
 
 // For ALL mode (Backward compatibility)
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageAllMode)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageAllMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
@@ -353,7 +358,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageA
 }
 
 // For PG_FULL mode
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageFullMode)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageFullMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
@@ -408,7 +413,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageF
 }
 
 // For FULL_ROW_NEW_IMAGE mode
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
   TestSingleShardUpdateBeforeImageFullRowNewImageMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
@@ -464,7 +469,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
 }
 
 // For MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES mode (Backward compatibility)
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
   TestSingleShardUpdateBeforeImageModifiedColumnsOldAndNewImagesMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
@@ -521,7 +526,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
 }
 
 // For PG_CHANGE_OLD_NEW mode
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
   TestSingleShardUpdateBeforeImageChangeOldNewMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
@@ -577,7 +582,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
 }
 
 // For PG_DEFAULT mode
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
   TestSingleShardUpdateBeforeImageDefaultMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
@@ -632,7 +637,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
   TestSingleShardUpdateBeforeImageNothingMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
@@ -688,7 +693,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImage)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -744,7 +749,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImage))
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleMultiShardUpdateBeforeImage)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleMultiShardUpdateBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -805,7 +810,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleMultiShardUpdateBeforeI
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiSingleShardUpdateBeforeImage)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultiSingleShardUpdateBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -866,7 +871,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiSingleShardUpdateBeforeI
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateMultiColumnBeforeImage)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateMultiColumnBeforeImage)) {
   uint32_t num_cols = 3;
   map<std::string, uint32_t> col_val_map;
 
@@ -918,7 +923,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateMultiColumnBefor
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithoutBeforeImage)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithoutBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -953,7 +958,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithoutBeforeImage)
   ASSERT_LT(count_after_compaction, count_before_compaction);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndNoBeforeImage)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndNoBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -1006,6 +1011,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndNoBe
       if (record.row_message().op() == RowMessage::READ) {
         for (int jdx = 0; jdx < record.row_message().new_tuple_size(); jdx++) {
           s << " " << record.row_message().new_tuple(jdx).datum_int32();
+          if(record.row_message().new_tuple(jdx).column_name() == kKeyColumnName) {
+            actual_result[0] = record.row_message().new_tuple(jdx).datum_int32();
+          } else if (record.row_message().new_tuple(jdx).column_name() == kValueColumnName) {
+            actual_result[1] = record.row_message().new_tuple(jdx).datum_int32();
+          }
         }
         LOG(INFO) << "row: " << i << " : " << s.str();
         // we should only get row values w.r.t snapshot, not changed values during snapshot.
@@ -1029,15 +1039,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndNoBe
   auto result = test_cluster_.mini_cluster_->CompactTablets();
 
   ASSERT_OK(WriteRows(101 /* start */, 102 /* end */, &test_cluster_));
-  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
-  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 4 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 5 /* value */, &test_cluster_));
 
   change_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
   LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion): "
             << change_resp.cdc_sdk_proto_records_size();
-  ASSERT_OK(UpdateRows(1 /* key */, 5 /* value */, &test_cluster_));
-  ASSERT_OK(UpdateRows(1 /* key */, 10 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 6 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 10 /* value */, &test_cluster_));
   auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
   int count_after_compaction;
   ASSERT_OK(WaitFor(
@@ -1071,7 +1081,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndNoBe
   AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), HybridTime::kInvalid);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndBeforeImage)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -1125,6 +1135,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndBefo
       if (record.row_message().op() == RowMessage::READ) {
         for (int jdx = 0; jdx < record.row_message().new_tuple_size(); jdx++) {
           s << " " << record.row_message().new_tuple(jdx).datum_int32();
+          if(record.row_message().new_tuple(jdx).column_name() == kKeyColumnName) {
+            actual_result[0] = record.row_message().new_tuple(jdx).datum_int32();
+          } else if (record.row_message().new_tuple(jdx).column_name() == kValueColumnName) {
+            actual_result[1] = record.row_message().new_tuple(jdx).datum_int32();
+          }
         }
         LOG(INFO) << "row: " << i << " : " << s.str();
         // we should only get row values w.r.t snapshot, not changed values during snapshot.
@@ -1148,15 +1163,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndBefo
   auto result = test_cluster_.mini_cluster_->CompactTablets();
 
   ASSERT_OK(WriteRows(101 /* start */, 102 /* end */, &test_cluster_));
-  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
-  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 4 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 5 /* value */, &test_cluster_));
 
   change_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
   LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion): "
             << change_resp.cdc_sdk_proto_records_size();
-  ASSERT_OK(UpdateRows(1 /* key */, 5 /* value */, &test_cluster_));
-  ASSERT_OK(UpdateRows(1 /* key */, 10 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 6 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 10 /* value */, &test_cluster_));
   auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
   int count_after_compaction;
   ASSERT_OK(WaitFor(
@@ -1190,7 +1205,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndBefo
   AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -1239,7 +1254,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
       FLAGS_ysql_enable_packed_row ? packed_row_expected_count : expected_count, count);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWithBeforeImage)) {
+TEST_F(
+    CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWithBeforeImage)) {
   google::SetVLOGLevel("cdc_service", 1);
   google::SetVLOGLevel("cdcsdk_producer", 1);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
@@ -1332,7 +1348,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWit
   ASSERT_EQ(insert_count, 2 * update_count);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionDeleteRowsWithBeforeImage)) {
+TEST_F(
+    CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionDeleteRowsWithBeforeImage)) {
   google::SetVLOGLevel("cdc_service", 1);
   google::SetVLOGLevel("cdcsdk_producer", 1);
   // ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
@@ -1420,7 +1437,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionDeleteRowsWit
   ASSERT_EQ(insert_count, 2 * delete_count);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWithBeforeImage)) {
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWithBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -1529,7 +1546,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWithBeforeI
 
 // Insert one row, update the inserted row twice and verify before image.
 // Expected records: (DDL, INSERT, UPDATE).
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageOnColocatedTable)) {
+TEST_F(
+    CDCSDKBeforeImageTest,
+    YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageOnColocatedTable)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
@@ -1579,7 +1598,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageO
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOnColocatedTable)) {
+TEST_F(
+    CDCSDKBeforeImageTest,
+    YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOnColocatedTable)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, true));
 
@@ -1639,9 +1660,160 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOn
   }
 }
 
+TEST_F(CDCSDKBeforeImageTest, TestCompactionWithConsistentSnapshotAndNoBeforeImage) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 50;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
+  ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // GetCheckpoint after snapshot bootstrap (done as part of stream creation itself).
+  auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
+
+  // Read from cdc_state
+  auto expected_row = ReadFromCdcStateTable(stream_id, tablets[0].tablet_id());
+  if (!expected_row.ok()) {
+    FAIL();
+  }
+  ASSERT_GE((*expected_row).op_id.term, 0);
+  ASSERT_GE((*expected_row).op_id.index, 0);
+  ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
+  ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time is invalid in the tablet_peers
+  AssertSafeTimeAsExpectedInTabletPeers(
+      tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
+
+  // Count the number of snapshot READs.
+  GetChangesResponsePB change_resp;
+  ConsumeSnapshotAndPerformDML(stream_id, table, tablets, cp_resp, &change_resp);
+  int count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+  // sleep for UpdatePeersAndMetrics thread to release retention barriers
+  sleep(2 * FLAGS_update_min_cdc_indices_interval_secs);
+  auto result = test_cluster_.mini_cluster_->CompactTablets();
+  int count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+  ASSERT_LT(count_after_compaction, count_before_compaction);
+
+  ASSERT_OK(WriteRows(101 /* start */, 102 /* end */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 4 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 5 /* value */, &test_cluster_));
+
+  change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &change_resp.cdc_sdk_checkpoint()));
+  // for updating cdc_state with explicit checkpoint
+  change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &change_resp.cdc_sdk_checkpoint()));
+
+  WaitForCompaction(table);
+
+  expected_row = ReadFromCdcStateTable(stream_id, tablets[0].tablet_id());
+  if (!expected_row.ok()) {
+    FAIL();
+  }
+  ASSERT_GE((*expected_row).op_id.term, 0);
+  ASSERT_GE((*expected_row).op_id.index, 0);
+  ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
+  ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time is invalid in the tablet_peers
+  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), HybridTime::kInvalid);
+}
+
+TEST_F(CDCSDKBeforeImageTest, TestCompactionWithConsistentSnapshotAndBeforeImage) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 50;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
+
+  ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
+
+  // GetCheckpoint after snapshot bootstrap (done as part of stream creation itself).
+  auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
+
+  // Read from cdc_state
+  auto expected_row = ReadFromCdcStateTable(stream_id, tablets[0].tablet_id());
+  if (!expected_row.ok()) {
+    FAIL();
+  }
+  ASSERT_GE((*expected_row).op_id.term, 0);
+  ASSERT_GE((*expected_row).op_id.index, 0);
+  ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
+  ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time is invalid in the tablet_peers
+  AssertSafeTimeAsExpectedInTabletPeers(
+      tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
+
+  // Count the number of snapshot READs.
+  GetChangesResponsePB change_resp;
+  ConsumeSnapshotAndPerformDML(stream_id, table, tablets, cp_resp, &change_resp);
+  int count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+  // sleep for UpdatePeersAndMetrics thread to release retention barriers
+  sleep(2 * FLAGS_update_min_cdc_indices_interval_secs);
+  auto result = test_cluster_.mini_cluster_->CompactTablets();
+  int count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+  ASSERT_EQ(count_after_compaction, count_before_compaction);
+
+  ASSERT_OK(WriteRows(101 /* start */, 102 /* end */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 4 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, 5 /* value */, &test_cluster_));
+
+  change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &change_resp.cdc_sdk_checkpoint()));
+  // for updating cdc_state with explicit checkpoint
+  change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &change_resp.cdc_sdk_checkpoint()));
+
+  WaitForCompaction(table);
+  expected_row = ReadFromCdcStateTable(stream_id, tablets[0].tablet_id());
+  if (!expected_row.ok()) {
+    FAIL();
+  }
+  ASSERT_GE((*expected_row).op_id.term, 0);
+  ASSERT_GE((*expected_row).op_id.index, 0);
+  ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
+  ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time in the tablet_peers is equal to cdc_state
+  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
+}
+
+TEST_F(CDCSDKBeforeImageTest, TestHistoryRetentionWithNoExportConsistentSnapshotAndBeforeImage) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+
+  ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT,
+      CDCRecordType::PG_FULL));
+  // Read from cdc_state
+  auto expected_row = ReadFromCdcStateTable(stream_id, tablets[0].tablet_id());
+  if (!expected_row.ok()) {
+    FAIL();
+  }
+  ASSERT_GE((*expected_row).op_id.term, 0);
+  ASSERT_GE((*expected_row).op_id.index, 0);
+  ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
+  ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time in the tablet_peers is same as cdc_state
+  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
+}
+
 YB_STRONGLY_TYPED_BOOL(SetColumnDefaultValue);
 class CDCYsqlAddColumnBeforeImageTest
-    : public CDCSDKYsqlTest, public ::testing::WithParamInterface<SetColumnDefaultValue> {};
+    : public CDCSDKBeforeImageTest, public ::testing::WithParamInterface<SetColumnDefaultValue> {};
 
 TEST_P(CDCYsqlAddColumnBeforeImageTest, TestAddColumnBeforeImage) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;

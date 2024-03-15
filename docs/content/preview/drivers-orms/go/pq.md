@@ -3,7 +3,6 @@ title: Go PQ Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Go application using PQ driver
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: pq-driver

@@ -22,6 +22,7 @@
 using namespace std::literals;
 
 DECLARE_bool(pg_client_use_shared_memory);
+DECLARE_bool(TEST_pg_client_crash_on_shared_memory_send);
 DECLARE_bool(TEST_skip_remove_tserver_shared_memory_object);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(pg_client_extra_timeout_ms);
@@ -99,6 +100,33 @@ TEST_F(PgSharedMemTest, BigData) {
 
   auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(result, value);
+}
+
+TEST_F(PgSharedMemTest, Crash) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key) VALUES (1)"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_client_crash_on_shared_memory_send) = true;
+  ASSERT_OK(RestartCluster());
+
+  auto settings = MakeConnSettings();
+  settings.connect_timeout = 5;
+  auto conn_result = PGConnBuilder(settings).Connect();
+  ASSERT_NOK(conn_result);
+  ASSERT_TRUE(conn_result.status().IsNetworkError());
+}
+
+TEST_F(PgSharedMemTest, Batches) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+  ASSERT_OK(SetMaxBatchSize(&conn, 4));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT GENERATE_SERIES(1, 10)"));
+
+  auto value = AsString(ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT * FROM t ORDER BY key")));
+  ASSERT_EQ(value, "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]");
 }
 
 } // namespace yb::pgwrapper

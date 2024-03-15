@@ -2,7 +2,6 @@
 title: SQL Feature Support
 linkTitle: SQL Feature Support
 description: Summary of YugabyteDB's conformance to the SQL standard
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.14:
     identifier: explore-ysql-language-feature-support

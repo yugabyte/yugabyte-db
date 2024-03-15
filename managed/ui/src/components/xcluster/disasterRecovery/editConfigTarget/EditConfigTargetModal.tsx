@@ -99,6 +99,7 @@ export const EditConfigTargetModal = ({
           invalidateQueries();
         };
 
+        toast.success('success.requestSucess');
         modalProps.onClose();
         if (redirectUrl) {
           browserHistory.push(redirectUrl);

@@ -46,7 +46,8 @@ public class YbaApiTest extends FakeDBApplication {
   private static Map<String, Set<Field>> ybaApiAnnotatedFields = new HashMap<>();
 
   // description message enforced for each visibility level
-  private static String DEPRECATION_MESSAGE = "Deprecated since YBA version %s";
+  private static String DEPRECATION_MESSAGE =
+      "<b style=\"color:#ff0000\">Deprecated since YBA version %s.</b>";
   private static String INTERNAL_MESSAGE = "YbaApi Internal";
   private static String PREVIEW_MESSAGE = "WARNING: This is a preview API that could change";
   private static String PUBLIC_MESSAGE = "Available since YBA version %s";
@@ -178,7 +179,7 @@ public class YbaApiTest extends FakeDBApplication {
         String annDescription = null;
         ApiOperation apiOpAnn = m.getAnnotation(ApiOperation.class);
         if (apiOpAnn != null) {
-          annDescription = apiOpAnn.value();
+          annDescription = apiOpAnn.notes();
         } else if (isGetterSetter) {
           ApiModelProperty apiPropAnn = m.getAnnotation(ApiModelProperty.class);
           if (apiPropAnn == null) {
@@ -207,9 +208,9 @@ public class YbaApiTest extends FakeDBApplication {
         String expectedVisibilityMsg = expectedVisibilityMessage(ybaApiAnn);
         errMsg +=
             "Please update corresponding "
-                + (isGetterSetter ? "@ApiModelProperty(value = \"" : "@ApiOperation(value = \"")
+                + (isGetterSetter ? "@ApiModelProperty(value = \"" : "@ApiOperation(notes = \"")
                 + expectedVisibilityMsg
-                + ". <...anything else here...>\")";
+                + " <...anything else here...>\")";
         if (annDescription == null
             || (expectedVisibilityMsg != null && !annDescription.contains(expectedVisibilityMsg))) {
           errorMessages.add(errMsg);
@@ -268,18 +269,18 @@ public class YbaApiTest extends FakeDBApplication {
   // returns the expected visibility level of YbaApi by looking for keywords in the given API
   // description
   private YbaApiVisibility expectedVisibility(String apiDescription) {
-    // A method having "deprecated" in its value should also have
+    // A method having "deprecated" in its notes should also have
     // @YbaApi(visibility=DEPRECATED)
     if (apiDescription.contains(DEPRECATION_MESSAGE_PART)) {
       return YbaApiVisibility.DEPRECATED;
     }
-    // A method having "internal"/"ybm" in its value should also have
+    // A method having "internal"/"ybm" in its notes should also have
     // @YbaApi(visibility=INTERNAL)
     if (apiDescription.contains(INTERNAL_MESSAGE_PART_1)
         || apiDescription.contains(INTERNAL_MESSAGE_PART_2)) {
       return YbaApiVisibility.INTERNAL;
     }
-    // A method having "preview API" in its value should also have
+    // A method having "preview API" in its notes should also have
     // @YbaApi(visibility=PREVIEW)
     if (apiDescription.contains(PREVIEW_MESSAGE_PART)) {
       return YbaApiVisibility.PREVIEW;
@@ -299,7 +300,7 @@ public class YbaApiTest extends FakeDBApplication {
       for (Method m : apiMethods) {
         String errMsg = "For " + className + "." + m.getName() + "(): ";
         ApiOperation apiOpAnn = m.getAnnotation(ApiOperation.class);
-        YbaApiVisibility expectedVisibility = expectedVisibility(apiOpAnn.value());
+        YbaApiVisibility expectedVisibility = expectedVisibility(apiOpAnn.notes());
         if (expectedVisibility != null) {
           errMsg += "Expected @YbaApi(visibility=" + expectedVisibility.name() + ")";
           YbaApi ybaApi = m.getAnnotation(YbaApi.class);

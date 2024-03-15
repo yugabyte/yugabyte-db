@@ -38,6 +38,7 @@ class MetricsSnapshotter;
 class PgTableCache;
 class PgResponseCache;
 class PgSequenceCache;
+class SharedExchange;
 class TSTabletManager;
 class TableMutationCountSender;
 class TabletPeerLookupIf;

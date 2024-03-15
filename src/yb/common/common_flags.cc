@@ -48,12 +48,7 @@ TAG_FLAG(log_ysql_catalog_versions, hidden);
 
 DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022");
 
-#ifdef NDEBUG
-constexpr bool kEnableWaitOnConflict = false;
-#else
-constexpr bool kEnableWaitOnConflict = true;
-#endif
-DEFINE_NON_RUNTIME_bool(enable_wait_queues, kEnableWaitOnConflict,
+DEFINE_NON_RUNTIME_bool(enable_wait_queues, true,
     "If true, enable wait queues that help provide Wait-on-Conflict behavior during conflict "
     "resolution whenever required. Enabling this flag enables deadlock detection as well.");
 TAG_FLAG(enable_wait_queues, advanced);

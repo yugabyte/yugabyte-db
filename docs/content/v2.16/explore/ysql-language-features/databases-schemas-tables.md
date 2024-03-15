@@ -2,7 +2,6 @@
 title: Schemas and tables
 linkTitle: Schemas and tables
 description: Schemas and tables in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: explore-ysql-language-features-databases-schemas-tables

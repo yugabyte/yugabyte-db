@@ -50,20 +50,19 @@ The following steps show how to meet these prerequisites:
 
 - Configure defaults for Google Cloud.
 
-  Execute the followingn command to set the project ID to `yugabyte`. You can change this as needed.
+  Execute the following command to set the project ID to `yugabyte`. You can change this as needed.
 
   ```sh
   gcloud config set project yugabyte
   ```
 
-  Execute the followingn command to set  the default compute zone to `us-west1-b`. You can change this as needed.
+  Execute the following command to set  the default compute zone to `us-west1-b`. You can change this as needed.
 
   ```sh
   gcloud config set compute/zone us-west1-b
   ```
 
 - Install `kubectl`. Refer to kubectl installation instructions for your [operating system](https://kubernetes.io/docs/tasks/tools/).
-
 
   Note that GKE is usually two or three major releases behind the upstream or OSS Kubernetes release. This means you have to make sure that you have the latest kubectl version that is compatible across different Kubernetes distributions.
 
@@ -75,7 +74,7 @@ The following steps show how to meet these prerequisites:
   helm version
   ```
 
-  Expect to see the ouput similar to the following. Note that the `tiller` server-side component has been removed in Helm 3.
+  Expect to see the output similar to the following. Note that the `tiller` server-side component has been removed in Helm 3.
 
   ```output
   version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}

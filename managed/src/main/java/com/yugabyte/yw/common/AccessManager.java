@@ -604,11 +604,12 @@ public class AccessManager extends DevopsBase {
     return response;
   }
 
-  public String createGCPCredentialsFile(UUID providerUUID, JsonNode credentials) {
+  public String createGCPCredentialsFile(UUID providerUUID, String credentials) {
     try {
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = Json.mapper();
+      JsonNode gcpCred = mapper.readTree(credentials);
       String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
-      mapper.writeValue(new File(credentialsFilePath), credentials);
+      mapper.writeValue(new File(credentialsFilePath), gcpCred);
       FileData.upsertFileInDB(credentialsFilePath);
       return credentialsFilePath;
     } catch (Exception e) {

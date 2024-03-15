@@ -236,6 +236,11 @@ uintptr_t HeapFormTuple(void *attrs, size_t natts, uintptr_t *values,
 void HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts,
 					 uintptr_t *values, bool *nulls);
 
+//-----------------------------------------------------------------------------
+// PG Version
+//-----------------------------------------------------------------------------
+YbgStatus YbgGetPgVersion(const char **version);
+
 #ifdef __cplusplus
 }
 #endif

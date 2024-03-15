@@ -66,7 +66,7 @@ export const PlacementModal: FC<PlacementModalProps> = ({
                 ? `${MasterPlacementMode.DEDICATED}`
                 : `${MasterPlacementMode.COLOCATED}`}
             </b>
-            &nbsp;mode
+            &nbsp;{t('universeForm.placementModal.mode')}
           </Box>
         )}
         {(diffClusterData.numNodesChanged || diffClusterData.masterPlacementChanged) && (
@@ -76,14 +76,20 @@ export const PlacementModal: FC<PlacementModalProps> = ({
                 <b>
                   {isNew && diffClusterData.newNodeCount !== diffClusterData.currentNodeCount
                     ? diffClusterData.newNodeCount > diffClusterData.currentNodeCount
-                      ? `Scale Up - ${userIntent?.numNodes}`
-                      : `Scale Down - ${userIntent?.numNodes}`
+                      ? `${t('universeForm.placementModal.scaleUp')} - ${userIntent?.numNodes}`
+                      : `${t('universeForm.placementModal.scaleDown')} - ${userIntent?.numNodes}`
                     : userIntent?.numNodes}
                 </b>
-                &nbsp;nodes
+                &nbsp;{t('universeForm.placementModal.nodes')}
               </Box>
             }
           </>
+        )}
+        {!isPrimary && diffClusterData.oldNumReadReplicas !== diffClusterData.newNumReadReplicas && (
+          <Box className={classes.configConfirmationBox}>
+            {t('universeForm.placementModal.readReplicas')} -&nbsp;
+            <b>{isNew ? diffClusterData.newNumReadReplicas : diffClusterData.oldNumReadReplicas}</b>
+          </Box>
         )}
         <Box mt={1} display="flex" flexDirection="column">
           {placementInfo?.cloudList[0].regionList?.map((region) => (
@@ -98,7 +104,7 @@ export const PlacementModal: FC<PlacementModalProps> = ({
               <Box pl={2}>
                 {region.azList.map((az) => (
                   <Typography key={az.name} variant="body2">
-                    {az.name} - {az.numNodesInAZ} {pluralize('node', az.numNodesInAZ)}{' '}
+                    {az.name} - {az.numNodesInAZ} {pluralize('node', az.numNodesInAZ)}
                   </Typography>
                 ))}
               </Box>
@@ -126,7 +132,9 @@ export const PlacementModal: FC<PlacementModalProps> = ({
       <Box display="flex" width="100%" flexDirection="column" data-testid="full-move-modal">
         <Box>
           <Typography variant="body2">
-            {t('universeForm.placementModal.modalDescription')}
+            {isPrimary
+              ? t('universeForm.placementModal.modalDescription')
+              : t('universeForm.placementModal.modalDescriptionRR')}
           </Typography>
         </Box>
         <Box mt={2} display="flex" flexDirection="row">

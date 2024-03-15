@@ -21,4 +21,7 @@ public class AuditLogConfig {
   @NotNull
   @ApiModelProperty(value = "Universe logs exporter config", accessMode = READ_WRITE)
   private List<UniverseLogsExporterConfig> universeLogsExporterConfig;
+
+  @ApiModelProperty(value = "Universe logs export active", accessMode = READ_WRITE)
+  private boolean exportActive = true;
 }

@@ -3,7 +3,6 @@ title: Troubleshooting performance issues in YugabyteDB
 headerTitle: Performance Troubleshooting
 linkTitle: Performance Troubleshooting
 description: Common steps to take when investigating performance issues in YugabyteDB
-image: /images/section_icons/architecture/concepts.png
 headcontent: Performance Troubleshooting
 menu:
   v2.14:

@@ -8,7 +8,7 @@ menu:
   v2.18_yugabyte-platform:
     identifier: schedule-data-backups
     parent: back-up-restore-universes
-    weight: 40
+    weight: 15
 type: docs
 ---
 

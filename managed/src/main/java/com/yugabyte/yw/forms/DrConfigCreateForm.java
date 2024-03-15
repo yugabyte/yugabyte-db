@@ -42,8 +42,8 @@ public class DrConfigCreateForm {
   public Set<String> dbs;
 
   @Valid
-  @ApiModelProperty("Parameters used to do Backup/restore")
-  public XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams bootstrapBackupParams;
+  @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
+  public XClusterConfigRestartFormData.RestartBootstrapParams bootstrapParams;
 
   @ApiModelProperty("Run the pre-checks without actually running the subtasks")
   public boolean dryRun = false;

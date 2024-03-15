@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"node-agent/app/executor"
 	"node-agent/app/server"
 	"node-agent/app/task"
@@ -39,6 +40,7 @@ func SetupConfigureCommand(parentCmd *cobra.Command) {
 		Bool("silent", false, "Silent configuration with egress enabled.")
 	configureCmd.PersistentFlags().String("node_name", "", "Node name")
 	configureCmd.PersistentFlags().StringP("node_ip", "n", "", "Node IP")
+	configureCmd.PersistentFlags().StringP("bind_ip", "b", "", "Bind IP")
 	configureCmd.PersistentFlags().StringP("node_port", "p", "", "Node port")
 	/* Required only if egress is disabled. It is used for cloud auto-provisioned nodes.*/
 	configureCmd.PersistentFlags().StringP("id", "i", "", "Node agent ID")
@@ -104,6 +106,7 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 		cmd,
 		"id",
 		util.NodeAgentIdKey,
+		nil,  /* default value */
 		true, /* isRequired */
 		nil,  /* validator */
 	)
@@ -115,6 +118,7 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 		cmd,
 		"customer_id",
 		util.CustomerIdKey,
+		nil,  /* default value */
 		true, /* isRequired */
 		nil,  /* validator */
 	)
@@ -126,6 +130,7 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 		cmd,
 		"cert_dir",
 		util.PlatformCertsKey,
+		nil,  /* default value */
 		true, /* isRequired */
 		nil,  /* validator */
 	)
@@ -137,6 +142,7 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 		cmd,
 		"node_name",
 		util.NodeNameKey,
+		nil,  /* default value */
 		true, /* isRequired */
 		nil,  /* validator */
 	)
@@ -148,17 +154,43 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 		cmd,
 		"node_ip",
 		util.NodeIpKey,
+		nil,  /* default value */
 		true, /* isRequired */
 		nil,  /* validator */
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent IP - %s", err.Error())
 	}
+	nodeIp := config.String(util.NodeIpKey)
+	parsedIp := net.ParseIP(nodeIp)
+	if parsedIp == nil {
+		// Get the bind IP if it is DNS. It defaults to the DNS if it is not present.
+		_, err = config.StoreCommandFlagString(
+			ctx,
+			cmd,
+			"bind_ip",
+			util.NodeBindIpKey,
+			&nodeIp,
+			true, /* isRequired */
+			nil,  /* validator */
+		)
+		if err != nil {
+			util.ConsoleLogger().
+				Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
+		}
+	} else {
+		// Use the node IP as the bind IP.
+		err = config.Update(util.NodeBindIpKey, nodeIp)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
+		}
+	}
 	_, err = config.StoreCommandFlagString(
 		ctx,
 		cmd,
 		"node_port",
 		util.NodePortKey,
+		nil,  /* default value */
 		true, /* isRequired */
 		nil,  /* validator */
 	)
@@ -196,6 +228,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 		cmd,
 		"url",
 		util.PlatformUrlKey,
+		nil,  /* default value */
 		true, /* isRequired */
 		util.ExtractBaseURL,
 	)
@@ -223,6 +256,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 		cmd,
 		"node_port",
 		util.NodePortKey,
+		nil,  /* default value */
 		true, /* isRequired */
 		nil,  /* validator */
 	)
@@ -235,6 +269,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			cmd,
 			"node_name",
 			util.NodeNameKey,
+			nil,  /* default value */
 			true, /* isRequired */
 			nil,  /* validator */
 		)
@@ -242,7 +277,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			util.ConsoleLogger().Fatalf(ctx, "Unable to store node name - %s", err.Error())
 		}
 	} else {
-		checkConfigAndUpdate(ctx, util.NodeNameKey, "Node Name")
+		checkConfigAndUpdate(ctx, util.NodeNameKey, nil, "Node Name")
 	}
 	if silent {
 		_, err = config.StoreCommandFlagString(
@@ -250,6 +285,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			cmd,
 			"node_ip",
 			util.NodeIpKey,
+			nil,  /* default value */
 			true, /* isRequired */
 			nil,  /* validator */
 		)
@@ -258,7 +294,35 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 		}
 	} else {
 		// Get node agent name and IP.
-		checkConfigAndUpdate(ctx, util.NodeIpKey, "Node IP")
+		checkConfigAndUpdate(ctx, util.NodeIpKey, nil, "Node IP")
+	}
+	nodeIp := config.String(util.NodeIpKey)
+	parsedIp := net.ParseIP(nodeIp)
+	if parsedIp == nil {
+		// Get the bind IP if it is DNS. It defaults to the DNS if it is not present.
+		if silent {
+			_, err = config.StoreCommandFlagString(
+				ctx,
+				cmd,
+				"bind_ip",
+				util.NodeBindIpKey,
+				&nodeIp,
+				true, /* isRequired */
+				nil,  /* validator */
+			)
+			if err != nil {
+				util.ConsoleLogger().
+					Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
+			}
+		} else {
+			checkConfigAndUpdate(ctx, util.NodeBindIpKey, &nodeIp, "Bind IP")
+		}
+	} else {
+		// Use the node IP as the bind IP.
+		err = config.Update(util.NodeBindIpKey, nodeIp)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
+		}
 	}
 	providersHandler := task.NewGetProvidersHandler(apiToken)
 	// Get Providers from the platform (only on-prem providers displayed)
@@ -269,7 +333,8 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 	providers := *providersHandler.Result()
 	i := 0
 	for _, data := range providers {
-		if data.Code == "onprem" {
+		// Only onprem and manually provisioned nodes.
+		if data.Code == "onprem" && data.Details.SkipProvisioning {
 			providers[i] = data
 			i++
 		}
@@ -282,6 +347,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			cmd,
 			"provider_id",
 			util.ProviderIdKey,
+			nil,  /* default value */
 			true, /* isRequired */
 			func(in string) (string, error) {
 				for _, pr := range onpremProviders {
@@ -301,7 +367,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			ctx,
 			util.ProviderIdKey,
 			displayInterfaces(ctx, onpremProviders),
-			"Onprem Provider",
+			"Onprem Manually Provisioned Provider",
 		)
 		if err != nil {
 			util.ConsoleLogger().Fatalf(ctx, "Error while displaying providers - %s", err.Error())
@@ -323,6 +389,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			cmd,
 			"instance_type",
 			util.NodeInstanceTypeKey,
+			nil,  /* default value */
 			true, /* isRequired */
 			func(in string) (string, error) {
 				for _, instance := range instances {
@@ -354,6 +421,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			cmd,
 			"zone_name",
 			util.NodeZoneKey,
+			nil,  /* default value */
 			true, /* isRequired */
 			func(in string) (string, error) {
 				for _, region := range selectedProvider.Regions {
@@ -391,12 +459,20 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 		config.Update(util.NodeAzIdKey, zones[zoneNum].Uuid)
 	}
 	util.ConsoleLogger().Infof(ctx, "Completed Node Agent Configuration")
-
-	err = server.RegisterNodeAgent(server.Context(), apiToken)
-	if err != nil {
-		util.ConsoleLogger().Fatalf(ctx, "Unable to register node agent - %s", err.Error())
+	util.ConsoleLogger().Infof(ctx, "Checking for existing Node Agent with IP %s", nodeIp)
+	err = server.ValidateNodeAgentIfExists(server.Context(), apiToken)
+	if err == nil {
+		util.ConsoleLogger().Infof(ctx, "Node Agent is already registered with IP %s", nodeIp)
+	} else if err == util.ErrNotExist {
+		util.ConsoleLogger().Infof(ctx, "Registering Node Agent with IP %s", nodeIp)
+		err = server.RegisterNodeAgent(server.Context(), apiToken)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to register node agent - %s", err.Error())
+		}
+	} else {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to check for existing node agent - %s", err.Error())
 	}
-	util.ConsoleLogger().Info(ctx, "Node Agent Registration Successful")
+	util.ConsoleLogger().Info(ctx, "Node Agent Configuration Successful")
 }
 
 // Displays the options and prompts the user to select an option followed by validating the option.

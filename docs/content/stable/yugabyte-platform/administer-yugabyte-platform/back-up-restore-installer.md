@@ -1,15 +1,18 @@
 ---
-title: Back up and restore YugabyteDB Anywhere
+title: Back up and restore YugabyteDB Anywhere using yb-ctl
 headerTitle: Back up and restore YugabyteDB Anywhere
-description: Use a script to back up and restore YugabyteDB Anywhere on YBA Installer.
+description: Back up and restore YugabyteDB Anywhere using YBA Installer.
+headcontent: Back up your YugabyteDB Anywhere installation
 linkTitle: Back up YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
     identifier: back-up-restore-installer
     parent: administer-yugabyte-platform
-    weight: 10
+    weight: 30
 type: docs
 ---
+
+YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -32,8 +35,6 @@ type: docs
     </a>
   </li>
 </ul>
-
-YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
 
 If you installed YBA using [YBA installer](../../install-yugabyte-platform/install-software/installer/), use the [yba-ctl](../../install-yugabyte-platform/install-software/installer/#download-yba-installer) CLI to back up and restore your YBA installation. The CLI executes the `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 

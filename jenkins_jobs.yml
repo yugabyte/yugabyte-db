@@ -10,18 +10,18 @@ jobs:
 # YB_TODO: build failure:
 # libpq.so.5.15:                 U __tsan_func_exit
 # libpq must not be calling any function which invokes exit
-#  - os: centos7
+#  - os: alma8
 #    compiler: clang17
 #    build_type: tsan
 #    release_artifact: false
 
-  - os: centos7
-    compiler: clang17
+  - os: alma8
+    compiler: gcc11
     build_type: debug
     release_artifact: false
 
 # YB_TODO: build failure "ld.lld: error: duplicate symbol: fsync_fname"
-#  - os: centos7
+#  - os: alma8
 #    compiler: clang16
 #    build_type: release
 #    build_opts: YB_LINKING_TYPE=full-lto
@@ -33,12 +33,7 @@ jobs:
 #    architecture: aarch64
 #    release_artifact: true
 
-  - os: alma8
-    compiler: clang16
-    build_type: debug
-    architecture: aarch64
-    release_artifact: false
-
+# YB_TODO: remove this job as in 37b0080f2b7108662e4525899848bcaba24efc40.
   - os: alma8
     compiler: gcc11
     build_type: fastdebug
@@ -56,7 +51,7 @@ jobs:
     architecture: x86_64
     release_artifact: true
 
-  - os: ubuntu20.04
+  - os: ubuntu22.04
     compiler: clang16
     build_type: debug
     release_artifact: false

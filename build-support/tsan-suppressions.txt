@@ -195,3 +195,7 @@ race:fLI::*
 
 # Known problem with PstackWatcher
 signal:yb::PstackWatcher::DumpStacks
+
+# Unexpected tsan warning in the getpwuid_r standard thread safe function which is called
+# from the pqGetpwuid function
+race:pqGetpwuid

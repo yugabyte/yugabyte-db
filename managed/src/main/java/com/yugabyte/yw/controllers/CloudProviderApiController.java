@@ -129,8 +129,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Refresh pricing",
-      notes = "Refresh provider pricing info",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Refresh provider pricing info",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -283,7 +283,8 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @ApiOperation(
       nickname = "accessKeyRotation",
-      value = "WARNING: This is a preview API that could change. Rotate access key for a provider",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Rotate access key for a provider",
       response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -330,9 +331,8 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @ApiOperation(
       nickname = "scheduledAccessKeyRotation",
-      value =
-          "WARNING: This is a preview API that could change. Rotate access key for a provider -"
-              + " Scheduled",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Rotate access key for a provider - Scheduled",
       response = Schedule.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -379,9 +379,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. List all schedules for a provider's"
-              + " access key rotation",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List all schedules for a provider's" + " access key rotation",
       response = Schedule.class,
       responseContainer = "List",
       nickname = "listSchedules")
@@ -404,8 +403,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. Edit a access key rotation schedule",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Edit a access key rotation schedule",
       response = Schedule.class,
       nickname = "editAccessKeyRotationSchedule")
   @ApiImplicitParams({
@@ -500,6 +499,33 @@ public class CloudProviderApiController extends AuthenticatedController {
       ((ObjectNode) requestBody).remove("sshPrivateKeyContent");
     }
     String providerCode = requestBody.get("code").asText();
+    if (providerCode.equals(CloudType.gcp.name())) {
+      // This is to keep the older API clients happy in case they still continue to use
+      // JSON object.
+      ObjectMapper mapper = Json.mapper();
+      ObjectNode details = (ObjectNode) requestBody.get("details");
+      if (details != null && details.has("cloudInfo")) {
+        ObjectNode cloudInfo = (ObjectNode) details.get("cloudInfo");
+        if (cloudInfo != null && cloudInfo.has("gcp")) {
+          ObjectNode gcpCloudInfo = (ObjectNode) cloudInfo.get("gcp");
+          try {
+            if (gcpCloudInfo != null
+                && gcpCloudInfo.has("gceApplicationCredentials")
+                && !(gcpCloudInfo.get("gceApplicationCredentials").isTextual())) {
+              gcpCloudInfo.put(
+                  "gceApplicationCredentials",
+                  mapper.writeValueAsString(gcpCloudInfo.get("gceApplicationCredentials")));
+            }
+          } catch (Exception e) {
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR, "Failed to read GCP Service Account Credentials");
+          }
+          cloudInfo.set("gcp", gcpCloudInfo);
+          details.set("cloudInfo", cloudInfo);
+          ((ObjectNode) requestBody).set("details", details);
+        }
+      }
+    }
     ObjectMapper mapper = Json.mapper();
     JsonNode regions = requestBody.get("regions");
     ArrayNode regionsNode = mapper.createArrayNode();

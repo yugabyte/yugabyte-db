@@ -20,8 +20,13 @@
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
+
 #include "yb/tools/yb-admin_client.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
@@ -229,6 +234,51 @@ TEST_F(AreNodesSafeToTakeDownRf5Itest, TserverLagging) {
   // Should be able to remove bad tserver and one good tserver.
   ASSERT_OK(client_->AreNodesSafeToTakeDown(
       {bad_tserver->uuid(), good_tserver1->uuid()}, {}, kFollowerLagBoundMs));
+}
+
+TEST_F(AreNodesSafeToTakeDownItest, GetFollowerUpdateDelay) {
+  auto leader_master = external_mini_cluster_->GetLeaderMaster();
+  auto proxy = external_mini_cluster_->GetProxy<master::MasterAdminProxy>(leader_master);
+  master::GetMasterHeartbeatDelaysRequestPB req;
+  master::GetMasterHeartbeatDelaysResponsePB resp;
+  rpc::RpcController rpc;
+  ASSERT_OK(proxy.GetMasterHeartbeatDelays(req, &resp, &rpc));
+  ASSERT_EQ(resp.heartbeat_delay_size(), 2);
+  auto max_expected_heartbeat_time = FLAGS_raft_heartbeat_interval_ms * 2;
+  for (const auto& heartbeat_delay : resp.heartbeat_delay()) {
+    ASSERT_LE(heartbeat_delay.last_heartbeat_delta_ms(), max_expected_heartbeat_time);
+  }
+}
+
+// Stop one of the nodes and ensure its delay increases.
+TEST_F(AreNodesSafeToTakeDownItest, GetFollowerUpdateDelayWithStoppedNode) {
+  auto leader_master = external_mini_cluster_->GetLeaderMaster();
+  auto proxy = external_mini_cluster_->GetProxy<master::MasterAdminProxy>(leader_master);
+  auto masters = external_mini_cluster_->master_daemons();
+  auto master_it =
+      std::find_if(masters.begin(), masters.end(), [leader_master](const auto master) -> bool {
+        return master->uuid() != leader_master->uuid();
+      });
+  ASSERT_NE(master_it, masters.end());
+  auto other_master = *master_it;
+  other_master->Shutdown();
+  auto sleep_time = FLAGS_raft_heartbeat_interval_ms * 3;
+  SleepFor(MonoDelta::FromMilliseconds(sleep_time));
+  master::GetMasterHeartbeatDelaysRequestPB req;
+  master::GetMasterHeartbeatDelaysResponsePB resp;
+  rpc::RpcController rpc;
+  ASSERT_OK(proxy.GetMasterHeartbeatDelays(req, &resp, &rpc));
+  ASSERT_EQ(resp.heartbeat_delay_size(), 2);
+  auto max_expected_heartbeat_time = FLAGS_raft_heartbeat_interval_ms * 2;
+  for (const auto& heartbeat_delay : resp.heartbeat_delay()) {
+    if (heartbeat_delay.master_uuid() != other_master->uuid()) {
+      ASSERT_LE(heartbeat_delay.last_heartbeat_delta_ms(), max_expected_heartbeat_time);
+    } else {
+      ASSERT_GE(heartbeat_delay.last_heartbeat_delta_ms(), sleep_time);
+    }
+  }
+
+  ASSERT_OK(other_master->Restart());
 }
 
 } // namespace integration_tests

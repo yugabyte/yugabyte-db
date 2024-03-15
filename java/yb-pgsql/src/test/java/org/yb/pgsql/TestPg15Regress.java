@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.util.BuildTypeUtil;
@@ -24,6 +26,22 @@ public class TestPg15Regress extends BasePgSQLTest {
     public int getTestMethodTimeoutSec() {
         return BuildTypeUtil.nonSanitizerVsSanitizer(2100, 2700);
     }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_commands");
+    flagMap.put("ysql_yb_enable_replication_commands", "true");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_commands");
+    flagMap.put("ysql_yb_enable_replication_commands", "true");
+    return flagMap;
+  }
 
     @Test
     public void testPg15Regress() throws Exception {

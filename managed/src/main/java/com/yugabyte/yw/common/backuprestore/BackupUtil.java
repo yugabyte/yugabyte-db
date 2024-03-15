@@ -51,6 +51,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -104,7 +105,7 @@ public class BackupUtil {
   public static final String UNIVERSE_UUID_IDENTIFIER_STRING =
       "(univ-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/)";
   public static final String BACKUP_IDENTIFIER_STRING =
-      "(.*?)" + "(%s)?" + UNIVERSE_UUID_IDENTIFIER_STRING + "((ybc_)?backup-(.*))";
+      "(.*?)(%s)?" + UNIVERSE_UUID_IDENTIFIER_STRING + "((ybc_)?backup-(.*))";
   public static final String YBC_BACKUP_LOCATION_IDENTIFIER_STRING =
       "(/?)" + UNIVERSE_UUID_IDENTIFIER_STRING + "(" + YBC_BACKUP_IDENTIFIER + ")";
   public static final Pattern PATTERN_FOR_YBC_BACKUP_LOCATION =
@@ -549,20 +550,34 @@ public class BackupUtil {
   }
 
   /**
-   * Returns a list of locations in the backup.
+   * Returns a map of region-"list of locations" across params in the backup.
    *
    * @param backup The backup to get all locations of.
-   * @return List of locations( defaul and regional) for the backup.
+   * @return Map of region-"list of locations" for the backup.
    */
-  public static List<String> getBackupLocations(Backup backup) {
-    List<String> backupLocations = new ArrayList<>();
+  public static Map<String, List<String>> getBackupLocations(Backup backup) {
+    Map<String, List<String>> backupLocationsMap = new HashMap<>();
     Map<String, String> locationsMap = new HashMap<>();
     List<BackupTableParams> bParams = backup.getBackupParamsCollection();
     for (BackupTableParams params : bParams) {
       locationsMap = getLocationMap(params);
-      locationsMap.values().forEach(l -> backupLocations.add(l));
+      locationsMap.entrySet().stream()
+          .forEach(
+              e -> {
+                backupLocationsMap.computeIfAbsent(
+                    e.getKey(),
+                    k -> {
+                      return new ArrayList<>(Arrays.asList(e.getValue()));
+                    });
+                backupLocationsMap.computeIfPresent(
+                    e.getKey(),
+                    (k, v) -> {
+                      v.add(e.getValue());
+                      return v;
+                    });
+              });
     }
-    return backupLocations;
+    return backupLocationsMap;
   }
 
   /**

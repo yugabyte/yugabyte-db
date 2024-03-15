@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,12 +21,18 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
+var journalctlLogDays int
+
 var logGenCmd = &cobra.Command{
 	Use:   "log-bundle",
 	Short: "Generate a log bundle",
 	Long: `Generate a log bundle including yba-installer logs, Yugaware logs, postgres logs, and
 other useful data.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		// Do a quick validation of flags
+		if journalctlLogDays < 1 {
+			log.Fatal("Invalid journalctl-since-days, must be a positive integer")
+		}
 		// Create a logbundle directory under ybactl root
 		logBundleDir := filepath.Join(common.YbactlInstallDir(), "log_bundles")
 		if err := common.MkdirAll(logBundleDir, os.ModePerm); err != nil {
@@ -158,6 +165,7 @@ func addDirToTarWriter(directory string, w *tar.Writer) error {
 
 func addJournalctlToTarWriter(cmd string, w *tar.Writer) error {
 	splitCmd := strings.Split(cmd, " ")
+	splitCmd = append(splitCmd, "--since", fmt.Sprintf("%d days ago", journalctlLogDays))
 	out := shell.Run(splitCmd[0], splitCmd[1:]...)
 	if !out.SucceededOrLog() {
 		return fmt.Errorf("could not run journalctl: %w", out.Error)
@@ -190,5 +198,7 @@ func tarWriterHelper(
 }
 
 func init() {
+	logGenCmd.Flags().IntVar(&journalctlLogDays, "journalctl-since-days", 1,
+		"days back to collect logs from journalctl")
 	rootCmd.AddCommand(logGenCmd)
 }

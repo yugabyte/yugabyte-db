@@ -6,6 +6,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
@@ -68,6 +69,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
@@ -82,7 +84,7 @@ import org.apache.commons.lang3.builder.HashCodeBuilder;
 @Singleton
 public class NodeAgentClient {
   public static final String NODE_AGENT_CONNECT_TIMEOUT_PROPERTY = "yb.node_agent.connect_timeout";
-  public static final Duration IDLE_CONNECT_TIMEOUT = Duration.ofMinutes(20);
+  public static final Duration IDLE_CONNECT_TIMEOUT = Duration.ofMinutes(5);
   public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
 
   // Cache of the channels for re-use.
@@ -94,21 +96,35 @@ public class NodeAgentClient {
   private final RuntimeConfGetter confGetter;
 
   @Inject
-  public NodeAgentClient(Config appConfig, RuntimeConfGetter confGetter) {
-    this(appConfig, confGetter, null);
+  public NodeAgentClient(
+      Config appConfig,
+      RuntimeConfGetter confGetter,
+      PlatformExecutorFactory platformExecutorFactory) {
+    this(
+        appConfig,
+        confGetter,
+        platformExecutorFactory.createExecutor(
+            "node_agent.grpc_executor",
+            new ThreadFactoryBuilder().setNameFormat("NodeAgentGrpcPool-%d").build()));
+  }
+
+  public NodeAgentClient(
+      Config appConfig, RuntimeConfGetter confGetter, ExecutorService executorService) {
+    this(
+        appConfig,
+        confGetter,
+        config ->
+            ChannelFactory.getDefaultChannel(
+                config,
+                new GrpcClientRequestInterceptor(config.getNodeAgent().getUuid(), confGetter),
+                executorService));
   }
 
   public NodeAgentClient(
       Config appConfig, RuntimeConfGetter confGetter, ChannelFactory channelFactory) {
     this.appConfig = appConfig;
     this.confGetter = confGetter;
-    this.channelFactory =
-        channelFactory == null
-            ? config ->
-                ChannelFactory.getDefaultChannel(
-                    config,
-                    new GrpcClientRequestInterceptor(config.getNodeAgent().getUuid(), confGetter))
-            : channelFactory;
+    this.channelFactory = channelFactory;
     this.cachedChannels =
         CacheBuilder.newBuilder()
             .removalListener(
@@ -168,11 +184,15 @@ public class NodeAgentClient {
   public interface ChannelFactory {
     ManagedChannel get(ChannelConfig config);
 
-    static ManagedChannel getDefaultChannel(ChannelConfig config, ClientInterceptor interceptor) {
+    static ManagedChannel getDefaultChannel(
+        ChannelConfig config, ClientInterceptor interceptor, ExecutorService executor) {
       NodeAgent nodeAgent = config.nodeAgent;
       NettyChannelBuilder channelBuilder =
           NettyChannelBuilder.forAddress(nodeAgent.getIp(), nodeAgent.getPort())
-              .idleTimeout(config.getIdleTimeout().toMinutes(), TimeUnit.MINUTES);
+              .idleTimeout(config.getIdleTimeout().toMinutes(), TimeUnit.MINUTES)
+              // Override the default cached pool.
+              .executor(executor)
+              .offloadExecutor(executor);
       if (config.isEnableTls()) {
         try {
           String certPath = config.getCertPath().toString();
@@ -352,7 +372,7 @@ public class NodeAgentClient {
         .setSubject("Platform")
         .claim("ses", UUID.randomUUID())
         .setExpiration(Date.from(Instant.now().plusSeconds(tokenLifetime.getSeconds())))
-        .signWith(SignatureAlgorithm.RS512, privateKey)
+        .signWith(privateKey, SignatureAlgorithm.RS512)
         .compact();
   }
 

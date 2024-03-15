@@ -36,29 +36,26 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
     try {
       Cluster cluster = taskParams().getAddOnClusters().get(0);
       Universe universe =
-          lockUniverseForUpdate(
+          lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
-                if (isFirstTry()) {
-                  // TODO: Do we need to stop health checks?
-                  preTaskActions(u);
-                  // Set all the in-memory node names.
-                  setNodeNames(u);
-                  // Set non on-prem node UUIDs.
-                  setCloudNodeUuids(u);
-                  // Update on-prem node UUIDs.
-                  updateOnPremNodeUuidsOnTaskParams();
-                  // Set the prepared data to universe in-memory.
-                  updateUniverseNodesAndSettings(u, taskParams(), true);
-                  u.getUniverseDetails()
-                      .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
-                  // There is a rare possibility that this succeeds and
-                  // saving the Universe fails. It is ok because the retry
-                  // will just fail.
-                  updateTaskDetailsInDB(taskParams());
-                }
+                // TODO: Do we need to stop health checks?
+                preTaskActions(u);
+                // Set all the in-memory node names.
+                setNodeNames(u);
+                // Set non on-prem node UUIDs.
+                setCloudNodeUuids(u);
+                // Update on-prem node UUIDs.
+                updateOnPremNodeUuidsOnTaskParams();
+                // Set the prepared data to universe in-memory.
+                updateUniverseNodesAndSettings(u, taskParams(), true);
+                u.getUniverseDetails()
+                    .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+                // There is a rare possibility that this succeeds and
+                // saving the Universe fails. It is ok because the retry
+                // will just fail.
+                updateTaskDetailsInDB(taskParams());
               });
-
       Set<NodeDetails> addOnNodes = taskParams().getNodesInCluster(cluster.uuid);
       boolean ignoreUseCustomImageConfig = !addOnNodes.stream().allMatch(n -> n.ybPrebuiltAmi);
 

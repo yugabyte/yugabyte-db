@@ -3,7 +3,7 @@ title: Audit logging in YugabyteDB
 headerTitle: Audit logging
 linkTitle: Audit logging
 description: Audit logging in YugabyteDB.
-headcontent: Audit logging in YugabyteDB.
+headcontent: Trace statements and configure audit logging
 image: /images/section_icons/secure/authorization.png
 menu:
   stable:
@@ -12,6 +12,8 @@ menu:
     weight: 750
 type: indexpage
 ---
+
+Use audit logging to produce audit logs needed to comply with government, financial, or ISO certifications.
 
 <div class="row">
 

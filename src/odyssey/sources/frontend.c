@@ -64,6 +64,18 @@ int od_frontend_fatal(od_client_t *client, char *code, char *fmt, ...)
 	return od_write(&client->io, msg);
 }
 
+int od_frontend_fatal_forward(od_client_t *client, char *code, char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	machine_msg_t *msg;
+	msg = od_frontend_fatal_msg_forward(client, NULL, code, fmt, args);
+	va_end(args);
+	if (msg == NULL)
+		return -1;
+	return od_write(&client->io, msg);
+}
+
 static inline int od_frontend_error_fwd(od_client_t *client)
 {
 	od_server_t *server = client->server;
@@ -2325,7 +2337,6 @@ int yb_execute_on_control_connection(od_client_t *client,
 {
 	od_global_t *global = client->global;
 	kiwi_var_t *user = &client->startup.user;
-	kiwi_password_t *password = &client->password;
 	od_instance_t *instance = global->instance;
 	od_router_t *router = global->router;
 

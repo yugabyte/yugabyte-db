@@ -125,6 +125,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                           GetOldTransactionsResponsePB* resp,
                           rpc::RpcContext context) override;
 
+  void GetOldSingleShardWaiters(const GetOldSingleShardWaitersRequestPB* req,
+                                GetOldSingleShardWaitersResponsePB* resp,
+                                rpc::RpcContext context) override;
+
   void GetTransactionStatusAtParticipant(const GetTransactionStatusAtParticipantRequestPB* req,
                                          GetTransactionStatusAtParticipantResponsePB* resp,
                                          rpc::RpcContext context) override;
@@ -314,6 +318,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   TabletServer* const server_;
 
   Status DoCreateTablet(const CreateTabletRequestPB* req, CreateTabletResponsePB* resp);
+
+  Status SetupCDCSDKRetention(const tablet::ChangeMetadataRequestPB* req,
+                              ChangeMetadataResponsePB* resp,
+                              const tablet::TabletPeerPtr& peer);
 
   // Used to implement wait/signal mechanism for backfill requests.
   // Since the number of concurrently allowed backfill requests is

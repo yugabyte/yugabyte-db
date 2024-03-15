@@ -383,7 +383,8 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 									 scan->yb_scan_plan, scan->yb_rel_pushdown,
 									 scan->yb_idx_pushdown, scan->yb_aggrefs,
 									 scan->yb_distinct_prefixlen,
-									 scan->yb_exec_params);
+									 scan->yb_exec_params,
+									 false /* is_internal_scan */);
 	scan->opaque = ybScan;
 	if (scan->parallel_scan)
 	{
@@ -518,7 +519,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	/*
 	 * IndexScan(SysTable, Index) --> HeapTuple.
 	 */
-	scan->xs_heaptid.yb_item.ybctid = 0;
 	bool has_tuple = false;
 	if (ybscan->prepare_params.index_only_scan)
 	{
@@ -536,7 +536,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, dir, &scan->xs_recheck);
 		if (tuple)
 		{
-			scan->xs_heaptid.yb_item = HEAPTUPLE_YBITEM(tuple);
 			scan->xs_hitup = tuple;
 			scan->xs_hitupdesc = RelationGetDescr(scan->heapRelation);
 			has_tuple = true;

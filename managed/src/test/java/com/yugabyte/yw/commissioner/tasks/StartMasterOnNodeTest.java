@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -38,6 +39,7 @@ import play.libs.Json;
 public class StartMasterOnNodeTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
+  private YBClient mockClient;
 
   @Override
   @Before
@@ -84,7 +86,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
               return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
             });
 
-    YBClient mockClient = mock(YBClient.class);
+    mockClient = mock(YBClient.class);
 
     try {
       lenient().when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -92,7 +94,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
           .thenReturn(true);
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
-      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
+      lenient().when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
       when(mockNodeUniverseManager.runCommand(any(), any(), any()))
           .thenReturn(
@@ -118,9 +120,6 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
 
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
-    UniverseModifyBaseTest.mockGetMasterRegistrationResponse(
-        mockClient, ImmutableList.of("10.0.0.2"), Collections.emptyList());
-
     setFollowerLagMock();
   }
 
@@ -129,6 +128,18 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     taskParams.clusters.addAll(universe.getUniverseDetails().clusters);
     taskParams.expectedUniverseVersion = 2;
     taskParams.nodeName = nodeName;
+    if (universe.getNode(nodeName) != null) {
+      NodeDetails node = universe.getNode(nodeName);
+      if (node.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
+        List<String> masterIps =
+            universe.getUniverseDetails().nodeDetailsSet.stream()
+                .filter(n -> n.isMaster)
+                .map(n -> n.cloudInfo.private_ip)
+                .collect(Collectors.toList());
+        masterIps.add(node.cloudInfo.private_ip);
+        UniverseModifyBaseTest.mockMasterAndPeerRoles(mockClient, masterIps);
+      }
+    }
     try {
       UUID taskUUID = commissioner.submit(TaskType.StartMasterOnNode, taskParams);
       return waitForTask(taskUUID);

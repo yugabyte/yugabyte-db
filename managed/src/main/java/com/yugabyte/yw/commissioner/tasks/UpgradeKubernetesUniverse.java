@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.KubernetesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -61,8 +63,12 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      kubernetesStatus.createYBUniverseEventStatus(
-          universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+      kubernetesStatus.startYBUniverseEventStatus(
+          universe,
+          taskParams().getKubernetesResourceDetails(),
+          TaskType.UpgradeKubernetesUniverse.name(),
+          getUserTaskUUID(),
+          UniverseState.EDITING);
 
       taskParams().rootCA = universe.getUniverseDetails().rootCA;
 
@@ -168,8 +174,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       kubernetesStatus.updateYBUniverseStatus(
           getUniverse(),
           taskParams().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.UpgradeKubernetesUniverse.name(),
           getUserTaskUUID(),
+          (th != null) ? UniverseState.ERROR : UniverseState.READY,
           th);
       unlockUniverseForUpdate();
     }

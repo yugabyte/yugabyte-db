@@ -4,7 +4,6 @@ headerTitle: Configuration
 linkTitle: Configuration
 description: Configuration reference for core database services, including yb-tserver, yb-master, and yugabyted.
 headcontent: Configuration of the core database services.
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.14:
     identifier: configuration

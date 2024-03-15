@@ -4,7 +4,6 @@ headerTitle: Isolation Levels
 linkTitle: Isolation Levels
 description: Isolation Levels in YugabyteDB.
 headcontent: Isolation Levels in YugabyteDB.
-image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
 menu:
   v2.14:
     name: Isolation Levels

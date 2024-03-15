@@ -261,9 +261,9 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
 // A background task which continuously retries sending an RPC to master server.
 class RetryingMasterRpcTask : public RetryingRpcTask {
  public:
-  RetryingMasterRpcTask(Master *master,
+  RetryingMasterRpcTask(Master* master,
                         ThreadPool* callback_pool,
-                        const consensus::RaftPeerPB& peer,
+                        consensus::RaftPeerPB&& peer,
                         AsyncTaskThrottlerBase* async_task_throttler = nullptr);
 
   ~RetryingMasterRpcTask() {}
@@ -441,7 +441,7 @@ class AsyncMasterTabletHealthTask : public RetryingMasterRpcTask {
   AsyncMasterTabletHealthTask(
       Master* master,
       ThreadPool* callback_pool,
-      const consensus::RaftPeerPB& peer,
+      consensus::RaftPeerPB&& peer,
       std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler);
 
   server::MonitoredTaskType type() const override {
@@ -469,7 +469,7 @@ class AsyncTserverTabletHealthTask : public RetrySpecificTSRpcTask {
     Master* master,
     ThreadPool* callback_pool,
     std::string permanent_uuid,
-    std::vector<TabletId> tablets,
+    std::vector<TabletId>&& tablets,
     std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler);
 
   server::MonitoredTaskType type() const override {
@@ -976,7 +976,7 @@ class AsyncTsTestRetry : public RetrySpecificTSRpcTask {
 class AsyncMasterTestRetry : public RetryingMasterRpcTask {
  public:
   AsyncMasterTestRetry(
-      Master *master, ThreadPool *callback_pool, const consensus::RaftPeerPB& peer,
+      Master *master, ThreadPool *callback_pool, consensus::RaftPeerPB&& peer,
       int32_t num_retries, StdStatusCallback callback);
 
   server::MonitoredTaskType type() const override {

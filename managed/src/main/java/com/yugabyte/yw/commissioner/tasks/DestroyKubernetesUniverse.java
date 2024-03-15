@@ -20,8 +20,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -30,6 +32,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +65,17 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
   }
 
   @Override
+  protected void validateUniverseState(Universe universe) {
+    try {
+      super.validateUniverseState(universe);
+    } catch (UniverseInProgressException e) {
+      if (!params().isForceDelete) {
+        throw e;
+      }
+    }
+  }
+
+  @Override
   public void run() {
     Universe universe = null;
     try {
@@ -73,8 +87,12 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       } else {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
-      kubernetesStatus.createYBUniverseEventStatus(
-          universe, params().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+      kubernetesStatus.startYBUniverseEventStatus(
+          universe,
+          params().getKubernetesResourceDetails(),
+          TaskType.DestroyKubernetesUniverse.name(),
+          getUserTaskUUID(),
+          UniverseState.DELETING);
       // Delete xCluster configs involving this universe and put the locked universes to
       // lockedUniversesUuidList.
       createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
@@ -215,12 +233,22 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       // TODO Temporary fix to get the current changes pass.
       // Retry may fail because the universe record is already deleted.
       kubernetesStatus.updateYBUniverseStatus(
-          universe, params().getKubernetesResourceDetails(), getName(), getUserTaskUUID(), null);
+          universe,
+          params().getKubernetesResourceDetails(),
+          TaskType.DestroyKubernetesUniverse.name(),
+          getUserTaskUUID(),
+          UniverseState.DELETING,
+          null);
     } catch (Throwable t) {
       if (universe != null) {
         try {
           kubernetesStatus.updateYBUniverseStatus(
-              universe, params().getKubernetesResourceDetails(), getName(), getUserTaskUUID(), t);
+              universe,
+              params().getKubernetesResourceDetails(),
+              TaskType.DestroyKubernetesUniverse.name(),
+              getUserTaskUUID(),
+              UniverseState.ERROR,
+              t);
         } finally {
           // If for any reason destroy fails we would just unlock the universe for update
           try {

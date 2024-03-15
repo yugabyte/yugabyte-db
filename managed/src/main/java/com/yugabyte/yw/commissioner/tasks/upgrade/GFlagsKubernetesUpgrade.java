@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.TaskType;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -64,6 +66,13 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
@@ -71,8 +80,12 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           Cluster cluster = getUniverse().getUniverseDetails().getPrimaryCluster();
           UserIntent userIntent = cluster.userIntent;
           Universe universe = getUniverse();
-          kubernetesStatus.createYBUniverseEventStatus(
-              universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+          kubernetesStatus.startYBUniverseEventStatus(
+              universe,
+              taskParams().getKubernetesResourceDetails(),
+              TaskType.GFlagsKubernetesUpgrade.name(),
+              getUserTaskUUID(),
+              UniverseState.EDITING);
           // Verify the request params and fail if invalid only if its the first time we are
           // invoked.
           if (isFirstTry()) {
@@ -128,8 +141,9 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             kubernetesStatus.updateYBUniverseStatus(
                 universe,
                 taskParams().getKubernetesResourceDetails(),
-                getName(),
+                TaskType.GFlagsKubernetesUpgrade.name(),
                 getUserTaskUUID(),
+                (th != null) ? UniverseState.ERROR : UniverseState.READY,
                 th);
           }
         });

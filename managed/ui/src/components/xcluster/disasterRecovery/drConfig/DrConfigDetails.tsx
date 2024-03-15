@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { getXClusterConfig } from '../utils';
 
 import { ReplicationTables } from '../../configDetails/ReplicationTables';
+import { XClusterMetrics } from '../../sharedComponents/XClusterMetrics/XClusterMetrics';
 
 import { DrConfig } from '../dtos';
 
@@ -58,7 +59,9 @@ export const DrConfigDetails = ({ drConfig }: DrConfigDetailsProps) => {
           <Tab label={t('tab.metrics')} value={DrConfigTab.METRICS} />
           <Tab label={t('tab.tables')} value={DrConfigTab.TABLES} />
         </TabList>
-        <TabPanel value={DrConfigTab.METRICS}></TabPanel>
+        <TabPanel value={DrConfigTab.METRICS}>
+          <XClusterMetrics xClusterConfig={xClusterConfig} />
+        </TabPanel>
         <TabPanel value={DrConfigTab.TABLES}>
           <ReplicationTables xClusterConfig={xClusterConfig} isDrInterface={true} />
         </TabPanel>

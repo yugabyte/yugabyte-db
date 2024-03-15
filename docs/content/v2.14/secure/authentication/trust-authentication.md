@@ -3,7 +3,6 @@ title: Trust authentication
 headerTitle: Trust authentication
 linkTitle: Trust authentication
 description: Allow clients to connect using a database user name.
-image: /images/section_icons/secure/authentication.png
 menu:
   v2.14:
     identifier: trust-authentication

@@ -62,18 +62,18 @@
 #include "yb/util/symbolize.h"
 #include "yb/util/thread.h"
 
-DEFINE_UNKNOWN_string(log_filename, "",
+DEFINE_NON_RUNTIME_string(log_filename, "",
     "Prefix of log filename - "
     "full path is <log_dir>/<log_filename>.[INFO|WARN|ERROR|FATAL]");
 TAG_FLAG(log_filename, stable);
 
-DEFINE_UNKNOWN_string(fatal_details_path_prefix, "",
+DEFINE_RUNTIME_string(fatal_details_path_prefix, "",
               "A prefix to use for the path of a file to save fatal failure stack trace and "
               "other details to.");
-DEFINE_UNKNOWN_string(minicluster_daemon_id, "",
+DEFINE_RUNTIME_string(minicluster_daemon_id, "",
               "A human-readable 'daemon id', e.g. 'm-1' or 'ts-2', used in tests.");
 
-DEFINE_UNKNOWN_string(ref_counted_debug_type_name_regex, "",
+DEFINE_NON_RUNTIME_string(ref_counted_debug_type_name_regex, "",
               "Regex for type names for debugging RefCounted / scoped_refptr based classes. "
               "An empty string disables RefCounted debug logging.");
 

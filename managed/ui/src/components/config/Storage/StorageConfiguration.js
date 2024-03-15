@@ -244,6 +244,7 @@ class StorageConfiguration extends Component {
    */
   deleteStorageConfig = (configUUID) => {
     this.props.deleteCustomerConfig(configUUID).then(() => {
+      this.props.hideDeleteStorageConfig();
       this.props.reset(); // reset form to initial values
       this.props.fetchCustomerConfigs();
     });

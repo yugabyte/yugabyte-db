@@ -17,10 +17,10 @@
 
 using namespace std::chrono_literals;
 
-namespace yb::tserver::xcluster {
+namespace yb::tserver {
 
-const cdc::ReplicationGroupId kReplicationGroupId1("Group1");
-const cdc::ReplicationGroupId kReplicationGroupId2("Group2");
+const xcluster::ReplicationGroupId kReplicationGroupId1("Group1");
+const xcluster::ReplicationGroupId kReplicationGroupId2("Group2");
 
 class AutoFlagsVersionHandlerTest : public AutoFlagsVersionHandler {
  public:
@@ -30,7 +30,7 @@ class AutoFlagsVersionHandlerTest : public AutoFlagsVersionHandler {
 
  protected:
   Status XClusterReportNewAutoFlagConfigVersion(
-      const cdc::ReplicationGroupId& replication_group_id, uint32 new_version) const override {
+      const xcluster::ReplicationGroupId& replication_group_id, uint32 new_version) const override {
     if (report_auto_flags_version_callback_) {
       return report_auto_flags_version_callback_();
     }
@@ -189,4 +189,4 @@ TEST(AutoFlagsVersionHandlerTest, NonBlockingReporting) {
   ASSERT_EQ(handler.GetAutoFlagsCompatibleVersion(kReplicationGroupId1)->max_reported_version_, 3);
 }
 
-}  // namespace yb::tserver::xcluster
+}  // namespace yb::tserver

@@ -9,7 +9,7 @@ menu:
   v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: security
-weight: 645
+weight: 660
 type: indexpage
 ---
 

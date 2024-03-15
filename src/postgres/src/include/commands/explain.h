@@ -61,7 +61,6 @@ typedef struct ExplainState
 	bool		summary;		/* print total planning and execution timing */
 	bool		rpc;			/* print RPC stats */
 	bool		settings;		/* print modified settings */
-	bool		debug;			/* print debug information */
 	ExplainFormat format;		/* output format */
 	/* state for output formatting --- not reset for each new plan tree */
 	int			indent;			/* current indentation level */
@@ -77,6 +76,7 @@ typedef struct ExplainState
 	ExplainWorkersState *workers_state; /* needed if parallel plan */
 
 	YbExplainExecStats yb_stats;		   /* hold YB-specific exec stats */
+	bool		yb_debug;		/* print debug information */
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */

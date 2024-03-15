@@ -93,7 +93,12 @@ export interface IAlertConfiguration {
     all?: boolean;
     uuids?: string[];
   };
-  thresholds: {};
+  thresholds: {
+    SEVERE?: {
+      condition: string;
+      threshold: number;
+    };
+  };
   thresholdUnit: string;
   template: typeof AlertTemplateList[number];
   durationSec: number;

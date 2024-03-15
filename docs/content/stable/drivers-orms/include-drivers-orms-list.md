@@ -117,6 +117,9 @@ private = true
 
 | ORM        | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
+| **Driver** | | | |
+| Rust-postgres Driver | v0.19.7-yb-1-beta <br/> v0.7.10-yb-1-beta | Full | [CRUD](/preview/drivers-orms/rust/yb-rust-postgres/) |
+| **ORM**    | | | |
 | Diesel     | 1.42    | Full          | [CRUD](/preview/drivers-orms/rust/diesel/) |
 
   {{% /tab %}}

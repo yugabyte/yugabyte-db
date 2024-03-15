@@ -3286,7 +3286,9 @@ ReindexIndex(RangeVar *indexRelation, ReindexParams *params, bool isTopLevel)
 		ReindexParams newparams = *params;
 
 		newparams.options |= REINDEXOPT_REPORT_PROGRESS;
-		reindex_index(indOid, false, persistence, &newparams);
+		reindex_index(indOid, false, persistence, &newparams,
+					  false /* is_yb_table_rewrite */,
+					  true /* yb_copy_split_options */);
 	}
 }
 
@@ -3405,7 +3407,9 @@ ReindexTable(RangeVar *relation, ReindexParams *params, bool isTopLevel)
 		result = reindex_relation(heapOid,
 								  REINDEX_REL_PROCESS_TOAST |
 								  REINDEX_REL_CHECK_CONSTRAINTS,
-								  &newparams);
+								  &newparams,
+								  false /* is_yb_table_rewrite */,
+								  true /* yb_copy_split_options */);
 		if (!result)
 			ereport(NOTICE,
 					(errmsg("table \"%s\" has no indexes to reindex",
@@ -3814,7 +3818,9 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 
 			newparams.options |=
 				REINDEXOPT_REPORT_PROGRESS | REINDEXOPT_MISSING_OK;
-			reindex_index(relid, false, relpersistence, &newparams);
+			reindex_index(relid, false, relpersistence, &newparams,
+						  false /* is_yb_table_rewrite */,
+						  true /* yb_copy_split_options */);
 			PopActiveSnapshot();
 			/* reindex_index() does the verbose output */
 		}
@@ -3828,7 +3834,9 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 			result = reindex_relation(relid,
 									  REINDEX_REL_PROCESS_TOAST |
 									  REINDEX_REL_CHECK_CONSTRAINTS,
-									  &newparams);
+									  &newparams,
+									  false /* is_yb_table_rewrite */,
+									  true /* yb_copy_split_options */);
 
 			if (result && (params->options & REINDEXOPT_VERBOSE) != 0)
 				ereport(INFO,

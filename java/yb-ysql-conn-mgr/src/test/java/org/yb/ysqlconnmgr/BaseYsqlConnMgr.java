@@ -13,6 +13,9 @@
 
 package org.yb.ysqlconnmgr;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;

@@ -99,10 +99,6 @@ Status YsqlTablegroupManager::Remove(const TablegroupId& tablegroup_id) {
                  Format("Tablegroup $0 does not exist", tablegroup_id));
   auto& tablegroup = tablegroup_map_[tablegroup_id];
 
-  RSTATUS_DCHECK(tablegroup->IsEmpty(),
-                 IllegalState,
-                 Format("Tablegroup $0 is not empty", *tablegroup));
-
   // Delete from DB map.
   RSTATUS_DCHECK(ContainsKey(database_tablegroup_ids_map_, tablegroup->database_id()),
                  Corruption,

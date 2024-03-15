@@ -45,6 +45,7 @@ import subprocess
 import sys
 import time
 import socket
+import platform
 
 from typing import Optional
 
@@ -159,6 +160,10 @@ def main() -> int:
     # This will be replaced by the release process.
     build_number = os.getenv("YB_RELEASE_BUILD_NUMBER") or "PRE_RELEASE"
 
+    # Fetch system platform and architecture
+    os_platform = sys.platform
+    architecture = platform.machine()
+
     d = os.path.dirname(output_path)
     if d != "" and not os.path.exists(d):
         os.makedirs(d)
@@ -168,6 +173,7 @@ def main() -> int:
     logging.getLogger('').addHandler(file_log_handler)
 
     data = {
+            "schema": "v1",
             "git_hash": git_hash,
             "build_hostname": hostname,
             "build_timestamp": build_time,
@@ -177,7 +183,9 @@ def main() -> int:
             "build_id": build_id,
             "build_type": build_type,
             "version_number": version_number,
-            "build_number": build_number
+            "build_number": build_number,
+            "platform": os_platform,
+            "architecture": architecture
             }
     content = json.dumps(data)
 

@@ -121,7 +121,8 @@ extern Relation RelationBuildLocalRelation(const char *relname,
 /*
  * Routines to manage assignment of new relfilenode to a relation
  */
-extern void RelationSetNewRelfilenode(Relation relation, char persistence);
+extern void RelationSetNewRelfilenode(Relation relation, char persistence,
+						  bool yb_copy_split_options);
 extern void RelationAssumeNewRelfilenode(Relation relation);
 
 /*
@@ -153,6 +154,7 @@ extern bool RelationIdIsInInitFile(Oid relationId);
 extern void RelationCacheInitFilePreInvalidate(void);
 extern void RelationCacheInitFilePostInvalidate(void);
 extern void RelationCacheInitFileRemove(void);
+extern bool YbRelationIdIsInInitFileAndNotCached(Oid relationId);
 
 /* should be used only by relcache.c and catcache.c */
 extern PGDLLIMPORT bool criticalRelcachesBuilt;

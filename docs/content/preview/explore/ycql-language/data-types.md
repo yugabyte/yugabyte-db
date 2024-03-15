@@ -3,7 +3,6 @@ title: YCQL data types
 headertitle: Data types
 linkTitle: Data types
 description: Data types in YCQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: explore-ycql-language-features-data-types

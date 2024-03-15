@@ -44,6 +44,7 @@ import { YBProvider, YBRegion } from './types';
 
 import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import styles from './ProviderList.module.scss';
 
 interface ProviderListCommonProps {
@@ -95,11 +96,11 @@ export const ProviderList = (props: ProviderListProps) => {
   if (providerListQuery.isError) {
     return <YBErrorIndicator customErrorMessage="Error fetching provider list." />;
   }
-  if (universeListQuery.isError) {
+  if (universeListQuery.isError && !isRbacEnabled()) {
     return <YBErrorIndicator customErrorMessage="Error fetching universe list." />;
   }
   const providerList = providerListQuery.data;
-  const universeList = universeListQuery.data;
+  const universeList = universeListQuery.data ?? [];
 
   const showDeleteProviderModal = () => {
     setIsDeleteProviderModalOpen(true);

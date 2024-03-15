@@ -11,6 +11,10 @@
     </div>
   {{ end }}
 
+  {{- if .Site.Params.search_banner -}}
+    {{ partial "search-banner.html" . }}
+  {{- end -}}
+
   <div class="main-heading-with-version {{- if not .Params.image }} heading-without-image{{- end }}">
     {{ if .Page.Params.image }}
       <div class="heading-image">

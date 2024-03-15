@@ -3,7 +3,6 @@ title: YugabyteDB Psycopg2 Smart Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Python application using YugabyteDB Psycopg2 Smart Driver for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.18:
     identifier: yugabyte-psycopg2-driver

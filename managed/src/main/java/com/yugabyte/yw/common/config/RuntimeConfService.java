@@ -232,6 +232,7 @@ public class RuntimeConfService extends AuthenticatedController {
     if (sensitiveKeys.contains(path)) {
       logValue = CommonUtils.getMaskedValue(path, logValue);
     }
+    preConfigChangeValidate(scopeUUID, path, value);
     log.info(
         "Setting runtime conf for key '{}' on scope {} to value '{}' of length {}",
         path,
@@ -240,7 +241,6 @@ public class RuntimeConfService extends AuthenticatedController {
         logValue.length());
     final RuntimeConfig<?> mutableRuntimeConfig =
         getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID, isSuperAdmin);
-    preConfigChangeValidate(scopeUUID, path, value);
     if (mutableObjects.contains(path)) {
       mutableRuntimeConfig.setObject(path, value);
     } else {

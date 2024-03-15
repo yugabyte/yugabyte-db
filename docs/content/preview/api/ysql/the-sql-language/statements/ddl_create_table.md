@@ -28,7 +28,8 @@ Use the `CREATE TABLE` statement to create a table in a database. It defines the
   storage_parameter,
   index_parameters,
   references_clause,
-  split_row
+  split_row,
+  sequence_options
 {{%/ebnf%}}
 
 ## Semantics
@@ -73,6 +74,7 @@ This is used to enforce that data in the specified table meets the requirements 
 ### Default
 
 This clause is used to specify a default value for the column. If an `INSERT` statement does not specify a value for the column, then the default value is used. If no default is specified for a column, then the default is NULL.
+An identity column will automatically receive a new value produced by its linked sequence.
 
 ### Deferrable constraints
 
@@ -84,6 +86,35 @@ until the end of the transaction.
 Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row in a statement.
 
 Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the transaction.
+
+### IDENTITY columns
+
+Create the column as an identity column. 
+
+An implicit sequence will be created, attached to it, and new rows will automatically have values assigned from the sequence. IDENTITY columns are implicitly `NOT NULL`.
+
+`ALWAYS` and `BY DEFAULT` will determine how user-provided values are handled in `INSERT` and `UPDATE` statements.
+
+On an `INSERT` statement:
+- when `ALWAYS` is used, a user-provided value is only accepted if the `INSERT` statement uses `OVERRIDING SYSTEM VALUE`. 
+- when `BY DEFAULT` is used, then the user-provided value takes precedence. See [INSERT statement](../dml_insert/) for reference. (In the `COPY` statement, user-supplied values are always used regardless of this setting.)
+
+On an `UPDATE` statement:
+- when `ALWAYS` is used, a column update to a value other than `DEFAULT` will be rejected.
+- when `BY DEFAULT` is used, the column can be updated normally. (`OVERRIDING` clause cannot be used for the UPDATE statement)
+
+The `sequence_options` optional clause can be used to override the options of the generated sequence. 
+
+See [CREATE SEQUENCE](../ddl_create_sequence) for reference.
+
+#### Multiple Identity Columns
+
+PostgreSQL and YugabyteDB allow a table to have more than one identity column. The SQL standard specifies that a table can have at most one identity column. 
+
+This relaxation primarily aims to provide increased flexibility for carrying out schema modifications or migrations. 
+
+Note that the [INSERT](../dml_insert/) command can only accommodate one override clause for an entire statement. As a result, having several identity columns, each exhibiting distinct behaviours, is not effectively supported.
+
 
 ### TEMPORARY or TEMP
 

@@ -134,3 +134,7 @@ Consider the following example:
     ```output
     You are connected to database "exampledb" as user "adam" on host "localhost" at port "5433".
     ```
+
+## Learn more
+
+For more information on LDAP in YugabyteDB, refer to [LDAP authentication](../../../../secure/authentication/ldap-authentication-ysql/).

@@ -26,11 +26,12 @@
 
 #include "yb/dockv/reader_projection.h"
 
-#include "ybgate/ybgate_api.h"
-
 #include "yb/util/logging.h"
 
 #include "yb/yql/pggate/pg_value.h"
+
+#include "ybgate/ybgate_api.h"
+#include "ybgate/ybgate_cpp_util.h"
 
 namespace yb::docdb {
 namespace {

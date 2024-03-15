@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigAlertsPreferencesData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigAlertsSmtpInfoData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigCallHomeData;
@@ -33,6 +34,11 @@ import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -40,11 +46,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.Id;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Data;
@@ -425,5 +426,10 @@ public class CustomerConfig extends Model {
       }
     }
     return null;
+  }
+
+  @JsonIgnore
+  public boolean isStorageConfigUsedForDr() {
+    return DrConfig.getByStorageConfigUuid(configUUID).size() != 0;
   }
 }

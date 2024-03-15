@@ -343,20 +343,19 @@ TEST_F(CDCServiceTxnTest, MetricsTest) {
     ASSERT_EQ(change_resp.records_size(), 3);
   }
 
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
     const auto& tserver = cluster_->mini_tablet_server(0)->server();
     auto cdc_service = dynamic_cast<CDCServiceImpl*>(
         tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
-    auto metrics = std::static_pointer_cast<CDCTabletMetrics>(
-        cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
-    auto lag = metrics->async_replication_sent_lag_micros->value();
-    YB_LOG_EVERY_N_SECS(INFO, 1) << "Sent lag: " << lag << "us";
-    // Only check sent lag, since we're just calling GetChanges once and expect committed lag to be
-    // greater than 0.
-    return lag <= 0;
-  }, MonoDelta::FromSeconds(10), "Wait for Sent Lag == 0"));
-
-
+    auto metrics = ASSERT_RESULT(GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id));
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto lag = metrics->async_replication_sent_lag_micros->value();
+          YB_LOG_EVERY_N_SECS(INFO, 1) << "Sent lag: " << lag << "us";
+          // Only check sent lag, since we're just calling GetChanges once and expect committed lag
+          // to be greater than 0.
+          return lag <= 0;
+        },
+        MonoDelta::FromSeconds(10), "Wait for Sent Lag == 0"));
 }
 
 } // namespace cdc

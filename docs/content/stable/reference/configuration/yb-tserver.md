@@ -875,6 +875,19 @@ When the flag [remote_bootstrap_from_leader_only](#remote-bootstrap-from-leader-
 
 Default: `5`
 
+##### --db_block_cache_num_shard_bits
+
+Number of bits to use for sharding the block cache. The maximum permissible value is 19.
+
+Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores and so on.)
+
+{{< note title="Note" >}}
+
+Starting from version 2.18, the default is `-1`. Previously it was `4`.
+
+{{< /note >}}
+
+
 ## Network compression flags
 
 Use the following two flags to configure RPC compression:

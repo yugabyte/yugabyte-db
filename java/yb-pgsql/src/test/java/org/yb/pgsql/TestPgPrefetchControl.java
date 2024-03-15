@@ -162,7 +162,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
         "SELECT t1.a, t2.b FROM %s AS t1 JOIN %s AS t2 ON t1.a = t2.a LIMIT %d",
         tableName1, tableName2, limitCount);
     int innerTableRequests = 1;
-    int outerTableRequests = 4;
+    int outerTableRequests = 1;
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format(createStatement, tableName1));

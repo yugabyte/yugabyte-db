@@ -556,6 +556,11 @@ void Batcher::ExecuteOperations(Initial initial) {
   const auto need_consistent_read = force_consistent_read || ops_info_.groups.size() > 1;
   VLOG_WITH_PREFIX_AND_FUNC(3) << "need_consistent_read=" << need_consistent_read;
 
+  // Set batcher's 'rpcs_start_time_micros_' only when it is uninitialized, i.e, only for
+  // a new batcher and not a retry_batcher.
+  if (Clock() && rpcs_start_time_micros() == 0) {
+    SetRpcStartTime(Clock()->Now().GetPhysicalValueMicros());
+  }
   auto self = shared_from_this();
   for (const auto& group : ops_info_.groups) {
     // Allow local calls for last group only.
@@ -753,6 +758,28 @@ std::string Batcher::LogPrefix() const {
   const void* self = this;
   return Format(
       "Batcher ($0), session ($1): ", self, static_cast<void*>(weak_session_.lock().get()));
+}
+
+void Batcher::SetRpcStartTime(MicrosTime rpcs_start_time_micros) {
+  DCHECK_EQ(rpcs_start_time_micros_, 0) << LogPrefix() << "rpcs_start_time_micros_ being reset.";
+  rpcs_start_time_micros_ = rpcs_start_time_micros;
+}
+
+void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
+                                    const CollectedErrors& errors) {
+  SetDeadline(failed_batcher->deadline());
+  SetRpcStartTime(failed_batcher->rpcs_start_time_micros());
+  for (auto& error : errors) {
+    VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
+                      << " due to: " << error->status();
+    const auto op = error->shared_failed_op();
+    op->ResetTablet();
+    // Transmit failed request id to retry_batcher.
+    if (op->request_id()) {
+      MoveRequestDetailsFrom(failed_batcher, *op->request_id());
+    }
+    Add(op);
+  }
 }
 
 InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)

@@ -22,8 +22,8 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
-             "Timeout used by transaction related RPCs in milliseconds.");
+DEFINE_RUNTIME_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
+                     "Timeout used by transaction related RPCs in milliseconds.");
 
 namespace yb {
 

@@ -23,7 +23,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
@@ -34,6 +36,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -48,9 +52,6 @@ import play.mvc.Http.Request;
 
 @Singleton
 public class UniverseYbDbAdminHandler {
-  @VisibleForTesting
-  public static final String RUN_QUERY_ISNT_ALLOWED =
-      "run_query not supported for this application";
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseYbDbAdminHandler.class);
 
@@ -62,7 +63,7 @@ public class UniverseYbDbAdminHandler {
   @Inject YcqlQueryExecutor ycqlQueryExecutor;
   @Inject Commissioner commissioner;
   @Inject PasswordPolicyService policyService;
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
+  @Inject RuntimeConfGetter confGetter;
   @Inject UniverseTableHandler tableHandler;
 
   public UniverseYbDbAdminHandler() {}
@@ -87,8 +88,7 @@ public class UniverseYbDbAdminHandler {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Only yugbayte customer cloud can modify password for users other than default.
-    boolean isCloudEnabled =
-        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
+    boolean isCloudEnabled = confGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled);
     if (!StringUtils.isEmpty(dbCreds.ysqlAdminUsername)) {
       if (!userIntent.enableYSQLAuth && !isCloudEnabled) {
         throw new PlatformServiceException(
@@ -134,7 +134,7 @@ public class UniverseYbDbAdminHandler {
   }
 
   public void dropUser(Customer customer, Universe universe, DatabaseUserDropFormData data) {
-    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+    if (!confGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled)) {
       throw new PlatformServiceException(BAD_REQUEST, "Feature not allowed.");
     }
 
@@ -143,7 +143,7 @@ public class UniverseYbDbAdminHandler {
 
   public void createRestrictedUser(
       Customer customer, Universe universe, DatabaseUserFormData data) {
-    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+    if (!confGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled)) {
       throw new PlatformServiceException(BAD_REQUEST, "Feature not allowed.");
     }
     data.validation();
@@ -152,7 +152,7 @@ public class UniverseYbDbAdminHandler {
   }
 
   public void createUserInDB(Customer customer, Universe universe, DatabaseUserFormData data) {
-    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+    if (!confGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled)) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer type.");
     }
     data.validation();
@@ -166,19 +166,37 @@ public class UniverseYbDbAdminHandler {
   }
 
   public JsonNode validateRequestAndExecuteQuery(
-      Universe universe, RunQueryFormData runQueryFormData, Request request) {
-    String mode = appConfig.getString("yb.mode");
-    if (!mode.equals("OSS")) {
-      throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
+      Universe universe, RunQueryFormData runQueryFormData) {
+    boolean queriesEnabled =
+        confGetter.getConfForScope(universe, UniverseConfKeys.enableDbQueryApi);
+    if (!queriesEnabled) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "API is disabled. Can be enabled via "
+              + UniverseConfKeys.enableDbQueryApi.getKey()
+              + " runtime conf flag");
     }
 
-    String securityLevel =
-        (String) configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
-    if (!isCorrectOrigin(request) || securityLevel == null || !securityLevel.equals("insecure")) {
-      throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
+    NodeDetails node;
+    if (StringUtils.isEmpty(runQueryFormData.getNodeName())) {
+      node = CommonUtils.getARandomLiveTServer(universe);
+    } else {
+      node = universe.getNode(runQueryFormData.getNodeName());
+      if (node == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Node " + runQueryFormData.getNodeName() + " not found");
+      }
+      if (!node.isActive()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Node "
+                + runQueryFormData.getNodeName()
+                + " is not active. Current state: "
+                + node.state.name());
+      }
     }
 
-    return ysqlQueryExecutor.executeQuery(universe, runQueryFormData);
+    return ysqlQueryExecutor.executeQueryInNodeShell(universe, runQueryFormData, node);
   }
 
   public UUID configureYSQL(

@@ -458,4 +458,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
     LOG.info("BaseMiniClusterTest.tearDownAfterClass completed");
   }
 
+  protected String maxQueryLayerRetriesConf(int max_retries) {
+    return "yb_max_query_layer_retries=" + max_retries;
+  }
 }

@@ -124,6 +124,22 @@ Optionally, use the **Helm Overrides** section, as follows:
 
   If you specify conflicting overrides, YugabyteDB Anywhere would use the following order of precedence: universe availability zone-level overrides, universe-level overrides, provider overrides.
 
+- If you want to enable [GKE service account-based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore using GCS at the universe level, add the following overrides:
+
+    ```yaml
+    tserver:
+      serviceAccount: <KSA_NAME>
+    nodeSelector:
+      iam.gke.io/gke-metadata-server-enabled: "true"
+    ```
+
+    If you don't provide namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/), add the names using the following steps:
+
+    1. Add the Kubernetes service account to the namespaces where the pods are created.
+    1. Follow the steps in [Upgrade universes for GKE service account-based IAM](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam) to add the annotated Kubernetes service account to pods.
+
+    To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#overrides).
+
 - Select **Force Apply** if you want to override any previous overrides.
 
 - Click **Validate & Save**.
@@ -159,3 +175,53 @@ You can create a connection to a node as follows:
 ## Connect to the universe
 
 For information on how to connect to the universe from the Kubernetes cluster, as well as remotely, see [Connect YugabyteDB clusters](../../../deploy/kubernetes/clients/#connect-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).
+
+### Create common YB-TServer service for zones
+
+By default, each zone has its own YB-TServer service, and you can use this service to connect to the universe. Optionally, you can create an additional highly available common service across all zones as follows.
+
+Note that this requires all the zone deployments to be in the same namespace.
+
+1. Set the following Kubernetes overrides to add the universe-name label on the YB-TServer pods. You can do this when you [create the universe](#configure-helm-overrides) or by [modifying the Kubernetes overrides](../../manage-deployments/edit-helm-overrides/) of an existing universe.
+
+   ```yaml
+   tserver:
+     podLabels:
+       universe-name: yb-k8s
+   ```
+
+1. Save the following to a file named `yb-tserver-common-service.yaml`. You can customize the service type, annotations, and the label selector as required.
+
+   ```yaml
+   # yb-tserver-common-service.yaml
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: yb-k8s-common-tserver
+     labels:
+       app.kubernetes.io/name: yb-tserver
+     # annotations:
+     #   networking.gke.io/load-balancer-type: "Internal"
+   spec:
+     type: ClusterIP
+     selector:
+       app.kubernetes.io/name: yb-tserver
+       # This value should match with the value from step 1.
+       universe-name: yb-k8s
+     ports:
+     # Modify the ports if using non-standard ports.
+     - name: tcp-yedis-port
+       port: 6379
+     - name: tcp-yql-port
+       port: 9042
+     - name: tcp-ysql-port
+       port: 5433
+   ```
+
+1. Run the following command to create the service in the universe's namespace (`yb-prod-yb-k8s` in this example).
+
+   ```sh
+   $ kubectl apply -f yb-tserver-common-service.yaml -n yb-prod-yb-k8s
+   ```
+
+After the service YAML is applied, in this example you would access the universe at `yb-k8s-common-tserver.yb-prod-yb-k8s.svc.cluster.local`.

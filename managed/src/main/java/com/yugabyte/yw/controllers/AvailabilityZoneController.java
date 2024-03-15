@@ -80,9 +80,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
    */
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.2.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.18.2.0, Use "
-              + "/api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones"
+      value = "Create an availability zone - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.18.2.0.</b></p>Use"
+              + " /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones"
               + " instead",
       response = AvailabilityZone.class,
       responseContainer = "Map",
@@ -129,7 +130,8 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @return JSON response of newly created zone(s)
    */
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Create an availability zone",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Create an availability zone",
       response = AvailabilityZone.class,
       responseContainer = "Map",
       nickname = "createZone")
@@ -169,7 +171,8 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @return JSON response of the modified zone
    */
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Modify an availability zone",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Modify an availability zone",
       response = AvailabilityZone.class,
       nickname = "editZone")
   @ApiImplicitParams(
@@ -217,9 +220,11 @@ public class AvailabilityZoneController extends AuthenticatedController {
    */
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.2.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.18.2.0, Use "
-              + "/api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones/:zUUID"
+      value = "Edit an Availabilty Zone - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.18.2.0.</b></p>Use "
+              + "/api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/"
+              + ":rUUID/region_zones/:zUUID"
               + " instead",
       response = AvailabilityZone.class,
       nickname = "editAZ")

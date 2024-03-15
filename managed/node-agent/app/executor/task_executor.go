@@ -150,11 +150,13 @@ func (te *TaskExecutor) SubmitTask(
 func (te *TaskExecutor) ExecuteTask(ctx context.Context, handler util.Handler) error {
 	future, err := te.SubmitTask(ctx, handler)
 	if err != nil {
-		return fmt.Errorf("Failed to submit the task. Error: %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Failed to submit the task. Error %s", err.Error())
+		return err
 	}
 	_, err = future.Get()
 	if err != nil {
-		return fmt.Errorf("Error in executing the task. Error: %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Error in executing the task. Error: %s", err.Error())
+		return err
 	}
 	return nil
 }

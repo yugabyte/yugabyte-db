@@ -3,7 +3,6 @@ title: Explore YCQL, the Yugabyte Cloud QL API
 headerTitle: Explore Yugabyte Cloud QL
 linkTitle: Explore distributed SQL APIs
 description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL API
-image: /images/section_icons/quick_start/explore_ycql.png
 aliases:
   - /quick-start/test-cassandra/
   - /preview/quick-start/test-cassandra/

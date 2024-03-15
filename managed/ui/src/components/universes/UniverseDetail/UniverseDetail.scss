@@ -516,8 +516,16 @@ h2 {
 }
 
 .widget-panel {
+  &.overview-widget-database{
+    height: 48px;
+    align-items: center;
+    .version__label{
+      font-weight: 700;
+      line-height: 2.25;
+    }
+  }
   .overview-database-version {
-    margin-top: 30px;
+    // margin-top: 30px;
     .dl-stack {
       margin-top: 10px;
 

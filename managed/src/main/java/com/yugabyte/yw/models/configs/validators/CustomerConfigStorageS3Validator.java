@@ -9,8 +9,9 @@ import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.BeanValidator;
-import com.yugabyte.yw.common.CloudUtil.ConfigLocationInfo;
+import com.yugabyte.yw.common.CloudUtil.CloudLocationInfo;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
@@ -80,7 +81,10 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
       }
 
       validateBucket(
-          s3Client, CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, s3data.backupLocation);
+          s3Client,
+          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME,
+          s3data,
+          YbcBackupUtil.DEFAULT_REGION_STRING);
       if (s3data.regionLocations != null) {
         for (RegionLocations location : s3data.regionLocations) {
           if (StringUtils.isEmpty(location.region)) {
@@ -92,7 +96,7 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
           validateUrl(
               CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
           validateBucket(
-              s3Client, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
+              s3Client, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, s3data, location.region);
         }
       }
 
@@ -104,9 +108,9 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
     }
   }
 
-  private void validateBucket(AmazonS3 client, String fieldName, String s3UriPath) {
-    String s3Uri = s3UriPath;
-
+  private void validateBucket(
+      AmazonS3 client, String fieldName, CustomerConfigStorageS3Data s3Data, String region) {
+    String s3UriPath = awsUtil.getRegionLocationsMap(s3Data).get(region);
     // Assuming bucket name will always start with s3:// otherwise that will be
     // invalid.
     if (s3UriPath.length() < 5 || !s3UriPath.startsWith("s3://")) {
@@ -114,13 +118,14 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
       throwBeanValidatorError(fieldName, exceptionMsg);
     } else {
       try {
-        ConfigLocationInfo configLocationInfo = awsUtil.getConfigLocationInfo(s3UriPath);
+        CloudLocationInfo configLocationInfo =
+            awsUtil.getCloudLocationInfo(region, s3Data, s3UriPath);
         awsUtil.validateOnBucket(
             client, configLocationInfo.bucket, configLocationInfo.cloudPath, permissions);
       } catch (AmazonS3Exception s3Exception) {
         String exceptionMsg = s3Exception.getErrorMessage();
         if (exceptionMsg.contains("Denied") || exceptionMsg.contains("bucket"))
-          exceptionMsg += " " + s3Uri;
+          exceptionMsg += " " + s3UriPath;
         throwBeanValidatorError(fieldName, exceptionMsg);
       } catch (SdkClientException e) {
         throwBeanValidatorError(fieldName, e.getMessage());

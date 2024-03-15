@@ -4,7 +4,6 @@ headerTitle: JSON Support
 linkTitle: JSON support
 description: JSON Support in YugabyteDB.
 headcontent: JSON Support in YugabyteDB.
-image: <div class="icon"><i class="fa-solid fa-file-invoice"></i></div>
 menu:
   v2.14:
     name: JSON support

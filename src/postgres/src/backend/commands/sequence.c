@@ -359,7 +359,8 @@ ResetSequence(Oid seq_relid)
 		 * sequence's relfrozenxid at 0, since it won't contain any unfrozen XIDs.
 		 * Same with relminmxid, since a sequence will never contain multixacts.
 		 */
-		RelationSetNewRelfilenode(seq_rel, seq_rel->rd_rel->relpersistence);
+		RelationSetNewRelfilenode(seq_rel, seq_rel->rd_rel->relpersistence,
+								  true /* yb_copy_split_options */);
 
 		/*
 		 * Ensure sequence's relfrozenxid is at 0, since it won't contain any
@@ -607,7 +608,8 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 		 * Create a new storage file for the sequence, making the state
 		 * changes transactional.
 		 */
-		RelationSetNewRelfilenode(seqrel, seqrel->rd_rel->relpersistence);
+		RelationSetNewRelfilenode(seqrel, seqrel->rd_rel->relpersistence,
+								  true /* yb_copy_split_options */);
 
 		/*
 		 * Ensure sequence's relfrozenxid is at 0, since it won't contain any
@@ -656,7 +658,8 @@ SequenceChangePersistence(Oid relid, char newrelpersistence)
 		GetTopTransactionId();
 
 	(void) read_seq_tuple(seqrel, &buf, &seqdatatuple);
-	RelationSetNewRelfilenode(seqrel, newrelpersistence);
+	RelationSetNewRelfilenode(seqrel, newrelpersistence,
+							  true /* yb_copy_split_options */);
 	fill_seq_with_data(seqrel, &seqdatatuple);
 	UnlockReleaseBuffer(buf);
 

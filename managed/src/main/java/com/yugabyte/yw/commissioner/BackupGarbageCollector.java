@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -311,7 +312,7 @@ public class BackupGarbageCollector {
           customerConfigService.getOrBadRequest(backup.getCustomerUUID(), storageConfigUUID);
       BackupCategory category = backup.getCategory();
       if (isCredentialUsable(customerConfig, backup.getUniverseUUID(), category)) {
-        List<String> backupLocations = null;
+        Map<String, List<String>> backupLocationsMap = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
         switch (customerConfig.getName()) {
@@ -320,13 +321,14 @@ public class BackupGarbageCollector {
           case GCS:
           case AZ:
             CloudUtil cloudUtil = storageUtilFactory.getCloudUtil(customerConfig.getName());
-            backupLocations = BackupUtil.getBackupLocations(backup);
+            backupLocationsMap = BackupUtil.getBackupLocations(backup);
             int numRetries = 0;
             long sleepTimeInMilliSeconds = 5000;
             while (numRetries < BACKUP_DELETION_MAX_RETRIES_COUNT && !deletedSuccessfully) {
               if (cloudUtil.deleteKeyIfExists(
-                      customerConfig.getDataObject(), backupLocations.get(0))
-                  && cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations)) {
+                      customerConfig.getDataObject(),
+                      backupLocationsMap.get(YbcBackupUtil.DEFAULT_REGION_STRING).get(0))
+                  && cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocationsMap)) {
                 deletedSuccessfully = true;
               }
               if (!deletedSuccessfully) {

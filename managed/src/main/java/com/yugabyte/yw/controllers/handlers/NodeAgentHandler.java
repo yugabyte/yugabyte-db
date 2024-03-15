@@ -108,7 +108,14 @@ public class NodeAgentHandler {
     }
     NodeAgent nodeAgent = payload.toNodeAgent(customerUuid);
     if (validateConnection) {
-      nodeAgentClient.ping(nodeAgent, false);
+      try {
+        nodeAgentClient.ping(nodeAgent, false);
+      } catch (RuntimeException e) {
+        String msg =
+            String.format("Failed to ping node agent %s. Error: %s", payload.ip, e.getMessage());
+        log.error(msg, e);
+        throw new PlatformServiceException(Status.BAD_REQUEST, msg);
+      }
     }
     return nodeAgentManager.create(nodeAgent, true);
   }

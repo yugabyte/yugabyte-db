@@ -529,7 +529,6 @@ Perform the following steps as part of the cutover process:
             --target-db-user <TARGET_DB_USER> \
             --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
             --target-db-name <TARGET_DB_NAME> \
-            --target-db-user <TARGET_DB_USER> \
             --target-db-schema <TARGET_DB_SCHEMA> \
             --post-import-data true
     ```
@@ -626,4 +625,4 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 
 - Fall-forward is unsupported with a YugabyteDB cluster running on [YugabyteDB Managed](../../../yugabyte-cloud).
 - [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is unsupported for export or streaming events from YugabyteDB during `export data from target`.
-- yb-voyager provides limited support for datatypes during CDC of `export data from target` phase. For example, datatypes such as DECIMAL and Timestamp are not supported.
+- yb-voyager provides limited support for data types during CDC of `export data from target` phase. For example, data types such as DECIMAL and Timestamp are not supported.

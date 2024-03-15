@@ -1003,6 +1003,9 @@ drop table idxpart;
 CREATE TABLE idxpart (c1 INT PRIMARY KEY, c2 INT, c3 VARCHAR(10)) PARTITION BY RANGE(c1);
 CREATE TABLE idxpart1 (LIKE idxpart);
 ALTER TABLE idxpart1 ADD PRIMARY KEY (c1, c2);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE idxpart ATTACH PARTITION idxpart1 FOR VALUES FROM (100) TO (200);
 ERROR:  multiple primary keys for table "idxpart1" are not allowed
 DROP TABLE idxpart, idxpart1;
@@ -1019,6 +1022,9 @@ drop table idxpart, idxpart1, idxpart11;
 create table idxpart (a int) partition by range (a);
 create table idxpart0 (like idxpart);
 alter table idxpart0 add primary key (a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 -- Uncomment when changing primary key of a partitioned table is implemented (#14196)
 /*
 alter table idxpart attach partition idxpart0 for values from (0) to (1000);
@@ -1390,6 +1396,9 @@ alter table parted_pk_detach_test1 drop constraint parted_pk_detach_test1_pkey;	
 ERROR:  cannot drop inherited constraint "parted_pk_detach_test1_pkey" of relation "parted_pk_detach_test1"
 alter table parted_pk_detach_test detach partition parted_pk_detach_test1;
 alter table parted_pk_detach_test1 drop constraint parted_pk_detach_test1_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 drop table parted_pk_detach_test, parted_pk_detach_test1;
 create table parted_uniq_detach_test (a int unique) partition by list (a);
 create table parted_uniq_detach_test1 partition of parted_uniq_detach_test for values in (1);

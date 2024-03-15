@@ -44,7 +44,7 @@ using std::cerr;
 using std::endl;
 using std::string;
 
-DEFINE_UNKNOWN_bool(oneline, false, "print each protobuf on a single line");
+DEFINE_NON_RUNTIME_bool(oneline, false, "print each protobuf on a single line");
 TAG_FLAG(oneline, stable);
 
 namespace yb {

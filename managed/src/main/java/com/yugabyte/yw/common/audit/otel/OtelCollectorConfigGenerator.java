@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FileHelperService;
+import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TelemetryProvider;
@@ -12,7 +13,6 @@ import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
-import com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
@@ -23,7 +23,8 @@ import java.nio.file.Path;
 import java.util.*;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.yaml.snakeyaml.Yaml;
 import play.Environment;
 
@@ -32,53 +33,55 @@ public class OtelCollectorConfigGenerator {
   private final FileHelperService fileHelperService;
   private final TelemetryProviderService telemetryProviderService;
 
+  private final AuditLogRegexGenerator auditLogRegexGenerator;
+
   @Inject
   public OtelCollectorConfigGenerator(
       Environment environment,
       FileHelperService fileHelperService,
-      TelemetryProviderService telemetryProviderService) {
+      TelemetryProviderService telemetryProviderService,
+      AuditLogRegexGenerator auditLogRegexGenerator) {
     this.fileHelperService = fileHelperService;
     this.telemetryProviderService = telemetryProviderService;
+    this.auditLogRegexGenerator = auditLogRegexGenerator;
   }
 
   public Path generateConfigFile(
       NodeTaskParams nodeParams,
       Provider provider,
       UniverseDefinitionTaskParams.UserIntent userIntent,
-      AuditLogConfig auditLogConfig) {
+      AuditLogConfig auditLogConfig,
+      String logLinePrefix) {
     Path path =
         fileHelperService.createTempFile(
             "otel_collector_config_" + nodeParams.getUniverseUUID() + "_" + nodeParams.nodeUuid,
             ".yml");
-    try (BufferedWriter writer = new BufferedWriter(new FileWriter(path.toFile()))) {
-      Yaml yaml = new Yaml();
-      OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
+    generateConfigFile(nodeParams, provider, userIntent, auditLogConfig, logLinePrefix, path);
+    return path;
+  }
 
+  void generateConfigFile(
+      NodeTaskParams nodeParams,
+      Provider provider,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      AuditLogConfig auditLogConfig,
+      String logLinePrefix,
+      Path path) {
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(path.toFile()))) {
+      Yaml yaml = new Yaml(new SkipNullRepresenter());
+      OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
       // Receivers
       if (auditLogConfig.getYsqlAuditConfig() != null
           && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
         collectorConfigFormat
             .getReceivers()
-            .put(
-                "filelog/ysql",
-                createYsqlReceiver(
-                    provider, auditLogConfig.getYsqlAuditConfig(), nodeParams.nodeName));
+            .put("filelog/ysql", createYsqlReceiver(provider, logLinePrefix));
       }
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
         collectorConfigFormat
             .getReceivers()
-            .put(
-                "filelog/ycql",
-                createYcqlReceiver(
-                    provider, auditLogConfig.getYcqlAuditConfig(), nodeParams.nodeName));
-      }
-
-      // Exporters
-      if (CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig())) {
-        auditLogConfig
-            .getUniverseLogsExporterConfig()
-            .forEach(config -> appendExporter(collectorConfigFormat.getExporters(), config));
+            .put("filelog/ycql", createYcqlReceiver(provider, auditLogConfig.getYcqlAuditConfig()));
       }
 
       // Extensions
@@ -89,11 +92,6 @@ public class OtelCollectorConfigGenerator {
       // Service
       OtelCollectorConfigFormat.Service service = new OtelCollectorConfigFormat.Service();
       service.setExtensions(new ArrayList<>(collectorConfigFormat.getExtensions().keySet()));
-      OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
-      pipeline.setReceivers(new ArrayList<>(collectorConfigFormat.getReceivers().keySet()));
-      pipeline.setProcessors(new ArrayList<>(collectorConfigFormat.getProcessors().keySet()));
-      pipeline.setExporters(new ArrayList<>(collectorConfigFormat.getExporters().keySet()));
-      service.getPipelines().put("logs", pipeline);
       OtelCollectorConfigFormat.TelemetryConfig telemetryConfig =
           new OtelCollectorConfigFormat.TelemetryConfig();
       service.setTelemetry(telemetryConfig);
@@ -103,59 +101,128 @@ public class OtelCollectorConfigGenerator {
           ImmutableList.of(provider.getYbHome() + "/otel-collector/logs/otel-collector.logs"));
       collectorConfigFormat.setService(service);
 
+      // Exporters
+      if (CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig())) {
+        List<String> currentProcessors =
+            new ArrayList<>(collectorConfigFormat.getProcessors().keySet());
+        auditLogConfig
+            .getUniverseLogsExporterConfig()
+            .forEach(
+                config ->
+                    appendExporter(
+                        collectorConfigFormat, config, currentProcessors, nodeParams.nodeName));
+      }
+
       yaml.dump(collectorConfigFormat, writer);
     } catch (Exception e) {
       throw new RuntimeException("Error creating OpenTelemetry collector config file", e);
     }
-    return path;
   }
 
   private OtelCollectorConfigFormat.Receiver createYsqlReceiver(
-      Provider provider, YSQLAuditConfig ysqlAuditConfig, String nodeName) {
-    OtelCollectorConfigFormat.FileLogReceiver receiver = createFileLogReceiver(nodeName);
+      Provider provider, String logPrefix) {
+    AuditLogRegexGenerator.LogRegexResult regexResult =
+        auditLogRegexGenerator.generateAuditLogRegex(logPrefix);
+    // Filter only audit logs
+    OtelCollectorConfigFormat.FilterOperator filterOperator =
+        new OtelCollectorConfigFormat.FilterOperator();
+    filterOperator.setType("filter");
+    filterOperator.setExpr("body not matches \"^.*LOG:  AUDIT:.*$\"");
+
+    // Parse attributes from audit logs
+    OtelCollectorConfigFormat.RegexOperator regexOperator =
+        new OtelCollectorConfigFormat.RegexOperator();
+    regexOperator.setType("regex_parser");
+    regexOperator.setRegex(regexResult.getRegex());
+    regexOperator.setOn_error("drop");
+    OtelCollectorConfigFormat.OperatorTimestamp timestamp =
+        new OtelCollectorConfigFormat.OperatorTimestamp();
+    if (regexResult
+        .getTokens()
+        .contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITHOUT_MS)) {
+      timestamp.setParse_from("attributes.timestamp_without_ms");
+      timestamp.setLayout("%Y-%m-%d %H:%M:%S %Z");
+      regexOperator.setTimestamp(timestamp);
+    } else if (regexResult
+        .getTokens()
+        .contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITH_MS)) {
+      timestamp.setParse_from("attributes.timestamp_with_ms");
+      timestamp.setLayout("%Y-%m-%d %H:%M:%S.%L %Z");
+      regexOperator.setTimestamp(timestamp);
+    } else if (regexResult
+        .getTokens()
+        .contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITH_MS_EPOCH)) {
+      timestamp.setParse_from("attributes.timestamp_with_ms_epoch");
+      timestamp.setLayout_type("epoch");
+      timestamp.setLayout("s.ms");
+      regexOperator.setTimestamp(timestamp);
+    }
+    OtelCollectorConfigFormat.FileLogReceiver receiver =
+        createFileLogReceiver("ysql", ImmutableList.of(filterOperator, regexOperator));
     receiver.setInclude(ImmutableList.of(provider.getYbHome() + "/tserver/logs/postgresql-*.log"));
+    receiver.setExclude(ImmutableList.of(provider.getYbHome() + "/tserver/logs/*.gz"));
     return receiver;
   }
 
   private OtelCollectorConfigFormat.Receiver createYcqlReceiver(
-      Provider provider, YCQLAuditConfig ysqlAuditConfig, String nodeName) {
-    OtelCollectorConfigFormat.FileLogReceiver receiver = createFileLogReceiver(nodeName);
-    receiver.setInclude(
-        ImmutableList.of(provider.getYbHome() + "/tserver/logs/yb-tserver.*.WARNING.*"));
-    return receiver;
-  }
+      Provider provider, YCQLAuditConfig config) {
+    // Filter only audit logs
+    OtelCollectorConfigFormat.FilterOperator filterOperator =
+        new OtelCollectorConfigFormat.FilterOperator();
+    filterOperator.setType("filter");
+    filterOperator.setExpr("body not matches \"^.*AUDIT: user:.*$\"");
 
-  private OtelCollectorConfigFormat.FileLogReceiver createFileLogReceiver(String nodeName) {
-    OtelCollectorConfigFormat.FileLogReceiver receiver =
-        new OtelCollectorConfigFormat.FileLogReceiver();
-    receiver.setStart_at("beginning");
-    receiver.setStorage("file_storage/queue");
+    // Parse attributes from audit logs
     OtelCollectorConfigFormat.RegexOperator regexOperator =
         new OtelCollectorConfigFormat.RegexOperator();
     regexOperator.setType("regex_parser");
     regexOperator.setRegex(
-        "^(?P<time>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}[.]\\d{3} \\w{3}) [[](?P<pid>\\d+)[]]"
-            + " (?P<sev>\\w+):  AUDIT: (?P<msg>.*)$");
+        "^((?P<log_level>\\w)(?P<log_time>\\d{2}\\d{2} \\d{2}:\\d{2}:\\d{2}[.]\\d{6})"
+            + " (?P<thread_id>\\d+) (?P<file_name>[^:]+):(?P<file_line>\\d+)[]] AUDIT: "
+            + "user:(?P<user_name>[^|]+)[|]host:(?P<local_host>[^:]+):(?P<local_port>\\d+)[|]"
+            + "source:(?P<remote_host>[^|]+)[|]port:(?P<remote_port>\\d+)[|]"
+            + "timestamp:(?P<timestamp>\\d+)[|]type:(?P<type>[^|]+)[|]"
+            + "category:(?P<category>[^|]+)[|]ks:(?P<keyspace>[^|]+)[|]"
+            + "scope:(?P<scope>[^|]+)[|]operation:(?P<statement>.*))|(.*)$");
     regexOperator.setOn_error("drop");
     OtelCollectorConfigFormat.OperatorTimestamp timestamp =
         new OtelCollectorConfigFormat.OperatorTimestamp();
-    timestamp.setParse_from("attributes.time");
-    timestamp.setLayout("%Y-%m-%d %H:%M:%S.%f %Z");
+    timestamp.setParse_from("attributes.timestamp");
+    timestamp.setLayout_type("epoch");
+    timestamp.setLayout("ms");
     regexOperator.setTimestamp(timestamp);
-    OtelCollectorConfigFormat.OperatorSeverity severity =
-        new OtelCollectorConfigFormat.OperatorSeverity();
-    severity.setParse_from("attributes.sev");
-    regexOperator.setSeverity(severity);
-    receiver.setOperators(ImmutableList.of(regexOperator));
-    receiver.setAttributes(ImmutableMap.of("host.name", nodeName));
+    OtelCollectorConfigFormat.FileLogReceiver receiver =
+        createFileLogReceiver("ycql", ImmutableList.of(filterOperator, regexOperator));
+    YCQLAuditConfig.YCQLAuditLogLevel logLevel =
+        config.getLogLevel() != null
+            ? config.getLogLevel()
+            : YCQLAuditConfig.YCQLAuditLogLevel.ERROR;
+    receiver.setInclude(
+        ImmutableList.of(provider.getYbHome() + "/tserver/logs/yb-tserver.*." + logLevel + ".*"));
+    receiver.setExclude(ImmutableList.of(provider.getYbHome() + "/tserver/logs/*.gz"));
+    return receiver;
+  }
+
+  private OtelCollectorConfigFormat.FileLogReceiver createFileLogReceiver(
+      String logType, List<OtelCollectorConfigFormat.Operator> operators) {
+    OtelCollectorConfigFormat.FileLogReceiver receiver =
+        new OtelCollectorConfigFormat.FileLogReceiver();
+    receiver.setStart_at("beginning");
+    receiver.setStorage("file_storage/queue");
+    receiver.setOperators(operators);
+    receiver.setAttributes(ImmutableMap.of("audit_log_type", logType));
     return receiver;
   }
 
   private void appendExporter(
-      Map<String, OtelCollectorConfigFormat.Exporter> exporters,
-      UniverseLogsExporterConfig logsExporterConfig) {
+      OtelCollectorConfigFormat collectorConfig,
+      UniverseLogsExporterConfig logsExporterConfig,
+      List<String> currentProcessors,
+      String nodeName) {
     TelemetryProvider telemetryProvider =
         telemetryProviderService.getOrBadRequest(logsExporterConfig.getExporterUuid());
+    Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
+    String exporterName;
     switch (telemetryProvider.getConfig().getType()) {
       case DATA_DOG:
         DataDogConfig dataDogConfig = (DataDogConfig) telemetryProvider.getConfig();
@@ -166,9 +233,8 @@ public class OtelCollectorConfigGenerator {
         apiConfig.setKey(dataDogConfig.getApiKey());
         apiConfig.setSite(dataDogConfig.getSite());
         dataDogExporter.setApi(apiConfig);
-        exporters.put(
-            "datadog/" + telemetryProvider.getName(),
-            setExporterCommonConfig(dataDogExporter, true));
+        exporterName = "datadog/" + telemetryProvider.getName();
+        exporters.put(exporterName, setExporterCommonConfig(dataDogExporter, true, true));
         break;
       case SPLUNK:
         SplunkConfig splunkConfig = (SplunkConfig) telemetryProvider.getConfig();
@@ -179,9 +245,12 @@ public class OtelCollectorConfigGenerator {
         splunkExporter.setSource(splunkConfig.getSource());
         splunkExporter.setSourcetype(splunkConfig.getSourceType());
         splunkExporter.setIndex(splunkConfig.getIndex());
-        exporters.put(
-            "splunkhec/" + telemetryProvider.getName(),
-            setExporterCommonConfig(splunkExporter, true));
+        exporterName = "splunk_hec/" + telemetryProvider.getName();
+        OtelCollectorConfigFormat.TlsSettings tlsSettings =
+            new OtelCollectorConfigFormat.TlsSettings();
+        tlsSettings.setInsecure_skip_verify(true);
+        splunkExporter.setTls(tlsSettings);
+        exporters.put(exporterName, setExporterCommonConfig(splunkExporter, true, true));
         break;
       case AWS_CLOUDWATCH:
         AWSCloudWatchConfig awsCloudWatchConfig =
@@ -192,10 +261,8 @@ public class OtelCollectorConfigGenerator {
         awsCloudWatchExporter.setRegion(awsCloudWatchConfig.getRegion());
         awsCloudWatchExporter.setLog_group_name(awsCloudWatchConfig.getLogGroup());
         awsCloudWatchExporter.setLog_stream_name(awsCloudWatchConfig.getLogStream());
-        exporters.put(
-            "awscloudwatchlog/" + telemetryProvider.getName(),
-            setExporterCommonConfig(awsCloudWatchExporter, false));
-        // TODO Pass credentials
+        exporterName = "awscloudwatchlogs/" + telemetryProvider.getName();
+        exporters.put(exporterName, setExporterCommonConfig(awsCloudWatchExporter, false, true));
         break;
       case GCP_CLOUD_MONITORING:
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
@@ -203,21 +270,74 @@ public class OtelCollectorConfigGenerator {
         OtelCollectorConfigFormat.GCPCloudMonitoringExporter gcpCloudMonitoringExporter =
             new OtelCollectorConfigFormat.GCPCloudMonitoringExporter();
         gcpCloudMonitoringExporter.setProject(gcpCloudMonitoringConfig.getProject());
+        OtelCollectorConfigFormat.GCPCloudMonitoringLog log =
+            new OtelCollectorConfigFormat.GCPCloudMonitoringLog();
+        log.setDefault_log_name("YugabyteDB");
+        gcpCloudMonitoringExporter.setLog(log);
+        exporterName = "googlecloud/" + telemetryProvider.getName();
+        // TODO add retry config to GCP provider once it's supported by Otel COllector
         exporters.put(
-            "googlecloud/" + telemetryProvider.getName(),
-            setExporterCommonConfig(gcpCloudMonitoringExporter, true));
-        // TODO Pass credentials
+            exporterName, setExporterCommonConfig(gcpCloudMonitoringExporter, true, false));
         break;
+      default:
+        throw new IllegalArgumentException(
+            "Exporter type "
+                + telemetryProvider.getConfig().getType().name()
+                + " is not supported.");
     }
+
+    OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
+        new OtelCollectorConfigFormat.AttributesProcessor();
+    List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
+    if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
+      attributeActions.addAll(
+          telemetryProvider.getTags().entrySet().stream()
+              .map(
+                  e ->
+                      new OtelCollectorConfigFormat.AttributeAction(
+                          e.getKey(), e.getValue(), "upsert"))
+              .toList());
+    }
+    if (MapUtils.isNotEmpty(logsExporterConfig.getAdditionalTags())) {
+      attributeActions.addAll(
+          logsExporterConfig.getAdditionalTags().entrySet().stream()
+              .map(
+                  e ->
+                      new OtelCollectorConfigFormat.AttributeAction(
+                          e.getKey(), e.getValue(), "upsert"))
+              .toList());
+    }
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction("host.name", nodeName, "upsert"));
+    attributesProcessor.setActions(attributeActions);
+
+    String processorName = "attributes/" + telemetryProvider.getName();
+    collectorConfig.getProcessors().put(processorName, attributesProcessor);
+    List<String> processorNames = new ArrayList<>(currentProcessors);
+    processorNames.add(processorName);
+
+    OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
+    pipeline.setReceivers(new ArrayList<>(collectorConfig.getReceivers().keySet()));
+    pipeline.setProcessors(processorNames);
+    pipeline.setExporters(ImmutableList.of(exporterName));
+    collectorConfig
+        .getService()
+        .getPipelines()
+        .put("logs/" + telemetryProvider.getName(), pipeline);
   }
 
   private OtelCollectorConfigFormat.Exporter setExporterCommonConfig(
-      OtelCollectorConfigFormat.Exporter exporter, boolean setQueueEnabled) {
-    OtelCollectorConfigFormat.RetryConfig retryConfig = new OtelCollectorConfigFormat.RetryConfig();
-    retryConfig.setEnabled(true);
-    retryConfig.setInitial_interval("1m");
-    retryConfig.setMax_interval("1800m");
-    exporter.setRetry_on_failure(retryConfig);
+      OtelCollectorConfigFormat.Exporter exporter,
+      boolean setQueueEnabled,
+      boolean setRetryOnFailure) {
+    if (setRetryOnFailure) {
+      OtelCollectorConfigFormat.RetryConfig retryConfig =
+          new OtelCollectorConfigFormat.RetryConfig();
+      retryConfig.setEnabled(true);
+      retryConfig.setInitial_interval("1m");
+      retryConfig.setMax_interval("1800m");
+      exporter.setRetry_on_failure(retryConfig);
+    }
     OtelCollectorConfigFormat.QueueConfig queueConfig = new OtelCollectorConfigFormat.QueueConfig();
     if (setQueueEnabled) {
       queueConfig.setEnabled(true);

@@ -554,7 +554,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
               << "blocking subtxn(s): " << blocker_txn.blocking_subtxn_info->ToString() << " "
               << "waiter txn id: " << waiter_txn_id << " "
               << "received from TS: " << tserver_uuid << " "
-              << "start time: " << wait_start_time;
+              << "start time: " << waiter_data->wait_start_time;
         }
         // TODO(wait-queues): Tracking tserver uuid here is unnecessary as it isn't required in
         // GetProbesToSend. We adhere to this format so that GetProbesToSend function can be re-used

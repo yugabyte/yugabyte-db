@@ -3,7 +3,6 @@ title: Docs contribution checklist
 headerTitle: Docs checklist
 linkTitle: Docs checklist
 description: Review the steps to start contributing documentation
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: docs-checklist

@@ -19,6 +19,6 @@ gsutil_package_name: "gsutil"
 gsutil_package: "{{ gsutil_package_name }}_{{ gsutil_version }}.tar.gz"
 
 # s3cmd variables
-s3cmd_version: "2.0.1"
+s3cmd_version: "2.3.0"
 s3cmd_package_name: "s3cmd-{{ s3cmd_version }}"
 s3cmd_package: "{{ s3cmd_package_name }}.tar.gz"

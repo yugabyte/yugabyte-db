@@ -4,7 +4,6 @@ headerTitle: GIN indexes
 linkTitle: GIN indexes
 description: Generalized inverted indexes in YSQL
 headContent: Explore GIN indexes using YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.18:
     identifier: indexes-constraints-gin

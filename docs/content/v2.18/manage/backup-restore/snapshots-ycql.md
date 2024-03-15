@@ -3,7 +3,6 @@ title: Distributed snapshots for YCQL
 headerTitle: Distributed snapshots for YCQL
 linkTitle: Distributed snapshots
 description: Distributed snapshots for YCQL.
-image: /images/section_icons/manage/enterprise.png
 menu:
   v2.18:
     identifier: snapshots-2-ycql

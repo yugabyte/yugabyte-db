@@ -1178,7 +1178,7 @@ UPDATE 1
 update test set v=4 where k=2;
 ```
 
-```ouput
+```output
 UPDATE 1
 ```
 

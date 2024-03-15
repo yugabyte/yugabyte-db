@@ -152,7 +152,7 @@ Result<client::TableHandle> XClusterExternalMiniClusterBase::CreateTable(
 }
 
 Status XClusterExternalMiniClusterBase::SetupReplication(
-    cdc::ReplicationGroupId replication_group_id,
+    xcluster::ReplicationGroupId replication_group_id,
     std::vector<std::shared_ptr<client::YBTable>> source_tables) {
   std::string table_ids;
   if (source_tables.empty()) {

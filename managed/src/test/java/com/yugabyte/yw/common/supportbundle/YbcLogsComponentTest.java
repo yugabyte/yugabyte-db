@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.supportbundle;
 import static com.yugabyte.yw.common.TestHelper.createTarGzipFiles;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -143,7 +144,7 @@ public class YbcLogsComponentTest extends FakeDBApplication {
         new YbcLogsComponent(
             mockUniverseInfoHandler, mockNodeUniverseManager, mockConfig, mockSupportBundleUtil);
     ybcLogsComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
+        null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 
     // Check that the download function is called
     verify(mockUniverseInfoHandler, times(1))

@@ -37,8 +37,8 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
@@ -74,7 +74,7 @@ public class XClusterUniverseService {
   private final YbClientConfigFactory ybClientConfigFactory;
   private static final String IS_BOOTSTRAP_REQUIRED_POOL_NAME =
       "xcluster.is_bootstrap_required_rpc_pool";
-  private final ExecutorService isBootstrapRequiredExecutor;
+  public final ThreadPoolExecutor isBootstrapRequiredExecutor;
   private static final int IS_BOOTSTRAP_REQUIRED_RPC_PARTITION_SIZE = 32;
   private static final int IS_BOOTSTRAP_REQUIRED_RPC_MAX_RETRIES_NUMBER = 4;
 
@@ -216,8 +216,7 @@ public class XClusterUniverseService {
     // Compare auto flags json for each universe.
     for (Universe univ : universeSet) {
       // Once rollback support is enabled, auto flags will be promoted through finalize api.
-      if (!confGetter.getConfForScope(univ, UniverseConfKeys.promoteAutoFlag)
-          || confGetter.getConfForScope(univ, UniverseConfKeys.enableRollbackSupport)) {
+      if (!confGetter.getConfForScope(univ, UniverseConfKeys.promoteAutoFlag)) {
         return false;
       }
       if (univ.getUniverseUUID().equals(univUpgradeInProgress.getUniverseUUID())) {
@@ -362,6 +361,13 @@ public class XClusterUniverseService {
 
         // Make the requests for all the partitions in parallel.
         List<Future<Map<String, Boolean>>> fs = new ArrayList<>();
+
+        int maxPoolSize =
+            confGetter.getGlobalConf(GlobalConfKeys.xclusterBootstrapRequiredRpcMaxThreads);
+        if (maxPoolSize != this.isBootstrapRequiredExecutor.getMaximumPoolSize()) {
+          this.isBootstrapRequiredExecutor.setMaximumPoolSize(maxPoolSize);
+        }
+
         for (Map<String, String> tableIdStreamIdPartition : tableIdStreamIdMapPartitions) {
           fs.add(
               this.isBootstrapRequiredExecutor.submit(
@@ -486,7 +492,7 @@ public class XClusterUniverseService {
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(
-                "GetReplicationStatus RPC call with %s has errors in " + "xCluster config %s: %s",
+                "GetReplicationStatus RPC call with %s has errors in xCluster config %s: %s",
                 xClusterConfig.getReplicationGroupName(), xClusterConfig, resp.errorMessage()));
       }
       List<ReplicationStatusPB> statuses = resp.getStatuses();
@@ -602,9 +608,7 @@ public class XClusterUniverseService {
     Set<UUID> targetUniverseUUIDSet =
         getActiveXClusterTargetUniverseSet(universe.getUniverseUUID());
     Set<Universe> targetUniverseSet =
-        targetUniverseUUIDSet.stream()
-            .map(uuid -> Universe.getOrBadRequest(uuid))
-            .collect(Collectors.toSet());
+        targetUniverseUUIDSet.stream().map(Universe::getOrBadRequest).collect(Collectors.toSet());
     String softwareVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     for (ServerType serverType : ImmutableSet.of(ServerType.MASTER, ServerType.TSERVER)) {

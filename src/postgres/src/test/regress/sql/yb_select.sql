@@ -138,3 +138,96 @@ EXPLAIN (SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name
 explain (costs off)
 /*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;
 /*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;
+
+--
+-- For https://github.com/YugaByte/yugabyte-db/issues/20316
+--
+create table a (a int);
+insert into a values (1),(2),(3),(4);
+
+create table b (b int, a int);
+insert into b values (1, 1),(2, 1),(3, 2),(4, 4);
+
+create table c (c int);
+insert into c values (1),(2),(3);
+
+create table d (b int, c int);
+insert into d values (1, 1),(1, 2),(1, 3),(2, 1),(3, 2),(3, 3);
+
+explain (verbose, costs off)
+select
+  a.a,
+  (
+    select sum(t.v0)
+    from (
+      select c.c as v0
+      from c
+      where c.c in (
+        select d.c
+        from d
+          join b
+            on b.b = d.b
+        where b.a = a.a
+      )
+    ) as t
+  )
+from a
+order by a.a;
+select
+  a.a,
+  (
+    select sum(t.v0)
+    from (
+      select c.c as v0
+      from c
+      where c.c in (
+        select d.c
+        from d
+          join b
+            on b.b = d.b
+        where b.a = a.a
+      )
+    ) as t
+  )
+from a
+order by a.a;
+
+explain (verbose, costs off)
+select
+  a.a,
+  (
+    select sum(t.v0)
+    from (
+      select c.c as v0
+      from c
+      where c.c in (
+        select d.c
+        from d
+          join b
+            on b.b = d.b
+        where b.a = a.a
+      )
+    ) as t
+  )
+from a
+where a in (1, 2)
+order by a.a;
+select
+  a.a,
+  (
+    select sum(t.v0)
+    from (
+      select c.c as v0
+      from c
+      where c.c in (
+        select d.c
+        from d
+          join b
+            on b.b = d.b
+        where b.a = a.a
+      )
+    ) as t
+  )
+from a
+where a in (1, 2)
+order by a.a;

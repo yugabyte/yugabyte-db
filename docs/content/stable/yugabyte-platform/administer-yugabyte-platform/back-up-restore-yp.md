@@ -1,15 +1,18 @@
 ---
 title: Back up and restore YugabyteDB Anywhere
 headerTitle: Back up and restore YugabyteDB Anywhere
-linkTitle: Back up YugabyteDB Anywhere
 description: Use a script to back up and restore YugabyteDB Anywhere.
+headcontent: Back up your YugabyteDB Anywhere installation
+linkTitle: Back up YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
     identifier: back-up-restore-yp
     parent: administer-yugabyte-platform
-    weight: 20
+    weight: 30
 type: docs
 ---
+
+YugabyteDB Anywhere installations include configuration settings, certificates and keys, as well as other components required for creating and managing YugabyteDB universes.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
  <li>
@@ -31,8 +34,6 @@ type: docs
   </li>
 
 </ul>
-
-YugabyteDB Anywhere installations include configuration settings, certificates and keys, as well as other components required for creating and managing YugabyteDB universes.
 
 You can use the YugabyteDB Anywhere `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 

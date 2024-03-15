@@ -33,7 +33,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
   private CustomerTask createTask(
       CustomerTask.TargetType targetType, UUID targetUUID, CustomerTask.TaskType taskType) {
-    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse, null);
     UUID taskUUID = UUID.randomUUID();
     taskInfo.setTaskUUID(taskUUID);
     taskInfo.setDetails(Json.newObject());

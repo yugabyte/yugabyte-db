@@ -67,14 +67,14 @@ TEST_F(MasterTasksTest, RetryingMasterRpcTaskMaxDelay) {
   auto non_leader_master = std::find_if(
       master_peers.begin(), master_peers.end(),
       [&](auto& peer) { return peer.permanent_uuid() != leader_master->permanent_uuid(); });
-
+  ASSERT_NE(non_leader_master, master_peers.end()) << "Failed to find non-leader master";
   std::promise<Status> promise;
   std::future<Status> future = promise.get_future();
   ASSERT_OK(leader_master->master()->test_async_rpc_manager()->SendMasterTestRetryRequest(
-    *non_leader_master, kNumRetries, [&promise](const Status& s) {
-      LOG(INFO) << "Done: " << s;
-      promise.set_value(s);
-  }));
+      std::move(*non_leader_master), kNumRetries, [&promise](const Status& s) {
+        LOG(INFO) << "Done: " << s;
+        promise.set_value(s);
+      }));
 
   LOG(INFO) << "Task scheduled";
 

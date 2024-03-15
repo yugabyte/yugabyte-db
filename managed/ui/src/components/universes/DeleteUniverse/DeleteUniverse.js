@@ -127,6 +127,7 @@ export default class DeleteUniverse extends Component {
     const { name, universeDetails } = focusedUniverse ? focusedUniverse : data;
 
     const universePaused = universeDetails?.universePaused;
+    const updateInProgress = universeDetails?.updateInProgress;
 
     return (
       <YBModal
@@ -160,7 +161,11 @@ export default class DeleteUniverse extends Component {
             </RbacValidator>
           </div>
         }
-        asyncValidating={this.state.universeName !== name}
+        asyncValidating={
+          updateInProgress
+            ? this.state.universeName !== name || !this.state.isForceDelete
+            : this.state.universeName !== name
+        }
       >
         {this.getModalBody()}
       </YBModal>

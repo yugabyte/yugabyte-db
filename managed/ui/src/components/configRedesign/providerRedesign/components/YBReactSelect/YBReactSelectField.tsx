@@ -19,6 +19,7 @@ export type YBReactSelectFieldProps<TFieldValues extends FieldValues> = {
   onChange?: (value: ReactSelectOption) => void;
   placeholder?: string;
   stylesOverride?: Partial<Styles>;
+  width?: string;
 } & UseControllerProps<TFieldValues>;
 
 export const YBReactSelectField = <T extends FieldValues>({
@@ -28,6 +29,7 @@ export const YBReactSelectField = <T extends FieldValues>({
   isDisabled = false,
   placeholder,
   stylesOverride,
+  width = '100%',
   ...useControllerProps
 }: YBReactSelectFieldProps<T>) => {
   const { field, fieldState } = useController(useControllerProps);
@@ -59,7 +61,7 @@ export const YBReactSelectField = <T extends FieldValues>({
     onChange && onChange(value);
   };
   return (
-    <Box width="100%">
+    <Box width={width}>
       <div data-testid={`YBReactSelectField-${field.name}`}>
         <Select
           styles={reactSelectStyles}

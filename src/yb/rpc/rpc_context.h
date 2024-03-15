@@ -39,10 +39,11 @@
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/service_if.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/util/memory/arena.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
-
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
@@ -311,6 +312,8 @@ class RpcContext {
   void CloseConnection();
 
   std::string ToString() const;
+
+  const ash::WaitStateInfoPtr& wait_state() const;
 
   Result<RefCntSlice> ExtractSidecar(size_t idx) const;
 

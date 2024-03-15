@@ -417,7 +417,6 @@ class AwsQuerySpotPricingMethod(AbstractMethod):
 class AwsQueryImageMethod(AbstractMethod):
     def __init__(self, base_command):
         super(AwsQueryImageMethod, self).__init__(base_command, "image")
-        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
 
     def add_extra_args(self):
         super(AwsQueryImageMethod, self).add_extra_args()

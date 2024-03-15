@@ -196,7 +196,7 @@ class PgDml : public PgStatement {
   PgTable bind_;
 
   // Prepare control parameters.
-  PgPrepareParameters prepare_params_ = { .index_oid = kInvalidOid,
+  PgPrepareParameters prepare_params_ = { .index_relfilenode_oid = kInvalidOid,
                                           .index_only_scan = false,
                                           .use_secondary_index = false,
                                           .querying_colocated_table = false };

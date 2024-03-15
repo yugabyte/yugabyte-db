@@ -226,6 +226,8 @@ class RpcAndWebServerBase : public RpcServerBase {
   std::string FooterHtml() const;
 
   scoped_refptr<AtomicMillisLag> server_uptime_ms_metric_;
+  scoped_refptr<AtomicGauge<int64_t>> server_hard_limit_;
+  scoped_refptr<AtomicGauge<int64_t>> server_soft_limit_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcAndWebServerBase);
 };

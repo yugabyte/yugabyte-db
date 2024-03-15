@@ -2,7 +2,6 @@
 title: Data manipulation
 linkTitle: Data manipulation
 description: Data manipulation in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: explore-ysql-language-features-data-manipulation

@@ -340,8 +340,9 @@ Status VerifyBlockChecksum(
       ComputeChecksum(file, footer, handle, Slice(data, block_size + 1), raw_expected_checksum));
   if (checksum.actual != checksum.expected) {
     return STATUS_FORMAT(
-        Corruption, "Block checksum mismatch in file: $0, block handle: $1",
-        file->file()->filename(), handle.ToDebugString());
+        Corruption, "Block checksum mismatch in file: $0, block handle: $1, "
+        "expected checksum: $0, actual checksum: $1.",
+        file->file()->filename(), handle.ToDebugString(), checksum.expected, checksum.actual);
   }
   return Status::OK();
 }

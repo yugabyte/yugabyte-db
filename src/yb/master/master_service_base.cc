@@ -53,6 +53,10 @@ TabletHealthManager* MasterServiceBase::handler(TabletHealthManager*) {
   return server_->tablet_health_manager();
 }
 
+MasterAutoFlagsManager* MasterServiceBase::handler(MasterAutoFlagsManager*) {
+  return server_->GetAutoFlagsManagerImpl();
+}
+
 Status HandleLockAndCallFunction(
     const std::function<Status()>& f,
     HoldCatalogLock hold_catalog_lock,

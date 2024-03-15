@@ -313,6 +313,27 @@ SET yb_bnl_batch_size = 3;
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 
+explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
+select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
+
+CREATE TABLE q1nulls (a int, b int);
+CREATE INDEX ON q1nulls (a ASC NULLS FIRST, b DESC NULLS LAST);
+INSERT INTO q1nulls SELECT i/10, i % 10 from generate_series(1, 100) i;
+INSERT INTO q1nulls VALUES (null, 9), (null, 8), (null, 8);
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC LIMIT 10;
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC NULLS LAST LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC NULLS LAST LIMIT 10;
+
+DROP TABLE q1nulls;
+
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
 
@@ -417,6 +438,74 @@ p3.a = p1.a + p2.a;
 drop table p1;
 drop table p2;
 drop table p3;
+
+-- Test the scenarios where parameterized column values from the outer most
+-- loop (x1) are used at difference nesting levels (x2 and x3).
+CREATE TABLE x1 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x1_b ON x1 (b);
+INSERT INTO x1 VALUES (1, 0), (2, 1), (3, 0), (4, 1), (5, 2), (6, 3);
+
+CREATE TABLE x2 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x2_b ON x2 (b);
+INSERT INTO x2 VALUES (1, 0), (2, 1), (3, 0), (4, 1);
+
+CREATE TABLE x3 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x3_b ON x3 (b);
+INSERT INTO x3 VALUES (1, 0), (2, 1), (5, 2), (6, 3);
+
+ANALYZE x1;
+ANALYZE x2;
+ANALYZE x3;
+
+-- Before 8ac82f4247 (2.21.0.0-b227), the planner was producing incorrect plans
+-- for the following queries, but the results happened to be correct with smaller
+-- batch size e.g. 2, 3, etc.
+SET yb_bnl_batch_size = 10;
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN LATERAL (
+    SELECT x3.b FROM x3 WHERE x3.a = x1.a AND x3.b = x2.b LIMIT ALL
+  ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5;
+
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN LATERAL (
+    SELECT x3.b FROM x3 WHERE x3.a = x1.a AND x3.b = x2.b LIMIT ALL
+  ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5;
+
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN x1 AS x4 ON x2.a = x4.a
+    LEFT JOIN LATERAL (
+      SELECT x3.b FROM x3 WHERE x3.b = x1.b LIMIT ALL
+    ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5, 6, 7;
+
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN x1 AS x4 ON x2.a = x4.a
+    LEFT JOIN LATERAL (
+      SELECT x3.b FROM x3 WHERE x3.b = x1.b LIMIT ALL
+    ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5, 6, 7;
+
+
+DROP TABLE x1;
+DROP TABLE x2;
+DROP TABLE x3;
+
+SET yb_bnl_batch_size = 3;
+
 --
 --
 -- Inner joins (equi-joins)
@@ -665,3 +754,27 @@ EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss LEFT JOIN (SELECT 
 
 /*+Set(enable_mergejoin off) Set(enable_hashjoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) YbBatchedNL(tbl2 ss tbl) NestLoop(ss tbl) IndexScan(tbl)*/
 EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss, tbl, tbl2 WHERE tbl2.c1 = (ss.x).a AND (ss.x).a < 40 AND tbl.c1 = ANY(ARRAY[(ss.x).a, (ss.x).a]);
+
+create table ss1 (a int, b int);
+create table ss2(a int, b int);
+create table ss3(a int, b int);
+create index on ss3(a asc);
+insert into ss1 values (1,1), (1,2);
+insert into ss2 values (1,1), (1,2);
+insert into ss3 values (1,1), (1,3);
+
+explain (costs off) /*+Set(enable_hashjoin off)
+Set(enable_material off)
+Set(enable_mergejoin off)
+Set(yb_bnl_batch_size 1024)
+NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from ss1, ss2, ss3 p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
+
+/*+Set(enable_hashjoin off)
+Set(enable_material off)
+Set(enable_mergejoin off)
+Set(yb_bnl_batch_size 1024)
+NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from ss1, ss2, ss3 p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
+
+drop table ss1;
+drop table ss2;
+drop table ss3;

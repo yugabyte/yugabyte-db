@@ -261,7 +261,7 @@ public class EncryptionAtRestUtil {
     } catch (Exception e) {
       String errMsg =
           String.format(
-              "Error attempting to retrieve the number of key rotations " + "universe %s",
+              "Error attempting to retrieve the number of key rotations universe %s",
               universeUUID.toString());
       LOG.error(errMsg, e);
     }

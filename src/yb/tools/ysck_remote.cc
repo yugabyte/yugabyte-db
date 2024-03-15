@@ -57,10 +57,10 @@
 #include "yb/util/status_format.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_bool(checksum_cache_blocks, false,
+DEFINE_NON_RUNTIME_bool(checksum_cache_blocks, false,
     "Should the checksum scanners cache the read blocks");
-DEFINE_UNKNOWN_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
-DEFINE_UNKNOWN_int32(tablets_batch_size_max, 100,
+DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
+DEFINE_NON_RUNTIME_int32(tablets_batch_size_max, 100,
     "How many tablets to get from the Master per RPC");
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);

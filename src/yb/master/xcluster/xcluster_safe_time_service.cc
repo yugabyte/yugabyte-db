@@ -38,7 +38,7 @@ using std::min;
 
 using namespace std::chrono_literals;
 
-DEFINE_UNKNOWN_int32(xcluster_safe_time_table_num_tablets, 1,
+DEFINE_NON_RUNTIME_int32(xcluster_safe_time_table_num_tablets, 1,
     "Number of tablets to use when creating the xcluster safe time table. "
     "0 to use the same default num tablets as for regular tables.");
 TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);
