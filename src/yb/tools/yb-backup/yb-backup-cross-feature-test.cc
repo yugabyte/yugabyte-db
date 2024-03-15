@@ -131,7 +131,8 @@ TEST_F_EX(YBBackupTest,
 
   // Restore should notice that the index it creates from ysql_dump file (2 tablets) differs from
   // the external snapshot (3 tablets), so it should adjust to match the snapshot (3 tablets).
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 3);
@@ -350,7 +351,8 @@ TEST_F_EX(YBBackupTest,
   // Restore should notice that the table it creates from ysql_dump file has different partition
   // boundaries from the one in the external snapshot EVEN THOUGH the number of partitions is four
   // in both, so it should recreate partitions to match the splits in the snapshot.
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate.
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
@@ -420,7 +422,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
@@ -512,7 +515,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
@@ -604,7 +608,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore.
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate number of tablets after restore.
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
@@ -700,7 +705,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
@@ -805,7 +811,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
@@ -908,7 +915,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
@@ -996,7 +1004,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
@@ -1062,7 +1071,8 @@ TEST_F(
        "create"}));
 
   ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace", restore_keyspace,
+       "restore"}));
 
   SetDbName(restore_db_name);
 
@@ -1301,7 +1311,8 @@ TEST_F_EX(
   //    partitioning version above 0 should contain additional `null` value for a hidden columns
   //    `ybuniqueidxkeysuffix` or `ybidxbasectid`.
   ASSERT_OK(ForceSetPartitioningVersion(1));
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // 5) Make sure new tables are created with a new patitioning version.
   // 5.1) Create regular tablet and check partitioning verison and structure.
@@ -1982,6 +1993,10 @@ TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(DdlRollbackAtomic
 // 5. Drop table and index.
 // 5. Restore, validate 123 -> 456, index isn't restored
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackupWithoutIndexes)) {
+  // need to disable the test since yb controller doesn't support skipping indexes
+  if (UseYbController()) {
+    return;
+  }
   // Create table and index.
   auto session = client_->NewSession(120s);
   client::kv_table_test::CreateTable(

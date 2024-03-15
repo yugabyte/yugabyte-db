@@ -247,7 +247,7 @@ Status MiniCluster::StartAsync(
       RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
       const auto server_address = mini_tablet_servers_[i]->bound_http_addr().address().to_string();
       scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
-          yb_controller_log_dir, yb_controller_tmp_dir, server_address, GetToolPath("yb-admin"),
+          i, yb_controller_log_dir, yb_controller_tmp_dir, server_address, GetToolPath("yb-admin"),
           GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
           GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
           server_port, master_web_ports_[0], tserver_web_ports_[i], server_address,

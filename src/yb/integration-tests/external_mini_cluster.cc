@@ -94,6 +94,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -409,37 +410,6 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
     }
     RETURN_NOT_OK(WaitForTabletServerCount(
         opts_.num_tablet_servers, kTabletServerRegistrationTimeout));
-
-    if (UseYbController()) {
-      vector<string> extra_flags;
-      for (const auto& flag : opts_.extra_tserver_flags) {
-        if (flag.find("certs_dir") != string::npos) {
-          extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
-        }
-      }
-      // we need 1 yb controller server for each tserver
-      // yb controller uses the same IP as corresponding tserver
-      yb_controller_servers_.reserve(opts_.num_tablet_servers);
-      // all yb controller servers need to be on the same port
-      const auto server_port = AllocateFreePort();
-      for (size_t i = 0; i < opts_.num_tablet_servers; ++i) {
-        const auto yb_controller_log_dir = GetDataPath(Format("ybc-$0/logs", i));
-        const auto yb_controller_tmp_dir = GetDataPath(Format("ybc-$0/tmp", i));
-        RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
-        RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
-        scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
-            yb_controller_log_dir, yb_controller_tmp_dir, tablet_servers_[i]->bind_host(),
-            GetToolPath("yb-admin"), GetToolPath("../../../bin", "yb-ctl"),
-            GetToolPath("../../../bin", "ycqlsh"), GetPgToolPath("ysql_dump"),
-            GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"), server_port,
-            masters_[0]->http_port(), tablet_servers_[i]->http_port(),
-            tablet_servers_[i]->bind_host(), GetYbcToolPath("yb-controller-server"), extra_flags);
-
-        RETURN_NOT_OK_PREPEND(
-            yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(i));
-        yb_controller_servers_.push_back(yb_controller);
-      }
-    }
   } else {
     LOG(INFO) << "No need to start tablet servers";
   }
@@ -1528,6 +1498,53 @@ Status ExternalMiniCluster::AddTabletServer(
       master_hostports, SubstituteInFlags(flags, idx));
   RETURN_NOT_OK(ts->Start(start_cql_proxy));
   tablet_servers_.push_back(ts);
+
+  // add new yb controller for the new ts
+  if (UseYbController()) {
+    RETURN_NOT_OK(AddYbControllerServer(ts));
+  }
+
+  return Status::OK();
+}
+
+Status ExternalMiniCluster::AddYbControllerServer(const scoped_refptr<ExternalTabletServer> ts) {
+  // Return if we already have a Yb Controller for the given ts
+  for (auto ybController : yb_controller_servers_) {
+    if (ybController->GetServerAddress() == ts->bind_host()) {
+      return Status::OK();
+    }
+  }
+
+  size_t idx = yb_controller_servers_.size() + 1;
+  vector<string> extra_flags;
+  for (const auto& flag : opts_.extra_tserver_flags) {
+    if (flag.find("certs_dir") != string::npos) {
+      extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
+    }
+  }
+
+  // all yb controller servers need to be on the same port
+  uint16_t server_port;
+  if (idx == 1) {
+    server_port = AllocateFreePort();
+  } else {
+    server_port = yb_controller_servers_[0]->GetServerPort();
+  }
+  const auto yb_controller_log_dir = GetDataPath(Format("ybc-$0/logs", idx));
+  const auto yb_controller_tmp_dir = GetDataPath(Format("ybc-$0/tmp", idx));
+  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
+  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
+  scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
+      idx, yb_controller_log_dir, yb_controller_tmp_dir, ts->bind_host(), GetToolPath("yb-admin"),
+      GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
+      GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
+      server_port, masters_[0]->http_port(), ts->http_port(), ts->bind_host(),
+      GetYbcToolPath("yb-controller-server"), extra_flags);
+
+  RETURN_NOT_OK_PREPEND(
+      yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(idx));
+  yb_controller_servers_.push_back(yb_controller);
+
   return Status::OK();
 }
 
@@ -1938,15 +1955,6 @@ std::vector<ExternalTabletServer*> ExternalMiniCluster::tserver_daemons() const 
     result.push_back(ts.get());
   }
   return result;
-}
-
-vector<ExternalYbController*> ExternalMiniCluster::yb_controller_daemons() const {
-  vector<ExternalYbController*> results;
-  results.reserve(yb_controller_servers_.size());
-  for (const scoped_refptr<ExternalYbController>& yb_controller : yb_controller_servers_) {
-    results.push_back(yb_controller.get());
-  }
-  return results;
 }
 
 HostPort ExternalMiniCluster::pgsql_hostport(int node_index) const {
