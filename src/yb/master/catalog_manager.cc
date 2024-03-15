@@ -161,8 +161,8 @@
 #include "yb/master/yql_triggers_vtable.h"
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
+#include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql_tablegroup_manager.h"
-#include "yb/master/ysql_transaction_ddl.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -1048,9 +1048,6 @@ Status CatalogManager::Init() {
     state_ = kStarting;
   }
 
-  ysql_transaction_ = std::make_unique<YsqlTransactionDdl>(
-      sys_catalog_.get(), master_->client_future(), background_tasks_thread_pool_.get());
-
   // Initialize the metrics emitted by the catalog manager.
   load_balance_policy_->InitMetrics();
 
@@ -1505,6 +1502,12 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   ResetTasksTrackers();
 
   ClearXReplState();
+
+  // Clear Ddl transaction state.
+  {
+    LockGuard l(ddl_txn_verifier_mutex_);
+    ysql_ddl_txn_verfication_state_map_.clear();
+  }
 
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
@@ -3524,12 +3527,7 @@ Status CatalogManager::CreateYsqlSysTable(
   // Verify Transaction gets committed, which occurs after table create finishes.
   if (req->has_transaction() && PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
     LOG(INFO) << "Enqueuing table for Transaction Verification: " << req->name();
-    std::function<Status(bool)> when_done =
-        std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1, epoch);
-    WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(),
-                  txn, table, false /* has_ysql_txn_ddl_state */, when_done)),
-                "Could not submit VerifyTransaction to thread pool");
+    ScheduleVerifyTablePgLayer(txn, table, epoch);
   }
 
   tablet::ChangeMetadataRequestPB change_req;
@@ -4335,15 +4333,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Verify Transaction gets committed, which occurs after table create finishes.
   if (req.has_transaction()) {
     if (schedule_ysql_txn_verifier) {
-      ScheduleYsqlTxnVerification(table, txn, epoch);
+      RETURN_NOT_OK(ScheduleYsqlTxnVerification(table, txn, epoch));
     } else if (PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
       LOG(INFO) << "Enqueuing table for Transaction Verification: " << req.name();
-      std::function<Status(bool)> when_done =
-        std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1, epoch);
-      WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-          std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(),
-                    txn, table, false /* has_ysql_ddl_txn_state */, when_done)),
-          "Could not submit VerifyTransaction to thread pool");
+      ScheduleVerifyTablePgLayer(txn, table, epoch);
     }
   }
 
@@ -4416,38 +4409,23 @@ Status CatalogManager::CreateTableIfNotFound(
   return Status::OK();
 }
 
+void CatalogManager::ScheduleVerifyTablePgLayer(TransactionMetadata txn,
+                                                const TableInfoPtr& table,
+                                                const LeaderEpoch& epoch) {
+  auto when_done = [this, table, epoch](Result<bool> exists) {
+    WARN_NOT_OK(VerifyTablePgLayer(table, exists, epoch), "Failed to verify table");
+  };
+  TableSchemaVerificationTask::CreateAndStartTask(
+      *this, table, txn, std::move(when_done), sys_catalog_.get(), master_->client_future(),
+      *master_->messenger(), epoch, false /* ddl_atomicity_enabled */);
+}
+
 Status CatalogManager::VerifyTablePgLayer(
-    scoped_refptr<TableInfo> table, bool rpc_success, const LeaderEpoch& epoch) {
-  // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
-
-  bool entry_exists = false;
-  if (!table->IsColocationParentTable()) {
-    // Check that pg_class still has an entry for the table.
-    const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
-    const auto pg_class_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
-
-    PgOid pg_table_oid = VERIFY_RESULT(table->GetPgTableOid());
-    PgOid relfilenode_oid = VERIFY_RESULT(table->GetPgRelfilenodeOid());
-
-    entry_exists = VERIFY_RESULT(
-        ysql_transaction_->PgEntryExists(pg_class_table_id, pg_table_oid,
-        // If relfilenode_oid is the same as pg table oid, this is isn't a rewritten table and
-        // we don't need to perform additional checks on the relfilenode column.
-        relfilenode_oid == pg_table_oid ? boost::none : boost::make_optional(relfilenode_oid)));
-  } else {
-    // The table we have is a dummy parent table, hence not present in YSQL.
-    // We need to check a tablegroup instead.
-    const auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
-    const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTablegroupId(tablegroup_id));
-    const auto pg_yb_tablegroup_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
-    const PgOid tablegroup_oid = VERIFY_RESULT(GetPgsqlTablegroupOid(tablegroup_id));
-
-    entry_exists = VERIFY_RESULT(
-        ysql_transaction_->PgEntryExists(pg_yb_tablegroup_table_id,
-                                         tablegroup_oid,
-                                         boost::none /* relfilenode_oid */));
+    scoped_refptr<TableInfo> table, Result<bool> exists, const LeaderEpoch& epoch) {
+  if (!exists.ok()) {
+    return exists.status();
   }
-
+  // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   auto l = table->LockForWrite();
   auto* mutable_table_info = table->mutable_metadata()->mutable_dirty();
   auto& metadata = mutable_table_info->pb;
@@ -4458,19 +4436,12 @@ Status CatalogManager::VerifyTablePgLayer(
           "Unexpected table state ($0), abandoning transaction GC work for $1",
           SysTablesEntryPB_State_Name(metadata.state()), table->ToString()));
 
-  // #5981: Mark un-retryable rpc failures as pass to avoid infinite retry of GC'd txns.
-  const bool txn_check_passed = entry_exists || !rpc_success;
-
-  if (txn_check_passed) {
+  if (exists.get()) {
     // Remove the transaction from the entry since we're done processing it.
     metadata.clear_transaction();
     RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
-    if (entry_exists) {
-      LOG_WITH_PREFIX(INFO) << "Table transaction succeeded: " << table->ToString();
-    } else {
-      LOG_WITH_PREFIX(WARNING)
-          << "Unknown RPC failure, removing transaction on table: " << table->ToString();
-    }
+    LOG_WITH_PREFIX(INFO) << "Table transaction succeeded: " << table->ToString();
+
     // Commit the in-memory state.
     l.Commit();
   } else {
@@ -6286,7 +6257,6 @@ Status CatalogManager::DeleteTable(
   if (req->ysql_ddl_rollback_enabled()) {
     DCHECK(req->has_transaction());
     DCHECK(req->transaction().has_transaction_id());
-    RETURN_NOT_OK(WaitForDdlVerificationToFinish(table, req->transaction().transaction_id()));
   }
 
   scoped_refptr<TableInfo> indexed_table;
@@ -6336,8 +6306,14 @@ Status CatalogManager::DeleteTable(
       // If the table is already undergoing DDL transaction verification as part of a different
       // transaction then fail this request.
       if (l->pb_transaction_id() != req->transaction().transaction_id()) {
-        const Status s = STATUS(TryAgain, "Table is undergoing DDL transaction verification");
-        return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_SCHEMA_CHANGE_IN_PROGRESS, s);
+        auto txn_meta = VERIFY_RESULT(TransactionMetadata::FromPB(l->pb.transaction()));
+        auto req_txn_meta = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+        RETURN_NOT_OK(TriggerDdlVerificationIfNeeded(txn_meta, epoch));
+        return STATUS_EC_FORMAT(TryAgain,
+            MasterError(MasterErrorPB::TABLE_SCHEMA_CHANGE_IN_PROGRESS),
+            "DDL transaction $0 cannot continue as table $1 is undergoing DDL transaction "
+            "verification for $2", req_txn_meta.transaction_id, table->name(),
+            txn_meta.transaction_id);
       }
       // This DROP operation is part of a DDL transaction that has already made changes
       // to this table.
@@ -6367,7 +6343,7 @@ Status CatalogManager::DeleteTable(
     TRACE("Committing in-memory state as part of DeleteTable operation");
     l.Commit();
     if (!ysql_txn_verifier_state_present) {
-      ScheduleYsqlTxnVerification(table, txn, epoch);
+      RETURN_NOT_OK(ScheduleYsqlTxnVerification(table, txn, epoch));
     }
     return Status::OK();
   }
@@ -6789,6 +6765,16 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     for (auto& lock : table_locks) {
       lock.Commit();
     }
+    for (auto table : tables_to_update_on_disk) {
+      // Clean up any DDL verification state that is waiting for this table to start deleting.
+      auto res = table->LockForRead()->GetCurrentDdlTransactionId();
+      WARN_NOT_OK(
+          res, Format("Failed to get current DDL transaction for table $0", table->ToString()));
+      if (!res.ok() || res.get() == TransactionId::Nil()) {
+        continue;
+      }
+      RemoveDdlTransactionState(table->id(), {res.get()});
+    }
     // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
     // TODO: SysCatalog::DeleteItem() if we've DELETED all user tables in a DELETING namespace.
     // TODO: Also properly handle namespace_ids_map_.erase(table->namespace_id())
@@ -7085,7 +7071,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   if (req->ysql_ddl_rollback_enabled()) {
     DCHECK(req->has_transaction());
     DCHECK(req->transaction().has_transaction_id());
-    RETURN_NOT_OK(WaitForDdlVerificationToFinish(table, req->transaction().transaction_id()));
   }
 
   TRACE("Locking table");
@@ -7095,8 +7080,14 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   // If the table is already undergoing an alter operation, return failure.
   if (req->ysql_ddl_rollback_enabled() && l->has_ysql_ddl_txn_verifier_state()) {
     if (l->pb_transaction_id() != req->transaction().transaction_id()) {
-      const Status s = STATUS(TryAgain, "Table is undergoing DDL transaction verification");
-      return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_SCHEMA_CHANGE_IN_PROGRESS, s);
+      auto txn_meta = VERIFY_RESULT(TransactionMetadata::FromPB(l->pb.transaction()));
+      auto req_txn_meta = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+      RETURN_NOT_OK(TriggerDdlVerificationIfNeeded(txn_meta, epoch));
+      return STATUS_EC_FORMAT(TryAgain,
+            MasterError(MasterErrorPB::TABLE_SCHEMA_CHANGE_IN_PROGRESS),
+            "DDL transaction $0 cannot continue as table $1 is undergoing DDL transaction "
+            "verification for $2", req_txn_meta.transaction_id, table->name(),
+            txn_meta.transaction_id);
     }
   }
 
@@ -7260,31 +7251,39 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   // rolls back.
   TransactionMetadata txn;
   bool schedule_ysql_txn_verifier = false;
-  if (!req->ysql_ddl_rollback_enabled()) {
-    // If DDL rollback is no longer enabled, make sure that there is no transaction
-    // verification state present.
-    table_pb.clear_ysql_ddl_txn_verifier_state();
-  } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE) {
-    if (!l->has_ysql_ddl_txn_verifier_state()) {
-      table_pb.mutable_transaction()->CopyFrom(req->transaction());
-      auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
-      SchemaToPB(previous_schema, ddl_state->mutable_previous_schema());
-      ddl_state->set_previous_table_name(previous_table_name);
-      schedule_ysql_txn_verifier = true;
+  // DDL rollback is not applicable for the alter change that sets wal_retention_secs.
+  if (!req->has_wal_retention_secs()) {
+    if (!req->ysql_ddl_rollback_enabled()) {
+      // If DDL rollback is no longer enabled, make sure that there is no transaction
+      // verification state present.
+      if (l->has_ysql_ddl_txn_verifier_state()) {
+        auto txn_id =
+            VERIFY_RESULT(TransactionMetadata::FromPB(l->pb.transaction())).transaction_id;
+        LOG(INFO) << "Clearing ysql_ddl_txn_verifier state for table " << table->ToString();
+        table_pb.clear_ysql_ddl_txn_verifier_state();
+        RemoveDdlTransactionState(table->id(), {txn_id});
+      }
+    } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE) {
+      if (!l->has_ysql_ddl_txn_verifier_state()) {
+        table_pb.mutable_transaction()->CopyFrom(req->transaction());
+        auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
+        SchemaToPB(previous_schema, ddl_state->mutable_previous_schema());
+        ddl_state->set_previous_table_name(previous_table_name);
+        schedule_ysql_txn_verifier = true;
+      }
+      txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+      RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+      DCHECK_EQ(table_pb.ysql_ddl_txn_verifier_state_size(), 1);
+      table_pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_alter_table_op(true);
     }
-    txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
-    RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
-    DCHECK_EQ(table_pb.ysql_ddl_txn_verifier_state_size(), 1);
-    table_pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_alter_table_op(true);
   }
-
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   l.Commit();
 
   // Verify Transaction gets committed, which occurs after table alter finishes.
   if (schedule_ysql_txn_verifier) {
-    ScheduleYsqlTxnVerification(table, txn, epoch);
+    RETURN_NOT_OK(ScheduleYsqlTxnVerification(table, txn, epoch));
   }
   RETURN_NOT_OK(SendAlterTableRequest(table, epoch, req));
 
@@ -9210,50 +9209,44 @@ void CatalogManager::ProcessPendingNamespace(
   ns_write_lock.Commit();
   if (has_transaction) {
     LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns->ToString();
-    std::function<Status(bool)> when_done =
-        std::bind(&CatalogManager::VerifyNamespacePgLayer, this, ns, _1, epoch);
-    WARN_NOT_OK(
-        background_tasks_thread_pool_->SubmitFunc(std::bind(
-            &YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn,
-            nullptr /* table */, false /* has_ysql_ddl_state */, when_done)),
-        "Could not submit VerifyTransaction to thread pool");
+    ScheduleVerifyNamespacePgLayer(txn, ns, epoch);
   }
 }
 
-Status CatalogManager::VerifyNamespacePgLayer(
-    scoped_refptr<NamespaceInfo> ns, bool rpc_success, const LeaderEpoch& epoch) {
-  // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
-  const auto pg_table_id = GetPgsqlTableId(atoi(kSystemNamespaceId), kPgDatabaseTableOid);
-  const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns->id()));
-  auto entry_exists = VERIFY_RESULT(
-      ysql_transaction_->PgEntryExists(pg_table_id,
-                                       database_oid,
-                                       boost::none /* relfilenode_oid */));
+void CatalogManager::ScheduleVerifyNamespacePgLayer(
+    TransactionMetadata txn, scoped_refptr<NamespaceInfo> ns, const LeaderEpoch& epoch) {
+  auto when_done = [this, ns, epoch](Result<bool> result) {
+    WARN_NOT_OK(VerifyNamespacePgLayer(ns, result, epoch), "VerifyNamespacePgLayer");
+  };
+  NamespaceVerificationTask::CreateAndStartTask(
+      *this, ns, txn, std::move(when_done), sys_catalog_.get(), master_->client_future(),
+      *master_->messenger(), epoch);
+}
+
+Status CatalogManager::VerifyNamespacePgLayer(scoped_refptr<NamespaceInfo> ns,
+                                              Result<bool> exists,
+                                              const LeaderEpoch& epoch) {
+  if (!exists.ok()) {
+    return exists.status();
+  }
   auto l = ns->LockForWrite();
   SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
 
-  // #5981: Mark un-retryable rpc failures as pass to avoid infinite retry of GC'd txns.
-  bool txn_check_passed = entry_exists || !rpc_success;
-
-  if (txn_check_passed) {
+  if (exists.get()) {
     // Passed checks.  Remove the transaction from the entry since we're done processing it.
     SCHECK_EQ(metadata.state(), SysNamespaceEntryPB::RUNNING, Aborted,
-              Substitute("Invalid Namespace state ($0), abandoning transaction GC work for $1",
+              Format("Invalid Namespace state ($0), abandoning transaction GC work for $1",
                  SysNamespaceEntryPB_State_Name(metadata.state()), ns->ToString()));
     metadata.clear_transaction();
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), ns));
-    if (entry_exists) {
-      LOG(INFO) << "Namespace transaction succeeded: " << ns->ToString();
-    } else {
-      LOG(WARNING) << "Unknown RPC Failure, removing transaction on namespace: " << ns->ToString();
-    }
+    LOG(INFO) << "Namespace transaction succeeded: " << ns->ToString();
     // Commit the namespace in-memory state.
     l.Commit();
   } else {
     // Transaction failed.  We need to delete this Database now.
     SCHECK(metadata.state() == SysNamespaceEntryPB::RUNNING ||
            metadata.state() == SysNamespaceEntryPB::FAILED, Aborted,
-           Substitute("Invalid Namespace state ($0), aborting delete.",
+           Format("Invalid Namespace state ($0), aborting delete.",
                       SysNamespaceEntryPB_State_Name(metadata.state()), ns->ToString()));
     LOG(INFO) << "Namespace transaction failed, deleting: " << ns->ToString();
     metadata.set_state(SysNamespaceEntryPB::DELETING);
@@ -10395,7 +10388,8 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
     VLOG_WITH_FUNC(2) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
   }
-  if (versions->size() > 1 && !FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
+  if (!catalog_version_table_in_perdb_mode_ &&
+      versions->size() > 1 && !FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
     LOG(INFO) << "set catalog_version_table_in_perdb_mode_ to true";
     catalog_version_table_in_perdb_mode_ = true;
   }
@@ -11246,14 +11240,14 @@ void CatalogManager::ExtractTabletsToProcess(
   }
 }
 
-bool CatalogManager::AreTablesDeleting() {
+bool CatalogManager::AreTablesDeletingOrHiding() {
   SharedLock lock(mutex_);
 
   for (const auto& table : tables_->GetAllTables()) {
     auto table_lock = table->LockForRead();
     // TODO(jason): possibly change this to started_deleting when we begin removing DELETED tables
     // from tables_ (see CleanUpDeletedTables).
-    if (table_lock->is_deleting()) {
+    if (table_lock->is_deleting() || table_lock->is_hiding()) {
       return true;
     }
   }
@@ -11382,6 +11376,9 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
       return Status::OK();
     }
   }
+
+  // Clean up any DDL verification state that is waiting for this Alter to complete.
+  RemoveDdlTransactionState(table->id(), table->EraseDdlTxnsWaitingForSchemaVersion(version));
 
   // With Replication Enabled, verify that we've finished applying the New Schema.
   // This may need to be refactored when we support Replication + Active Index Backfill in #7613.
@@ -13292,6 +13289,13 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
       return;
     }
     lock.Commit();
+    // Clean up any DDL verification state that is waiting for this table to be deleted.
+    auto res = table->LockForRead()->GetCurrentDdlTransactionId();
+    WARN_NOT_OK(
+        res, "Failed to get current DDL transaction for table " + table->ToString());
+    if (res.ok() && res.get() != TransactionId::Nil()) {
+      RemoveDdlTransactionState(table->id(), {res.get()});
+    }
   }), "Failed to submit update table task");
 }
 

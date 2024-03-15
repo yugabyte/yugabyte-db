@@ -4,7 +4,6 @@ import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
 import java.time.Duration;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public abstract class UnevenDistributionDetector extends AnomalyDetectorBase {
 
@@ -46,20 +45,16 @@ public abstract class UnevenDistributionDetector extends AnomalyDetectorBase {
         .setWindowMinSize(minAnomalySize)
         .setWindowMaxSize(minAnomalySize * 2);
 
-    Map<String, List<GraphData>> graphsByLineName =
-        response.getData().stream()
-            .collect(Collectors.groupingBy(GraphData::getName, Collectors.toList()));
+    List<List<GraphData>> groupedLines = groupGraphLines(response.getData());
 
     List<GraphAnomaly> anomalies = new ArrayList<>();
-    graphsByLineName.forEach(
-        (mode, graphs) ->
+    groupedLines.forEach(
+        graphs ->
             anomalies.addAll(
                 anomalyDetectionService.getAnomalies(
                     GraphAnomaly.GraphAnomalyType.UNEVEN_DISTRIBUTION, graphs, detectionSettings)));
 
-    List<GraphAnomaly> mergedAnomalies = anomalyDetectionService.mergeAnomalies(anomalies);
-
-    createAnomalies(result, mergedAnomalies, contextWithUpdatedStep);
+    groupAndCreateAnomalies(contextWithUpdatedStep, anomalies, result);
 
     return result;
   }

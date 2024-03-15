@@ -38,7 +38,6 @@
 #include <thread>
 #include <utility>
 
-#include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
@@ -1057,6 +1056,19 @@ void TabletServer::SetYsqlDBCatalogVersions(
   }
 }
 
+void TabletServer::WriteServerMetaCacheAsJson(JsonWriter* writer) {
+  writer->StartObject();
+  DbServerBase::WriteMainMetaCacheAsJson(writer);
+  if (auto xcluster_consumer = GetXClusterConsumer()) {
+    auto clients = xcluster_consumer->GetYbClientsList();
+    for (auto client : clients) {
+      writer->String(client->client_name());
+      client->AddMetaCacheInfo(writer);
+    }
+  }
+  writer->EndObject();
+}
+
 void TabletServer::UpdateTransactionTablesVersion(uint64_t new_version) {
   const auto transaction_manager = transaction_manager_.load(std::memory_order_acquire);
   if (transaction_manager) {
@@ -1385,4 +1397,10 @@ rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {
   FATAL_INVALID_ENUM_VALUE(ash::Component, component);
 }
 
+void TabletServer::ClearAllMetaCachesOnServer() {
+  if (auto xcluster_consumer = GetXClusterConsumer()) {
+    xcluster_consumer->ClearAllClientMetaCaches();
+  }
+  client()->ClearAllMetaCachesOnServer();
+}
 }  // namespace yb::tserver

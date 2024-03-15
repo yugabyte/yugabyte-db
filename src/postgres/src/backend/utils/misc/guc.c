@@ -918,7 +918,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_bitmapscan,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 	{
@@ -2694,6 +2694,34 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_locks_max_transactions,
 		16, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_walsender_poll_sleep_duration_nonempty_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which Walsender waits before"
+						 " fetching the next batch of changes from the CDC"
+						 " service in case the last received response was"
+						 " non-empty."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_walsender_poll_sleep_duration_nonempty_ms,
+		1, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_walsender_poll_sleep_duration_empty_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which Walsender waits before"
+						 " fetching the next batch of changes from the CDC"
+						 " service in case the last received response was"
+						 " empty."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_walsender_poll_sleep_duration_empty_ms,
+		1 * 1000, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 

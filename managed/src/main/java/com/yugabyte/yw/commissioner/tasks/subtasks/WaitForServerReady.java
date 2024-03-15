@@ -16,11 +16,9 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.IsServerReadyResponse;
@@ -43,7 +41,7 @@ public class WaitForServerReady extends ServerSubTaskBase {
   // Parameters for wait task.
   public static class Params extends ServerSubTaskParams {
     // Time to wait (as a backup) in case the server does not support is-ready check rpc.
-    public int waitTimeMs;
+    public long waitTimeMs;
   }
 
   @Override
@@ -55,20 +53,11 @@ public class WaitForServerReady extends ServerSubTaskBase {
     waitFor(Duration.ofMillis(getSleepMultiplier() * waitTimeMs));
   }
 
-  // Helper function to sleep for any pending amount of time in userWaitTimeMs, assuming caller
-  // has timeElapsedMs of sleep.
-  private void sleepRemaining(long userWaitTimeMs, long timeElapsedMs) {
-    if (userWaitTimeMs > timeElapsedMs) {
-      sleepFor(userWaitTimeMs - timeElapsedMs);
-    }
-  }
-
   @Override
   public void run() {
     checkParams();
 
     int numIters = 0;
-    Duration userWaitTime = Duration.ofMillis(taskParams().waitTimeMs);
     HostAndPort hp = getHostPort();
     boolean isMasterTask = taskParams().serverType == ServerType.MASTER;
     IsServerReadyResponse response = null;
@@ -77,10 +66,8 @@ public class WaitForServerReady extends ServerSubTaskBase {
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     // Max timeout to wait for check to complete.
-    Duration maxSubtaskTimeout =
-        confGetter.getConfForScope(universe, UniverseConfKeys.waitForServerReadyTimeout);
     Stopwatch stopwatch = Stopwatch.createStarted();
-
+    Duration maxSubtaskTimeout = Duration.ofMillis(taskParams().waitTimeMs);
     try (YBClient client = getClient()) {
       while (true) {
         shouldLog = (numIters % LOG_EVERY_NUM_ITERS) == 0;
@@ -135,8 +122,5 @@ public class WaitForServerReady extends ServerSubTaskBase {
     } catch (Exception e) {
       Throwables.propagate(e);
     }
-
-    // Sleep for the remaining portion of user specified time, if any.
-    sleepRemaining(userWaitTime.toMillis(), stopwatch.elapsed(TimeUnit.MILLISECONDS));
   }
 }

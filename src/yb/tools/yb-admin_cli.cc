@@ -410,7 +410,7 @@ std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arg
   std::stringstream ss(usage_arguments);
   std::string next_argument;
   while (ss >> next_argument) {
-    if (next_argument == "<namespace>") {
+    if (next_argument == "<namespace>" || next_argument == "<source_namespace>") {
       expressions += namespace_expression + '\n';
     } else if (next_argument == "<table>") {
       expressions += table_expression + '\n';
@@ -1494,13 +1494,13 @@ Status restore_snapshot_schedule_action(
   return PrintJsonResult(client->RestoreSnapshotSchedule(schedule_id, restore_at));
 }
 
-const auto clone_from_snapshot_schedule_args =
-    Format("<schedule_id> <target_namespace_name> [<timestamp> | $0 <interval>]", kMinus);
-Status clone_from_snapshot_schedule_action(
+const auto clone_namespace_args =
+    Format("<source_namespace> <target_namespace_name> [<timestamp> | $0 <interval>]", kMinus);
+Status clone_namespace_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 4));
 
-  auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
+  auto source_namespace = VERIFY_RESULT(ParseNamespaceName(args[0]));
   auto target_namespace_name = args[1];
 
   HybridTime restore_at;
@@ -1517,7 +1517,7 @@ Status clone_from_snapshot_schedule_action(
   }
 
   RETURN_NOT_OK(PrintJsonResult(
-      client->CloneFromSnapshotSchedule(schedule_id, target_namespace_name, restore_at)));
+      client->CloneNamespace(source_namespace, target_namespace_name, restore_at)));
   return Status::OK();
 }
 
@@ -2449,7 +2449,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_snapshot_schedules);
   REGISTER_COMMAND(delete_snapshot_schedule);
   REGISTER_COMMAND(restore_snapshot_schedule);
-  REGISTER_COMMAND(clone_from_snapshot_schedule);
+  REGISTER_COMMAND(clone_namespace);
   REGISTER_COMMAND(is_clone_done);
   REGISTER_COMMAND(edit_snapshot_schedule);
   REGISTER_COMMAND(create_keyspace_snapshot);

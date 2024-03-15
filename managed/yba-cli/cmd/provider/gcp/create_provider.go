@@ -7,7 +7,6 @@ package gcp
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -49,9 +48,71 @@ var createGCPProviderCmd = &cobra.Command{
 		}
 
 		providerCode := util.GCPProviderType
-		config, err := buildGCPConfig(cmd)
+
+		var gcpCloudInfo ybaclient.GCPCloudInfo
+
+		useHostCredentials, err := cmd.Flags().GetBool("use-host-credentials")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		if !useHostCredentials {
+			credentialsFilePath, err := cmd.Flags().GetString("credentials")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			var gcpCreds string
+			if len(credentialsFilePath) == 0 {
+				gcpCreds, err = util.GcpGetCredentialsAsString()
+				if err != nil {
+					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+			} else {
+				gcpCreds, err = util.GcpGetCredentialsAsStringFromFilePath(credentialsFilePath)
+				if err != nil {
+					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+
+			}
+			gcpCloudInfo.SetGceApplicationCredentials(gcpCreds)
+		} else {
+			gcpCloudInfo.SetUseHostCredentials(true)
+		}
+
+		ybFirewallTags, err := cmd.Flags().GetString("yb-firewall-tags")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(ybFirewallTags) > 0 {
+			gcpCloudInfo.SetYbFirewallTags(ybFirewallTags)
+		}
+		useHostVpc, err := cmd.Flags().GetBool("use-host-vpc")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		gcpCloudInfo.SetUseHostVPC(useHostVpc)
+
+		projectID, err := cmd.Flags().GetString("project-id")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(projectID) > 0 {
+			gcpCloudInfo.SetGceProject(projectID)
+		}
+
+		hostProjectID, err := cmd.Flags().GetString("shared-vpc-project-id")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(projectID) > 0 {
+			gcpCloudInfo.SetSharedVPCProject(hostProjectID)
+		}
+		network, err := cmd.Flags().GetString("network")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(network) > 0 {
+			gcpCloudInfo.SetDestVpcId(network)
 		}
 
 		airgapInstall, err := cmd.Flags().GetBool("airgap-install")
@@ -69,12 +130,12 @@ var createGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		keyPairName, err := cmd.Flags().GetString("custom-ssh-keypair-name")
+		ntpServers, err := cmd.Flags().GetStringArray("ntp-servers")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		network, err := cmd.Flags().GetString("network")
+		keyPairName, err := cmd.Flags().GetString("custom-ssh-keypair-name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -92,6 +153,14 @@ var createGCPProviderCmd = &cobra.Command{
 			}
 			sshFileContent = string(sshFileContentByte)
 		}
+		allAccessKeys := make([]ybaclient.AccessKey, 0)
+		accessKey := ybaclient.AccessKey{
+			KeyInfo: ybaclient.KeyInfo{
+				KeyPairName:          util.GetStringPointer(keyPairName),
+				SshPrivateKeyContent: util.GetStringPointer(sshFileContent),
+			},
+		}
+		allAccessKeys = append(allAccessKeys, accessKey)
 
 		regions, err := cmd.Flags().GetStringArray("region")
 		if err != nil {
@@ -99,16 +168,20 @@ var createGCPProviderCmd = &cobra.Command{
 		}
 
 		requestBody := ybaclient.Provider{
-			Code:                 util.GetStringPointer(providerCode),
-			Config:               util.StringMap(config),
-			DestVpcId:            util.GetStringPointer(network),
-			Name:                 util.GetStringPointer(providerName),
-			AirGapInstall:        util.GetBoolPointer(airgapInstall),
-			SshPort:              util.GetInt32Pointer(int32(sshPort)),
-			SshUser:              util.GetStringPointer(sshUser),
-			KeyPairName:          util.GetStringPointer(keyPairName),
-			SshPrivateKeyContent: util.GetStringPointer(sshFileContent),
-			Regions:              buildGCPRegions(regions, allowed, version),
+			Code: util.GetStringPointer(providerCode),
+			Name: util.GetStringPointer(providerName),
+
+			AllAccessKeys: &allAccessKeys,
+			Details: &ybaclient.ProviderDetails{
+				AirGapInstall: util.GetBoolPointer(airgapInstall),
+				SshPort:       util.GetInt32Pointer(int32(sshPort)),
+				SshUser:       util.GetStringPointer(sshUser),
+				NtpServers:    util.StringSliceFromString(ntpServers),
+				CloudInfo: &ybaclient.CloudInfo{
+					Gcp: &gcpCloudInfo,
+				},
+			},
+			Regions: buildGCPRegions(regions, allowed, version),
 		}
 		rCreate, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
@@ -130,8 +203,11 @@ func init() {
 
 	// Flags needed for GCP
 	createGCPProviderCmd.Flags().String("credentials", "",
-		fmt.Sprintf("GCP Service Account credentials file path. "+
-			"Can also be set using environment variable %s.", util.GCPCredentialsEnv))
+		fmt.Sprintf("GCP Service Account credentials file path. %s. "+
+			"Can also be set using environment variable %s.",
+			formatter.Colorize("Required if use-host-credentials is set to false.",
+				formatter.GreenColor),
+			util.GCPCredentialsEnv))
 
 	createGCPProviderCmd.Flags().String("network", "",
 		"[Required] Custom GCE network name.")
@@ -144,6 +220,8 @@ func init() {
 		"[Optional] Enabling YugabyteDB Anywhere Host credentials in GCP, defaults to false.")
 	createGCPProviderCmd.Flags().String("project-id", "",
 		"[Optional] Project ID that hosts universe nodes in GCP.")
+	createGCPProviderCmd.Flags().String("shared-vpc-project-id", "",
+		"[Optional] Shared VPC project ID in GCP.")
 
 	createGCPProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the GCP provider. Minimum number of required "+
@@ -163,6 +241,7 @@ func init() {
 		"[Optional] SSH Port to access the YugabyteDB nodes.")
 	createGCPProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+
+			"If left empty, "+
 			"YugabyteDB Anywhere will generate key pairs to access YugabyteDB nodes.")
 	createGCPProviderCmd.Flags().String("custom-ssh-keypair-file-path", "",
 		"[Optional] Provide custom key pair file path to access YugabyteDB nodes. "+
@@ -175,67 +254,9 @@ func init() {
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
 			" lacking access to the public internet for package downloads, "+
 			"defaults to false.")
-}
-
-func buildGCPConfig(cmd *cobra.Command) (map[string]interface{}, error) {
-
-	var err error
-	config := make(map[string]interface{})
-
-	useHostCredentials, err := cmd.Flags().GetBool("use-host-credentials")
-	if err != nil {
-		return nil, err
-	}
-
-	if !useHostCredentials {
-		gcpCredFilePath, err := cmd.Flags().GetString("credentials")
-		if err != nil {
-			return nil, err
-		}
-		if len(gcpCredFilePath) == 0 {
-			config, err = util.GcpGetCredentialsAsMap()
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			config, err = util.GcpGetCredentialsAsMapFromFilePath(gcpCredFilePath)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	config["use_host_credentials"] = strconv.FormatBool(useHostCredentials)
-
-	ybFirewallTags, err := cmd.Flags().GetString("yb-firewall-tags")
-	if err != nil {
-		return nil, err
-	}
-	if len(ybFirewallTags) > 0 {
-		config["YB_FIREWALL_TAGS"] = ybFirewallTags
-	}
-	useHostVpc, err := cmd.Flags().GetBool("use-host-vpc")
-	if err != nil {
-		return nil, err
-	}
-	config["use_host_vpc"] = strconv.FormatBool(useHostVpc)
-
-	projectID, err := cmd.Flags().GetString("project-id")
-	if err != nil {
-		return nil, err
-	}
-	if len(projectID) > 0 {
-		config["project_id"] = projectID
-	}
-	network, err := cmd.Flags().GetString("network")
-	if err != nil {
-		return nil, err
-	}
-	if len(network) > 0 {
-		config["network"] = network
-	}
-
-	return config, nil
+	createGCPProviderCmd.Flags().StringArray("ntp-servers", []string{},
+		"[Optional] List of NTP Servers. Can be provided as separate flags or "+
+			"as comma-separated values.")
 }
 
 func buildGCPRegions(regionStrings []string, allowed bool, version string) (
@@ -296,21 +317,19 @@ func buildGCPRegions(regionStrings []string, allowed bool, version string) (
 
 		zones := buildGCPZones(region["shared-subnet"])
 		r := ybaclient.Region{
-			Code:    util.GetStringPointer(region["name"]),
-			Name:    util.GetStringPointer(region["name"]),
-			YbImage: util.GetStringPointer(region["yb-image"]),
-			Zones:   zones,
-		}
-		if allowed {
-			r.Details = &ybaclient.RegionDetails{
+			Code:  util.GetStringPointer(region["name"]),
+			Name:  util.GetStringPointer(region["name"]),
+			Zones: zones,
+			Details: &ybaclient.RegionDetails{
 				CloudInfo: &ybaclient.RegionCloudInfo{
 					Gcp: &ybaclient.GCPRegionCloudInfo{
 						YbImage:          util.GetStringPointer(region["yb-image"]),
 						InstanceTemplate: util.GetStringPointer(region["instance-template"]),
 					},
 				},
-			}
-		} else {
+			},
+		}
+		if !allowed {
 			logrus.Info(
 				fmt.Sprintf("YugabyteDB Anywhere version %s does not support Instance "+
 					"Templates, ignoring value.", version))

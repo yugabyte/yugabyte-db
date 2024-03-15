@@ -1371,6 +1371,13 @@ void MasterPathHandlers::HandleAllTablesJSON(
   jw.EndObject();
 }
 
+void MasterPathHandlers::HandleGetMetaCacheJson(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  JsonWriter writer(output, JsonWriter::COMPACT);
+  master_->WriteServerMetaCacheAsJson(&writer);
+}
+
 void MasterPathHandlers::HandleNamespacesHTML(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, bool only_user_namespaces) {
   std::stringstream* output = &resp->output;
@@ -3263,6 +3270,9 @@ Status MasterPathHandlers::Register(Webserver* server) {
   RegisterLeaderOrRedirect(
       server, "/load-distribution", "Load balancer View", &MasterPathHandlers::HandleLoadBalancer,
       is_styled);
+  server->RegisterPathHandler(
+      "/api/v1/meta-cache", "MetaCache",
+      std::bind(&MasterPathHandlers::HandleGetMetaCacheJson, this, _1, _2), false, false);
 
   // JSON Endpoints
   RegisterLeaderOrRedirect(

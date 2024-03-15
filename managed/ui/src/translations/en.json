@@ -1723,6 +1723,23 @@
         "modalTitle": "Edit Kubernetes",
         "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
       }
+    },
+    "ha": {
+      "config": {
+        "globalState": {
+          "Unknown": "Unknown",
+          "NoReplicas": "No Replicas",
+          "AwaitingReplicas": "Awaiting Connection to Replicas",
+          "Operational": "Operational",
+          "Error": "Error",
+          "Warning": "Warning"
+        },
+        "instanceState": {
+          "Awaiting Connection to Replicas": "Awaiting Connection to Replicas",
+          "Connected": "Connected",
+          "Disconnected": "Disconnected"
+        }
+      }
     }
   }
 }

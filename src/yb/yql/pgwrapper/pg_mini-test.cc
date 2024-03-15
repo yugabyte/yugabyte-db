@@ -76,6 +76,7 @@ DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
 DECLARE_double(TEST_respond_write_failed_probability);
@@ -404,16 +405,18 @@ TEST_F(PgMiniTest, Simple) {
   ASSERT_EQ(value, "hello");
 }
 
-class PgMiniAsh : public PgMiniTestSingleNode {
+class PgMiniAshTest : public PgMiniTestSingleNode {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_enable_infra) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ash) = true;
+    // This test counts number of performed RPC calls, so turn off pg client shared memory.
+    FLAGS_pg_client_use_shared_memory = false;
     PgMiniTestSingleNode::SetUp();
   }
 };
 
-TEST_F(PgMiniAsh, YB_DISABLE_TEST_IN_TSAN(Ash)) {
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Ash), PgMiniAshTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms) = 5;
@@ -499,10 +502,14 @@ TEST_F(PgMiniTest, Tracing) {
 
    private:
     std::atomic<size_t> last_logged_bytes_{0};
-  } trace_log_sink;
+  };
+
+  TraceLogSink trace_log_sink;
+
   google::AddLogSink(&trace_log_sink);
   size_t last_logged_trace_size;
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
   auto conn = ASSERT_RESULT(Connect());
@@ -1029,21 +1036,22 @@ TEST_F(PgMiniTest, DropDBMarkDeleted) {
   auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
 
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting());
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
   // System tables should be deleting then deleted.
   int num_sleeps = 0;
-  while (catalog_manager->AreTablesDeleting() && (num_sleeps++ != kMaxNumSleeps)) {
+  while (catalog_manager->AreTablesDeletingOrHiding() && (num_sleeps++ != kMaxNumSleeps)) {
     LOG(INFO) << "Tables are deleting...";
     std::this_thread::sleep_for(kSleepTime);
   }
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding())
+      << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
   ASSERT_OK(RestartCluster());
   // Refresh stale local variable after RestartSync.
   catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting());
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
 }
 
 TEST_F(PgMiniTest, DropDBWithTables) {
@@ -1071,16 +1079,17 @@ TEST_F(PgMiniTest, DropDBWithTables) {
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
   // User and system tables should be deleting then deleted.
   int num_sleeps = 0;
-  while (catalog_manager->AreTablesDeleting() && (num_sleeps++ != kMaxNumSleeps)) {
+  while (catalog_manager->AreTablesDeletingOrHiding() && (num_sleeps++ != kMaxNumSleeps)) {
     LOG(INFO) << "Tables are deleting...";
     std::this_thread::sleep_for(kSleepTime);
   }
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding())
+      << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
   ASSERT_OK(RestartCluster());
   catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting());
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables_after = tablet_lock->pb.table_ids_size();

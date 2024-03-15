@@ -1,3 +1,10 @@
+-- This test's output has temporary tables' schema names that contain the
+-- tserver uuid, which can lead to unstable results.
+-- Use replace_temp_schema_name to change the schema name to pg_temp_x so that
+-- the result is stable.
+select current_setting('data_directory') || '/describe.out' as desc_output_file
+\gset
+\set replace_temp_schema_name 'select regexp_replace(pg_read_file(:\'desc_output_file\'), \'pg_temp_.{32}_\\d+\', \'pg_temp_x\', \'g\')'
 -- Check for unsupported system columns.
 CREATE TABLE test_tab1(id INT);
 INSERT INTO test_tab1 VALUES (1) RETURNING ctid;
@@ -111,57 +118,65 @@ WITH yb_with AS (
 INSERT INTO test_temp_tab VALUES (5) RETURNING xmax
 ) SELECT count(*) FROM yb_with;
 */
+\o :desc_output_file
 EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab;
-             QUERY PLAN
--------------------------------------
- Seq Scan on pg_temp_2.test_temp_tab
-   Output: ctid
-(2 rows)
-
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_temp_tab;
-             QUERY PLAN
--------------------------------------
- Seq Scan on pg_temp_2.test_temp_tab
-   Output: cmin
-(2 rows)
-
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_temp_tab;
-             QUERY PLAN
--------------------------------------
- Seq Scan on pg_temp_2.test_temp_tab
-   Output: cmax
-(2 rows)
-
 -- Since xmin and xmax output can easily change, don't directly output them.
 EXPLAIN (VERBOSE, COSTS OFF)
 WITH yb_with AS (
 SELECT xmin FROM test_temp_tab
 ) SELECT count(*) FROM yb_with;
-                 QUERY PLAN
----------------------------------------------
- Aggregate
-   Output: count(*)
-   CTE yb_with
-     ->  Seq Scan on pg_temp_2.test_temp_tab
-           Output: test_temp_tab.xmin
-   ->  CTE Scan on yb_with
-         Output: yb_with.xmin
-(7 rows)
-
 EXPLAIN (VERBOSE, COSTS OFF)
 WITH yb_with AS (
 SELECT xmax FROM test_temp_tab
 ) SELECT count(*) FROM yb_with;
-                 QUERY PLAN
----------------------------------------------
- Aggregate
-   Output: count(*)
-   CTE yb_with
-     ->  Seq Scan on pg_temp_2.test_temp_tab
-           Output: test_temp_tab.xmax
-   ->  CTE Scan on yb_with
-         Output: yb_with.xmax
-(7 rows)
+\o
+:replace_temp_schema_name;
+                                 regexp_replace                                 
+--------------------------------------------------------------------------------
+                               QUERY PLAN                                      +
+ ----------------------------------------------------------------------        +
+  Seq Scan on pg_temp_x.test_temp_tab                                          +
+    Output: ctid                                                               +
+ (2 rows)                                                                      +
+                                                                               +
+                               QUERY PLAN                                      +
+ ----------------------------------------------------------------------        +
+  Seq Scan on pg_temp_x.test_temp_tab                                          +
+    Output: cmin                                                               +
+ (2 rows)                                                                      +
+                                                                               +
+                               QUERY PLAN                                      +
+ ----------------------------------------------------------------------        +
+  Seq Scan on pg_temp_x.test_temp_tab                                          +
+    Output: cmax                                                               +
+ (2 rows)                                                                      +
+                                                                               +
+                                   QUERY PLAN                                  +
+ ------------------------------------------------------------------------------+
+  Aggregate                                                                    +
+    Output: count(*)                                                           +
+    CTE yb_with                                                                +
+      ->  Seq Scan on pg_temp_x.test_temp_tab                                  +
+            Output: test_temp_tab.xmin                                         +
+    ->  CTE Scan on yb_with                                                    +
+          Output: yb_with.xmin                                                 +
+ (7 rows)                                                                      +
+                                                                               +
+                                   QUERY PLAN                                  +
+ ------------------------------------------------------------------------------+
+  Aggregate                                                                    +
+    Output: count(*)                                                           +
+    CTE yb_with                                                                +
+      ->  Seq Scan on pg_temp_x.test_temp_tab                                  +
+            Output: test_temp_tab.xmax                                         +
+    ->  CTE Scan on yb_with                                                    +
+          Output: yb_with.xmax                                                 +
+ (7 rows)                                                                      +
+                                                                               +
+ 
+(1 row)
 
 SELECT ctid FROM test_temp_tab;
  ctid
@@ -204,62 +219,70 @@ SELECT xmax FROM test_temp_tab
      3
 (1 row)
 
+\o :desc_output_file
 EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab WHERE id = 1;
-                           QUERY PLAN
-----------------------------------------------------------------
- Index Scan using test_temp_tab_pkey on pg_temp_2.test_temp_tab
-   Output: ctid
-   Index Cond: (test_temp_tab.id = 1)
-(3 rows)
-
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_temp_tab WHERE id = 2;
-                           QUERY PLAN
-----------------------------------------------------------------
- Index Scan using test_temp_tab_pkey on pg_temp_2.test_temp_tab
-   Output: cmin
-   Index Cond: (test_temp_tab.id = 2)
-(3 rows)
-
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_temp_tab WHERE id = 3;
-                           QUERY PLAN
-----------------------------------------------------------------
- Index Scan using test_temp_tab_pkey on pg_temp_2.test_temp_tab
-   Output: cmax
-   Index Cond: (test_temp_tab.id = 3)
-(3 rows)
-
 -- Since xmin and xmax output can easily change, don't directly output them.
 EXPLAIN (VERBOSE, COSTS OFF)
 WITH yb_with AS (
 SELECT xmin FROM test_temp_tab WHERE id = 4
 ) SELECT count(*) FROM yb_with;
-                               QUERY PLAN
-------------------------------------------------------------------------
- Aggregate
-   Output: count(*)
-   CTE yb_with
-     ->  Index Scan using test_temp_tab_pkey on pg_temp_2.test_temp_tab
-           Output: test_temp_tab.xmin
-           Index Cond: (test_temp_tab.id = 4)
-   ->  CTE Scan on yb_with
-         Output: yb_with.xmin
-(8 rows)
-
 EXPLAIN (VERBOSE, COSTS OFF)
 WITH yb_with AS (
 SELECT xmax FROM test_temp_tab WHERE id = 5
 ) SELECT count(*) FROM yb_with;
-                               QUERY PLAN
-------------------------------------------------------------------------
- Aggregate
-   Output: count(*)
-   CTE yb_with
-     ->  Index Scan using test_temp_tab_pkey on pg_temp_2.test_temp_tab
-           Output: test_temp_tab.xmax
-           Index Cond: (test_temp_tab.id = 5)
-   ->  CTE Scan on yb_with
-         Output: yb_with.xmax
-(8 rows)
+\o
+:replace_temp_schema_name;
+                                              regexp_replace                                               
+-----------------------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                                    +
+ -------------------------------------------------------------------------------------------------        +
+  Index Scan using test_temp_tab_pkey on pg_temp_x.test_temp_tab                                          +
+    Output: ctid                                                                                          +
+    Index Cond: (test_temp_tab.id = 1)                                                                    +
+ (3 rows)                                                                                                 +
+                                                                                                          +
+                                            QUERY PLAN                                                    +
+ -------------------------------------------------------------------------------------------------        +
+  Index Scan using test_temp_tab_pkey on pg_temp_x.test_temp_tab                                          +
+    Output: cmin                                                                                          +
+    Index Cond: (test_temp_tab.id = 2)                                                                    +
+ (3 rows)                                                                                                 +
+                                                                                                          +
+                                            QUERY PLAN                                                    +
+ -------------------------------------------------------------------------------------------------        +
+  Index Scan using test_temp_tab_pkey on pg_temp_x.test_temp_tab                                          +
+    Output: cmax                                                                                          +
+    Index Cond: (test_temp_tab.id = 3)                                                                    +
+ (3 rows)                                                                                                 +
+                                                                                                          +
+                                                QUERY PLAN                                                +
+ ---------------------------------------------------------------------------------------------------------+
+  Aggregate                                                                                               +
+    Output: count(*)                                                                                      +
+    CTE yb_with                                                                                           +
+      ->  Index Scan using test_temp_tab_pkey on pg_temp_x.test_temp_tab                                  +
+            Output: test_temp_tab.xmin                                                                    +
+            Index Cond: (test_temp_tab.id = 4)                                                            +
+    ->  CTE Scan on yb_with                                                                               +
+          Output: yb_with.xmin                                                                            +
+ (8 rows)                                                                                                 +
+                                                                                                          +
+                                                QUERY PLAN                                                +
+ ---------------------------------------------------------------------------------------------------------+
+  Aggregate                                                                                               +
+    Output: count(*)                                                                                      +
+    CTE yb_with                                                                                           +
+      ->  Index Scan using test_temp_tab_pkey on pg_temp_x.test_temp_tab                                  +
+            Output: test_temp_tab.xmax                                                                    +
+            Index Cond: (test_temp_tab.id = 5)                                                            +
+    ->  CTE Scan on yb_with                                                                               +
+          Output: yb_with.xmax                                                                            +
+ (8 rows)                                                                                                 +
+                                                                                                          +
+ 
+(1 row)
 
 SELECT ctid FROM test_temp_tab WHERE id = 1;
  ctid

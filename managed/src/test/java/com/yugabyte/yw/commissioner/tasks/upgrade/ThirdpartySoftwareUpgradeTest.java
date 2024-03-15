@@ -69,7 +69,8 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.CheckFollowerLag,
           TaskType.CheckFollowerLag,
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private int expectedUniverseVersion = 2;
 

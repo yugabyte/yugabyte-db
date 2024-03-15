@@ -266,7 +266,7 @@ void CatalogManagerBgTasks::Run() {
       WARN_NOT_OK(catalog_manager_->clone_state_manager()->Run(),
           "Failed to run CloneStateManager: ");
 
-      if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
+      if (!to_delete.empty() || catalog_manager_->AreTablesDeletingOrHiding()) {
         catalog_manager_->CleanUpDeletedTables(l.epoch());
       }
 
