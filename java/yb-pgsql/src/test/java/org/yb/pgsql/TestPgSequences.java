@@ -28,6 +28,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.yb.AssertionWrappers.*;
+import static org.junit.Assume.*;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgSequences extends BasePgSQLTest {
@@ -99,6 +100,8 @@ public class TestPgSequences extends BasePgSQLTest {
 
   @Test
   public void testSequencesWithCache() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CACHE 100");
       // Use only half of the cached values.
@@ -120,6 +123,8 @@ public class TestPgSequences extends BasePgSQLTest {
 
   @Test
   public void testSequencesWithCacheAndIncrement() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CACHE 50 INCREMENT 3");
       for (int i = 1; i <= 21; i+=3) {
@@ -192,6 +197,8 @@ public class TestPgSequences extends BasePgSQLTest {
 
   @Test
   public void testSequenceWithMaxValueAndCache() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 MAXVALUE 5 CACHE 10");
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
@@ -496,6 +503,8 @@ public class TestPgSequences extends BasePgSQLTest {
 
   @Test
   public void testLastvalInAnotherSessionFails() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1");
       statement.execute("SELECT nextval('s1')");
@@ -767,6 +776,8 @@ public class TestPgSequences extends BasePgSQLTest {
 
   @Test
   public void testNextValAsDefaultValueInTable() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CACHE 20");
       statement.execute("CREATE TABLE t(k int NOT NULL DEFAULT nextval('s1'), v int)");

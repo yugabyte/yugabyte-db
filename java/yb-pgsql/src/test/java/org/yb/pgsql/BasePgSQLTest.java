@@ -142,6 +142,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
   protected static final String CATALOG_CACHE_MISSES_METRICS = METRIC_PREFIX + "CatalogCacheMisses";
 
+  // Some reasons why the test should not be run with connection manager
+  protected static final String UNIQUE_PHYSICAL_CONNS_NEEDED =
+      "Test needs two different physical connections. With Connection Manager the logical" +
+        " connections will share the same physical connection in a single threaded test if" +
+        " no active transactions are there on the first connection";
+
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
   protected boolean startRedisProxy = false;
@@ -559,6 +565,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       destroyMiniCluster();
       miniCluster = null;
     }
+  }
+
+  protected boolean isTestRunningWithConnectionManager() {
+    return ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR;
   }
 
   protected void recreateWithYsqlVersion(YsqlSnapshotVersion version) throws Exception {
