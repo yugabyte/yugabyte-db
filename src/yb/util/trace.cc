@@ -279,6 +279,15 @@ struct TraceEntry {
 };
 
 Trace::Trace() {
+  init_mem_tracker();
+}
+
+void Trace::init_mem_tracker(){
+  MemTrackerPtr server_tracker = MemTracker::FindTracker("server", nullptr);
+  if(server_tracker){
+    mem_tracker_ = MemTracker::FindOrCreateTracker("Trace", server_tracker);
+    mem_tracker_->Consume(sizeof(*this));
+  }
 }
 
 ThreadSafeObjectPool<ThreadSafeArena>& ArenaPool() {
@@ -288,11 +297,26 @@ ThreadSafeObjectPool<ThreadSafeArena>& ArenaPool() {
   return result;
 }
 
+void Trace::ConsumeMemory(int64_t bytes){
+  if(mem_tracker_){
+    mem_tracker_->Consume(bytes);
+  }
+}
+
 Trace::~Trace() {
+  size_t children_memory = sizeof(TracePtr) * child_traces_.size();
+  ReleaseMemory(static_cast<int64_t>(sizeof(*this)) + static_cast<int64_t>(children_memory));
+
   auto* arena = arena_.load(std::memory_order_acquire);
   if (arena) {
     arena->Reset(ResetMode::kKeepLast);
     ArenaPool().Release(arena);
+  }
+}
+
+void Trace::ReleaseMemory(int64_t bytes){
+  if(mem_tracker_){
+    mem_tracker_->Release(bytes);
   }
 }
 
@@ -308,6 +332,7 @@ ThreadSafeArena* Trace::GetAndInitArena() {
       return existing_arena;
     }
   }
+  arena->SetMemTracker(mem_tracker_);
   return arena;
 }
 
@@ -493,6 +518,8 @@ void Trace::AddChildTrace(Trace* child_trace) {
     std::lock_guard l(lock_);
     scoped_refptr<Trace> ptr(child_trace);
     child_traces_.push_back(ptr);
+
+    ConsumeMemory(static_cast<int64_t>(sizeof(ptr)));
   }
   CHECK(!child_trace->HasOneRef());
 }

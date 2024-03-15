@@ -54,6 +54,7 @@
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/slice.h"
+#include "yb/util/mem_tracker.h"
 
 namespace yb {
 
@@ -235,6 +236,8 @@ class ArenaBase {
   // component.
   size_t UsedBytes();
 
+  void SetMemTracker(MemTrackerPtr mem_tracker);
+
  private:
   typedef typename Traits::mutex_type mutex_type;
   // Encapsulates a single buffer in the arena.
@@ -267,6 +270,9 @@ class ArenaBase {
     return current_.store(c, std::memory_order_release);
   }
 
+  void ConsumeMemory(int64_t bytes);
+  void ReleaseMemory(int64_t bytes);
+
   BufferAllocator* const buffer_allocator_;
 
   // The current component to allocate from.
@@ -284,6 +290,8 @@ class ArenaBase {
   // allocated and added to the arena's list. Also covers any other
   // mutation of the component data structure (eg Reset).
   mutable mutex_type component_lock_;
+
+  MemTrackerPtr mem_tracker_ = nullptr;
 };
 
 // STL-compliant allocator, for use with hash_maps and other structures

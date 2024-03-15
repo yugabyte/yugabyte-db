@@ -135,6 +135,7 @@ ArenaBase<Traits>::ArenaBase(size_t initial_buffer_size, size_t max_buffer_size)
 
 template <class Traits>
 ArenaBase<Traits>::~ArenaBase() {
+  ReleaseMemory(memory_footprint());
   AcquireLoadCurrent()->Destroy(buffer_allocator_);
 }
 
@@ -222,6 +223,7 @@ void ArenaBase<Traits>::AddComponentUnlocked(Buffer buffer, Component* component
     second_ = component;
   }
   arena_footprint_ += component->full_size();
+  ConsumeMemory(component->full_size());
   if (PREDICT_FALSE(arena_footprint_ > FLAGS_arena_warn_threshold_bytes) && !warned_) {
     LOG(WARNING) << "Arena " << reinterpret_cast<const void *>(this)
                  << " footprint (" << arena_footprint_ << " bytes) exceeded warning threshold ("
@@ -253,13 +255,17 @@ void ArenaBase<Traits>::Reset(ResetMode mode) {
     // detection of memory-related bugs (invalid shallow copies, etc.).
     size_t last_size = current->full_size();
     current->Destroy(buffer_allocator_);
+    ReleaseMemory(arena_footprint_);
     arena_footprint_ = 0;
     ReleaseStoreCurrent(nullptr);
     AddComponentUnlocked(NewBuffer(last_size, 0));
 #else
+    size_t bytes_before = arena_footprint_;
     arena_footprint_ = current->full_size();
+    ConsumeMemory(static_cast<int64_t>(bytes_before) - static_cast<int64_t>(arena_footprint_));
 #endif
   } else {
+    ReleaseMemory(arena_footprint_);
     arena_footprint_ = 0;
   }
 }
@@ -275,6 +281,34 @@ size_t ArenaBase<Traits>::UsedBytes() {
   std::lock_guard lock(component_lock_);
   return arena_footprint_ - AcquireLoadCurrent()->free_bytes();
 }
+
+template <class Traits>
+void ArenaBase<Traits>::SetMemTracker(MemTrackerPtr new_mem_tracker){
+  if(mem_tracker_ && mem_tracker_->id() != new_mem_tracker->id()){
+    ReleaseMemory(memory_footprint());
+    mem_tracker_ = nullptr;
+  }
+
+  if(!mem_tracker_){
+    mem_tracker_ = new_mem_tracker;
+    ConsumeMemory(memory_footprint());
+  }
+}
+
+template <class Traits>
+void ArenaBase<Traits>::ConsumeMemory(int64_t bytes){
+  if(mem_tracker_){
+    mem_tracker_->Consume(bytes);
+  }
+}
+
+template <class Traits>
+void ArenaBase<Traits>::ReleaseMemory(int64_t bytes){
+  if(mem_tracker_){
+    mem_tracker_->Release(bytes);
+  }
+}
+
 
 // Explicit instantiation.
 template class ArenaBase<ThreadSafeArenaTraits>;

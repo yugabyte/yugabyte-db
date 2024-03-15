@@ -49,6 +49,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
+#include "yb/util/mem_tracker.h"
 
 DECLARE_bool(use_monotime_for_traces);
 DECLARE_int32(tracing_level);
@@ -265,6 +266,12 @@ class Trace : public RefCountedThreadSafe<Trace> {
   // Add the entry to the linked list of entries.
   void AddEntry(TraceEntry* entry);
 
+  //These functions manage the memory tracking with the use of Arenas
+  void init_mem_tracker();
+  void set_arena_memtracker();
+  void ConsumeMemory(int64_t bytes);
+  void ReleaseMemory(int64_t bytes);
+
   std::atomic<ThreadSafeArena*> arena_ = {nullptr};
 
   // Lock protecting the entries linked list.
@@ -283,6 +290,8 @@ class Trace : public RefCountedThreadSafe<Trace> {
   std::vector<scoped_refptr<Trace> > child_traces_;
 
   DISALLOW_COPY_AND_ASSIGN(Trace);
+
+  MemTrackerPtr mem_tracker_ = nullptr;
 };
 
 typedef scoped_refptr<Trace> TracePtr;
