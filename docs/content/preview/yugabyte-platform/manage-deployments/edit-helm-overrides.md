@@ -25,7 +25,6 @@ To edit Kubernetes overrides, do the following:
 
 1. Complete the dialog by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
 
-<!-- TODO Uncomment for 2.21
 ## Upgrade universes for GKE service account-based IAM
 
 If you are using Google Cloud Storage (GCS) for backups, you can enable GKE service account-based IAM (GCP IAM) so that Kubernetes universes can access GCS.
@@ -47,4 +46,3 @@ To upgrade an existing universe to use GCP IAM, do the following:
     nodeSelector:
       iam.gke.io/gke-metadata-server-enabled: "true"
     ```
--->
