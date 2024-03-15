@@ -36,7 +36,7 @@ If you are upgrading a YugabyteDB Anywhere installation with high availability e
 
 {{< note title="Upgrading YBA on deprecated operating systems" >}}
 
-If you are running YBA on a [deprecated OS](../../reference/configuration/operating-systems/#yugabytedb-anywhere), you need to update your OS before you can upgrade YBA to the next major release.
+If you are running YBA on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YBA to the next major release.
 
 {{< /note >}}
 

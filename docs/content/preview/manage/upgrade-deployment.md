@@ -26,7 +26,7 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 Review the following information before starting an upgrade.
 {{< /warning >}}
 
-- Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/#yugabytedb-anywhere), you need to update your OS before you can upgrade to the next major YugabyteDB release.
+- Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
 
 - You can only upgrade to the latest minor version of every release.
 
