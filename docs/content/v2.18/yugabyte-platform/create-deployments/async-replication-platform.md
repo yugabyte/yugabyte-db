@@ -148,7 +148,7 @@ This page allows you to do the following:
 
   - To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. If you decide to remove an index table from the replication group, it does not remove its main table from the replication group.
 
-    {{<note title="Dropping tables">}}
+    {{<note title="Before dropping tables">}}
 Always remove tables from replication _before_ you drop them from the database.
     {{</note>}}
 
