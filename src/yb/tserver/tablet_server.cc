@@ -38,7 +38,6 @@
 #include <thread>
 #include <utility>
 
-#include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
@@ -1055,6 +1054,19 @@ void TabletServer::SetYsqlDBCatalogVersions(
     // https://github.com/yugabyte/yugabyte-db/issues/16114.
     InvalidatePgTableCache();
   }
+}
+
+void TabletServer::WriteServerMetaCacheAsJson(JsonWriter* writer) {
+  writer->StartObject();
+  DbServerBase::WriteMainMetaCacheAsJson(writer);
+  if (auto xcluster_consumer = GetXClusterConsumer()) {
+    auto clients = xcluster_consumer->GetYbClientsList();
+    for (auto client : clients) {
+      writer->String(client->client_name());
+      client->AddMetaCacheInfo(writer);
+    }
+  }
+  writer->EndObject();
 }
 
 void TabletServer::UpdateTransactionTablesVersion(uint64_t new_version) {

@@ -866,5 +866,14 @@ Status XClusterConsumer::ReportNewAutoFlagConfigVersion(
       replication_group_id, new_version);
 }
 
+std::vector<std::shared_ptr<client::YBClient>> XClusterConsumer::GetYbClientsList() const {
+  SharedLock read_lock(pollers_map_mutex_);
+  std::vector<std::shared_ptr<client::YBClient>> result;
+  for (auto& [_, remote_client] : remote_clients_) {
+    result.push_back(remote_client->client);
+  }
+  return result;
+}
+
 }  // namespace tserver
 }  // namespace yb
