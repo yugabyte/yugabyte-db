@@ -193,9 +193,7 @@ export default class ClusterInfoPanel extends Component {
 
               <Row className={'cluster-metadata'}>
                 <Col lg={8} md={6} sm={6} xs={6}>
-                  <span className={'cluster-metadata__label'}>
-                    {isPrimary ? 'Replication Factor:' : 'Read Replicas:'}
-                  </span>
+                <span className={'cluster-metadata__label'}>{'Replication Factor:'}</span>
                 </Col>
                 <Col lg={4} md={6} sm={6} xs={6}>
                   <span className={'cluster-metadata__align'}>
