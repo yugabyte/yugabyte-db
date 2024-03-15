@@ -1688,3 +1688,27 @@ templates:
         RPC queue size is high for universe '{{ $labels.source_name }}'.
 
         Affected nodes: {{ $labels.affected_node_names }}
+
+
+  NODE_AGENT_DOWN:
+    name: Node agent down
+    description: Node agent is down
+    queryTemplate: count by(node_name) (min_over_time(ybp_universe_node_process_status{universe_uuid="__universeUuid__"}[1m]) == 1
+      and on (node_address) (label_replace(max_over_time(up{customer_uuid="__customerUuid__", job="node-agent"}[1m]), "node_address", "$1", "instance", "(.+):([0-9]+)") < 1)) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by(node_name) (min_over_time(ybp_universe_node_process_status{universe_uuid='{{ $labels.universe_uuid }}'}[1m]) == 1
+        and on (node_address) (label_replace(max_over_time(up{customer_uuid='{{ $labels.customer_uuid }}', job='node-agent'}[1m]), 'node_address', '$1', 'instance', '(.+):([0-9]+)') < 1)) {{ query_condition }} {{ query_threshold }}" }} {{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Node agent server has been down for universe '{{ $labels.source_name }}' for more than 1 minute.
+
+        Affected nodes: {{ $labels.affected_node_names }}
