@@ -4,6 +4,7 @@
 
 -- Always choose index scan.
 SET enable_seqscan = off;
+SET enable_bitmapscan = on;
 SET yb_test_ybgin_disable_cost_factor = 0.5;
 
 --
@@ -179,3 +180,4 @@ CREATE INDEX ON vectors USING ybgin (v);
 -- Cleanup
 DISCARD TEMP;
 RESET enable_seqscan;
+RESET enable_bitmapscan;

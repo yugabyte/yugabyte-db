@@ -191,6 +191,7 @@ SELECT i FROM tmp WHERE j = -5;
  5
 (1 row)
 
+SET enable_bitmapscan = on;
 EXPLAIN (costs off)
 /*+IndexScan(tmp_j_idx) */
 SELECT i FROM tmp WHERE j = -5;
@@ -209,6 +210,7 @@ SELECT i FROM tmp WHERE j = -5;
  5
 (1 row)
 
+RESET enable_bitmapscan;
 EXPLAIN (costs off)
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
