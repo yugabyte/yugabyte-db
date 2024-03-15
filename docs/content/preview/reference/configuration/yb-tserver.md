@@ -1375,6 +1375,21 @@ Enable or disable the query planner's use of Batched Nested Loop Join.
 
 Default: true
 
+##### yb_enable_base_scans_cost_model
+
+{{<badge/tp>}} Enable the YugabyteDB cost model for Sequential and Index scans. When enabling this flag, it is also recommended to do the following:
+
+- enable `yb_enable_optimizer_statistics`
+- run ANALYZE on user tables to maintain up-to-date statistics.
+
+Default: false
+
+##### yb_enable_optimizer_statistics
+
+{{<badge/tp>}} Enable use of the PostgreSQL selectivity model. This feature is currently in preview.
+
+Default: false
+
 ##### yb_fetch_size_limit
 
 Maximum size (in MB) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
