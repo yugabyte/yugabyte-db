@@ -201,7 +201,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // Try setting a flag which isn't runtime-modifiable
   {
     RpcController controller;
-    req.set_flag("tablet_do_dup_key_checks");
+    req.set_flag("tablet_do_compaction_cleanup_for_intents");
     req.set_value("true");
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
@@ -211,7 +211,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // Try again, but with the force flag.
   {
     RpcController controller;
-    req.set_flag("tablet_do_dup_key_checks");
+    req.set_flag("tablet_do_compaction_cleanup_for_intents");
     req.set_value("true");
     req.set_force(true);
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
