@@ -711,6 +711,10 @@ message GetUDTypeInfoResponsePB {
   optional UDTypeInfoPB udtype = 2;
 }
 
+// ============================================================================
+//  YSQL DDL Atomicity
+// ============================================================================
+
 message ReportYsqlDdlTxnStatusRequestPB {
   // The transaction whose status is being reported.
   optional bytes transaction_id = 1;
@@ -721,6 +725,16 @@ message ReportYsqlDdlTxnStatusRequestPB {
 
 message ReportYsqlDdlTxnStatusResponsePB {
   optional MasterErrorPB error = 1;
+}
+
+message IsYsqlDdlVerificationDoneRequestPB {
+  optional TransactionMetadataPB transaction = 1;
+}
+
+message IsYsqlDdlVerificationDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bool done = 2;
 }
 
 service MasterDdl {
@@ -775,4 +789,6 @@ service MasterDdl {
 
   rpc ReportYsqlDdlTxnStatus(ReportYsqlDdlTxnStatusRequestPB) returns
       (ReportYsqlDdlTxnStatusResponsePB);
+  rpc IsYsqlDdlVerificationDone(IsYsqlDdlVerificationDoneRequestPB) returns
+      (IsYsqlDdlVerificationDoneResponsePB);
 }

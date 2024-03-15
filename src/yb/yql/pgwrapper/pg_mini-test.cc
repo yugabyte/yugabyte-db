@@ -1036,21 +1036,22 @@ TEST_F(PgMiniTest, DropDBMarkDeleted) {
   auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
 
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting());
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
   // System tables should be deleting then deleted.
   int num_sleeps = 0;
-  while (catalog_manager->AreTablesDeleting() && (num_sleeps++ != kMaxNumSleeps)) {
+  while (catalog_manager->AreTablesDeletingOrHiding() && (num_sleeps++ != kMaxNumSleeps)) {
     LOG(INFO) << "Tables are deleting...";
     std::this_thread::sleep_for(kSleepTime);
   }
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding())
+      << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
   ASSERT_OK(RestartCluster());
   // Refresh stale local variable after RestartSync.
   catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting());
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
 }
 
 TEST_F(PgMiniTest, DropDBWithTables) {
@@ -1078,16 +1079,17 @@ TEST_F(PgMiniTest, DropDBWithTables) {
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
   // User and system tables should be deleting then deleted.
   int num_sleeps = 0;
-  while (catalog_manager->AreTablesDeleting() && (num_sleeps++ != kMaxNumSleeps)) {
+  while (catalog_manager->AreTablesDeletingOrHiding() && (num_sleeps++ != kMaxNumSleeps)) {
     LOG(INFO) << "Tables are deleting...";
     std::this_thread::sleep_for(kSleepTime);
   }
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding())
+      << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
   ASSERT_OK(RestartCluster());
   catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting());
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables_after = tablet_lock->pb.table_ids_size();
