@@ -97,12 +97,12 @@ public class CoreFilesComponentTest extends FakeDBApplication {
     doCallRealMethod()
         .when(mockSupportBundleUtil)
         .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
-    List<Pair<Integer, String>> fileSizeNameList =
-        List.of(
-            new Pair<>(101, "core_test.2"),
-            new Pair<>(15, "core_test.3"),
-            new Pair<>(100, "core_test.1"),
-            new Pair<>(10, "core_test.4"));
+    List<Pair<Long, String>> fileSizeNameList =
+        Arrays.asList(
+            new Pair<>(101L, "core_test.2"),
+            new Pair<>(15L, "core_test.3"),
+            new Pair<>(100L, "core_test.1"),
+            new Pair<>(10L, "core_test.4"));
     doReturn(fileSizeNameList)
         .when(mockNodeUniverseManager)
         .getNodeFilePathsAndSize(any(), any(), any());
@@ -185,7 +185,7 @@ public class CoreFilesComponentTest extends FakeDBApplication {
     verify(mockSupportBundleUtil)
         .downloadNodeLevelComponent(
             any(), any(), any(), any(), any(), any(), captorSourceNodeFiles.capture(), any());
-    List<String> expectedSourceNodeFiles = List.of("cores/core_test.3", "cores/core_test.1");
+    List<String> expectedSourceNodeFiles = Arrays.asList("cores/core_test.3", "cores/core_test.1");
     System.out.println("CAPTOR: " + captorSourceNodeFiles.getValue().toString());
     assertEquals(expectedSourceNodeFiles, captorSourceNodeFiles.getValue());
 
