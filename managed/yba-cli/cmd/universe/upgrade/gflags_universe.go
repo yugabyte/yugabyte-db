@@ -105,7 +105,7 @@ var upgradeGflagsCmd = &cobra.Command{
 			if !inheritFromPrimary {
 				rrSpecificGflags.SetInheritFromPrimary(false)
 				var oldRRTserverGflags map[string]string
-				if !clusterInheritFromPrimaryValue{
+				if !clusterInheritFromPrimaryValue {
 					oldRRTserverGflags = rrGflagsValue[util.TserverServerType]
 				} else {
 					oldRRTserverGflags = oldMasterGflags
