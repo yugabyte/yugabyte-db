@@ -91,7 +91,7 @@ For instructions on installing YugabyteDB Anywhere, refer to [Install YugabyteDB
 
 ### What are the OS requirements and permissions to run YugabyteDB Anywhere?
 
-For a list of operating systems supported by YugabyteDB Anywhere, see [Operating system support](../../reference/configuration/operating-systems/).
+For a list of operating systems supported by YugabyteDB Anywhere, see [Operating system support](../../reference/configuration/operating-systems/). YugabyteDB Anywhere doesn't support ARM architectures (but can be used to deploy universes to ARM-based nodes).
 
 For Replicated-based installations, YugabyteDB Anywhere supports operating systems supported by Replicated. Replicated only supports Linux-based operating systems. The Linux OS should be 3.10+ kernel, 64-bit, and ready to run docker-engine 1.7.1 - 17.06.2-ce (with 17.06.2-ce being the recommended version). For a complete list of operating systems supported by Replicated, see [Supported Operating Systems](https://help.replicated.com/docs/native/customer-installations/supported-operating-systems/).
 
