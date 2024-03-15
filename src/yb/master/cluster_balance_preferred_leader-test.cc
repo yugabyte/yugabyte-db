@@ -585,5 +585,29 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingWithLeaderBlacklist) {
   LOG(INFO) << "Leader distribution: 2 2 0 0";
 }
 
+TEST_F(TestLoadBalancerPreferredLeader, TestAffinitizedLeaderSelectionOnLeaderStepdown) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("0000", "a", ""), SetupTS("1111", "a", ""), SetupTS("2222", "b", ""),
+      SetupTS("3333", "b", ""), SetupTS("4444", "c", ""), SetupTS("5555", "c", "")};
+  PrepareTestState(ts_descs);
+
+  PrepareAffinitizedLeaders({{"a"}});
+  
+  // Leader blacklist ts0.
+  AddLeaderBlacklist(ts_descs_[0]->permanent_uuid());
+  LOG(INFO) << "Leader Blacklist: ts0";
+  
+  ASSERT_OK(AnalyzeTablets());
+  
+  auto to_ts_desc = ts_descs_[0].get();
+  auto replicas = tablets_[0]->GetReplicaLocations();
+  auto dest_replica = std::find_if(
+        replicas->begin(), replicas->end(),
+        [&to_ts_desc](const auto& replica) { return (replica.second.ts_desc->permanent_uuid() == 
+                    to_ts_desc->permanent_uuid() && replica.second.role == PeerRole::LEADER); });
+    ASSERT_NE(dest_replica, replicas->end());
+
+}
+
 }  // namespace master
 }  // namespace yb

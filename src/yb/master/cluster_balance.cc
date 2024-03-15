@@ -1396,6 +1396,51 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
   FATAL_ERROR("Load balancing algorithm reached invalid state!");
 }
 
+Result<bool> ClusterLoadBalancer::GetCandidateToMoveLeaderWithinAffinityZone(
+    const vector<TabletServerId>& sorted_leader_load,
+    const TabletId& tablet_id,
+    const TabletServerId& from_ts,
+    TabletServerId* to_ts) {
+  if(sorted_leader_load.empty()){
+      return false;
+  }
+  ssize_t last_pos = sorted_leader_load.size() - 1;
+  for (ssize_t left = 0; left <= last_pos; ++left) {
+    const TabletServerId& low_load_uuid = sorted_leader_load[left];
+    auto low_leader_blacklisted = (global_state_->leader_blacklisted_servers_.find(low_load_uuid)
+        != global_state_->leader_blacklisted_servers_.end());
+    if (low_leader_blacklisted) {
+      // Left marker has gone beyond non-leader blacklisted tservers.
+      return false; 
+    }
+    if(low_load_uuid == from_ts){
+      // New TS to move leader to is the same as the current TS.
+      continue;
+    }
+    // Check if tserver we are moving to already has a replica of the tablet.
+    if(state_->per_ts_meta_[low_load_uuid].running_tablets.find(tablet_id)
+        != state_->per_ts_meta_[low_load_uuid].running_tablets.end()) {
+      *to_ts = low_load_uuid;
+      return true;
+    }
+  }
+  return false;
+}
+
+Result<bool> ClusterLoadBalancer::GetCandidateToMoveLeaderWithinAffinitizedPriorities(
+    const TabletId& tablet_id,
+    const TabletServerId& from_ts,
+    TabletServerId* to_ts) {
+    // std::string* to_ts_path) {
+  for (const auto& leader_set : state_->sorted_leader_load_) {
+    if (VERIFY_RESULT(GetCandidateToMoveLeaderWithinAffinityZone(
+      leader_set, tablet_id, from_ts, to_ts))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts) {
   DCHECK(!state_->allow_only_leader_balancing_);
@@ -1582,8 +1627,17 @@ Status ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletSe
 Status ClusterLoadBalancer::RemoveReplica(
     const TabletId& tablet_id, const TabletServerId& ts_uuid) {
   LOG(INFO) << Substitute("Removing replica $0 from tablet $1", ts_uuid, tablet_id);
-  RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false /* is_add */,
+  // Leader should first try to stepdown to a TS in the preferred zone.
+  TabletServerId* new_leader_ts_uuid = nullptr;
+  if(VERIFY_RESULT(GetCandidateToMoveLeaderWithinAffinitizedPriorities(tablet_id, ts_uuid, 
+                                                                      new_leader_ts_uuid))){
+    const TabletServerId& to_uuid = *new_leader_ts_uuid;
+    RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false /* is_add */,
+                                   true /* should_remove_leader */, to_uuid));
+  }else{
+    RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false /* is_add */,
                                    true /* should_remove_leader */));
+  }
   return state_->RemoveReplica(tablet_id, ts_uuid);
 }
 

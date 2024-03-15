@@ -259,6 +259,17 @@ class ClusterLoadBalancer {
       const ReplicationInfoPB& replication_info,
       std::vector<AffinitizedZonesSet>* affinitized_zones) const;
 
+  Result<bool> GetCandidateToMoveLeaderWithinAffinityZone(
+    const std::vector<TabletServerId>& sorted_leader_load,
+    const TabletId& tablet_id,
+    const TabletServerId& from_ts,
+    TabletServerId* to_ts);
+
+  Result<bool> GetCandidateToMoveLeaderWithinAffinitizedPriorities(
+    const TabletId& tablet_id,
+    const TabletServerId& from_ts,
+    TabletServerId* to_ts);
+  
   // Go through sorted_leader_load_ one priority at a time and move leaders so as to get an even
   // balance per table and globally.
   //
