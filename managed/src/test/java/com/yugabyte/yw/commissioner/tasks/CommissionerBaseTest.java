@@ -654,9 +654,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 String.format(
                     "Mismatched order detected in subtasks (pending %d/%d) on retry %d. Expected:"
                         + " %s, found: %s",
-                    retryCount,
                     pendingSubTaskCount,
                     expectedSubTaskTypes.size(),
+                    retryCount,
                     expectedTailTaskTypes,
                     tailTaskTypes));
           }
