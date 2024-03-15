@@ -660,7 +660,7 @@ public class NodeUniverseManager extends DevopsBase {
    * @param remoteDirPath
    * @return the list of pairs (size, name)
    */
-  public List<Pair<Integer, String>> getNodeFilePathsAndSize(
+  public List<Pair<Long, String>> getNodeFilePathsAndSize(
       NodeDetails node, Universe universe, String remoteDirPath) {
     String randomUUIDStr = UUID.randomUUID().toString();
     String localTempFilePath =
@@ -685,7 +685,7 @@ public class NodeUniverseManager extends DevopsBase {
 
     // Populate the text file into array.
     List<String> nodeFilePathStrings = Arrays.asList();
-    List<Pair<Integer, String>> nodeFileSizePathStrings = new ArrayList<>();
+    List<Pair<Long, String>> nodeFileSizePathStrings = new ArrayList<>();
     try {
       nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
       log.debug("List of files found on the node '{}': '{}'", node.nodeName, nodeFilePathStrings);
@@ -693,7 +693,7 @@ public class NodeUniverseManager extends DevopsBase {
         String[] outputLineSplit = outputLine.split("\\s+", 2);
         if (!StringUtils.isBlank(outputLine) && outputLineSplit.length == 2) {
           nodeFileSizePathStrings.add(
-              new Pair<>(Integer.valueOf(outputLineSplit[0]), outputLineSplit[1]));
+              new Pair<>(Long.valueOf(outputLineSplit[0]), outputLineSplit[1]));
         }
       }
     } catch (IOException e) {
