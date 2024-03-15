@@ -183,10 +183,16 @@ YB_DEFINE_ENUM(
     (kReady)
 );
 
-using DdlTxnIdToTablesMap =
-  std::unordered_map<TransactionId, std::vector<scoped_refptr<TableInfo>>, TransactionIdHash>;
-
 const std::string& GetIndexedTableId(const SysTablesEntryPB& pb);
+
+YB_DEFINE_ENUM(YsqlDdlVerificationState,
+    (kDdlInProgress)
+    (kDdlPostProcessing)
+    (kDdlPostProcessingFailed));
+
+YB_DEFINE_ENUM(TxnState, (kUnknown) (kCommitted) (kAborted));
+
+struct YsqlTableDdlTxnState;
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -342,9 +348,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status WaitForAlterTableToFinish(const TableId& table_id, CoarseTimePoint deadline);
 
+  void ScheduleVerifyTablePgLayer(TransactionMetadata txn,
+      const TableInfoPtr& table, const LeaderEpoch& epoch);
+
   // Called when transaction associated with table create finishes. Verifies postgres layer present.
-  Status VerifyTablePgLayer(
-      scoped_refptr<TableInfo> table, bool txn_query_succeeded, const LeaderEpoch& epoch);
+  Status VerifyTablePgLayer(scoped_refptr<TableInfo> table, Result<bool> exists,
+    const LeaderEpoch& epoch);
 
   // Truncate the specified table.
   //
@@ -436,40 +445,59 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<NamespaceId> GetTableNamespaceId(TableId table_id) EXCLUDES(mutex_);
 
-  void ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>& table,
-                                   const TransactionMetadata& txn, const LeaderEpoch& epoch)
-                                   EXCLUDES(ddl_txn_verifier_mutex_);
+  Status ScheduleYsqlTxnVerification(const TableInfoPtr& table,
+                                     const TransactionMetadata& txn, const LeaderEpoch& epoch)
+                                     EXCLUDES(ddl_txn_verifier_mutex_);
 
-  Status YsqlTableSchemaChecker(scoped_refptr<TableInfo> table,
-                                const std::string& txn_id_pb,
-                                bool txn_rpc_success, const LeaderEpoch& epoch);
+  // If YsqlDdlVerificationState already exists for 'txn', update it by adding an entry for 'table'.
+  // Otherwise, create a new YsqlDdlVerificationState for 'txn' with an entry for 'table'.
+  // Returns true if a new YsqlDdlVerificationState was created.
+  bool CreateOrUpdateDdlTxnVerificationState(
+      const TableInfoPtr& table, const TransactionMetadata& txn)
+      EXCLUDES(ddl_txn_verifier_mutex_);
 
-  Status YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table,
-                                    const std::string& txn_id_pb,
-                                    bool success, const LeaderEpoch& epoch);
+  // Schedules a task to find the status of 'txn' and update the schema of 'table' based on whether
+  // 'txn' was committed or aborted. This function should only ever be invoked after using
+  // the above CreateOrUpdateDdlTxnVerificationState to verify that no task for the same transaction
+  // has already been invoked. Scheduling two tasks for the same transaction will not lead to any
+  // correctness issues, but will lead to unnecessary work (i.e. polling the transaction
+  // coordinator and performing schema comparison).
+  Status ScheduleVerifyTransaction(const TableInfoPtr& table,
+                                   const TransactionMetadata& txn, const LeaderEpoch& epoch);
+
+  Status YsqlTableSchemaChecker(TableInfoPtr table,
+                                const std::string& pb_txn_id,
+                                Result<bool> is_committed,
+                                const LeaderEpoch& epoch);
+
+  Status YsqlDdlTxnCompleteCallback(const std::string& pb_txn_id,
+                                    bool is_committed,
+                                    const LeaderEpoch& epoch);
 
   Status YsqlDdlTxnCompleteCallbackInternal(
       TableInfo* table, const TransactionId& txn_id, bool success, const LeaderEpoch& epoch);
 
-  Status HandleSuccessfulYsqlDdlTxn(
-      TableInfo* table, TableInfo::WriteLock* l, const LeaderEpoch& epoch);
+  Status HandleSuccessfulYsqlDdlTxn(const YsqlTableDdlTxnState txn_data);
 
-  Status HandleAbortedYsqlDdlTxn(
-      TableInfo* table, TableInfo::WriteLock* l, const LeaderEpoch& epoch);
+  Status HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_data);
 
-  Status ClearYsqlDdlTxnState(TableInfo* table, TableInfo::WriteLock* l, const LeaderEpoch& epoch);
+  Status ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data);
 
-  Status YsqlDdlTxnAlterTableHelper(TableInfo *table,
-                                    TableInfo::WriteLock* l,
+  Status YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                     const std::vector<DdlLogEntry>& ddl_log_entries,
-                                    const std::string& new_table_name,
-                                    const LeaderEpoch& epoch);
+                                    const std::string& new_table_name);
 
-  Status YsqlDdlTxnDropTableHelper(
-      TableInfo* table, TableInfo::WriteLock* l, const LeaderEpoch& epoch);
+  Status YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data);
 
   Status WaitForDdlVerificationToFinish(
-      const scoped_refptr<TableInfo>& table, const std::string& pb_txn_id);
+      const TableInfoPtr& table, const std::string& pb_txn_id);
+
+  void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
+
+  void RemoveDdlTransactionState(
+      const TableId& table_id, const std::vector<TransactionId>& txn_ids);
+
+  Status TriggerDdlVerificationIfNeeded(const TransactionMetadata& txn, const LeaderEpoch& epoch);
 
   // Get the information about the specified table.
   Status GetTableSchema(const GetTableSchemaRequestPB* req,
@@ -1166,6 +1194,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  Status IsYsqlDdlVerificationDone(
+      const IsYsqlDdlVerificationDoneRequestPB* req,
+      IsYsqlDdlVerificationDoneResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   Status GetStatefulServiceLocation(
       const GetStatefulServiceLocationRequestPB* req,
       GetStatefulServiceLocationResponsePB* resp);
@@ -1587,6 +1621,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class YsqlBackendsManager;
   friend class BackendsCatalogVersionJob;
   friend class AddTableToXClusterTargetTask;
+  friend class VerifyDdlTransactionTask;
 
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
@@ -1665,8 +1700,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                TransactionMetadata txn, const LeaderEpoch& epoch);
 
   // Called when transaction associated with NS create finishes. Verifies postgres layer present.
-  Status VerifyNamespacePgLayer(
-      scoped_refptr<NamespaceInfo> ns, bool txn_query_succeeded, const LeaderEpoch& epoch);
+  void ScheduleVerifyNamespacePgLayer(TransactionMetadata txn,
+      scoped_refptr<NamespaceInfo> ns, const LeaderEpoch& epoch);
+
+  Status VerifyNamespacePgLayer(scoped_refptr<NamespaceInfo> ns, Result<bool> exists,
+      const LeaderEpoch& epoch);
 
   Status ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
                                          TabletLocationsPB* locs_pb);
@@ -1791,7 +1829,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                TableToTabletInfos *tablets_to_process);
 
   // Determine whether any tables are in the DELETING state.
-  bool AreTablesDeleting() override;
+  bool AreTablesDeletingOrHiding() override;
 
   // Task that takes care of the tablet assignments/creations.
   // Loops through the "not created" tablets and sends a CreateTablet() request.
@@ -2407,9 +2445,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // A pointer to the system.partitions tablet for the RebuildYQLSystemPartitions bg task.
   std::shared_ptr<SystemTablet> system_partitions_tablet_ = nullptr;
-
-  // Handles querying and processing YSQL DDL Transactions as a catalog manager background task.
-  std::unique_ptr<YsqlTransactionDdl> ysql_transaction_;
 
   std::atomic<MonoTime> time_elected_leader_;
 
@@ -3164,13 +3199,24 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
-  // Guards ddl_txn_id_to_table_map_ below.
-  mutable MutexType ddl_txn_verifier_mutex_;
+  struct YsqlDdlTransactionState {
+    // Indicates whether the transaction is committed or aborted or unknown.
+    TxnState txn_state;
+
+    // Indicates the verification state of the DDL transaction.
+    YsqlDdlVerificationState state;
+
+    // The table info objects of the tables affected by this transaction.
+    std::vector<scoped_refptr<TableInfo>> tables;
+  };
 
   // This map stores the transaction ids of all the DDL transactions undergoing verification.
   // For each transaction, it also stores pointers to the table info objects of the tables affected
   // by that transaction.
-  DdlTxnIdToTablesMap ddl_txn_id_to_table_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
+  mutable MutexType ddl_txn_verifier_mutex_;
+
+  std::unordered_map<TransactionId, YsqlDdlTransactionState>
+      ysql_ddl_txn_verfication_state_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
 
   ServerRegistrationPB server_registration_;
 
