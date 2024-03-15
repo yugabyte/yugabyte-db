@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { ROOT_URL } from './helpers/config';
+import { IN_DEVELOPMENT_MODE, ROOT_URL } from './helpers/config';
 import { Anomaly, GraphResponse } from './helpers/dtos';
 
 // define unique names to use them as query keys
@@ -31,7 +31,9 @@ class ApiService {
   };
 
   fetchAnamoliesById = (universeUuid: string, anomalyUuid: string) => {
-    const requestURL = `${ROOT_URL}/anomalies/${anomalyUuid}`;
+    console.warn('process.env.REACT_APP_YUGAWARE_API_URL', process?.env?.REACT_APP_YUGAWARE_API_URL);
+    console.warn('IN_DEVELOPMENT_MODE', IN_DEVELOPMENT_MODE);
+    const requestURL = IN_DEVELOPMENT_MODE ? `http://localhost:8080/anomalies/${anomalyUuid}` : `http://10.9.15.156:8080/anomalies/${anomalyUuid}`;
     const params = {
       universe_uuid: universeUuid
     }
@@ -41,7 +43,7 @@ class ApiService {
 
   // Fetches graphs and supporting data for troubleshooting 
   fetchGraphs = (universeUuid: String, data: any) => {
-    const requestUrl = `${ROOT_URL}/graphs`;
+    const requestUrl = IN_DEVELOPMENT_MODE ? `http://localhost:8080/graphs` : `http://10.9.15.156:8080/graphs`;
     return axios.post<GraphResponse[]>(requestUrl, data, {
       params: {
         universe_uuid: universeUuid
