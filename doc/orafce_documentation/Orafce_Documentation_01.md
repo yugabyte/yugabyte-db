@@ -56,6 +56,11 @@ The table below lists features compatible with Oracle databases.
 |LPAD|Left-pads a string to a specified length with a sequence of characters|
 |LTRIM|Removes the specified characters from the beginning of a string|
 |NLSSORT|Returns a byte string used to sort strings in linguistic sort sequence based on locale|
+|REGEXP_COUNT|searches a string for a regular expression, and returns a count of the matches|
+|REGEXP_INSTR|returns the beginning or ending position within the string where the match for a pattern was located|
+|REGEXP_LIKE|condition in the WHERE clause of a query, causing the query to return rows that match the given pattern|
+|REGEXP_SUBSTR|returns the string that matches the pattern specified in the call to the function|
+|REGEXP_REPLACE|replace substring(s) matching a POSIX regular expression|
 |RPAD|Right-pads a string to a specified length with a sequence of characters|
 |RTRIM|Removes the specified characters from the end of a string|
 |SUBSTR|Extracts part of a string using characters to specify position and length|
@@ -93,6 +98,8 @@ The table below lists features compatible with Oracle databases.
 |Item|Overview|
 |:---|:---|
 |DECODE|Compares values, and if they match, returns a corresponding value|
+|GREATEST|Returns the greatest of the list of one or more expressions|
+|LEAST|Returns the least of the list of one or more expressions|
 |LNNVL|Evaluates if a value is false or unknown|
 |NANVL|Returns a substitute value when a value is not a number (NaN)|
 |NVL|Returns a substitute value when a value is NULL|

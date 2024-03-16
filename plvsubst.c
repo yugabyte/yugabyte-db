@@ -3,7 +3,7 @@
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006-2018
+  PostgreSQL implementation author: Pavel Stehule, 2006-2023
 
   This module is under BSD Licence
 
@@ -15,8 +15,6 @@
 #include "postgres.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
-#include "string.h"
-#include "stdlib.h"
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 #include "lib/stringinfo.h"
@@ -29,6 +27,9 @@
 #include "access/tupmacs.h"
 #include "orafce.h"
 #include "builtins.h"
+
+#include <string.h>
+#include <stdlib.h>
 
 PG_FUNCTION_INFO_V1(plvsubst_string_array);
 PG_FUNCTION_INFO_V1(plvsubst_string_string);
@@ -72,7 +73,6 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 {
 	ArrayType	   *v = vals_in;
 	int				nitems,
-				   *dims,
 					ndims;
 	char		   *p;
 	int16			typlen;
@@ -95,6 +95,8 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 
 	if (v != NULL && (ndims = ARR_NDIM(v)) > 0)
 	{
+		int		   *dims;
+
 		if (ndims != 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -129,15 +131,16 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 	{
 		if (strncmp(&template_str[positions[i]], VARDATA(c_subst), subst_len) == 0)
 		{
-			Datum    itemvalue;
-			char     *value;
-
 			if (items++ < nitems)
 			{
+				char     *value;
+
 				if (bitmap && (*bitmap & bitmask) == 0)
 					value = pstrdup("NULL");
 				else
 				{
+					Datum    itemvalue;
+
 					itemvalue = fetch_att(p, typbyval, typlen);
 					value = DatumGetCString(FunctionCall3(&proc,
 								itemvalue,

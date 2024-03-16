@@ -14,3 +14,4 @@ checkintunpaddedcallstack
 0,,anonymous object
 0,,checkintunpaddedcallstack
 (1 row)
+NOTICE:  Execution time: 2 seconds
