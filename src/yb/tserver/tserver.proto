@@ -373,3 +373,10 @@ message CheckTserverTabletHealthResponsePB {
 message ClearAllMetaCachesOnServerRequestPB {}
 
 message ClearAllMetaCachesOnServerResponsePB {}
+
+message ClearUniverseUuidRequestPB {
+}
+
+message ClearUniverseUuidResponsePB {
+  optional TabletServerErrorPB error = 1;
+}

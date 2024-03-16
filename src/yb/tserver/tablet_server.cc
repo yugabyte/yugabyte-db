@@ -1283,6 +1283,15 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
   return Status::OK();
 }
 
+Status TabletServer::ClearUniverseUuid() {
+  auto instance_universe_uuid_str = VERIFY_RESULT(
+      fs_manager_->GetUniverseUuidFromTserverInstanceMetadata());
+  auto instance_universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(instance_universe_uuid_str));
+  SCHECK_EQ(false, instance_universe_uuid.IsNil(), IllegalState,
+      "universe_uuid is not set in instance metadata");
+  return fs_manager_->ClearUniverseUuidOnTserverInstanceMetadata();
+}
+
 Status TabletServer::ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid) {
   auto instance_universe_uuid_str = VERIFY_RESULT(
       fs_manager_->GetUniverseUuidFromTserverInstanceMetadata());
@@ -1294,6 +1303,7 @@ Status TabletServer::ValidateAndMaybeSetUniverseUuid(const UniverseUuid& univers
                "uuid is $1", universe_uuid.ToString(), instance_universe_uuid.ToString()));
     return Status::OK();
   }
+
   return fs_manager_->SetUniverseUuidOnTserverInstanceMetadata(universe_uuid);
 }
 
