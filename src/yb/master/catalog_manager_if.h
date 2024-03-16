@@ -202,6 +202,8 @@ class CatalogManagerIf {
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
+  virtual TSDescriptorVector GetAllLiveNotBlacklistedTServers() const = 0;
+
   virtual Status DoImportSnapshotMeta(
       const SnapshotInfoPB& snapshot_pb,
       const LeaderEpoch& epoch,
