@@ -224,10 +224,6 @@ void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
     const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
     YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) override;
 
-  template<class Resp>
-  bool CheckWriteThrottlingOrRespond(
-      double score, tablet::TabletPeer* tablet_peer, Resp* resp, rpc::RpcContext* context);
-
   Result<uint64_t> DoChecksum(const ChecksumRequestPB* req, CoarseTimePoint deadline);
 
   Status HandleUpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,

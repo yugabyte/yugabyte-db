@@ -363,20 +363,6 @@ void PerformAtLeader(
 
 } // namespace
 
-template<class Resp>
-bool TabletServiceImpl::CheckWriteThrottlingOrRespond(
-    double score, tablet::TabletPeer* tablet_peer, Resp* resp, rpc::RpcContext* context) {
-  // Check for memory pressure; don't bother doing any additional work if we've
-  // exceeded the limit.
-  auto status = CheckWriteThrottling(score, tablet_peer);
-  if (!status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), status, context);
-    return false;
-  }
-
-  return true;
-}
-
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 typedef ListMasterServersResponsePB::MasterServerAndTypePB MasterServerAndTypePB;
 
