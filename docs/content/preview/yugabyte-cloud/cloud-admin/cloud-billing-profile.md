@@ -149,6 +149,8 @@ To add a credit card:
 
 To delete a card, click the **Delete** icon, then click **Confirm**. You cannot delete the default card.
 
+To change the default for payment, in the Card list, select the **Default Card** option for the card.
+
 ### View credits and discounts
 
 The **Credits and Discounts** section displays any credits applied to your account, including the end date, days left, amount used, and amount remaining. Credits are automatically applied to the next invoice.
