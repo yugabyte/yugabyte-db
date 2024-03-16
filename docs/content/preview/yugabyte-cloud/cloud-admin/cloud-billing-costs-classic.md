@@ -91,7 +91,7 @@ You can also specify a custom value greater than free allowance storage capacity
 
 For example, a 3 node x 2 vCPU (6 vCPUs) cluster includes a total free allowance of 300 GB/month (6 vCPUs x 50 GB), which is equally distributed across 3 nodes at 100 GB each. For the same cluster, if you increase per node storage capacity to 150 GB, then your total disk storage will be 450 GB (3 nodes x 150 GB) but you are only charged for the 150 GB above your 300 GB allowance.
 
-Disk storage size is calculated by metering the storage space (GBs) occupied per cluster. The same unit price applies to all regions and clouds.
+Disk storage size is calculated by metering the storage space (GB) occupied per cluster. The same unit price applies to all regions and clouds.
 
 ### Calculating disk storage cost
 
@@ -152,7 +152,7 @@ The free allowance for backup storage is 100 GB/month for every 1 vCPU per month
 
 By default, every cluster is configured with 24 hour backups with an 8 day retention period. You can customize your backup schedule and retention period per cluster. Taking frequent backups and retaining for a long period of time can lead to overages. Refer to [Back up clusters](../../cloud-clusters/backup-clusters/).
 
-Backup storage size is calculated by metering the storage space (GBs) occupied per cluster. The same unit price applies to all regions and clouds.
+Backup storage size is calculated by metering the storage space (GB) occupied per cluster. The same unit price applies to all regions and clouds.
 
 ### Calculating backup storage cost
 
@@ -193,7 +193,7 @@ Yugabyte meters and bills data transfer using the following three dimensions.
 
 This dimension accounts for all regional traffic of the cluster. This includes all cross availability zone inter-node traffic, which YugabyteDB automatically manages, and egress cost to a client in the same region as the cluster.
 
-Single-node ([fault tolerance](../../cloud-basics/create-clusters/#cluster-settings) of NONE) and three-node (fault tolerance of Node Level) with single availability zone (AZ) topologies will have much lower usage than clusters with three nodes (fault tolerance of Availability Zone) deployed across multiple AZs.
+Single- and three-node clusters deployed in a single availability zone (AZ) will have much lower usage than clusters with three nodes deployed across multiple AZs.
 
 {{< tip title="Rate card" >}}
 
@@ -242,7 +242,7 @@ The free allowance for data out transfers is 10GB per month for every 1 vCPU per
   - Re-read data that already exists on the client.
   - Re-write existing data to your database deployment.
 
-- If possible, configure your client driver to use wire protocol compression to communicate with the YugabyteDB cluster. YugabyteDB Managed always compresses intra-cluster communication.
+- If possible, configure your client driver to use network compression to communicate with the YugabyteDB cluster. YugabyteDB Managed always compresses intra-cluster communication.
 
 ## Paused cluster costs
 
@@ -260,7 +260,7 @@ While active, disk and backup storage are covered by the free allowance, and the
 
 **Active cluster hourly rate** = 4 x $0.25 = $1/hour
 
-When paused, instance vCPU capacity is no longer charged, while disk and backup storage are charged at the standard rate, as follows:
+When paused, instance vCPU capacity is no longer charged. Disk and backup storage are charged at the standard rate, as follows:
 
 Disk storage (Paused) = disk storage x hourly rate
 : 200 GB x 0.000138888889 = $0.0277777778/hour

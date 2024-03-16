@@ -78,7 +78,7 @@ $0.10/GB per month ($0.0001388888889/hr for 30-day month)
 
 You can customize your cluster storage capacity independently of your cluster vCPU capacity.
 
-Disk storage size is calculated by metering the storage space (GBs) occupied per cluster. The same unit price applies to all regions and clouds.
+Disk storage size is calculated by metering the storage space (GB) occupied per cluster. The same unit price applies to all regions and clouds.
 
 ### Calculating disk storage cost
 
@@ -120,7 +120,7 @@ Rate card:  $0.025/GB per month ($ 0.00003472222222/hr for 30-day month)
 
 By default, every cluster is configured with 24 hour backups with an 8 day retention period. You can customize your backup schedule and retention period per cluster. Refer to [Back up clusters](../../cloud-clusters/backup-clusters/).
 
-Backup storage size is calculated by metering the storage space (GBs) occupied per cluster. The same unit price applies to all regions and clouds.
+Backup storage size is calculated by metering the storage space (GB) occupied per cluster. The same unit price applies to all regions and clouds.
 
 ### Calculating backup storage cost
 
@@ -136,7 +136,7 @@ At the end of September, you would have the following total backup cost.
 
 ## Data transfer costs
 
-Data Transfer accounts for the volume of data going into, out of, and between the nodes in a cluster, which is summed up to a cumulative amount in a billing cycle.
+Data transfer accounts for the volume of data going into, out of, and between the nodes in a cluster, which is summed up to a cumulative amount in a billing cycle.
 
 Yugabyte meters and bills data transfer using the following three dimensions.
 
@@ -144,7 +144,7 @@ Yugabyte meters and bills data transfer using the following three dimensions.
 
 This accounts for all regional traffic of the cluster. This includes all cross availability zone inter-node traffic, which YugabyteDB automatically manages, and egress cost to a client in the same region as the cluster.
 
-Single-node ([fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) of NONE) and three-node (fault tolerance of Node Level) with single availability zone (AZ) topologies will have much lower usage than clusters with three nodes (fault tolerance of Availability Zone) deployed across multiple AZs.
+Clusters deployed in a single availability zone (AZ) will have much lower usage than clusters with nodes deployed across multiple AZs.
 
 {{< tip title="Rate card" >}}
 
@@ -187,7 +187,7 @@ $.10/GB
   - Re-read data that already exists on the client.
   - Re-write existing data to your database deployment.
 
-- If possible, configure your client driver to use wire protocol compression to communicate with the YugabyteDB cluster. YugabyteDB Managed always compresses intra-cluster communication.
+- If possible, configure your client driver to use network compression to communicate with the YugabyteDB cluster. YugabyteDB Managed always compresses intra-cluster communication.
 
 ## Paused cluster costs
 
@@ -205,7 +205,7 @@ While active, the cluster is charged at the following rate:
 
 **Active cluster hourly rate** = 4 x $0.25 = $1/hour
 
-When paused, instance vCPU capacity is no longer charged, while disk and backup storage are charged at the standard rate, as follows:
+When paused, instance vCPU capacity is no longer charged. Disk and backup storage are charged at the standard rate, as follows:
 
 Disk storage (Paused) = disk storage x hourly rate
 : 200gb x 0.000138888889 = $0.0277777778/hour
