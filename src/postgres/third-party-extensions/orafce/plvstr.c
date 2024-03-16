@@ -3,7 +3,7 @@
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006-2018
+  PostgreSQL implementation author: Pavel Stehule, 2006-2023
 
   This module is under BSD Licence
 
@@ -15,8 +15,6 @@
 #include "postgres.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
-#include "string.h"
-#include "stdlib.h"
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 #include "nodes/execnodes.h"
@@ -25,6 +23,9 @@
 #include "libpq/pqformat.h"
 #include "orafce.h"
 #include "builtins.h"
+
+#include <string.h>
+#include <stdlib.h>
 
 PG_FUNCTION_INFO_V1(plvstr_rvrs);
 PG_FUNCTION_INFO_V1(plvstr_normalize);
@@ -55,6 +56,11 @@ PG_FUNCTION_INFO_V1(plvchr_char_name);
 
 PG_FUNCTION_INFO_V1(oracle_substr2);
 PG_FUNCTION_INFO_V1(oracle_substr3);
+
+PG_FUNCTION_INFO_V1(oracle_substrb2);
+PG_FUNCTION_INFO_V1(oracle_substrb3);
+
+int orafce_substring_length_is_zero = ORAFCE_COMPATIBILITY_WARNING_ORACLE;
 
 static text *ora_substr(Datum str, int start, int len);
 
@@ -102,7 +108,6 @@ ora_mb_strlen(text *str, char **sizes, int **positions)
 {
 	int r_len;
 	int cur_size = 0;
-	int sz;
 	char *p;
 	int cur = 0;
 
@@ -116,6 +121,8 @@ ora_mb_strlen(text *str, char **sizes, int **positions)
 
 	while (cur < r_len)
 	{
+		int sz;
+
 		sz = _pg_mblen(p);
 		if (sizes)
 			(*sizes)[cur_size] = sz;
@@ -211,7 +218,7 @@ ora_instr_mb(text *txt, text *pattern, int start, int nth)
 		if (beg >= end)
 			return 0;	/* out of range */
 	}
-	else
+	else if (start < 0)
 	{
 		dx = -1;
 		beg = Min(c_len_txt + start, c_len_txt - c_len_pat);
@@ -219,6 +226,8 @@ ora_instr_mb(text *txt, text *pattern, int start, int nth)
 		if (beg <= end)
 			return 0;	/* out of range */
 	}
+	else
+		return 0;
 
 	for (i = beg; i != end; i += dx)
 	{
@@ -260,7 +269,7 @@ ora_instr(text *txt, text *pattern, int start, int nth)
 		if (beg >= end)
 			return 0;	/* out of range */
 	}
-	else
+	else if (start < 0)
 	{
 		dx = -1;
 		beg = Min(len_txt + start, len_txt - len_pat);
@@ -268,6 +277,8 @@ ora_instr(text *txt, text *pattern, int start, int nth)
 		if (beg <= end)
 			return 0;	/* out of range */
 	}
+	else
+		return 0;
 
 	for (i = beg; i != end; i += dx)
 	{
@@ -298,26 +309,25 @@ ora_instr(text *txt, text *pattern, int start, int nth)
 Datum
 plvstr_normalize(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	text *result;
-	char *aux, *aux_cur;
-	int i;
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	text	   *result;
+	char	   *aux, *cur, *aux_cur;
+	int			i;
 
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(__amd64__))
 
-	__int64			l;
+	__int64		l;
 
 #else
 
-	int				l;
+	int			l;
 
 #endif
 
-	char c, *cur;
-	bool write_spc = false;
-	bool ignore_stsp = true;
-	bool mb_encode;
-	int sz;
+	bool		write_spc = false;
+	bool		ignore_stsp = true;
+	bool		mb_encode;
+	int			sz;
 
 	mb_encode = pg_database_encoding_max_length() > 1;
 
@@ -329,6 +339,8 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 
 	for (i = 0; i < l; i++)
 	{
+		char		c;
+
 		switch ((c = *cur))
 		{
 			case '\t':
@@ -345,7 +357,7 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 					sz = _pg_mblen(cur);
 					if (sz > 1 || (sz == 1 && c > 32))
 					{
-						int j;
+						int		j;
 
 						if (write_spc)
 						{
@@ -458,17 +470,17 @@ plvstr_instr4 (PG_FUNCTION_ARGS)
 Datum
 plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	text *prefix = PG_GETARG_TEXT_PP(1);
-	bool case_sens = PG_GETARG_BOOL(2);
-	bool mb_encode;
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	text	   *prefix = PG_GETARG_TEXT_PP(1);
+	bool		case_sens = PG_GETARG_BOOL(2);
+	bool		mb_encode;
 
-	int str_len = VARSIZE_ANY_EXHDR(str);
-	int pref_len = VARSIZE_ANY_EXHDR(prefix);
+	int			str_len = VARSIZE_ANY_EXHDR(str);
+	int			pref_len = VARSIZE_ANY_EXHDR(prefix);
 
-	int i;
-	char *ap, *bp;
-
+	int			i;
+	char	   *ap,
+			   *bp;
 
 	mb_encode = pg_database_encoding_max_length() > 1;
 
@@ -485,12 +497,13 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 	{
 		if (i >= str_len)
 			break;
+
 		if (case_sens || mb_encode)
 		{
 			if (*ap++ != *bp++)
 				break;
 		}
-		else if (!mb_encode)
+		else
 		{
 			if (pg_toupper((unsigned char) *ap++) != pg_toupper((unsigned char) *bp++))
 				break;
@@ -503,9 +516,12 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 Datum
 plvstr_is_prefix_int (PG_FUNCTION_ARGS)
 {
-	int n = PG_GETARG_INT32(0);
-	int prefix = PG_GETARG_INT32(1);
-	bool result = false;
+	int			n = PG_GETARG_INT32(0);
+	int			prefix = PG_GETARG_INT32(1);
+	bool		result = false;
+
+	if (prefix == 0)
+		PG_RETURN_BOOL(n == 0);
 
 	do
 	{
@@ -516,7 +532,7 @@ plvstr_is_prefix_int (PG_FUNCTION_ARGS)
 		}
 		n = n / 10;
 
-	} while (n >= prefix);
+	} while (n != 0);
 
 	PG_RETURN_BOOL(result);
 }
@@ -528,6 +544,9 @@ plvstr_is_prefix_int64 (PG_FUNCTION_ARGS)
 	int64 prefix = PG_GETARG_INT64(1);
 	bool result = false;
 
+	if (prefix == 0)
+		PG_RETURN_BOOL(n == 0);
+
 	do
 	{
 		if (n == prefix)
@@ -537,7 +556,7 @@ plvstr_is_prefix_int64 (PG_FUNCTION_ARGS)
 		}
 		n = n / 10;
 
-	} while (n >= prefix);
+	} while (n != 0);
 
 	PG_RETURN_BOOL(result);
 }
@@ -744,19 +763,22 @@ plvstr_rpart (PG_FUNCTION_ARGS)
 Datum
 plvstr_lstrip (PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	text *pat = PG_GETARG_TEXT_PP(1);
-	int num = PG_GETARG_INT32(2);
-	int count = 0;
-	int len_p, len_s, i;
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	text	   *pat = PG_GETARG_TEXT_PP(1);
+	int			num = PG_GETARG_INT32(2);
+	int			count = 0;
+	int			len_p, len_s;
+	char	   *str_p;
 
-	char *str_p, *aux_str_p, *pat_p;
 	len_p = VARSIZE_ANY_EXHDR(pat);
 	len_s = VARSIZE_ANY_EXHDR(str);
 
 	str_p = VARDATA_ANY(str);
 	while (count < num)
 	{
+		int			i;
+		char	   *aux_str_p, *pat_p;
+
 		pat_p = VARDATA_ANY(pat);
 		aux_str_p = str_p;
 
@@ -800,13 +822,14 @@ plvstr_lstrip (PG_FUNCTION_ARGS)
 Datum
 plvstr_rstrip (PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	text *pat = PG_GETARG_TEXT_PP(1);
-	int num = PG_GETARG_INT32(2);
-	int count = 0;
-	int len_p, len_s, i;
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	text	   *pat = PG_GETARG_TEXT_PP(1);
+	int			num = PG_GETARG_INT32(2);
+	int			count = 0;
+	int			len_p, len_s, i;
+	char	   *str_p,
+			   *aux_str_p;
 
-	char *str_p, *aux_str_p, *pat_p;
 	len_p = VARSIZE_ANY_EXHDR(pat);
 	len_s = VARSIZE_ANY_EXHDR(str);
 
@@ -814,6 +837,8 @@ plvstr_rstrip (PG_FUNCTION_ARGS)
 
 	while (count < num)
 	{
+		char	   *pat_p;
+
 		pat_p = VARDATA_ANY(pat) + len_p - 1;
 		aux_str_p = str_p;
 
@@ -1103,8 +1128,21 @@ Datum
 oracle_substr3(PG_FUNCTION_ARGS)
 {
 	int32	len = PG_GETARG_INT32(2);
+
 	if (len < 0)
 		PG_RETURN_NULL();
+
+	if (len == 0)
+	{
+		if (orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_WARNING_ORACLE ||
+			 orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_WARNING_ORAFCE)
+			elog(WARNING, "zero substring_length is used in substr function");
+
+		if (orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_WARNING_ORACLE ||
+			 orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_ORACLE)
+			PG_RETURN_NULL();
+	}
+
 	PG_RETURN_TEXT_P(ora_substr(PG_GETARG_DATUM(0), PG_GETARG_INT32(1), len));
 }
 
@@ -1341,4 +1379,48 @@ plvstr_betwn_c(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(ora_substr_text(string_in,
 									 v_start,
 									 v_end - v_start + 1));
+}
+
+/*
+ * len < 0 means "length is not specified".
+ */
+static bytea *
+ora_substrb(Datum str, int start, int len)
+{
+	if (start == 0)
+		start = 1;	/* 0 is interpreted as 1 */
+	else if (start < 0)
+	{
+		bytea	   *t = DatumGetByteaPP(str);
+		int			n = VARSIZE_ANY_EXHDR(t);
+
+		start = n + start + 1;
+		if (start <= 0)
+			return DatumGetByteaPP(DirectFunctionCall1(byteain, CStringGetDatum("")));
+
+		str = PointerGetDatum(t);	/* save detoasted text */
+	}
+
+	if (len < 0)
+		return DatumGetByteaP(DirectFunctionCall2(bytea_substr_no_len,
+			str, Int32GetDatum(start)));
+	else
+		return DatumGetByteaP(DirectFunctionCall3(bytea_substr,
+			str, Int32GetDatum(start), Int32GetDatum(len)));
+}
+
+Datum
+oracle_substrb2(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BYTEA_P(ora_substrb(PG_GETARG_DATUM(0),
+							   PG_GETARG_INT32(1),
+							   -1));
+}
+
+Datum
+oracle_substrb3(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BYTEA_P(ora_substrb(PG_GETARG_DATUM(0),
+							   PG_GETARG_INT32(1),
+							   PG_GETARG_INT32(2)));
 }

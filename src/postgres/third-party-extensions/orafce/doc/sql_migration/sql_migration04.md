@@ -652,7 +652,7 @@ The example below shows migration when the hierarchical structure is displayed.
  	WHERE staff_id = '1001' 
  	UNION ALL 
  	SELECT n.staff_id, 
-               name, 
+               n.name, 
                n.manager_id, 
                <b>w.PATH &#124;&#124; '/' &#124;&#124; n.name</b> 
  	FROM staff_table n,staff_table_w w 
@@ -788,6 +788,251 @@ The example below shows migration when a hierarchical query is used to perform a
 </tbody>
 </table>
 
+##### 4.2.3.6 Hierarchical Query Displaying data from the root
+
+**Functional differences**
+
+ - **Oracle database**
+     - Specifying CONNECT_BY_ROOT in the select list of a hierarchical query displays data from the root.
+ - **PostgreSQL**
+     - CONNECT_BY_ROOT cannot be specified.
+
+**Migration procedure**
+
+In a recursive query that uses a WITH clause, add a root column that also uses the recursive query of the WITH clause so that the same result is returned. Use the following procedure to perform migration:
+
+1. Replace the hierarchical query with syntax that uses a recursive query (WITH clause).
+2. Add root column to the column list of the query result of the WITH clause.
+
+-	In the first query, specify the root columnName to the values of the columns from the root to the node.
+-	Specify m.rootName in the next query. (rootName is a root column.)
+
+
+The following shows the conversion format containing rootName.
+
+~~~
+WITH RECURSIVE queryName(
+     columnUsed, rootName
+) AS
+( SELECT columnUsed, columnName
+      FROM  targetTableOfHierarchicalQuery
+    UNION ALL
+    SELECT columnUsed(qualified by n), w.rootName
+      FROM  targetTableOfHierarchicalQuery  n,
+            queryName  w
+      WHERE conditionalExprOfConnectByClause )
+~~~
+
+For conditionalExprOfConnectByClause, use w to qualify the part qualified by PRIOR.
+
+**Migration example**
+
+The example below shows migration when the root data is displayed.
+<table>
+<thead>
+<tr>
+<th align="center">Oracle database</th>
+<th align="center">PostgreSQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">
+<pre><code>SELECT staff_id, name, <b>CONNECT_BY_ROOT name as "Manager" </b>
+  FROM staff_table 
+  START WITH staff_id = '1001' 
+  CONNECT BY PRIOR staff_id = manager_id;
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+ </code></pre>
+</td>
+
+<td align="left">
+<pre><code>WITH RECURSIVE staff_table_w( staff_id, 
+ name, 
+ Manager ) AS 
+ (   SELECT staff_id, name, <b>name </b>
+       FROM staff_table 
+     UNION ALL 
+     SELECT n.staff_id, n.name, <b>w.Manager </b>
+       FROM staff_table n, staff_table_w w 
+       WHERE w.staff_id = n.manager_id
+ )
+ SELECT staff_id, name, Manager 
+ FROM staff_table_w;</code></pre>
+</td>
+</tr>
+</tbody>
+</table>
+
+##### 4.2.3.7 Hierarchical Query identifys the leaves
+
+**Functional differences**
+
+ - **Oracle database**
+     - Specifying CONNECT_BY_ISLEAF in the select list of a hierarchical query can identify the leaf rows. This returns 1 if the current row is a leaf. Otherwise it returns 0.
+ - **PostgreSQL**
+     - CONNECT_BY_ISLEAF cannot be specified.
+
+**Migration procedure**
+
+In a recursive query that uses a WITH clause, the leaf can be checked using a sub-query so that the same result is returned. Use the following procedure to perform migration:
+
+1. Replace the hierarchical query with syntax that uses a recursive query (WITH clause).
+2. Add a sub-query to the column list of the query result of the WITH clause.
+
+The following shows the conversion format containing rootName.
+
+~~~
+ WITH RECURSIVE queryName(
+     columnUsed1, columnUsed2
+) AS
+(   SELECT columnUsed, columnUsed2
+      FROM  targetTableOfHierarchicalQuery
+    UNION ALL
+    SELECT columnUsed(qualified by n), columnUsed2(qualified by n)
+      FROM  targetTableOfHierarchicalQuery n,
+            queryName w
+      WHERE conditionalExprOfConnectByClause 
+)
+SELECT *,
+       CASE WHEN EXISTS(select * from queryName p where p.columnUsed1 = e.columnUsed2)
+            THEN 0 ELSE 1 END 
+        as is_leaf
+ FROM queryName e;
+~~~
+
+For conditionalExprOfConnectByClause, use w to qualify the part qualified by PRIOR.
+
+**Migration example**
+
+The example below shows migration when the leaf data is displayed.
+<table>
+<thead>
+<tr>
+<th align="center">Oracle database</th>
+<th align="center">PostgreSQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">
+<pre><code>SELECT staff_id, name, <b>CONNECT_BY_ISLEAF </b>
+  FROM staff_table 
+  START WITH staff_id = '1001' 
+  CONNECT BY PRIOR staff_id = manager_id;
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+ </code></pre>
+</td>
+
+<td align="left">
+<pre><code>WITH RECURSIVE staff_table_w( staff_id, 
+                            name ) AS 
+ (   SELECT staff_id, name
+       FROM staff_table 
+     UNION ALL 
+     SELECT n.staff_id, n.name
+       FROM staff_table n, staff_table_w w 
+       WHERE w.staff_id = n.manager_id
+ )
+ SELECT staff_id, name,
+       <b>CASE WHEN EXISTS(select 1 from staff_table_w p where p.manager_id = e.staff_id)
+            THEN 0 ELSE 1 END 
+        as is_leaf </b>
+ FROM staff_table_w e;</code></pre>
+</td>
+</tr>
+</tbody>
+</table>
+
+##### 4.2.3.8 Returns all possible hierarchy permutations
+
+**Functional differences**
+
+ - **Oracle database**
+     - When CONNECT BY LEVEL is used without START WITH clause and PRIOR operator.
+ - **PostgreSQL**
+     - CONNECT BY LEVEL cannot be specified.
+
+**Migration procedure**
+
+In a recursive query that uses a WITH clause, returns all possible hierarchy permutations can use the descartes product. Use the following procedure to perform migration:
+
+1. Replace the hierarchical query with syntax that uses a recursive query (WITH clause).
+2. The left query of Union ALL does not specify a filter condition. The right query is the Descartes product of two tables, and the filter condition is the number of recursions.
+
+The following shows the conversion format containing rootName.
+
+~~~
+ WITH RECURSIVE queryName(
+     columnUsed1, level
+) AS
+(   SELECT columnUsed, 1
+      FROM  targetTableOfHierarchicalQuery
+    UNION ALL
+    SELECT columnUsed(qualified by n), w.level+1
+      FROM  targetTableOfHierarchicalQuery n,
+            queryName w
+      WHERE  w.level+1 < levelNum
+);
+~~~
+
+
+**Migration example**
+
+The example below shows migration when returns all possible hierarchy permutations of two levels.
+
+<table>
+<thead>
+<tr>
+<th align="center">Oracle database</th>
+<th align="center">PostgreSQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">
+<pre><code>select staff_id, name, level 
+    from staff_table 
+    <b>connect by level < 3</b>;
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+ </code></pre>
+</td>
+
+<td align="left">
+<pre><code>WITH RECURSIVE staff_table_w( staff_id, 
+                     name 
+                     level ) AS 
+ (   SELECT staff_id, name, <b>1 </b>
+       FROM staff_table 
+     UNION ALL 
+     SELECT n.staff_id, n.name, <b>w.level + 1 </b>
+       FROM staff_table n, staff_table_w w
+       <b> WHERE w.level + 1 < 3 </b>
+ )
+ SELECT staff_id, name, level 
+ FROM staff_table_w;</code></pre>
+</td>
+</tr>
+</tbody>
+</table>
 
 #### 4.2.4 MINUS
 

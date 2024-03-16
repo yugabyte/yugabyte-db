@@ -670,28 +670,29 @@ BEGIN
 A usage example of DBMS_OUTPUT is shown below.
 
 ~~~
+CREATE TABLE dbms_output_table(c1 text, c2 int);
 CREATE FUNCTION dbms_output_exe() RETURNS VOID AS $$
 DECLARE
 	buff1 VARCHAR(20);
-	buff2 VARCHAR(20);
 	stts1 INTEGER;
-	stts2 INTEGER;
 BEGIN
-	PERFORM DBMS_OUTPUT.DISABLE();
+	PERFORM DBMS_OUTPUT.SERVEROUTPUT(TRUE);
 	PERFORM DBMS_OUTPUT.ENABLE();
-	PERFORM DBMS_OUTPUT.SERVEROUTPUT(FALSE);
 	PERFORM DBMS_OUTPUT.PUT('DBMS_OUTPUT TEST 1');
 	PERFORM DBMS_OUTPUT.NEW_LINE();
 	PERFORM DBMS_OUTPUT.PUT_LINE('DBMS_OUTPUT TEST 2');
+
+	PERFORM DBMS_OUTPUT.SERVEROUTPUT(FALSE);
+	PERFORM DBMS_OUTPUT.ENABLE();
+	PERFORM DBMS_OUTPUT.PUT_LINE('DBMS_OUTPUT TEST 3');
 	SELECT line,status INTO buff1,stts1 FROM DBMS_OUTPUT.GET_LINE();
-	SELECT line,status INTO buff2,stts2 FROM DBMS_OUTPUT.GET_LINE();
-	PERFORM DBMS_OUTPUT.SERVEROUTPUT(TRUE);
-	PERFORM DBMS_OUTPUT.PUT_LINE(buff1);
-	PERFORM DBMS_OUTPUT.PUT_LINE(buff2);
+	INSERT INTO dbms_output_table VALUES(buff1,stts1);
 END;
 $$ LANGUAGE plpgsql;
 SELECT dbms_output_exe();
+SELECT * FROM dbms_output_table;
 DROP FUNCTION dbms_output_exe();
+DROP TABLE dbms_output_table;
 ~~~
 
 
@@ -1483,6 +1484,7 @@ Provides utilities of PL/pgSQL.
 |Feature|Description|
 |:---|:---|
 |FORMAT_CALL_STACK|Returns the current call stack.|
+|GET_TIME|Returns the number of hundredths of seconds that have elapsed since a point in time in the past.|
 
 
 **Syntax**
@@ -1555,6 +1557,38 @@ SELECT dbms_utility2_exe();
 DROP FUNCTION dbms_utility2_exe();
 DROP FUNCTION dbms_utility1_exe();
 ~~~
+
+**GET_TIME**
+
+ - GET_TIME returns the current time in 100th's of a second from a point in time in the past. This function is used for determining elapsed time.
+
+**Example**
+
+----
+
+~~~
+DO $$
+DECLARE
+    start_time integer;
+    end_time integer;
+BEGIN
+    start_time := DBMS_UTILITY.GET_TIME;
+    PERFORM pg_sleep(10);
+    end_time := DBMS_UTILITY.GET_TIME;
+    RAISE NOTICE 'Execution time: % seconds', (end_time - start_time)/100;
+END
+$$;
+~~~
+
+----
+
+**Note**
+
+----
+
+The function is called twice, the first time at the beginning of some procedural code and the second time at end. Then the first (earlier) number is subtracted from the second (later) number to determine the time elapsed. Must be divided by 100 to report the number of seconds elapsed.
+
+----
 
 
 ### 6.7 UTL_FILE

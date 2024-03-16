@@ -1,5 +1,3 @@
-image::https://travis-ci.com/orafce/orafce.svg?branch=master[]
-
 = Orafce - Oracle's compatibility functions and packages
 
 Functions and operators that emulate a subset of functions and packages from the Oracle RDBMS.
@@ -11,7 +9,7 @@ The Orafce is supported in https://aws.amazon.com/about-aws/whats-new/2018/03/am
 == Oracle functions and Oracle packages
 
 This module contains some useful functions that can help with porting
-Oracle application to PostgreSQL or that can be generally useful. 
+Oracle application to PostgreSQL or that can be generally useful.
 
 Built-in Oracle date functions have been tested against Oracle 10 for
 conformance. Date ranges from 1960 to 2070 work correctly. Dates before
@@ -63,7 +61,7 @@ year. The 16th of July will be rounded to August.
 ----
 	next_day(date '2005-05-24', 1) -> 2005-05-30
 ----
-* months_between(date, date) numeric - Returns the number of months between date1 and date2. If a fractional month is calculated, the months_between  function calculates the fraction based on a 31-day month. 
+* months_between(date, date) numeric - Returns the number of months between date1 and date2. If a fractional month is calculated, the months_between  function calculates the fraction based on a 31-day month.
 +
 ----
 	months_between(date '1995-02-02', date '1995-01-01') -> 1.0322580645161
@@ -234,13 +232,16 @@ because functions like oracle.add_months,oracle.last_day,oracle.next_day,oracle.
 == Table dual
 
 PostgreSQL does not need Oracle's table 'dual', but since it is intensively
-used by Oracle users, it has been added in orafce.
+used by Oracle users, it has been added in orafce. This table is in schema
+`oracle`. Usually you want allow unqualified access - so you should to add
+this schema to `search_path` configuration (like `search_path = 'oracle, pg_catalog, "$user", public'`
+in `postgresql.conf`).
 
 == Package dbms_output
 
 PostgreSQL sends information to the client via RAISE NOTICE. Oracle uses
-dbms_output.put_line(). This works differently from RAISE NOTICE. Oracle has 
-a session queue, put_line() adds a line to the queue and the function 
+dbms_output.put_line(). This works differently from RAISE NOTICE. Oracle has
+a session queue, put_line() adds a line to the queue and the function
 get_line() reads from queue. If flag 'serveroutput' is set, then client
 over all sql statements reads queue. You can use:
 
@@ -250,7 +251,7 @@ over all sql statements reads queue. You can use:
     select dbms_output.put_line('next_line');
     select * from dbms_output.get_lines(0);
 ----
-    
+
 or
 
 ----
@@ -258,9 +259,9 @@ or
     select dbms_output.serveroutput('t');
     select dbms_output.put_line('first_line');
 ----
-    
-This package contains the following functions: enable(), disable(), 
-serveroutput(), put(), put_line(), new_line(), get_line(), get_lines(). 
+
+This package contains the following functions: enable(), disable(),
+serveroutput(), put(), put_line(), new_line(), get_line(), get_lines().
 The package queue is implemented in the session's local memory.
 
 == Package utl_file
@@ -283,7 +284,7 @@ line size is 32K. This package contains following functions:
 * utl_file.new_line(file utl_file.file_type [,rows int])  - puts some new line chars to file
 * utl_file.put(file utl_file.file_type, buffer text)  - puts buffer to file
 * utl_file.put_line(file utl_file.file_type, buffer text)  - puts line to file
-* utl_file.putf(file utl_file.file_type, format buffer [,arg1 text][,arg2 text][..][,arg5 text])  - put formated text into file
+* utl_file.putf(file utl_file.file_type, format buffer [,arg1 text][,arg2 text][..][,arg5 text])  - put formatted text into file
 * utl_file.tmpdir() - get path of temp directory
 
 Because PostgreSQL doesn't support call by reference, some functions are slightly different:
@@ -326,7 +327,7 @@ or second (with PostgreSQL specific function get_nextline)
 
 Before using the package you have to set the utl_file.utl_file_dir table.
 It contains all allowed directories without ending symbol ('/' or '\').
-On WinNT platform, the paths have to end with symbol '\' everytime.
+On WinNT platform, the paths have to end with symbol '\' every time.
 
 Directory entries can be named (second column in table `utl_file.utl_file_dir`).
 The `location` parameter can be either the directory name or the dictionary path.
@@ -341,12 +342,129 @@ from this package, but cannot to change list of safe directories (content of
 utl_file.utl_file_dir table). The content of this table is visible for PUBLIC
 (or should be visible for users who uses functions from this package).
 
+== package dbms_sql
+
+This is implementation of Oracle's API of package DBMS_SQL
+
+It doesn't ensure full compatibility, but should to decrease a work necessary for
+successful migration.
+
+Attention: PostgreSQL architecture is different than Oracle's architecture. PL/pgSQL
+is executed in same context like SQL engine. Then is not any reason to use Oracle's
+patterns like bulk collect and iteration over collection in Postgres to get good
+performance. This code is designed to reduce work related to porting some applications
+from Oracle to Postgres, and it can work well. But there will not be any performance
+advantage aganst buildin PL/pgSQL statements. The emulation of Oracle's API has
+memory and CPU overhead, that can be significant on bigger data.
+
+=== Functionality
+
+This extension implements subset of Oracle's dbms_sql interface. The goal of this extension
+is not a compatibility with Oracle, it is designed to reduce some work related migration
+Oracle's applications to Postgres. Some basic bulk DML functionality is supported:
+
+----
+    do $$
+    declare
+      c int;
+      a int[];
+      b varchar[];
+      ca numeric[];
+    begin
+      c := dbms_sql.open_cursor();
+      call dbms_sql.parse(c, 'insert into foo values(:a, :b, :c)');
+      a := ARRAY[1, 2, 3, 4, 5];
+      b := ARRAY['Ahoj', 'Nazdar', 'Bazar'];
+      ca := ARRAY[3.14, 2.22, 3.8, 4];
+
+      call dbms_sql.bind_array(c, 'a', a, 2, 3);
+      call dbms_sql.bind_array(c, 'b', b, 3, 4);
+      call dbms_sql.bind_array(c, 'c', ca);
+      raise notice 'inserted rows %d', dbms_sql.execute(c);
+    end;
+    $$;
+
+    do $$
+    declare
+      c int;
+      a int[];
+      b varchar[];
+      ca numeric[];
+    begin
+      c := dbms_sql.open_cursor();
+      call dbms_sql.parse(c, 'select i, ''Ahoj'' || i, i + 0.003 from generate_series(1, 35) g(i)');
+      call dbms_sql.define_array(c, 1, a, 10, 1);
+      call dbms_sql.define_array(c, 2, b, 10, 1);
+      call dbms_sql.define_array(c, 3, ca, 10, 1);
+
+      perform dbms_sql.execute(c);
+      while dbms_sql.fetch_rows(c) > 0
+      loop
+        call dbms_sql.column_value(c, 1, a);
+        call dbms_sql.column_value(c, 2, b);
+        call dbms_sql.column_value(c, 3, ca);
+        raise notice 'a = %', a;
+        raise notice 'b = %', b;
+        raise notice 'c = %', ca;
+      end loop;
+      call dbms_sql.close_cursor(c);
+    end;
+    $$;
+----
+
+There is function `dbms_sql.describe_columns_f`, that is like procedure `dbms_sql.describe_columns`.
+Attention, the type ids are related to PostgreSQL type system. The values are not converted to Oracle's
+numbers
+
+----
+    do $$
+    declare
+      c int;
+      r record;
+      d dbms_sql.desc_rec;
+    begin
+      c := dbms_sql.open_cursor();
+      call dbms_sql.parse(c, 'select * from pg_class');
+      r := dbms_sql.describe_columns(c);
+      raise notice '%', r.col_cnt;
+
+      foreach d in array r.desc_t
+      loop
+        raise notice '% %', d.col_name, d.col_type::regtype;
+      end loop;
+
+      call dbms_sql.close_cursor(c);
+    end;
+    $$;
+
+    do $$
+    declare
+      c int;
+      n int;
+      d dbms_sql.desc_rec;
+      da dbms_sql.desc_rec[];
+    begin
+      c := dbms_sql.open_cursor();
+      call dbms_sql.parse(c, 'select * from pg_class');
+      call dbms_sql.describe_columns(c, n, da);
+      raise notice '%', n;
+
+      foreach d in array da
+      loop
+        raise notice '% %', d.col_name, d.col_type::regtype;
+      end loop;
+
+      call dbms_sql.close_cursor(c);
+    end;
+    $$;
+----
+
 == Package dbms_pipe
 
-This package is an emulation of dbms_pipe Oracle package. It provides 
-inter-session comunication. You can send and read any message with or without 
-waiting; list active pipes; set a pipe as private or public; and, use 
-explicit or implicit pipes. 
+This package is an emulation of dbms_pipe Oracle package. It provides
+inter-session communication. You can send and read any message with or without
+waiting; list active pipes; set a pipe as private or public; and, use
+explicit or implicit pipes.
 
 The maximum number of pipes is 50.
 
@@ -404,8 +522,8 @@ package PLVdate. Detailed documentation can be found in PLVision library.
 This package is multicultural, but default configurations are only for
 european countries (see source code).
 
-You should define your own non-business days (max 50 days) and own 
-holidays (max 30 days). A holiday is any non-business day, which is the same 
+You should define your own non-business days (max 50 days) and own
+holidays (max 30 days). A holiday is any non-business day, which is the same
 every year. For example, Christmas day in Western countries.
 
 === Functions
@@ -500,16 +618,16 @@ List of functions:
 * plvstr.rpart(str text, div text, start int, nth int) - Call this function to return the right part of a string
 * plvstr.rpart(str text, div text, start int)          - Call this function to return the right part of a string
 * plvstr.rpart(str text, div text)                     - Call this function to return the right part of a string
-* plvstr.lstrip(str text, substr text, num int) - Call this function to remove characters from the beginning 
-* plvstr.lstrip(str text, substr text)          - Call this function to remove characters from the beginning 
+* plvstr.lstrip(str text, substr text, num int) - Call this function to remove characters from the beginning
+* plvstr.lstrip(str text, substr text)          - Call this function to remove characters from the beginning
 * plvstr.rstrip(str text, substr text, num int) - Call this function to remove characters from the end
 * plvstr.rstrip(str text, substr text)          - Call this function to remove characters from the end
 * plvstr.rvrs(str text, start int, _end int) - Reverse string or part of string
 * plvstr.rvrs(str text, start int)           - Reverse string or part of string
 * plvstr.rvrs(str text)                      - Reverse string or part of string
-* plvstr.left(str text, n int)  -  Returns firs num_in charaters. You can use negative num_in
-* plvstr.right(str text, n int) - Returns last num_in charaters. You can use negative num_ni
-* plvstr.swap(str text, replace text, start int, lengh int) - Replace a substring in a string with a specified string
+* plvstr.left(str text, n int)  -  Returns firs num_in characters. You can use negative num_in
+* plvstr.right(str text, n int) - Returns last num_in characters. You can use negative num_ni
+* plvstr.swap(str text, replace text, start int, length int) - Replace a substring in a string with a specified string
 * plvstr.swap(str text, replace text)                       - Replace a substring in a string with a specified string
 * plvstr.betwn(str text, start int, _end int, inclusive bool) - Find the Substring Between Start and End Locations
 * plvstr.betwn(str text, start text, _end text, startnth int, endnth int, inclusive bool, gotoend bool) - Find the Substring Between Start and End Locations
@@ -520,8 +638,8 @@ List of functions:
 * plvchr.last(str text)       - Call this function to return the last character in a string
 * plvchr.is_blank(c int)  - Is blank
 * plvchr.is_blank(c text) - Is blank
-* plvchr.is_digit(c int)  - Is digit 
-* plvchr.is_digit(c text) - Is digit 
+* plvchr.is_digit(c int)  - Is digit
+* plvchr.is_digit(c text) - Is digit
 * plvchr.is_quote(c int)  - Is quote
 * plvchr.is_quote(c text) - Is quote
 * plvchr.is_other(c int)  - Is other
@@ -536,14 +654,14 @@ List of functions:
 
 == Package PLVsubst
 
-The PLVsubst package performs string substitutions based on a substitution keyword. 
+The PLVsubst package performs string substitutions based on a substitution keyword.
 
 * plvsubst.string(template_in text, vals_in text[])                 - Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list
 * plvsubst.string(template_in text, vals_in text[], subst_in text)
 * plvsubst.string(template_in text, vals_in text, delim_in text)
 * plvsubst.string(template_in text, vals_in text, delim_in text, subst_in text)
 * plvsubst.setsubst(str text) - Set substitution keyword to default '%s'
-* plvsubst.subst() - Retrieve substitution keyword 
+* plvsubst.subst() - Retrieve substitution keyword
 
 Examples:
 
@@ -588,7 +706,7 @@ postgres=# select foo2();
 
 == Package PLVlex
 
-This package isn't compatible with original PLVlex. 
+This package isn't compatible with original PLVlex.
 
 ----
 postgres=# select * from 
@@ -610,10 +728,7 @@ postgres=# select * from
 ----
 
 Warning: Keyword's codes can be changed between PostgreSQL versions!
-o plvlex.tokens(str text, skip_spaces bool, qualified_names bool) - Returns table of lexical elements in str. 
-
-== DBMS_SQL
-In this time this package is in independent project https://github.com/okbob/dbms_sql . It introduces a procedures - that are supported by PostgreSQL 11. Orafce runs on PostgreSQL 9.5, so it is not possible to merge DBMS_SQL into Orafce now. If you have PostgreSQL 11 and higher, then you can use DBMS_SQL and Orafce together.
+o plvlex.tokens(str text, skip_spaces bool, qualified_names bool) - Returns table of lexical elements in str.
 
 == DBMS_ASSERT
 
@@ -625,19 +740,19 @@ This package protects user input against SQL injection.
 * dbms_assert.qualified_sql_name(varchar) varchar - This function verifies that the input string is qualified SQL name.
 * dbms_assert.schema_name(varchar) varchar - Function verifies that input string is an existing schema name.
 * dbms_assert.simple_sql_name(varchar) varchar -This function verifies that the input string is simple SQL name.
-* dbms_assert.object_name(varchar) varchar - Verifies that input string is qualified SQL identifier of an existing SQL object. 
+* dbms_assert.object_name(varchar) varchar - Verifies that input string is qualified SQL identifier of an existing SQL object.
 
 == PLUnit
 
 This unit contains some assert functions.
 
-* plunit.assert_true(bool [, varchar]) - 		Asserts that the condition is true. 
-* plunit.assert_false(bool [, varchar]) - 		Asserts that the condition is false. 
+* plunit.assert_true(bool [, varchar]) - 		Asserts that the condition is true.
+* plunit.assert_false(bool [, varchar]) - 		Asserts that the condition is false.
 * plunit.assert_null(anyelement [, varchar]) -		Asserts that the actual is null.
 * plunit.assert_not_null(anyelement [, varchar]) - 	Asserts that the actual isn't null.
-* plunit.assert_equals(anyelement, anyelement [, double precision] [, varchar]) - Asserts that expected and actual are equal. 
-* plunit.assert_not_equals(anyelement, anyelement [, double precision] [, varchar]) - Asserts that expected and actual are equal. 
-* plunit.fail([varchar]) -				Fail can be used to cause a test procedure to fail immediately using the supplied message. 
+* plunit.assert_equals(anyelement, anyelement [, double precision] [, varchar]) - Asserts that expected and actual are equal.
+* plunit.assert_not_equals(anyelement, anyelement [, double precision] [, varchar]) - Asserts that expected and actual are equal.
+* plunit.fail([varchar]) -				Fail can be used to cause a test procedure to fail immediately using the supplied message.
 
 == Package DBMS_random
 
@@ -648,13 +763,13 @@ This unit contains some assert functions.
 * dbms_random.seed(text) - Reset seed value.
 * dbms_random.string(opt text(1), len int) - Create random string
 * dbms_random.terminate() - Terminate package (do nothing in Pg)
-* dbms_random.value() - Returns a random number from [0.0 - 1.0) 
+* dbms_random.value() - Returns a random number from [0.0 - 1.0)
 * dbms_random.value(low double precision, high double precision) - Returns a random number from [low - high)
 
 == Others functions
 
-This module contains implementation of functions: concat, nvl, nvl2, lnnvl, decode,
-bitand, nanvl, sinh, cosh, tanh and oracle.substr.
+This module contains implementation of functions: concat, nvl, nvl2, lnnvl, decode, greatest, least,
+bitand, nanvl, sinh, cosh, tanh, oracle.substr and oracle.mod.
 
 * oracle.substr(str text, start int, len int) - Oracle compatible substring
 * oracle.substr(str text, start int)          - Oracle compatible substring
@@ -668,22 +783,42 @@ bitand, nanvl, sinh, cosh, tanh and oracle.substr.
 * oracle.rtrim(string text [, characters text])  - Oracle compatible rtrim
 * oracle.btrim(string text [, characters text])  - Oracle compatible btrim
 * oracle.length(string char)  - Oracle compatible length
-* pg_catalog.listagg(str text [, separator text]) - aggregate values to list
-* pg_catalog.wm_concat(str text) - aggregate values to comma separatated list
-* pg_catalog.median(float4) - calculate a median
-* pg_catalog.median(float8) - calculate a median
-* pg_catalog.to_number(text) -  converts a string to a number
-* pg_catalog.to_number(numeric) -  converts a string to a number
-* pg_catalog.to_number(numeric,numeric) -  converts a string to a number
+* oracle.listagg(str text [, separator text]) - aggregate values to list
+* oracle.wm_concat(str text) - aggregate values to comma separatated list
+* oracle.median(float4) - calculate a median
+* oracle.median(float8) - calculate a median
+* oracle.to_number(text) -  converts a string to a number
+* oracle.to_number(numeric) -  converts a string to a number
+* oracle.to_number(numeric,numeric) -  converts a string to a number
 * public.to_multi_byte(text) - Convert all single-byte characters to their corresponding multibyte characters
 * public.to_single_byte(text) - Convert all multi-byte characters to their corresponding single-byte characters
+* oracle.greatest(anyelement, anyelement[]) - Oracle compatibility greatest, return NULL on NULL input
+* oracle.least(anyelement, anyelement[]) - Oracle compatibility least, return NULL on NULL input
+* oracle.mod(int, int) - Oracle compatibility mod, If the second parameter is zero, it returns the first parameter
+* oracle.remainder(int, int) - returns remainder of number divided by another number
+* oracle.remainder(numeric, numeric) - returns remainder of number divided by another number
+* oracle.sys_guid() - returns bytea - 16 bytes of global uniq id
 
 You might need to set search_path to 'oracle, pg_catalog, "$user", public'
 because oracle.substr, oracle.lpad, oracle.rpad, oracle.ltrim, oracle.rtrim, oracle.btrim, oracle.length are installed side-by-side with pg_catalog.substr, pg_catalog.lpad, pg_catalog.rpad, pg_catalog.ltrim, pg_catalog.rtrim, pg_catalog.btrim, pg_catalog.length respectively.
 
+Functions oracle.decode, oracle.greatest and oracle.least must always be prefixed by the schema name even if the oracle is before pg_catalog in the search_path because these functions are implemented inside PostgreSQL parser and analyzer. Without the schema name the internal functions will always be used.
+
 Note that in case of lpad and rpad, parameters string and fill can be of types CHAR, VARCHAR, TEXT, VARCHAR2 or NVARCHAR2 (note that the last two are orafce-provided types). The default fill character is a half-width space. Similarly for ltrim, rtrim and btrim.
 
-Note that oracle.length has a limitation that it works only in units of characters because PostgreSQL CHAR type only supports character semantics. 
+Note that oracle.length has a limitation that it works only in units of characters because PostgreSQL CHAR type only supports character semantics.
+
+The oracle.substr with three arguments can returns different result (null or empty string) in dependency
+to setting orafce.using_substring_zero_width_in_substr variable (oracle, warning_oracle, orafce, warning_orafce).
+This different result is returned only when third argument (substring_length) is zero. Default is warning_oracle,
+thats means raising warning and returning null.
+
+== oracle.sys_guid() function
+
+This functions returns global unique id. It calls specified functions from "uuid-ossp" extension, and then
+this function should be installed before function sys_guid is used. By default this function uses function
+uuid_generate_v1, but function uuid_generate_v1mc, uuid_generate_v4 can be used too (by setting orafce.sys_guid_source).
+oracle.sys_guid can use builin gen_random_uuid func too. In this case the extension "uuid-ossp" is not required.
 
 == VARCHAR2 and NVARCHAR2 Support
 
@@ -693,7 +828,7 @@ orafce's VARCHAR2 implements parts of Oracle database specification about VARCHA
 * Unlike PostgreSQL varchar, implicit cast to VARCHAR2 does not truncate
   white spaces over declared maximum length
 * For these types is possible to use null safe || operator, when you enable
-  orafce.varchar2_null_safe_concat TO true . The behave is very similar to Oracle.
+  orafce.varchar2_null_safe_concat TO true . The behaviour is very similar to Oracle.
 
   Attention: - when result is empty string, then result is NULL. This behaviour is
   disabled by default.
@@ -748,12 +883,12 @@ text type columns. Both variants has some advantages and disadvantages.
 This can be enusured with trigger functions:
 
 ----
-oracle.replace_empty_strings([raise_warnings boolean])
-oracle.replace_null_strings([raise_warnings boolean])
+oracle.replace_empty_strings([ 'on' | 'true' | 'warning' | 'error' ])
+oracle.replace_null_strings([ 'on' | 'true' | 'warning' | 'error' ])
 ----
 
-Optional boolean argument is used as indicator so these functions should to
-raise warning when row was changed inside these functions.
+Optional string argument is used as indicator so these functions should to
+raise warning (possibly error) when row was changed inside these functions.
 
 ----
 CREATE TABLE test(id serial, name varchar, surname varchar);
@@ -780,13 +915,13 @@ INSERT INTO test(name, surname) VALUES('', 'Stehule');
 
 == TODO
 
-* better documentation                                             
-* better seralization in dbms_pipe (via _send and _recv functions) 
+* better documentation
+* better seralization in dbms_pipe (via _send and _recv functions)
 * alter shared memory structures by temporary tables: only locks are in shmem, (bitmaps), data in tmp tbl
 
 == License
 
-This module is released under BSD licence. 
+This module is released under BSD licence.
 
 == Contributors
 
@@ -794,18 +929,19 @@ The project was founded in 2008 by Pavel Stehule <stehule@kix.fsv.cvut.cz>.
 
 Other contributors:
 
+* Gabriele Bartolini (gbartolini)
+* Jeffrey Cohen (jcohen)
+* Giles Darold (darold)
+* Pavan Deolasee (pavanvd)
 * Peter Eisentraut (petere)
+* Beena Emerson (b-emerson)
+* Takahiro Itagaki (itagaki)
+* Zdenek Kotala (hlipa)
+* Amit Langote (amitlan)
+* Heikki Linnakangas (hlinnaka)
+* Fujii Masao
+* Marco Nenciarini (mnencia)
+* Vinayak Pokale
 * Gavin Sherry (swm)
 * Pavel Stehule (okbob)
-* Heikki Linnakangas (hlinnaka)
-* Gabriele Bartolini (gbartolini)
-* Zdenek Kotala (hlipa)
-* Takahiro Itagaki (itagaki)
-* Marco Nenciarini (mnencia)
-* Pavan Deolasee (pavanvd)
-* Jeffrey Cohen (jcohen)
-* Amit Langote (amitlan)
 * Rahila Syed (rahila)
-* Beena Emerson (b-emerson)
-* Vinayak Pokale
-* Fujii Masao

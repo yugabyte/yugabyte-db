@@ -2338,7 +2338,7 @@ The UTL_FILE package enables PL/pgSQL to read and write text files.
 
 Use the following procedure to perform migration:
 
- 1. Search for the keywords UTL_FILE.FCLOSE and UTF_FILE.FCLOSE_ALL, and identify where they are used.
+ 1. Search for the keywords UTL_FILE.FCLOSE and UTL_FILE.FCLOSE_ALL, and identify where they are used.
  2. If UTL_FILE.PUT is executed and no newline is specified during write processing before the file is closed, change the code so that UTL_FILE.NEW_LINE is executed before the file is closed.
 
 **Migration example**
