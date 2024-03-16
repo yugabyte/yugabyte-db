@@ -2579,7 +2579,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
-  TSDescriptorVector GetAllLiveNotBlacklistedTServers() const;
+  TSDescriptorVector GetAllLiveNotBlacklistedTServers() const override;
 
   // Get the ycql system.partitions vtable. Note that this has EXCLUDES(mutex_), in order to
   // maintain lock ordering.

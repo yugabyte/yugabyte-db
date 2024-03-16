@@ -317,6 +317,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       CloneTabletResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void ClonePgSchema(
+      const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
 
@@ -325,9 +329,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   Status DoCreateTablet(const CreateTabletRequestPB* req, CreateTabletResponsePB* resp);
 
-  Status SetupCDCSDKRetention(const tablet::ChangeMetadataRequestPB* req,
-                              ChangeMetadataResponsePB* resp,
-                              const tablet::TabletPeerPtr& peer);
+  Status DoClonePgSchema(const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp);
+
+  Status SetupCDCSDKRetention(
+      const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      const tablet::TabletPeerPtr& peer);
 
   // Used to implement wait/signal mechanism for backfill requests.
   // Since the number of concurrently allowed backfill requests is
