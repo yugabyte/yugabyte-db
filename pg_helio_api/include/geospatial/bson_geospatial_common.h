@@ -31,6 +31,9 @@
  */
 extern bool EnableGeospatialSupport;
 
+/* Forward declaration of struct */
+typedef struct ProcessCommonGeospatialState ProcessCommonGeospatialState;
+
 
 /*================================*/
 /* Data Types*/
@@ -94,9 +97,9 @@ typedef struct CommonBsonGeospatialState
 	Datum geoSpatialDatum;
 } CommonBsonGeospatialState;
 
-
-typedef bool (*GeospatialQueryMatcherFunc)(FmgrInfo *, Datum, Datum, const
-										   ShapeOperatorInfo *);
+/* Signature for runtime function to get match result for $geoWithin and $geoIntersects */
+typedef bool (*GeospatialQueryMatcherFunc)(const ProcessCommonGeospatialState *,
+										   StringInfo);
 
 /*
  * Runtime query matcher for comapring the resulting geometry/geography from

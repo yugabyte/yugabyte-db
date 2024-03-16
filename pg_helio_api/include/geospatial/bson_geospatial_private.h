@@ -43,6 +43,11 @@
  */
 #define POSTGIS_EWKB_SRID_FLAG 0x20000000
 
+/*
+ * WKBBufferGetByteaWithSRID embeds SRID Flag into type when extracting bytea from WKB buffer
+ * This flag is used to remove the embedding and get type from bytea
+ */
+#define POSTGIS_EWKB_SRID_NEGATE_FLAG 0xDFFFFFFF
 
 /*
  * This is a useful macro defined for handling all the validity error cases for geospatial

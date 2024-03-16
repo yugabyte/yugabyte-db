@@ -83,7 +83,6 @@ static Datum BsonExtractGeospatialInternal(const pgbson *document,
 										   WKBGeometryType collectType,
 										   GeospatialErrorContext *errCtxt);
 
-
 /*
  * Execution function while extracting the coordinates using legacy point system
  */
@@ -335,16 +334,7 @@ BsonExtractGeographyRuntime(const pgbson *document, const StringView *pathView)
 static void
 SetQueryMatcherResult(ProcessCommonGeospatialState *state)
 {
-	FmgrInfo *flinfo = state->runtimeMatcher.flInfo;
-	Datum query = state->runtimeMatcher.queryGeoDatum;
-
-	bytea *wkbBytea = WKBBufferGetByteaWithSRID(state->WKBBuffer);
-	Datum result = state->geospatialType == GeospatialType_Geometry ?
-				   GetGeometryFromWKB(wkbBytea) :
-				   GetGeographyFromWKB(wkbBytea);
-
-	bool isMatched = state->runtimeMatcher.matcherFunc(
-		flinfo, query, result, state->opInfo);
+	bool isMatched = state->runtimeMatcher.matcherFunc(state, state->WKBBuffer);
 	state->runtimeMatcher.isMatched = isMatched;
 
 	if (!isMatched)
@@ -353,8 +343,6 @@ SetQueryMatcherResult(ProcessCommonGeospatialState *state)
 		pfree(state->WKBBuffer->data);
 		state->WKBBuffer = makeStringInfo();
 	}
-
-	pfree(wkbBytea);
 }
 
 
@@ -494,7 +482,8 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
 			throwError, (
 				errcode(MongoLocation16804),
-				errmsg(
+				errmsg("location object expected, location array not in correct format"),
+				errhint(
 					"location object expected, location array not in correct format")));
 	}
 
@@ -565,7 +554,8 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 		if (index == 1 && validCoordinates[0] == PointProcessType_Valid)
 		{
 			ereport(ERROR, (errcode(MongoLocation13068),
-							errmsg("geo field only has 1 element")));
+							errmsg("geo field only has 1 element"),
+							errhint("geo field only has 1 element")));
 		}
 
 		/* If any point is invalid do further checks */
@@ -580,7 +570,9 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 				ereport(ERROR, (
 							errcode(MongoLocation13026),
 							errmsg("geo values must be "
-								   "'legacy coordinate pairs' for 2d indexes")));
+								   "'legacy coordinate pairs' for 2d indexes"),
+							errhint("geo values must be "
+									"'legacy coordinate pairs' for 2d indexes")));
 			}
 
 			/* For any other single point validation this error if any invalid point.
@@ -594,7 +586,9 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 				ereport(ERROR, (
 							errcode(MongoLocation16804),
 							errmsg("location object expected, location array "
-								   "not in correct format")));
+								   "not in correct format"),
+							errhint("location object expected, location array "
+									"not in correct format")));
 			}
 		}
 	}
@@ -739,24 +733,10 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 	parseState.buffer = processState->WKBBuffer;
 	parseState.errorCtxt = processState->errorCtxt;
 
-
 	bool isValid = BsonValueGetGeometryWKB(value, parseFlag, &parseState);
 	if (!isValid)
 	{
 		return false;
-	}
-
-	/*
-	 * This check will be removed when support for checking all points
-	 * of polygons and lines is implemented in subsequent PR
-	 */
-	if (processState->opInfo != NULL &&
-		processState->opInfo->op == GeospatialShapeOperator_CENTERSPHERE &&
-		parseState.type != GeoJsonType_POINT)
-	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
-						errmsg(
-							"GeoJson fields other than point type are not currently supported with $centerSphere")));
 	}
 
 	if (parseState.crs != NULL &&

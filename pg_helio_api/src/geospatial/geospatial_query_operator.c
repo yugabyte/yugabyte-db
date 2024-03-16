@@ -18,6 +18,7 @@
 #include "io/pgbsonelement.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_shape_operators.h"
+#include "geospatial/bson_geospatial_wkb_iterator.h"
 #include "planner/mongo_query_operator.h"
 #include "metadata/metadata_cache.h"
 #include "utils/mongo_errors.h"
@@ -61,10 +62,18 @@ static bool CompareGeoWithinState(const pgbson *document, const char *path,
 								  const RuntimeBsonGeospatialState *state);
 static bool CompareGeoIntersectsState(const pgbson *document, const char *path,
 									  const RuntimeBsonGeospatialState *state);
-static bool CompareGeoDatumsWithFmgrInfo(FmgrInfo *fmgrInfo,
-										 Datum queryGeo, Datum documentGeo, const
-										 ShapeOperatorInfo
-										 *opInfo);
+static bool CompareGeoDatumsWithFmgrInfo(const ProcessCommonGeospatialState *state,
+										 StringInfo buffer);
+static bool CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *state,
+											StringInfo buffer);
+static bool SetQueryMatcherResultForCenterSphereHelper(WKBBufferIterator *bufferIterator,
+													   const ProcessCommonGeospatialState
+													   *state,
+													   StringInfo pointBuffer);
+static bool PointMatchedForCenterSphere(WKBBufferIterator *bufferIterator,
+										StringInfo pointBuffer,
+										const ProcessCommonGeospatialState *state);
+
 
 /*
  * bson_dollar_geowithin implements runtime
@@ -228,10 +237,19 @@ CompareGeoWithinState(const pgbson *document, const char *path,
 
 	/* Fill the runtime matching information */
 	withinState.runtimeMatcher.isMatched = false;
-	withinState.runtimeMatcher.matcherFunc = &CompareGeoDatumsWithFmgrInfo;
 	withinState.runtimeMatcher.queryGeoDatum = runtimeState->state.geoSpatialDatum;
 	withinState.runtimeMatcher.flInfo = runtimeState->postgisFuncFmgrInfo;
 	withinState.opInfo = runtimeState->opInfo;
+
+	if (runtimeState->opInfo->op == GeospatialShapeOperator_CENTERSPHERE ||
+		runtimeState->opInfo->op == GeospatialShapeOperator_CENTER)
+	{
+		withinState.runtimeMatcher.matcherFunc = &CompareGeoDatumsForDollarCenter;
+	}
+	else
+	{
+		withinState.runtimeMatcher.matcherFunc = &CompareGeoDatumsWithFmgrInfo;
+	}
 
 	bson_iter_t documentIterator;
 	PgbsonInitIterator(document, &documentIterator);
@@ -247,14 +265,14 @@ CompareGeoWithinState(const pgbson *document, const char *path,
 										&withinState);
 	}
 
+	/* Free the buffer */
+	pfree(withinState.WKBBuffer);
+
 	/* If there are no valid points return false match */
 	if (withinState.isEmpty)
 	{
 		return false;
 	}
-
-	/* Free the buffer */
-	pfree(withinState.WKBBuffer);
 
 	return withinState.runtimeMatcher.isMatched;
 }
@@ -303,35 +321,238 @@ CompareGeoIntersectsState(const pgbson *document, const char *path,
  * represented by the fmgrInfo and returns the boolean result.
  */
 static bool
-CompareGeoDatumsWithFmgrInfo(FmgrInfo *fmgrInfo, Datum queryGeo,
-							 Datum documentGeo, const ShapeOperatorInfo *opInfo)
+CompareGeoDatumsWithFmgrInfo(const ProcessCommonGeospatialState *state, StringInfo buffer)
 {
-	if (opInfo != NULL && opInfo->opState != NULL)
+	GeospatialType type = state->geospatialType;
+	bytea *wkbBytea = WKBBufferGetByteaWithSRID(buffer);
+	Datum documentGeo = type == GeospatialType_Geometry ?
+						GetGeometryFromWKB(wkbBytea) :
+						GetGeographyFromWKB(wkbBytea);
+
+	pfree(wkbBytea);
+
+	return DatumGetBool(FunctionCall2(state->runtimeMatcher.flInfo,
+									  state->runtimeMatcher.queryGeoDatum,
+									  documentGeo));
+}
+
+
+/*
+ * CompareGeoDatumsForDollarCenter compares the two geospatial datums
+ * for $center and $centerSphere operators using the function
+ * represented by the fmgrInfo and returns the boolean result.
+ */
+static bool
+CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *state,
+								StringInfo buffer)
+{
+	if (state->opInfo != NULL)
 	{
-		if (opInfo->op == GeospatialShapeOperator_CENTERSPHERE)
+		if (state->opInfo->op == GeospatialShapeOperator_CENTERSPHERE &&
+			state->opInfo->opState != NULL)
 		{
 			DollarCenterOperatorState *centerState =
-				(DollarCenterOperatorState *) opInfo->opState;
+				(DollarCenterOperatorState *) state->opInfo->opState;
 
 			if (centerState->isRadiusInfinite)
 			{
 				return true;
 			}
 
-			Datum radiusArg = Float8GetDatum(centerState->radius);
-			return DatumGetBool(FunctionCall3(fmgrInfo, queryGeo, documentGeo,
-											  radiusArg));
+			/* buffer to store each extracted point. Do not modify pointBuffer->data explicitly. */
+			StringInfo pointBuffer = makeStringInfo();
+			WriteHeaderToWKBBuffer(pointBuffer, WKBGeometryType_Point);
+			pointBuffer->len += WKB_BYTE_SIZE_POINT;
+
+			/* iterator for geography buffer from doc */
+			WKBBufferIterator bufferIterator;
+			InitIteratorFromWKBBuffer(&bufferIterator, buffer);
+
+			bool isMatched = SetQueryMatcherResultForCenterSphereHelper(&bufferIterator,
+																		state,
+																		pointBuffer);
+
+			pfree(pointBuffer->data);
+
+			return isMatched;
 		}
-		else if (opInfo->op == GeospatialShapeOperator_CENTER)
+		else if (state->opInfo->op == GeospatialShapeOperator_CENTER)
 		{
-			DollarCenterOperatorState *centerState =
-				(DollarCenterOperatorState *) opInfo->opState;
-			if (centerState->isRadiusInfinite)
+			GeospatialType type = state->geospatialType;
+			bytea *wkbBytea = WKBBufferGetByteaWithSRID(buffer);
+			Datum documentGeo = type == GeospatialType_Geometry ?
+								GetGeometryFromWKB(wkbBytea) :
+								GetGeographyFromWKB(wkbBytea);
+
+			pfree(wkbBytea);
+
+			if (state->opInfo->opState != NULL)
 			{
-				return true;
+				DollarCenterOperatorState *centerState =
+					(DollarCenterOperatorState *) state->opInfo->opState;
+				if (centerState->isRadiusInfinite)
+				{
+					return true;
+				}
 			}
+
+			/* TODO: update this to match $centerSphere in using ST_DWITHIN */
+			return DatumGetBool(FunctionCall2(state->runtimeMatcher.flInfo,
+											  state->runtimeMatcher.queryGeoDatum,
+											  documentGeo));
 		}
 	}
 
-	return DatumGetBool(FunctionCall2(fmgrInfo, queryGeo, documentGeo));
+	return false;
+}
+
+
+/*
+ * Extract individual points from document geography WKB and compare with query doc for matches.
+ * Refer geospatial.md for WKB format for each GeoJson type to make sense of this parsing.
+ * We haven't stuffed the SRID into the buffer yet so not expecting SRID bytes. SRID gets stuffed
+ * when we extract bytea from WKB buffer using WKBBufferGetByteaWithSRID/WKBBufferGetCollectionByteaWithSRID.
+ */
+static bool
+SetQueryMatcherResultForCenterSphereHelper(WKBBufferIterator *bufferIterator,
+										   const ProcessCommonGeospatialState *state,
+										   StringInfo pointBuffer)
+{
+	/* skip endianness bytes */
+	IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_ORDER);
+
+	/* Extract GeoJson type */
+	uint32 type = *(uint32 *) (bufferIterator->currptr);
+	WKBGeometryType geoType = (WKBGeometryType) type;
+	IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_TYPE);
+
+	bool isMatched = false;
+
+	switch (geoType)
+	{
+		case WKBGeometryType_Point:
+		{
+			isMatched = PointMatchedForCenterSphere(bufferIterator, pointBuffer, state);
+			break;
+		}
+
+		case WKBGeometryType_LineString:
+		{
+			int32 numPoints = *(int32 *) (bufferIterator->currptr);
+			IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_NUM);
+
+			for (int i = 0; i < numPoints; i++)
+			{
+				isMatched = PointMatchedForCenterSphere(bufferIterator, pointBuffer,
+														state);
+
+				if (!isMatched)
+				{
+					return false;
+				}
+			}
+
+			break;
+		}
+
+		case WKBGeometryType_Polygon:
+		{
+			int32 numRings = *(int32 *) (bufferIterator->currptr);
+			IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_NUM);
+
+			for (int i = 0; i < numRings; i++)
+			{
+				int32 numPoints = *(int32 *) (bufferIterator->currptr);
+				IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_NUM);
+
+				for (int j = 0; j < numPoints; j++)
+				{
+					isMatched = PointMatchedForCenterSphere(bufferIterator, pointBuffer,
+															state);
+
+					if (!isMatched)
+					{
+						return false;
+					}
+				}
+			}
+
+			break;
+		}
+
+		case WKBGeometryType_MultiPoint:
+		case WKBGeometryType_MultiLineString:
+		case WKBGeometryType_MultiPolygon:
+		case WKBGeometryType_GeometryCollection:
+		{
+			int32 numShapes = *(int32 *) (bufferIterator->currptr);
+			IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_NUM);
+
+			for (int i = 0; i < numShapes; i++)
+			{
+				isMatched = SetQueryMatcherResultForCenterSphereHelper(bufferIterator,
+																	   state,
+																	   pointBuffer);
+
+				if (!isMatched)
+				{
+					return false;
+				}
+			}
+
+			break;
+		}
+
+		default:
+		{
+			ereport(ERROR, (
+						errcode(MongoInternalError),
+						errmsg(
+							"%d unexpected WKB found for multi component $centerSphere opearator",
+							geoType),
+						errhint(
+							"%d unexpected WKB found for multi component $centerSphere opearator",
+							geoType)));
+		}
+	}
+
+	return isMatched;
+}
+
+
+/*
+ * Checks if extracted point is a match for given query.
+ * arg bufferIterator corresponds to the wkb buffer with bufferIterator->currptr at the current point being processed
+ * arg pointBuffer is an aux space to store the current point and get its datum from bytea.
+ */
+static bool
+PointMatchedForCenterSphere(WKBBufferIterator *bufferIterator,
+							StringInfo pointBuffer,
+							const ProcessCommonGeospatialState *state)
+{
+	/* extract point and write to point buffer */
+	float8 *xy = (float8 *) (bufferIterator->currptr);
+
+	Assert(pointBuffer->len >= 21);
+	char *pointData = pointBuffer->data;
+	pointData += WKB_BYTE_SIZE_ORDER + WKB_BYTE_SIZE_TYPE;
+	memcpy(pointData, (char *) xy, WKB_BYTE_SIZE_POINT);
+
+	IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_POINT);
+
+	bytea *wkbBytea = WKBBufferGetByteaWithSRID(pointBuffer);
+	Datum queryPoint = GetGeographyFromWKB(wkbBytea);
+
+	pfree(wkbBytea);
+
+	DollarCenterOperatorState *centerState =
+		(DollarCenterOperatorState *) state->opInfo->opState;
+
+	Datum radiusArg = Float8GetDatum(centerState->radius);
+
+	/* return result from ST_DWITHIN */
+	return DatumGetBool(FunctionCall3(state->runtimeMatcher.flInfo,
+									  state->runtimeMatcher.queryGeoDatum,
+									  queryPoint,
+									  radiusArg));
 }
