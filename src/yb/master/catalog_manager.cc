@@ -1659,6 +1659,7 @@ Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
                                   universe_uuid);
 
   l.mutable_data()->pb.set_universe_uuid(universe_uuid);
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
   l.Commit();
   return Status::OK();
@@ -12521,6 +12522,11 @@ Status CatalogManager::SetClusterConfig(
 
   if (config.cluster_uuid() != l->pb.cluster_uuid()) {
     Status s = STATUS(InvalidArgument, "Config cluster UUID cannot be updated");
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
+  }
+
+  if (config.universe_uuid() != l->pb.universe_uuid()) {
+    Status s = STATUS(InvalidArgument, "Config Universe UUID cannot be updated");
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
   }
 

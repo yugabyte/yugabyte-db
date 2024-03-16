@@ -124,6 +124,8 @@ service TabletServerService {
 
   rpc ClearAllMetaCachesOnServer(ClearAllMetaCachesOnServerRequestPB)
       returns (ClearAllMetaCachesOnServerResponsePB);
+
+  rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
