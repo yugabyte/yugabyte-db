@@ -319,7 +319,7 @@ GinBsonExtractQueryElemMatchForExpression(BsonExtractQueryArgs *args)
 		*nentries = 2;
 		extraDataPtr[1] = (Pointer) elemMatchState;
 		(*partialmatch)[1] = false;
-		entries[1] = GenerateRootTruncatedTerm();
+		entries[1] = GenerateRootTruncatedTerm(&args->termMetadata);
 	}
 
 	return entries;

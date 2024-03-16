@@ -135,6 +135,8 @@ gin_bson_exclusion_extract_value(PG_FUNCTION_ARGS)
 	bool generateRootTerm = true;
 	GenerateTermsForExclusion(document, shardKey, &context, generateRootTerm);
 	*nentries = context.totalTermCount;
+
+	PG_FREE_IF_COPY(input, 0);
 	PG_RETURN_POINTER(context.terms.entries);
 }
 
@@ -174,6 +176,8 @@ gin_bson_exclusion_extract_query(PG_FUNCTION_ARGS)
 	context.termMetadata = GetIndexTermMetadata(options);
 	GenerateTermsForExclusion(document, shardKey, &context, generateRootTerm);
 	*nentries = context.totalTermCount;
+
+	PG_FREE_IF_COPY(input, 0);
 	PG_RETURN_POINTER(context.terms.entries);
 }
 
@@ -294,7 +298,7 @@ GetShardKeyAndDocument(HeapTupleHeader input, int64_t *shardKey)
 	}
 
 	*shardKey = DatumGetInt64(shardKeyDatum);
-	return DatumGetPgBson(documentDatum);
+	return DatumGetPgBsonPacked(documentDatum);
 }
 
 

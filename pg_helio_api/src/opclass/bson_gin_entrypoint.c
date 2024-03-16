@@ -584,6 +584,13 @@ gin_bson_single_path_options(PG_FUNCTION_ARGS)
 							offsetof(BsonGinSinglePathOptions,
 									 base.indexTermTruncateLimit));
 
+	add_local_int_reloption(relopts, "v",
+							"The version of the options struct.",
+							IndexOptionsVersion_V0,         /* default value */
+							IndexOptionsVersion_V0,         /* min */
+							IndexOptionsVersion_V1,         /* max */
+							offsetof(BsonGinSinglePathOptions, base.version));
+
 	PG_RETURN_VOID();
 }
 
@@ -654,8 +661,15 @@ gin_bson_wildcard_project_options(PG_FUNCTION_ARGS)
 							-1, /* default value */
 							-1, /* min */
 							INT32_MAX, /* max */
-							offsetof(BsonGinSinglePathOptions,
+							offsetof(BsonGinWildcardProjectionPathOptions,
 									 base.indexTermTruncateLimit));
+
+	add_local_int_reloption(relopts, "v",
+							"The version of the options struct.",
+							IndexOptionsVersion_V0,         /* default value */
+							IndexOptionsVersion_V0,         /* min */
+							IndexOptionsVersion_V1,         /* max */
+							offsetof(BsonGinWildcardProjectionPathOptions, base.version));
 
 	PG_RETURN_VOID();
 }
@@ -792,6 +806,40 @@ IndexTermCreateMetadata
 GetIndexTermMetadata(void *indexOptions)
 {
 	BsonGinIndexOptionsBase *options = (BsonGinIndexOptionsBase *) indexOptions;
+
+	if (options->version >= IndexOptionsVersion_V1)
+	{
+		/* Turn on truncation by default */
+		if (options->type != IndexOptionsType_SinglePath)
+		{
+			ereport(ERROR, (errmsg(
+								"Index version V1 is not supported by non-single path indexes"),
+							errhint(
+								"Index version V1 is not supported by non-single path indexes")));
+		}
+
+		BsonGinSinglePathOptions *singlePathOptions =
+			(BsonGinSinglePathOptions *) options;
+		if (singlePathOptions->isWildcard ||
+			singlePathOptions->generateNotFoundTerm)
+		{
+			ereport(ERROR, (errmsg(
+								"Index term version V1 is not supported by wildcard or unique path indexes"),
+							errhint(
+								"Index term version V1 is not supported by wildcard or unique path indexes")));
+		}
+
+		StringView pathPrefix = { 0 };
+		Get_Index_Path_Option(singlePathOptions, path, pathPrefix.string,
+							  pathPrefix.length);
+		return (IndexTermCreateMetadata) {
+				   .indexTermSizeLimit = options->indexTermTruncateLimit,
+				   .pathPrefix = pathPrefix,
+				   .isWildcardPathPrefix = false,
+				   .indexVersion = options->version
+		};
+	}
+
 	if (options->indexTermTruncateLimit > 0)
 	{
 		StringView pathPrefix = { 0 };
@@ -809,14 +857,16 @@ GetIndexTermMetadata(void *indexOptions)
 		return (IndexTermCreateMetadata) {
 				   .indexTermSizeLimit = options->indexTermTruncateLimit,
 				   .pathPrefix = pathPrefix,
-				   .isWildcardPathPrefix = isWildcardPrefix
+				   .isWildcardPathPrefix = isWildcardPrefix,
+				   .indexVersion = options->version
 		};
 	}
 
 	return (IndexTermCreateMetadata) {
 			   .indexTermSizeLimit = 0,
 			   .pathPrefix = { 0 },
-			   .isWildcardPathPrefix = false
+			   .isWildcardPathPrefix = false,
+			   .indexVersion = options->version
 	};
 }
 

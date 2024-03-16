@@ -225,7 +225,7 @@ typedef struct
 	int32_t *coarsestIndexedLevel;
 
 	/* Feature flag to enable large index term. */
-	bool enableLargeIndexKeys;
+	BoolIndexOption enableLargeIndexKeys;
 } IndexDef;
 
 /*

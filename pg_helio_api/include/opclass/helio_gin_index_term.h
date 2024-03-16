@@ -13,6 +13,7 @@
 
 #include "utils/string_view.h"
 #include "io/helio_bson_core.h"
+#include "opclass/helio_gin_index_mgmt.h"
 
 /* Struct used in manipulating bson index terms */
 typedef struct BsonIndexTerm
@@ -53,6 +54,9 @@ typedef struct IndexTermCreateMetadata
 
 	/* If the path prefix is a wildcard path */
 	bool isWildcardPathPrefix;
+
+	/* The index version for this index */
+	IndexOptionsVersion indexVersion;
 } IndexTermCreateMetadata;
 
 
@@ -63,11 +67,11 @@ BsonIndexTermSerialized SerializeBsonIndexTerm(pgbsonelement *indexElement,
 											   const IndexTermCreateMetadata *
 											   indexMetadata);
 
-Datum GenerateRootTerm(void);
-Datum GenerateRootExistsTerm(void);
-Datum GenerateRootNonExistsTerm(void);
-Datum GenerateRootTruncatedTerm(void);
-Datum GenerateRootMultiKeyTerm(void);
+Datum GenerateRootTerm(const IndexTermCreateMetadata *);
+Datum GenerateRootExistsTerm(const IndexTermCreateMetadata *);
+Datum GenerateRootNonExistsTerm(const IndexTermCreateMetadata *);
+Datum GenerateRootTruncatedTerm(const IndexTermCreateMetadata *);
+Datum GenerateRootMultiKeyTerm(const IndexTermCreateMetadata *);
 
 int32_t CompareBsonIndexTerm(BsonIndexTerm *left, BsonIndexTerm *right,
 							 bool *isComparisonValid);

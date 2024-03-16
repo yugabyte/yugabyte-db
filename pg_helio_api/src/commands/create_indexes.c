@@ -221,6 +221,7 @@ static const int NumberOfMongoIndexTypes = sizeof(MongoIndexSupportedList) /
 extern bool EnableExtendedIndexFilters;
 extern bool ForceIndexTermTruncation;
 extern int IndexTruncationLimitOverride;
+extern bool DefaultEnableLargeIndexKeys;
 
 #define WILDCARD_INDEX_SUFFIX "$**"
 #define DOT_WILDCARD_INDEX_SUFFIX "." WILDCARD_INDEX_SUFFIX
@@ -1700,7 +1701,14 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		else if (strcmp(indexDefDocKey, "enableLargeIndexKeys") == 0)
 		{
 			const bson_value_t *value = bson_iter_value(&indexDefDocIter);
-			indexDef->enableLargeIndexKeys = BsonValueAsBool(value);
+			if (BsonValueAsBool(value))
+			{
+				indexDef->enableLargeIndexKeys = BoolIndexOption_True;
+			}
+			else
+			{
+				indexDef->enableLargeIndexKeys = BoolIndexOption_False;
+			}
 		}
 		else if (!ignoreUnknownIndexOptions)
 		{
@@ -1780,7 +1788,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		ThrowIndexDefDocMissingFieldError("name");
 	}
 
-	if (indexDef->enableLargeIndexKeys)
+	if (indexDef->enableLargeIndexKeys == BoolIndexOption_True)
 	{
 		if (indexDef->key->isWildcard || indexDef->wildcardProjectionDocument != NULL)
 		{
@@ -1859,7 +1867,8 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 							"Index type 'text' does not support the unique option")));
 	}
 
-	if (indexDef->unique == BoolIndexOption_True && indexDef->enableLargeIndexKeys)
+	if (indexDef->unique == BoolIndexOption_True && indexDef->enableLargeIndexKeys ==
+		BoolIndexOption_True)
 	{
 		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						errmsg(
@@ -4404,10 +4413,9 @@ MakeIndexSpecForIndexDef(IndexDef *indexDef)
 								*indexDef->coarsestIndexedLevel);
 	}
 
-	if (indexDef->enableLargeIndexKeys)
+	if (indexDef->enableLargeIndexKeys == BoolIndexOption_True)
 	{
-		PgbsonWriterAppendInt32(&writer, "enableLargeIndexKeys", 20,
-								indexDef->enableLargeIndexKeys);
+		PgbsonWriterAppendInt32(&writer, "enableLargeIndexKeys", 20, 1);
 	}
 
 	if (!IsPgbsonWriterEmptyDocument(&writer))
@@ -4472,7 +4480,7 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 							 ApiDataSchemaName, collectionId);
 		}
 
-		if (indexDef->enableLargeIndexKeys)
+		if (indexDef->enableLargeIndexKeys == BoolIndexOption_True)
 		{
 			ereport(ERROR, (errcode(MongoCannotCreateIndex),
 							errmsg(
@@ -4642,6 +4650,12 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 							 ApiDataSchemaName, collectionId);
 		}
 
+		bool enableLargeIndexKeys = DefaultEnableLargeIndexKeys;
+		if (indexDef->enableLargeIndexKeys != BoolIndexOption_Undefined)
+		{
+			enableLargeIndexKeys = indexDef->enableLargeIndexKeys == BoolIndexOption_True;
+		}
+
 		appendStringInfo(cmdStr,
 						 " USING %s_rum (%s) %s%s%s",
 						 ExtensionObjectPrefix,
@@ -4650,7 +4664,7 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 											  indexDef->name,
 											  indexDef->defaultLanguage,
 											  indexDef->languageOverride,
-											  indexDef->enableLargeIndexKeys),
+											  enableLargeIndexKeys),
 						 indexDef->partialFilterExpr ? "WHERE (" : "",
 						 indexDef->partialFilterExpr ?
 						 GenerateIndexFilterStr(collectionId,

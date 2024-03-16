@@ -926,8 +926,8 @@ GinBsonExtractQueryOrderBy(PG_FUNCTION_ARGS)
 	entries = (Datum *) palloc(sizeof(Datum) * 3);
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&filterElement,
 														&termMetadata).indexTermVal);
-	entries[1] = GenerateRootTerm();
-	entries[2] = GenerateRootNonExistsTerm();
+	entries[1] = GenerateRootTerm(&termMetadata);
+	entries[2] = GenerateRootNonExistsTerm(&termMetadata);
 
 	*partialMatch = palloc0(sizeof(bool) * 3);
 	(*partialMatch)[0] = true;
@@ -1034,25 +1034,25 @@ GenerateTerms(pgbson *bson, GenerateTermsContext *context, bool addRootTerm)
 		/* GUC to preserve back-compat behavior. */
 		if (!EnableGenerateNonExistsTerm)
 		{
-			AddTerm(context, GenerateRootTerm());
+			AddTerm(context, GenerateRootTerm(&context->termMetadata));
 		}
 		else if (!hasNoTerms)
 		{
-			AddTerm(context, GenerateRootExistsTerm());
+			AddTerm(context, GenerateRootExistsTerm(&context->termMetadata));
 		}
 		else
 		{
-			AddTerm(context, GenerateRootNonExistsTerm());
+			AddTerm(context, GenerateRootNonExistsTerm(&context->termMetadata));
 		}
 
 		if (context->hasTruncatedTerms)
 		{
-			AddTerm(context, GenerateRootTruncatedTerm());
+			AddTerm(context, GenerateRootTruncatedTerm(&context->termMetadata));
 		}
 
 		if (context->hasArrayAncestors)
 		{
-			AddTerm(context, GenerateRootMultiKeyTerm());
+			AddTerm(context, GenerateRootMultiKeyTerm(&context->termMetadata));
 		}
 	}
 
@@ -1432,7 +1432,7 @@ GenerateNullEqualityIndexTerms(int32 *nentries, bool **partialmatch,
 														metadata).indexTermVal);
 
 	/* non exists term. */
-	entries[1] = GenerateRootNonExistsTerm();
+	entries[1] = GenerateRootNonExistsTerm(metadata);
 
 	/* The next term is undefined, we generate this for back compat but new indexes should only have the non exists term. */
 	filterElement->bsonValue.value_type = BSON_TYPE_UNDEFINED;
@@ -1440,13 +1440,13 @@ GenerateNullEqualityIndexTerms(int32 *nentries, bool **partialmatch,
 														metadata).indexTermVal);
 
 	/* the next term generated is the root exists term */
-	entries[3] = GenerateRootExistsTerm();
+	entries[3] = GenerateRootExistsTerm(metadata);
 
 	/* the next term is the array ancestor term */
-	entries[4] = GenerateRootMultiKeyTerm();
+	entries[4] = GenerateRootMultiKeyTerm(metadata);
 
 	/* the next term generated is the root term for back-compatibility */
-	entries[5] = GenerateRootTerm();
+	entries[5] = GenerateRootTerm(metadata);
 
 	return entries;
 }
@@ -1542,7 +1542,7 @@ GinBsonExtractQueryDollarBitWiseOperators(BsonExtractQueryArgs *args)
 														&args->termMetadata).
 								 indexTermVal);
 
-	entries[2] = GenerateRootTruncatedTerm();
+	entries[2] = GenerateRootTruncatedTerm(&args->termMetadata);
 
 	return entries;
 }
@@ -1667,9 +1667,9 @@ GinBsonExtractQueryNotEqual(BsonExtractQueryArgs *args)
 	BsonIndexTermSerialized serialized = SerializeBsonIndexTerm(&element,
 																&args->termMetadata);
 	entries[0] = PointerGetDatum(serialized.indexTermVal);
-	entries[1] = GenerateRootExistsTerm();
-	entries[2] = GenerateRootNonExistsTerm();
-	entries[3] = GenerateRootTerm();
+	entries[1] = GenerateRootExistsTerm(&args->termMetadata);
+	entries[2] = GenerateRootNonExistsTerm(&args->termMetadata);
+	entries[3] = GenerateRootTerm(&args->termMetadata);
 	return entries;
 }
 
@@ -1896,19 +1896,19 @@ AddNullArrayOpTerms(Datum *entries, int index,
 					pgbsonelement *queryElement,
 					IndexTermCreateMetadata *termMetadata)
 {
-	entries[index] = GenerateRootTerm();
+	entries[index] = GenerateRootTerm(termMetadata);
 	inQueryData->rootTermIndex = index;
 	index++;
 
-	entries[index] = GenerateRootExistsTerm();
+	entries[index] = GenerateRootExistsTerm(termMetadata);
 	inQueryData->rootExistsTermIndex = index;
 	index++;
 
-	entries[index] = GenerateRootNonExistsTerm();
+	entries[index] = GenerateRootNonExistsTerm(termMetadata);
 	inQueryData->nonExistsTermIndex = index;
 	index++;
 
-	entries[index] = GenerateRootMultiKeyTerm();
+	entries[index] = GenerateRootMultiKeyTerm(termMetadata);
 	inQueryData->multiKeyTermIndex = index;
 	index++;
 
@@ -2036,7 +2036,7 @@ GinBsonExtractQueryIn(BsonExtractQueryArgs *args)
 	if (inQueryData->arrayHasRegex ||
 		inQueryData->arrayHasTruncation)
 	{
-		entries[index] = GenerateRootTruncatedTerm();
+		entries[index] = GenerateRootTruncatedTerm(&args->termMetadata);
 		inQueryData->rootTruncatedTermIndex = index;
 		index++;
 	}
@@ -2155,13 +2155,13 @@ GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 	queryData->inTermCount = index;
 
 	queryData->rootTermIndex = index;
-	entries[index++] = GenerateRootTerm();
+	entries[index++] = GenerateRootTerm(&args->termMetadata);
 	queryData->nonExistsTermIndex = index;
-	entries[index++] = GenerateRootNonExistsTerm();
+	entries[index++] = GenerateRootNonExistsTerm(&args->termMetadata);
 	queryData->rootExistsTermIndex = index;
-	entries[index++] = GenerateRootExistsTerm();
+	entries[index++] = GenerateRootExistsTerm(&args->termMetadata);
 	queryData->multiKeyTermIndex = index;
-	entries[index++] = GenerateRootMultiKeyTerm();
+	entries[index++] = GenerateRootMultiKeyTerm(&args->termMetadata);
 	if (queryData->arrayHasNull)
 	{
 		pgbsonelement undefinedElement;
@@ -2178,7 +2178,7 @@ GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 
 	if (queryData->arrayHasTruncation)
 	{
-		entries[index] = GenerateRootTruncatedTerm();
+		entries[index] = GenerateRootTruncatedTerm(&args->termMetadata);
 		queryData->rootTruncatedTermIndex = index;
 		index++;
 	}
@@ -2258,7 +2258,7 @@ GinBsonExtractQueryRegex(BsonExtractQueryArgs *args)
 														&args->termMetadata).
 								 indexTermVal);
 
-	entries[1] = GenerateRootTruncatedTerm();
+	entries[1] = GenerateRootTruncatedTerm(&args->termMetadata);
 
 	if (isRegexValue)
 	{
@@ -2391,12 +2391,12 @@ GenerateExistsEqualityTerms(int32 *nentries, bool **partialmatch, Pointer **extr
 		entries = (Datum *) palloc(sizeof(Datum) * 2);
 		*partialmatch = (bool *) palloc(sizeof(bool) * 2);
 
-		entries[0] = isPositiveExists ? GenerateRootExistsTerm() :
-					 GenerateRootNonExistsTerm();
+		entries[0] = isPositiveExists ? GenerateRootExistsTerm(metadata) :
+					 GenerateRootNonExistsTerm(metadata);
 		(*partialmatch)[0] = false;
 
 		/* Left here for back compat */
-		entries[1] = GenerateRootTerm();
+		entries[1] = GenerateRootTerm(metadata);
 		(*partialmatch)[1] = false;
 
 		return entries;
@@ -2436,7 +2436,7 @@ GenerateExistsEqualityTerms(int32 *nentries, bool **partialmatch, Pointer **extr
 
 		/* second term is the root term. */
 		(*partialmatch)[1] = false;
-		entries[1] = GenerateRootTerm();
+		entries[1] = GenerateRootTerm(metadata);
 
 		/* We match both exists/nonexists since for a wildcard index we need *all* documents
 		 * to generate the inverse match on the Exists. Note that:
@@ -2446,11 +2446,11 @@ GenerateExistsEqualityTerms(int32 *nentries, bool **partialmatch, Pointer **extr
 
 		/* third term is the non-exists term. */
 		(*partialmatch)[2] = false;
-		entries[2] = GenerateRootNonExistsTerm();
+		entries[2] = GenerateRootNonExistsTerm(metadata);
 
 		/* third term is the exists term. */
 		(*partialmatch)[3] = false;
-		entries[3] = GenerateRootExistsTerm();
+		entries[3] = GenerateRootExistsTerm(metadata);
 	}
 
 	(*extraData)[0] = (Pointer) existsQueryData;
@@ -2781,7 +2781,7 @@ GinBsonExtractQueryDollarAll(BsonExtractQueryArgs *args)
 		queryData->arrayHasRegex ||
 		queryData->arrayHasElemMatch)
 	{
-		entries[index] = GenerateRootTruncatedTerm();
+		entries[index] = GenerateRootTruncatedTerm(&args->termMetadata);
 		queryData->rootTruncatedTermIndex = index;
 		index++;
 	}

@@ -519,7 +519,7 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 		.string = indexElement->path
 	};
 
-	if (termMetadata->pathPrefix.length > 0)
+	if (termMetadata->pathPrefix.length > 0 && indexPath.length > 0)
 	{
 		if (!termMetadata->isWildcardPathPrefix)
 		{
@@ -834,24 +834,19 @@ SerializeBsonIndexTerm(pgbsonelement *indexElement, const
  * on complement sets (e.g. NOT operators) from the index.
  */
 Datum
-GenerateRootTerm(void)
+GenerateRootTerm(const IndexTermCreateMetadata *termData)
 {
 	pgbsonelement element = { 0 };
 	element.path = "";
 	element.pathLength = 0;
 	element.bsonValue.value_type = BSON_TYPE_MINKEY;
 
-	IndexTermCreateMetadata termData =
-	{
-		.indexTermSizeLimit = 0,
-		.pathPrefix = { 0 }
-	};
 
 	bool forceTruncated = false;
 
 	/* Can't mark this as metadata due to back-compat. This is okay coz this is legacy. */
 	bool isMetadataTerm = false;
-	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData, forceTruncated,
+	return PointerGetDatum(SerializeBsonIndexTermCore(&element, termData, forceTruncated,
 													  isMetadataTerm).indexTermVal);
 }
 
@@ -863,22 +858,16 @@ GenerateRootTerm(void)
  * on complement sets (e.g. NOT operators) from the index.
  */
 Datum
-GenerateRootExistsTerm(void)
+GenerateRootExistsTerm(const IndexTermCreateMetadata *termData)
 {
 	pgbsonelement element = { 0 };
 	element.path = "";
 	element.pathLength = 0;
 	element.bsonValue.value_type = BSON_TYPE_BOOL;
 	element.bsonValue.value.v_bool = true;
-
-	IndexTermCreateMetadata termData =
-	{
-		.indexTermSizeLimit = 0,
-		.pathPrefix = { 0 }
-	};
 	bool forceTruncated = false;
 	bool isMetadataTerm = true;
-	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData, forceTruncated,
+	return PointerGetDatum(SerializeBsonIndexTermCore(&element, termData, forceTruncated,
 													  isMetadataTerm).indexTermVal);
 }
 
@@ -889,21 +878,15 @@ GenerateRootExistsTerm(void)
  * This allows us to answer questions for exists and null equality in the index
  */
 Datum
-GenerateRootNonExistsTerm(void)
+GenerateRootNonExistsTerm(const IndexTermCreateMetadata *termData)
 {
 	pgbsonelement element = { 0 };
 	element.path = "";
 	element.pathLength = 0;
 	element.bsonValue.value_type = BSON_TYPE_UNDEFINED;
-
-	IndexTermCreateMetadata termData =
-	{
-		.indexTermSizeLimit = 0,
-		.pathPrefix = { 0 }
-	};
 	bool forceTruncated = false;
 	bool isMetadataTerm = true;
-	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData, forceTruncated,
+	return PointerGetDatum(SerializeBsonIndexTermCore(&element, termData, forceTruncated,
 													  isMetadataTerm).indexTermVal);
 }
 
@@ -916,7 +899,7 @@ GenerateRootNonExistsTerm(void)
  * This allows us to answer questions for null equality in the index.
  */
 Datum
-GenerateRootMultiKeyTerm(void)
+GenerateRootMultiKeyTerm(const IndexTermCreateMetadata *termData)
 {
 	bson_iter_t iter;
 	pgbson_writer writer;
@@ -927,14 +910,9 @@ GenerateRootMultiKeyTerm(void)
 
 	pgbsonelement element = { 0 };
 	BsonIterToSinglePgbsonElement(&iter, &element);
-	IndexTermCreateMetadata termData =
-	{
-		.indexTermSizeLimit = 0,
-		.pathPrefix = { 0 }
-	};
 	bool forceTruncated = false;
 	bool isMetadataTerm = true;
-	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData, forceTruncated,
+	return PointerGetDatum(SerializeBsonIndexTermCore(&element, termData, forceTruncated,
 													  isMetadataTerm).indexTermVal);
 }
 
@@ -946,17 +924,11 @@ GenerateRootMultiKeyTerm(void)
  * out.
  */
 Datum
-GenerateRootTruncatedTerm(void)
+GenerateRootTruncatedTerm(const IndexTermCreateMetadata *termData)
 {
 	pgbsonelement element = { 0 };
 	element.path = "";
 	element.pathLength = 0;
-
-	IndexTermCreateMetadata termData =
-	{
-		.indexTermSizeLimit = 0,
-		.pathPrefix = { 0 }
-	};
 
 	/* Use maxKey just so they're differentiated from the Root term */
 	element.bsonValue.value_type = BSON_TYPE_MAXKEY;
@@ -966,8 +938,8 @@ GenerateRootTruncatedTerm(void)
 	 * handle this. TODO: When we bump index versions make this a metadata term.
 	 * Note that this isn't bad since we can never get a MAXKEY that is truncated.
 	 */
-	bool isMetadataTerm = false;
-	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData,
+	bool isMetadataTerm = termData->indexVersion >= IndexOptionsVersion_V1;
+	return PointerGetDatum(SerializeBsonIndexTermCore(&element, termData,
 													  forceTruncated,
 													  isMetadataTerm).indexTermVal);
 }

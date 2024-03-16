@@ -196,6 +196,9 @@ bool EnableIndexTermTruncation = DEFAULT_ENABLE_INDEX_TERM_TRUNCATION;
 #define DEFAULT_FORCE_INDEX_TERM_TRUNCATION false
 bool ForceIndexTermTruncation = DEFAULT_FORCE_INDEX_TERM_TRUNCATION;
 
+#define DEFAULT_ENABLE_LARGE_INDEX_KEYS false
+bool DefaultEnableLargeIndexKeys = DEFAULT_ENABLE_LARGE_INDEX_KEYS;
+
 #define DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE INT_MAX
 int IndexTruncationLimitOverride = DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE;
 
@@ -516,6 +519,12 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Whether to force the feature for index term truncation"),
 		NULL, &ForceIndexTermTruncation, DEFAULT_ENABLE_INDEX_TERM_TRUNCATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enable_large_index_keys",
+		gettext_noop("Whether or not to enable large index keys support"),
+		NULL, &DefaultEnableLargeIndexKeys, DEFAULT_ENABLE_LARGE_INDEX_KEYS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(

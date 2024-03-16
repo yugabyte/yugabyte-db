@@ -11,6 +11,8 @@
 #ifndef HELIO_GIN_INDEX_MGMT_H
 #define HELIO_GIN_INDEX_MGMT_H
 
+#include "opclass/helio_gin_common.h"
+
 /*
  * Enum identifying the kind of index based on the options.
  */
