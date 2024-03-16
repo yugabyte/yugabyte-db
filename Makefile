@@ -89,6 +89,8 @@ REGRESS = orafce\
 #REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=utf8
 REGRESS_OPTS = --schedule=parallel_schedule --encoding=utf8
 
+SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lyb_pggate
+
 # override CFLAGS += -Wextra -Wimplicit-fallthrough=0
 
 ifdef NO_PGXS
