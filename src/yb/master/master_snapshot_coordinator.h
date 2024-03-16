@@ -174,10 +174,12 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       const TabletId& tablet_id,
       const TxnSnapshotId& snapshot_id = TxnSnapshotId(Uuid::Nil())) const;
 
-  Status PopulateTabletDeleteRetainerInfo(
+  Status PopulateDeleteRetainerInfoForTableDrop(
       const TableInfo& table_info, const TabletInfos& tablets_to_check,
-      const SnapshotSchedulesToObjectIdsMap* schedules_to_tables_map,
+      const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
       TabletDeleteRetainerInfo& delete_retainer) const;
+  Status PopulateDeleteRetainerInfoForTabletDrop(
+      const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const;
 
   bool ShouldRetainHiddenTablet(
       const TabletInfo& tablet_info,
