@@ -90,6 +90,11 @@ extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
 
 /*
+ * GUC variable to set the number of locks to return per transaction per tablet in yb_lock_status().
+ */
+extern int yb_locks_txn_locks_per_tablet;
+
+/*
  * Guc variable to enable binary restore from a binary backup of YSQL tables. When doing binary
  * restore, we copy the docdb SST files of those tables from the source database and reuse them
  * for a newly created target database to restore those tables.
