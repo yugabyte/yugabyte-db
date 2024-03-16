@@ -2929,6 +2929,17 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
+                                          ClearUniverseUuidResponsePB* resp,
+                                          rpc::RpcContext context) {
+  const Status s = server_->tablet_manager()->server()->ClearUniverseUuid();
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::CheckTserverTabletHealth(const CheckTserverTabletHealthRequestPB* req,
                                                 CheckTserverTabletHealthResponsePB* resp,
                                                 rpc::RpcContext context) {
