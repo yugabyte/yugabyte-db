@@ -141,6 +141,7 @@ Oid PostgresAddIntervalToTimestampFunctionId(void);
 Oid PostgresAddIntervalToDateFunctionId(void);
 Oid PostgresTimestampToZoneWithoutTzFunctionId(void);
 Oid PostgresToDateFunctionId(void);
+Oid PostgresArrayAppendFunctionOid(void);
 
 /* Index AM */
 Oid RumIndexAmId(void);
@@ -250,6 +251,7 @@ Oid BsonFirstNAggregateFunctionOid(void);
 Oid BsonFirstNOnSortedAggregateFunctionOid(void);
 Oid BsonLastNAggregateFunctionOid(void);
 Oid BsonLastNOnSortedAggregateFunctionOid(void);
+Oid PostgresAnyValueFunctionOid(void);
 Oid BsonLookupExtractFilterExpressionFunctionOid(void);
 Oid BsonLookupUnwindFunctionOid(void);
 Oid BsonDistinctUnwindFunctionOid(void);

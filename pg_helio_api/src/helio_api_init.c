@@ -211,7 +211,7 @@ int32 MaxSegmentVertices = DEFAULT_MAX_SEGMENT_VERTICES;
 #define DEFAULT_MAX_INDEXES_PER_COLLECTION 64
 int32 MaxIndexesPerCollection = DEFAULT_MAX_INDEXES_PER_COLLECTION;
 
-#define DEFAULT_ENABLE_GRAPH_LOOKUP false
+#define DEFAULT_ENABLE_GRAPH_LOOKUP true
 bool EnableGraphLookup = DEFAULT_ENABLE_GRAPH_LOOKUP;
 
 /* --------------------------------------------------------- */

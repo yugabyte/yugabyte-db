@@ -115,6 +115,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_AGG_OPERATOR_LT] = "agg_operator_lt",
 	[FEATURE_AGG_OPERATOR_LTE] = "agg_operator_lte",
 	[FEATURE_AGG_OPERATOR_LTRIM] = "agg_operator_ltrim",
+	[FEATURE_AGG_OPERATOR_MAKE_ARRAY] = "agg_operator_makearray",
 	[FEATURE_AGG_OPERATOR_MAP] = "agg_operator_map",
 	[FEATURE_AGG_OPERATOR_MAX] = "agg_operator_max",
 	[FEATURE_AGG_OPERATOR_MERGEOBJECTS] = "agg_operator_mergeobjects",

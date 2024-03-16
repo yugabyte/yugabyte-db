@@ -397,6 +397,7 @@ HandleDollarConvert(pgbson *doc, const bson_value_t *operatorValue,
 	/* In Native Mongo, onError and onNull expressions are evaluated first,
 	 * regardless of if they are going to be needed or not. */
 	bson_value_t onErrorEvaluatedValue = { 0 };
+	volatile bool hasError = false;
 	bool isNullOnEmpty = false;
 	if (onErrorExpression.value_type != BSON_TYPE_EOD)
 	{
@@ -521,6 +522,12 @@ HandleDollarConvert(pgbson *doc, const bson_value_t *operatorValue,
 
 		/* if onError is specified but was a field path expression
 		 * and the path was not found, we should return no result. */
+		hasError = true;
+	}
+	PG_END_TRY();
+
+	if (hasError)
+	{
 		if (onErrorEvaluatedValue.value_type == BSON_TYPE_EOD)
 		{
 			return;
@@ -528,7 +535,6 @@ HandleDollarConvert(pgbson *doc, const bson_value_t *operatorValue,
 
 		result = onErrorEvaluatedValue;
 	}
-	PG_END_TRY();
 
 	ExpressionResultSetValue(expressionResult, &result);
 }
@@ -930,6 +936,68 @@ ProcessDollarToDecimalElement(bson_value_t *result, const bson_value_t *currentE
 
 	result->value_type = BSON_TYPE_DECIMAL128;
 	return true;
+}
+
+
+/*
+ * Parses a $makeArray expression.
+ * This has the syntax:
+ * { "$makeArray": $expression }
+ * if the expression evaluates to undefined, then writes empty array.
+ * If the expression evaluates to an array, writes it as-is
+ * If the expression evaluates to any other value, wraps it in an array.
+ */
+void
+ParseDollarMakeArray(const bson_value_t *inputDocument,
+					 AggregationExpressionData *data)
+{
+	AggregationExpressionData *argumentData = palloc0(
+		sizeof(AggregationExpressionData));
+
+	ParseAggregationExpressionData(argumentData, inputDocument);
+
+	data->operator.arguments = argumentData;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/*
+ * Handles executing a pre-parsed $makeArray Expression.
+ */
+void
+HandlePreParsedDollarMakeArray(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult)
+{
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(
+		(AggregationExpressionData *) arguments, doc,
+		&childResult,
+		isNullOnEmpty);
+
+	if (IsExpressionResultNullOrUndefined(&childResult.value))
+	{
+		pgbson_array_writer arrayWriter;
+		pgbson_element_writer *elementWriter = ExpressionResultGetElementWriter(
+			expressionResult);
+		PgbsonElementWriterStartArray(elementWriter, &arrayWriter);
+		PgbsonElementWriterEndArray(elementWriter, &arrayWriter);
+		return;
+	}
+
+	if (childResult.value.value_type == BSON_TYPE_ARRAY)
+	{
+		ExpressionResultSetValue(expressionResult, &childResult.value);
+	}
+	else
+	{
+		pgbson_array_writer arrayWriter;
+		pgbson_element_writer *elementWriter = ExpressionResultGetElementWriter(
+			expressionResult);
+		PgbsonElementWriterStartArray(elementWriter, &arrayWriter);
+		PgbsonArrayWriterWriteValue(&arrayWriter, &childResult.value);
+		PgbsonElementWriterEndArray(elementWriter, &arrayWriter);
+	}
 }
 
 

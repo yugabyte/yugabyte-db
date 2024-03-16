@@ -76,4 +76,9 @@ void ValidateAggregationPipeline(Datum databaseDatum, const StringView *baseColl
 void LookupExtractCollectionAndPipeline(const bson_value_t *lookupValue,
 										StringView *collection, bson_value_t *pipeline);
 
+void GraphLookupExtractCollection(const bson_value_t *lookupValue,
+								  StringView *collection);
+void ParseUnionWith(const bson_value_t *existingValue, StringView *collectionFrom,
+					bson_value_t *pipeline);
+
 #endif

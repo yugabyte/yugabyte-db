@@ -432,6 +432,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the to_date postgres method which given a formatted text and string date gives you date object.*/
 	Oid PostgresToDateFunctionId;
 
+	/* OID of the array_append postgres function */
+	Oid PostgresArrayAppendFunctionOid;
+
 	/* OID of Rum Index access methods */
 	Oid RumIndexAmId;
 
@@ -560,6 +563,9 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the bson_repath_and_build function */
 	Oid ApiCatalogBsonRepathAndBuildFunctionOid;
+
+	/* OID of the pg_catalog.any_value aggregate */
+	Oid PostgresAnyValueFunctionOid;
 
 	/* OID of the row_get_bson function */
 	Oid ApiCatalogRowGetBsonFunctionOid;
@@ -1911,6 +1917,18 @@ PostgresToDateFunctionId(void)
 }
 
 
+/*
+ * returns the OID of the "array_append" Postgres function
+ */
+Oid
+PostgresArrayAppendFunctionOid(void)
+{
+	return GetPostgresInternalFunctionId(
+		&Cache.PostgresArrayAppendFunctionOid,
+		"array_append");
+}
+
+
 /* Returns the OID of Rum Index Access method.
  */
 Oid
@@ -2487,6 +2505,14 @@ BsonLastNOnSortedAggregateFunctionOid(void)
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonLastNOnSortedAggregateFunctionOid,
 		ApiCatalogSchemaName, "bsonlastnonsorted");
+}
+
+
+Oid
+PostgresAnyValueFunctionOid(void)
+{
+	return GetAggregateFunctionByName(&Cache.PostgresAnyValueFunctionOid, "pg_catalog",
+									  "any_value");
 }
 
 

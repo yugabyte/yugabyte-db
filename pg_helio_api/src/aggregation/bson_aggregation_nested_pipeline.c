@@ -14,7 +14,9 @@
 #include <float.h>
 #include <fmgr.h>
 #include <miscadmin.h>
+#include <utils/lsyscache.h>
 
+#include <catalog/pg_operator.h>
 #include <optimizer/planner.h>
 #include <nodes/nodes.h>
 #include <nodes/makefuncs.h>
@@ -29,6 +31,7 @@
 #include <utils/builtins.h>
 #include <catalog/pg_aggregate.h>
 #include <catalog/pg_class.h>
+#include <rewrite/rewriteSearchCycle.h>
 
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
@@ -407,41 +410,23 @@ HandleDocumentsStage(const bson_value_t *existingValue, Query *query,
 
 
 /*
- * Top level method handling processing of the $unionWith stage.
+ * Helper method to parse the union with arguments
  */
-Query *
-HandleUnionWith(const bson_value_t *existingValue, Query *query,
-				AggregationPipelineBuildContext *context)
+void
+ParseUnionWith(const bson_value_t *existingValue, StringView *collectionFrom,
+			   bson_value_t *pipeline)
 {
-	ReportFeatureUsage(FEATURE_STAGE_UNIONWITH);
-
-	Query *leftQuery = query;
-	Query *rightQuery = NULL;
 	if (existingValue->value_type == BSON_TYPE_UTF8)
 	{
-		AggregationPipelineBuildContext subPipelineContext = { 0 };
-		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
-		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
-
 		/* This is unionWith on the base collection */
-		StringView collectionFrom =
-		{
-			.length = existingValue->value.v_utf8.len,
-			.string = existingValue->value.v_utf8.str
-		};
-		pg_uuid_t *collectionUuid = NULL;
-		rightQuery = GenerateBaseTableQuery(context->databaseNameDatum,
-											&collectionFrom,
-											collectionUuid,
-											&subPipelineContext);
+		collectionFrom->length = existingValue->value.v_utf8.len;
+		collectionFrom->string = existingValue->value.v_utf8.str;
 	}
 	else if (existingValue->value_type == BSON_TYPE_DOCUMENT)
 	{
 		bson_iter_t pipelineIterator;
 		BsonValueInitIterator(existingValue, &pipelineIterator);
 
-		StringView collectionName = { 0 };
-		bson_value_t pipelineValue = { 0 };
 		while (bson_iter_next(&pipelineIterator))
 		{
 			const char *key = bson_iter_key(&pipelineIterator);
@@ -450,14 +435,14 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 			{
 				EnsureTopLevelFieldType("$unionWith.coll", &pipelineIterator,
 										BSON_TYPE_UTF8);
-				collectionName.length = value->value.v_utf8.len;
-				collectionName.string = value->value.v_utf8.str;
+				collectionFrom->length = value->value.v_utf8.len;
+				collectionFrom->string = value->value.v_utf8.str;
 			}
 			else if (strcmp(key, "pipeline") == 0)
 			{
 				EnsureTopLevelFieldType("$unionWith.pipeline", &pipelineIterator,
 										BSON_TYPE_ARRAY);
-				pipelineValue = *value;
+				*pipeline = *value;
 			}
 			else
 			{
@@ -469,7 +454,7 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 			}
 		}
 
-		if (collectionName.length == 0)
+		if (collectionFrom->length == 0)
 		{
 			/* TODO: Technically this can be supported for agnostic queries but for now bail */
 			ereport(ERROR, (errcode(MongoCommandNotSupported),
@@ -477,22 +462,6 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 								"$unionWith without explicit collection not supported yet"),
 							errhint(
 								"$unionWith without explicit collection not supported yet")));
-		}
-
-		AggregationPipelineBuildContext subPipelineContext = { 0 };
-		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
-		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
-		pg_uuid_t *collectionUuid = NULL;
-		rightQuery = GenerateBaseTableQuery(context->databaseNameDatum,
-											&collectionName,
-											collectionUuid,
-											&subPipelineContext);
-
-		if (pipelineValue.value_type != BSON_TYPE_EOD)
-		{
-			ValidateUnionWithPipeline(&pipelineValue);
-			rightQuery = MutateQueryWithPipeline(rightQuery, &pipelineValue,
-												 &subPipelineContext);
 		}
 	}
 	else
@@ -504,6 +473,56 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 						errhint(
 							"the $unionWith stage specification must be an object or string, but found %s",
 							BsonTypeName(existingValue->value_type))));
+	}
+}
+
+
+/*
+ * Top level method handling processing of the $unionWith stage.
+ */
+Query *
+HandleUnionWith(const bson_value_t *existingValue, Query *query,
+				AggregationPipelineBuildContext *context)
+{
+	ReportFeatureUsage(FEATURE_STAGE_UNIONWITH);
+
+	Query *leftQuery = query;
+	Query *rightQuery = NULL;
+
+	StringView collectionFrom = { 0 };
+	bson_value_t pipelineValue = { 0 };
+	ParseUnionWith(existingValue, &collectionFrom, &pipelineValue);
+
+	if (pipelineValue.value_type == BSON_TYPE_EOD)
+	{
+		AggregationPipelineBuildContext subPipelineContext = { 0 };
+		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
+		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
+
+		/* This is unionWith on the base collection */
+		pg_uuid_t *collectionUuid = NULL;
+		rightQuery = GenerateBaseTableQuery(context->databaseNameDatum,
+											&collectionFrom,
+											collectionUuid,
+											&subPipelineContext);
+	}
+	else
+	{
+		AggregationPipelineBuildContext subPipelineContext = { 0 };
+		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
+		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
+		pg_uuid_t *collectionUuid = NULL;
+		rightQuery = GenerateBaseTableQuery(context->databaseNameDatum,
+											&collectionFrom,
+											collectionUuid,
+											&subPipelineContext);
+
+		if (pipelineValue.value_type != BSON_TYPE_EOD)
+		{
+			ValidateUnionWithPipeline(&pipelineValue);
+			rightQuery = MutateQueryWithPipeline(rightQuery, &pipelineValue,
+												 &subPipelineContext);
+		}
 	}
 
 	bool includeAllColumns = false;
@@ -886,21 +905,17 @@ AddBsonObjectAggFunction(Query *baseQuery, AggregationPipelineBuildContext *cont
 }
 
 
-static RangeTblEntry *
-CreateCteRte(CommonTableExpr *baseCte, const char *prefix, int stageNum, int levelsUp)
+/*
+ * Updates an RTE with the CTE information
+ */
+static void
+UpdateCteRte(RangeTblEntry *rte, CommonTableExpr *baseCte)
 {
-	StringInfo s = makeStringInfo();
-	appendStringInfo(s, "%s_stage_%d", prefix, stageNum);
-
-	RangeTblEntry *rte = makeNode(RangeTblEntry);
-	rte->rtekind = RTE_CTE;
+	Assert(rte->rtekind == RTE_CTE);
 	rte->ctename = baseCte->ctename;
-	rte->self_reference = false;
 	rte->lateral = false;
 	rte->inh = false;
 	rte->inFromCl = true;
-	rte->ctelevelsup = levelsUp;
-	baseCte->cterefcount++;
 
 	List *colnames = NIL;
 	ListCell *cell;
@@ -911,8 +926,24 @@ CreateCteRte(CommonTableExpr *baseCte, const char *prefix, int stageNum, int lev
 		colnames = lappend(colnames, makeString(tle->resname ? tle->resname : ""));
 	}
 
+	rte->eref = makeAlias(rte->alias->aliasname, colnames);
+	rte->alias = makeAlias(rte->alias->aliasname, NIL);
+}
+
+
+static RangeTblEntry *
+CreateCteRte(CommonTableExpr *baseCte, const char *prefix, int stageNum, int levelsUp)
+{
+	StringInfo s = makeStringInfo();
+	appendStringInfo(s, "%s_stage_%d", prefix, stageNum);
+
+	RangeTblEntry *rte = makeNode(RangeTblEntry);
+	rte->rtekind = RTE_CTE;
+	rte->ctelevelsup = levelsUp;
 	rte->alias = makeAlias(s->data, NIL);
-	rte->eref = makeAlias(s->data, colnames);
+	baseCte->cterefcount++;
+	rte->self_reference = false;
+	UpdateCteRte(rte, baseCte);
 
 	return rte;
 }
@@ -1022,6 +1053,19 @@ LookupExtractCollectionAndPipeline(const bson_value_t *lookupValue,
 	ParseLookupStage(lookupValue, &args);
 	*collection = args.from;
 	*pipeline = args.pipeline;
+}
+
+
+/*
+ * Parses the graphLookup aggregation value and extracts the from collection.
+ */
+void
+GraphLookupExtractCollection(const bson_value_t *lookupValue, StringView *collection)
+{
+	GraphLookupArgs args;
+	memset(&args, 0, sizeof(LookupArgs));
+	ParseGraphLookupStage(lookupValue, &args);
+	*collection = args.fromCollection;
 }
 
 
@@ -1649,18 +1693,20 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 {
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation40319),
+		ereport(ERROR, (errcode(MongoFailedToParse),
 						errmsg(
-							"the $lookup stage specification must be an object, but found %s",
+							"the $graphLookup stage specification must be an object, but found %s",
 							BsonTypeName(existingValue->value_type)),
 						errhint(
-							"the $lookup stage specification must be an object, but found %s",
+							"the $graphLookup stage specification must be an object, but found %s",
 							BsonTypeName(existingValue->value_type))));
 	}
 
 	bson_iter_t lookupIter;
 	BsonValueInitIterator(existingValue, &lookupIter);
 
+	args->maxDepth = INT32_MAX;
+	bool fromSpecified = false;
 	while (bson_iter_next(&lookupIter))
 	{
 		const char *key = bson_iter_key(&lookupIter);
@@ -1669,8 +1715,11 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(MongoLocation40103),
 								errmsg(
+									"graphlookup argument 'as' must be a string, is type %s",
+									BsonTypeName(value->value_type)),
+								errhint(
 									"graphlookup argument 'as' must be a string, is type %s",
 									BsonTypeName(value->value_type))));
 			}
@@ -1679,6 +1728,15 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 				.length = value->value.v_utf8.len,
 				.string = value->value.v_utf8.str
 			};
+
+			if (args->asField.length > 0 && args->asField.string[0] == '$')
+			{
+				ereport(ERROR, (errcode(MongoLocation16410),
+								errmsg(
+									"as: FieldPath field names may not start with '$'"),
+								errhint(
+									"as: FieldPath field names may not start with '$'")));
+			}
 		}
 		else if (strcmp(key, "startWith") == 0)
 		{
@@ -1688,8 +1746,11 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(MongoLocation40103),
 								errmsg(
+									"graphlookup argument 'connectFromField' must be a string, is type %s",
+									BsonTypeName(value->value_type)),
+								errhint(
 									"graphlookup argument 'connectFromField' must be a string, is type %s",
 									BsonTypeName(value->value_type))));
 			}
@@ -1698,13 +1759,25 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 				.length = value->value.v_utf8.len,
 				.string = value->value.v_utf8.str
 			};
+			if (args->connectFromField.length > 0 && args->connectFromField.string[0] ==
+				'$')
+			{
+				ereport(ERROR, (errcode(MongoLocation16410),
+								errmsg(
+									"connectFromField: FieldPath field names may not start with '$'"),
+								errhint(
+									"connectFromField: FieldPath field names may not start with '$'")));
+			}
 		}
 		else if (strcmp(key, "connectToField") == 0)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(MongoLocation40103),
 								errmsg(
+									"graphlookup argument 'connectToField' must be a string, is type %s",
+									BsonTypeName(value->value_type)),
+								errhint(
 									"graphlookup argument 'connectToField' must be a string, is type %s",
 									BsonTypeName(value->value_type))));
 			}
@@ -1713,13 +1786,24 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 				.length = value->value.v_utf8.len,
 				.string = value->value.v_utf8.str
 			};
+			if (args->connectToField.length > 0 && args->connectToField.string[0] == '$')
+			{
+				ereport(ERROR, (errcode(MongoLocation16410),
+								errmsg(
+									"connectToField: FieldPath field names may not start with '$'"),
+								errhint(
+									"connectToField: FieldPath field names may not start with '$'")));
+			}
 		}
 		else if (strcmp(key, "from") == 0)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoLocation40321),
+				ereport(ERROR, (errcode(MongoFailedToParse),
 								errmsg(
+									"graphlookup argument 'from' must be a string, is type %s",
+									BsonTypeName(value->value_type)),
+								errhint(
 									"graphlookup argument 'from' must be a string, is type %s",
 									BsonTypeName(value->value_type))));
 			}
@@ -1728,32 +1812,50 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 				.length = value->value.v_utf8.len,
 				.string = value->value.v_utf8.str
 			};
+			fromSpecified = true;
 		}
 		else if (strcmp(key, "maxDepth") == 0)
 		{
 			if (!BsonValueIsNumber(value))
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(MongoLocation40100),
 								errmsg(
+									"graphlookup argument 'maxDepth' must be a number, is type %s",
+									BsonTypeName(value->value_type)),
+								errhint(
 									"graphlookup argument 'maxDepth' must be a number, is type %s",
 									BsonTypeName(value->value_type))));
 			}
 
+			if (!IsBsonValueFixedInteger(value))
+			{
+				ereport(ERROR, (errcode(MongoLocation40102),
+								errmsg(
+									"graphlookup.maxDepth must be a non-negative integer."),
+								errhint(
+									"graphlookup.maxDepth must be a non-negative integer.")));
+			}
+
 			args->maxDepth = BsonValueAsInt32(value);
 
-			if (args->maxDepth <= 0)
+			if (args->maxDepth < 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(MongoLocation40101),
 								errmsg(
-									"graphlookup.maxDepth must be a positive integer.")));
+									"graphlookup.maxDepth must be a non-negative integer."),
+								errhint(
+									"graphlookup.maxDepth must be a non-negative integer.")));
 			}
 		}
 		else if (strcmp(key, "depthField") == 0)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(MongoLocation40103),
 								errmsg(
+									"graphlookup argument 'depthField' must be a string, is type %s",
+									BsonTypeName(value->value_type)),
+								errhint(
 									"graphlookup argument 'depthField' must be a string, is type %s",
 									BsonTypeName(value->value_type))));
 			}
@@ -1762,41 +1864,61 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 				.length = value->value.v_utf8.len,
 				.string = value->value.v_utf8.str
 			};
+			if (args->depthField.length > 0 && args->depthField.string[0] == '$')
+			{
+				ereport(ERROR, (errcode(MongoLocation16410),
+								errmsg(
+									"depthField: FieldPath field names may not start with '$'"),
+								errhint(
+									"depthField: FieldPath field names may not start with '$'")));
+			}
 		}
 		else if (strcmp(key, "restrictSearchWithMatch") == 0)
 		{
-			EnsureTopLevelFieldValueType("$graphlookup.restrictSearchWithMatch", value,
-										 BSON_TYPE_DOCUMENT);
+			if (value->value_type != BSON_TYPE_DOCUMENT)
+			{
+				ereport(ERROR, (errcode(MongoLocation40185),
+								errmsg(
+									"graphlookup argument 'restrictSearchWithMatch' must be a document, is type %s",
+									BsonTypeName(value->value_type))));
+			}
+
 			args->restrictSearch = *value;
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
-							errmsg("unknown argument to $graphlookup: %s", key)));
+			ereport(ERROR, (errcode(MongoLocation40104),
+							errmsg("unknown argument to $graphlookup: %s", key),
+							errhint("unknown argument to $graphlookup: %s", key)));
 		}
 	}
 
 	if (args->asField.length == 0)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(MongoLocation40105),
 						errmsg("must specify 'as' field for a $graphLookup")));
 	}
 
-	if (args->fromCollection.length == 0)
+	if (!fromSpecified)
 	{
 		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg("must specify 'from' field for a $graphLookup")));
+	}
+	if (args->fromCollection.length == 0)
+	{
+		ereport(ERROR, (errcode(MongoInvalidNamespace),
 						errmsg("must specify 'from' field for a $graphLookup")));
 	}
 
 	if (args->inputExpression.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(MongoLocation40105),
 						errmsg("must specify 'startWith' for a $graphLookup")));
 	}
 
 	if (args->connectFromField.length == 0 || args->connectToField.length == 0)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(MongoLocation40105),
 						errmsg(
 							"must specify both 'connectFrom' and 'connectTo' for a $graphLookup")));
 	}
@@ -1807,6 +1929,34 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 	args->connectFromFieldExpression.value_type = BSON_TYPE_UTF8;
 	args->connectFromFieldExpression.value.v_utf8.len = strlen(connectExpr->data);
 	args->connectFromFieldExpression.value.v_utf8.str = connectExpr->data;
+}
+
+
+/* Builds teh graph lookup FuncExpr bson_expression_get(document, '{ "connectToField": { "$makeArray": "$inputExpression" } }' )
+ */
+static FuncExpr *
+BuildInputExpressionForQuery(Expr *origExpr, const StringView *connectToField, const
+							 bson_value_t *inputExpression)
+{
+	pgbson_writer expressionWriter;
+	PgbsonWriterInit(&expressionWriter);
+
+	pgbson_writer makeArrayWriter;
+	PgbsonWriterStartDocument(&expressionWriter, connectToField->string,
+							  connectToField->length,
+							  &makeArrayWriter);
+
+	/* { "$makeArray: $inputExpression } */
+	PgbsonWriterAppendValue(&makeArrayWriter, "$makeArray", 10, inputExpression);
+	PgbsonWriterEndDocument(&expressionWriter, &makeArrayWriter);
+	pgbson *inputExpr = PgbsonWriterGetPgbson(&expressionWriter);
+	Const *falseConst = (Const *) MakeBoolValueConst(false);
+	List *inputExprArgs = list_make3(origExpr, MakeBsonConst(inputExpr),
+									 falseConst);
+	FuncExpr *inputFuncExpr = makeFuncExpr(
+		BsonExpressionGetFunctionOid(), BsonTypeId(), inputExprArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+	return inputFuncExpr;
 }
 
 
@@ -1822,82 +1972,18 @@ AddInputExpressionToQuery(Query *query, StringView *fieldName, const
 	/* Now, add the expression value projector to the left query */
 	TargetEntry *origEntry = linitial(query->targetList);
 
-
-	/* Adds the projector bson_expression_get(document, '{ "connectToField": "$inputExpression" } ) AS "inputExpr"
+	/*
+	 * Adds the projector bson_expression_get(document, '{ "connectToField": { "$makeArray": "$inputExpression" } }' ) AS "inputExpr"
 	 * into the left query.
 	 */
-	pgbsonelement element;
-	element.path = fieldName->string;
-	element.pathLength = fieldName->length;
-	element.bsonValue = *inputExpression;
-	pgbson *inputExpr = PgbsonElementToPgbson(&element);
-	Const *trueConst = (Const *) MakeBoolValueConst(true);
-	List *inputExprArgs = list_make3(origEntry->expr, MakeBsonConst(inputExpr),
-									 trueConst);
-	FuncExpr *inputFuncExpr = makeFuncExpr(
-		BsonExpressionGetFunctionOid(), BsonTypeId(), inputExprArgs, InvalidOid,
-		InvalidOid, COERCE_EXPLICIT_CALL);
+	FuncExpr *inputFuncExpr = BuildInputExpressionForQuery(origEntry->expr, fieldName,
+														   inputExpression);
 	bool resjunk = false;
 	AttrNumber expressionResultNumber = 2;
 	TargetEntry *entry = makeTargetEntry((Expr *) inputFuncExpr, expressionResultNumber,
 										 "inputExpr",
 										 resjunk);
 	query->targetList = lappend(query->targetList, entry);
-
-	return expressionResultNumber;
-}
-
-
-/*
- * Add the $unwind and expression_get to the expression engine.
- * This is used to do equality matches on the graph lookup in the recursive CTE
- * For more details see ProcessGraphLookupCore
- */
-static AttrNumber
-AddInputUnwindExpressionToQuery(Query *query, StringView *fieldName, const
-								GraphLookupArgs *args)
-{
-	/* Now, add the expression value projector to the left query */
-	TargetEntry *origEntry = linitial(query->targetList);
-
-	/*
-	 * Add an $unwind if we have an array - this ensures that the $in scenario
-	 * is also handled for the connectFrom and startsWith expressions.
-	 */
-	pgbson_writer unwindOptions;
-	PgbsonWriterInit(&unwindOptions);
-	PgbsonWriterAppendValue(&unwindOptions, "path", 4, &args->connectFromFieldExpression);
-	PgbsonWriterAppendBool(&unwindOptions, "preserveNullAndEmptyArrays", 26, true);
-	Const *pathConst = (Const *) MakeBsonConst(PgbsonWriterGetPgbson(&unwindOptions));
-	List *unwindArgs = list_make2(origEntry->expr, pathConst);
-	FuncExpr *unwindFuncExpr = makeFuncExpr(
-		BsonDollarUnwindWithOptionsFunctionOid(), BsonTypeId(), unwindArgs, InvalidOid,
-		InvalidOid, COERCE_EXPLICIT_CALL);
-	unwindFuncExpr->funcretset = true;
-
-	/*
-	 * Adds the projector bson_expression_get(document, '{ "connectToField": "$inputExpression" } ) AS "inputExpr"
-	 * into the left query.
-	 */
-	pgbsonelement element;
-	element.path = fieldName->string;
-	element.pathLength = fieldName->length;
-	element.bsonValue = args->connectFromFieldExpression;
-	pgbson *inputExpr = PgbsonElementToPgbson(&element);
-	Const *trueConst = (Const *) MakeBoolValueConst(true);
-	List *inputExprArgs = list_make3(unwindFuncExpr, MakeBsonConst(inputExpr),
-									 trueConst);
-	FuncExpr *inputFuncExpr = makeFuncExpr(
-		BsonExpressionGetFunctionOid(), BsonTypeId(), inputExprArgs, InvalidOid,
-		InvalidOid, COERCE_EXPLICIT_CALL);
-	AttrNumber expressionResultNumber = 2;
-	bool resjunk = false;
-	TargetEntry *entry = makeTargetEntry((Expr *) inputFuncExpr, expressionResultNumber,
-										 "inputExpr",
-										 resjunk);
-
-	query->targetList = lappend(query->targetList, entry);
-	query->hasTargetSRFs = true;
 
 	return expressionResultNumber;
 }
@@ -1907,12 +1993,48 @@ AddInputUnwindExpressionToQuery(Query *query, StringView *fieldName, const
  * Core handling for a graph lookup query.
  * This forms the query as follows:
  *
- * WITH basecte AS (SELECT document, bson_expression_get(document, '{ "*connectToField*": "$*inputExpression*" }', true) AS initialexpr FROM *inputCollection*),
- * graphLookupStage AS (SELECT document, COALESCE((WITH RECURSIVE graphLookup AS (
- * SELECT coll.document AS doc, bson_expression_get(coll.document, '{ "*connectToField*": "$*connectFromField*" }', true) AS expr FROM *fromCollection* coll WHERE bson_dollar_eq(coll.document, basecte.initialexpr)
- * UNION ALL
- * SELECT document AS doc, bson_expression_get(document, '{ "*connectToField*": "$*connectFromField*" }', true) AS expr FROM *fromCollection*, graphLookup WHERE bson_dollar_eq(document, cte1.expr)
- * ) SELECT bson_array_agg(DISTINCT doc, '*as*') FROM graphLookup), '{ "*as*": [] }') AS addFields FROM basecte)
+ * WITH basecte AS (
+ *  SELECT
+ *      document,
+ *      bson_expression_get(
+ *          document,
+ *          '{ "*connectToField*": { "$makeArray": "$*inputExpression*" } }',
+ *          true
+ *      ) AS initialexpr
+ *  FROM inputCollection
+ * ),
+ * graphLookupStage AS (
+ *  SELECT
+ *      document,
+ *      COALESCE(
+ *          (
+ *              WITH RECURSIVE graphLookup AS (
+ *
+ *          -- anchor member
+ *                  SELECT
+ *                      coll.document AS doc,
+ *                      '{ "depth": 0 }' as depth,
+ *                      bson_expression_get(coll.document, '{ "_id": "$_id" }') as baseDocId
+ *                  FROM *fromCollection* coll
+ *                  WHERE bson_dollar_in(coll.document, basecte.initialexpr)
+ *
+ *                  UNION ALL
+ *
+ *          -- recursive term
+ *                  SELECT
+ *                      document AS doc,
+ *                      bson_expression_get(graphLookup.depth, '{ "depth": { "$add": [ "$depth", 1 ] }})') as depth,
+ *                      bson_expression_get(coll.document, '{ "_id": "$_id" }') as baseDocId
+ *                  FROM *fromCollection*, graphLookup   -- join the recursive cte with the target collection
+ *                  WHERE bson_dollar_in(document, bson_expression_get(graphLookup.doc, '{ "*connectToField*": { "$makeArray": "$*connectFromField*" } }', true))
+ *              ) CYCLE baseDocId SET is_cycle USING path
+ *              SELECT bson_array_agg(doc, '*as*') FROM (SELECT DISTINCT ON (graphLookupStage.baseDocId) graphLookupStage.document FROM graphLookup ORDER BY depth)
+ *          ),
+ *          '{ "*as*": [] }'
+ *      ) AS addFields
+ *  FROM basecte
+ * )
+ *
  * SELECT bson_dollar_add_fields(document, addFields) FROM graphLookupStage;
  *
  */
@@ -1930,7 +2052,8 @@ ProcessGraphLookupCore(Query *query, AggregationPipelineBuildContext *context,
 	AddInputExpressionToQuery(query, &lookupArgs->connectToField,
 							  &lookupArgs->inputExpression);
 
-	/* Create the final query */
+	/* Create the final query: Since the higher query is in a CTE - push this one down. */
+	context->numNestedLevels++;
 	Query *graphLookupQuery = makeNode(Query);
 	graphLookupQuery->commandType = CMD_SELECT;
 	graphLookupQuery->querySource = query->querySource;
@@ -2042,6 +2165,26 @@ BuildGraphLookupCteQuery(QuerySource parentSource,
 
 
 /*
+ * Creates an expression for bson_expression_get(document, '{ "_id": "$_id"}', true)
+ */
+static Expr *
+CreateIdProjectionExpr(Expr *baseExpr)
+{
+	pgbsonelement expressionElement = { 0 };
+	expressionElement.path = "_id";
+	expressionElement.pathLength = 3;
+	expressionElement.bsonValue.value_type = BSON_TYPE_UTF8;
+	expressionElement.bsonValue.value.v_utf8.len = 4;
+	expressionElement.bsonValue.value.v_utf8.str = "$_id";
+
+	return (Expr *) makeFuncExpr(BsonExpressionGetFunctionOid(), BsonTypeId(),
+								 list_make2(baseExpr, MakeBsonConst(PgbsonElementToPgbson(
+																		&expressionElement))),
+								 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+}
+
+
+/*
  * This is the base case for the recursive CTE. This scans the from collection
  * with the equality match on the original table's rows.
  * SELECT * FROm from_collection WHERE document #= '{ "inputExpression" }
@@ -2069,6 +2212,12 @@ GenerateBaseCaseQuery(AggregationPipelineBuildContext *parentContext,
 							"$graphLookup with 'from' on a sharded collection is not supported")));
 	}
 
+	if (args->restrictSearch.value_type != BSON_TYPE_EOD)
+	{
+		baseCaseQuery = HandleMatch(&args->restrictSearch, baseCaseQuery,
+									&subPipelineContext);
+	}
+
 	List *baseQuals = NIL;
 	if (baseCaseQuery->jointree->quals != NULL)
 	{
@@ -2080,7 +2229,7 @@ GenerateBaseCaseQuery(AggregationPipelineBuildContext *parentContext,
 	/* Match the Var of the top level input query: We're one level deeper (Since this is inside the SetOP) */
 	Var *rightVar = makeVar(1, 2, BsonTypeId(), -1, InvalidOid, baseCteLevelsUp);
 
-	FuncExpr *initialMatchFunc = makeFuncExpr(BsonEqualMatchRuntimeFunctionId(), BOOLOID,
+	FuncExpr *initialMatchFunc = makeFuncExpr(BsonInMatchFunctionId(), BOOLOID,
 											  list_make2(firstEntry->expr, rightVar),
 											  InvalidOid, InvalidOid,
 											  COERCE_EXPLICIT_CALL);
@@ -2088,14 +2237,33 @@ GenerateBaseCaseQuery(AggregationPipelineBuildContext *parentContext,
 	baseQuals = lappend(baseQuals, initialMatchFunc);
 	baseCaseQuery->jointree->quals = (Node *) make_ands_explicit(baseQuals);
 
-	/* Append the graph walk expression */
-	AddInputUnwindExpressionToQuery(baseCaseQuery, &args->connectToField, args);
-
 	/* Add the depth field (base case is 0) */
-	Const *depthConst = makeConst(INT4OID, -1, InvalidOid, 4, Int32GetDatum(0), false,
-								  true);
+	pgbsonelement element =
+	{
+		.path = "depth",
+		.pathLength = 5,
+		.bsonValue =
+		{
+			.value_type = BSON_TYPE_INT32,
+			.value.v_int32 = 0,
+			.padding = 0
+		}
+	};
+	if (args->depthField.length > 0)
+	{
+		element.path = args->depthField.string;
+		element.pathLength = args->depthField.length;
+	}
+
+	Const *depthConst = MakeBsonConst(PgbsonElementToPgbson(&element));
 	baseCaseQuery->targetList = lappend(baseCaseQuery->targetList,
-										makeTargetEntry((Expr *) depthConst, 3, "depth",
+										makeTargetEntry((Expr *) depthConst, 2, "depth",
+														false));
+
+	baseCaseQuery->targetList = lappend(baseCaseQuery->targetList,
+										makeTargetEntry(CreateIdProjectionExpr(
+															firstEntry->expr), 3,
+														"baseDocId",
 														false));
 
 	return baseCaseQuery;
@@ -2118,6 +2286,11 @@ GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
 	Query *recursiveQuery = GenerateBaseTableQuery(parentContext->databaseNameDatum,
 												   &args->fromCollection, collectionUuid,
 												   &subPipelineContext);
+	if (args->restrictSearch.value_type != BSON_TYPE_EOD)
+	{
+		recursiveQuery = HandleMatch(&args->restrictSearch, recursiveQuery,
+									 &subPipelineContext);
+	}
 
 	List *baseQuals = NIL;
 	if (recursiveQuery->jointree->quals != NULL)
@@ -2137,42 +2310,121 @@ GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
 	TargetEntry *firstEntry = linitial(recursiveQuery->targetList);
 
 	/* Match the Var of the CTE level input query */
-	Var *rightVar = makeVar(rangeTblRef->rtindex, 2, BsonTypeId(), -1, InvalidOid, 0);
-
-	FuncExpr *initialMatchFunc = makeFuncExpr(BsonEqualMatchRuntimeFunctionId(), BOOLOID,
-											  list_make2(firstEntry->expr, rightVar),
+	Var *leftDocVar = makeVar(rangeTblRef->rtindex, 1, BsonTypeId(), -1, InvalidOid, 0);
+	FuncExpr *inputExpr = BuildInputExpressionForQuery((Expr *) leftDocVar,
+													   &args->connectToField,
+													   &args->connectFromFieldExpression);
+	FuncExpr *initialMatchFunc = makeFuncExpr(BsonInMatchFunctionId(), BOOLOID,
+											  list_make2(firstEntry->expr, inputExpr),
 											  InvalidOid, InvalidOid,
 											  COERCE_EXPLICIT_CALL);
 
 	baseQuals = lappend(baseQuals, initialMatchFunc);
 
-	Var *priorDepthValue = makeVar(rangeTblRef->rtindex, 3, INT4OID, -1, InvalidOid, 0);
-	if (args->maxDepth > 0)
+	StringView depthPath = { .length = 5, .string = "depth" };
+	if (args->depthField.length > 0)
 	{
-		Const *depthConst = makeConst(INT4OID, -1, InvalidOid, 4, Int32GetDatum(
-										  args->maxDepth), false, true);
-		OpExpr *depthMatchFunc = (OpExpr *) make_opclause(PostgresInt4LessOperatorOid(),
-														  BOOLOID, false,
-														  (Expr *) priorDepthValue,
-														  (Expr *) depthConst, InvalidOid,
-														  InvalidOid);
-		depthMatchFunc->opfuncid = PostgresInt4LessOperatorFunctionOid();
+		depthPath = args->depthField;
+	}
+
+	Var *priorDepthValue = makeVar(rangeTblRef->rtindex, 2, BsonTypeId(), -1, InvalidOid,
+								   0);
+	if (args->maxDepth >= 0 && args->maxDepth != INT32_MAX)
+	{
+		pgbsonelement depthQueryElement = { 0 };
+		depthQueryElement.path = depthPath.string;
+		depthQueryElement.pathLength = depthPath.length;
+		depthQueryElement.bsonValue.value_type = BSON_TYPE_INT32;
+		depthQueryElement.bsonValue.value.v_int32 = args->maxDepth;
+
+		Const *depthConst = MakeBsonConst(PgbsonElementToPgbson(&depthQueryElement));
+		depthConst->consttype = GetClusterBsonQueryTypeId();
+		OpExpr *depthMatchFunc = (OpExpr *) make_opclause(
+			BsonLessThanMatchRuntimeOperatorId(),
+			BOOLOID, false,
+			(Expr *) priorDepthValue,
+			(Expr *) depthConst, InvalidOid,
+			InvalidOid);
+		depthMatchFunc->opfuncid = BsonLessThanMatchRuntimeFunctionId();
 		baseQuals = lappend(baseQuals, depthMatchFunc);
 	}
 
 	recursiveQuery->jointree->quals = (Node *) make_ands_explicit(baseQuals);
 
-	/* Append the graph walk expression */
-	AddInputUnwindExpressionToQuery(recursiveQuery, &args->connectToField, args);
-	Const *depthConst = makeConst(INT4OID, -1, InvalidOid, 4, Int32GetDatum(1), false,
-								  true);
-	Expr *funcExpr = (Expr *) makeFuncExpr(PostgresInt4PlusFunctionOid(), INT4OID,
-										   list_make2(depthConst, priorDepthValue),
-										   InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+	/* Append the graph depth expression */
+	pgbson_writer depthFuncWriter;
+	PgbsonWriterInit(&depthFuncWriter);
+
+	pgbson_writer childWriter;
+	PgbsonWriterStartDocument(&depthFuncWriter, depthPath.string, depthPath.length,
+							  &childWriter);
+
+	pgbson_array_writer addWriter;
+	PgbsonWriterStartArray(&childWriter, "$add", 4, &addWriter);
+	PgbsonArrayWriterWriteUtf8(&addWriter, psprintf("$%.*s", depthPath.length,
+													depthPath.string));
+
+	bson_value_t number1Value = { 0 };
+	number1Value.value_type = BSON_TYPE_INT32;
+	number1Value.value.v_int32 = 1;
+	PgbsonArrayWriterWriteValue(&addWriter, &number1Value);
+	PgbsonWriterEndArray(&childWriter, &addWriter);
+	PgbsonWriterEndDocument(&depthFuncWriter, &childWriter);
+
+	Const *depthAddConst = MakeBsonConst(PgbsonWriterGetPgbson(&depthFuncWriter));
+	Expr *newDepthFuncExpr = (Expr *) makeFuncExpr(BsonDollarAddFieldsFunctionOid(),
+												   BsonTypeId(),
+												   list_make2(priorDepthValue,
+															  depthAddConst),
+												   InvalidOid, InvalidOid,
+												   COERCE_EXPLICIT_CALL);
 	recursiveQuery->targetList = lappend(recursiveQuery->targetList,
-										 makeTargetEntry(funcExpr, 3, "depth", false));
+										 makeTargetEntry(newDepthFuncExpr, 2, "depth",
+														 false));
+
+	recursiveQuery->targetList = lappend(recursiveQuery->targetList,
+										 makeTargetEntry(CreateIdProjectionExpr(
+															 firstEntry->expr), 3,
+														 "baseDocId",
+														 false));
 
 	return recursiveQuery;
+}
+
+
+/*
+ * Walker to replace the recursive graph CTE post cycle rewrite.
+ */
+static bool
+RewriteGraphLookupRecursiveCteExprWalker(Node *node, CommonTableExpr *graphRecursiveCte)
+{
+	CHECK_FOR_INTERRUPTS();
+
+	if (node == NULL)
+	{
+		return false;
+	}
+
+	if (IsA(node, Query))
+	{
+		return query_tree_walker((Query *) node, RewriteGraphLookupRecursiveCteExprWalker,
+								 graphRecursiveCte, QTW_EXAMINE_RTES_BEFORE |
+								 QTW_DONT_COPY_QUERY);
+	}
+	else if (IsA(node, RangeTblEntry))
+	{
+		RangeTblEntry *tblEntry = (RangeTblEntry *) node;
+		if (tblEntry->rtekind == RTE_CTE && strcmp(tblEntry->ctename,
+												   graphRecursiveCte->ctename) == 0)
+		{
+			UpdateCteRte(tblEntry, graphRecursiveCte);
+			return true;
+		}
+
+		return false;
+	}
+
+	return false;
 }
 
 
@@ -2190,10 +2442,8 @@ BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
 	subPipelineContext.databaseNameDatum = parentContext->databaseNameDatum;
 
 	/* First build the recursive CTE object */
-	StringInfo cteStr = makeStringInfo();
-	appendStringInfo(cteStr, "graphLookupRecurseStage_%d", 1);
 	CommonTableExpr *graphCteExpr = makeNode(CommonTableExpr);
-	graphCteExpr->ctename = cteStr->data;
+	graphCteExpr->ctename = "graphLookupRecurseStage";
 	graphCteExpr->cterecursive = true;
 
 	/* Define the UNION ALL query step needed for the recursive CTE */
@@ -2209,27 +2459,39 @@ BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
 	TargetEntry *docEntry = makeTargetEntry((Expr *) documentVar,
 											1, "document", false);
 
-	/* The second is the expression extracted out */
-	Var *exprVar = makeVar(1, 2, BsonTypeId(), -1, InvalidOid, 0);
-	TargetEntry *exprEntry = makeTargetEntry((Expr *) exprVar,
-											 2, "inputExpr", false);
-
-	/* The third is the depth */
-	Var *depthVar = makeVar(1, 3, INT4OID, -1, InvalidOid, 0);
+	/* Then comes the depth */
+	Var *depthVar = makeVar(1, 2, BsonTypeId(), -1, InvalidOid, 0);
 	TargetEntry *depthEntry = makeTargetEntry((Expr *) depthVar,
-											  3, "depth", false);
+											  2, "depth", false);
 
-	List *unionTargetEntries = list_make3(docEntry, exprEntry, depthEntry);
+	Var *baseVar = makeVar(1, 3, BsonTypeId(), -1, InvalidOid, 0);
+	TargetEntry *baseDocEntry = makeTargetEntry((Expr *) baseVar,
+												3, "baseDocId", false);
+	List *unionTargetEntries = list_make3(docEntry, depthEntry, baseDocEntry);
 
 	unionAllQuery->targetList = unionTargetEntries;
 	graphCteExpr->ctequery = (Node *) unionAllQuery;
+
+	CTECycleClause *cteCycleClause = makeNode(CTECycleClause);
+	cteCycleClause->cycle_col_list = list_make1(makeString("baseDocId"));
+	cteCycleClause->cycle_mark_collation = InvalidOid;
+	cteCycleClause->cycle_mark_type = BOOLOID;
+	cteCycleClause->cycle_mark_column = "is_cycle";
+	cteCycleClause->cycle_mark_default = MakeBoolValueConst(false);
+	cteCycleClause->cycle_mark_value = MakeBoolValueConst(true);
+	cteCycleClause->cycle_path_column = "path";
+	cteCycleClause->cycle_mark_typmod = -1;
+	cteCycleClause->cycle_mark_neop = BooleanNotEqualOperator;
+	graphCteExpr->cycle_clause = cteCycleClause;
+
 
 	ParseState *parseState = make_parsestate(NULL);
 	parseState->p_expr_kind = EXPR_KIND_SELECT_TARGET;
 	parseState->p_next_resno = 1;
 
 	/* Build the base case query (non recursive entry)*/
-	baseCteLevelsUp++;
+	/* CTE will move up 1 level because of the subquery after the group below. */
+	baseCteLevelsUp += 2;
 	Query *baseSubQuery = GenerateBaseCaseQuery(parentContext, args, baseCteLevelsUp);
 
 	/* Build the recursive case query: Not ethe actual graph CTE is 2 levels up:
@@ -2256,18 +2518,40 @@ BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
 	RangeTblRef *recursiveReference = makeNode(RangeTblRef);
 	recursiveReference->rtindex = 2;
 
-	/* Mongo dedups these, so has to be UNION not UNION ALL */
+	/* Mongo dedups these by _id so we do a post DISTINCT ON for that.
+	 * This is more efficient for PG scenarios.
+	 */
 	SetOperationStmt *setOpStatement = makeNode(SetOperationStmt);
 	setOpStatement->all = true;
 	setOpStatement->op = SETOP_UNION;
-	setOpStatement->colCollations = list_make3_oid(InvalidOid, InvalidOid, InvalidOid);
-	setOpStatement->colTypes = list_make3_oid(BsonTypeId(), BsonTypeId(), INT4OID);
-	setOpStatement->colTypmods = list_make3_int(-1, -1, -1);
 	setOpStatement->larg = (Node *) baseReference;
 	setOpStatement->rarg = (Node *) recursiveReference;
 
+	setOpStatement->colCollations = list_make3_oid(InvalidOid, InvalidOid,
+												   InvalidOid);
+	setOpStatement->colTypes = list_make3_oid(BsonTypeId(), BsonTypeId(),
+											  BsonTypeId());
+	setOpStatement->colTypmods = list_make3_int(-1, -1, -1);
+
+	graphCteExpr->ctecolnames = list_make3(makeString("document"), makeString("depth"),
+										   makeString("baseDocId"));
+	graphCteExpr->ctecoltypes = setOpStatement->colTypes;
+	graphCteExpr->ctecoltypmods = setOpStatement->colTypmods;
+	graphCteExpr->ctecolcollations = setOpStatement->colCollations;
+
 	/* Update the query with the SetOp statement */
 	unionAllQuery->setOperations = (Node *) setOpStatement;
+
+	/* Now that the unionAllQuery is built, call the rewrite handler */
+	graphCteExpr = rewriteSearchAndCycle(graphCteExpr);
+
+	/* Reset cycle path after rewrite */
+	graphCteExpr->cycle_clause = NULL;
+
+	query_tree_walker((Query *) graphCteExpr->ctequery,
+					  RewriteGraphLookupRecursiveCteExprWalker, graphCteExpr,
+					  QTW_EXAMINE_RTES_BEFORE |
+					  QTW_DONT_COPY_QUERY);
 
 	/* Now form the top level Graph Lookup Recursive Query entry */
 	Query *graphLookupQuery = makeNode(Query);
@@ -2297,29 +2581,57 @@ BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
 	Var *simpleVar = makeVar(1, 1, BsonTypeId(), -1, InvalidOid, 0);
 	TargetEntry *simpleTargetEntry = makeTargetEntry((Expr *) simpleVar, 1, "document",
 													 false);
-	graphLookupQuery->targetList = list_make1(simpleTargetEntry);
+
+	Var *distinctVar = makeVar(1, 3, BsonTypeId(), -1, InvalidOid, 0);
+	TargetEntry *distinctEntry = makeTargetEntry((Expr *) distinctVar, 2, "distinctOn",
+												 true);
+	distinctEntry->ressortgroupref = 1;
+
+	Var *finalDepthVar = makeVar(1, 2, BsonTypeId(), -1, InvalidOid, 0);
+	TargetEntry *finalDepthEntry = makeTargetEntry((Expr *) finalDepthVar, 3, "depthVar",
+												   true);
+	finalDepthEntry->ressortgroupref = 2;
+
+	/* If there is a depth-field, add it into the original doc */
+	if (args->depthField.length > 0)
+	{
+		simpleTargetEntry->expr = (Expr *) makeFuncExpr(BsonDollarAddFieldsFunctionOid(),
+														BsonTypeId(),
+														list_make2(simpleVar,
+																   finalDepthVar),
+														InvalidOid,
+														InvalidOid, COERCE_EXPLICIT_CALL);
+	}
+
+	Assert(list_length(graphCteExpr->ctecoltypes) == 5);
+	graphLookupQuery->targetList = list_make3(simpleTargetEntry, distinctEntry,
+											  finalDepthEntry);
+
+	/* Add Distinct ON */
+	SortGroupClause *distinctonSortGroup = makeNode(SortGroupClause);
+	distinctonSortGroup->eqop = BsonEqualOperatorId();
+	distinctonSortGroup->sortop = BsonLessThanOperatorId();
+	distinctonSortGroup->hashable = false;
+	distinctonSortGroup->tleSortGroupRef = 1;
+	graphLookupQuery->distinctClause = list_make1(distinctonSortGroup);
+	graphLookupQuery->hasDistinctOn = true;
+
+	/* Add a sort */
+	SortGroupClause *sortOnDepthGroup = makeNode(SortGroupClause);
+	sortOnDepthGroup->eqop = BsonEqualOperatorId();
+	sortOnDepthGroup->sortop = BsonLessThanOperatorId();
+	sortOnDepthGroup->hashable = false;
+	sortOnDepthGroup->tleSortGroupRef = 2;
+	graphLookupQuery->sortClause = list_make2(distinctonSortGroup, sortOnDepthGroup);
 
 	/* Add the bson_array_agg */
-	bool migrateToSubQuery = false;
+	bool migrateToSubQuery = true;
 	Aggref *arrayAggRef = NULL;
 	graphLookupQuery = AddBsonArrayAggFunction(graphLookupQuery, &subPipelineContext,
 											   parseState,
 											   args->asField.string, args->asField.length,
 											   migrateToSubQuery, &arrayAggRef);
 
-	/* Add a distinct to match Mongo */
-
-	SortGroupClause *bsonSortGroup = makeNode(SortGroupClause);
-	bsonSortGroup->eqop = BsonEqualOperatorId();
-	bsonSortGroup->sortop = BsonLessThanOperatorId();
-	bsonSortGroup->hashable = false;
-
-	SortGroupClause *textSortGroup = makeNode(SortGroupClause);
-	textSortGroup->eqop = TextEqualOperatorId();
-	textSortGroup->sortop = TextLessOperatorId();
-	textSortGroup->hashable = true;
-
-	arrayAggRef->aggdistinct = list_make2(bsonSortGroup, textSortGroup);
 	pfree(parseState);
 	return graphLookupQuery;
 }

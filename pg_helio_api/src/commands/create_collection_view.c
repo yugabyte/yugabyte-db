@@ -492,9 +492,9 @@ ValidateViewDefinition(Datum databaseDatum, const char *viewName, const
 
 	if (definition->pipeline.value_type != BSON_TYPE_EOD)
 	{
+		WalkPipelineForViewCycles(databaseDatum, viewName, &definition->pipeline);
 		ValidatePipelineForCreateView(databaseDatum, definition->viewSource,
 									  &definition->pipeline);
-		WalkPipelineForViewCycles(databaseDatum, viewName, &definition->pipeline);
 	}
 }
 
@@ -664,6 +664,28 @@ WalkPipelineForViewCycles(Datum databaseDatum, const char *viewName,
 			CheckForViewCyclesAndDepth(databaseDatum, viewName,
 									   CreateStringFromStringView(&collection));
 
+			if (pipeline.value_type != BSON_TYPE_EOD)
+			{
+				WalkPipelineForViewCycles(databaseDatum, viewName,
+										  &pipeline);
+			}
+		}
+		else if (strcmp(stageElement.path, "$graphLookup") == 0)
+		{
+			StringView collection = { 0 };
+			GraphLookupExtractCollection(&stageElement.bsonValue, &collection);
+
+			CheckForViewCyclesAndDepth(databaseDatum, viewName,
+									   CreateStringFromStringView(&collection));
+		}
+		else if (strcmp(stageElement.path, "$unionWith") == 0)
+		{
+			StringView collection = { 0 };
+			bson_value_t pipeline = { 0 };
+			ParseUnionWith(&stageElement.bsonValue, &collection, &pipeline);
+
+			CheckForViewCyclesAndDepth(databaseDatum, viewName,
+									   CreateStringFromStringView(&collection));
 			if (pipeline.value_type != BSON_TYPE_EOD)
 			{
 				WalkPipelineForViewCycles(databaseDatum, viewName,

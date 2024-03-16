@@ -225,6 +225,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$lte", NULL, &ParseDollarLte, &HandlePreParsedDollarLte,
 	  FEATURE_AGG_OPERATOR_LTE },
 	{ "$ltrim", &HandleDollarLtrim, NULL, NULL, FEATURE_AGG_OPERATOR_LTRIM },
+	{ "$makeArray", NULL, &ParseDollarMakeArray, &HandlePreParsedDollarMakeArray,
+	  FEATURE_AGG_OPERATOR_MAKE_ARRAY },
 	{ "$map", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_MAP },
 	{ "$max", NULL, &ParseDollarMax, &HandlePreParsedDollarMax,
 	  FEATURE_AGG_OPERATOR_MAX },
