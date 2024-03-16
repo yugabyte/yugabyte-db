@@ -16,7 +16,7 @@ class ApiService {
 
   // Fetches list of anomalies
   fetchAnamolies = (universeUuid: string, startTime?: Date | null, endTime?: Date | null) => {
-    const requestURL = `${ROOT_URL}/anomalies`;
+    const requestURL = IN_DEVELOPMENT_MODE ? 'http://localhost:8080/anomalies' : 'http://10.9.15.156:8080/anomalies';
     const params: any = {
       universe_uuid: universeUuid
     }
