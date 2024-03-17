@@ -284,6 +284,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
+  Status ClearUniverseUuid();
+
   XClusterConsumer* GetXClusterConsumer() const;
 
   // Mark the CDC service as enabled via heartbeat.
