@@ -75,6 +75,8 @@ static void TrackUnackedTransaction(YBCPgVirtualWalRecord *record);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
+static void DeepFreeRecordBatch(YBCPgChangeRecordBatch *record_batch);
+
 void
 YBCInitVirtualWal(List *yb_publication_names)
 {
@@ -188,7 +190,7 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 
 		/* We no longer need the earlier record batch. */
 		if (cached_records)
-			pfree(cached_records);
+			DeepFreeRecordBatch(cached_records);
 
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
 								   &cached_records);
@@ -379,4 +381,28 @@ CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 		else
 			break;
 	}
+}
+
+static void
+DeepFreeRecordBatch(YBCPgChangeRecordBatch *record_batch)
+{
+	int row_index = 0;
+
+	for (row_index = 0; row_index < record_batch->row_count; row_index++)
+	{
+		YBCPgRowMessage *row = &record_batch->rows[row_index];
+		int				col_index = 0;
+
+		/* cols can be NULL for DDL/BEGIN/COMMIT records. */
+		if (row->cols)
+		{
+			for (col_index = 0; col_index < row->col_count; col_index++)
+				pfree((void *) row->cols[col_index].column_name);
+
+			pfree(row->cols);
+		}
+	}
+
+	pfree(record_batch->rows);
+	pfree(record_batch);
 }
