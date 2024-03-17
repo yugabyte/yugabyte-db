@@ -11,6 +11,8 @@
 #include <postgres.h>
 #include <common/hashfn.h>
 #include <math.h>
+#include <miscadmin.h>
+#include <fmgr.h>
 
 #include "io/helio_bson_core.h"
 #include "types/decimal128.h"
@@ -34,6 +36,48 @@ static uint64 HashNumber(double number, int64 seed);
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
+
+PG_FUNCTION_INFO_V1(extension_bson_hash_int8);
+PG_FUNCTION_INFO_V1(extension_bson_hash_int4);
+
+
+/*
+ * Generates the hash of a bson as an int4 value
+ */
+Datum
+extension_bson_hash_int4(PG_FUNCTION_ARGS)
+{
+	pgbson *bson = PG_GETARG_PGBSON_PACKED(0);
+	Datum result;
+
+	result = hash_any((unsigned char *) VARDATA_ANY(bson),
+					  VARSIZE_ANY_EXHDR(bson));
+
+	/* Avoid leaking memory for toasted inputs */
+	PG_FREE_IF_COPY(bson, 0);
+	return result;
+}
+
+
+/*
+ * Generates the hash of a bson as an int8 value
+ */
+Datum
+extension_bson_hash_int8(PG_FUNCTION_ARGS)
+{
+	pgbson *bson = PG_GETARG_PGBSON_PACKED(0);
+	int64 seed = PG_GETARG_INT64(1);
+	Datum result;
+
+	result = hash_any_extended((unsigned char *) VARDATA_ANY(bson),
+							   VARSIZE_ANY_EXHDR(bson),
+							   seed);
+
+	PG_FREE_IF_COPY(bson, 0);
+
+	return result;
+}
+
 
 /*
  * BsonValueHash returns a hash value for a given BSON value using
