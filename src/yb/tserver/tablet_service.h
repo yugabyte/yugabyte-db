@@ -184,6 +184,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                          ListMasterServersResponsePB* resp,
                          rpc::RpcContext context) override;
 
+void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
+                       ClearUniverseUuidResponsePB* resp,
+                       rpc::RpcContext context) override;
+
   void GetLockStatus(const GetLockStatusRequestPB* req,
                      GetLockStatusResponsePB* resp,
                      rpc::RpcContext context) override;
