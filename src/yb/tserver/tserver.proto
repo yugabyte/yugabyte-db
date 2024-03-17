@@ -334,3 +334,10 @@ message GetCompatibleSchemaVersionResponsePB {
   optional TabletServerErrorPB error = 1;
   optional uint32 compatible_schema_version = 2;
 }
+
+message ClearUniverseUuidRequestPB {
+}
+
+message ClearUniverseUuidResponsePB {
+  optional TabletServerErrorPB error = 1;
+}

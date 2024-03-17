@@ -72,10 +72,12 @@ using yb::consensus::RaftConfigPB;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
-using yb::server::ServerStatusPB;
 using yb::server::ReloadCertificatesRequestPB;
 using yb::server::ReloadCertificatesResponsePB;
+using yb::server::ServerStatusPB;
 using yb::tablet::TabletStatusPB;
+using yb::tserver::ClearUniverseUuidRequestPB;
+using yb::tserver::ClearUniverseUuidResponsePB;
 using yb::tserver::CountIntentsRequestPB;
 using yb::tserver::CountIntentsResponsePB;
 using yb::tserver::DeleteTabletRequestPB;
@@ -113,6 +115,7 @@ const char* const kCompactAllTabletsOp = "compact_all_tablets";
 const char* const kReloadCertificatesOp = "reload_certificates";
 const char* const kRemoteBootstrapOp = "remote_bootstrap";
 const char* const kListMasterServersOp = "list_master_servers";
+const char* const kClearUniverseUuidOp = "clear_universe_uuid";
 
 
 DEFINE_UNKNOWN_string(server_address, "localhost",
@@ -246,6 +249,9 @@ class TsAdminClient {
 
   // List information for all master servers.
   Status ListMasterServers();
+
+  // Clear Universe Uuid.
+  Status ClearUniverseUuid();
 
  private:
   std::string addr_;
@@ -681,6 +687,22 @@ Status TsAdminClient::ListMasterServers() {
 }
 
 
+Status TsAdminClient::ClearUniverseUuid() {
+  CHECK(initted_);
+  ClearUniverseUuidRequestPB req;
+  ClearUniverseUuidResponsePB resp;
+  RpcController rpc;
+
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(ts_proxy_->ClearUniverseUuid(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "Universe UUID cleared from Instance Metadata" << std::endl;
+  return Status::OK();
+}
+
 namespace {
 
 void SetUsage(const char* argv0) {
@@ -708,7 +730,8 @@ void SetUsage(const char* argv0) {
       << " <tablet_id> <number of indexes> <index list> <start_key> <number of rows>\n"
       << "  " << kReloadCertificatesOp << "\n"
       << "  " << kRemoteBootstrapOp << " <server address to bootstrap from> <tablet_id>\n"
-      << "  " << kListMasterServersOp << "\n";
+      << "  " << kListMasterServersOp << "\n"
+      << "  " << kClearUniverseUuidOp << "\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -924,6 +947,11 @@ static int TsCliMain(int argc, char** argv) {
 
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ListMasterServers(),
                                     "Unable to list master servers on " + addr);
+  } else if (op == kClearUniverseUuidOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ClearUniverseUuid(),
+                                    "Unable to clear universe uuid on " + addr);
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
