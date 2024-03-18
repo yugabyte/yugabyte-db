@@ -211,6 +211,10 @@ void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
       const GetTabletKeyRangesRequestPB* req, GetTabletKeyRangesResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void ClearAllMetaCachesOnServer(
+      const ClearAllMetaCachesOnServerRequestPB* req, ClearAllMetaCachesOnServerResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:

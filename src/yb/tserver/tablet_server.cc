@@ -1407,4 +1407,10 @@ rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {
   FATAL_INVALID_ENUM_VALUE(ash::Component, component);
 }
 
+void TabletServer::ClearAllMetaCachesOnServer() {
+  if (auto xcluster_consumer = GetXClusterConsumer()) {
+    xcluster_consumer->ClearAllClientMetaCaches();
+  }
+  client()->ClearAllMetaCachesOnServer();
+}
 }  // namespace yb::tserver

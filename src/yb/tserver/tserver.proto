@@ -376,3 +376,6 @@ message ClearUniverseUuidRequestPB {
 message ClearUniverseUuidResponsePB {
   optional TabletServerErrorPB error = 1;
 }
+message ClearAllMetaCachesOnServerRequestPB {}
+
+message ClearAllMetaCachesOnServerResponsePB {}

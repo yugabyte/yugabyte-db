@@ -1024,6 +1024,8 @@ class YBClient {
 
   const std::string& client_name() const;
 
+  void ClearAllMetaCachesOnServer();
+
  private:
   class Data;
 

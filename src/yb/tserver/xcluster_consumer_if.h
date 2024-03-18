@@ -67,6 +67,7 @@ class XClusterConsumerIf {
   virtual uint32_t TEST_GetNumSuccessfulWriteRpcs() = 0;
   virtual std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers() const = 0;
   virtual std::vector<std::shared_ptr<client::YBClient>> GetYbClientsList() const = 0;
+  virtual void ClearAllClientMetaCaches() const = 0;
 };
 
 typedef std::function<Result<pgwrapper::PGConn>(const std::string&, const CoarseTimePoint&)>
