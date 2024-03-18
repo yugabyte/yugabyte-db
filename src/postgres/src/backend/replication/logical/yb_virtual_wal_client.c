@@ -23,6 +23,8 @@
 
 #include "postgres.h"
 
+#include <inttypes.h>
+
 #include "access/xact.h"
 #include "commands/ybccmds.h"
 #include "replication/slot.h"
@@ -321,8 +323,14 @@ YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush)
 		return restart_lsn_hint;
 	}
 
+	elog(DEBUG1, "Updating confirmed_flush to %lu and restart_lsn_hint to %lu",
+		 confirmed_flush, restart_lsn_hint);
+
 	YBCUpdateAndPersistLSN(MyReplicationSlot->data.yb_stream_id, restart_lsn_hint,
 						   confirmed_flush, &restart_lsn);
+
+	elog(DEBUG1, "The restart_lsn calculated by the virtual wal is %" PRIu64,
+		 restart_lsn);
 
 	CleanupAckedTransactions(confirmed_flush);
 	return restart_lsn;
@@ -338,6 +346,10 @@ CalculateRestartLSN(XLogRecPtr confirmed_flush)
 
 	if (numunacked == 0)
 		return InvalidXLogRecPtr;
+
+	elog(DEBUG1,
+		 "The number of unacked transactions in the virtual wal client is %d",
+		 numunacked);
 
 	foreach (lc, unacked_transactions)
 	{
