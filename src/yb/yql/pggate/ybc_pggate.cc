@@ -2219,6 +2219,12 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   VLOG(4) << "The GetConsistentChangesForCDC response: " << resp.DebugString();
   auto row_count = resp.cdc_sdk_proto_records_size();
 
+  // Used for logging a summary of the response received from the CDC service.
+  YBCPgXLogRecPtr min_resp_lsn = 0xFFFFFFFF;
+  YBCPgXLogRecPtr max_resp_lsn = 0;
+  uint32_t min_txn_id = 0xFFFF;
+  uint32_t max_txn_id = 0;
+
   auto resp_rows_pb = resp.cdc_sdk_proto_records();
   auto resp_rows = static_cast<YBCPgRowMessage *>(YBCPAlloc(sizeof(YBCPgRowMessage) * row_count));
   size_t row_idx = 0;
@@ -2322,6 +2328,12 @@ YBCStatus YBCPgGetCDCConsistentChanges(
         .lsn = row_message_pb.pg_lsn(),
         .xid = row_message_pb.pg_transaction_id()
     };
+
+    min_resp_lsn = std::min(min_resp_lsn, row_message_pb.pg_lsn());
+    max_resp_lsn = std::max(max_resp_lsn, row_message_pb.pg_lsn());
+    min_txn_id = std::min(min_txn_id, row_message_pb.pg_transaction_id());
+    max_txn_id = std::max(max_txn_id, row_message_pb.pg_transaction_id());
+
     row_idx++;
   }
 
@@ -2330,6 +2342,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       .row_count = row_count,
       .rows = resp_rows,
   };
+
+  VLOG(1) << "Summary of the GetConsistentChangesResponsePB response\n"
+          << "min_txn_id: " << min_txn_id << ", max_txn_id: " << max_txn_id
+          << "min_lsn: " << min_resp_lsn << ", max_lsn: " << max_resp_lsn;
 
   return YBCStatusOK();
 }
