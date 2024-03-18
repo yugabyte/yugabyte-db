@@ -593,6 +593,19 @@ public class PlacementInfoUtil {
         new AvailableNodeTracker(cluster.uuid, clusters, nodes);
     List<String> errors = new ArrayList<>();
     if (availableNodeTracker.isOnprem()) {
+      Map<UUID, Integer> nodeCountByAz =
+          PlacementInfoUtil.getAzUuidToNumNodes(cluster.placementInfo);
+      for (Cluster clust : clusters) {
+        if (!cluster.uuid.equals(clust.uuid)
+            && clust.placementInfo != null
+            && clust.userIntent != null
+            && Objects.equals(clust.userIntent.instanceType, cluster.userIntent.instanceType)) {
+          clust
+              .placementInfo
+              .azStream()
+              .forEach(az -> nodeCountByAz.merge(az.uuid, 1, Integer::sum));
+        }
+      }
       cluster
           .placementInfo
           .azStream()
@@ -602,12 +615,13 @@ public class PlacementInfoUtil {
                 int occupied = availableNodeTracker.getOccupiedByZone(az.uuid);
                 int willBeFreed = availableNodeTracker.getWillBeFreed(az.uuid);
                 AvailabilityZone availabilityZone = AvailabilityZone.getOrBadRequest(az.uuid);
-                if (available + occupied + willBeFreed < az.numNodesInAZ) {
+                int requiredNumber = nodeCountByAz.get(az.uuid);
+                if (available + occupied + willBeFreed < requiredNumber) {
                   errors.add(
                       String.format(
                           "Couldn't find %d nodes of type %s in %s zone "
                               + "(%d is free and %d currently occupied)",
-                          az.numNodesInAZ,
+                          requiredNumber,
                           cluster.userIntent.instanceType,
                           availabilityZone.getName(),
                           available,
@@ -1427,7 +1441,7 @@ public class PlacementInfoUtil {
    *
    * @param placementInfo The cluster placement info.
    */
-  private static Set<UUID> removeUnusedPlacementAZs(PlacementInfo placementInfo) {
+  static Set<UUID> removeUnusedPlacementAZs(PlacementInfo placementInfo) {
     Set<UUID> result = new HashSet<>();
     for (PlacementCloud cloud : placementInfo.cloudList) {
       Iterator<PlacementRegion> regionIterator = cloud.regionList.iterator();
@@ -2378,7 +2392,7 @@ public class PlacementInfoUtil {
     return addPlacementZone(zone, placementInfo, 1 /* rf */, 1 /* numNodes */);
   }
 
-  private static PlacementAZ addPlacementZone(
+  public static PlacementAZ addPlacementZone(
       UUID zone, PlacementInfo placementInfo, int rf, int numNodes) {
     return addPlacementZone(zone, placementInfo, rf, numNodes, true);
   }
