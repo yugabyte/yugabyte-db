@@ -1399,6 +1399,7 @@ create index test2_idx_gist on test2 using gist (t gist_trgm_ops);
 ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 -- Check similarity threshold (bug #14202)
+SET enable_bitmapscan = on;
 CREATE TEMP TABLE restaurants (city text);
 INSERT INTO restaurants SELECT 'Warsaw' FROM generate_series(1, 10000);
 INSERT INTO restaurants SELECT 'Szczecin' FROM generate_series(1, 10000);
@@ -1450,3 +1451,5 @@ SELECT DISTINCT city, similarity(city, 'Warsaw'), show_limit()
 --------+------------+------------
  Warsaw |          1 |        0.5
 (1 row)
+
+RESET enable_bitmapscan;

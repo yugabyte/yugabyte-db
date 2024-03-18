@@ -252,6 +252,7 @@ set(UTIL_SRCS
   version_info.cc
   write_buffer.cc
   yb_partition.cc
+  ysql_binary_runner.cc
   zlib.cc
   callsite_profiling.cc
   )

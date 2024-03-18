@@ -1414,6 +1414,14 @@ When set to true, tables and indexes are hash-partitioned based on the first col
 
 Default: true
 
+##### default_transaction_isolation
+
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+
+See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
+
+Default: `read committed`
+
 ## Advanced flags
 
 ##### backfill_index_client_rpc_timeout_ms

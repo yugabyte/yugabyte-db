@@ -202,6 +202,8 @@ class CatalogManagerIf {
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
+  virtual TSDescriptorVector GetAllLiveNotBlacklistedTServers() const = 0;
+
   virtual Status DoImportSnapshotMeta(
       const SnapshotInfoPB& snapshot_pb,
       const LeaderEpoch& epoch,
@@ -254,7 +256,7 @@ class CatalogManagerIf {
 
   virtual Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) = 0;
 
-  virtual bool AreTablesDeleting() = 0;
+  virtual bool AreTablesDeletingOrHiding() = 0;
 
   virtual Status GetCurrentConfig(consensus::ConsensusStatePB *cpb) const = 0;
 

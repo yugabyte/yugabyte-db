@@ -58,7 +58,7 @@ class XClusterManager : public XClusterManagerIf,
 
   void Clear();
 
-  Status RunLoaders();
+  Status RunLoaders(const TabletInfos& hidden_tablets);
 
   void SysCatalogLoaded();
 
@@ -75,7 +75,7 @@ class XClusterManager : public XClusterManagerIf,
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
 
   // Remove deleted xcluster stream IDs from producer stream Id map.
-  Status RemoveStreamFromXClusterProducerConfig(
+  Status RemoveStreamFromXClusterConfig(
       const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams);
 
   Status PauseResumeXClusterProducerStreams(
@@ -137,9 +137,10 @@ class XClusterManager : public XClusterManagerIf,
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
  private:
-  Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
+
+  bool in_memory_state_cleared_ = true;
 
   std::unique_ptr<XClusterConfig> xcluster_config_;
 };

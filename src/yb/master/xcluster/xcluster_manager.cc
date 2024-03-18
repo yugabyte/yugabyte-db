@@ -39,7 +39,6 @@ XClusterManager::XClusterManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
     : XClusterSourceManager(master, catalog_manager, sys_catalog),
       XClusterTargetManager(master, catalog_manager, sys_catalog),
-      master_(master),
       catalog_manager_(catalog_manager),
       sys_catalog_(sys_catalog) {
   xcluster_config_ = std::make_unique<XClusterConfig>(&sys_catalog_);
@@ -60,15 +59,21 @@ void XClusterManager::Clear() {
   xcluster_config_->ClearState();
   XClusterSourceManager::Clear();
   XClusterTargetManager::Clear();
+
+  in_memory_state_cleared_ = true;
 }
 
-Status XClusterManager::RunLoaders() {
-  Clear();
+Status XClusterManager::RunLoaders(const TabletInfos& hidden_tablets) {
+  RSTATUS_DCHECK(
+      in_memory_state_cleared_, IllegalState,
+      "Attempt to load in-memory state before it is fully cleared");
+
+  in_memory_state_cleared_ = false;
 
   RETURN_NOT_OK(
       sys_catalog_.Load<XClusterConfigLoader>("xcluster configuration", *xcluster_config_));
 
-  RETURN_NOT_OK(XClusterSourceManager::RunLoaders());
+  RETURN_NOT_OK(XClusterSourceManager::RunLoaders(hidden_tablets));
   RETURN_NOT_OK(XClusterTargetManager::RunLoaders());
 
   return Status::OK();
@@ -111,7 +116,7 @@ Result<uint32_t> XClusterManager::GetXClusterConfigVersion() const {
   return xcluster_config_->GetVersion();
 }
 
-Status XClusterManager::RemoveStreamFromXClusterProducerConfig(
+Status XClusterManager::RemoveStreamFromXClusterConfig(
     const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams) {
   return xcluster_config_->RemoveStreams(epoch, streams);
 }
@@ -128,7 +133,7 @@ Status XClusterManager::PauseResumeXClusterProducerStreams(
     LOG(INFO) << action << " replication for all XCluster streams.";
   }
 
-  auto xrepl_stream_ids = catalog_manager_.GetAllXreplStreamIds();
+  auto xrepl_stream_ids = catalog_manager_.GetAllXReplStreamIds();
   std::vector<xrepl::StreamId> streams_to_change;
 
   if (req->stream_ids().empty()) {

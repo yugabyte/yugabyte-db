@@ -45,7 +45,7 @@ Licensing (such as a license file in the case of YBA Installer or Replicated, or
 
 ## Software requirements
 
-- You can install YugabyteDB Anywhere onto any [x86 Linux operating system](../../../../reference/configuration/operating-systems/#yugabytedb-anywhere) supported by YugabyteDB. YugabyteDB Anywhere doesn't support ARM architectures (but can be used to deploy universes to ARM-based nodes).
+- You can install YugabyteDB Anywhere onto any [x86 Linux operating system](../../../../reference/configuration/operating-systems/) supported by YugabyteDB. YugabyteDB Anywhere doesn't support ARM architectures (but can be used to deploy universes to ARM-based nodes).
 
     YugabyteDB Anywhere may also work on other Linux distributions; contact your YugabyteDB support representative if you need added support.
 

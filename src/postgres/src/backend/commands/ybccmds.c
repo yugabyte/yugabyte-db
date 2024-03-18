@@ -210,7 +210,7 @@ YBCDropTablegroup(Oid grpoid)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTablegroup(MyDatabaseId, grpoid, &handle));
-	if (ddl_rollback_enabled)
+	if (yb_ddl_rollback_enabled)
 	{
 		/*
 		 * The following function marks the tablegroup for deletion. YB-Master
@@ -850,7 +850,7 @@ YBCDropTable(Relation relation)
 			return;
 		}
 
-		if (ddl_rollback_enabled)
+		if (yb_ddl_rollback_enabled)
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the
@@ -1682,7 +1682,7 @@ YBCDropIndex(Relation index)
 		if (not_found)
 			return;
 
-		if (ddl_rollback_enabled)
+		if (yb_ddl_rollback_enabled)
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the

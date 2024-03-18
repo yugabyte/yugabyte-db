@@ -3952,7 +3952,7 @@ ATController(AlterTableStmt *parsetree,
 	}
 	PG_CATCH();
 	{
-		if (!ddl_rollback_enabled)
+		if (!yb_ddl_rollback_enabled)
 		{
 			/*
 			 * The new way of doing ddl rollback is disabled, fall back to the

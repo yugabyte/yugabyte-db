@@ -403,7 +403,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     private final UUID universeUuid;
     private final boolean blacklistLeaders;
     private final int leaderBacklistWaitTimeMs;
-    private final Duration waitForServerTimeout;
+    private final Duration waitForServerReadyTimeout;
     private final boolean followerLagCheckEnabled;
     private boolean loadBalancerOff = false;
     private final Set<UUID> lockedUniversesUuid = ConcurrentHashMap.newKeySet();
@@ -421,7 +421,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       followerLagCheckEnabled =
           confGetter.getConfForScope(universe, UniverseConfKeys.followerLagCheckEnabled);
 
-      waitForServerTimeout =
+      waitForServerReadyTimeout =
           confGetter.getConfForScope(universe, UniverseConfKeys.waitForServerReadyTimeout);
     }
 
@@ -437,8 +437,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return followerLagCheckEnabled;
     }
 
-    public Duration getWaitForServerTimeout() {
-      return waitForServerTimeout;
+    public Duration getWaitForServerReadyTimeout() {
+      return waitForServerReadyTimeout;
     }
 
     public void lockUniverse(UUID universeUUID) {

@@ -3,6 +3,7 @@
 --
 -- Disable sequential scan so that bitmap index scan is always chosen.
 SET enable_seqscan = off;
+SET enable_bitmapscan = on;
 --
 -- Create temp tables because gin access method is only supported on temporary
 -- tables.
@@ -649,3 +650,4 @@ CREATE INDEX ON vectors USING gin (v);
 -- Cleanup
 DROP TABLE vectors;
 RESET enable_seqscan;
+RESET enable_bitmapscan;

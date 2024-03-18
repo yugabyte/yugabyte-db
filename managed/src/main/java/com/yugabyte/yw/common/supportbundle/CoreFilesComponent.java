@@ -49,7 +49,7 @@ class CoreFilesComponent implements SupportBundleComponent {
     String coresDir = nodeHomeDir + "/cores/";
 
     // Get and filter the core files list based on the 2 params given in the request body.
-    List<Pair<Integer, String>> fileSizeNameList =
+    List<Pair<Long, String>> fileSizeNameList =
         nodeUniverseManager.getNodeFilePathsAndSize(node, universe, coresDir).stream()
             .limit(supportBundleTaskParams.bundleData.maxNumRecentCores)
             .filter(p -> p.getFirst() <= supportBundleTaskParams.bundleData.maxCoreFileSize)

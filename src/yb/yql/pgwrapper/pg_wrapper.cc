@@ -493,7 +493,6 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   } else if (!FLAGS_ysql_hba_conf.empty()) {
     ReadCommaSeparatedValues(FLAGS_ysql_hba_conf, &lines);
   }
-
   // Add auto-generated config for the enable auth and enable_tls flags.
   if (FLAGS_ysql_enable_auth || conf.enable_tls) {
     const auto host_type =  conf.enable_tls ? "hostssl" : "host";

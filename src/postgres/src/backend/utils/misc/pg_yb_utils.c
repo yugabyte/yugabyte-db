@@ -1353,7 +1353,7 @@ bool yb_test_stay_in_global_catalog_version_mode = false;
 
 bool yb_test_table_rewrite_keep_old_table = false;
 
-bool ddl_rollback_enabled = false;
+bool yb_ddl_rollback_enabled = false;
 
 bool yb_silence_advisory_locks_not_supported_error = false;
 

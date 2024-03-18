@@ -2178,7 +2178,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
-  protected Long getNumDocdbRequests(Statement stmt, String query) throws Exception {
+  protected long getNumDocdbRequests(Statement stmt, String query) throws Exception {
     // Executing query once just in case if master catalog cache is not refreshed
     stmt.execute(query);
     Long rpc_count_before =

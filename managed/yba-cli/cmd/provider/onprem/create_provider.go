@@ -249,43 +249,7 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 				formatter.RedColor))
 	}
 	for _, regionString := range regionStrings {
-		region := map[string]string{}
-		for _, regionInfo := range strings.Split(regionString, ",") {
-			kvp := strings.Split(regionInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in region description.",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "region-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "latitude":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["latitude"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "longitude":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["longitude"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-
-			}
-		}
-		if _, ok := region["name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Name not specified in region.",
-					formatter.RedColor))
-		}
+		region := providerutil.BuildRegionMapFromString(regionString, "")
 		if _, ok := region["latitude"]; !ok {
 			region["latitude"] = "0.0"
 
@@ -318,41 +282,7 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 
 func buildOnpremZones(zoneStrings []string, regionName string) (res []ybaclient.AvailabilityZone) {
 	for _, zoneString := range zoneStrings {
-		zone := map[string]string{}
-		for _, zoneInfo := range strings.Split(zoneString, ",") {
-			kvp := strings.Split(zoneInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in zone description",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "zone-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "region-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["region-name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			}
-		}
-		if _, ok := zone["name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Name not specified in zone.",
-					formatter.RedColor))
-		}
-		if _, ok := zone["region-name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Region name not specified in zone.",
-					formatter.RedColor))
-		}
+		zone := providerutil.BuildZoneMapFromString(zoneString, "")
 
 		if strings.Compare(zone["region-name"], regionName) == 0 {
 			z := ybaclient.AvailabilityZone{
