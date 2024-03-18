@@ -301,6 +301,14 @@ public class NodeInstance extends Model {
         .collect(Collectors.toList());
   }
 
+  @JsonIgnore
+  public boolean isUsed() {
+    if (getState() == NodeInstance.State.USED) {
+      return true;
+    }
+    return filterInflightNodeUuids(Collections.singletonList(this)).isEmpty();
+  }
+
   /**
    * Reserve nodes in memory without persisting the changes in the database.
    *

@@ -424,7 +424,7 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(providerUUID);
     NodeInstance nodeToBeFound = findNodeOrThrow(provider, instanceIP);
-    if (nodeToBeFound.getState().equals(NodeInstance.State.USED)) {
+    if (nodeToBeFound.isUsed()) {
       throw new PlatformServiceException(BAD_REQUEST, "Node is in use");
     }
 
