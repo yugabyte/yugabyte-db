@@ -1377,16 +1377,13 @@ Default: true
 
 ##### yb_enable_base_scans_cost_model
 
-{{<badge/tp>}} Enable the YugabyteDB cost model for Sequential and Index scans. When enabling this flag, it is also recommended to do the following:
-
-- enable `yb_enable_optimizer_statistics`
-- run ANALYZE on user tables to maintain up-to-date statistics.
+{{<badge/tp>}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this flag, it is also recommended to run ANALYZE on user tables to maintain up-to-date statistics.
 
 Default: false
 
 ##### yb_enable_optimizer_statistics
 
-{{<badge/tp>}} Enable use of the PostgreSQL selectivity model.
+{{<badge/tp>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
 
 Default: false
 
