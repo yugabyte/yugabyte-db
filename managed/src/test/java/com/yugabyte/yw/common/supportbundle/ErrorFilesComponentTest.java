@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.TestHelper.createTarGzipFiles;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.times;
@@ -78,10 +79,12 @@ public class ErrorFilesComponentTest extends FakeDBApplication {
 
     doCallRealMethod()
         .when(mockSupportBundleUtil)
-        .downloadNodeLevelComponent(any(), any(), any(), any(), any(), any(), any(), any());
+        .downloadNodeLevelComponent(
+            any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
     doCallRealMethod()
         .when(mockSupportBundleUtil)
-        .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        .batchWiseDownload(
+            any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
 
     // Mock all the invocations with fake data
     when(mockUniverseInfoHandler.downloadNodeFile(any(), any(), any(), any(), any(), any()))

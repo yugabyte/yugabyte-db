@@ -321,6 +321,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CertsRotate);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
+  // This mapping blocks/allows actions on the UI done by a mapping defined in
+  // UNIVERSE_ACTION_TO_FROZEN_TASK_MAP in "./managed/ui/src/redesign/helpers/constants.ts".
   private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
       ImmutableSet.of(
           TaskType.CreateBackup,
@@ -345,7 +347,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse,
           TaskType.ReinstallNodeAgent,
-          TaskType.ReadOnlyClusterDelete);
+          TaskType.ReadOnlyClusterDelete,
+          TaskType.CreateSupportBundle);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(TaskType.GFlagsUpgrade, TaskType.RestartUniverse, TaskType.VMImageUpgrade);
