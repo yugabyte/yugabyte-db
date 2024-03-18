@@ -142,7 +142,8 @@ class UniverseLogsComponent implements SupportBundleComponent {
           nodeTargetFile,
           nodeHomeDir,
           allLogFilePaths,
-          this.getClass().getSimpleName());
+          this.getClass().getSimpleName(),
+          false);
     } else {
       log.debug(
           "Found no matching universe logs for node: {}, source path: {}, target path: {}, "
