@@ -257,7 +257,7 @@ YB Workload Simulator requires Java 11 or later installed on your computer. {{% 
 Download the YB Workload Simulator JAR file using the following command:
 
 ```sh
-wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.4/yb-workload-sim-0.0.8.jar
+wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.8/yb-workload-sim-0.0.8.jar
 ```
 
 ## Use the application
