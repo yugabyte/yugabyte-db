@@ -4323,13 +4323,14 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     }
 
     std::string error_msg = Format("VirtualWAL initialisation failed for stream_id: $0", stream_id);
-    LOG(WARNING) << error_msg;
+    LOG(WARNING) << s.CloneAndPrepend(error_msg);
     RPC_STATUS_RETURN_ERROR(
         s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     return;
   }
 
-  LOG(INFO) << "VirtualWAL instance successfully created for session_id: " << session_id;
+  LOG(INFO) << "VirtualWAL instance successfully created for stream_id: " << stream_id
+            << " with session_id: " << session_id;
   context.RespondSuccess();
 }
 
@@ -4340,7 +4341,7 @@ void CDCServiceImpl::GetConsistentChanges(
     return;
   }
 
-  VLOG(4) << "Received GetConsistentChanges request: " << req->DebugString();
+  VLOG(1) << "Received GetConsistentChanges request: " << req->DebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4369,12 +4370,10 @@ void CDCServiceImpl::GetConsistentChanges(
   Status s = virtual_wal->GetConsistentChangesInternal(
       stream_id, resp, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
-    std::string msg = Format("GetConsistentChanges failed for stream_id: $0", stream_id);
+    std::string msg =
+        Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
     LOG(WARNING) << msg;
   }
-
-  VLOG(4) << "Sending GetConsistentChanges response with num_records: "
-          << resp->cdc_sdk_proto_records_size();
 
   context.RespondSuccess();
 }
@@ -4457,7 +4456,7 @@ void CDCServiceImpl::UpdateAndPersistLSN(
     return;
   }
 
-  VLOG(4) << "Received UpdateAndPersistLSN request: " << req->DebugString();
+  VLOG(1) << "Received UpdateAndPersistLSN request: " << req->DebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4506,7 +4505,7 @@ void CDCServiceImpl::UpdateAndPersistLSN(
 
   resp->set_restart_lsn(*res);
 
-  VLOG(4) << "Succesfully persisted LSN values for stream_id: " << stream_id
+  VLOG(1) << "Succesfully persisted LSN values for stream_id: " << stream_id
           << ", confirmed_flush_lsn = " << confirmed_flush_lsn
           << ", restart_lsn = " << *res;
   context.RespondSuccess();
