@@ -842,7 +842,7 @@ EXPLAIN (COSTS OFF) SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
  Unique
    ->  Distinct Index Only Scan using tbl_colo_r1_r3_r5_idx on tbl_colo
          Index Cond: (r3 <= 1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
@@ -859,7 +859,7 @@ SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
  Unique
    ->  Distinct Index Only Scan using tbl_colo_r1_r3_r5_idx on tbl_colo
          Index Cond: (r3 <= 1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 /*+Set(enable_hashagg false)*/ SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;

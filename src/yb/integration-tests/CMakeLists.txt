@@ -174,7 +174,6 @@ ADD_YB_TEST(ts_tablet_manager-itest)
 ADD_YB_TEST(ts_recovery-itest)
 ADD_YB_TEST(create-table-stress-test)
 ADD_YB_TEST(master-partitioned-test)
-ADD_YB_TEST(minicluster-snapshot-test)
 ADD_YB_TEST(delete_table-test)
 ADD_YB_TEST(external_mini_cluster-test)
 ADD_YB_TEST(linked_list-test)
@@ -257,6 +256,9 @@ endfunction()
 
 ADD_YB_TEST(wait_states-itest)
 YB_TEST_TARGET_LINK_LIBRARIES(wait_states-itest yb-cql pg_wrapper_test_base)
+
+ADD_YB_TEST(minicluster-snapshot-test)
+YB_TEST_TARGET_LINK_LIBRARIES(minicluster-snapshot-test pg_wrapper_test_base)
 
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)

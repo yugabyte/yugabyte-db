@@ -103,11 +103,13 @@ EXPLAIN (costs off)
 SELECT i FROM tmp WHERE j = -5;
 /*+SeqScan(tmp) */
 SELECT i FROM tmp WHERE j = -5;
+SET enable_bitmapscan = on;
 EXPLAIN (costs off)
 /*+IndexScan(tmp_j_idx) */
 SELECT i FROM tmp WHERE j = -5;
 /*+IndexScan(tmp_j_idx) */
 SELECT i FROM tmp WHERE j = -5;
+RESET enable_bitmapscan;
 EXPLAIN (costs off)
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;

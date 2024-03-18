@@ -537,6 +537,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       std::bind(&TabletServerPathHandlers::HandleTabletsJSON, this, _1, _2),
       false /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
+      "/api/v1/meta-cache", "MetaCache",
+      std::bind(&TabletServerPathHandlers::HandleTabletMetaCacheJSON, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
       "/api/v1/xcluster", "xcluster",
       std::bind(&TabletServerPathHandlers::HandleXClusterJSON, this, _1, _2), false /* styled */,
       false /* is_on_nav_bar */);
@@ -1325,6 +1329,13 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     jw.EndObject();
   }
   jw.EndObject();
+}
+
+void TabletServerPathHandlers::HandleTabletMetaCacheJSON(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  JsonWriter writer(output, JsonWriter::COMPACT);
+  tserver_->WriteServerMetaCacheAsJson(&writer);
 }
 
 }  // namespace tserver

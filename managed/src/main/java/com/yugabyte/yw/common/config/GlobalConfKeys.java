@@ -264,6 +264,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " it is passed as a component while creating.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleNodeCheckTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.node_check_timeout_sec",
+          ScopeType.GLOBAL,
+          "Node reachable check timeout in Support Bundle",
+          "This global config is a timeout after which the node is deemed unreachable when creating"
+              + " a support bundle.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
       new ConfKeyInfo<>(
           "yb.snapshot_creation.max_attempts",

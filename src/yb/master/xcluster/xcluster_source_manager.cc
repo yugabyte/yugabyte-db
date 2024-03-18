@@ -24,10 +24,10 @@
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
-#include "yb/rpc/rpc_context.h"
 #include "yb/util/scope_exit.h"
 
 DECLARE_uint32(cdc_wal_retention_time_secs);
+DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 
 using namespace std::placeholders;
 
@@ -76,20 +76,67 @@ Status XClusterSourceManager::Init() {
 
 void XClusterSourceManager::Clear() {
   CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(GetAllOutboundGroups());
-
   {
     std::lock_guard l(outbound_replication_group_map_mutex_);
     outbound_replication_group_map_.clear();
   }
+  {
+    std::lock_guard l(tables_to_stream_map_mutex_);
+    tables_to_stream_map_.clear();
+  }
+  {
+    std::lock_guard l(retained_hidden_tablets_mutex_);
+    retained_hidden_tablets_.clear();
+  }
 }
 
-Status XClusterSourceManager::RunLoaders() {
+Status XClusterSourceManager::RunLoaders(const TabletInfos& hidden_tablets) {
   RETURN_NOT_OK(sys_catalog_.Load<XClusterOutboundReplicationGroupLoader>(
       "XCluster outbound replication groups",
       std::function<Status(const std::string&, const SysXClusterOutboundReplicationGroupEntryPB&)>(
           std::bind(&XClusterSourceManager::InsertOutboundReplicationGroup, this, _1, _2))));
 
+  for (const auto& hidden_tablet : hidden_tablets) {
+    TabletDeleteRetainerInfo delete_retainer;
+    PopulateTabletDeleteRetainerInfoForTabletDrop(*hidden_tablet, delete_retainer);
+    RecordHiddenTablets({hidden_tablet}, delete_retainer);
+  }
+
   return Status::OK();
+}
+
+void XClusterSourceManager::RecordOutboundStream(
+    const CDCStreamInfoPtr& stream, const TableId& table_id) {
+  std::lock_guard l(tables_to_stream_map_mutex_);
+  auto& stream_list = tables_to_stream_map_[table_id];
+
+  // Assert no duplicates exist in Debug, and remove duplicates in retail.
+  EraseIf(
+      [&stream](const auto& existing_stream) {
+        DCHECK_NE(existing_stream->StreamId(), stream->StreamId())
+            << "Stream " << existing_stream->StreamId() << " already exists " << existing_stream;
+        return existing_stream->StreamId() == stream->StreamId();
+      },
+      &stream_list);
+
+  stream_list.push_back(stream);
+}
+
+void XClusterSourceManager::CleanUpXReplStream(const CDCStreamInfo& stream) {
+  std::lock_guard l(tables_to_stream_map_mutex_);
+  for (auto& id : stream.table_id()) {
+    if (tables_to_stream_map_.contains(id)) {
+      EraseIf(
+          [&stream](const auto& existing_stream) {
+            return existing_stream->StreamId() == stream.StreamId();
+          },
+          &tables_to_stream_map_[id]);
+
+      if (tables_to_stream_map_[id].empty()) {
+        tables_to_stream_map_.erase(id);
+      }
+    }
+  }
 }
 
 void XClusterSourceManager::SysCatalogLoaded() {}
@@ -162,7 +209,7 @@ XClusterSourceManager::InitOutboundReplicationGroup(
           },
       .get_tables_func = std::bind(&XClusterSourceManager::GetTablesToReplicate, this, _1),
       .create_xcluster_streams_func =
-          std::bind(&XClusterSourceManager::CreateNewXClusterStreams, this, _1, _2),
+          std::bind(&XClusterSourceManager::CreateStreamsForDbScoped, this, _1, _2),
       .checkpoint_xcluster_streams_func =
           std::bind(&XClusterSourceManager::CheckpointXClusterStreams, this, _1, _2, _3, _4, _5),
       .delete_cdc_stream_func = [&catalog_manager = catalog_manager_](
@@ -355,8 +402,9 @@ Result<IsOperationDoneResult> XClusterSourceManager::IsCreateXClusterReplication
 
 class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
  public:
-  explicit XClusterCreateStreamContextImpl(CatalogManager& catalog_manager)
-      : catalog_manager_(catalog_manager) {}
+  explicit XClusterCreateStreamContextImpl(
+      CatalogManager& catalog_manager, XClusterSourceManager& xcluster_manager)
+      : catalog_manager_(catalog_manager), xcluster_manager_(xcluster_manager) {}
   virtual ~XClusterCreateStreamContextImpl() { Rollback(); }
 
   void Commit() override {
@@ -368,22 +416,42 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
 
   void Rollback() {
     for (const auto& stream : streams_) {
+      xcluster_manager_.CleanUpXReplStream(*stream);
       catalog_manager_.ReleaseAbandonedXReplStream(stream->StreamId());
     }
   }
 
   CatalogManager& catalog_manager_;
+  XClusterSourceManager& xcluster_manager_;
+  std::vector<TableId> table_ids;
 };
 
 Result<std::unique_ptr<XClusterCreateStreamsContext>>
-XClusterSourceManager::CreateNewXClusterStreams(
+XClusterSourceManager::CreateStreamsForDbScoped(
     const std::vector<TableId>& table_ids, const LeaderEpoch& epoch) {
-  const auto state = SysCDCStreamEntryPB::ACTIVE;
-  const bool transactional = true;
+  google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB> options;
+  auto record_type_option = options.Add();
+  record_type_option->set_key(cdc::kRecordType);
+  record_type_option->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+  auto record_format_option = options.Add();
+  record_format_option->set_key(cdc::kRecordFormat);
+  record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
+
+  return CreateStreamsInternal(
+      table_ids, SysCDCStreamEntryPB::ACTIVE, options, /*transactional=*/true, epoch);
+}
+
+Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::CreateStreamsInternal(
+    const std::vector<TableId>& table_ids, SysCDCStreamEntryPB::State state,
+    const google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB>& options,
+    bool transactional, const LeaderEpoch& epoch) {
+  SCHECK(
+      state == SysCDCStreamEntryPB::ACTIVE || state == SysCDCStreamEntryPB::INITIATED,
+      InvalidArgument, "Stream state must be either ACTIVE or INITIATED");
 
   RETURN_NOT_OK(catalog_manager_.CreateCdcStateTableIfNotFound(epoch));
 
-  auto create_context = std::make_unique<XClusterCreateStreamContextImpl>(catalog_manager_);
+  auto create_context = std::make_unique<XClusterCreateStreamContextImpl>(catalog_manager_, *this);
 
   for (const auto& table_id : table_ids) {
     auto table_info = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
@@ -397,14 +465,10 @@ XClusterSourceManager::CreateNewXClusterStreams(
     metadata.add_table_id(table_id);
     metadata.set_transactional(transactional);
 
-    std::unordered_map<std::string, std::string> options;
-    auto record_type_option = metadata.add_options();
-    record_type_option->set_key(cdc::kRecordType);
-    record_type_option->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
-    auto record_format_option = metadata.add_options();
-    record_format_option->set_key(cdc::kRecordFormat);
-    record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
+    metadata.mutable_options()->CopyFrom(options);
     metadata.set_state(state);
+
+    RecordOutboundStream(stream, table_id);
 
     create_context->streams_.emplace_back(std::move(stream));
   }
@@ -472,6 +536,7 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
         table_info->LockForRead()->visible_to_client(), NotFound, "Table does not exist", table_id);
 
     RETURN_NOT_OK(catalog_manager_.SetXReplWalRetentionForTable(table_info, epoch));
+    RETURN_NOT_OK(catalog_manager_.BackfillMetadataForXRepl(table_info, epoch));
 
     bootstrap_req.add_table_ids(table_info->id());
     bootstrap_req.add_xrepl_stream_ids(stream_id.ToString());
@@ -508,6 +573,208 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
       });
 
   return Status::OK();
+}
+
+void XClusterSourceManager::PopulateTabletDeleteRetainerInfoForTabletDrop(
+    const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const {
+  // For xCluster , the only time we try to delete a single tablet that is part of an active stream
+  // is during tablet splitting, where we need to keep the parent tablet around until we have
+  // replicated its SPLIT_OP record.
+  {
+    auto tablet_lock = tablet_info.LockForRead();
+    if (tablet_lock->pb.split_tablet_ids_size() < 2) {
+      return;
+    }
+  }
+  delete_retainer.active_xcluster = IsTableReplicated(tablet_info.table()->id());
+}
+
+bool XClusterSourceManager::IsTableReplicated(const TableId& table_id) const {
+  auto streams = GetStreamsForTable(table_id);
+
+  // Check that at least one of these streams is active (ie not being deleted).
+  return std::any_of(streams.begin(), streams.end(), [](const auto& stream) {
+    return !stream->LockForRead()->is_deleting();
+  });
+}
+
+bool XClusterSourceManager::DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const {
+  auto streams = GetStreamsForTable(table_id);
+
+  // Check that at least one of these streams is bootstrapping.
+  return std::any_of(streams.begin(), streams.end(), [](const auto& stream) {
+    return stream->LockForRead()->pb.state() == SysCDCStreamEntryPB::INITIATED;
+  });
+}
+
+void XClusterSourceManager::RecordHiddenTablets(
+    const TabletInfos& hidden_tablets, const TabletDeleteRetainerInfo& delete_retainer) {
+  if (!delete_retainer.active_xcluster) {
+    return;
+  }
+
+  std::lock_guard l(retained_hidden_tablets_mutex_);
+
+  for (const auto& hidden_tablet : hidden_tablets) {
+    auto tablet_lock = hidden_tablet->LockForRead();
+    auto& tablet_pb = tablet_lock->pb;
+    HiddenTabletInfo info{
+        .table_id = hidden_tablet->table()->id(),
+        .parent_tablet_id = tablet_pb.split_parent_tablet_id(),
+        .split_tablets = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)},
+    };
+
+    retained_hidden_tablets_.emplace(hidden_tablet->id(), std::move(info));
+  }
+}
+
+bool XClusterSourceManager::ShouldRetainHiddenTablet(const TabletInfo& tablet_info) const {
+  SharedLock l(retained_hidden_tablets_mutex_);
+  return retained_hidden_tablets_.contains(tablet_info.tablet_id());
+}
+
+Status XClusterSourceManager::DoProcessHiddenTablets() {
+  decltype(retained_hidden_tablets_) hidden_tablets;
+  {
+    SharedLock lock(retained_hidden_tablets_mutex_);
+    if (retained_hidden_tablets_.empty()) {
+      return Status::OK();
+    }
+    hidden_tablets = retained_hidden_tablets_;
+  }
+
+  std::unordered_set<TabletId> tablets_to_delete;
+  std::vector<cdc::CDCStateTableKey> entries_to_delete;
+
+  // Check cdc_state table to see if the children tablets being polled.
+  for (auto& [tablet_id, hidden_tablet] : hidden_tablets) {
+    // If our parent tablet is still around, need to process that one first.
+    const auto parent_tablet_id = hidden_tablet.parent_tablet_id;
+    if (!parent_tablet_id.empty() && hidden_tablets.contains(parent_tablet_id)) {
+      continue;
+    }
+
+    // For each hidden tablet, check if for each stream we have an entry in the mapping for them.
+    const auto streams = GetStreamsForTable(hidden_tablet.table_id);
+
+    std::vector<xrepl::StreamId> tablet_streams_to_delete;
+    size_t count_streams_already_deleted = 0;
+    for (const auto& stream : streams) {
+      const auto& stream_id = stream->StreamId();
+      const cdc::CDCStateTableKey entry_key{tablet_id, stream_id};
+
+      // Check parent entry, if it doesn't exist, then it was already deleted.
+      // If the entry for the tablet does not exist, then we can go ahead with deletion of the
+      // tablet.
+      auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+          entry_key, cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
+
+      // This means we already deleted the entry for this stream in a previous iteration.
+      if (!entry_opt) {
+        VLOG(2) << "Did not find an entry corresponding to the tablet: " << tablet_id
+                << ", and stream: " << stream_id << ", in the cdc_state table";
+        ++count_streams_already_deleted;
+        continue;
+      }
+
+      if (!entry_opt->last_replication_time) {
+        // Still haven't processed this tablet since timestamp is null, no need to check children.
+        break;
+      }
+
+      // This means there was an active stream for the source tablet. In which case if we see
+      // that all children tablet entries have started streaming, we can delete the parent tablet.
+      bool found_all_children = true;
+      for (auto& child_tablet_id : hidden_tablet.split_tablets) {
+        auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+            {child_tablet_id, stream_id},
+            cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
+
+        if (!entry_opt || !entry_opt->last_replication_time) {
+          // Check checkpoint to ensure that there has been a poll for this tablet, or if the split
+          // has been reported.
+          VLOG(2) << "The stream: " << stream_id
+                  << ", has not started polling for the child tablet: " << child_tablet_id
+                  << ".Hence we will not delete the hidden parent tablet: " << tablet_id;
+          found_all_children = false;
+          break;
+        }
+      }
+      if (found_all_children) {
+        LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
+                  << ". Reason: Consumer finished processing parent tablet after split.";
+        tablet_streams_to_delete.push_back(stream_id);
+        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+      }
+    }
+
+    if (tablet_streams_to_delete.size() + count_streams_already_deleted == streams.size()) {
+      tablets_to_delete.insert(tablet_id);
+    }
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      cdc_state_table_->DeleteEntries(entries_to_delete),
+      "Error deleting cdc stream rows from cdc_state table");
+
+  // Delete tablets from retained_hidden_tablets_, CatalogManager::CleanupHiddenTablets will do the
+  // actual tablet deletion.
+  {
+    std::lock_guard l(retained_hidden_tablets_mutex_);
+    for (const auto& tablet_id : tablets_to_delete) {
+      retained_hidden_tablets_.erase(tablet_id);
+    }
+  }
+
+  return Status::OK();
+}
+
+std::vector<CDCStreamInfoPtr> XClusterSourceManager::GetStreamsForTable(
+    const TableId& table_id) const {
+  SharedLock lock(tables_to_stream_map_mutex_);
+  auto stream_list = FindOrNull(tables_to_stream_map_, table_id);
+  if (!stream_list) {
+    return {};
+  }
+  return *stream_list;
+}
+
+Result<xrepl::StreamId> XClusterSourceManager::CreateNewXClusterStreamForTable(
+    const TableId& table_id, bool transactional,
+    const std::optional<SysCDCStreamEntryPB::State>& initial_state,
+    const google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB>& options,
+    const LeaderEpoch& epoch) {
+  auto table_info = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
+
+  RETURN_NOT_OK(catalog_manager_.SetXReplWalRetentionForTable(table_info, epoch));
+  RETURN_NOT_OK(catalog_manager_.BackfillMetadataForXRepl(table_info, epoch));
+
+  const auto state = initial_state ? *initial_state : SysCDCStreamEntryPB::ACTIVE;
+  auto create_context =
+      VERIFY_RESULT(CreateStreamsInternal({table_id}, state, options, transactional, epoch));
+  RSTATUS_DCHECK_EQ(
+      create_context->streams_.size(), 1, IllegalState,
+      "Unexpected Expected number of streams created");
+  auto stream_id = create_context->streams_.front()->StreamId();
+
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_.Upsert(epoch, create_context->streams_),
+      "Failed to insert xCluster stream into sys-catalog");
+  create_context->Commit();
+
+  // Skip if disable_cdc_state_insert_on_setup is set.
+  // If this is a bootstrap (initial state not ACTIVE), let the BootstrapProducer logic take care of
+  // populating entries in cdc_state.
+  if (PREDICT_FALSE(FLAGS_TEST_disable_cdc_state_insert_on_setup) ||
+      state != master::SysCDCStreamEntryPB::ACTIVE) {
+    return stream_id;
+  }
+
+  Synchronizer sync;
+  RETURN_NOT_OK(CheckpointStreamsToOp0({{table_id, stream_id}}, sync.AsStatusFunctor()));
+  RETURN_NOT_OK(sync.Wait());
+
+  return stream_id;
 }
 
 }  // namespace yb::master

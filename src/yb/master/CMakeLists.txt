@@ -170,7 +170,7 @@ set(MASTER_SRCS
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
   ysql_ddl_handler.cc
-  ysql_transaction_ddl.cc)
+  ysql_ddl_verification_task.cc)
 
 set(MASTER_DEPS
   yb_common
