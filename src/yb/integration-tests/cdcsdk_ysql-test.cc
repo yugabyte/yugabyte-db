@@ -7264,9 +7264,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_yb_ddl_rollback_enabled";
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_rollback_enabled) = true;
-
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -7279,6 +7276,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
   const int expected_count[] = {3, 6, 1, 1, 0, 0, 1, 1};
+  const int expected_count_for_packed_row[] = {3, 7, 0, 1, 0, 0, 1, 1};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -7316,7 +7314,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   }
 
   for (int i = 0; i < 8; i++) {
-    ASSERT_EQ(expected_count[i], count[i]);
+    if (FLAGS_ysql_enable_packed_row) {
+      ASSERT_EQ(expected_count_for_packed_row[i], count[i]);
+    } else {
+      ASSERT_EQ(expected_count[i], count[i]);
+    }
   }
 }
 
