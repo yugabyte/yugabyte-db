@@ -237,7 +237,12 @@ export const AZUProviderCreateForm = ({
                 />
               </FormField>
               <FormField>
-                <FieldLabel>Network Resource Group</FieldLabel>
+                <FieldLabel
+                  infoTitle="Network Resource Group"
+                  infoContent="All network and NIC resources of VMs will be created in this group. If left empty, the default resource group will be used."
+                >
+                  Network Resource Group (Optional)
+                </FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="azuNetworkRG"
@@ -255,7 +260,12 @@ export const AZUProviderCreateForm = ({
                 />
               </FormField>
               <FormField>
-                <FieldLabel>Network Subscription ID</FieldLabel>
+                <FieldLabel
+                  infoTitle="Network Subscription ID"
+                  infoContent="All network and NIC resources of VMs will be created under this subscription. If left empty, the default subscription id will be used."
+                >
+                  Network Subscription ID (Optional)
+                </FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="azuNetworkSubscriptionId"
