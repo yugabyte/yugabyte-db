@@ -1005,7 +1005,7 @@ public class YbcBackupUtil {
       Set<String> targetTServerAutoFlags =
           autoFlagUtil.getPromotedAutoFlags(
               universe,
-              UniverseTaskBase.ServerType.MASTER,
+              UniverseTaskBase.ServerType.TSERVER,
               AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
       for (String flag : tserverAutoFlags) {
         if (GFlagsValidation.TEST_AUTO_FLAGS.contains(flag)) {
