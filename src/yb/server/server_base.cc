@@ -660,6 +660,7 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
   // TLS.
   DisplayIconTile(output, "fa-lock", "TLS", "/tls");
+  DisplayIconTile(output, "fa-times", "xCluster", "/xcluster");
 }
 
 void RpcAndWebServerBase::DisplayMemoryIcons(std::stringstream* output) {
