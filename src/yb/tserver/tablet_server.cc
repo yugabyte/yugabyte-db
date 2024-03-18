@@ -70,6 +70,7 @@
 #include "yb/rpc/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/server/ycql_stat_provider.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_peer.h"
@@ -88,6 +89,7 @@
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/backup_service.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
@@ -1349,9 +1351,42 @@ const TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
   return *xcluster_context_;
 }
 
-void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server) {
+void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server,
+      server::YCQLStatementStatsProvider* stmt_provider) {
   DCHECK_EQ(cql_server_.load(), nullptr);
+  DCHECK_EQ(cql_stmt_provider_.load(), nullptr);
+
   cql_server_.store(server);
+  cql_stmt_provider_.store(stmt_provider);
+}
+
+rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {
+  switch (component) {
+    case ash::Component::kYSQL:
+    case ash::Component::kMaster:
+      return nullptr;
+    case ash::Component::kTServer:
+      return messenger();
+    case ash::Component::kYCQL:
+      auto* cql_server = cql_server_.load();
+      return (cql_server ? cql_server->messenger() : nullptr);
+  }
+  FATAL_INVALID_ENUM_VALUE(ash::Component, component);
+}
+
+Status TabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+      tserver::PgYCQLStatementStatsResponsePB* resp) const {
+    auto* cql_stmt_provider = cql_stmt_provider_.load();
+    SCHECK_NOTNULL(cql_stmt_provider);
+    RETURN_NOT_OK(cql_stmt_provider->YCQLStatementStats(req, resp));
+    return Status::OK();
+}
+
+void TabletServer::ClearAllMetaCachesOnServer() {
+  if (auto xcluster_consumer = GetXClusterConsumer()) {
+    xcluster_consumer->ClearAllClientMetaCaches();
+  }
+  client()->ClearAllMetaCachesOnServer();
 }
 
 rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {
