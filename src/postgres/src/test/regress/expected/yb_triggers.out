@@ -244,7 +244,7 @@ SELECT * from main_view order by a, b;
 \set QUIET true
 -- Describe view should list triggers
 \d main_view
-            View "pg_temp_3.main_view"
+            View "pg_temp_2.main_view"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           |          |
@@ -264,7 +264,7 @@ Triggers:
 DROP TRIGGER instead_of_insert_trig ON main_view;
 DROP TRIGGER instead_of_delete_trig ON main_view;
 \d main_view
-            View "pg_temp_3.main_view"
+            View "pg_temp_2.main_view"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           |          |
@@ -281,7 +281,7 @@ Triggers:
 -- Test alter (rename) triggers
 ALTER TRIGGER after_ins_stmt_trig ON main_view RENAME TO after_ins_stmt_trig_new_name;
 \d main_view
-            View "pg_temp_3.main_view"
+            View "pg_temp_2.main_view"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           |          |
