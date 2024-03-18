@@ -128,7 +128,7 @@ YugabyteDB Managed begins the rolling restart.
 
 ### YSQL audit log settings
 
-The YSQL audit logging settings are derived from the settings for logging used by the pgaudit extension.
+The YSQL audit logging settings are derived from the settings for logging used by the pgaudit extension. Statements are always logged.
 
 | Option | Description | Default |
 | :----- | :----- | :------ |
