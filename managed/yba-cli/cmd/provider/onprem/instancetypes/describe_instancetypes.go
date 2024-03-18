@@ -65,8 +65,11 @@ var describeInstanceTypesCmd = &cobra.Command{
 		}
 
 		if len(r) < 1 {
-			fmt.Println("No providers found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		if r[0].GetCode() != util.OnpremProviderType {
@@ -80,7 +83,9 @@ var describeInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		rDescribe, response, err := authAPI.InstanceTypeDetail(providerUUID, instanceTypeName).Execute()
+		rDescribe, response, err := authAPI.InstanceTypeDetail(
+			providerUUID,
+			instanceTypeName).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "Describe")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
@@ -90,7 +95,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 		instanceTypeList = append(instanceTypeList, rDescribe)
 
 		if rDescribe.GetActive() {
-			if len(instanceTypeList) > 0 && viper.GetString("output") == "table" {
+			if len(instanceTypeList) > 0 && util.IsOutputType("table") {
 				fullInstanceTypesContext := *instancetypes.NewFullInstanceTypesContext()
 				fullInstanceTypesContext.Output = os.Stdout
 				fullInstanceTypesContext.Format = instancetypes.NewFullInstanceTypesFormat(
@@ -106,7 +111,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 			}
 			instancetypes.Write(instanceTypesCtx, instanceTypeList)
 		} else {
-			fmt.Printf("Instance Type %s is not active in provider %s (%s)\n",
+			logrus.Infof("Instance Type %s is not active in provider %s (%s)\n",
 				formatter.Colorize(instanceTypeName, formatter.GreenColor), providerName, providerUUID)
 		}
 

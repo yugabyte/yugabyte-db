@@ -69,8 +69,11 @@ var updateGCPProviderCmd = &cobra.Command{
 		}
 
 		if len(r) < 1 {
-			fmt.Println("No providers found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		var provider ybaclient.Provider
@@ -82,7 +85,10 @@ var updateGCPProviderCmd = &cobra.Command{
 		}
 
 		if len(strings.TrimSpace(provider.GetName())) == 0 {
-			errMessage := fmt.Sprintf("No provider %s in cloud type %s.", providerName, providerCode)
+			errMessage := fmt.Sprintf(
+				"No provider %s in cloud type %s.\n",
+				providerName,
+				providerCode)
 			logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
 		}
 
@@ -97,7 +103,7 @@ var updateGCPProviderCmd = &cobra.Command{
 		}
 
 		if len(newProviderName) > 0 {
-			logrus.Debug("Updating provider name")
+			logrus.Debug("Updating provider name\n")
 			provider.SetName(newProviderName)
 			providerName = newProviderName
 		}
@@ -109,7 +115,7 @@ var updateGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(network) > 0 {
-			logrus.Debug("Updating Network")
+			logrus.Debug("Updating Network\n")
 			gcpCloudInfo.SetDestVpcId(network)
 		}
 
@@ -118,12 +124,12 @@ var updateGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(ybFirewallTags) > 0 {
-			logrus.Debug("Updating GCP Firewall Tags")
+			logrus.Debug("Updating GCP Firewall Tags\n")
 			gcpCloudInfo.SetYbFirewallTags(ybFirewallTags)
 		}
 
 		if cmd.Flags().Changed("use-host-vpc") {
-			logrus.Debug("Updating use host VPC")
+			logrus.Debug("Updating use host VPC\n")
 			useHostVPC, err := cmd.Flags().GetBool("use-host-vpc")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -136,7 +142,7 @@ var updateGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(projectID) > 0 {
-			logrus.Debug("Updating Project ID")
+			logrus.Debug("Updating Project ID\n")
 			gcpCloudInfo.SetGceProject(projectID)
 		}
 
@@ -145,7 +151,7 @@ var updateGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(sharedVPCProjectID) > 0 {
-			logrus.Debug("Updating Shared VPC Project ID")
+			logrus.Debug("Updating Shared VPC Project ID\n")
 			gcpCloudInfo.SetSharedVPCProject(sharedVPCProjectID)
 		}
 
@@ -155,7 +161,7 @@ var updateGCPProviderCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			logrus.Debug("Updating provider to use IAM instance profile")
+			logrus.Debug("Updating provider to use IAM instance profile\n")
 			gcpCloudInfo.SetUseHostCredentials(isIAM)
 			if isIAM {
 				gcpCloudInfo.SetGceApplicationCredentials("")
@@ -173,7 +179,7 @@ var updateGCPProviderCmd = &cobra.Command{
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
-				logrus.Debug("Updating GCP credentials")
+				logrus.Debug("Updating GCP credentials\n")
 				gcpCloudInfo.SetGceApplicationCredentials(gcpCreds)
 				gcpCloudInfo.SetUseHostCredentials(false)
 			} else if gcpCloudInfo.GetGceApplicationCredentials() == "" {
@@ -188,7 +194,7 @@ var updateGCPProviderCmd = &cobra.Command{
 		// Update ProviderDetails
 
 		if cmd.Flags().Changed("airgap-install") {
-			logrus.Debug("Updating airgap install")
+			logrus.Debug("Updating airgap install\n")
 			airgapInstall, err := cmd.Flags().GetBool("airgap-install")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -201,7 +207,7 @@ var updateGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(sshUser) > 0 {
-			logrus.Debug("Updating SSH user")
+			logrus.Debug("Updating SSH user\n")
 			details.SetSshUser(sshUser)
 		}
 
@@ -211,7 +217,7 @@ var updateGCPProviderCmd = &cobra.Command{
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			if details.GetSshPort() != int32(sshPort) {
-				logrus.Debug("Updating SSH port")
+				logrus.Debug("Updating SSH port\n")
 				details.SetSshPort(int32(sshPort))
 			}
 		}
@@ -221,7 +227,7 @@ var updateGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(ntpServers) > 0 {
-			logrus.Debug("Updating NTP servers")
+			logrus.Debug("Updating NTP servers\n")
 			details.SetNtpServers(ntpServers)
 		}
 
@@ -434,7 +440,7 @@ func addGCPZones(
 	zones = append(zones, z)
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return zones

@@ -58,9 +58,10 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		if !allowed {
-			logrus.Fatalf(fmt.Sprintf("Creating universes below version %s (or on restricted"+
-				" versions) is not supported, currently on %s", util.YBAAllowUniverseMinVersion,
-				version))
+			logrus.Fatalf(formatter.Colorize(
+				fmt.Sprintf("Creating universes below version %s (or on restricted"+
+					" versions) is not supported, currently on %s\n", util.YBAAllowUniverseMinVersion,
+					version), formatter.RedColor))
 		}
 
 		enableYbc := true
@@ -166,7 +167,7 @@ var createUniverseCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			fmt.Printf("The universe %s (%s) has been created\n",
+			logrus.Infof("The universe %s (%s) has been created\n",
 				formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 
 			universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
@@ -184,7 +185,7 @@ var createUniverseCmd = &cobra.Command{
 			universe.Write(universesCtx, universeData)
 
 		} else {
-			fmt.Println(msg)
+			logrus.Infoln(msg + "\n")
 		}
 
 	},
