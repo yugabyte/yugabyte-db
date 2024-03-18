@@ -49,7 +49,7 @@ func DescribeProviderUtil(cmd *cobra.Command, commandCall, providerCode string) 
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
 
-	if len(r) > 0 && viper.GetString("output") == "table" {
+	if len(r) > 0 && util.IsOutputType("table") {
 		fullProviderContext := *provider.NewFullProviderContext()
 		fullProviderContext.Output = os.Stdout
 		fullProviderContext.Format = provider.NewFullProviderFormat(viper.GetString("output"))
@@ -59,8 +59,11 @@ func DescribeProviderUtil(cmd *cobra.Command, commandCall, providerCode string) 
 	}
 
 	if len(r) < 1 {
-		fmt.Println("No providers found")
-		return
+		logrus.Fatalf(
+			formatter.Colorize(
+				fmt.Sprintf("No providers with name: %s found\n", providerName),
+				formatter.RedColor,
+			))
 	}
 
 	providerCtx := formatter.Context{

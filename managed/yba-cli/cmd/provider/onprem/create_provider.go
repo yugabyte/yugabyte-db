@@ -245,7 +245,7 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 	res []ybaclient.Region) {
 	if len(regionStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one region is required per provider.",
+			formatter.Colorize("Atleast one region is required per provider.\n",
 				formatter.RedColor))
 	}
 	for _, regionString := range regionStrings {
@@ -260,11 +260,19 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 
 		latitude, err := strconv.ParseFloat(region["latitude"], 64)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			errMessage := err.Error() + " Using latitude as 0.0\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			latitude = 0.0
 		}
 		longitude, err := strconv.ParseFloat(region["longitude"], 64)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			errMessage := err.Error() + " Using longitude as 0.0\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			longitude = 0.0
 		}
 
 		zones := buildOnpremZones(zoneStrings, region["name"])
@@ -294,7 +302,7 @@ func buildOnpremZones(zoneStrings []string, regionName string) (res []ybaclient.
 	}
 	if len(res) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return res

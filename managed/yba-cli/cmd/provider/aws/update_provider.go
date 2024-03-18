@@ -72,8 +72,11 @@ var updateAWSProviderCmd = &cobra.Command{
 		}
 
 		if len(r) < 1 {
-			fmt.Println("No providers found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		var provider ybaclient.Provider
@@ -100,7 +103,7 @@ var updateAWSProviderCmd = &cobra.Command{
 		}
 
 		if len(newProviderName) > 0 {
-			logrus.Debug("Updating provider name")
+			logrus.Debug("Updating provider name\n")
 			provider.SetName(newProviderName)
 			providerName = newProviderName
 		}
@@ -112,7 +115,7 @@ var updateAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(hostedZoneID) > 0 {
-			logrus.Debug("Updating Hosted Zone ID")
+			logrus.Debug("Updating Hosted Zone ID\n")
 			awsCloudInfo.SetAwsHostedZoneId(hostedZoneID)
 		}
 
@@ -125,7 +128,7 @@ var updateAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(strings.TrimSpace(accessKeyID)) != 0 && len(strings.TrimSpace(secretAccessKey)) != 0 {
-			logrus.Debug("Updating AWS credentials")
+			logrus.Debug("Updating AWS credentials\n")
 			awsCloudInfo.SetAwsAccessKeyID(accessKeyID)
 			awsCloudInfo.SetAwsAccessKeySecret(secretAccessKey)
 		}
@@ -137,7 +140,7 @@ var updateAWSProviderCmd = &cobra.Command{
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			if isIAM {
-				logrus.Debug("Updating provider to use IAM instance profile")
+				logrus.Debug("Updating provider to use IAM instance profile\n")
 				awsCloudInfo.SetAwsAccessKeyID("")
 				awsCloudInfo.SetAwsAccessKeySecret("")
 			}
@@ -150,7 +153,7 @@ var updateAWSProviderCmd = &cobra.Command{
 		// Update ProviderDetails
 
 		if cmd.Flags().Changed("airgap-install") {
-			logrus.Debug("Updating airgap install")
+			logrus.Debug("Updating airgap install\n")
 			airgapInstall, err := cmd.Flags().GetBool("airgap-install")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -163,7 +166,7 @@ var updateAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(sshUser) > 0 {
-			logrus.Debug("Updating SSH user")
+			logrus.Debug("Updating SSH user\n")
 			details.SetSshUser(sshUser)
 		}
 
@@ -173,7 +176,7 @@ var updateAWSProviderCmd = &cobra.Command{
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			if details.GetSshPort() != int32(sshPort) {
-				logrus.Debug("Updating SSH port")
+				logrus.Debug("Updating SSH port\n")
 				details.SetSshPort(int32(sshPort))
 			}
 		}
@@ -183,7 +186,7 @@ var updateAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(ntpServers) > 0 {
-			logrus.Debug("Updating NTP servers")
+			logrus.Debug("Updating NTP servers\n")
 			details.SetNtpServers(ntpServers)
 		}
 
@@ -440,7 +443,7 @@ func removeAWSZones(
 	if len(removeZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -459,7 +462,7 @@ func removeAWSZones(
 	}
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return zones
@@ -473,7 +476,7 @@ func editAWSZones(
 	if len(editZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -497,7 +500,7 @@ func editAWSZones(
 	}
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 
@@ -512,7 +515,7 @@ func addAWSZones(
 	if len(addZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -522,7 +525,7 @@ func addAWSZones(
 
 		if _, ok := zone["subnet"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Subnet not specified in add-zone.",
+				formatter.Colorize("Subnet not specified in add-zone.\n",
 					formatter.RedColor))
 		}
 
@@ -538,7 +541,7 @@ func addAWSZones(
 	}
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 
