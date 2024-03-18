@@ -266,7 +266,7 @@ Each table and index is split into tablets and each tablet has overhead. See [ta
 
 Each table and index consists of several tablets based on the [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 
-For a cluster with RF3, 1000 tablets have an overhead of 0.4vCPU for raft heartbeats (assuming 0.5s heartbeat interval), 300MB memory, 128GB disk-space for WAL (write-ahead log).
+For a cluster with RF3, 1000 tablets have an overhead of 0.4vCPU for raft heartbeats (assuming 0.5s heartbeat interval), 770 MB memory, 128 GB disk space for WAL (write-ahead log).
 
 You need to keep this number in mind depending on the number of tables and number of tablets per server that you intend to create. Note that each tablet can contain 100GB+ of data.
 
