@@ -162,6 +162,18 @@ dbms_output_enable_internal(int32 n_buf_size)
 	}
 }
 
+static void
+dbms_output_disable_internal()
+{
+	if (buffer)
+		pfree(buffer);
+
+	buffer = NULL;
+	buffer_size = 0;
+	buffer_len = 0;
+	buffer_get = 0;
+}
+
 PG_FUNCTION_INFO_V1(dbms_output_enable_default);
 
 Datum
@@ -206,13 +218,7 @@ PG_FUNCTION_INFO_V1(dbms_output_disable);
 Datum
 dbms_output_disable(PG_FUNCTION_ARGS)
 {
-	if (buffer)
-		pfree(buffer);
-
-	buffer = NULL;
-	buffer_size = 0;
-	buffer_len = 0;
-	buffer_get = 0;
+	dbms_output_disable_internal();
 	PG_RETURN_VOID();
 }
 
@@ -224,6 +230,8 @@ dbms_output_serveroutput(PG_FUNCTION_ARGS)
 	is_server_output = PG_GETARG_BOOL(0);
 	if (is_server_output && !buffer)
 		dbms_output_enable_internal(BUFSIZE_DEFAULT);
+	else if (!is_server_output && buffer)
+		dbms_output_disable_internal();
 	PG_RETURN_VOID();
 }
 

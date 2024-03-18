@@ -1,0 +1,116 @@
+\set ECHO none
+ERROR:  advisory locks are not yet implemented
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/3642. React with thumbs up to raise its priority
+CONTEXT:  PL/pgSQL function inline_code_block line 4 at IF
+ pack_message 
+--------------
+ 
+(1 row)
+
+ send_message 
+--------------
+            0
+(1 row)
+
+SELECT createImplicitPipe();
+ createimplicitpipe 
+--------------------
+ 
+(1 row)
+
+-- Bulk send messages
+SELECT bulkSend();
+ bulksend 
+----------
+ 
+(1 row)
+
+-- An explicit private pipe
+SELECT notify('recv_private1_notifier');
+ notify 
+--------
+ 
+(1 row)
+
+SELECT createExplicitPipe('private_pipe_1',3);
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+-- An explicit private pipe
+SELECT notify('recv_private2_notifier');
+ notify 
+--------
+ 
+(1 row)
+
+SELECT createExplicitPipe('private_pipe_2',3);
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+-- An explicit public pipe (uses two-argument create_pipe)
+SELECT notify('recv_public1_notifier');
+ notify 
+--------
+ 
+(1 row)
+
+SELECT createExplicitPipe('public_pipe_3',2);
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+-- An explicit public pipe (uses one-argument create_pipe)
+SELECT notify('recv_public2_notifier');
+ notify 
+--------
+ 
+(1 row)
+
+SELECT createExplicitPipe('public_pipe_4',1);
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+-- tests send_message(text)
+SELECT checkSend1();
+ checksend1 
+------------
+ 
+(1 row)
+
+-- tests send_message(text,integer)
+SELECT checkSend2();
+ checksend2 
+------------
+ 
+(1 row)
+
+SELECT notifyDropTemp();
+ notifydroptemp 
+----------------
+ 
+(1 row)
+
+-- tests unique_session_name()
+SELECT checkUniqueSessionNameA();
+ checkuniquesessionnamea 
+-------------------------
+ 
+(1 row)
+
+DROP FUNCTION createImplicitPipe();
+DROP FUNCTION createExplicitPipe(text,integer);
+DROP FUNCTION createPipe(text,integer);
+DROP FUNCTION checkSend1();
+DROP FUNCTION checkSend2();
+DROP FUNCTION checkUniqueSessionNameA();
+DROP FUNCTION bulkSend();
+DROP FUNCTION notifyDropTemp();
+DROP FUNCTION notify(text);
+DROP FUNCTION send(text);

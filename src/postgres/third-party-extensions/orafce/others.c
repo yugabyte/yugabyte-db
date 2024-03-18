@@ -1,8 +1,28 @@
 #include "postgres.h"
 #include <stdlib.h>
 #include <locale.h>
+
+#if PG_VERSION_NUM < 160000
+
+#include "access/genam.h"
+#include "access/heapam.h"
+#include "access/htup_details.h"
+#include "access/sysattr.h"
+
+#if PG_VERSION_NUM >= 120000
+
+#include "access/table.h"
+
+#endif
+
+#endif
+
+#include "catalog/indexing.h"
+#include "catalog/pg_extension.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "commands/extension.h"
 #include "fmgr.h"
 #include "lib/stringinfo.h"
 #include "nodes/nodeFuncs.h"
@@ -10,11 +30,19 @@
 #include "nodes/primnodes.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
+#include "storage/lock.h"
+#include "storage/proc.h"
+#include "utils/array.h"
+#include "utils/arrayaccess.h"
 #include "utils/builtins.h"
+#include "utils/catcache.h"
 #include "utils/datum.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
+#include "utils/typcache.h"
+#include "utils/uuid.h"
 #include "orafce.h"
 #include "builtins.h"
 
@@ -27,6 +55,167 @@ static char *lc_collate_cache = NULL;
 static size_t multiplication = 1;
 
 text *def_locale = NULL;
+
+char *orafce_sys_guid_source;
+
+static Oid uuid_generate_func_oid = InvalidOid;
+static FmgrInfo uuid_generate_func_finfo;
+
+/* The oid of function should be valid in oene transaction */
+static LocalTransactionId uuid_generate_func_lxid = InvalidLocalTransactionId;
+static char uuid_generate_func_name[30] = "";
+
+static Datum ora_greatest_least(FunctionCallInfo fcinfo, bool greater);
+
+#if PG_VERSION_NUM >= 170000
+
+#define CURRENT_LXID	(MyProc->vxid.lxid)
+
+#else
+
+#define CURRENT_LXID	(MyProc->lxid)
+
+#endif
+
+#if PG_VERSION_NUM < 160000
+
+static Oid
+get_extension_schema(Oid ext_oid)
+{
+	Oid			result;
+	Relation	rel;
+	SysScanDesc scandesc;
+	HeapTuple	tuple;
+	ScanKeyData entry[1];
+
+#if PG_VERSION_NUM >= 120000
+
+	rel = table_open(ExtensionRelationId, AccessShareLock);
+
+	ScanKeyInit(&entry[0],
+				Anum_pg_extension_oid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(ext_oid));
+
+#else
+
+	rel = heap_open(ExtensionRelationId, AccessShareLock);
+
+	ScanKeyInit(&entry[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(ext_oid));
+
+#endif
+
+	scandesc = systable_beginscan(rel, ExtensionOidIndexId, true,
+								  NULL, 1, entry);
+
+	tuple = systable_getnext(scandesc);
+
+	/* We assume that there can be at most one matching tuple */
+	if (HeapTupleIsValid(tuple))
+		result = ((Form_pg_extension) GETSTRUCT(tuple))->extnamespace;
+	else
+		result = InvalidOid;
+
+	systable_endscan(scandesc);
+
+#if PG_VERSION_NUM >= 120000
+
+	table_close(rel, AccessShareLock);
+
+#else
+
+	heap_close(rel, AccessShareLock);
+
+#endif
+
+	return result;
+}
+
+#endif
+
+static Oid
+get_uuid_generate_func_oid(bool *reset_fmgr)
+{
+	Oid			result = InvalidOid;
+
+	if (uuid_generate_func_lxid != CURRENT_LXID ||
+		uuid_generate_func_oid == InvalidOid ||
+		strcmp(orafce_sys_guid_source, uuid_generate_func_name) != 0)
+	{
+		if (strcmp(orafce_sys_guid_source, "gen_random_uuid") == 0)
+		{
+			/* generated uuid can have not nice features, but uses buildin functionality */
+			result = fmgr_internal_function("gen_random_uuid");
+		}
+		else
+		{
+			Oid uuid_ossp_oid = InvalidOid;
+			Oid uuid_ossp_namespace_oid = InvalidOid;
+			CatCList   *catlist;
+			int			i;
+
+			uuid_ossp_oid = get_extension_oid("uuid-ossp", true);
+			if (!OidIsValid(uuid_ossp_oid))
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("extension \"uuid-ossp\" is not installed"),
+						 errhint("the extension \"uuid-ossp\" should be installed before using \"sys_guid\" function")));
+
+			uuid_ossp_namespace_oid = get_extension_schema(uuid_ossp_oid);
+			Assert(OidIsValid(uuid_ossp_namespace_oid));
+
+			/* Search syscache by name only */
+			catlist = SearchSysCacheList1(PROCNAMEARGSNSP,
+										  CStringGetDatum(orafce_sys_guid_source));
+
+			for (i = 0; i < catlist->n_members; i++)
+			{
+				HeapTuple	proctup = &catlist->members[i]->tuple;
+				Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+
+				/*
+				 * Consider only procs in specified namespace,
+				 * with zero arguments and uuid type as result
+				 */
+				if (procform->pronamespace != uuid_ossp_namespace_oid ||
+					 procform->pronargs != 0 || procform->prorettype != UUIDOID)
+					continue;
+
+#if PG_VERSION_NUM >= 120000
+
+				result = procform->oid;
+
+#else
+
+				result = HeapTupleGetOid(proctup);
+
+#endif
+
+				break;
+			}
+
+			ReleaseSysCacheList(catlist);
+		}
+
+		/* should be available if extension uuid-ossp is installed */
+		if (!OidIsValid(result))
+			elog(ERROR, "function \"%s\" doesn't exist", orafce_sys_guid_source);
+
+		uuid_generate_func_lxid = CURRENT_LXID;
+		uuid_generate_func_oid = result;
+		strcpy(uuid_generate_func_name, orafce_sys_guid_source);
+		*reset_fmgr = true;
+	}
+	else
+		*reset_fmgr = false;
+
+	Assert(OidIsValid(uuid_generate_func_oid));
+
+	return uuid_generate_func_oid;
+}
 
 PG_FUNCTION_INFO_V1(ora_lnnvl);
 
@@ -128,17 +317,13 @@ ora_set_nls_sort(PG_FUNCTION_ARGS)
 static text*
 _nls_run_strxfrm(text *string, text *locale)
 {
-	char *string_str;
-	int string_len;
-
-	char *locale_str = NULL;
-	int locale_len = 0;
-
-	text *result;
-	char *tmp = NULL;
-	size_t size = 0;
-	size_t rest = 0;
-	int changed_locale = 0;
+	char	   *string_str;
+	int			string_len;
+	char	   *locale_str = NULL;
+	text		*result;
+	char	   *tmp = NULL;
+	size_t		rest = 0;
+	bool		changed_locale = false;
 
 	/*
 	 * Save the default, server-wide locale setting.
@@ -171,29 +356,29 @@ _nls_run_strxfrm(text *string, text *locale)
 
 	if (locale)
 	{
-		locale_len = VARSIZE_ANY_EXHDR(locale);
-	}
-
-	/*
-	 * If different than default locale is requested, call setlocale.
-	 */
-	if (locale_len > 0
-		&& (strncmp(lc_collate_cache, VARDATA_ANY(locale), locale_len)
-			|| *(lc_collate_cache + locale_len) != '\0'))
-	{
-		locale_str = palloc(locale_len + 1);
-		memcpy(locale_str, VARDATA_ANY(locale), locale_len);
-		*(locale_str + locale_len) = '\0';
+		int			locale_len = VARSIZE_ANY_EXHDR(locale);
 
 		/*
-		 * Try to set correct locales.
-		 * If setlocale failed, we know the default stayed the same,
-		 * co we can safely elog.
+		 * If different than default locale is requested, call setlocale.
 		 */
-		if (!setlocale(LC_COLLATE, locale_str))
-			elog(ERROR, "failed to set the requested LC_COLLATE value [%s]", locale_str);
+		if (locale_len > 0
+			&& (strncmp(lc_collate_cache, VARDATA_ANY(locale), locale_len)
+				|| *(lc_collate_cache + locale_len) != '\0'))
+		{
+			locale_str = palloc(locale_len + 1);
+			memcpy(locale_str, VARDATA_ANY(locale), locale_len);
+			*(locale_str + locale_len) = '\0';
 
-		changed_locale = 1;
+			/*
+			 * Try to set correct locales.
+			 * If setlocale failed, we know the default stayed the same,
+			 * co we can safely elog.
+			 */
+			if (!setlocale(LC_COLLATE, locale_str))
+				elog(ERROR, "failed to set the requested LC_COLLATE value [%s]", locale_str);
+
+			changed_locale = true;
+		}
 	}
 
 	/*
@@ -204,6 +389,7 @@ _nls_run_strxfrm(text *string, text *locale)
 	 */
 	PG_TRY();
 	{
+		size_t		size = 0;
 
 		/*
 		 * Text transformation.
@@ -236,6 +422,8 @@ _nls_run_strxfrm(text *string, text *locale)
 			if (!setlocale(LC_COLLATE, lc_collate_cache))
 				elog(FATAL, "failed to set back the default LC_COLLATE value [%s]", lc_collate_cache);
 		}
+
+		PG_RE_THROW();
 	}
 	PG_END_TRY ();
 
@@ -556,4 +744,168 @@ ora_get_status(PG_FUNCTION_ARGS)
 #else
 	PG_RETURN_TEXT_P(cstring_to_text("Production"));
 #endif
+}
+
+PG_FUNCTION_INFO_V1(ora_greatest);
+
+/*
+ * ora_greatest(anyarray) returns anyelement
+ */
+Datum
+ora_greatest(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_DATUM(ora_greatest_least(fcinfo, true));
+}
+
+PG_FUNCTION_INFO_V1(ora_least);
+
+/*
+ * ora_least(anyarray) returns anyelement
+ */
+Datum
+ora_least(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_DATUM(ora_greatest_least(fcinfo, false));
+}
+
+/*
+ * ora_greatest_least(anyarray, bool) returns anyelement
+ * Boolean parameter is true for greatest and false for least.
+ */
+static Datum
+ora_greatest_least(FunctionCallInfo fcinfo, bool greater)
+{
+	Datum		result;
+	Datum		value;
+	ArrayType	*array;
+	ArrayIterator array_iterator;
+	Oid		element_type;
+	Oid		collation = PG_GET_COLLATION();
+	ArrayMetaState *my_extra = NULL;
+	bool	isnull;
+
+	/* caller functions are marked as strict */
+	Assert(!PG_ARGISNULL(0));
+	Assert(!PG_ARGISNULL(1));
+
+	array = PG_GETARG_ARRAYTYPE_P(1);
+	element_type = ARR_ELEMTYPE(array);
+
+	Assert(element_type == get_fn_expr_argtype(fcinfo->flinfo, 0));
+
+	/* fast return */
+	if (array_contains_nulls(array))
+		PG_RETURN_NULL();
+
+	my_extra = (ArrayMetaState *) fcinfo->flinfo->fn_extra;
+	if (my_extra == NULL)
+	{
+		my_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
+													  sizeof(ArrayMetaState));
+		my_extra->element_type = ~element_type;
+
+		fcinfo->flinfo->fn_extra = my_extra;
+	}
+
+	if (my_extra->element_type != element_type)
+	{
+		Oid		sortop_oid;
+
+		get_typlenbyvalalign(element_type,
+							 &my_extra->typlen,
+							 &my_extra->typbyval,
+							 &my_extra->typalign);
+
+		if (greater)
+			get_sort_group_operators(element_type, false, false, true,
+									 NULL, NULL, &sortop_oid, NULL);
+		else
+			get_sort_group_operators(element_type, true, false, false,
+									 &sortop_oid, NULL, NULL, NULL);
+
+		my_extra->element_type = element_type;
+
+		fmgr_info_cxt(get_opcode(sortop_oid), &my_extra->proc,
+					  fcinfo->flinfo->fn_mcxt);
+	}
+
+	/* Let's return the first parameter by default */
+	result = PG_GETARG_DATUM(0);
+
+	array_iterator = array_create_iterator(array, 0, my_extra);
+	while (array_iterate(array_iterator, &value, &isnull))
+	{
+		/* not nulls, so run the operator */
+		if (!DatumGetBool(FunctionCall2Coll(&my_extra->proc, collation,
+										   result, value)))
+			result = value;
+	}
+
+	result = datumCopy(result, my_extra->typbyval, my_extra->typlen);
+
+	array_free_iterator(array_iterator);
+
+	/* Avoid leaking memory when handed toasted input */
+	PG_FREE_IF_COPY(array, 1);
+
+	PG_RETURN_DATUM(result);
+}
+
+#if PG_VERSION_NUM < 120000
+
+static Datum
+FunctionCall0Coll(FmgrInfo *flinfo, Oid collation)
+{
+	FunctionCallInfoData fcinfo_data;
+	FunctionCallInfo fcinfo = &fcinfo_data;
+	Datum		result;
+
+	InitFunctionCallInfoData(*fcinfo, flinfo, 0, collation, NULL, NULL);
+
+	result = FunctionCallInvoke(fcinfo);
+
+	/* Check for null result, since caller is clearly not expecting one */
+	if (fcinfo->isnull)
+		elog(ERROR, "function %u returned NULL", flinfo->fn_oid);
+
+	return result;
+}
+
+#endif
+
+
+PG_FUNCTION_INFO_V1(orafce_sys_guid);
+
+/*
+ * Implementation of sys_guid() function
+ *
+ * Oracle uses guid based on mac address. The calculation is not too
+ * difficult, but there are lot of depenedencies necessary for taking
+ * mac address. Instead to making some static dependecies orafce uses
+ * dynamic dependency on "uuid-ossp" extension, and calls choosed function
+ * from this extension.
+ */
+Datum
+orafce_sys_guid(PG_FUNCTION_ARGS)
+{
+	bool		reset_fmgr;
+	Oid			funcoid;
+	pg_uuid_t  *uuid;
+	bytea	   *result;
+
+	funcoid = get_uuid_generate_func_oid(&reset_fmgr);
+
+	if (reset_fmgr)
+		fmgr_info_cxt(funcoid,
+					   &uuid_generate_func_finfo,
+					  TopTransactionContext);
+
+	uuid =  DatumGetUUIDP(FunctionCall0Coll(&uuid_generate_func_finfo,
+										    InvalidOid));
+
+	result = palloc(VARHDRSZ + UUID_LEN);
+	SET_VARSIZE(result, VARHDRSZ + UUID_LEN);
+	memcpy(VARDATA(result), uuid->data, UUID_LEN);
+
+	PG_RETURN_BYTEA_P(result);
 }

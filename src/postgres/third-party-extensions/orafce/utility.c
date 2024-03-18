@@ -3,7 +3,7 @@
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006-2018
+  PostgreSQL implementation author: Pavel Stehule, 2006-2023
 
   This module is under BSD Licence
 
@@ -12,11 +12,14 @@
 
 */
 
+#include <time.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
 #include "postgres.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
-#include "string.h"
-#include "stdlib.h"
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 #include "lib/stringinfo.h"
@@ -34,6 +37,7 @@
 
 PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack0);
 PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack1);
+PG_FUNCTION_INFO_V1(dbms_utility_get_time);
 
 static char*
 dbms_utility_format_call_stack(char mode)
@@ -207,4 +211,17 @@ dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(dbms_utility_format_call_stack(mode)));
+}
+
+/*
+ * Returns the number of hundredths of seconds that have elapsed
+ * since a point in time in the past.
+ */
+Datum
+dbms_utility_get_time(PG_FUNCTION_ARGS)
+{
+	struct timeval tv;
+
+	gettimeofday(&tv,NULL);
+	PG_RETURN_INT32((int32) ((int64) tv.tv_sec * 100 + tv.tv_usec / 10000));
 }
