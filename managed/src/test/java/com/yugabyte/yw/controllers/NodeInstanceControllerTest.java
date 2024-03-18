@@ -9,10 +9,10 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -24,6 +24,7 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
@@ -42,7 +43,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
 import java.util.LinkedList;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -380,6 +384,24 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInstance() {
     Result r = deleteInstance(customer.getUuid(), provider.getUuid(), FAKE_IP);
+    assertOk(r);
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testDeleteReservedInstance() {
+    UUID fakeClusterUuid = UUID.randomUUID();
+    String fakeNodeName = "fake-name-1";
+    Map<UUID, Set<String>> azToNodeNames =
+        ImmutableMap.of(zone.getUuid(), Collections.singleton(fakeNodeName));
+    NodeInstance.reserveNodes(fakeClusterUuid, azToNodeNames, FAKE_INSTANCE_TYPE);
+    Result r =
+        assertPlatformException(
+            () -> deleteInstance(customer.getUuid(), provider.getUuid(), FAKE_IP));
+    assertBadRequest(r, "Node is in use");
+    assertAuditEntry(0, customer.getUuid());
+    NodeInstance.releaseReservedNodes(fakeClusterUuid);
+    r = deleteInstance(customer.getUuid(), provider.getUuid(), FAKE_IP);
     assertOk(r);
     assertAuditEntry(1, customer.getUuid());
   }
