@@ -647,6 +647,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                       (n.dedicatedTo == null || n.dedicatedTo != ServerType.TSERVER)
                           && Objects.equals(n.placementUuid, currentNode.placementUuid)
                           && !n.getNodeName().equals(currentNode.getNodeName())
+                          && n.getRegion().equals(currentNode.getRegion())
                           && n.getZone().equals(currentNode.getZone()))
               .collect(Collectors.toList());
       // This takes care of picking up the node that was previously selected.
