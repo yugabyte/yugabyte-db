@@ -200,6 +200,11 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
 						yb_record->commit_time, origin_id, origin_lsn);
+
+	elog(DEBUG1,
+		 "Successfully streamed transaction: %d with commit_lsn: %lu and "
+		 "end_lsn: %lu",
+		 yb_record->xid, commit_lsn, end_lsn);
 }
 
 static HeapTuple

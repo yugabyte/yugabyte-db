@@ -918,7 +918,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_bitmapscan,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 	{
@@ -2468,13 +2468,13 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"ddl_rollback_enabled", PGC_SUSET, DEVELOPER_OPTIONS,
+		{"yb_ddl_rollback_enabled", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("If set, any DDL that involves DocDB schema changes will have those "
 						 "changes rolled back upon failure."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&ddl_rollback_enabled,
+		&yb_ddl_rollback_enabled,
 		false,
 		NULL, NULL, NULL
 	},

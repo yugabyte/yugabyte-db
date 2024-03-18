@@ -60,8 +60,8 @@ export const RuntimeConfigKey = {
  */
 export const ToastNotificationDuration = {
   SHORT: 2000,
-  DEFAULT: 3000,
-  LONG: 5000
+  DEFAULT: 6000,
+  LONG: 8000
 } as const;
 
 export const CHART_RESIZE_DEBOUNCE = 100;

@@ -16,6 +16,7 @@
 #include <memory>
 #include <unordered_map>
 
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_if.h"
@@ -23,6 +24,7 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/ts_descriptor.h"
 
 namespace yb {
 namespace master {
@@ -47,12 +49,17 @@ class CloneStateManager {
       const LeaderEpoch& epoch);
 
   Result<CloneStateInfoPtr> CreateCloneState(
-      uint32_t seq_no,
-      const NamespaceId& source_namespace_id,
-      const std::string& target_namespace_name,
-      const TxnSnapshotId& source_snapshot_id,
+      uint32_t seq_no, const scoped_refptr<NamespaceInfo>& source_namespace,
+      const HybridTime& restore_time);
+
+  Result<CloneStateInfoPtr> CreateCloneState(
+      uint32_t seq_no, const NamespaceId& source_namespace_id,
+      const TxnSnapshotId& source_snapshot_id, const TxnSnapshotId& target_snapshot_id,
+      const HybridTime& restore_time, const ExternalTableSnapshotDataMap& table_snapshot_data);
+
+  Status UpdateCloneStateWithSnapshotInfo(
+      CloneStateInfoPtr clone_state, const TxnSnapshotId& source_snapshot_id,
       const TxnSnapshotId& target_snapshot_id,
-      const HybridTime& restore_time,
       const ExternalTableSnapshotDataMap& table_snapshot_data);
 
   Status ClearAndRunLoaders();
@@ -74,6 +81,12 @@ class CloneStateManager {
         ScheduleCloneTabletCall;
 
     const std::function<Status(
+        const std::string& permanent_uuid, const std::string& source_db_name,
+        const std::string& target_db_name, HybridTime restore_ht,
+        AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline)>
+        ScheduleClonePGSchemaTask;
+
+    const std::function<Status(
         const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
         CoarseTimePoint deadline, const LeaderEpoch& epoch)> DoCreateSnapshot;
 
@@ -86,6 +99,8 @@ class CloneStateManager {
       const std::optional<std::string>& clone_target_namespace_name, NamespaceMap* namespace_map,
       UDTypeMap* type_map, ExternalTableSnapshotDataMap* tables_data,
       CoarseTimePoint deadline)> DoImportSnapshotMeta;
+
+    const std::function<TSDescriptorPtr()> PickTserver;
 
     // Sys catalog.
     const std::function<Status(const CloneStateInfoPtr&)> Upsert;
@@ -103,12 +118,37 @@ class CloneStateManager {
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch);
 
+  // Create PG schema objects of the clone database.
+  Status ClonePgSchemaObjects(
+      CloneStateInfoPtr clone_state, const std::string& source_db_name,
+      const std::string& target_db_name, const SnapshotScheduleId& snapshot_schedule_id,
+      const HybridTime& restore_time, const LeaderEpoch& epoch);
+
+  // Transition clone state according to ClonePGSchema async task response then StartTabletsCloning.
+  Status StartTabletsCloningYsql(
+      CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
+      const HybridTime& restore_time, const std::string& target_namespace_name,
+      CoarseTimePoint deadline, const LeaderEpoch& epoch, Status pg_schema_cloning_status);
+
+  // Starts snapshot related operations for clone (mainly generate snapshotInfoPB as of
+  // restore_time and then import it and create a new snapshot for target_namespace). Then it
+  // schedules async clone tasks for every tablet. The function is the whole clone process in case
+  // of YCQL and the second part of the clone process in case of YSQL.
+  Status StartTabletsCloning(
+      CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
+      const HybridTime& restore_time, const std::string& target_namespace_name,
+      CoarseTimePoint deadline, const LeaderEpoch& epoch);
+
   Status LoadCloneState(const std::string& id, const SysCloneStatePB& metadata);
 
-  Status ScheduleCloneOps(
-      const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch);
+  Status ScheduleCloneOps(const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch);
 
   Result<CloneStateInfoPtr> GetCloneStateFromSourceNamespace(const NamespaceId& namespace_id);
+
+  AsyncClonePgSchema::ClonePgSchemaCallbackType MakeDoneClonePGSchemaCallback(
+      CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
+      const HybridTime& restore_time, const std::string& target_namespace_name,
+      CoarseTimePoint deadline, const LeaderEpoch& epoch);
 
   Status HandleCreatingState(const CloneStateInfoPtr& clone_state);
   Status HandleRestoringState(const CloneStateInfoPtr& clone_state);

@@ -38,7 +38,6 @@
 #include <thread>
 #include <utility>
 
-#include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
@@ -1057,6 +1056,19 @@ void TabletServer::SetYsqlDBCatalogVersions(
   }
 }
 
+void TabletServer::WriteServerMetaCacheAsJson(JsonWriter* writer) {
+  writer->StartObject();
+  DbServerBase::WriteMainMetaCacheAsJson(writer);
+  if (auto xcluster_consumer = GetXClusterConsumer()) {
+    auto clients = xcluster_consumer->GetYbClientsList();
+    for (auto client : clients) {
+      writer->String(client->client_name());
+      client->AddMetaCacheInfo(writer);
+    }
+  }
+  writer->EndObject();
+}
+
 void TabletServer::UpdateTransactionTablesVersion(uint64_t new_version) {
   const auto transaction_manager = transaction_manager_.load(std::memory_order_acquire);
   if (transaction_manager) {
@@ -1271,6 +1283,15 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
   return Status::OK();
 }
 
+Status TabletServer::ClearUniverseUuid() {
+  auto instance_universe_uuid_str = VERIFY_RESULT(
+      fs_manager_->GetUniverseUuidFromTserverInstanceMetadata());
+  auto instance_universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(instance_universe_uuid_str));
+  SCHECK_EQ(false, instance_universe_uuid.IsNil(), IllegalState,
+      "universe_uuid is not set in instance metadata");
+  return fs_manager_->ClearUniverseUuidOnTserverInstanceMetadata();
+}
+
 Status TabletServer::ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid) {
   auto instance_universe_uuid_str = VERIFY_RESULT(
       fs_manager_->GetUniverseUuidFromTserverInstanceMetadata());
@@ -1282,6 +1303,7 @@ Status TabletServer::ValidateAndMaybeSetUniverseUuid(const UniverseUuid& univers
                "uuid is $1", universe_uuid.ToString(), instance_universe_uuid.ToString()));
     return Status::OK();
   }
+
   return fs_manager_->SetUniverseUuidOnTserverInstanceMetadata(universe_uuid);
 }
 
@@ -1385,4 +1407,10 @@ rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {
   FATAL_INVALID_ENUM_VALUE(ash::Component, component);
 }
 
+void TabletServer::ClearAllMetaCachesOnServer() {
+  if (auto xcluster_consumer = GetXClusterConsumer()) {
+    xcluster_consumer->ClearAllClientMetaCaches();
+  }
+  client()->ClearAllMetaCachesOnServer();
+}
 }  // namespace yb::tserver
