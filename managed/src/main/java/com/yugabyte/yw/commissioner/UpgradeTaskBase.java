@@ -390,11 +390,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             // Add stopped master to the quorum.
             createChangeConfigTasks(node, true /* isAdd */, subGroupType);
           }
-          createWaitForServerReady(
-                  node,
-                  processType,
-                  getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis())
-              .setSubTaskGroupType(subGroupType);
+          createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
           // If there are no universe keys on the universe, it will have no effect.
           if (processType == ServerType.MASTER
               && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
