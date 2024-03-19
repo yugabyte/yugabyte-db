@@ -49,10 +49,10 @@ export const hasDefaultNTPServers = (providerCode: ProviderCode) =>
 
 // TODO: API should return the YBA host as part of the hostInfo response.
 export const getYBAHost = (hostInfo: HostInfo) => {
-  if (!(typeof hostInfo.gcp === 'string' || hostInfo.gcp instanceof String)) {
+  if (typeof hostInfo?.gcp !== 'string') {
     return YBAHost.GCP;
   }
-  if (!(typeof hostInfo.aws === 'string' || hostInfo.aws instanceof String)) {
+  if (typeof hostInfo?.aws !== 'string') {
     return YBAHost.AWS;
   }
   return YBAHost.SELF_HOSTED;
@@ -208,7 +208,7 @@ export const getDeletedZones = <
 
   return existingZones
     ? existingZones
-        .filter((zone) => !persistedZoneCodes.includes(zone.code))
-        .map((zone) => deleteZone(zone))
+      .filter((zone) => !persistedZoneCodes.includes(zone.code))
+      .map((zone) => deleteZone(zone))
     : [];
 };
