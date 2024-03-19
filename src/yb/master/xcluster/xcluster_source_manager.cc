@@ -18,6 +18,7 @@
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/xcluster/xcluster_status.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
@@ -775,6 +776,138 @@ Result<xrepl::StreamId> XClusterSourceManager::CreateNewXClusterStreamForTable(
   RETURN_NOT_OK(sync.Wait());
 
   return stream_id;
+}
+
+std::unordered_map<TableId, std::vector<CDCStreamInfoPtr>> XClusterSourceManager::GetAllStreams()
+    const {
+  SharedLock lock(tables_to_stream_map_mutex_);
+  return tables_to_stream_map_;
+}
+
+Status XClusterSourceManager::PopulateXClusterStatus(
+    XClusterStatus& xcluster_status, const SysXClusterConfigEntryPB& xcluster_config) const {
+  std::set<xrepl::StreamId> paused_streams;
+  if (xcluster_config.has_xcluster_producer_registry()) {
+    for (const auto& [stream_id, paused] :
+         xcluster_config.xcluster_producer_registry().paused_producer_stream_ids()) {
+      if (paused) {
+        paused_streams.insert(VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)));
+      }
+    }
+  }
+
+  std::unordered_map<xrepl::StreamId, XClusterOutboundTableStreamStatus> stream_status_map;
+  for (const auto& [table_id, streams] : GetAllStreams()) {
+    for (const auto& stream : streams) {
+      XClusterOutboundTableStreamStatus table_stream_status;
+      table_stream_status.table_id = table_id;
+      table_stream_status.stream_id = stream->StreamId();
+      table_stream_status.state =
+          SysCDCStreamEntryPB::State_Name(stream->LockForRead()->pb.state());
+      if (paused_streams.contains(stream->StreamId())) {
+        table_stream_status.state += " (PAUSED)";
+      }
+      stream_status_map.emplace(stream->StreamId(), std::move(table_stream_status));
+    }
+  }
+
+  auto all_outbound_groups = GetAllOutboundGroups();
+  for (const auto& replication_info : all_outbound_groups) {
+    auto metadata_result = replication_info->GetMetadata();
+    if (!metadata_result && metadata_result.status().IsNotFound()) {
+      continue;
+    }
+    RETURN_NOT_OK(metadata_result);
+    const auto& metadata = *metadata_result;
+
+    XClusterOutboundReplicationGroupStatus group_status;
+    group_status.replication_group_id = replication_info->Id();
+    group_status.state = SysXClusterOutboundReplicationGroupEntryPB::State_Name(metadata.state());
+    group_status.target_universe_info = metadata.target_universe_info().DebugString();
+
+    for (const auto& [namespace_id, namespace_status] : metadata.namespace_infos()) {
+      XClusterOutboundReplicationGroupNamespaceStatus ns_status;
+      ns_status.namespace_id = namespace_id;
+      ns_status.namespace_name = catalog_manager_.GetNamespaceName(namespace_id);
+      ns_status.state =
+          SysXClusterOutboundReplicationGroupEntryPB::SysXClusterOutboundReplicationGroupEntryPB::
+              NamespaceInfoPB::State_Name(namespace_status.state());
+      ns_status.initial_bootstrap_required = namespace_status.initial_bootstrap_required();
+      if (namespace_status.has_error_status()) {
+        ns_status.status = namespace_status.error_status().ShortDebugString();
+      } else {
+        ns_status.status = "OK";
+      }
+
+      for (const auto& [table_id, table_info] : namespace_status.table_infos()) {
+        XClusterOutboundReplicationGroupTableStatus table_status;
+        table_status.table_id = table_id;
+        if (table_info.has_stream_id()) {
+          auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(table_info.stream_id()));
+          auto stream_status = FindOrNull(stream_status_map, stream_id);
+          if (stream_status) {
+            SCHECK_EQ(
+                stream_status->table_id, table_id, IllegalState,
+                Format(
+                    "Expected xCluster stream $0 to belongs to table $1 but outbound replication "
+                    "group $2 has it linked to table $3",
+                    stream_id, stream_status->table_id, replication_info->Id(), table_id));
+            table_status = stream_status_map.at(stream_id);
+            stream_status_map.erase(stream_id);
+          } else {
+            table_status.table_id = table_id;
+            table_status.stream_id = stream_id;
+            table_status.state = "DELETED";
+          }
+        }
+        table_status.is_checkpointing = table_info.is_checkpointing();
+        table_status.is_part_of_initial_bootstrap = table_info.is_part_of_initial_bootstrap();
+        ns_status.table_statuses.push_back(std::move(table_status));
+      }
+      group_status.namespace_statuses.push_back(std::move(ns_status));
+    }
+    xcluster_status.outbound_replication_group_statuses.emplace_back(std::move(group_status));
+  }
+
+  for (auto& [_, stream_status] : stream_status_map) {
+    xcluster_status.outbound_table_stream_statuses.emplace_back(std::move(stream_status));
+  }
+
+  return Status::OK();
+}
+
+Status XClusterSourceManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
+  auto all_outbound_groups = GetAllOutboundGroups();
+  jw.String("outbound_replication_groups");
+  jw.StartArray();
+  for (auto const& replication_info : all_outbound_groups) {
+    jw.StartObject();
+    jw.String("replication_group_id");
+    jw.String(replication_info->Id().ToString());
+    auto metadata = replication_info->GetMetadata();
+    if (metadata) {
+      jw.String("metadata");
+      jw.Protobuf(*metadata);
+    } else {
+      jw.String("error");
+      jw.String(metadata.status().ToString());
+    }
+    jw.EndObject();
+  }
+  jw.EndArray();
+
+  jw.String("outbound_streams");
+  jw.StartArray();
+  for (const auto& [table_id, streams] : GetAllStreams()) {
+    for (const auto& stream : streams) {
+      jw.String("stream_id");
+      jw.String(stream->StreamId().ToString());
+      jw.String("metadata");
+      jw.Protobuf(stream->LockForRead()->pb);
+    }
+  }
+  jw.EndArray();
+  return Status::OK();
 }
 
 }  // namespace yb::master
