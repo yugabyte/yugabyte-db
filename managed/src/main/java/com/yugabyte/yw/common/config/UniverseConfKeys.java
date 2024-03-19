@@ -637,6 +637,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Promotes Auto flags while upgrading YB-DB",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> autoFlagUpdateSleepTimeInMilliSeconds =
+      new ConfKeyInfo<>(
+          "yb.upgrade.auto_flag_update_sleep_time_ms",
+          ScopeType.UNIVERSE,
+          "Sleep time after auto flags are updated.",
+          "Controls the amount of time(ms) to wait after auto flags are updated",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowUpgradeOnTransitUniverse =
       new ConfKeyInfo<>(
           "yb.upgrade.allow_upgrade_on_transit_universe",
