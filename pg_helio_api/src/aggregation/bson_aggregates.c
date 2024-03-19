@@ -474,8 +474,11 @@ BsonArrayAggTransitionCore(PG_FUNCTION_ARGS, bool handleSingleValueElement,
 Datum
 bson_array_agg_transition(PG_FUNCTION_ARGS)
 {
-	bool handleSingleValueElement = false;
 	char *path = text_to_cstring(PG_GETARG_TEXT_P(2));
+
+	/* We currently have 2 implementations of bson_array_agg. The newest has a parameter for handleSingleValueElement. */
+	bool handleSingleValueElement = PG_NARGS() == 4 ? PG_GETARG_BOOL(3) : false;
+
 	return BsonArrayAggTransitionCore(fcinfo, handleSingleValueElement, path);
 }
 

@@ -241,6 +241,7 @@ Oid BsonMaxAggregateFunctionOid(void);
 Oid BsonMinAggregateFunctionOid(void);
 Oid PgRandomFunctionOid(void);
 Oid BsonArrayAggregateFunctionOid(void);
+Oid BsonArrayAggregateAllArgsFunctionOid(void);
 Oid BsonObjectAggregateFunctionOid(void);
 Oid BsonDollarFacetProjectFunctionOid(void);
 Oid BsonFirstOnSortedAggregateFunctionOid(void);

@@ -522,8 +522,11 @@ typedef struct HelioApiOidCacheData
 	/* OID of the BSONAVERAGE aggregate function */
 	Oid ApiCatalogBsonAverageAggregateFunctionOid;
 
-	/* OID of the bson_array_agg function */
+	/* OID of the bson_array_agg function. TODO remove this in favor of the below. */
 	Oid ApiCatalogBsonArrayAggregateFunctionOid;
+
+	/* OID of the bson_array_agg function */
+	Oid ApiCatalogBsonArrayAggregateAllArgsFunctionOid;
 
 	/* OID of the mongo bson_distinct_agg function */
 	Oid ApiCatalogBsonDistinctAggregateFunctionOid;
@@ -2400,11 +2403,71 @@ BsonAvgAggregateFunctionOid(void)
 }
 
 
+static Oid
+GetBsonArrayAggregateFunctionOid(Oid *function, bool allArgs)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (*function == InvalidOid)
+	{
+		ObjectWithArgs *objectWithArgs = makeNode(ObjectWithArgs);
+		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+											makeString("bson_array_agg"));
+
+		objectWithArgs->objname = functionNameList;
+		objectWithArgs->objargs = list_make2(ParseTypeNameCore(FullBsonTypeName),
+											 ParseTypeNameCore("text"));
+
+		FunctionParameter *inBsonArgParam = makeNode(FunctionParameter);
+		inBsonArgParam->argType = ParseTypeNameCore(FullBsonTypeName);
+		inBsonArgParam->mode = FUNC_PARAM_IN;
+
+		FunctionParameter *inFieldPathParam = makeNode(FunctionParameter);
+		inFieldPathParam->argType = ParseTypeNameCore("text");
+		inFieldPathParam->mode = FUNC_PARAM_IN;
+
+		objectWithArgs->objfuncargs = list_make2(inBsonArgParam, inFieldPathParam);
+
+		/* Add handleSingleValue argument. TODO: remove if when previous function version is deprecated. */
+		if (allArgs)
+		{
+			objectWithArgs->objargs = lappend(objectWithArgs->objargs, ParseTypeNameCore(
+												  "boolean"));
+
+			FunctionParameter *inHandleSingleValueParam = makeNode(FunctionParameter);
+			inHandleSingleValueParam->argType = ParseTypeNameCore("boolean");
+			inHandleSingleValueParam->mode = FUNC_PARAM_IN;
+
+			objectWithArgs->objfuncargs = lappend(objectWithArgs->objfuncargs,
+												  inHandleSingleValueParam);
+		}
+
+		bool missingOK = false;
+		*function = LookupFuncWithArgs(OBJECT_AGGREGATE, objectWithArgs, missingOK);
+	}
+
+	return *function;
+}
+
+
+/*
+ * TODO: Remove this implementation in favor of the below.
+ */
 Oid
 BsonArrayAggregateFunctionOid(void)
 {
-	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonArrayAggregateFunctionOid,
-									  ApiCatalogSchemaName, "bson_array_agg");
+	bool allArgs = false;
+	return GetBsonArrayAggregateFunctionOid(
+		&Cache.ApiCatalogBsonArrayAggregateFunctionOid, allArgs);
+}
+
+
+Oid
+BsonArrayAggregateAllArgsFunctionOid(void)
+{
+	bool allArgs = true;
+	return GetBsonArrayAggregateFunctionOid(
+		&Cache.ApiCatalogBsonArrayAggregateAllArgsFunctionOid, allArgs);
 }
 
 

@@ -53,7 +53,7 @@
 #include "aggregation/bson_aggregation_pipeline_private.h"
 #include "vector/vector_common.h"
 #include "aggregation/bson_project.h"
-
+#include "utils/version_utils.h"
 
 /*
  * The mutation function that modifies a given query with a pipeline stage's value.
@@ -2841,6 +2841,50 @@ AddSimpleGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 
 
 /*
+ * Simple helper method that has logic to insert a BSON_ARRAY_AGG accumulator to a query.
+ * This adds the group aggregate to the TargetEntry (for projection)
+ * and also adds the necessary data to the bson_repath_and_build arguments.
+ */
+inline static List *
+AddArrayAggGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
+							List *repathArgs, Const *accumulatorText,
+							ParseState *parseState, char *identifiers,
+							Expr *documentExpr, Oid aggregateFunctionOid,
+							char *fieldPath, bool handleSingleValue)
+{
+	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
+												  accumulatorValue));
+	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
+								 true);
+	List *funcArgs = list_make3(documentExpr, constValue, trueConst);
+
+	FuncExpr *accumFunc = makeFuncExpr(
+		BsonExpressionGetFunctionOid(), BsonTypeId(), funcArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	List *aggregateArgs = list_make3(
+		(Expr *) accumFunc,
+		MakeTextConst(fieldPath, strlen(fieldPath)),
+		MakeBoolValueConst(handleSingleValue));
+	List *argTypesList = list_make3_oid(BsonTypeId(), TEXTOID, BOOLOID);
+
+	Aggref *aggref = CreateMultiArgAggregate(aggregateFunctionOid,
+											 aggregateArgs,
+											 argTypesList,
+											 parseState);
+
+	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) accumulatorText,
+														parseState, identifiers,
+														query, TEXTOID, NULL));
+	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) aggref,
+														parseState, identifiers,
+														query, BsonTypeId(),
+														NULL));
+	return repathArgs;
+}
+
+
+/*
  * Simple helper method that has logic to insert a Group accumulator to a query.
  * This adds the group aggregate to the TargetEntry (for projection)
  * and also adds the necessary data to the bson_expression_map arguments.
@@ -3313,8 +3357,25 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$push"))
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
-							errmsg("Accumulator $push not implemented yet")));
+			if (IsClusterVersionAtleastThis(1, 15, 0))
+			{
+				char *fieldPath = "";
+				bool handleSingleValue = true;
+				repathArgs = AddArrayAggGroupAccumulator(query,
+														 &accumulatorElement.bsonValue,
+														 repathArgs,
+														 accumulatorText, parseState,
+														 identifiers,
+														 origEntry->expr,
+														 BsonArrayAggregateAllArgsFunctionOid(),
+														 fieldPath,
+														 handleSingleValue);
+			}
+			else
+			{
+				ereport(ERROR, (errcode(MongoCommandNotSupported),
+								errmsg("Accumulator $push not implemented yet")));
+			}
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$stdDevSamp"))
 		{
