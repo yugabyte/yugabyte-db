@@ -20,6 +20,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/xcluster/xcluster_status.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_config.h"
 
@@ -103,13 +104,27 @@ Status XClusterManager::PrepareDefaultXClusterConfig(int64_t term, bool recreate
   return xcluster_config_->PrepareDefault(term, recreate);
 }
 
-Status XClusterManager::GetXClusterConfigEntryPB(SysXClusterConfigEntryPB* config) const {
-  *config = VERIFY_RESULT(xcluster_config_->GetXClusterConfigEntryPB());
+Result<XClusterStatus> XClusterManager::GetXClusterStatus() const {
+  XClusterStatus status;
+  RETURN_NOT_OK(XClusterSourceManager::PopulateXClusterStatus(
+      status, VERIFY_RESULT(xcluster_config_->GetXClusterConfigEntryPB())));
+  RETURN_NOT_OK(XClusterTargetManager::PopulateXClusterStatus(status));
+  return status;
+}
+
+Status XClusterManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
+  auto xcluster_config = VERIFY_RESULT(xcluster_config_->GetXClusterConfigEntryPB());
+  jw.String("xcluster_config");
+  jw.Protobuf(xcluster_config);
+
+  RETURN_NOT_OK(XClusterSourceManager::PopulateXClusterStatusJson(jw));
+  RETURN_NOT_OK(XClusterTargetManager::PopulateXClusterStatusJson(jw));
   return Status::OK();
 }
 
 Status XClusterManager::GetMasterXClusterConfig(GetMasterXClusterConfigResponsePB* resp) {
-  return GetXClusterConfigEntryPB(resp->mutable_xcluster_config());
+  *resp->mutable_xcluster_config() = VERIFY_RESULT(xcluster_config_->GetXClusterConfigEntryPB());
+  return Status::OK();
 }
 
 Result<uint32_t> XClusterManager::GetXClusterConfigVersion() const {

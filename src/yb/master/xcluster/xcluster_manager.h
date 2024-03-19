@@ -64,7 +64,8 @@ class XClusterManager : public XClusterManagerIf,
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const;
 
-  Status GetXClusterConfigEntryPB(SysXClusterConfigEntryPB* config) const  override;
+  Result<XClusterStatus> GetXClusterStatus() const override;
+  Status PopulateXClusterStatusJson(JsonWriter& jw) const override;
 
   Status GetMasterXClusterConfig(GetMasterXClusterConfigResponsePB* resp);
 

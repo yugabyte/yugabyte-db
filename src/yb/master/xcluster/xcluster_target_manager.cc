@@ -22,7 +22,8 @@
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
-#include "yb/util/flags.h"
+#include "yb/master/xcluster/xcluster_status.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/status.h"
 
 namespace yb::master {
@@ -193,4 +194,131 @@ XClusterTargetManager::GetPostTabletCreateTasks(
   return tasks;
 }
 
+template <typename PBList>
+std::string PBListAsString(const PBList& pb, const char* delim = ",") {
+  std::stringstream errors;
+  for (int i = 0; i < pb.size(); i++) {
+    errors << (i ? delim : "") << pb.Get(i).ShortDebugString();
+  }
+
+  return errors.str();
+}
+
+Status XClusterTargetManager::PopulateXClusterStatus(XClusterStatus& xcluster_status) const {
+  GetReplicationStatusResponsePB replication_status;
+  GetReplicationStatusRequestPB req;
+  RETURN_NOT_OK(catalog_manager_.GetReplicationStatus(&req, &replication_status, /*rpc=*/nullptr));
+
+  std::unordered_map<xrepl::StreamId, std::string> stream_status;
+  for (const auto& table_stream_status : replication_status.statuses()) {
+    if (!table_stream_status.errors_size()) {
+      continue;
+    }
+
+    const auto stream_id =
+        VERIFY_RESULT(xrepl::StreamId::FromString(table_stream_status.stream_id()));
+    stream_status[stream_id] = PBListAsString(table_stream_status.errors(), ";");
+    auto s = table_stream_status.ShortDebugString();
+  }
+
+  SysClusterConfigEntryPB cluster_config;
+  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config));
+  const auto& consumer_registry = cluster_config.consumer_registry();
+  xcluster_status.role = XClusterRole_Name(consumer_registry.role());
+  xcluster_status.transactional = consumer_registry.transactional();
+
+  const auto replication_infos = catalog_manager_.GetAllXClusterUniverseReplicationInfos();
+
+  for (const auto& replication_info : replication_infos) {
+    XClusterInboundReplicationGroupStatus replication_group_status;
+    replication_group_status.replication_group_id =
+        xcluster::ReplicationGroupId(replication_info.replication_group_id());
+    replication_group_status.state =
+        SysUniverseReplicationEntryPB::State_Name(replication_info.state());
+    replication_group_status.transactional = replication_info.transactional();
+    replication_group_status.validated_local_auto_flags_config_version =
+        replication_info.validated_local_auto_flags_config_version();
+
+    for (const auto& namespace_info : replication_info.db_scoped_info().namespace_infos()) {
+      replication_group_status.db_scoped_info += Format(
+          "\n  namespace: $0\n    consumer_namespace_id: $1\n    producer_namespace_id: $2",
+          catalog_manager_.GetNamespaceName(namespace_info.consumer_namespace_id()),
+          namespace_info.consumer_namespace_id(), namespace_info.producer_namespace_id());
+    }
+
+    auto* producer_map =
+        FindOrNull(consumer_registry.producer_map(), replication_info.replication_group_id());
+    if (producer_map) {
+      replication_group_status.master_addrs = PBListAsString(producer_map->master_addrs());
+      replication_group_status.disable_stream = producer_map->disable_stream();
+      replication_group_status.compatible_auto_flag_config_version =
+          producer_map->compatible_auto_flag_config_version();
+      replication_group_status.validated_remote_auto_flags_config_version =
+          producer_map->validated_auto_flags_config_version();
+    }
+
+    for (const auto& source_table_id : replication_info.tables()) {
+      InboundXClusterReplicationGroupTableStatus table_statuses;
+      table_statuses.source_table_id = source_table_id;
+
+      auto* stream_id_it = FindOrNull(replication_info.table_streams(), source_table_id);
+      if (stream_id_it) {
+        table_statuses.stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(*stream_id_it));
+        auto it = FindOrNull(stream_status, table_statuses.stream_id);
+        table_statuses.status = it ? *it : "OK";
+
+        if (producer_map) {
+          auto* stream_info =
+              FindOrNull(producer_map->stream_map(), table_statuses.stream_id.ToString());
+          if (stream_info) {
+            table_statuses.target_table_id = stream_info->consumer_table_id();
+            table_statuses.target_tablet_count = stream_info->consumer_producer_tablet_map_size();
+            table_statuses.local_tserver_optimized = stream_info->local_tserver_optimized();
+            table_statuses.source_schema_version =
+                stream_info->schema_versions().current_producer_schema_version();
+            table_statuses.target_schema_version =
+                stream_info->schema_versions().current_consumer_schema_version();
+            for (const auto& [_, producer_tablets] : stream_info->consumer_producer_tablet_map()) {
+              table_statuses.source_tablet_count += producer_tablets.tablets_size();
+            }
+          }
+        }
+      } else {
+        table_statuses.status = "Not Ready";
+      }
+
+      replication_group_status.table_statuses.push_back(std::move(table_statuses));
+    }
+
+    xcluster_status.inbound_replication_group_statuses.push_back(
+        std::move(replication_group_status));
+  }
+
+  return Status::OK();
+}
+
+Status XClusterTargetManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
+  GetReplicationStatusResponsePB replication_status;
+  GetReplicationStatusRequestPB req;
+  RETURN_NOT_OK(catalog_manager_.GetReplicationStatus(&req, &replication_status, /*rpc=*/nullptr));
+
+  SysClusterConfigEntryPB cluster_config;
+  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config));
+
+  jw.String("replication_status");
+  jw.Protobuf(replication_status);
+
+  const auto replication_infos = catalog_manager_.GetAllXClusterUniverseReplicationInfos();
+  jw.String("replication_infos");
+  jw.StartArray();
+  for (auto const& replication_info : replication_infos) {
+    jw.Protobuf(replication_info);
+  }
+  jw.EndArray();
+
+  jw.String("consumer_registry");
+  jw.Protobuf(cluster_config.consumer_registry());
+
+  return Status::OK();
+}
 }  // namespace yb::master
