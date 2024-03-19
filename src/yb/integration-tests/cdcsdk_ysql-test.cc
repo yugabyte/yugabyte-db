@@ -178,7 +178,7 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
   // Insert test rows, one at a time so they have different hybrid times.
   ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
   ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -203,7 +203,7 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
   SleepFor(MonoDelta::FromSeconds(5));
 
   ASSERT_OK(WriteRowsHelper(3, 4, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -621,7 +621,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
 
   ASSERT_OK(UpdateRowsHelper(
       1 /* start */, 2 /* end */, &test_cluster_, true, 1, col_val_map1, col_val_map2, num_cols));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -677,7 +677,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByDelete
 
   ASSERT_OK(UpdateDeleteRowsHelper(
       1 /* start */, 2 /* end */, &test_cluster_, true, 1, col_val_map, num_cols));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -728,7 +728,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
 
   ASSERT_OK(UpdateRowsHelper(
       1 /* start */, 2 /* end */, &test_cluster_, true, 1, col_val_map1, col_val_map2, num_cols));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -1243,7 +1243,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -1255,7 +1255,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
   LOG(INFO) << "Total records read by get change call: " << record_size;
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   // Greater than 100 check because  we got records for BEGIN, COMMIT also.
@@ -1310,7 +1310,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamSingleTser
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   ASSERT_EQ(DeleteCDCStream(stream_id), true);
@@ -1338,7 +1338,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserv
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   ASSERT_EQ(DeleteCDCStream(stream_id), true);
@@ -1371,7 +1371,7 @@ TEST_F(
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   ASSERT_EQ(DeleteCDCStream(stream_id_1), true);
@@ -1404,7 +1404,7 @@ TEST_F(
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   ASSERT_EQ(DeleteCDCStream(stream_id_1), true);
@@ -1437,7 +1437,7 @@ TEST_F(
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   ASSERT_EQ(DeleteCDCStream(stream_id_1), true);
@@ -1472,7 +1472,7 @@ TEST_F(
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   ASSERT_EQ(DeleteCDCStream(stream_id_1), true);
@@ -1568,7 +1568,7 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
   uint32_t end = 100;
   for (uint32_t insert_idx = 0; insert_idx < 3; insert_idx++) {
     ASSERT_OK(WriteRowsHelper(start /* start */, end /* end */, &test_cluster_, true));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */
         false,              /* timeout_secs = */
         30, /* is_compaction = */ false));
@@ -1788,7 +1788,7 @@ void CDCSDKYsqlTest::TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType 
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -1804,7 +1804,7 @@ void CDCSDKYsqlTest::TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType 
   ASSERT_GT(record_size, 100);
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -1875,9 +1875,8 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(
       &change_resp_1, stream_id, tablets, 100, is_explicit_checkpoint));
@@ -1885,14 +1884,11 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType
             << change_resp_1.cdc_sdk_proto_records_size();
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   ASSERT_OK(WriteRowsHelper(200 /* start */, 300 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(3 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
   SleepFor(MonoDelta::FromSeconds(10));
 
   int64 initial_num_intents;
@@ -1967,14 +1963,11 @@ void CDCSDKYsqlTest::TestHighIntentCountPersistencyAllNodesRestart(
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 1 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   ASSERT_OK(WriteRowsHelper(1, 75, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(2 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   int64 initial_num_intents;
   PollForIntentCount(1, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
@@ -2022,9 +2015,9 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(
       &change_resp_1, stream_id, tablets, 100, is_explicit_checkpoint));
@@ -2042,9 +2035,11 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
   }
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(2 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
+
+  int64_t before_fetch_num_intents;
+  PollForIntentCount(0, 0, IntentCountCompareOption::GreaterThan, &before_fetch_num_intents);
 
   ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
   // Shutdown tserver hosting tablet initial leader, now it is a follower.
@@ -2057,16 +2052,24 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
 
   // Restart the tserver hosting the initial leader.
   ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->Start());
-  SleepFor(MonoDelta::FromSeconds(1));
 
   OpId last_seen_checkpoint_op_id = OpId::Invalid();
-  int64 last_seen_num_intents = -1;
+  int64_t expected_num_intents =
+      checkpoint_type == cdc::CDCCheckpointType::EXPLICIT ? before_fetch_num_intents
+                                                          : before_fetch_num_intents / 2;
   for (uint32_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     auto tablet_peer_result =
         test_cluster()->GetTabletManager(i)->GetServingTablet(tablets[0].tablet_id());
     if (!tablet_peer_result.ok()) {
       continue;
     }
+
+    int64_t num_intents;
+    PollForIntentCount(
+        expected_num_intents, i, IntentCountCompareOption::EqualTo, &num_intents);
+    ASSERT_EQ(expected_num_intents, num_intents);
+    LOG(INFO) << "Num of intents: " << num_intents << ", on tserver index" << i;
+
     auto tablet_peer = std::move(*tablet_peer_result);
 
     OpId checkpoint = (*tablet_peer).cdc_sdk_min_checkpoint_op_id();
@@ -2076,17 +2079,6 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
     } else {
       ASSERT_EQ(last_seen_checkpoint_op_id, checkpoint);
     }
-
-    int64 num_intents;
-    if (last_seen_num_intents == -1) {
-      PollForIntentCount(0, i, IntentCountCompareOption::GreaterThan, &num_intents);
-      last_seen_num_intents = num_intents;
-    } else {
-      PollForIntentCount(
-          last_seen_num_intents, i, IntentCountCompareOption::GreaterThanOrEqualTo, &num_intents);
-      ASSERT_EQ(last_seen_num_intents, num_intents);
-    }
-    LOG(INFO) << "Num of intents: " << num_intents << ", on tserver index" << i;
   }
 }
 
@@ -2114,7 +2106,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnum)) {
   int insert_count = 10;
   // Insert some records in transaction.
   ASSERT_OK(WriteEnumsRows(0, insert_count, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2163,7 +2155,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumOnRestart)) {
   int insert_count = 20;
   // Insert some records in transaction.
   ASSERT_OK(WriteEnumsRows(0, insert_count / 2, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2174,7 +2166,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumOnRestart)) {
 
   // Insert some more records in transaction.
   ASSERT_OK(WriteEnumsRows(insert_count / 2, insert_count, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2237,7 +2229,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumMultipleStreams)) {
 
   // Insert some records in transaction.
   ASSERT_OK(WriteEnumsRows(0, insert_count, &test_cluster_, "1"));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table1.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2283,7 +2275,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeType)) {
   int insert_count = 10;
   // Insert some records in transaction.
   ASSERT_OK(WriteCompositeRows(0, insert_count, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2327,7 +2319,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeTypeWithRestart)) {
   int insert_count = 20;
   // Insert some records in transaction.
   ASSERT_OK(WriteCompositeRows(0, insert_count / 2, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2338,7 +2330,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeTypeWithRestart)) {
 
   // Insert some more records in transaction.
   ASSERT_OK(WriteCompositeRows(insert_count / 2, insert_count, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2380,7 +2372,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNestedCompositeType)) {
   int insert_count = 10;
   // Insert some records in transaction.
   ASSERT_OK(WriteNestedCompositeRows(0, insert_count, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2424,7 +2416,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestArrayCompositeType)) {
   int insert_count = 10;
   // Insert some records in transaction.
   ASSERT_OK(WriteArrayCompositeRows(0, insert_count, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2471,7 +2463,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRangeCompositeType)) {
   int insert_count = 10;
   // Insert some records in transaction.
   ASSERT_OK(WriteRangeCompositeRows(0, insert_count, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2520,7 +2512,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRangeArrayCompositeType)) {
   int insert_count = 10;
   // Insert some records in transaction.
   ASSERT_OK(WriteRangeArrayCompositeRows(0, insert_count, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -2568,18 +2560,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
   LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(100, 500, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(2 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   int64 initial_num_intents;
   PollForIntentCount(400, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
@@ -2625,22 +2615,18 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCo
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
   LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   ASSERT_OK(WriteRowsHelper(200 /* start */, 300 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(3 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
   SleepFor(MonoDelta::FromSeconds(10));
 
   int64 initial_num_intents;
@@ -2726,7 +2712,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
 
   ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
 
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
       /* is_compaction = */ false));
 
@@ -2791,7 +2777,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) 
 
   ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
   // SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs * 2));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
       /* is_compaction = */ false));
 
@@ -2861,7 +2847,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
   ASSERT_FALSE(change_resp_1.has_error());
 
   ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
       /* is_compaction = */ false));
 
@@ -2932,7 +2918,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
     }
 
     ASSERT_OK(WriteEnumsRows(0, 100, &test_cluster_, tablePrefix[idx], kNamespaceName, kTableName));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
 
@@ -3202,14 +3188,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDeletedStreamRowRemovedEvenAf
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3363,7 +3349,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCreateStreamAfterSetCheckpoin
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3484,7 +3470,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderReElect)
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3524,7 +3510,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderReElect)
 
   // Insert some records in transaction after first leader stepdown.
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3585,7 +3571,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3638,7 +3624,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
 
   // Insert some records in transaction after leader shutdown.
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3666,7 +3652,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
   ASSERT_OK(StepDownLeader(first_leader_index, tablets[0].tablet_id()));
 
   ASSERT_OK(WriteRowsHelper(200 /* start */, 300 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3708,7 +3694,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWi
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3748,7 +3734,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWi
 
   // Insert some records in transaction after first leader stepdown.
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3798,7 +3784,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWhenAFollowerIsUna
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3811,7 +3797,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWhenAFollowerIsUna
 
   // Insert some records in transaction after leader shutdown.
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3856,7 +3842,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocation)) {
 
   int insert_count = 30;
   ASSERT_OK(PopulateColocatedData(&test_cluster_, insert_count));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3914,7 +3900,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsInColocation)) {
 
   int insert_count = 30;
   ASSERT_OK(PopulateColocatedData(&test_cluster_, insert_count, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -3978,7 +3964,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
   // Insert test rows, one at a time so they have different hybrid times.
   ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
   ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -4028,7 +4014,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLastSentTimeMetric)) {
       tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
 
   ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -4040,7 +4026,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLastSentTimeMetric)) {
   uint64_t last_sent_time = metrics->cdcsdk_last_sent_physicaltime->value();
 
   ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -4075,7 +4061,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKExpiryMetric)) {
   auto cdc_service = dynamic_cast<CDCServiceImpl*>(
       tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
   ASSERT_OK(WriteRowsHelper(1, 100, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -4118,7 +4104,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKTrafficSentMetric)) {
   auto cdc_service = dynamic_cast<CDCServiceImpl*>(
       tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
   ASSERT_OK(WriteRowsHelper(1, 100, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -4134,7 +4120,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKTrafficSentMetric)) {
 
   // Isnert few more records
   ASSERT_OK(WriteRowsHelper(101, 200, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -4178,7 +4164,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKChangeEventCountMetric)
   auto cdc_service = dynamic_cast<CDCServiceImpl*>(
       tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
   ASSERT_OK(WriteRowsHelper(1, 100, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -4243,7 +4229,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
   for (uint32_t idx = 0; idx < num_tables; idx++) {
     ASSERT_OK(
         WriteRowsHelper(1, 50, &test_cluster_, true, 2, (kTableName + table_suffix[idx]).c_str()));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table[idx].table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
 
@@ -4312,7 +4298,7 @@ TEST_F(
     int64_t current_traffic_sent_bytes = 0;
     ASSERT_OK(WriteRowsHelper(
         1, 100, &test_cluster_, true, 2, (kTableName + underscore + std::to_string(idx)).c_str()));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table[idx].table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     GetChangesResponsePB change_resp;
@@ -4381,7 +4367,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesTwoStre
     int64_t current_traffic_sent_bytes = 0;
     ASSERT_OK(WriteRowsHelper(
         1, 100, &test_cluster_, true, 2, (kTableName + underscore + std::to_string(idx)).c_str()));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table[idx].table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
 
@@ -4433,7 +4419,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsWithAddStream)) 
   int64_t current_traffic_sent_bytes = 0;
 
   ASSERT_OK(WriteRowsHelper(1, 100, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -4464,7 +4450,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsWithAddStream)) 
   current_traffic_sent_bytes = metrics->cdcsdk_traffic_sent->value();
 
   ASSERT_OK(WriteRowsHelper(101, 200, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -5189,7 +5175,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -5231,7 +5217,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -5291,7 +5277,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDDLRecordValidationWithColoca
 
   int insert_count = 30;
   ASSERT_OK(PopulateColocatedData(&test_cluster_, insert_count, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -5356,7 +5342,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeginCommitRecordValidationWi
 
   int insert_count = 30;
   ASSERT_OK(PopulateColocatedData(&test_cluster_, insert_count, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -5454,7 +5440,7 @@ TEST_F(
   // Commit the trasaction.
   ASSERT_OK(conn.Execute("COMMIT"));
 
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -5529,7 +5515,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetricUnchangedOnEmp
   // Commit the trasaction.
   ASSERT_OK(conn.Execute("COMMIT"));
 
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
@@ -5653,7 +5639,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeOfTransactionRecord
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   GetChangesResponsePB change_resp_1;
@@ -5690,7 +5676,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeIncreasesForTransac
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   GetChangesResponsePB change_resp_1;
@@ -5707,7 +5693,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeIncreasesForTransac
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   ASSERT_OK(WaitForGetChangesToFetchRecords(
@@ -5761,10 +5747,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeOrderAcrossMultiTab
   ASSERT_OK(WriteRowsToTwoTables(0, 2, &test_cluster_, true, kTableName, second_table_name));
   ASSERT_OK(WriteRowsToTwoTables(2, 4, &test_cluster_, true, kTableName, second_table_name));
 
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {second_table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   LOG(INFO) << "inserted two transactions";
@@ -6291,7 +6277,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
       ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", i, i + 1));
   }
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -6360,7 +6346,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
   ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
   ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
   ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -6415,7 +6401,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", i, i + 1));
   }
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -6485,7 +6471,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
   ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
 
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -6528,7 +6514,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", i, i + 1));
   }
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -6645,10 +6631,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithZeroIntents)) 
   }
   ASSERT_OK(conn.Execute("COMMIT"));
 
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {parent_table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {fk_table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -7242,7 +7228,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
 
   ASSERT_OK(WriteRowsHelper(30, 80, &test_cluster_, true));
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   const int expected_count[] = {3, 80, 0, 0, 0, 0, 2, 2};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -7278,9 +7264,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_ddl_rollback_enabled";
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rollback_enabled) = true;
-
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -7293,6 +7276,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
   const int expected_count[] = {3, 6, 1, 1, 0, 0, 1, 1};
+  const int expected_count_for_packed_row[] = {3, 7, 0, 1, 0, 0, 1, 1};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -7309,7 +7293,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   ASSERT_OK(conn.Execute("DELETE FROM test_table where key = 1;"));
   ASSERT_OK(conn.Execute("COMMIT;"));
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // Sleep to ensure that rollback has taken place
   SleepFor(MonoDelta::FromSeconds(30));
@@ -7330,7 +7314,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   }
 
   for (int i = 0; i < 8; i++) {
-    ASSERT_EQ(expected_count[i], count[i]);
+    if (FLAGS_ysql_enable_packed_row) {
+      ASSERT_EQ(expected_count_for_packed_row[i], count[i]);
+    } else {
+      ASSERT_EQ(expected_count[i], count[i]);
+    }
   }
 }
 
@@ -7365,7 +7353,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestInsertAndUpdateIntentsWithInc
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (2,2,2,2);"));
   ASSERT_OK(conn.Execute("COMMIT;"));
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // Call getChanges to consume the records
   auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -7387,7 +7375,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestInsertAndUpdateIntentsWithInc
   ASSERT_OK(conn.Execute("UPDATE test_table set col2 = 4, col3 = 4 where col1 = 1;"));
   ASSERT_OK(conn.Execute("COMMIT;"));
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // Call getChanges to consume the records
   prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
@@ -7427,7 +7415,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTxnWithExplicitStream)) 
   // cdc_max_stream_intent_records.
   const int row_count = 40;
   ASSERT_OK(WriteRowsHelper(0, row_count, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   const int expected_count[] = {1, 40, 0, 0, 0, 0, 1, 1};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -7566,11 +7554,11 @@ TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
   auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot change the primary key of a table that is a part of CDC or XCluster replication.");
+      "cannot rewrite a table that is a part of CDC or XCluster replication");
   res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot change a column type of a table that is a part of CDC or XCluster replication.");
+      "cannot rewrite a table that is a part of CDC or XCluster replication");
   res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(
@@ -7665,6 +7653,8 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {
   // Set the active window to a smaller value for faster test execution.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cdc_active_replication_slot_window_ms) =
       10000 * yb::kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table =
@@ -7673,16 +7663,8 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 3);
-  xrepl::StreamId stream_id =
-      ASSERT_RESULT(CreateDBStreamWithReplicationSlot("repl_slot_drop_with_active_invalid"));
-
-  // set checkpoint for each tablet.
-  for (int tablet_idx = 0; tablet_idx < tablets.size(); tablet_idx++) {
-    auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(
-        stream_id, tablets, OpId::Min(), /*cdc_sdk_safe_time=*/0, /*initial_checkpoint=*/true,
-        tablet_idx));
-    ASSERT_FALSE(set_resp.has_error());
-  }
+  xrepl::StreamId stream_id = ASSERT_RESULT(
+      CreateConsistentSnapshotStreamWithReplicationSlot("repl_slot_drop_with_active_invalid"));
 
   auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
 
@@ -7911,7 +7893,7 @@ TEST_F(CDCSDKYsqlTest, TestNoUpdateSafeTimeWithoutSnapshotTime) {
 
 TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -7938,6 +7920,428 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   auto entry_2 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {kCDCSDKSlotEntryTabletId, stream_id_2}, CDCStateTableEntrySelector().IncludeAll()));
   ASSERT_FALSE(entry_2.has_value());
+}
+
+TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0.$1 ADD COLUMN $2 VARCHAR", "public", kTableName, kValue2ColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0.$1 ADD COLUMN $2 VARCHAR", "public", kTableName, kValue3ColumnName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count[] = {2, 1, 1, 0, 0, 0, 1, 1};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  string pattern = "pattern";
+  string text = "";
+  while (text.length() <= 1_KB) text += pattern;
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3, $5) VALUES (1, 2, '$4', '$6')", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName, text, kValue3ColumnName, text));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = '$2' WHERE $3 = 1", kTableName, kValue2ColumnName, text + text,
+      kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+
+  std::unordered_set<std::string> record_primary_key;
+  std::unordered_set<std::string> record_table_id;
+
+  GetChangesResponsePB get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  VerifyTableIdAndPkInCDCRecords(&get_changes_resp, &record_primary_key, &record_table_id);
+  // Since we updated the same row, the primary key received for both the DML records (INSERT &
+  // UPDATE) should be same.
+  ASSERT_EQ(record_primary_key.size(), 1);
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+
+  uint32_t record_size = get_changes_resp.cdc_sdk_proto_records_size();
+  for (uint32 i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = get_changes_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 1);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 2);
+      ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
+      ASSERT_EQ(record.row_message().new_tuple(3).datum_string(), text);
+    } else if (record.row_message().op() == RowMessage::UPDATE) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 1);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_string(), text + text);
+    }
+  }
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count_2[] = {0, 2, 0, 0, 0, 0, 1, 1};
+  int count_2[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  // Inserting large column value and updating all columns.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3, $5) VALUES (2, 3, '$4', '$6')", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName, text, kValue3ColumnName, text));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = '$2', $4 = 22, $5 = '$6' WHERE $3 = 2", kTableName, kValue2ColumnName,
+      text + text, kKeyColumnName, kValueColumnName, kValue3ColumnName, text));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+
+  get_changes_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count_2);
+  }
+
+  VerifyTableIdAndPkInCDCRecords(&get_changes_resp, &record_primary_key, &record_table_id);
+  // Since we inserted a new row, the primary key should be different compared to the previous row
+  // that we had inserted. The UPDATE should have the same primary key as that of the INSERT record
+  // for this row. Therefore, in total the set should contain two entries.
+  ASSERT_EQ(record_primary_key.size(), 2);
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count_2[i], count_2[i]);
+  }
+
+  record_size = get_changes_resp.cdc_sdk_proto_records_size();
+  int insert_count = 0;
+  for (uint32 i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = get_changes_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (insert_count == 0) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+        ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 2);
+        ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 3);
+        ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
+        ASSERT_EQ(record.row_message().new_tuple(3).datum_string(), text);
+      } else if (insert_count == 1) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+        ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 2);
+        ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 22);
+        ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text + text);
+        ASSERT_EQ(record.row_message().new_tuple(3).datum_string(), text);
+      }
+      insert_count++;
+    }
+  }
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count_3[] = {0, 1, 0, 0, 0, 0, 1, 1};
+  int count_3[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  // Inserting user defined NULL value in packed row
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3, $4) VALUES (3, 4, NULL, '$5')", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName, kValue3ColumnName, text));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+
+  get_changes_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count_3);
+  }
+
+  VerifyTableIdAndPkInCDCRecords(&get_changes_resp, &record_primary_key, &record_table_id);
+  // New row added, therefore, this should have a different primary key compared to the previous two
+  // rows.
+  ASSERT_EQ(record_primary_key.size(), 3);
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count_3[i], count_3[i]);
+  }
+  record_size = get_changes_resp.cdc_sdk_proto_records_size();
+  for (uint32 i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = get_changes_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 3);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 4);
+      ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
+      ASSERT_FALSE(record.row_message().new_tuple(3).has_datum_string());
+      ASSERT_EQ(
+          record.row_message().new_tuple(3).pg_type(),
+          record.row_message().new_tuple(3).column_type());
+    }
+  }
+
+  ASSERT_EQ(record_table_id.size(), 1);
+  ASSERT_EQ(*(record_table_id.begin()), table.table_id());
+}
+
+TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0.$1 ADD COLUMN $2 VARCHAR", "public", kTableName, kValue2ColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0.$1 ADD COLUMN $2 VARCHAR", "public", kTableName, kValue3ColumnName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  string pattern = "pattern";
+  string text = "";
+  while (text.length() <= 1_KB) text += pattern;
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3, $5) VALUES (1, 2, '$4', '$6')", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName, text, kValue3ColumnName, text + text));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = '$2' WHERE $3 = 1", kTableName, kValue2ColumnName, text + text,
+      kKeyColumnName));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+
+  std::unordered_set<std::string> record_primary_key;
+  std::unordered_set<std::string> record_table_id;
+
+  GetChangesResponsePB get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count[] = {2, 1, 1, 0, 0, 0, 2, 2};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  VerifyTableIdAndPkInCDCRecords(&get_changes_resp, &record_primary_key, &record_table_id);
+  // Since we updated the same row, the primary key received for both the DML records (INSERT &
+  // UPDATE) should be same.
+  ASSERT_EQ(record_primary_key.size(), 1);
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+
+  uint32_t record_size = get_changes_resp.cdc_sdk_proto_records_size();
+  for (uint32 i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = get_changes_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 1);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 2);
+      ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
+      ASSERT_EQ(record.row_message().new_tuple(3).datum_string(), text + text);
+    } else if (record.row_message().op() == RowMessage::UPDATE) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 1);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_string(), text + text);
+    }
+  }
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3, $4) VALUES (3, 4, NULL, '$5')", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName, kValue3ColumnName, text));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  get_changes_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count_2[] = {0, 1, 0, 0, 0, 0, 1, 1};
+  int count_2[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count_2);
+  }
+
+  VerifyTableIdAndPkInCDCRecords(&get_changes_resp, &record_primary_key, &record_table_id);
+  // New row added, therefore, this should have a different primary key compared to the previous
+  // row.
+  ASSERT_EQ(record_primary_key.size(), 2);
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count_2[i], count_2[i]);
+  }
+
+  record_size = get_changes_resp.cdc_sdk_proto_records_size();
+  for (uint32 i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = get_changes_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 3);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 4);
+      ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
+      ASSERT_FALSE(record.row_message().new_tuple(3).has_datum_string());
+      ASSERT_EQ(
+          record.row_message().new_tuple(3).pg_type(),
+          record.row_message().new_tuple(3).column_type());
+    }
+  }
+
+  ASSERT_EQ(record_table_id.size(), 1);
+  ASSERT_EQ(*(record_table_id.begin()), table.table_id());
+}
+
+void CDCSDKYsqlTest::TestTableIdAndPkInCDCRecords(bool colocated_db) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, colocated_db));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  int num_tablets_per_table = 1;
+  std::string table1_name = "test_table_1";
+  std::string table2_name = "test_table_2";
+  std::string create_table_query = "CREATE TABLE $0 ($1 int primary key, $2 int, $3 int)";
+  if (!colocated_db) {
+    num_tablets_per_table = 3;
+    std::string split_tablet_query = Format("SPLIT INTO $0 TABLETS", num_tablets_per_table);
+    create_table_query += split_tablet_query;
+  }
+  ASSERT_OK(conn.ExecuteFormat(
+      create_table_query, table1_name, kKeyColumnName, kValueColumnName, kValue2ColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      create_table_query, table2_name, kKeyColumnName, kValueColumnName, kValue2ColumnName));
+
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, table1_name));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, table2_name));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &table1_tablets, nullptr));
+  ASSERT_EQ(table1_tablets.size(), num_tablets_per_table);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table2_tablets;
+  ASSERT_OK(test_client()->GetTablets(table2, 0, &table2_tablets, nullptr));
+  ASSERT_EQ(table2_tablets.size(), num_tablets_per_table);
+  if (colocated_db) {
+    ASSERT_EQ(table1_tablets[0].tablet_id(), table2_tablets[0].tablet_id());
+  }
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Perform DML in multi-shard & single-shard txns
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_table_1 VALUES (1,1,1)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_table_2 VALUES (10,10,10)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test_table_1 SET $0 = 10 WHERE $1 = 1", kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test_table_2 SET $0 = 100 WHERE $1 = 10", kValueColumnName, kKeyColumnName));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test_table_1 SET $0 = 10 WHERE $1 = 1", kValue2ColumnName, kKeyColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test_table_2 SET $0 = 100 WHERE $1 = 10", kValue2ColumnName, kKeyColumnName));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM test_table_1 WHERE $0 = 1", kKeyColumnName));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM test_table_2 WHERE $0 = 10", kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  std::unordered_map<TableId, std::set<string>> dml_records_primary_key_per_table;
+  std::unordered_map<TableId, vector<CDCSDKProtoRecordPB>> dml_records_per_table;
+  // 2 Inserts + 4 Updates + 2 Deletes
+  int expected_dml_records = 8;
+  int dml_records = 0;
+  auto process_table_changes = [&](const auto& tablets) {
+    for (int i = 0; i < tablets.size(); ++i) {
+      auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[i].tablet_id()));
+      cp_resp.set_write_id(0);
+      auto get_changes_resp = GetAllPendingChangesFromCdc(stream_id, tablets, &cp_resp, i);
+      LOG(INFO) << "Received " << get_changes_resp.records.size()
+                << " records on tablet: " << tablets[i].tablet_id();
+      for (const auto& record : get_changes_resp.records) {
+        if (IsDMLRecord(record)) {
+          ++dml_records;
+          ASSERT_TRUE(record.row_message().has_table_id());
+          ASSERT_TRUE(record.row_message().has_primary_key());
+          auto table_id = record.row_message().table_id();
+          auto pk = record.row_message().primary_key();
+          if (record.row_message().table() == table1.table_name()) {
+            ASSERT_EQ(table_id, table1.table_id());
+          } else {
+            ASSERT_EQ(table_id, table2.table_id());
+          }
+          dml_records_per_table[table_id].push_back(record);
+          dml_records_primary_key_per_table[table_id].insert(pk);
+        } else if (record.row_message().op() == RowMessage::DDL) {
+          ASSERT_TRUE(record.row_message().has_table_id());
+          ASSERT_FALSE(record.row_message().has_primary_key());
+        } else {
+          ASSERT_FALSE(record.row_message().has_table_id());
+          ASSERT_FALSE(record.row_message().has_primary_key());
+        }
+      }
+    }
+  };
+
+  process_table_changes(table1_tablets);
+  // For colocated tables, skip polling on 2nd table because in the previous call itself, we would
+  // have received records from both the tables.
+  if (!colocated_db) {
+    process_table_changes(table2_tablets);
+  }
+
+  ASSERT_EQ(dml_records, expected_dml_records);
+  for (const auto& entry : dml_records_per_table) {
+    ASSERT_EQ(entry.second.size(), 4);
+  }
+  // Since all the DMLs are performed on the same row of the table, we should have received the same
+  // primary key with each DML record. Therefore, the set should only contain 1 entry for primary
+  // key.
+  for (const auto& entry : dml_records_primary_key_per_table) {
+    ASSERT_EQ(entry.second.size(), 1);
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableIdAndPkInCDCRecordsOnNonColocatedTables) {
+  TestTableIdAndPkInCDCRecords(false);
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableIdAndPkInCDCRecordsOnColocatedTables) {
+  TestTableIdAndPkInCDCRecords(true);
 }
 
 }  // namespace cdc

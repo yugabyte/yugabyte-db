@@ -35,6 +35,7 @@ public class MetricGraphService implements GraphSourceIF {
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
   public static final String NAMESPACE_ID = "namespace_id";
+  public static final String NODE_PREFIX = "node_prefix";
 
   private static final Set<String> DATA_DISK_USAGE_METRICS =
       ImmutableSet.of(
@@ -117,6 +118,7 @@ public class MetricGraphService implements GraphSourceIF {
 
       Map<String, String> queries = getQueries(settings, context);
       result.setLayout(config.getLayout());
+      result.setStepSeconds(query.getStepSeconds());
       List<GraphData> data = new ArrayList<>();
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
@@ -163,14 +165,14 @@ public class MetricGraphService implements GraphSourceIF {
     if (settings.getSplitMode() == GraphSettings.SplitMode.NONE) {
       return Collections.emptyMap();
     }
-    long range = query.getStepSeconds();
     long end = query.getEnd().getEpochSecond();
+    long start = query.getStart().getEpochSecond();
     MetricQueryContext context =
         MetricQueryContext.builder()
             .graphConfig(config)
             .graphQuery(query)
             .topKQuery(true)
-            .queryRangeSecs(range)
+            .queryRangeSecs(end - start)
             .queryTimestampSec(end)
             .additionalGroupBy(getAdditionalGroupBy(settings))
             .excludeFilters(getExcludeFilters(settings))
@@ -447,9 +449,8 @@ public class MetricGraphService implements GraphSourceIF {
       metricGraphData.setTableName(metricInfo.remove(TABLE_NAME));
       metricGraphData.setNamespaceName(metricInfo.remove(NAMESPACE_NAME));
       metricGraphData.setNamespaceId(metricInfo.remove(NAMESPACE_ID));
-      if (metricInfo.containsKey("node_prefix")) {
-        metricGraphData.setName(metricInfo.get("node_prefix"));
-      } else if (metricInfo.size() == 1) {
+      metricGraphData.setNodePrefix(metricInfo.remove(NODE_PREFIX));
+      if (metricInfo.size() == 1) {
         // If we have a group_by clause, the group by name would be the only
         // key in the metrics data, fetch that and use that as the name
         String key = metricInfo.keySet().iterator().next();
@@ -464,13 +465,15 @@ public class MetricGraphService implements GraphSourceIF {
         }
       }
 
+      metricGraphData.setLabels(new HashMap<>());
+      metricGraphData.getLabels().putAll(metricInfo);
+
       if (metricInfo.size() <= 1) {
         if (layout.getYaxis() != null
             && layout.getYaxis().getAlias().containsKey(metricGraphData.getName())) {
           metricGraphData.setName(layout.getYaxis().getAlias().get(metricGraphData.getName()));
         }
       } else {
-        metricGraphData.setLabels(new HashMap<>());
         // In case we want to use instance name - it's already set above
         // Otherwise - replace metric name with alias.
         if (layout.getYaxis() != null && !useInstanceName) {
@@ -492,8 +495,6 @@ public class MetricGraphService implements GraphSourceIF {
               metricGraphData.setName(entry.getValue());
             }
           }
-        } else {
-          metricGraphData.getLabels().putAll(metricInfo);
         }
       }
       if (result.getValues() != null) {

@@ -38,7 +38,8 @@ import {
   MaxAcceptableLag,
   CurrentReplicationLag,
   getEnabledConfigActions,
-  getXClusterConfigTableType
+  getXClusterConfigTableType,
+  getStrictestReplicationLagAlertThreshold
 } from '../ReplicationUtils';
 import { EditConfigModal } from './EditConfigModal';
 import { LagGraph } from './LagGraph';
@@ -147,7 +148,7 @@ export function ReplicationDetails({
     name: AlertName.REPLICATION_LAG,
     targetUuid: currentUniverseUuid
   };
-  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+  const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
@@ -217,6 +218,7 @@ export function ReplicationDetails({
     return <YBErrorIndicator customErrorMessage={customErrorMessage} />;
   }
 
+  const allowedTasks = sourceUniverseQuery.data?.allowedTasks;
   const hideModal = () => dispatch(closeDialog());
   const isDeleteConfigModalVisible = showModal && visibleModal === XClusterModalName.DELETE_CONFIG;
   const xClusterConfig = xClusterConfigQuery.data;
@@ -243,6 +245,7 @@ export function ReplicationDetails({
         />
         {isDeleteConfigModalVisible && (
           <DeleteConfigModal
+            allowedTasks={allowedTasks!}
             sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
             targetUniverseUUID={xClusterConfig.targetUniverseUUID}
             xClusterConfigUUID={xClusterConfig.uuid}
@@ -331,6 +334,7 @@ export function ReplicationDetails({
           />
           {isDeleteConfigModalVisible && (
             <DeleteConfigModal
+              allowedTasks={allowedTasks!}
               sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
               targetUniverseUUID={xClusterConfig.targetUniverseUUID}
               xClusterConfigUUID={xClusterConfig.uuid}
@@ -358,16 +362,16 @@ export function ReplicationDetails({
   }
 
   let numTablesAboveLagThreshold = 0;
-  if (maxAcceptableLagQuery.isSuccess && tableReplicationLagQuery.isSuccess) {
-    // TODO: Add type for alert configurations.
-    const maxAcceptableLag = Math.min(
-      ...maxAcceptableLagQuery.data.map(
-        (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-      )
+  if (replicationLagAlertConfigQuery.isSuccess && tableReplicationLagQuery.isSuccess) {
+    const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+      replicationLagAlertConfigQuery.data
     );
-
     tableReplicationLagQuery.data.async_replication_sent_lag?.data.forEach((trace) => {
-      if (trace.y[trace.y.length - 1] && trace.y[trace.y.length - 1] > maxAcceptableLag) {
+      if (
+        trace.y[trace.y.length - 1] &&
+        maxAcceptableLag &&
+        trace.y[trace.y.length - 1] > maxAcceptableLag
+      ) {
         numTablesAboveLagThreshold += 1;
       }
     });
@@ -385,7 +389,7 @@ export function ReplicationDetails({
   const xClusterConfigTables = xClusterConfigQuery.data?.tableDetails ?? [];
   const shouldShowConfigError = numTablesRequiringBootstrap > 0;
   const shouldShowTableLagWarning =
-    maxAcceptableLagQuery.isSuccess &&
+    replicationLagAlertConfigQuery.isSuccess &&
     tableReplicationLagQuery.isSuccess &&
     numTablesAboveLagThreshold > 0 &&
     xClusterConfigTables.length > 0;
@@ -694,9 +698,11 @@ export function ReplicationDetails({
             </Col>
             <Col lg={8} className="lag-status-graph">
               <div className="lag-stats">
-                <Row>
-                  <Col lg={6}>Current Lag</Col>
-                  <Col lg={6}>
+                <Box display="flex">
+                  <Box whiteSpace="pre-wrap" width="50%">
+                    Current Lag
+                  </Box>
+                  <Box marginLeft={2}>
                     <span className="lag-text">
                       <CurrentReplicationLag
                         xClusterConfigUuid={xClusterConfig.uuid}
@@ -704,17 +710,19 @@ export function ReplicationDetails({
                         sourceUniverseUuid={xClusterConfig.sourceUniverseUUID}
                       />
                     </span>
-                  </Col>
-                </Row>
+                  </Box>
+                </Box>
                 <div className="replication-divider" />
-                <Row>
-                  <Col lg={6}>Max acceptable lag</Col>
-                  <Col lg={6}>
+                <Box display="flex">
+                  <Box whiteSpace="pre-wrap" width="50%">
+                    Lowest Replication Lag Alert Threshold
+                  </Box>
+                  <Box marginLeft={2}>
                     <span className="lag-value">
                       <MaxAcceptableLag currentUniverseUUID={xClusterConfig.sourceUniverseUUID} />
                     </span>
-                  </Col>
-                </Row>
+                  </Box>
+                </Box>
               </div>
               <div>
                 <LagGraph
@@ -755,6 +763,7 @@ export function ReplicationDetails({
         </div>
         {isEditConfigModalVisible && (
           <EditConfigModal
+            allowedTasks={allowedTasks!}
             xClusterConfig={xClusterConfig}
             visible={isEditConfigModalVisible}
             onHide={hideModal}
@@ -769,6 +778,7 @@ export function ReplicationDetails({
         )}
         {isDeleteConfigModalVisible && (
           <DeleteConfigModal
+            allowedTasks={allowedTasks!}
             sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
             targetUniverseUUID={xClusterConfig.targetUniverseUUID}
             xClusterConfigUUID={xClusterConfig.uuid}
@@ -781,6 +791,7 @@ export function ReplicationDetails({
         {isRestartConfigModalVisible && (
           <RestartConfigModal
             isDrInterface={false}
+            allowedTasks={allowedTasks!}
             configTableType={configTableType}
             isVisible={isRestartConfigModalVisible}
             onHide={hideModal}
@@ -789,6 +800,7 @@ export function ReplicationDetails({
         )}
         {isSyncConfigModalVisible && (
           <SyncXClusterConfigModal
+            allowedTasks={allowedTasks!}
             xClusterConfig={xClusterConfig}
             isDrInterface={false}
             modalProps={{ open: isSyncConfigModalVisible, onClose: hideModal }}

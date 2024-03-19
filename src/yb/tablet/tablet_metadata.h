@@ -43,11 +43,13 @@
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/dockv/partition.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/schema_packing.h"
 
 #include "yb/fs/fs_manager.h"
@@ -62,11 +64,11 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
-#include "yb/util/opid.h"
-#include "yb/util/opid.pb.h"
 
 namespace yb {
 namespace tablet {
+
+using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
 
 extern const int64 kNoDurableMemStore;
 extern const std::string kIntentsSubdir;
@@ -244,7 +246,7 @@ struct KvStoreInfo {
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
-  std::unordered_map<TableId, TableInfoPtr> tables;
+  TableInfoMap tables;
 
   // Mapping form colocation id to table info.
   std::unordered_map<ColocationId, TableInfoPtr> colocation_to_table;
@@ -730,6 +732,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void OnChangeMetadataOperationAppliedUnlocked(const OpId& applied_op_id) REQUIRES(data_mutex_);
 
   Status OnBackfillDoneUnlocked(const TableId& table_id) REQUIRES(data_mutex_);
+
+  Status SetTableInfoUnlocked(const TableInfoMap::iterator& it,
+                              const TableInfoPtr& new_table_info) REQUIRES(data_mutex_);
 
   enum State {
     kNotLoadedYet,

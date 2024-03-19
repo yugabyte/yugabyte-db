@@ -1072,13 +1072,17 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			ReplicationSlotSave();
 	}
 
-	/* 
-	 * Send "0/0" as the consistent wal location instead of a NULL value. This
-	 * is so that the drivers which have a NULL check on the value continue to
-	 * work. 
+	/*
+	 * Send "0/2" as the consistent wal location. The LSN "0/1" is reserved for
+	 * the records to be streamed as part of the snapshot consumption. The first
+	 * change record is always streamed with LSN "0/2".
+	 *
+	 * This value should be kept in sync with the confirmed_flush_lsn value
+	 * being set during the creation of the CDC stream in the
+	 * PopulateCDCStateTable function of xrepl_catalog_manager.cc.
 	 */
 	if (IsYugaByteEnabled())
-		snprintf(xloc, sizeof(xloc), "%X/%X", 0, 0);
+		snprintf(xloc, sizeof(xloc), "%X/%X", 0, 2);
 	else
 		snprintf(xloc, sizeof(xloc), "%X/%X",
 				 (uint32) (MyReplicationSlot->data.confirmed_flush >> 32),

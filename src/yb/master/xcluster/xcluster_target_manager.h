@@ -18,7 +18,6 @@
 
 #include "yb/master/xcluster/master_xcluster_types.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb::master {
@@ -28,6 +27,7 @@ class TSHeartbeatResponsePB;
 
 class PostTabletCreateTaskBase;
 class XClusterSafeTimeService;
+struct XClusterStatus;
 
 class XClusterTargetManager {
  public:
@@ -79,6 +79,10 @@ class XClusterTargetManager {
 
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
+
+  Status PopulateXClusterStatus(XClusterStatus& xcluster_status) const;
+
+  Status PopulateXClusterStatusJson(JsonWriter& jw) const;
 
  private:
   Master& master_;

@@ -56,7 +56,7 @@
 
 /* Network transfer cost */
 #define YB_DEFAULT_LOCAL_LATENCY_COST 180.0
-#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 64000.0
+#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 80000.0
 
 /*
  * TODO : Since we cannot currently estimate the number of key value pairs per
@@ -149,6 +149,9 @@ extern void yb_cost_index(IndexPath *path, PlannerInfo *root,
 extern void cost_index(IndexPath *path, PlannerInfo *root,
 		   double loop_count, bool partial_path);
 extern void cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+					  ParamPathInfo *param_info,
+					  Path *bitmapqual, double loop_count);
+extern void cost_yb_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 					  ParamPathInfo *param_info,
 					  Path *bitmapqual, double loop_count);
 extern void cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root);

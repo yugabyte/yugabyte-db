@@ -6,7 +6,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -70,6 +69,10 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
         n -> {
           n.masterState = MasterState.ToStop;
         });
+    for (Cluster cluster : taskParams().clusters) {
+      createValidateDiskSizeOnNodeRemovalTasks(
+          universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
+    }
     createPreflightNodeCheckTasks(
         taskParams().clusters,
         PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet),
@@ -117,6 +120,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
         "Configure numNodes={}, Replication factor={}",
         userIntent.numNodes,
         userIntent.replicationFactor);
+
+    // Set the current DB master addresses.
+    getOrCreateExecutionContext().setMasterNodes(getRemoteMasterNodes(universe));
 
     Set<NodeDetails> nodesToBeRemoved = PlacementInfoUtil.getNodesToBeRemoved(nodes);
 
@@ -209,11 +215,15 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           installSoftwareParams -> {
             installSoftwareParams.isMasterInShellMode = true;
             installSoftwareParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+            installSoftwareParams.masterAddrsOverride =
+                getOrCreateExecutionContext().getMasterAddrsSupplier();
           },
           gFlagsParams -> {
             gFlagsParams.isMasterInShellMode = true;
             gFlagsParams.resetMasterState = true;
             gFlagsParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+            gFlagsParams.masterAddrsOverride =
+                getOrCreateExecutionContext().getMasterAddrsSupplier();
           });
       // Copy the source root certificate to the provisioned nodes.
       createTransferXClusterCertsCopyTasks(
@@ -340,11 +350,13 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
               // Remove this node from subsequent address update as it's no longer a master.
               currentLiveMasters.remove(node);
+              getOrCreateExecutionContext().removeMasterNode(node);
             } else {
               // Include the new master in address update.
               currentLiveMasters.add(node);
+              getOrCreateExecutionContext().addMasterNode(node);
             }
-            createMasterAddressUpdateTask(currentLiveMasters, allLiveTservers);
+            createMasterAddressUpdateTask(universe, currentLiveMasters, allLiveTservers);
           });
       if (!mastersToStop.isEmpty()) {
         createStopMasterTasks(mastersToStop)
@@ -442,7 +454,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       SubTaskGroupType subTaskGroupType,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> removeMasters,
-      BiConsumer<ChangeMasterConfig.OpType, NodeDetails> postChangeConfigCallback) {
+      BiConsumer<ChangeMasterConfig.OpType, NodeDetails> postCreateChangeConfigTask) {
 
     // Get the list of node names to add as masters.
     List<NodeDetails> mastersToAdd = new ArrayList<>(newMasters);
@@ -451,29 +463,28 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
 
     // Find the minimum number of master changes where we can perform an add followed by a remove.
     int numIters = Math.min(mastersToAdd.size(), mastersToRemove.size());
-
     // Perform a master add followed by a remove if possible. Need not remove the (current) master
     // leader last - even if we get current leader, it might change by the time we run the actual
     // task. So we might do multiple leader stepdown's, which happens automatically in the
     // client code during the task's run.
     for (int idx = 0; idx < numIters; idx++) {
       createChangeConfigTasks(mastersToAdd.get(idx), true, subTaskGroupType);
-      postChangeConfigCallback.accept(ChangeMasterConfig.OpType.AddMaster, mastersToAdd.get(idx));
+      postCreateChangeConfigTask.accept(ChangeMasterConfig.OpType.AddMaster, mastersToAdd.get(idx));
       createChangeConfigTasks(mastersToRemove.get(idx), false, subTaskGroupType);
-      postChangeConfigCallback.accept(
+      postCreateChangeConfigTask.accept(
           ChangeMasterConfig.OpType.RemoveMaster, mastersToRemove.get(idx));
     }
 
     // Perform any additions still left.
     for (int idx = numIters; idx < mastersToAdd.size(); idx++) {
       createChangeConfigTasks(mastersToAdd.get(idx), true, subTaskGroupType);
-      postChangeConfigCallback.accept(ChangeMasterConfig.OpType.AddMaster, mastersToAdd.get(idx));
+      postCreateChangeConfigTask.accept(ChangeMasterConfig.OpType.AddMaster, mastersToAdd.get(idx));
     }
 
     // Perform any removals still left.
     for (int idx = numIters; idx < mastersToRemove.size(); idx++) {
       createChangeConfigTasks(mastersToRemove.get(idx), false, subTaskGroupType);
-      postChangeConfigCallback.accept(
+      postCreateChangeConfigTask.accept(
           ChangeMasterConfig.OpType.RemoveMaster, mastersToRemove.get(idx));
     }
   }

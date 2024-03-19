@@ -12,7 +12,6 @@
 
 #include "yb/cdc/cdc_state_table.h"
 
-#include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
@@ -271,9 +270,9 @@ Result<CDCStateTableEntry> DeserializeRow(
 }
 }  // namespace
 
-CDCStateTable::CDCStateTable(client::AsyncClientInitializer* async_client_init)
-    : async_client_init_(async_client_init) {
-  CHECK_NOTNULL(async_client_init);
+CDCStateTable::CDCStateTable(std::shared_future<client::YBClient*> client_future)
+    : client_future_(std::move(client_future)) {
+  CHECK(client_future_.valid());
 }
 
 CDCStateTable::CDCStateTable(client::YBClient* client) : client_(client) { CHECK_NOTNULL(client); }
@@ -425,8 +424,8 @@ Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
 
 Result<client::YBClient*> CDCStateTable::GetClient() {
   if (!client_) {
-    SCHECK_NOTNULL(async_client_init_);
-    client_ = async_client_init_->client();
+    CHECK(client_future_.valid());
+    client_ = client_future_.get();
   }
 
   SCHECK(client_, IllegalState, "CDC Client not initialized or shutting down");

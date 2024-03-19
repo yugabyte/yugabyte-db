@@ -111,4 +111,7 @@ concept TupleLikeType =
       std::get<0>(a);
     }; // NOLINT
 
+template<typename T>
+concept NonReferenceType = !std::is_reference_v<T>;
+
 }  // namespace yb

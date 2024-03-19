@@ -81,7 +81,15 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
-  rpc::Messenger* GetMessenger(tserver::ServerType type) const override;
+  rpc::Messenger* GetMessenger(ash::Component component) const override;
+
+  std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const override {
+    // We don't have a CDC service on master, so return null from here.
+    // The caller is expected to do a null check.
+    return nullptr;
+  }
+
+  void ClearAllMetaCachesOnServer() override;
 
  private:
   Master* master_ = nullptr;

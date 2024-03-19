@@ -12,6 +12,8 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -28,6 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 
 // Tracks the read only kubernetes cluster create intent within an existing universe.
 @Slf4j
+@Abortable
+@Retryable
 public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
   @Inject
   protected ReadOnlyKubernetesClusterCreate(BaseTaskDependencies baseTaskDependencies) {
@@ -39,7 +43,9 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     try {
       verifyParams(UniverseOpType.CREATE);
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
       preTaskActions(universe);
       addBasicPrecheckTasks();
 

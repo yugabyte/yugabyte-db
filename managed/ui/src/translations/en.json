@@ -413,7 +413,8 @@
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
-        "showRetired": "Show retired recommendations"
+        "showRetired": "Show retired recommendations",
+        "cooldownHours": "Disk can be resized after a cooldown period of 6 hours"
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -631,8 +632,8 @@
           "viewTaskDetails": "View Details",
           "actionMenu": {
             "label": "Actions",
-            "deleteConfig": "Remove disaster recovery",
-            "editDrConfig": "Edit DR configuration",
+            "deleteConfig": "Remove Disaster Recovery",
+            "editDrConfig": "Edit DR Configuration",
             "editDrConfigTarget": "Change DR Replica Universe",
             "editTables": "Select Database and Tables",
             "switchover": "Switchover",
@@ -1033,8 +1034,8 @@
         },
         "syncDbModal": {
           "title": "Reconcile Config with Database",
-          "syncXClusterConfirmation": "If out-of-band changes to an xCluster configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
-          "syncDrConfirmation": "If out-of-band changes to a disaster recovery configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
+          "syncXClusterConfirmation": "If changes have been made to your xCluster configuration outside of YugabyteDB Anywhere (for example, using yb-admin), reconciling the xCluster configuration with the database updates the configuration in YugabyteDB Anywhere to match the changes.",
+          "syncDrConfirmation": "If changes have been made to your disaster recovery configuration outside of YugabyteDB Anywhere (for example, using yb-admin), reconciling the DR configuration with the database updates the configuration in YugabyteDB Anywhere to match the changes.",
           "submitButton": "Reconcile Config with Database",
           "error": {
             "requestFailureLabel": "Reconcile config with database request failed.",
@@ -1591,9 +1592,9 @@
         "region": "Region",
         "amiId": "AMI ID",
         "portDetails": "Provide SSH user and SSH port details",
-        "sshUser": "SSH User",
-        "sshUserPlaceholder": "e.g. centos",
-        "sshPort": "SSH Port",
+        "sshUser": "SSH User (Optional)",
+        "sshUserPlaceholder": "e.g. ubuntu",
+        "sshPort": "SSH Port (Optional)",
         "sshPortPlaceholder": "e.g. 22",
         "menuActions": {
           "edit": "Edit",
@@ -1607,7 +1608,8 @@
           "nameRequired": "Name is required",
           "globalYBImagenameRequired": "Machine Image ID is required",
           "amiRequired": "Ami ID is Required",
-          "linuxVersionAlreadyExists": "Image bundle with same name exists"
+          "linuxVersionAlreadyExists": "Image bundle with same name exists",
+          "cannotModfiyYBABundles": "You cannot modify YBA Managed bundles"
         }
       },
       "upgradeModal": {
@@ -1619,7 +1621,8 @@
         "infoContent": "<b>Note!</b><br/><br/>The process of upgrading the Universe OS is <b>time-consuming</b>, as it involves upgrading one node at a time through a rolling upgrade approach. Each individual node upgrade consists of detaching the current boot disk, attaching a new boot disk, and then rebooting the node. <br/><br/>Throughout this entire process, no other Universe operations can take place, but your application will remain intact. It is advisable to <b>upgrade during off-peak hours.</b>",
         "submitLabel": "Upgrade",
         "restartAfterInSecond": "Rolling Restart Delay Between Servers (secs)",
-        "successMsg": "Success. Click <0>here</0> for task details"
+        "successMsg": "Success. Click <0>here</0> for task details",
+        "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation."
       },
       "deleteModal": {
         "title": "Delete Linux Version",
@@ -1719,6 +1722,23 @@
       "editKubernetesModal": {
         "modalTitle": "Edit Kubernetes",
         "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
+      }
+    },
+    "ha": {
+      "config": {
+        "globalState": {
+          "Unknown": "Unknown",
+          "NoReplicas": "No Replicas",
+          "AwaitingReplicas": "Awaiting Connection to Replicas",
+          "Operational": "Operational",
+          "Error": "Error",
+          "Warning": "Warning"
+        },
+        "instanceState": {
+          "Awaiting Connection to Replicas": "Awaiting Connection to Replicas",
+          "Connected": "Connected",
+          "Disconnected": "Disconnected"
+        }
       }
     }
   }

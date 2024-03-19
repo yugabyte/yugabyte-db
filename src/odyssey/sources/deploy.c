@@ -9,7 +9,7 @@
 #include <machinarium.h>
 #include <odyssey.h>
 
-#define YB_SESSION_PARAMETER_HANDLED TRUE
+#define YB_ENABLED TRUE
 
 /*
  * Set the client context on a given server connection.
@@ -55,7 +55,7 @@ int od_deploy(od_client_t *client, char *context)
 		return 0;
 	}
 
-#if YB_SESSION_PARAMETER_HANDLED != TRUE
+#if YB_ENABLED == TRUE
 	/* compare and set options which are differs from server */
 	int query_count;
 	query_count = 0;

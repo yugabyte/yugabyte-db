@@ -76,7 +76,7 @@
 
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -413,7 +413,7 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
       vector<string> extra_flags;
       for (const auto& flag : opts_.extra_tserver_flags) {
         if (flag.find("certs_dir") != string::npos) {
-          extra_flags.push_back(flag);
+          extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
         }
       }
       // we need 1 yb controller server for each tserver
@@ -1703,6 +1703,9 @@ Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
   for (const auto& tablet_id : tablet_ids) {
     req.add_tablet_ids(tablet_id);
   }
+  if (tablet_ids.empty()) {
+    req.set_all_tablets(true);
+  }
 
   auto ts_admin_service_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
     proxy_cache_.get(), ts->bound_rpc_addr());
@@ -2837,11 +2840,6 @@ Status ExternalTabletServer::Start(
   flags.Add("start_cql_proxy", start_cql_proxy_);
   flags.Add("tserver_master_addrs", master_addrs_);
 
-  // Use conservative number of threads for the mini cluster for unit test env
-  // where several unit tests tend to run in parallel.
-  flags.Add("tablet_server_svc_num_threads", "64");
-  flags.Add("ts_consensus_svc_num_threads", "20");
-
   for (const auto& flag_value : extra_flags) {
     flags.Add(flag_value.first, flag_value.second);
   }
@@ -3023,8 +3021,8 @@ void StartSecure(
     std::unique_ptr<rpc::Messenger>* messenger,
     const std::vector<std::string>& master_flags) {
   rpc::MessengerBuilder messenger_builder("test_client");
-  *secure_context = ASSERT_RESULT(server::SetupSecureContext(
-      "", "127.0.0.100", server::SecureContextType::kInternal, &messenger_builder));
+  *secure_context = ASSERT_RESULT(rpc::SetupSecureContext(
+      /*root_dir=*/"", "127.0.0.100", rpc::SecureContextType::kInternal, &messenger_builder));
   *messenger = ASSERT_RESULT(messenger_builder.Build());
   (**messenger).TEST_SetOutboundIpBase(ASSERT_RESULT(HostToAddress("127.0.0.1")));
 

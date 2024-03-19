@@ -66,7 +66,6 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     checkUniverseVersion();
     String errorString = null;
-
     Universe universe =
         lockAndFreezeUniverseForUpdate(
             taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
@@ -120,14 +119,13 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       errorString = t.getMessage();
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      universe = unlockUniverseForUpdate(errorString);
-
+      unlockUniverseForUpdate(errorString);
       log.info("Finished {} task.", getName());
     }
   }

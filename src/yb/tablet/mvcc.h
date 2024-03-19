@@ -35,13 +35,14 @@
 #include <deque>
 #include <vector>
 
+#include "yb/common/opid.h"
+
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/server/clock.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 namespace tablet {

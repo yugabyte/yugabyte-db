@@ -34,6 +34,8 @@
 #include "yb/util/physical_time.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(enable_db_clone);
+
 namespace yb {
 namespace master {
 
@@ -80,6 +82,7 @@ class CloneStateManagerTest : public YBTest {
  protected:
   void SetUp() override {
     YBTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
     clone_state_manager_ = std::unique_ptr<CloneStateManager>(
         new CloneStateManager(SetupExternalFunctions()));
 
@@ -112,32 +115,44 @@ class CloneStateManagerTest : public YBTest {
   }
 
   CloneStateManager::ExternalFunctions SetupExternalFunctions() {
-    return CloneStateManager::ExternalFunctions {
-      .Restore = [&](const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
-        return mock_funcs_.Restore(snapshot_id, restore_at);
-      },
-      .ListRestorations = [&] (
-          const TxnSnapshotId& snapshot_id,
-          ListSnapshotRestorationsResponsePB* resp) {
-        return mock_funcs_.ListRestorations(snapshot_id, resp);
-      },
+    return CloneStateManager::ExternalFunctions{
+        .ListSnapshotSchedules = nullptr,
+        .Restore =
+            [&](const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
+              return mock_funcs_.Restore(snapshot_id, restore_at);
+            },
+        .ListRestorations =
+            [&](const TxnSnapshotId& snapshot_id, ListSnapshotRestorationsResponsePB* resp) {
+              return mock_funcs_.ListRestorations(snapshot_id, resp);
+            },
 
-      .GetTabletInfo = [&](const TabletId& tablet_id) -> Result<TabletInfoPtr> {
-        return mock_funcs_.GetTabletInfo(tablet_id);
-      },
 
-      .ScheduleCloneTabletCall = [&](
-          const TabletInfoPtr& source_tablet, LeaderEpoch epoch, tablet::CloneTabletRequestPB req)
-          { return mock_funcs_.ScheduleCloneTabletCall(source_tablet, epoch, req); },
+        .GetTabletInfo = [&](const TabletId& tablet_id) -> Result<TabletInfoPtr> {
+          return mock_funcs_.GetTabletInfo(tablet_id);
+        },
 
-      .Upsert = [&](const CloneStateInfoPtr& clone_state) {
-          { return mock_funcs_.Upsert(clone_state); }
-      },
-      .Load = [&] (
-          const std::string& type,
-          std::function<Status(const std::string&, const SysCloneStatePB&)> inserter) {
-        return mock_funcs_.Load(type, inserter);
-      },
+        .FindNamespace = nullptr,
+
+        .ScheduleCloneTabletCall =
+            [&](const TabletInfoPtr& source_tablet, LeaderEpoch epoch,
+                tablet::CloneTabletRequestPB req) {
+              return mock_funcs_.ScheduleCloneTabletCall(source_tablet, epoch, req);
+            },
+        .ScheduleClonePGSchemaTask = nullptr,
+        .DoCreateSnapshot = nullptr,
+        .GenerateSnapshotInfoFromSchedule = nullptr,
+        .DoImportSnapshotMeta = nullptr,
+        .PickTserver = nullptr,
+
+        .Upsert =
+            [&](const CloneStateInfoPtr& clone_state) {
+              { return mock_funcs_.Upsert(clone_state); }
+            },
+        .Load =
+            [&](const std::string& type,
+                std::function<Status(const std::string&, const SysCloneStatePB&)> inserter) {
+              return mock_funcs_.Load(type, inserter);
+            },
     };
   }
 
@@ -154,13 +169,8 @@ class CloneStateManagerTest : public YBTest {
 
     EXPECT_CALL(mock_funcs_, Upsert(_));
     return clone_state_manager_->CreateCloneState(
-      kSeqNo,
-      kSourceNamespaceId,
-      kTargetNamespaceName,
-      kSourceSnapshotId,
-      kTargetSnapshotId,
-      kRestoreTime,
-      table_snapshot_data);
+        kSeqNo, kSourceNamespaceId, kSourceSnapshotId, kTargetSnapshotId, kRestoreTime,
+        table_snapshot_data);
   }
 
   // This does not EXPECT_CALL Upsert because some tests expect the call to fail.
@@ -173,13 +183,8 @@ class CloneStateManagerTest : public YBTest {
     tablet_ids.set_new_id("test_target_id");
     *table_data.table_meta->add_tablets_ids() = tablet_ids;
     return clone_state_manager_->CreateCloneState(
-      kSeqNo + 1,
-      kSourceNamespaceId,
-      kTargetNamespaceName + "second",
-      kSourceSnapshotId,
-      kTargetSnapshotId,
-      kRestoreTime,
-      table_snapshot_data);
+        kSeqNo + 1, kSourceNamespaceId, kSourceSnapshotId, kTargetSnapshotId, kRestoreTime,
+        table_snapshot_data);
   }
 
   Status HandleCreatingState(const CloneStateInfoPtr& clone_state) {

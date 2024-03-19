@@ -1641,7 +1641,7 @@ contain_leaked_vars_walker(Node *node, void *context)
 
 				forthree(opid, rcexpr->opnos,
 						 larg, rcexpr->largs,
-						 rarg, rcexpr->rargs)
+						 rarg, castNode(List, rcexpr->rargs))
 				{
 					Oid			funcid = get_opcode(lfirst_oid(opid));
 
@@ -2454,8 +2454,8 @@ CommuteRowCompareExpr(RowCompareExpr *clause)
 	 */
 
 	temp = clause->largs;
-	clause->largs = clause->rargs;
-	clause->rargs = temp;
+	clause->largs = castNode(List, clause->rargs);
+	clause->rargs = (Node *) temp;
 }
 
 /*

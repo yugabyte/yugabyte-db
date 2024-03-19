@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX integration-tests)
-set(YB_PCH_DEP_LIBS boost_regex opid_proto)
+set(YB_PCH_DEP_LIBS boost_regex)
 
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/test_certs
@@ -174,7 +174,6 @@ ADD_YB_TEST(ts_tablet_manager-itest)
 ADD_YB_TEST(ts_recovery-itest)
 ADD_YB_TEST(create-table-stress-test)
 ADD_YB_TEST(master-partitioned-test)
-ADD_YB_TEST(minicluster-snapshot-test)
 ADD_YB_TEST(delete_table-test)
 ADD_YB_TEST(external_mini_cluster-test)
 ADD_YB_TEST(linked_list-test)
@@ -186,6 +185,7 @@ ADD_YB_TEST(placement_info-itest)
 ADD_YB_TEST(kv_table-test)
 ADD_YB_TEST(kv_table_ts_failover-test)
 ADD_YB_TEST(kv_table_ts_failover_write_if-test)
+ADD_YB_TEST(faulty_drive-itest)
 ADD_YB_TEST(flush_under_load-test)
 ADD_YB_TEST(stepdown_under_load-test)
 ADD_YB_TEST(full_stack-insert-scan-test)
@@ -256,6 +256,9 @@ endfunction()
 
 ADD_YB_TEST(wait_states-itest)
 YB_TEST_TARGET_LINK_LIBRARIES(wait_states-itest yb-cql pg_wrapper_test_base)
+
+ADD_YB_TEST(minicluster-snapshot-test)
+YB_TEST_TARGET_LINK_LIBRARIES(minicluster-snapshot-test pg_wrapper_test_base)
 
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)

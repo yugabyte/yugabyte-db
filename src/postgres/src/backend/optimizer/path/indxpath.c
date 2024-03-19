@@ -126,6 +126,8 @@ static Path *choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel,
 static int	path_usage_comparator(const void *a, const void *b);
 static Cost bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
 					 Path *ipath);
+static Cost yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
+					 Path *ipath);
 static Cost bitmap_and_cost_est(PlannerInfo *root, RelOptInfo *rel,
 					List *paths);
 static PathClauseUsage *classify_index_clause_usage(Path *path,
@@ -335,17 +337,29 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 	 */
 	if (bitindexpaths != NIL)
 	{
-		Path	   *bitmapqual;
-		BitmapHeapPath *bpath;
-
+		Path *bitmapqual;
 		bitmapqual = choose_bitmap_and(root, rel, bitindexpaths);
-		bpath = create_bitmap_heap_path(root, rel, bitmapqual,
-										rel->lateral_relids, 1.0, 0);
-		add_path(rel, (Path *) bpath);
 
-		/* create a partial bitmap heap path */
-		if (rel->consider_parallel && rel->lateral_relids == NULL)
-			create_partial_bitmap_paths(root, rel, bitmapqual);
+		if (IsYugaByteEnabled() && rel->is_yb_relation)
+		{
+			YbBitmapTablePath *bpath;
+			bpath = create_yb_bitmap_table_path(root, rel, bitmapqual,
+												rel->lateral_relids, 1.0, 0);
+			add_path(rel, (Path *) bpath);
+
+			/* TODO(#20575): support parallel bitmap scans */
+		}
+		else
+		{
+			BitmapHeapPath *bpath;
+			bpath = create_bitmap_heap_path(root, rel, bitmapqual,
+											rel->lateral_relids, 1.0, 0);
+			add_path(rel, (Path *) bpath);
+
+			/* create a partial bitmap heap path */
+			if (rel->consider_parallel && rel->lateral_relids == NULL)
+				create_partial_bitmap_paths(root, rel, bitmapqual);
+		}
 	}
 
 	/*
@@ -382,7 +396,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 			Path	   *bitmapqual;
 			Relids		required_outer;
 			double		loop_count;
-			BitmapHeapPath *bpath;
+			Path	   *bpath;
 			ListCell   *lcp;
 
 			/* Identify all the bitmap join paths needing no more than that */
@@ -407,9 +421,18 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 			/* And push that path into the mix */
 			required_outer = PATH_REQ_OUTER(bitmapqual);
 			loop_count = get_loop_count(root, rel->relid, required_outer);
-			bpath = create_bitmap_heap_path(root, rel, bitmapqual,
-											required_outer, loop_count, 0);
-			add_path(rel, (Path *) bpath);
+
+			if (IsYugaByteEnabled() && rel->is_yb_relation)
+				bpath = (Path *) create_yb_bitmap_table_path(root, rel,
+															 bitmapqual,
+															 required_outer,
+															 loop_count, 0);
+
+			else
+				bpath = (Path *) create_bitmap_heap_path(root, rel, bitmapqual,
+														 required_outer,
+														 loop_count, 0);
+			add_path(rel, bpath);
 		}
 	}
 }
@@ -669,6 +692,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
 
 	/* See if we have any unbatchable filters. */
+	Relids batched_and_inner_relids =
+		bms_union(batchedrelids, index->rel->relids);
 	List *pclauses = NIL;
 	if (!bms_is_empty(batchedrelids)) {
 		pclauses = generate_join_implied_equalities(
@@ -676,11 +701,15 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			bms_union(batchedrelids, index->rel->relids),
 			batchedrelids,
 			rel);
-		pclauses = list_concat(pclauses, rel->joininfo);
-	}
 
-	Relids batched_and_inner_relids =
-		bms_union(batchedrelids, index->rel->relids);
+		foreach(lc, rel->joininfo)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+			if (join_clause_is_movable_into(rinfo, rel->relids,
+											batched_and_inner_relids))
+				pclauses = lappend(pclauses, rinfo);
+		}
+	}
 
 	foreach(lc, pclauses)
 	{
@@ -689,7 +718,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			yb_get_batched_restrictinfo(rinfo,
 									 batchedrelids,
 									 index->rel->relids);
-		if (!bms_is_subset(batched_and_inner_relids, rinfo->clause_relids))
+		if (!bms_overlap(rinfo->clause_relids, batchedrelids))
 			continue;
 
 		Assert(bms_overlap(rinfo->clause_relids, batchedrelids));
@@ -779,7 +808,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			add_path(rel, (Path *) ipath);
 		}
 
-		if (index->amhasgetbitmap &&
+		if (((index->amhasgetbitmap || index->yb_amhasgetbitmap) &&
+			 !IsA(ipath, UpperUniquePath)) &&
 			(ipath->path.pathkeys == NIL ||
 			 ipath->indexselectivity < 1.0))
 			*bitindexpaths = lappend(*bitindexpaths, ipath);
@@ -999,7 +1029,8 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		if (index->amhasgettuple)
 			add_path(rel, (Path *) ipath);
 
-		if (index->amhasgetbitmap &&
+		if (((index->amhasgetbitmap || index->yb_amhasgetbitmap) &&
+			 !IsA(ipath, UpperUniquePath)) &&
 			(ipath->path.pathkeys == NIL ||
 			 ipath->indexselectivity < 1.0))
 			*bitindexpaths = lappend(*bitindexpaths, ipath);
@@ -1105,7 +1136,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				return NIL;
 			break;
 		case ST_BITMAPSCAN:
-			if (!index->amhasgetbitmap)
+			if (!index->amhasgetbitmap && !index->yb_amhasgetbitmap)
 				return NIL;
 			break;
 		case ST_ANYSCAN:
@@ -1525,7 +1556,7 @@ build_paths_for_OR(PlannerInfo *root, RelOptInfo *rel,
 		bool		useful_predicate;
 
 		/* Ignore index if it doesn't support bitmap scans */
-		if (!index->amhasgetbitmap)
+		if (!index->amhasgetbitmap && !index->yb_amhasgetbitmap)
 			continue;
 
 		/*
@@ -1792,6 +1823,10 @@ choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths)
 	{
 		Path	   *ipath = (Path *) lfirst(l);
 
+		/* TODO(#21039): Support Distinct Bitmap Scans */
+		if (IsA(ipath, UpperUniquePath))
+			continue;
+
 		pathinfo = classify_index_clause_usage(ipath, &clauselist);
 
 		/* If it's unclassifiable, treat it as distinct from all others */
@@ -1853,7 +1888,11 @@ choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths)
 
 		pathinfo = pathinfoarray[i];
 		paths = list_make1(pathinfo->path);
-		costsofar = bitmap_scan_cost_est(root, rel, pathinfo->path);
+		if (rel->is_yb_relation)
+			costsofar = yb_bitmap_scan_cost_est(root, rel, pathinfo->path);
+		else
+			costsofar = bitmap_scan_cost_est(root, rel, pathinfo->path);
+
 		qualsofar = list_concat(list_copy(pathinfo->quals),
 								list_copy(pathinfo->preds));
 		clauseidsofar = bms_copy(pathinfo->clauseids);
@@ -1989,6 +2028,40 @@ bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel, Path *ipath)
 }
 
 /*
+ * Estimate the cost of actually executing a YB bitmap scan with a single
+ * index path (which could be a BitmapAnd or BitmapOr node).
+ */
+static Cost
+yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel, Path *ipath)
+{
+	YbBitmapTablePath bpath;
+
+	/* Set up a dummy YbBitmapTablePath */
+	bpath.path.type = T_YbBitmapTablePath;
+	bpath.path.pathtype = T_YbBitmapTableScan;
+	bpath.path.parent = rel;
+	bpath.path.pathtarget = rel->reltarget;
+	bpath.path.param_info = ipath->param_info;
+	bpath.path.pathkeys = NIL;
+	bpath.bitmapqual = ipath;
+
+	/*
+	 * Check the cost of temporary path without considering parallelism.
+	 * Parallel bitmap heap path will be considered at later stage.
+	 */
+	bpath.path.parallel_workers = 0;
+
+	/* Now we can do cost_yb_bitmap_table_scan */
+	cost_yb_bitmap_table_scan(&bpath.path, root, rel,
+							  bpath.path.param_info,
+							  ipath,
+							  get_loop_count(root, rel->relid,
+											 PATH_REQ_OUTER(ipath)));
+
+	return bpath.path.total_cost;
+}
+
+/*
  * Estimate the cost of actually executing a BitmapAnd scan with the given
  * inputs.
  */
@@ -2003,7 +2076,10 @@ bitmap_and_cost_est(PlannerInfo *root, RelOptInfo *rel, List *paths)
 	 */
 	apath = create_bitmap_and_path(root, rel, paths);
 
-	return bitmap_scan_cost_est(root, rel, (Path *) apath);
+	if (rel->is_yb_relation)
+		return yb_bitmap_scan_cost_est(root, rel, (Path *) apath);
+	else
+		return bitmap_scan_cost_est(root, rel, (Path *) apath);
 }
 
 
@@ -2920,7 +2996,7 @@ match_rowcompare_to_indexcol(IndexOptInfo *index,
 	 * operators are matchable to the index.
 	 */
 	leftop = (Node *) linitial(clause->largs);
-	rightop = (Node *) linitial(clause->rargs);
+	rightop = (Node *) linitial(castNode(List, clause->rargs));
 	expr_op = linitial_oid(clause->opnos);
 	expr_coll = linitial_oid(clause->inputcollids);
 
@@ -4387,8 +4463,9 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 	var_on_left = match_index_to_operand((Node *) linitial(clause->largs),
 										 indexcol, index);
 	Assert(var_on_left ||
-		   match_index_to_operand((Node *) linitial(clause->rargs),
-								  indexcol, index));
+		   match_index_to_operand(
+				(Node *) linitial(castNode(List, clause->rargs)),
+				indexcol, index));
 	*var_on_left_p = var_on_left;
 
 	expr_op = linitial_oid(clause->opnos);
@@ -4414,8 +4491,10 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 	 * indexed relation.
 	 */
 	matching_cols = 1;
+	bool yb_is_row_array_cmp = clause->rctype == ROWCOMPARE_EQ;
 	largs_cell = lnext(list_head(clause->largs));
-	rargs_cell = lnext(list_head(clause->rargs));
+	rargs_cell = yb_is_row_array_cmp ? NULL :
+		lnext(list_head(castNode(List, clause->rargs)));
 	opnos_cell = lnext(list_head(clause->opnos));
 	collids_cell = lnext(list_head(clause->inputcollids));
 
@@ -4429,10 +4508,12 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 		if (var_on_left)
 		{
 			varop = (Node *) lfirst(largs_cell);
-			constop = (Node *) lfirst(rargs_cell);
+			constop = (Node *) yb_is_row_array_cmp ? clause->rargs :
+				lfirst(rargs_cell);
 		}
 		else
 		{
+			Assert(!yb_is_row_array_cmp);
 			varop = (Node *) lfirst(rargs_cell);
 			constop = (Node *) lfirst(largs_cell);
 			/* indexkey is on right, so commute the operator */
@@ -4440,9 +4521,10 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 			if (expr_op == InvalidOid)
 				break;			/* operator is not usable */
 		}
-		if (bms_is_member(index->rel->relid, pull_varnos(constop)))
+		if (!yb_is_row_array_cmp &&
+			bms_is_member(index->rel->relid, pull_varnos(constop)))
 			break;				/* no good, Var on wrong side */
-		if (contain_volatile_functions(constop))
+		if (!yb_is_row_array_cmp && contain_volatile_functions(constop))
 			break;				/* no good, volatile comparison value */
 
 		/*
@@ -4476,7 +4558,8 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 		/* This column matches, keep scanning */
 		matching_cols++;
 		largs_cell = lnext(largs_cell);
-		rargs_cell = lnext(rargs_cell);
+		if (!yb_is_row_array_cmp)
+			rargs_cell = lnext(rargs_cell);
 		opnos_cell = lnext(opnos_cell);
 		collids_cell = lnext(collids_cell);
 	}
@@ -4550,17 +4633,19 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 									   matching_cols);
 		rc->inputcollids = list_truncate(list_copy(clause->inputcollids),
 										 matching_cols);
-		rc->largs = list_truncate(copyObject(clause->largs),
+		rc->largs = list_truncate(copyObject(castNode(List,clause->largs)),
 								  matching_cols);
-		rc->rargs = list_truncate(copyObject(clause->rargs),
-								  matching_cols);
+		rc->rargs = (Node *)
+			list_truncate(copyObject(castNode(List, clause->rargs)),
+									 matching_cols);
 		return (Expr *) rc;
 	}
 	else
 	{
 		return make_opclause(linitial_oid(new_ops), BOOLOID, false,
 							 copyObject(linitial(clause->largs)),
-							 copyObject(linitial(clause->rargs)),
+							 copyObject(
+								linitial(castNode(List, clause->rargs))),
 							 InvalidOid,
 							 linitial_oid(clause->inputcollids));
 	}

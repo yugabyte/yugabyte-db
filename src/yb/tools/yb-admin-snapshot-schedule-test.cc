@@ -21,13 +21,17 @@
 #include <utility>
 #include <vector>
 
+#include "yb/client/client_fwd.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/json_util.h"
 
+#include "yb/common/snapshot.h"
 #include "yb/gutil/logging-inl.h"
 
 #include "yb/gutil/strings/split.h"
@@ -51,7 +55,9 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/format.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/scope_exit.h"
@@ -75,7 +81,7 @@ const std::string kClusterName = "yugacluster";
 const std::string kTablegroupName = "ysql_tg";
 
 constexpr auto kInterval = 6s;
-constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(10min, 18min, 10min);
+constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(12min, 20min, 12min);
 constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
 const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
@@ -236,6 +242,29 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     res.push_back(id);
 
     return res;
+  }
+
+  Status CloneAndWait(
+      const std::string& source_namespace, const std::string& target_namespace_name,
+      const MonoDelta& timeout, auto... other_clone_args) {
+    auto out = VERIFY_RESULT(CallJsonAdmin(
+        "clone_namespace", source_namespace, target_namespace_name,
+        other_clone_args...));
+    std::string source_namespace_id = VERIFY_RESULT(
+        Get(out, "source_namespace_id")).get().GetString();
+    std::string seq_no = VERIFY_RESULT(Get(out, "seq_no")).get().GetString();
+
+    RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+      out = VERIFY_RESULT(CallJsonAdmin("is_clone_done", source_namespace_id, seq_no));
+      std::string is_done = VERIFY_RESULT(Get(out, "is_done")).get().GetString();
+      if (is_done == "true") {
+        return true;
+      } else if (is_done == "false") {
+        return false;
+      }
+      return STATUS_FORMAT(InvalidArgument, is_done);
+    }, timeout, "Wait for clone to complete"));
+    return Status::OK();
   }
 
   Status PrepareCommon() {
@@ -831,6 +860,75 @@ TEST_F(YbAdminSnapshotScheduleTest, EditIntervalLargerThanRetention) {
   auto result = EditSnapshotSchedule(schedule_id, {}, 1min);
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(result.status().ToString(), "Interval must be strictly less than retention");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
+  ASSERT_RESULT(PrepareCql());
+  const auto kSourceNamespace = "ycql." + client::kTableName.namespace_name();
+  auto session = client_->NewSession(60s);
+  constexpr int rows_per_iter = 5;
+
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  auto write_rows = [&](int* offset, int num_rows) -> Status {
+    int end_row = *offset + num_rows;
+    for (; *offset < end_row; ++(*offset)) {
+      RETURN_NOT_OK(client::kv_table_test::WriteRow(&table_, session, *offset, -(*offset)));
+    }
+    return Status::OK();
+  };
+
+  LOG(INFO) << "Write first set of rows";
+  int cur_row = 1;
+  ASSERT_OK(write_rows(&cur_row, rows_per_iter));
+  // Create a window to restore in (we can only restore with 1s granularity).
+  SleepFor(3s);
+  Timestamp restore_time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  SleepFor(3s);
+  LOG(INFO) << "Write second set of rows";
+  ASSERT_OK(write_rows(&cur_row, rows_per_iter));
+
+  auto source_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table_, session));
+  ASSERT_EQ(source_rows.size(), 2 * rows_per_iter);
+
+  auto open_target_table = [&](const std::string& target_namespace_name)
+      -> Result<client::TableHandle> {
+    client::YBTableName target_table_name(
+        YQL_DATABASE_CQL, target_namespace_name, table_.name().table_name());
+    client::TableHandle target_table;
+
+    RETURN_NOT_OK(target_table.Open(target_table_name, client_.get()));
+    return target_table;
+  };
+
+  // Absolute timestamp format. Should have the first set of rows.
+  auto target_namespace_name = "absolute_time_namespace";
+  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
+  ASSERT_OK(CloneAndWait(
+      kSourceNamespace, target_namespace_name, 30s /* timeout */,
+      restore_time.ToFormattedString()));
+  auto target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
+  auto target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
+  ASSERT_EQ(target_rows.size(), rows_per_iter);
+
+  // Minus interval format. Should have the first set of rows.
+  auto secs = (ASSERT_RESULT(WallClock()->Now()).time_point - restore_time.ToInt64()) / 1000000;
+  target_namespace_name = "minus_interval_namespace";
+  ASSERT_OK(CloneAndWait(
+      kSourceNamespace, target_namespace_name, 30s /* timeout */, "minus", Format("$0s", secs)));
+  target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
+  target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
+  ASSERT_EQ(target_rows.size(), rows_per_iter);
+
+  // No timestamp format (clone as of now). Should have both sets of rows.
+  target_namespace_name = "no_timestamp_namespace";
+  ASSERT_OK(CloneAndWait(kSourceNamespace, target_namespace_name, 30s /* timeout */));
+  target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
+  target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
+  ASSERT_EQ(target_rows.size(), 2 * rows_per_iter);
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalZero) {
@@ -2048,12 +2146,12 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableWithRewrite) {
 
     LOG(INFO) << "Perform some table rewrite operations on the table";
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", table_name));
-    // Set the ddl_rollback_enabled GUC var so that we can perform an
+    // Set the yb_ddl_rollback_enabled GUC var so that we can perform an
     // ADD COLUMN ... PRIMARY KEY operation.
-    ASSERT_OK(conn.ExecuteFormat("SET ddl_rollback_enabled = ON"));
+    ASSERT_OK(conn.ExecuteFormat("SET yb_ddl_rollback_enabled = ON"));
     ASSERT_OK(conn.ExecuteFormat(
         "ALTER TABLE $0 ADD COLUMN newcol INT PRIMARY KEY DEFAULT 2", table_name));
-    ASSERT_OK(conn.ExecuteFormat("SET ddl_rollback_enabled = OFF"));
+    ASSERT_OK(conn.ExecuteFormat("SET yb_ddl_rollback_enabled = OFF"));
     ASSERT_OK(conn.ExecuteFormat(
         "ALTER TABLE $0 ALTER COLUMN value TYPE int USING length(value)", table_name));
     // Verify that we can't insert duplicate values into the pkey column (newcol).

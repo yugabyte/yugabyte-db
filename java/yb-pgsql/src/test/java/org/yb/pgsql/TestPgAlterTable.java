@@ -27,10 +27,27 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 @RunWith(value = YBTestRunner.class)
 public class TestPgAlterTable extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTable.class);
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity");
+    flagMap.put("ysql_yb_enable_replica_identity", "true");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity");
+    flagMap.put("ysql_yb_enable_replica_identity", "true");
+    return flagMap;
+  }
 
   @Test
   public void testAddColumnIfNotExists() throws Exception {
@@ -505,6 +522,32 @@ public class TestPgAlterTable extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testReplicaIdentity() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(id int primary key, name text);");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table"), new Row("change"));
+
+      // Alter the table to set all the supported replica identity modes one by one
+      statement.execute("ALTER TABLE test_table REPLICA IDENTITY FULL;");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table"), new Row("full"));
+
+      statement.execute("ALTER TABLE test_table REPLICA IDENTITY NOTHING;");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table"), new Row("nothing"));
+
+      statement.execute("ALTER TABLE test_table REPLICA IDENTITY DEFAULT;");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table"), new Row("default"));
+
+      statement.execute("ALTER TABLE test_table REPLICA IDENTITY CHANGE;");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table"), new Row("change"));
+
+      runInvalidQuery(
+        statement,
+        "ALTER TABLE test_table REPLICA IDENTITY INVALID_REPLICA_IDENTITY;",
+        "syntax error");
+    }
+  }
+
   private static String selectAttributesQuery(String table) {
     return String.format(
         "SELECT a.attname, t.typname FROM pg_attribute a" +
@@ -512,6 +555,20 @@ public class TestPgAlterTable extends BasePgSQLTest {
             " JOIN pg_type t ON t.oid=a.atttypid" +
             " WHERE a.attnum > 0 AND r.relname='%s' ORDER BY a.attname",
         table
+    );
+  }
+
+  private static String selectReplicaIdentityQuery(String table) {
+    return String.format(
+        "SELECT CASE relreplident " +
+          "WHEN 'd' THEN 'default'\n" +
+          "WHEN 'n' THEN 'nothing'\n" +
+          "WHEN 'f' THEN 'full'\n" +
+          "WHEN 'i' THEN 'index'\n" +
+          "WHEN 'c' THEN 'change'\n" +
+          "END AS replica_identity\n" +
+          "FROM pg_class\n" +
+          "WHERE oid = '%s'::regclass;", table
     );
   }
 }

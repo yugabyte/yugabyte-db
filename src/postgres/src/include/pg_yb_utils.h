@@ -591,6 +591,12 @@ extern bool yb_test_fail_next_ddl;
 extern bool yb_test_fail_next_inc_catalog_version;
 
 /*
+ * This number times disable_cost is added to the cost for some unsupported
+ * ybgin index scans.
+ */
+extern double yb_test_ybgin_disable_cost_factor;
+
+/*
  * Block the given index creation phase.
  * - "indisready": index state change to indisready
  *   (not supported for non-concurrent)
@@ -615,10 +621,16 @@ extern bool yb_test_fail_table_rewrite_after_creation;
 extern bool yb_test_stay_in_global_catalog_version_mode;
 
 /*
+ * If set to true, any DDLs that rewrite tables/indexes will not drop the
+ * old relfilenode/DocDB table.
+ */
+extern bool yb_test_table_rewrite_keep_old_table;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure.
 */
-extern bool ddl_rollback_enabled;
+extern bool yb_ddl_rollback_enabled;
 
 extern bool yb_use_hash_splitting_by_default;
 

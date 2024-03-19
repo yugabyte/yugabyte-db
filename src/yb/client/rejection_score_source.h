@@ -32,7 +32,7 @@ class RejectionScoreSource {
     size_t idx = std::min<size_t>(attempt_num - 1, 20);
     std::lock_guard lock(mutex_);
     while (scores_.size() <= idx) {
-      scores_.push_back(RandomUniformReal<double>(0.01, 1.0));
+      scores_.push_back(RandomUniformReal<double>(1e-9, 1.0));
     }
     return scores_[idx];
   }

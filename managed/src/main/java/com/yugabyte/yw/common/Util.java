@@ -117,6 +117,7 @@ public class Util {
   public static final String GCS = "GCS";
   public static final String S3 = "S3";
   public static final String NFS = "NFS";
+  public static final String HTTP = "HTTP";
 
   public static final String CUSTOMERS = "customers";
   public static final String UNIVERSES = "universes";
@@ -476,16 +477,88 @@ public class Util {
     return details;
   }
 
-  // Wrapper on the existing compareYbVersions() method (to specify if format error
-  // should be suppressed)
+  /**
+   * This function checks if a given version string is on stable track or not. Eg: 2024.1.0.0-b1 for
+   * stable and 2.23.0.0-b1 for preview.
+   *
+   * @param currentVersion
+   * @param suppressFormatError
+   * @return boolean true if stable, else false.
+   */
+  public static boolean isStableVersion(String currentVersion, boolean suppressFormatError) {
+    String[] versionParts = currentVersion.split("-", 3);
+    if (versionParts.length > 2) {
+      currentVersion = versionParts[0] + "-" + versionParts[1];
+    }
+
+    Pattern versionPattern = Pattern.compile(YBA_VERSION_REGEX);
+    Matcher versionMatcher = versionPattern.matcher(currentVersion);
+
+    if (versionMatcher.find()) {
+      String[] v1Numbers = versionMatcher.group(1).split("\\.");
+      int minorVersion = Integer.parseInt(v1Numbers[1]);
+      if (v1Numbers[0].length() == 4 || (minorVersion % 2) == 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * This is a new wrapper method on top of existing compareYbVersions() to compare YBA or YBDB
+   * version strings. Use this method instead of other compareYbVersions() when you want to compare
+   * if a feature exists across both preview and stable tracks. Must specify both a preview and a
+   * stable version from when the feature exists. New versioning scheme is like: 2024.1.0.0-b1 for
+   * stable and 2.23.0.0-b1 for preview. Use this method to compare any features after 2.21 or
+   * 2024.1.
+   *
+   * @param currentVersion
+   * @param stableVersion
+   * @param previewVersion
+   * @param suppressFormatError
+   * @return
+   */
+  public static int compareYBVersions(
+      String currentVersion,
+      String stableVersion,
+      String previewVersion,
+      boolean suppressFormatError) {
+    boolean isCurrentVersionStable = isStableVersion(currentVersion, suppressFormatError);
+    return compareYbVersions(
+        currentVersion,
+        isCurrentVersionStable ? stableVersion : previewVersion,
+        suppressFormatError);
+  }
+
+  public static boolean areYbVersionsEqual(String v1, String v2, boolean suppressFormatError) {
+    return compareYbVersions(v1, v2, suppressFormatError) == 0;
+  }
+
+  /**
+   * This method compares 2 version strings. Make sure to only compare stable with stable and
+   * preview with preview if using this function. If you are not sure of either, use method {@link
+   * com.yugabyte.yw.common.Util#compareYBVersions}.
+   *
+   * @param v1
+   * @param v2
+   * @return
+   */
   public static int compareYbVersions(String v1, String v2) {
 
     return compareYbVersions(v1, v2, false);
   }
 
-  // Compare v1 and v2 Strings. Returns 0 if the versions are equal, a
-  // positive integer if v1 is newer than v2, a negative integer if v1
-  // is older than v2.
+  /**
+   * Compare v1 and v2 Strings. Returns 0 if the versions are equal, a positive integer if v1 is
+   * newer than v2, a negative integer if v1 is older than v2. Make sure to only compare stable with
+   * stable and preview with preview if using this function. If you are not sure of either, use
+   * method {@link com.yugabyte.yw.common.Util#compareYBVersions}.
+   *
+   * @param v1
+   * @param v2
+   * @param suppressFormatError
+   * @return
+   */
   public static int compareYbVersions(String v1, String v2, boolean suppressFormatError) {
     // After the second dash, a user can add anything, and it will be ignored.
     String[] v1Parts = v1.split("-", 3);
@@ -565,6 +638,35 @@ public class Util {
 
   public static String escapeSingleQuotesOnly(String src) {
     return src.replaceAll("'", "''");
+  }
+
+  public static void shutdownYbaProcess(int seconds) {
+    // Background thread to exit YBA process
+    Thread shutdownThread =
+        new Thread(
+            () -> {
+              try {
+                Thread.sleep(seconds * 1000 /* ms */);
+                LOG.info("Shutting down via system exit.");
+                System.exit(0);
+              } catch (InterruptedException e) {
+                LOG.warn("Interrupted during system exit.");
+              }
+            });
+    // Watcher thread to forcibly halt JVM if exit hangs
+    Thread haltThread =
+        new Thread(
+            () -> {
+              try {
+                shutdownThread.join((seconds * 1000) + 30000 /* add 30 seconds */);
+                LOG.info("Shutting down via halt.");
+                Runtime.getRuntime().halt(0);
+              } catch (InterruptedException e) {
+                LOG.warn("Interrupted during wait for exit.");
+              }
+            });
+    shutdownThread.start();
+    haltThread.start();
   }
 
   @VisibleForTesting

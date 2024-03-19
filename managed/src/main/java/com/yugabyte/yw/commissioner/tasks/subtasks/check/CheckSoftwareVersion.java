@@ -62,7 +62,7 @@ public class CheckSoftwareVersion extends ServerSubTaskBase {
     log.debug("Found version {} on node: {}, port: {}", version, node, port);
 
     // Validate the software version.
-    if (Util.compareYbVersions(version, taskParams().requiredVersion) != 0) {
+    if (!Util.areYbVersionsEqual(version, taskParams().requiredVersion, false)) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Expected version: "

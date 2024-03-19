@@ -58,7 +58,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
     try {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       Collection<NodeDetails> nodes = universe.getNodes();
 
@@ -100,6 +100,13 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       createStartMasterProcessTasks(masterNodeList);
+      for (NodeDetails nodeDetails : masterNodeList) {
+        createWaitForServerReady(
+                nodeDetails,
+                ServerType.MASTER,
+                getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis())
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      }
 
       // Make sure clock skew is low enough on the tserver nodes.
       createWaitForClockSyncTasks(universe, tserverNodeList)
@@ -109,6 +116,13 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       createWaitForServersTasks(tserverNodeList, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      for (NodeDetails nodeDetails : tserverNodeList) {
+        createWaitForServerReady(
+                nodeDetails,
+                ServerType.TSERVER,
+                getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis())
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      }
 
       if (universe.isYbcEnabled()) {
         createStartYbcTasks(tserverNodeList)

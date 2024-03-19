@@ -57,6 +57,10 @@ MasterAutoFlagsManager* MasterServiceBase::handler(MasterAutoFlagsManager*) {
   return server_->GetAutoFlagsManagerImpl();
 }
 
+CloneStateManager* MasterServiceBase::handler(CloneStateManager*) {
+  return server_->clone_state_manager();
+}
+
 Status HandleLockAndCallFunction(
     const std::function<Status()>& f,
     HoldCatalogLock hold_catalog_lock,

@@ -15,6 +15,10 @@ import React, { FC, useMemo, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { useMutation, useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
+import { toast } from 'react-toastify';
+import clsx from 'clsx';
+import * as Yup from 'yup';
+
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBModalForm } from '../../common/forms';
 import {
@@ -25,21 +29,19 @@ import {
   YBFormSelect,
   YBInputField
 } from '../../common/forms/fields';
-import * as Yup from 'yup';
+
 import { getKMSConfigs, restoreEntireBackup } from '../common/BackupAPI';
 import { BACKUP_API_TYPES, IBackup, IStorageConfig } from '../common/IBackup';
-import { TableType } from '../../../redesign/helpers/dtos';
-
 import { KEYSPACE_VALIDATION_REGEX, ParallelThreads } from '../common/BackupUtils';
-
-import { toast } from 'react-toastify';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
-import clsx from 'clsx';
-
+import { handleCACertErrMsg } from '../../customCACerts';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
-import { handleCACertErrMsg } from '../../customCACerts';
+import { AllowedTasks, TableType } from '../../../redesign/helpers/dtos';
+import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
+
 import './BackupAdvancedRestore.scss';
 
 const TEXT_RESTORE = 'Restore';
@@ -70,6 +72,7 @@ interface RestoreModalProps {
   onHide: Function;
   visible: boolean;
   currentUniverseUUID?: string;
+  allowedTasks: AllowedTasks;
 }
 
 const initialValues = {
@@ -87,6 +90,7 @@ const initialValues = {
 export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
   onHide,
   visible,
+  allowedTasks,
   currentUniverseUUID
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
@@ -239,6 +243,8 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
 
   if (!visible) return null;
 
+  const isRestoreBackupTaskDisabled = isActionFrozen(allowedTasks, UNIVERSE_TASKS.RESTORE_BACKUP);
+
   return (
     <YBModalForm
       visible={visible}
@@ -246,6 +252,7 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
         setCurrentStep(0);
         onHide();
       }}
+      isButtonDisabled={currentStep === 1 && isRestoreBackupTaskDisabled}
       className="backup-modal"
       title={'Advanced Restore'}
       initialValues={initialValues}

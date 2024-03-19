@@ -23,7 +23,7 @@ var removeInstanceTypesCmd = &cobra.Command{
 	Long:    "Delete instance types of a YugabyteDB Anywhere on-premises provider",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -51,12 +51,9 @@ var removeInstanceTypesCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
-		providerName, err := cmd.Flags().GetString("provider-name")
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -70,6 +67,11 @@ var removeInstanceTypesCmd = &cobra.Command{
 		if len(r) < 1 {
 			fmt.Println("No providers found\n")
 			return
+		}
+
+		if r[0].GetCode() != util.OnpremProviderType {
+			errMessage := "Operation only supported for On-premises providers."
+			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}
 
 		providerUUID := r[0].GetUuid()

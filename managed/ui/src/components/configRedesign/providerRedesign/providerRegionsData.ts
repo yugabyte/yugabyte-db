@@ -14,6 +14,7 @@ export const ON_PREM_LOCATIONS = {
   'US North': { latitude: 48, longitude: -118 },
   'US South': { latitude: 28, longitude: -99 },
   'US West': { latitude: 37, longitude: -121 },
+  'US Central': { latitude: 41.8, longitude: -93 },
   'EU West - UK': { latitude: 55, longitude: -3 },
   'EU East - Istanbul': { latitude: 41, longitude: 29 },
   'EU Central - Frankfurt': { latitude: 50.1, longitude: 8.7 },

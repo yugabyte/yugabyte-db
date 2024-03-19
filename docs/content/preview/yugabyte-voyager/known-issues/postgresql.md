@@ -70,7 +70,7 @@ PARTITION BY LIST (region);
 
 **Description**: If you have a partitioned table with indexes on it, the migration will fail with an error for YugabyteDB `2.15` or `2.16` due to a regression.
 
-Note that this is fixed in release [12.17.1.0](../../../releases/release-notes/v2.17/#v2.17.1.0).
+Note that this is fixed in release [2.17.1.0](../../../releases/ybdb-releases/v2.17/#v2.17.1.0).
 
 **Workaround**: N/A
 

@@ -7,7 +7,6 @@ package client
 import (
 	"errors"
 
-	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
@@ -33,13 +32,11 @@ func (a *AuthAPIClient) GetCustomerUUID() error {
 	r, response, err := a.GetSessionInfo().Execute()
 	if err != nil {
 		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"GetCustomerUUID", "Get Session Info")
-		logrus.Errorf("%s", errMessage.Error())
+			"Get Customer UUID", "Get Session Info")
 		return errMessage
 	}
 	if !r.HasCustomerUUID() {
 		err := "could not retrieve Customer UUID"
-		logrus.Errorf(err)
 		return errors.New(err)
 	}
 	a.CustomerUUID = r.GetCustomerUUID()

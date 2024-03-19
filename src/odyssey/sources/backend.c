@@ -678,6 +678,10 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	} else {
 		kiwi_vars_update_both(&client->vars, &server->vars, name,
 				      name_len, value, value_len);
+
+		/* reset role whenever session_authorization is changed by the user */
+		if (strcmp(name, "session_authorization") == 0)
+			kiwi_vars_update_both(&client->vars, &server->vars, "role", 5, "none", 5);
 	}
 
 	return 0;

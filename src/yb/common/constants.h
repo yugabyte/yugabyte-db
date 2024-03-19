@@ -42,4 +42,6 @@ static const char* const kObsoleteShortPrimaryTableId = "sys.catalog.uuid";
 
 constexpr auto kPitrFeatureName = "PITR";
 
+constexpr auto kCDCSDKSlotEntryTabletId = "dummy_id_for_replication_slot";
+
 } // namespace yb

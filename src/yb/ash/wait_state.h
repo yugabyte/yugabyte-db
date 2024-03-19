@@ -74,10 +74,8 @@ namespace yb::ash {
 
 #define YB_ASH_CLASS_BITS          4U
 #define YB_ASH_CLASS_POSITION      24U
-
-#define YB_ASH_MAKE_CLASS(comp) \
-    (yb::to_underlying(BOOST_PP_CAT(yb::ash::Component::k, comp)) << \
-     YB_ASH_CLASS_BITS)
+#define YB_ASH_COMPONENT_POSITION  (YB_ASH_CLASS_POSITION + YB_ASH_CLASS_BITS)
+#define YB_ASH_COMPONENT_BITS      4U
 
 #define YB_ASH_MAKE_EVENT(class) \
     (static_cast<uint32_t>(yb::to_underlying(BOOST_PP_CAT(yb::ash::Class::k, class))) << \
@@ -88,21 +86,21 @@ namespace yb::ash {
 YB_DEFINE_TYPED_ENUM(Component, uint8_t,
     (kYSQL)
     (kYCQL)
-    (kTServer));
+    (kTServer)
+    (kMaster));
 
-// YB ASH Wait Classes (8 bits)
+// YB ASH Wait Classes (4 bits)
 // Don't reorder this enum
 YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     // PG classes
-    ((kTServerWait, YB_ASH_MAKE_CLASS(YSQL)))
+    (kTServerWait)
 
-    // YB Client classes
-    ((kYCQLQueryProcessing, YB_ASH_MAKE_CLASS(YCQL)))
+    // QL/YB Client classes
+    (kYCQLQueryProcessing)
     (kClient)
 
-    // Tserver classes
-    ((kRpc, YB_ASH_MAKE_CLASS(TServer)))
-    (kFlushAndCompaction)
+    // Docdb related classes
+    (kRpc)
     (kConsensus)
     (kTabletWait)
     (kRocksDB)
@@ -331,6 +329,7 @@ class WaitStateInfo {
   void set_query_id(uint64_t query_id) EXCLUDES(mutex_);
   uint64_t session_id() EXCLUDES(mutex_);
   void set_session_id(uint64_t session_id) EXCLUDES(mutex_);
+  int64_t rpc_request_id() EXCLUDES(mutex_);
   void set_rpc_request_id(int64_t id) EXCLUDES(mutex_);
   void set_client_host_port(const HostPort& host_port) EXCLUDES(mutex_);
 

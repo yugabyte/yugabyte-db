@@ -23,7 +23,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/util/flags/auto_flags.h"
 #include "yb/util/net/net_util.h"
@@ -108,8 +108,8 @@ AutoFlagsManagerBase::~AutoFlagsManagerBase() {
 
 Status AutoFlagsManagerBase::Init(const std::string& local_hosts) {
   rpc::MessengerBuilder messenger_builder("auto_flags_client");
-  secure_context_ = VERIFY_RESULT(
-      server::SetupInternalSecureContext(local_hosts, *fs_manager_, &messenger_builder));
+  secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(
+      local_hosts, fs_manager_->GetDefaultRootDir(), &messenger_builder));
 
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
 

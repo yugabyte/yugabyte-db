@@ -10,17 +10,29 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -36,6 +48,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -53,7 +66,8 @@ public class RebootUniverseTest extends UpgradeTaskTest {
           TaskType.CheckFollowerLag, // master
           TaskType.CheckFollowerLag, // tserver
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   @Override
   @Before
@@ -61,7 +75,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     super.setUp();
     attachHooks("RebootUniverse");
     rebootUniverse.setUserTaskUUID(UUID.randomUUID());
-
+    setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
   }
@@ -109,6 +123,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
@@ -116,7 +131,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-    assertEquals(66, position);
+    assertEquals(73, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -137,5 +152,59 @@ public class RebootUniverseTest extends UpgradeTaskTest {
         TaskType.RebootUniverse,
         taskParams,
         false);
+  }
+
+  @Test
+  public void testRollingRebootNodeOrder() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          Set<NodeDetails> detailsSet = new HashSet<>();
+          AtomicInteger idx = new AtomicInteger();
+          BiConsumer<AvailabilityZone, Boolean> nodeCreator =
+              (az, isMaster) -> {
+                NodeDetails node = ApiUtils.getDummyNodeDetails(idx.incrementAndGet());
+                node.isMaster = isMaster;
+                node.azUuid = az.getUuid();
+                node.placementUuid = details.getPrimaryCluster().uuid;
+                detailsSet.add(node);
+              };
+
+          nodeCreator.accept(az1, true); // 1
+          nodeCreator.accept(az2, true); // 2
+          nodeCreator.accept(az3, true); // 3
+          nodeCreator.accept(az3, false); // 4
+          nodeCreator.accept(az3, false); // 5
+          nodeCreator.accept(az2, false); // 6
+          nodeCreator.accept(az1, false); // 7
+
+          details.nodeDetailsSet = detailsSet;
+          u.setUniverseDetails(details);
+        },
+        false);
+    UpgradeTaskParams taskParams = new UpgradeTaskParams();
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+
+    List<String> expected =
+        Arrays.asList(
+            // masters first
+            "host-n1",
+            "host-n3",
+            "host-n2", // leader
+            "host-n6",
+            "host-n7",
+            "host-n4",
+            "host-n5");
+
+    List<String> nodeNames = new ArrayList<>();
+    for (TaskInfo subTask : subTasks) {
+      if (subTask.getTaskType() == TaskType.RebootServer) {
+        nodeNames.add(subTask.getDetails().get("nodeName").textValue());
+      }
+    }
+    Assert.assertEquals(expected, nodeNames);
   }
 }

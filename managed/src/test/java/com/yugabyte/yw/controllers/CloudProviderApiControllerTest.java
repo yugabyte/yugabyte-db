@@ -111,7 +111,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -548,8 +547,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         .getGcp()
         .setInstanceTemplate(instanceTemplate);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
-    Mockito.doNothing().when(mockCloudAPI).validateInstanceTemplate(any(), any());
-    when(mockCloudAPI.isValidCreds(any(), any())).thenReturn(true);
+    when(mockCloudAPI.isValidCreds(any())).thenReturn(true);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
 
     when(mockCloudQueryHelper.getRegionCodes(provider)).thenReturn(ImmutableList.of(region));
@@ -921,6 +919,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ArrayNode regionsList = Json.newArray();
     regionsList.add(region);
     bodyJson.set("regions", regionsList);
+    ArrayNode imageBundlesList = Json.newArray();
+    ObjectNode ybImage = Json.newObject().put("ybImage", "image_id");
+    ObjectNode regions = Json.newObject().set("us-west-2", ybImage);
+    ObjectNode details = Json.newObject().put("arch", "x86_64").set("regions", regions);
+    ObjectNode imageBundle = Json.newObject().put("name", "").set("details", details);
+    imageBundlesList.add(imageBundle);
+    bodyJson.set("imageBundles", imageBundlesList);
     Image image = new Image();
     image.setArchitecture("random_arch");
     image.setRootDeviceType("random_device_type");

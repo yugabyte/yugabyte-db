@@ -1291,6 +1291,20 @@ You can modify these parameters in the following ways:
     SET LOCAL temp_file_limit=-1;
     ```
 
+- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
+
+    ```sql
+    --- To change the minimum transaction age to 5 seconds:
+    SET session yb_locks_min_txn_age = 5000;
+    ```
+
+- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
+
+    ```sql
+    --- To change the maximum number of transactions to display to 10:
+    SET session yb_locks_max_transactions = 10;
+    ```
+
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
@@ -1326,6 +1340,14 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes
 
 Default: `1GB`
 
+##### default_transaction_isolation
+
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+
+See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
+
+Default: `read committed`
+
 ## Catalog flags
 
 ##### ysql_catalog_preload_additional_table_list
@@ -1355,6 +1377,73 @@ Default: `true`
 Controls whether to utilize the PostgreSQL relcache init file, which caches critical system catalog entries. If enabled, each PostgreSQL connection loads only this minimal set of cached entries (except if the relcache init file needs to be re-built, for example, after a DDL invalidates the cache). If disabled, each PostgreSQL connection preloads the catalog cache, which consumes more memory but reduces first query latency.
 
 Default: `true`
+
+##### ysql_enable_db_catalog_version_mode
+
+Enable the per database catalog version mode. A DDL statement that
+affects the current database can only increment catalog version for
+that database.
+
+Default: `true`
+
+{{< note title="Important" >}}
+
+After a DDL statement is executed, if the DDL statement increments the catalog
+version, then all the existing connections need to refresh catalog caches before
+they execute the next statement. When per database catalog version mode is
+enabled, multiple DDL statements can be concurrently executed if each DDL only
+affects its current database and is executed in a separate database. Existing
+connections only need to refresh their catalog caches if they are connected to
+the same database as that of a DDL statement. It is recommended to avoid refreshing catalog cache as it is an expensive operation.
+
+{{< /note >}}
+
+If you encounter any issues, you can disable per database catalog version mode using the following steps:
+
+1. Shutdown the cluster.
+
+1. Start the cluster with `--ysql_enable_db_catalog_version_mode=false`.
+
+1. Execute the following YSQL statements:
+
+    ```sql
+    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
+    SELECT yb_fix_catalog_version_table(false);
+    ```
+
+To re-enable the per database catalog version mode using the following steps:
+
+1. Execute the following YSQL statements:
+
+    ```sql
+    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
+    SELECT yb_fix_catalog_version_table(true);
+    ```
+
+1. Shutdown the cluster.
+1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
+
+##### enable_heartbeat_pg_catalog_versions_cache
+
+Whether to enable the use of heartbeat catalog versions cache for the
+`pg_yb_catalog_version` table which can help to reduce the number of reads
+from the table. This is beneficial when there are many databases and/or
+many yb-tservers in the cluster.
+
+Note that `enable_heartbeat_pg_catalog_versions_cache` is only used when [ysql_enable_db_catalog_version_mode](#ysql-enable-db-catalog-version-mode) is true.
+
+Default: `false`
+
+{{< note title="Important" >}}
+
+Each yb-tserver regularly sends a heartbeat request to the yb-master
+leader. As part of the heartbeat response, yb-master leader reads all the rows
+in the table `pg_yb_catalog_version` and sends the result back in the heartbeat
+response. As there is one row in the table `pg_yb_catalog_version` for each
+database, the cost of reading `table pg_yb_catalog_version` becomes more
+expensive when the number of yb-tservers, or the number of databases goes up.
+
+{{< /note >}}
 
 ## Advanced flags
 

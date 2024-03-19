@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
@@ -91,6 +92,23 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
         runtimeConfigFactory.forUniverse(universe).getBoolean("yb.upgrade.allow_downgrades");
 
     String currentVersion = currentIntent.ybSoftwareVersion;
+
+    boolean isCurrentVersionStable = Util.isStableVersion(currentVersion, false);
+    boolean isYbSoftwareVersionStable = Util.isStableVersion(ybSoftwareVersion, false);
+    // Skip version checks if runtime flag enabled. User must take care of downgrades
+    if (!runtimeConfigFactory
+        .globalRuntimeConf()
+        .getBoolean(GlobalConfKeys.skipVersionChecks.getKey())) {
+      if (isCurrentVersionStable ^ isYbSoftwareVersionStable) {
+        String msg =
+            String.format(
+                "Cannot upgrade from preview to stable version or stable to preview. If required,"
+                    + " set runtime flag 'yb.skip_version_checks' to true. Tried to upgrade from"
+                    + " '%s' to '%s'.",
+                currentVersion, ybSoftwareVersion);
+        throw new PlatformServiceException(Status.BAD_REQUEST, msg);
+      }
+    }
 
     if (currentVersion != null
         && !isUniverseDowngradeAllowed

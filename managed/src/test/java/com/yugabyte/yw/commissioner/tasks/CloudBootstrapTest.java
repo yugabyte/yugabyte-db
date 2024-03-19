@@ -22,9 +22,11 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AccessManager.KeyType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
@@ -255,14 +257,24 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       if (customSecurityGroup) {
         assertEquals(r.getSecurityGroupId(), metadata.customSecurityGroupId);
       }
+
+      ImageBundleDetails details = provider.getImageBundles().get(0).getDetails();
+      String ybImage;
+      if (provider.getCloudCode() == CloudType.aws) {
+        ybImage = details.getRegions().get(r.getCode()).getYbImage();
+      } else {
+        ybImage = details.getGlobalYbImage();
+      }
       // Check AMI info.
       if (customImageId) {
-        assertEquals(metadata.customImageId, r.getYbImage());
+        assertEquals(metadata.customImageId, ybImage);
       } else {
-        assertEquals(defaultImage, r.getYbImage());
+        assertEquals(defaultImage, ybImage);
       }
       // Check Arch info.
-      assertEquals(r.getArchitecture(), metadata.architecture);
+      if (metadata.architecture != null) {
+        assertEquals(details.getArch(), metadata.architecture);
+      }
     }
   }
 
@@ -546,13 +558,13 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testCloudBootstrapSuccessAwsAarchArchitecture() throws InterruptedException {
+  public void testCloudBootstrapSuccessAwsArchitecture() throws InterruptedException {
     JsonNode zoneInfo = Json.parse("{\"us-west-1\": {\"zone-1\": \"subnet-1\"}}");
     CloudBootstrap.Params taskParams = getBaseTaskParams();
     CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
         new CloudBootstrap.Params.PerRegionMetadata();
     perRegionMetadata.vpcId = "test-vpc";
-    perRegionMetadata.architecture = Architecture.valueOf("aarch64");
+    perRegionMetadata.architecture = Architecture.valueOf("x86_64");
     taskParams.perRegionMetadata.put("us-west-1", perRegionMetadata);
     validateCloudBootstrapSuccess(
         taskParams,

@@ -58,6 +58,8 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
       stmt.execute(String.format("INSERT INTO %s (SELECT i, i, i %% 1024, i, i, "
         + "i %% 128 FROM generate_series(0, %d) i)", MAIN_TABLE, (NUM_PAGES * 1024 - 1)));
 
+      stmt.execute(String.format("ANALYZE %s", MAIN_TABLE));
+
       // Create table 'bar'
       stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT, v1 INT, "
           +"v2 INT, v3 INT, PRIMARY KEY (k1 ASC, k2 DESC))", SIDE_TABLE));
@@ -73,6 +75,8 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
       // Populate the table
       stmt.execute(String.format("INSERT INTO %s (SELECT i, i %% 128, i, i %% 1024, i "
         + "FROM generate_series(0, %d) i)", SIDE_TABLE, (NUM_PAGES * 1024 - 1)));
+
+      stmt.execute(String.format("ANALYZE %s", SIDE_TABLE));
     }
   }
 

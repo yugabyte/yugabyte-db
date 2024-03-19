@@ -445,3 +445,28 @@ SELECT (
 ) AS field1
 FROM
   bb AS table1;
+
+create table sample(a int, b int, primary key(a asc, b asc));
+insert into sample values (1,1);
+insert into sample values (1,2);
+insert into sample values (2,1);
+
+explain (costs off) select * from sample where b < 2 and b >= 2;
+select * from sample where b < 2 and b >= 2;
+
+explain (costs off) select * from sample where b >= 2 and b < 2;
+select * from sample where b >= 2 and b < 2;
+
+explain (costs off) select * from sample where b < 2 and b >= 2;
+select * from sample where b < 2 and b >= 2;
+
+explain (costs off) select * from sample where b <= 2 and b < 2 and b >= 2;
+select * from sample where b <= 2 and b < 2 and b >= 2;
+
+explain (costs off) select * from sample where b <= 2 and b >= 2;
+select * from sample where b <= 2 and b >= 2;
+
+explain (costs off) select * from sample where b <= 3 and b <= 2 and b >= 2;
+select * from sample where b <= 3 and b <= 2 and b >= 2;
+
+drop table sample;

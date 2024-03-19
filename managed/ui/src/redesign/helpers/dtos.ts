@@ -257,6 +257,12 @@ export interface UniverseDetails {
   enableYbc: boolean;
   updateOptions: string[];
   useSpotInstance: boolean;
+  universePaused: boolean;
+}
+
+export interface AllowedTasks {
+  restricted: boolean;
+  taskIds: string[];
 }
 
 export type UniverseConfigure = DeepPartial<UniverseDetails>;
@@ -271,6 +277,7 @@ export interface Universe {
   universeDetails: UniverseDetails;
   universeUUID: string;
   version: number;
+  allowedTasks: AllowedTasks;
 }
 
 export const TableType = {
@@ -420,27 +427,6 @@ export interface PitrConfig {
   tableType: TableType;
   updateTime: string;
   uuid: string;
-}
-
-export interface HAPlatformInstance {
-  uuid: string;
-  config_uuid: string;
-  address: string;
-  is_leader: boolean;
-  is_local: boolean;
-  last_backup: string | null;
-}
-
-export interface HAConfig {
-  uuid: string;
-  cluster_key: string;
-  last_failover: number;
-  instances: HAPlatformInstance[];
-}
-
-export interface HAReplicationSchedule {
-  frequency_milliseconds: number;
-  is_running: boolean;
 }
 
 export const TableTypeLabel: Record<TableType, string> = {

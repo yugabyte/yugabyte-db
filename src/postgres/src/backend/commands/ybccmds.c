@@ -210,7 +210,7 @@ YBCDropTablegroup(Oid grpoid)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTablegroup(MyDatabaseId, grpoid, &handle));
-	if (ddl_rollback_enabled)
+	if (yb_ddl_rollback_enabled)
 	{
 		/*
 		 * The following function marks the tablegroup for deletion. YB-Master
@@ -562,6 +562,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid colocationId, Oid tablespaceId, Oid pgTableId,
 			   Oid oldRelfileNodeId)
 {
+	bool is_internal_rewrite = oldRelfileNodeId != InvalidOid;
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
 		relkind != RELKIND_MATVIEW)
 	{
@@ -688,7 +689,11 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		if (strcmp(def->defname, "colocated") == 0 ||
 			strcmp(def->defname, "colocation") == 0)
 		{
-			if (OidIsValid(tablegroupId))
+			/*
+			 * If this is a table rewrite we don't need to emit this error as
+			 * this isn't a user supplied TABLEGROUP clause.
+			 */
+			if (!is_internal_rewrite && OidIsValid(tablegroupId))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
@@ -721,7 +726,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	/*
 	 * Lazily create an underlying tablegroup in a colocated database if needed.
 	 */
-	if (is_colocated_via_database && !MyColocatedDatabaseLegacy)
+	if (is_colocated_via_database && !MyColocatedDatabaseLegacy
+		&& !is_internal_rewrite)
 	{
 		tablegroupId = get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
 		/* Default tablegroup doesn't exist, so create it. */
@@ -844,7 +850,7 @@ YBCDropTable(Relation relation)
 			return;
 		}
 
-		if (ddl_rollback_enabled)
+		if (yb_ddl_rollback_enabled)
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the
@@ -1510,6 +1516,24 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			break;
 		}
 
+		case AT_ReplicaIdentity:
+		{
+			if (!yb_enable_replica_identity)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("Replica Identity is unavailable"),
+						 errdetail("yb_enable_replica_identity is false or a "
+								   "system upgrade is in progress")));
+
+			YBCPgStatement replica_identity_handle =
+				(YBCPgStatement) lfirst(list_head(handles));
+			ReplicaIdentityStmt* stmt = (ReplicaIdentityStmt *) cmd->def;
+			HandleYBStatus(YBCPgAlterTableSetReplicaIdentity(
+			  replica_identity_handle, stmt->identity_type));
+			*needsYBAlter = true;
+			break;
+		}
+
 		default:
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("This ALTER TABLE command is not yet supported.")));
@@ -1658,7 +1682,7 @@ YBCDropIndex(Relation index)
 		if (not_found)
 			return;
 
-		if (ddl_rollback_enabled)
+		if (yb_ddl_rollback_enabled)
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the
@@ -1899,18 +1923,6 @@ YBCGetReplicationSlot(const char *slot_name,
 }
 
 void
-YBCGetReplicationSlotStatus(const char *slot_name,
-							bool *active)
-{
-	char error_message[NAMEDATALEN + 64] = "";
-	snprintf(error_message, sizeof(error_message),
-			 "replication slot \"%s\" does not exist", slot_name);
-
-	HandleYBStatusWithCustomErrorForNotFound(
-		YBCPgGetReplicationSlotStatus(slot_name, active), error_message);
-}
-
-void
 YBCDropReplicationSlot(const char *slot_name)
 {
 	YBCPgStatement handle;
@@ -1945,4 +1957,12 @@ YBCGetCDCConsistentChanges(const char *stream_id,
 						   YBCPgChangeRecordBatch **record_batch)
 {
 	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
+}
+
+void
+YBCUpdateAndPersistLSN(const char *stream_id, XLogRecPtr restart_lsn_hint,
+					   XLogRecPtr confirmed_flush, YBCPgXLogRecPtr *restart_lsn)
+{
+	HandleYBStatus(YBCPgUpdateAndPersistLSN(stream_id, restart_lsn_hint,
+											confirmed_flush, restart_lsn));
 }

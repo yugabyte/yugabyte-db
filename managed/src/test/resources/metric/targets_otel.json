@@ -1,7 +1,7 @@
 [
   {
     "targets": [
-      "10.0.0.3:8888"
+      "10.0.0.3:OTEL_PORT"
     ],
     "labels": {
       "universe_uuid": "UNIVERSE_UUID",
@@ -16,7 +16,7 @@
   },
   {
     "targets": [
-      "10.0.0.2:8888"
+      "10.0.0.2:OTEL_PORT"
     ],
     "labels": {
       "universe_uuid": "UNIVERSE_UUID",
@@ -31,7 +31,7 @@
   },
   {
     "targets": [
-      "10.0.0.1:8888"
+      "10.0.0.1:OTEL_PORT"
     ],
     "labels": {
       "universe_uuid": "UNIVERSE_UUID",

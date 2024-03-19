@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX master)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 YRPC_GENERATE(
   MASTER_YRPC_SRCS MASTER_YRPC_HDRS MASTER_YRPC_TGTS
@@ -108,6 +107,7 @@ set(MASTER_SRCS
   master_service_base.cc
   master_tablet_service.cc
   master_test_service.cc
+  master_types.cc
   master_tserver.cc
   master-path-handlers.cc
   mini_master.cc
@@ -170,7 +170,7 @@ set(MASTER_SRCS
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
   ysql_ddl_handler.cc
-  ysql_transaction_ddl.cc)
+  ysql_ddl_verification_task.cc)
 
 set(MASTER_DEPS
   yb_common

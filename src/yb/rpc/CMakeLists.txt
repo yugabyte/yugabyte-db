@@ -98,6 +98,7 @@ set(YRPC_SRCS
     rpc_with_queue.cc
     rpc_util.cc
     scheduler.cc
+    secure.cc
     secure_stream.cc
     serialization.cc
     service_if.cc

@@ -109,6 +109,7 @@ DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_uint32(cdcsdk_max_consistent_records);
+DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
 
 namespace yb {
 
@@ -199,6 +200,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   // The range is exclusive of end i.e. [start, end)
   Status WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
+      const vector<string>& optional_cols_name = {},
+      pgwrapper::PGConn* conn = nullptr);
+
+  Status WriteRowsWithConn(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
+      pgwrapper::PGConn* conn = nullptr,
       const vector<string>& optional_cols_name = {});
 
   // The range is exclusive of end i.e. [start, end)
@@ -209,7 +216,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status WriteRowsHelper(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t num_cols = 2,
       const char* const table_name = kTableName, const vector<string>& optional_cols_name = {},
-      const bool trasaction_enabled = true);
+      const bool trasaction_enabled = true, pgwrapper::PGConn* conn = nullptr);
+
+  Status WriteRowsHelperWithConn(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
+      pgwrapper::PGConn* conn, uint32_t num_cols = 2, const char* const table_name = kTableName,
+      const vector<string>& optional_cols_name = {}, const bool trasaction_enabled = true);
 
   Status CreateTableWithoutPK(PostgresMiniCluster* cluster);
 
@@ -450,9 +462,16 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status DestroyVirtualWAL(const uint64_t session_id = 1);
 
-  Result<GetAllPendingChangesResponse> GetAllPendingChangesFromCdc(
+  Status UpdateAndPersistLSN(
+      const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
+      const uint64_t restart_lsn, const uint64_t session_id = 1);
+
+  // This method will keep on consuming changes until it gets the txns fully i.e COMMIT record of
+  // the last txn. This indicates that even though we might have received the expecpted DML records,
+  // we might still continue calling GetConsistentChanges until we receive the COMMIT record.
+  Result<GetAllPendingChangesResponse> GetAllPendingTxnsFromVirtualWAL(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
-      bool init_virtual_wal, const uint64_t session_id = 1);
+      bool init_virtual_wal, const uint64_t session_id = 1, bool allow_sending_feedback = true);
 
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
@@ -519,6 +538,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status TriggerCompaction(const TabletId tablet_id);
 
   Status CompactSystemTable();
+
+  Status FlushTable(const TableId& table_id);
+
+  Status WaitForPostApplyMetadataWritten(size_t expected_num_transactions);
 
   void GetTabletLeaderAndAnyFollowerIndex(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -588,6 +611,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<CdcStateTableRow> ReadFromCdcStateTable(
       const xrepl::StreamId stream_id, const std::string& tablet_id);
 
+  void VerifyExplicitCheckpointingOnTablets(
+      const xrepl::StreamId& stream_id,
+      const std::unordered_map<TabletId, CdcStateTableRow>& initial_tablet_checkpoint,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
+      const std::unordered_set<TabletId>& expected_tablet_ids_with_progress);
+
+  void VerifyLastRecordAndProgressOnSlot(
+      const xrepl::StreamId& stream_id, const CDCSDKProtoRecordPB& last_record);
+
   void UpdateRecordCount(const CDCSDKProtoRecordPB& record, int* record_count);
 
   void CheckRecordsConsistency(const std::vector<CDCSDKProtoRecordPB>& records);
@@ -636,7 +668,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* cp = nullptr, const int64& safe_hybrid_time = -1,
       const int& wal_segment_index = 0, const double& timeout_secs = 5);
 
-  Status XreplValidateSplitCandidateTable(const TableId& table);
+  Status WaitForFlushTables(
+      const std::vector<TableId>& table_ids, bool add_indexes, int timeout_secs,
+      bool is_compaction);
+
+  Status XReplValidateSplitCandidateTable(const TableId& table);
 
   void LogRetentionBarrierAndRelatedDetails(const GetCheckpointResponsePB& checkpoint_result,
                                             const tablet::TabletPeerPtr& tablet_peer);
@@ -682,6 +718,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       xrepl::StreamId stream_id, YBTableName table,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
       CDCSDKCheckpointPB checkpoint, GetChangesResponsePB* change_resp);
+
+  void TestTableIdAndPkInCDCRecords(bool colocated_db);
+
+  void VerifyTableIdAndPkInCDCRecords(
+      GetChangesResponsePB* resp, std::unordered_set<std::string>* record_primary_key,
+      std::unordered_set<std::string>* record_table_id);
 };
 
 }  // namespace cdc

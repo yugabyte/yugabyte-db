@@ -46,6 +46,7 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
@@ -80,7 +81,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/opid.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
@@ -167,8 +167,7 @@ TAG_FLAG(log_inject_latency, unsafe);
 TAG_FLAG(log_inject_latency_ms_mean, unsafe);
 TAG_FLAG(log_inject_latency_ms_stddev, unsafe);
 
-DEFINE_UNKNOWN_int32(log_inject_append_latency_ms_max, 0,
-             "The maximum latency to inject before the log append operation.");
+DEPRECATE_FLAG(int32, log_inject_append_latency_ms_max, "02_2024");
 
 DEFINE_test_flag(bool, log_consider_all_ops_safe, false,
             "If true, we consider all operations to be safe and will not wait"

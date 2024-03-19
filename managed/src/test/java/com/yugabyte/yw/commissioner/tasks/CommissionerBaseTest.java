@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.endsWith;
 import static org.mockito.ArgumentMatchers.eq;
@@ -36,6 +37,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
@@ -49,6 +51,7 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -109,6 +112,7 @@ import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import org.slf4j.LoggerFactory;
+import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -165,6 +169,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected YbcManager mockYbcManager;
   protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory;
   protected OperatorStatusUpdater mockOperatorStatusUpdater;
+  protected CloudUtilFactory mockCloudUtilFactory;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -182,6 +187,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Commissioner commissioner;
   protected CustomerTaskManager customerTaskManager;
   protected ReleaseManager.ReleaseMetadata releaseMetadata;
+  protected ReleaseContainer releaseContainer;
 
   @Before
   public void setUp() {
@@ -202,6 +208,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
+    mockCloudUtilFactory = mock(CloudUtilFactory.class);
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
@@ -232,7 +239,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
     when(mockBaseTaskDependencies.getReleaseManager()).thenReturn(mockReleaseManager);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
-    lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseMetadata);
+    releaseContainer = new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig);
+    lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
   }
 
   @Override
@@ -437,6 +445,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public void waitForTaskPaused(UUID taskUuid) throws InterruptedException {
+    waitForTaskPaused(taskUuid, commissioner);
+  }
+
+  public static void waitForTaskPaused(UUID taskUuid, Commissioner commissioner)
+      throws InterruptedException {
     int numRetries = 0;
     while (numRetries < MAX_RETRY_COUNT) {
       if (!commissioner.isTaskRunning(taskUuid)) {
@@ -458,12 +471,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     MDC.put(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY, String.valueOf(abortPosition));
   }
 
-  private void setPausePosition(int pausePosition) {
+  public static void setPausePosition(int pausePosition) {
     MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
     MDC.put(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY, String.valueOf(pausePosition));
   }
 
-  private void clearAbortOrPausePositions() {
+  public static void clearAbortOrPausePositions() {
     MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
     MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
   }
@@ -641,9 +654,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 String.format(
                     "Mismatched order detected in subtasks (pending %d/%d) on retry %d. Expected:"
                         + " %s, found: %s",
-                    retryCount,
                     pendingSubTaskCount,
                     expectedSubTaskTypes.size(),
+                    retryCount,
                     expectedTailTaskTypes,
                     tailTaskTypes));
           }
@@ -657,6 +670,15 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       throw new RuntimeException(e);
     } finally {
       clearAbortOrPausePositions();
+    }
+  }
+
+  protected void setCheckNodesAreSafeToTakeDown(YBClient mockClient) {
+    try {
+      when(mockClient.areNodesSafeToTakeDown(any(), any(), anyLong()))
+          .thenReturn(new AreNodesSafeToTakeDownResponse(null));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 

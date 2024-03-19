@@ -2,6 +2,7 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.apiModels.CreateRelease;
 import io.ebean.DB;
@@ -18,6 +19,7 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
@@ -126,12 +128,25 @@ public class Release extends Model {
     return release;
   }
 
+  public static Release getByVersion(String version) {
+    // TODO: Need to map between version and tag.
+    return find.query().where().eq("version", version).findOne();
+  }
+
   public void addArtifact(ReleaseArtifact artifact) {
     artifact.setReleaseUUID(releaseUUID);
   }
 
   public List<ReleaseArtifact> getArtifacts() {
     return ReleaseArtifact.getForRelease(releaseUUID);
+  }
+
+  public ReleaseArtifact getArtifactForArchitecture(Architecture arch) {
+    return ReleaseArtifact.getForReleaseArchitecture(releaseUUID, arch);
+  }
+
+  public ReleaseArtifact getKubernetesArtifact() {
+    return ReleaseArtifact.getForReleaseKubernetesArtifact(releaseUUID);
   }
 
   public void setReleaseTag(String tag) {
@@ -158,6 +173,12 @@ public class Release extends Model {
   public boolean delete() {
     try (Transaction transaction = DB.beginTransaction()) {
       for (ReleaseArtifact artifact : getArtifacts()) {
+        if (artifact.getPackageFileID() != null) {
+          ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
+          if (!rlf.delete()) {
+            return false;
+          }
+        }
         log.debug("cascading delete to artifact {}", artifact.getArtifactUUID());
         if (!artifact.delete()) {
           return false;
@@ -169,5 +190,10 @@ public class Release extends Model {
       transaction.commit();
     }
     return true;
+  }
+
+  public Set<Universe> getUniverses() {
+    String formattedVersion = this.version;
+    return Universe.universeDetailsIfReleaseExists(formattedVersion);
   }
 }

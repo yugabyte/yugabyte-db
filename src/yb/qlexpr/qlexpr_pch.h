@@ -119,6 +119,7 @@
 #include <gtest/gtest_prod.h>
 #include <rapidjson/document.h>
 
+#include "yb/common/opid.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback_forward.h"
 #include "yb/gutil/casts.h"
@@ -180,7 +181,6 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/opid.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/random_util.h"
 #include "yb/util/ref_cnt_buffer.h"

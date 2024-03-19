@@ -63,14 +63,16 @@ DEFINE_NON_RUNTIME_bool(disable_deadlock_detection, false,
 TAG_FLAG(disable_deadlock_detection, advanced);
 TAG_FLAG(disable_deadlock_detection, hidden);
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, ddl_rollback_enabled, false,
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_ddl_rollback_enabled, false,
     "If true, upon failure of a YSQL DDL transaction that affects the DocDB syscatalog, the "
     "YB-Master will rollback the changes made to the DocDB syscatalog.");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_db_catalog_version_mode, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_db_catalog_version_mode, true,
     "Enable the per database catalog version mode, a DDL statement that only "
     "affects the current database will only increment catalog version for "
     "the current database.");
+TAG_FLAG(ysql_enable_db_catalog_version_mode, advanced);
+TAG_FLAG(ysql_enable_db_catalog_version_mode, hidden);
 
 DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, 5000,
     "For a WaitForYsqlBackendsCatalogVersion client-to-master RPC, the amount of time to reserve"
@@ -113,6 +115,21 @@ DEFINE_RUNTIME_PG_FLAG(bool, TEST_enable_replication_slot_consumption, false,
 TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, unsafe);
 TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, hidden);
 
+// The following flags related to the cloud, region and availability zone that an instance is
+// started in. These are passed in from whatever provisioning mechanics start the servers. They
+// are used for generic placement policies on table creation and tablet load balancing, to
+// either constrain data to a certain location (table A should only live in aws.us-west2.a), or to
+// define the required level of fault tolerance expected (table B should have N replicas, across
+// two regions of AWS and one of GCE).
+//
+// These are currently for use in a cloud-based deployment, but could be retrofitted to work for
+// an on-premise deployment as well, with datacenter, cluster and rack levels, for example.
+DEFINE_NON_RUNTIME_string(placement_cloud, "cloud1",
+              "The cloud in which this instance is started.");
+DEFINE_NON_RUNTIME_string(placement_region, "datacenter1",
+              "The cloud region in which this instance is started.");
+DEFINE_NON_RUNTIME_string(placement_zone, "rack1",
+              "The cloud availability zone in which this instance is started.");
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;

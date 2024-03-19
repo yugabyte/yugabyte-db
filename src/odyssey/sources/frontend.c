@@ -337,11 +337,16 @@ static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
 		return OD_EOOM;
 
 	while (param) {
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+		kiwi_var_t *var;
+		var = yb_kiwi_vars_get(&client->vars, kiwi_param_name(param));
+#else
 		kiwi_var_type_t type;
 		type = kiwi_vars_find(&client->vars, kiwi_param_name(param),
 				      param->name_len);
 		kiwi_var_t *var;
 		var = kiwi_vars_get(&client->vars, type);
+#endif
 
 		machine_msg_t *msg;
 		if (var) {
@@ -1172,6 +1177,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				return OD_ECLIENT_READ;
 			}
 
+			if (desc.operator_name[0] == '\0') {
+				/* no need for odyssey to track unnamed prepared statements */
+				break;
+			}
+
 			od_hash_t keyhash = od_murmur_hash(
 				desc.operator_name, desc.operator_name_len);
 			od_debug(&instance->logger, "parse", client, server,
@@ -1348,6 +1358,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (rc == -1) {
 				return OD_ECLIENT_READ;
+			}
+
+			/* unnamed prepared statement, ignore processing of the packet */
+			if (operator_name[0] == '\0') {
+				break;
 			}
 
 			int opname_start_offset =
@@ -1705,9 +1720,14 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 		status = od_relay_step(&client->relay);
 		if (status == OD_ATTACH) {
 			uint32_t catchup_timeout = route->rule->catchup_timeout;
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+			kiwi_var_t *timeout_var =
+				yb_kiwi_vars_get(&client->vars, "odyssey_catchup_timeout");
+#else
 			kiwi_var_t *timeout_var =
 				kiwi_vars_get(&client->vars,
 					      KIWI_VAR_ODYSSEY_CATCHUP_TIMEOUT);
+#endif
 
 			if (timeout_var != NULL) {
 				/* if there is catchup pgoption variable in startup packet */
@@ -1949,8 +1969,13 @@ static void od_application_name_add_host(od_client_t *client)
 	char peer_name[KIWI_MAX_VAR_SIZE];
 	int app_name_len = 7;
 	char *app_name = "unknown";
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	kiwi_var_t *app_name_var =
+		yb_kiwi_vars_get(&client->vars, "application_name");
+#else
 	kiwi_var_t *app_name_var =
 		kiwi_vars_get(&client->vars, KIWI_VAR_APPLICATION_NAME);
+#endif
 	if (app_name_var != NULL) {
 		app_name_len = app_name_var->value_len;
 		app_name = app_name_var->value;
@@ -1961,9 +1986,14 @@ static void od_application_name_add_host(od_client_t *client)
 	int length =
 		od_snprintf(app_name_with_host, KIWI_MAX_VAR_SIZE, "%.*s - %s",
 			    app_name_len, app_name, peer_name);
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	kiwi_vars_update(&client->vars, "application_name", 17,
+		      app_name_with_host, length + 1); // return code ignored
+#else
 	kiwi_vars_set(&client->vars, KIWI_VAR_APPLICATION_NAME,
 		      app_name_with_host,
 		      length + 1); // return code ignored
+#endif
 }
 
 /*
@@ -2353,10 +2383,17 @@ int yb_execute_on_control_connection(od_client_t *client,
 	}
 
 	/* set control connection route user and database */
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	yb_kiwi_var_set(&control_conn_client->startup.user,
+		     "control_connection_user", 24);
+	yb_kiwi_var_set(&control_conn_client->startup.database,
+		     "control_connection_db", 22);
+#else
 	kiwi_var_set(&control_conn_client->startup.user, KIWI_VAR_UNDEF,
 		     "control_connection_user", 24);
 	kiwi_var_set(&control_conn_client->startup.database, KIWI_VAR_UNDEF,
 		     "control_connection_db", 22);
+#endif
 
 	/* route */
 	od_router_status_t status;

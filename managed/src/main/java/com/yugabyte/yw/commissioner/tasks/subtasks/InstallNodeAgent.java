@@ -36,7 +36,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
   private ShellProcessContext shellContext =
-      ShellProcessContext.builder().logCmdOutput(true).sshPort("22").build();
+      ShellProcessContext.builder().logCmdOutput(true).build();
 
   @Inject
   protected InstallNodeAgent(
@@ -55,7 +55,6 @@ public class InstallNodeAgent extends AbstractTaskBase {
     public boolean reinstall;
     public boolean airgap;
     public String sshUser;
-    public String sshPort;
   }
 
   @Override
@@ -104,9 +103,6 @@ public class InstallNodeAgent extends AbstractTaskBase {
     }
     if (taskParams().sshUser != null) {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
-    }
-    if (taskParams().sshPort != null) {
-      shellContext = shellContext.toBuilder().sshPort(taskParams().sshPort).build();
     }
     String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
     Path stagingDir = Paths.get(customTmpDirectory, "node-agent-" + System.currentTimeMillis());

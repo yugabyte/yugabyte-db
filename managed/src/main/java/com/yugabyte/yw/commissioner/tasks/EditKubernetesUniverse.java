@@ -78,7 +78,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       verifyParams(UniverseOpType.EDIT);
       // TODO: Would it make sense to have a precheck k8s task that does
       // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
       addBasicPrecheckTasks();
 
       kubernetesStatus.startYBUniverseEventStatus(
@@ -447,7 +449,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion());
+          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          /* addDelayAfterStartup */ false);
     }
     if (instanceTypeChanged || restartAllPods) {
       upgradePodsTask(
@@ -466,7 +469,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion());
+          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          /* addDelayAfterStartup */ false);
     }
 
     // If tservers have been removed, check if some deployments need to be completely

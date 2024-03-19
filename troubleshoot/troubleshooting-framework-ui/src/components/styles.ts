@@ -1,6 +1,6 @@
 import { makeStyles } from '@material-ui/core';
 
-export const useStyles = makeStyles((theme) => ({
+export const useHelperStyles = makeStyles((theme) => ({
   recommendation: {
     background: theme.palette.common.white,
     border: `1px solid ${theme.palette.grey[300]}`,
@@ -156,5 +156,43 @@ export const useStyles = makeStyles((theme) => ({
   },
   incidentStatus: {
     marginLeft: theme.spacing(0.5)
+  },
+  arrowIcon: {
+    float: 'right',
+    marginTop: '-30px'
+  },
+  smallBold: {
+    fontWeight: 700,
+    fontSize: 15,
+    fontFamily: 'Inter',
+  },
+  smallNormal: {
+    fontWeight: 600,
+    fontSize: 11.5,
+    color: '#555',
+    fontFamily: 'Inter',
+  },
+  mediumNormal: {
+    fontWeight: 400,
+     fontSize: 15,
+    fontFamily: 'Inter',
+  },
+  largeBold: {
+    fontWeight: 600,
+    fontSize: 18,
+    fontFamily: 'Inter',
+  },
+  secondaryDashboard: {
+    background: '#F9FAFC',
+    border: `2px solid #E9EEF2`,
+    borderRadius: '16px',
+    padding: theme.spacing(2, 2.5),
+    marginBottom: theme.spacing(3)
+  },
+  metricGroupItems: {
+    display: 'flex',
+    flexDirection: 'row',
+    overflow: 'hidden',
+    flexWrap: 'wrap'
   }
 }));
