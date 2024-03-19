@@ -105,4 +105,14 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
     return true;
   }
+
+  protected abstract class TestConcurrently implements Runnable {
+    protected String dbName;
+    public Boolean testSuccess;
+
+    public TestConcurrently(String dbName) {
+      this.dbName = dbName;
+      this.testSuccess = false;
+    }
+  }
 }

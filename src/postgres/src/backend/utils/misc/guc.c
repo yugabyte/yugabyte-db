@@ -2442,7 +2442,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_is_client_ysqlconnmgr,
 		false,
-		yb_is_client_ysqlconnmgr_check_hook, NULL, NULL
+		yb_is_client_ysqlconnmgr_check_hook, yb_is_client_ysqlconnmgr_assign_hook, NULL
 	},
 
 	{
