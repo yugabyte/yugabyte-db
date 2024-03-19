@@ -6324,8 +6324,11 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 
 static void
 yb_get_batched_indexquals(PlannerInfo *root, IndexPath *index_path,
-						  List **stripped_indexquals, List **fixed_indexquals)
+						  List **stripped_indexquals_p,
+						  List **fixed_indexquals_p)
 {
+	List *fixed_indexquals = NIL;
+	List *stripped_indexquals = NIL;
 	Assert(bms_num_members(index_path->path.parent->relids) == 1);
 	if (!bms_is_empty(root->yb_cur_batched_relids))
 	{
@@ -6345,23 +6348,31 @@ yb_get_batched_indexquals(PlannerInfo *root, IndexPath *index_path,
 
 				if (tmp_batched)
 				{
-					Node *clause = (Node *) tmp_batched->clause;
+					OpExpr *op = (OpExpr *) tmp_batched->clause;
 
-					if (list_member_ptr(*stripped_indexquals, clause))
+					if (list_member_ptr(stripped_indexquals, op))
 						continue;
-					
-					*stripped_indexquals = lappend(*stripped_indexquals, clause);
-					clause = copyObject(clause);
-					clause = fix_indexqual_clause(root, index_path->indexinfo,
-												  iclause->indexcol, clause,
-												  iclause->indexcols);
-					*fixed_indexquals = lappend(*fixed_indexquals, clause);
+
+					stripped_indexquals = lappend(stripped_indexquals, op);
+					op = copyObject(op);
+					linitial(op->args) = fix_indexqual_operand(
+						linitial(op->args), index_path->indexinfo,
+						iclause->indexcol);
+					fixed_indexquals = lappend(fixed_indexquals, op);
 				}
 			}
 		}
 	}
-	*fixed_indexquals = yb_zip_batched_exprs(root, *fixed_indexquals, true);
-	*stripped_indexquals = yb_zip_batched_exprs(root, *stripped_indexquals, false);
+	fixed_indexquals = yb_zip_batched_exprs(root, fixed_indexquals, true);
+	ListCell *lc;
+	foreach (lc, fixed_indexquals)
+	{
+		Node *clause = lfirst(lc);
+		Node *fixed_clause = replace_nestloop_params(root, clause);
+		*fixed_indexquals_p = lappend(*fixed_indexquals_p, fixed_clause);
+	}
+	*stripped_indexquals_p =
+		yb_zip_batched_exprs(root, stripped_indexquals, false);
 }
 
 /*
@@ -6412,9 +6423,9 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 				yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
 													index_path->indexinfo->rel->relids);
 			/*
-			* YB: We should have already processed this qual in
-			* get_fixed_batched_indexquals.
-			*/
+			 * YB: We should have already processed this qual in
+			 * yb_get_batched_indexquals.
+			 */
 			if (tmp_batched)
 				continue;
 

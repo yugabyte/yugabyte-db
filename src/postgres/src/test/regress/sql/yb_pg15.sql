@@ -450,3 +450,43 @@ RESET client_min_messages;
 ALTER PUBLICATION p ADD TABLES IN SCHEMA public;
 ALTER PUBLICATION p DROP TABLES IN SCHEMA CURRENT_SCHEMA;
 ALTER PUBLICATION p SET CURRENT_SCHEMA;
+
+-- YB_TODO: begin: remove after tracking yb_join_batching
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_seqscan = off;
+SET enable_material = off;
+SET yb_prefer_bnl = on;
+SET yb_bnl_batch_size = 3;
+CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
+
+INSERT INTO t10
+  SELECT DISTINCT
+    i1, i2+5, i3, i4
+  FROM generate_series(1, 5) i1,
+       generate_series(1, 5) i2,
+       generate_series(1, 5) i3,
+       generate_series(1, 10) i4;
+
+CREATE index i_t ON t10 (r1 ASC, r2 ASC, r3 ASC, r4 ASC);
+
+CREATE TABLE t11 (c1 int, c3 int, x int);
+INSERT INTO t11 VALUES (1,2,0), (1,3,0), (5,2,0), (5,3,0), (5,4,0);
+
+CREATE TABLE t12 (c4 int, c2 int, y int);
+INSERT INTO t12 VALUES (3,7,0),(6,9,0),(9,7,0),(4,9,0);
+
+EXPLAIN (COSTS OFF) /*+ Leading((t12 (t11 t10))) Set(enable_seqscan true) */ SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
+
+/*+ Leading((t12 (t11 t10))) Set(enable_seqscan true) */ SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
+
+DROP TABLE t10;
+DROP TABLE t11;
+DROP TABLE t12;
+RESET enable_hashjoin;
+RESET enable_mergejoin;
+RESET enable_seqscan;
+RESET enable_material;
+RESET yb_prefer_bnl;
+RESET yb_bnl_batch_size;
+-- YB_TODO: end
