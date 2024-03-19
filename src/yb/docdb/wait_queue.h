@@ -131,7 +131,8 @@ class WaitQueue {
   Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                        uint64_t max_single_shard_waiter_start_time_us,
                        const TableInfoProvider& table_info_provider,
-                       TransactionLockInfoManager* lock_info_manager) const;
+                       TransactionLockInfoManager* lock_info_manager,
+                       uint32_t max_txn_locks) const;
 
  private:
   class Impl;
