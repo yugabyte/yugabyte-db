@@ -54,4 +54,29 @@ public class ReleasesTest extends FakeDBApplication {
     List<ReleaseArtifact> artifacts = release.getArtifacts();
     assertEquals(artifacts.size(), 2);
   }
+
+  @Test
+  public void testGetForArtifactType() {
+    Release release1 = Release.create(UUID.randomUUID(), "1.2.3", "LTS");
+    Release release2 = Release.create(UUID.randomUUID(), "1.2.4", "LTS");
+    ReleaseArtifact art1 =
+        ReleaseArtifact.create("sha256", ReleaseArtifact.Platform.KUBERNETES, null, "file_url");
+    ReleaseArtifact art2 =
+        ReleaseArtifact.create(
+            "sha257",
+            ReleaseArtifact.Platform.LINUX,
+            PublicCloudConstants.Architecture.x86_64,
+            "file_urls");
+    release1.addArtifact(art1);
+    release2.addArtifact(art2);
+    List<Release> result1 =
+        Release.getAllWithArtifactType(ReleaseArtifact.Platform.KUBERNETES, null);
+    List<Release> result2 =
+        Release.getAllWithArtifactType(
+            ReleaseArtifact.Platform.LINUX, PublicCloudConstants.Architecture.x86_64);
+    assertEquals(1, result1.size());
+    assertEquals(release1.getReleaseUUID(), result1.get(0).getReleaseUUID());
+    assertEquals(1, result2.size());
+    assertEquals(release2.getReleaseUUID(), result2.get(0).getReleaseUUID());
+  }
 }

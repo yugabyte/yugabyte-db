@@ -111,7 +111,7 @@ public class ReleaseContainer {
     if (isLegacy()) {
       return this.metadata.http.paths.getX86_64_checksum();
     } else {
-      return this.artifact.getSha256();
+      return this.artifact.getFormattedSha256();
     }
   }
 
@@ -262,7 +262,7 @@ public class ReleaseContainer {
             "cannot download helmchart for %s. No kubernetes artifact found", release.getVersion());
         return;
       }
-      checksum = artifact.getSha256();
+      checksum = artifact.getFormattedSha256();
       if (artifact.getS3File() != null) {
         configType = Util.S3;
         urlPath = artifact.getS3File().path;

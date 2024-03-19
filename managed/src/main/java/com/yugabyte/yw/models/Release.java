@@ -119,6 +119,15 @@ public class Release extends Model {
     return find.all();
   }
 
+  public static List<Release> getAllWithArtifactType(
+      ReleaseArtifact.Platform plat, Architecture arch) {
+    List<ReleaseArtifact> artifacts = ReleaseArtifact.getAllPlatformArchitecture(plat, arch);
+    return find.query()
+        .where()
+        .idIn(artifacts.stream().map(a -> a.getReleaseUUID()).toArray())
+        .findList();
+  }
+
   public static Release getOrBadRequest(UUID releaseUUID) {
     Release release = get(releaseUUID);
     if (release == null) {
@@ -134,6 +143,15 @@ public class Release extends Model {
   }
 
   public void addArtifact(ReleaseArtifact artifact) {
+    if (ReleaseArtifact.getForReleaseMatchingType(
+            releaseUUID, artifact.getPlatform(), artifact.getArchitecture())
+        != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "artifact matching platform %s and architecture %s already exists",
+              artifact.getPlatform(), artifact.getArchitecture()));
+    }
     artifact.setReleaseUUID(releaseUUID);
   }
 
