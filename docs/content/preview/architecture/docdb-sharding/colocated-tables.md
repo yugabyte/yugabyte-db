@@ -99,13 +99,13 @@ You can create a backup of a database that was colocated with the deprecated syn
 
 {{< /warning >}}
 
-To check if a database is colocated or not, you can use the `yb_is_database_colocated` function as:
+To check if a database is colocated or not, you can use the `yb_is_database_colocated` function as follows:
 
 ```sql
 select yb_is_database_colocated();
 ```
 
-You should see an output similar to:
+You should see an output similar to the following:
 
 ```output
  yb_is_database_colocated
@@ -133,13 +133,13 @@ CREATE TABLE <name> (columns) WITH (colocated = <true|false>)
 
 {{< /warning >}}
 
-To check if a table is colocated or not, you can use the [`\d`](../../admin/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../admin/ysqlsh). You can also retrieve the same information using the `yb_table_properties` function as:
+To check if a table is colocated or not, you can use the [`\d`](../../../admin/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../../admin/ysqlsh). You can also retrieve the same information using the `yb_table_properties` function as follows:
 
 ```sql
 select is_colocated from yb_table_properties('table_name'::regclass);
 ```
 
-You should see an output similar to:
+You should see an output similar to the following:
 
 ```output
  is_colocated
