@@ -23,8 +23,8 @@ Unless otherwise noted, operating systems are supported by all supported version
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} | v2.18.0 and later<br>Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](../../../releases/#upcoming-release-series) |
 | CentOS7          | {{<icon/yes>}} |                | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](../../../releases/#upcoming-release-series) |
-| Oracle 7         | {{<icon/yes>}} |                | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](../../../releases/#upcoming-release-series)|
-| Oracle 8         | {{<icon/yes>}} |                | |
+| Oracle Linux 7         | {{<icon/yes>}} |                | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](../../../releases/#upcoming-release-series)|
+| Oracle Linux 8         | {{<icon/yes>}} |                | |
 | Red Hat Enterprise Linux 7 | {{<icon/yes>}} |      | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](../../../releases/#upcoming-release-series) |
 | Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | Recommended for production |
 | SUSE Linux Enterprise Server 15 SP5 | {{<icon/yes>}} |     | {{<badge/ea>}} |
