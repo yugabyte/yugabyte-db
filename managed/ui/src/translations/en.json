@@ -1532,9 +1532,9 @@
         "amiId": "AMI ID",
         "portDetails": "Provide SSH user and SSH port details",
         "sshUser": "SSH User",
-        "sshUserPlaceholder": "e.g. centos",
+        "sshUserPlaceholder": "ec2-user",
         "sshPort": "SSH Port",
-        "sshPortPlaceholder": "e.g. 22",
+        "sshPortPlaceholder": "22",
         "menuActions": {
           "edit": "Edit",
           "delete": "Delete",
