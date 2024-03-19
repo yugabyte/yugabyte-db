@@ -1163,6 +1163,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   bool IsConsistentSnapshotStream() const;
 
+  const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity> GetReplicaIdentityMap() const;
+
   std::string ToString() const override;
 
  private:
