@@ -22,7 +22,6 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.File;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Collections;
@@ -32,7 +31,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.map.LRUMap;
-import org.apache.commons.io.FileUtils;
 import play.libs.ws.WSClient;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -137,24 +135,14 @@ public class ReleasesExtractMetadataController extends AuthenticatedController {
   private void downloadAndExtract(UUID metadataUuid, URL url) {
     ResponseExtractMetadata metadata = metadataMap.get(metadataUuid);
     metadata.status = ResponseExtractMetadata.Status.running;
-    log.info("download file from {}", url.toString());
-    File file = null;
+    log.info("reading file from {}", url.toString());
     try {
-      file = File.createTempFile("temp", ".tgz");
-      file.deleteOnExit(); // set delete on exit in case we crash before we can delete the file.
-      log.debug("downloading to temp file {}", file.getAbsolutePath());
-      FileUtils.copyURLToFile(url, file);
-      ReleasesUtils.ExtractedMetadata em = releasesUtils.metadataFromPath(file.toPath());
+      ReleasesUtils.ExtractedMetadata em = releasesUtils.versionMetadataFromURL(url);
       metadata.populateFromExtractedMetadata(em);
       metadata.status = ResponseExtractMetadata.Status.success;
     } catch (Exception e) {
       metadata.status = ResponseExtractMetadata.Status.failure;
       log.error("failed to extract metadata", e);
-    } finally {
-      // Delete the temporary file
-      if (file != null && !file.delete()) {
-        log.error("failed to delete file at {}" + file.getAbsolutePath());
-      }
     }
   }
 }
