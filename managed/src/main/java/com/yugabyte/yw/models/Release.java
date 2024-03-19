@@ -56,6 +56,7 @@ public class Release extends Model {
   public enum ReleaseState {
     ACTIVE,
     DISABLED,
+    INCOMPLETE,
     DELETED
   }
 
@@ -75,7 +76,7 @@ public class Release extends Model {
     release.version = version;
     release.releaseType = releaseType;
     release.yb_type = YbType.YBDB;
-    release.state = ReleaseState.ACTIVE;
+    release.state = ReleaseState.INCOMPLETE;
     release.save();
     return release;
   }
@@ -105,7 +106,7 @@ public class Release extends Model {
       }
     }
     release.releaseNotes = reqRelease.release_notes;
-    release.state = ReleaseState.ACTIVE;
+    release.state = ReleaseState.INCOMPLETE;
 
     release.save();
     return release;
@@ -153,6 +154,14 @@ public class Release extends Model {
               artifact.getPlatform(), artifact.getArchitecture()));
     }
     artifact.setReleaseUUID(releaseUUID);
+
+    // Move the state from incomplete to active when adding a Linux type. Kubernetes artifacts
+    // are not sufficient to make a release move into the "active" state.
+    if (artifact.getPlatform() == ReleaseArtifact.Platform.LINUX
+        && this.state == ReleaseState.INCOMPLETE) {
+      state = ReleaseState.ACTIVE;
+      save();
+    }
   }
 
   public List<ReleaseArtifact> getArtifacts() {
