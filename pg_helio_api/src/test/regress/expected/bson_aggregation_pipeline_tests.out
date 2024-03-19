@@ -3,21 +3,21 @@ SET helio_api.next_collection_id TO 3500;
 SET helio_api.next_collection_index_id TO 3500;
 SELECT helio_api.insert_one('db','aggregation_pipeline','{"_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
 NOTICE:  creating collection
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','aggregation_pipeline','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','aggregation_pipeline','{"_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- fetch all rows
@@ -662,15 +662,15 @@ SELECT document FROM helio_api.distinct_query('db', '{ "distinct": "non_existent
 
 -- Vector search with cosmosSearch
 SELECT helio_api.insert_one('db', 'aggregation_pipeline', '{ "_id": 6, "a": "some sentence", "v": [3.0, 5.0, 1.1 ] }');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db', 'aggregation_pipeline', '{ "_id": 7, "a": "some other sentence", "v": [8.0, 5.0, 0.1 ] }');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "COS", "dimensions": 3 } } ] }', true);
@@ -777,100 +777,100 @@ ERROR:  Unrecognized $search option: unknowType, should be one of: cosmosSearch,
 -- $lookup
 SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
 NOTICE:  creating collection
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_orders','{ "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 5}', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 6, "item" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 7, "item" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"] }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_inventory',' { "_id" : 11, "sku" : "almonds", "description": "product 1", "instock" : 120 }', NULL);
 NOTICE:  creating collection
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_inventory',' { "_id" : 12, "sku" : "almonds", "description": "product 1", "instock" : 240 }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 13, "sku" : "bread", "description": "product 2", "instock" : 80 }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 14, "sku" : "cashews", "description": "product 3", "instock" : 60 }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 15, "sku" : "pecans", "description": "product 4", "instock" : 70 }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 16, "sku" : null, "description": "product 4", "instock" : 70 }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 17, "sku" :  {"a": "x", "b" : 1, "c" : [1, 2, 3]}, "description": "complex object" }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 18, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 19, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT document FROM bson_aggregation_pipeline('db', 
@@ -1246,27 +1246,27 @@ HINT:  No function matches the given name and argument types. You might need to 
 QUERY:  CREATE INDEX documents_rum_index_3508 ON helio_data.documents_3503 USING ivfflat(CAST(helio_api_catalog.bson_extract_vector(document, 'v'::text) AS public.vector(3)) public.vector_cosine_ops) WITH (lists = 5) WHERE helio_api_catalog.bson_extract_vector(document, 'v'::text) IS NOT NULL
 SELECT helio_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 1, "a": "some sentence", "v": [1, 2, 3 ] }');
 NOTICE:  creating collection
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 2, "a": "some other sentence", "v": [1, 2.0, 3 ] }');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 3, "a": "some sentence" }');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 4, "a": "some other sentence", "v": [3, 2, 1 ] }');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 BEGIN;

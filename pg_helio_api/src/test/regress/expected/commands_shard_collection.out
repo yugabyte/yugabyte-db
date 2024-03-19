@@ -4,9 +4,9 @@ SET helio_api.next_collection_index_id TO 5000;
 -- before reshard
 SELECT helio_api.insert_one('db','reshard','{"_id":"1", "value": { "$numberInt" : "11" }}');
 NOTICE:  creating collection
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 BEGIN;
@@ -112,22 +112,22 @@ SELECT * FROM helio_test_helpers.get_collection_indexes('db', 'reshard') ORDER B
 (3 rows)
 
 SELECT helio_api.insert_one('db','reshard','{"value":{"$numberLong" : "134311"}, "_id":"2" }');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','reshard','{"_id":"3", "value": 11}');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- documents without a shard key are allowed
 SELECT helio_api.insert_one('db','reshard','{"_id":"4", "novalue": 0}');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT count(*) FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$exists":false}}';
@@ -138,9 +138,9 @@ SELECT count(*) FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
 
 -- documents with an object shard key are allowed
 SELECT helio_api.insert_one('db','reshard','{"_id":"5", "value": {"hello":"world"}}');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT count(*) FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"hello":"world"}}';
@@ -151,23 +151,23 @@ SELECT count(*) FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
 
 -- documents with an array shard key are not allowed
 SELECT helio_api.insert_one('db','reshard','{"_id":"6", "value": ["hello","world"]}');
-                                                                                                   insert_one                                                                                                   
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain an array." } ] }
+                                                                                                     insert_one                                                                                                      
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain an array." } ] }
 (1 row)
 
 -- documents with regex shard key are not allowed
 SELECT helio_api.insert_one('db','reshard','{"_id":"6", "value":  {"$regularExpression":{"pattern":"foo","options":""}}}');
-                                                                                                  insert_one                                                                                                   
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain a regex." } ] }
+                                                                                                     insert_one                                                                                                     
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain a regex." } ] }
 (1 row)
 
 -- documents with double shard key are allowed
 SELECT helio_api.insert_one('db','reshard','{"_id":"6", "value": 15.0}');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- after reshard
@@ -394,16 +394,16 @@ SELECT helio_api.shard_collection('db','reshard', '{"a.b":"hashed"}', true);
 
 -- we should not allow arrays in the path even if the value is not an array
 SELECT helio_api.insert_one('db','reshard','{"_id":"10", "a": [{"b":22}]}');
-                                                                                                               insert_one                                                                                                                
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain array values or array descendants." } ] }
+                                                                                                                  insert_one                                                                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain array values or array descendants." } ] }
 (1 row)
 
 -- nested objects should be fine
 SELECT helio_api.insert_one('db','reshard','{"_id":"10", "a": {"b":22}}');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 BEGIN;
@@ -437,9 +437,9 @@ NOTICE:  creating collection
 -- shard a collection that has no user-created indexes
 SELECT helio_api.insert_one('db','shard_collection_no_indexes','{"_id":"1", "value": { "$numberInt" : "11" }}');
 NOTICE:  creating collection
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 BEGIN;
@@ -480,9 +480,9 @@ BEGIN;
 set local helio_core.bsonUseEJson to false;
 SELECT helio_api.insert_one('db','reshardwithindexes2','{"_id":"1", "value": 11, "otherValue": 15 }');
 NOTICE:  creating collection
-                   insert_one                    
--------------------------------------------------
- BSONHEX14000000106f6b0001000000106e000100000000
+                       insert_one                        
+---------------------------------------------------------
+ BSONHEX18000000106e0001000000016f6b00000000000000f03f00
 (1 row)
 
 -- create some indexes

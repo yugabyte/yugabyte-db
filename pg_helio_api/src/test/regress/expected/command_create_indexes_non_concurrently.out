@@ -663,21 +663,21 @@ BEGIN;
 
 COMMIT;
 SELECT helio_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 1}, "a": {"k": 1}}');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 1}, "a": {"k": 2}}');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 2}, "a": {"k": 2}}');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 BEGIN;

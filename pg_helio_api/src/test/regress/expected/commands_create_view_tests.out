@@ -146,27 +146,27 @@ SELECT document FROM helio_api_catalog.bson_aggregation_find('db', '{ "find": "c
 
 -- now insert 3 docs in the table 
 SELECT helio_api.insert_one('db', 'create_view_tests', '{ "_id": 1, "a": 4 }');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db', 'create_view_tests', '{ "_id": 2, "a": 1 }');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db', 'create_view_tests', '{ "_id": 3, "a": 140 }');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db', 'create_view_tests', '{ "_id": 4, "a": 40 }');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_find('db', '{ "find": "create_view_tests_view_3" }');
@@ -259,9 +259,9 @@ ERROR:  View cycle detected: db.create_view_tests -> db.create_view_tests_view_1
 -- recreate a collection
 SELECT helio_api.insert_one('db', 'create_view_tests', '{ "_id": 3, "a": 140 }');
 NOTICE:  creating collection
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- view works again

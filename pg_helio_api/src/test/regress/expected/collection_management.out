@@ -16,9 +16,9 @@ SELECT count(*) FROM helio_api.collection('collection_management','originalname'
 (1 row)
 
 SELECT helio_api.insert_one('collection_management','originalname','{"_id":"1", "a":1}');
-                           insert_one                            
------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- query an existing collection

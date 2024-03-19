@@ -63,7 +63,7 @@ typedef struct BatchInsertionSpec
 typedef struct BatchInsertionResult
 {
 	/* response status (seems to always be 1?) */
-	int ok;
+	double ok;
 
 	/* number of rows insert */
 	uint64 rowsInserted;
@@ -1109,8 +1109,8 @@ BuildResponseMessage(BatchInsertionResult *batchResult)
 {
 	pgbson_writer resultWriter;
 	PgbsonWriterInit(&resultWriter);
-	PgbsonWriterAppendInt32(&resultWriter, "ok", 2, batchResult->ok);
 	PgbsonWriterAppendInt32(&resultWriter, "n", 1, batchResult->rowsInserted);
+	PgbsonWriterAppendDouble(&resultWriter, "ok", 2, batchResult->ok);
 
 	if (batchResult->writeErrors != NIL)
 	{
