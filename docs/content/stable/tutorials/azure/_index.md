@@ -9,6 +9,7 @@ menu:
   stable:
     identifier: tutorials-azure
     parent: tutorials
+    weight: 2
 type: indexpage
 ---
 
