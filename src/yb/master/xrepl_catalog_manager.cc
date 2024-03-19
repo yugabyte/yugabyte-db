@@ -137,6 +137,8 @@ DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
+DECLARE_bool(ysql_yb_enable_replica_identity);
+
 
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
@@ -781,7 +783,11 @@ Status CatalogManager::CreateCDCStream(
     if (option.key() == cdc::kSourceType) {
       source_type_option_value = option.value();
     }
-    if (option.key() == cdc::kRecordType) {
+    if (option.key() == cdc::kRecordType ) {
+      if (FLAGS_ysql_yb_enable_replica_identity) {
+        LOG(WARNING) << " The value for Before Image RecordType will be ignored as "
+                        "ysql_yb_enable_replica_identity is enabled.";
+      }
       record_type_option_value = option.value();
     }
   }
@@ -872,6 +878,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   bool has_consistent_snapshot_option = false;
   bool consistent_snapshot_option_use = false;
+  bool has_replica_identity_full = false;
 
   CDCStreamInfoPtr stream;
   xrepl::StreamId stream_id = xrepl::StreamId::Nil();
@@ -943,6 +950,20 @@ Status CatalogManager::CreateNewCdcsdkStream(
   metadata->set_namespace_id(*namespace_id);
   for (const auto& table_id : table_ids) {
     metadata->add_table_id(table_id);
+    if (FLAGS_ysql_yb_enable_replica_identity) {
+      auto table = VERIFY_RESULT(FindTableById(table_id));
+      Schema schema;
+      RETURN_NOT_OK(table->GetSchema(&schema));
+      PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();
+
+      // If atleast one of the tables in the stream has replica identity full, we will set the
+      // history cutoff. UpdatepPeersAndMetrics thread will remove the retention barriers for
+      // the tablets belonging to the tables with "non-full" replica identity.
+      has_replica_identity_full |= (replica_identity == PgReplicaIdentity::FULL);
+
+      metadata->mutable_replica_identity_map()->insert({table_id, replica_identity});
+      VLOG(1) << "Replica identity for table " << table_id << " is " << replica_identity;
+    }
   }
 
   metadata->set_transactional(req.transactional());
@@ -1028,10 +1049,11 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   uint64 consistent_snapshot_time = 0;
   bool record_type_option_all = false;
-
-  for (auto option : req.options()) {
-    if (option.key() == cdc::kRecordType) {
-      record_type_option_all = option.value() == CDCRecordType_Name(cdc::CDCRecordType::ALL);
+  if (!FLAGS_ysql_yb_enable_replica_identity) {
+    for (auto option : req.options()) {
+      if (option.key() == cdc::kRecordType) {
+        record_type_option_all = option.value() == CDCRecordType_Name(cdc::CDCRecordType::ALL);
+      }
     }
   }
 
@@ -1047,11 +1069,12 @@ Status CatalogManager::CreateNewCdcsdkStream(
   RETURN_NOT_OK(
       TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kAfterDummyCDCStateEntries"));
 
-  // Step 2: Set retention barriers for all tables.
-  auto require_history_cutoff = consistent_snapshot_option_use || record_type_option_all;
-  RETURN_NOT_OK(SetAllCDCSDKRetentionBarriers(
-      req, rpc, epoch, table_ids, stream->StreamId(), has_consistent_snapshot_option,
-      require_history_cutoff));
+    // Step 2: Set retention barriers for all tables.
+    auto require_history_cutoff =
+        consistent_snapshot_option_use || record_type_option_all || has_replica_identity_full;
+    RETURN_NOT_OK(SetAllCDCSDKRetentionBarriers(
+        req, rpc, epoch, table_ids, stream->StreamId(), has_consistent_snapshot_option,
+        require_history_cutoff));
 
   RETURN_NOT_OK(
       TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kAfterRetentionBarriers"));
@@ -1655,6 +1678,10 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
     return STATUS(InvalidArgument, "Invalid CDCRecordType value", record_type_option_value);
   }
 
+  if (FLAGS_ysql_yb_enable_replica_identity) {
+    return Status::OK();
+  }
+
   switch (record_type_pb) {
     case cdc::CDCRecordType::PG_FULL:
       FALLTHROUGH_INTENDED;
@@ -1682,6 +1709,7 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
       return Status::OK();
     }
   }
+
   return Status::OK();
 }
 
@@ -2230,6 +2258,9 @@ Status CatalogManager::GetCDCStream(
   if (stream_lock->pb.has_stream_creation_time()) {
     stream_info->set_stream_creation_time(stream_lock->pb.stream_creation_time());
   }
+
+  auto replica_identity_map = stream_lock->pb.replica_identity_map();
+  stream_info->mutable_replica_identity_map()->swap(replica_identity_map);
 
   return Status::OK();
 }
