@@ -137,10 +137,19 @@ public class PlatformReplicationManager {
   public JsonNode stopAndDisable() {
     this.stop();
     replicationHelper.setBackupScheduleEnabled(false);
-    HA_LAST_BACKUP_TIME.clear();
-    HA_LAST_BACKUP_SIZE.clear();
+    this.clearMetrics();
 
     return this.getBackupInfo();
+  }
+
+  public void clearMetrics(PlatformInstance remoteInstance) {
+    replicationHelper.clearMetrics(remoteInstance.getConfig(), remoteInstance.getAddress());
+    this.clearMetrics();
+  }
+
+  public void clearMetrics() {
+    HA_LAST_BACKUP_TIME.clear();
+    HA_LAST_BACKUP_SIZE.clear();
   }
 
   public JsonNode setFrequencyStartAndEnable(Duration duration) {
@@ -294,6 +303,8 @@ public class PlatformReplicationManager {
             .orElse(false);
     if (!result) {
       log.error("Error sending platform backup to " + remoteInstance.getAddress());
+      // Clear version mismatch metric
+      replicationHelper.clearMetrics(config, remoteInstance.getAddress());
     }
 
     return result;
@@ -347,7 +358,7 @@ public class PlatformReplicationManager {
                                             return sendBackup(instance);
                                           } catch (Exception e) {
                                             log.error(
-                                                "Exception {} sending back to instance {}",
+                                                "Exception {} sending backup to instance {}",
                                                 e.getMessage(),
                                                 instance.getAddress());
                                             return false;
@@ -365,6 +376,7 @@ public class PlatformReplicationManager {
                                     instance.updateLastBackup(localInstance.getLastBackup());
                                     if (!replicationHelper.syncToRemoteInstance(instance)) {
                                       instance.updateLastBackup(lastLastBackup);
+                                      replicationHelper.clearMetrics(config, instance.getAddress());
                                       log.error(
                                           "Error syncing config to remote instance {}",
                                           instance.getAddress());
