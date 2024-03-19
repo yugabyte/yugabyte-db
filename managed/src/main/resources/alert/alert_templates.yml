@@ -1507,6 +1507,25 @@ templates:
         More recent OS version is recommended for this universe. Consider running VM image
         upgrade for the nodes to incorporate security patches and address vulnerabilities.
 
+  UNIVERSE_RELEASE_FILES_STATUS:
+    name: Universe Release Files Missing
+    description: Local filepath for universe DB version is missing.
+    queryTemplate: ybp_universe_release_files_status{universe_uuid="__universeUuid__"}
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 1.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdMaxValue: 1.0
+    thresholdReadOnly: true
+    annotations:
+      summary: >-
+        Local filepath for DB software version is now missing, likely due to HA promotion. Please
+        upload DB version binary to path specified in release metadata before continuing.
+
   DB_YSQL_WEB_SERVER_DOWN:
     name: DB YSQL web server down
     description: DB YSQL web server is down for 15 minutes

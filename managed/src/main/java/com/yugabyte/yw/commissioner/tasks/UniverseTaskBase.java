@@ -501,35 +501,42 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         universe -> {
           if (!SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(taskType)
               && confGetter.getConfForScope(universe, UniverseConfKeys.validateLocalRelease)) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            String ybSoftwareVersion =
-                universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion;
-            ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
-            if (release == null) {
-              String msg =
-                  String.format(
-                      "Universe %s does not have valid metadata.", universe.getUniverseUUID());
-              log.error(msg);
-              throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
-            }
-            if (release.hasLocalRelease()) {
-              Set<String> localFilePaths = release.getLocalReleasePathStrings();
-              localFilePaths.forEach(
-                  path -> {
-                    Path localPath = Paths.get(path);
-                    if (!Files.exists(localPath)) {
-                      String msg =
-                          String.format(
-                              "Could not find path %s on system for YB software version %s",
-                              localPath, ybSoftwareVersion);
-                      log.error(msg);
-                      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
-                    }
-                  });
+            if (!validateLocalFilepath(
+                universe,
+                releaseManager.getReleaseByVersion(
+                    universe
+                        .getUniverseDetails()
+                        .getPrimaryCluster()
+                        .userIntent
+                        .ybSoftwareVersion))) {
+              throw new PlatformServiceException(
+                  INTERNAL_SERVER_ERROR, "Error validating local release for universe.");
             }
           }
         };
     return releaseValidator;
+  }
+
+  public static boolean validateLocalFilepath(Universe universe, ReleaseContainer release) {
+    if (release == null) {
+      String msg =
+          String.format("Universe %s does not have valid metadata.", universe.getUniverseUUID());
+      log.error(msg);
+      return false;
+    }
+    Set<String> localFilePaths = release.getLocalReleasePathStrings();
+    for (String path : localFilePaths) {
+      Path localPath = Paths.get(path);
+      if (!Files.exists(localPath)) {
+        String msg =
+            String.format(
+                "Could not find path %s on system for YB software version %s",
+                localPath, release.getVersion());
+        log.error(msg);
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
