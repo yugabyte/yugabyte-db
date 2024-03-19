@@ -3,7 +3,7 @@ title: Continuous availability
 headerTitle: Continuous availability
 linkTitle: Continuous availability
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
-headcontent: High availability and fault tolerance
+headcontent: High availability, fault tolerance and resilience
 aliases:
   - /preview/explore/fault-tolerance/
   - /preview/explore/postgresql/fault-tolerance/
@@ -17,7 +17,24 @@ menu:
 type: indexpage
 ---
 
-YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region. YugabyteDB's [High availability](../../architecture/core-functions/high-availability/) is achieved through a combination of distributed architecture, data replication, consensus algorithms, automatic rebalancing, and failure detection mechanisms, ensuring that the database remains available, consistent, and resilient to failures of fault domains.
+Resilience, in the context of cloud databases, refers to the ability to withstand and recover from various types of failures, ranging from hardware malfunctions and software bugs to network outages and natural disasters. A resilient database system is designed to maintain data integrity, accessibility, and continuity of operations, even in the face of adverse events. Achieving resilience in cloud databases requires a multi-faceted approach, involving robust architectural design, effective data replication and backup strategies, load balancing, failover mechanisms, and comprehensive monitoring and incident response procedures.
+
+YugabyteDB has been designed ground up to be resilient. YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region. YugabyteDB's [High availability](../../architecture/core-functions/high-availability/) is achieved through a combination of distributed architecture, data replication, consensus algorithms, automatic rebalancing, and failure detection mechanisms, ensuring that the database remains available, consistent, and resilient to failures of fault domains.
+
+In the following sections, we will explore the key strategies, technologies, and best practices for enhancing the resilience of cloud databases, enabling organizations to leverage the benefits of the cloud while maintaining the highest levels of data protection and service availability.
+
+## Need for resilience
+
+The need for resilience in cloud databases arises from several factors:
+
+- **Distributed Nature**: Cloud databases are often distributed across multiple physical locations, introducing complexities in data synchronization and potential points of failure.
+- **Ephemeral Instances**: Virtual machines are spawned on commodity hardware which can disappear at any time. They are ephemeral.
+- **Unpredictable Workloads**: Cloud databases must handle fluctuating and unpredictable workloads, which can strain resources and potentially lead to performance degradation or outages. High loads can cause power surges. Backup generators have failed too.
+- **Failure of fault domains**: Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year. Disk and machines commonly fail due to multiple reasons.
+- **Cyber attacks**: Your applications could be exposed to security threats or attacks. Resilience can help protect applications against these threats by isolating components, and responding to anomalies, and thus ensuring that such incidents do not compromise the entire system.
+- **Planned upgrades**: You might have to upgrade your operating system or database or even update your software with security patches. For this, your applications have to be taken offline.
+
+
 
 ## Fault domains
 
