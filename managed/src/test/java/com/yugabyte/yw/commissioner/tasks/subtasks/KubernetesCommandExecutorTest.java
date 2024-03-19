@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -582,7 +583,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = true;
     defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
-    defaultUniverse.getUniverseDetails().rootCA = defaultCert.getUuid();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -629,7 +631,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = false;
     defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
-    defaultUniverse.getUniverseDetails().rootCA = defaultCert.getUuid();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -676,7 +679,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.enableNodeToNodeEncrypt = false;
     defaultUserIntent.enableClientToNodeEncrypt = true;
     defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
-    defaultUniverse.getUniverseDetails().rootCA = defaultCert.getUuid();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
