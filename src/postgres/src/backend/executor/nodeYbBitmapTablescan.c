@@ -75,6 +75,7 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		node->work_mem_exceeded = ybtbm->work_mem_exceeded;
 		node->average_ybctid_bytes = yb_tbm_get_average_bytes(ybtbm);
 		node->recheck_required |= ybtbm->recheck;
+		node->skipped_tuples = 0;
 	}
 
 	ybScan = scandesc->ybscan;

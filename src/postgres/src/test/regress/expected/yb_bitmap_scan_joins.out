@@ -745,3 +745,64 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
                ->  Bitmap Index Scan on test_join_filter_a_idx (actual rows=5 loops=33)
                      Index Cond: (a <= table2.b)
 (15 rows)
+
+--
+-- Rescans where we don't need the actual rows
+-- This test is based off #21526 identified by the random query generator.
+-- To speed up the test, don't bother creating new tables.
+--
+/*+ BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Sort (actual rows=6 loops=1)
+   Sort Key: joinb.k
+   Sort Method: quicksort
+   ->  Seq Scan on joinb (actual rows=6 loops=1)
+         Filter: ((SubPlan 1) OR (c = 1))
+         Rows Removed by Filter: 4
+         SubPlan 1
+           ->  YB Bitmap Table Scan on joina (actual rows=1 loops=10)
+                 ->  Bitmap Index Scan on joina_a_idx (actual rows=3 loops=10)
+                       Index Cond: (a >= joinb.d)
+(10 rows)
+
+/*+ BitmapScan(joina) */
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+ k | c  | d
+---+----+----
+ 1 |  2 |  3
+ 2 |  4 |  6
+ 3 |  6 |  9
+ 4 |  8 | 12
+ 5 | 10 | 15
+ 6 | 12 | 18
+(6 rows)
+
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Sort (actual rows=6 loops=1)
+   Sort Key: joinb.k
+   Sort Method: quicksort
+   ->  Seq Scan on joinb (actual rows=6 loops=1)
+         Filter: ((SubPlan 1) OR (c = 1))
+         Rows Removed by Filter: 4
+         SubPlan 1
+           ->  Index Only Scan using joina_a_idx on joina (actual rows=1 loops=10)
+                 Index Cond: (a >= joinb.d)
+                 Heap Fetches: 0
+(10 rows)
+
+/*+ Set(enable_bitmapscan false) */
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+ k | c  | d
+---+----+----
+ 1 |  2 |  3
+ 2 |  4 |  6
+ 3 |  6 |  9
+ 4 |  8 | 12
+ 5 | 10 | 15
+ 6 | 12 | 18
+(6 rows)
