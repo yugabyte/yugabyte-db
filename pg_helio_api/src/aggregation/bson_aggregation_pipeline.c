@@ -161,6 +161,7 @@ static bool CanInlineLookupStageUnwind(const bson_value_t *stageValue, const
 static bool CanInlineLookupStageTrue(const bson_value_t *stageValue, const
 									 StringView *lookupPath);
 
+extern bool EnableGroupPushSupport;
 
 /* Stages and their definitions sorted by name.
  * Please keep this list sorted.
@@ -3357,7 +3358,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$push"))
 		{
-			if (IsClusterVersionAtleastThis(1, 15, 0))
+			if (IsClusterVersionAtleastThis(1, 15, 0) || EnableGroupPushSupport)
 			{
 				char *fieldPath = "";
 				bool handleSingleValue = true;

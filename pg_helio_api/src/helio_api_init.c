@@ -214,6 +214,9 @@ int32 MaxIndexesPerCollection = DEFAULT_MAX_INDEXES_PER_COLLECTION;
 #define DEFAULT_ENABLE_GRAPH_LOOKUP true
 bool EnableGraphLookup = DEFAULT_ENABLE_GRAPH_LOOKUP;
 
+#define DEFAULT_ENABLE_PUSH_SUPPORT false
+bool EnableGroupPushSupport = DEFAULT_ENABLE_PUSH_SUPPORT;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -562,6 +565,12 @@ InitApiConfigurations(char *prefix)
 		"helio_api.enableGraphLookupAggregation",
 		gettext_noop("Feature flag for the graph lookup aggregation stage"),
 		NULL, &EnableGraphLookup, DEFAULT_ENABLE_GRAPH_LOOKUP, PGC_USERSET, 0,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableGroupPushSupport",
+		gettext_noop("Feature flag for the group push support"), NULL,
+		&EnableGroupPushSupport, DEFAULT_ENABLE_PUSH_SUPPORT, PGC_USERSET, 0,
 		NULL, NULL, NULL);
 }
 
