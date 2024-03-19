@@ -52,8 +52,11 @@ var updateK8sProviderCmd = &cobra.Command{
 		}
 
 		if len(r) < 1 {
-			fmt.Println("No providers found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		var provider ybaclient.Provider
@@ -79,7 +82,7 @@ var updateK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(newProviderName) > 0 {
-			logrus.Debug("Updating provider name")
+			logrus.Debug("Updating provider name\n")
 			provider.SetName(newProviderName)
 			providerName = newProviderName
 		}
@@ -91,7 +94,7 @@ var updateK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(strings.TrimSpace(providerType)) > 0 {
-			logrus.Debug("Updating kubernetes provider type")
+			logrus.Debug("Updating kubernetes provider type\n")
 			k8sCloudInfo.SetKubernetesProvider(providerType)
 		}
 
@@ -100,7 +103,7 @@ var updateK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(strings.TrimSpace(imageRegistry)) > 0 {
-			logrus.Debug("Updating Image Registry")
+			logrus.Debug("Updating Image Registry\n")
 			k8sCloudInfo.SetKubernetesImageRegistry(imageRegistry)
 		}
 
@@ -109,10 +112,10 @@ var updateK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(strings.TrimSpace(pullSecretFilePath)) > 0 {
-			logrus.Debug("Reading Kubernetes Pull Secret")
+			logrus.Debug("Reading Kubernetes Pull Secret\n")
 			pullSecretContent := util.YAMLtoString(pullSecretFilePath)
 			if len(strings.TrimSpace(pullSecretContent)) > 0 {
-				logrus.Debug("Updating Kubernetes Pull Secret")
+				logrus.Debug("Updating Kubernetes Pull Secret\n")
 				k8sCloudInfo.SetKubernetesPullSecret(pullSecretContent)
 			}
 		}
@@ -122,10 +125,10 @@ var updateK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(strings.TrimSpace(configFilePath)) > 0 {
-			logrus.Debug("Reading Kube Config")
+			logrus.Debug("Reading Kube Config\n")
 			configContent := util.YAMLtoString(configFilePath)
 			if len(strings.TrimSpace(configContent)) > 0 {
-				logrus.Debug("Updating Kube Config")
+				logrus.Debug("Updating Kube Config\n")
 				k8sCloudInfo.SetKubeConfigContent(configContent)
 			}
 		}
@@ -135,7 +138,7 @@ var updateK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(strings.TrimSpace(storageClass)) > 0 {
-			logrus.Debug("Updating Kubernetes storage class")
+			logrus.Debug("Updating Kubernetes storage class\n")
 			k8sCloudInfo.SetKubernetesStorageClass(storageClass)
 		}
 
@@ -147,7 +150,7 @@ var updateK8sProviderCmd = &cobra.Command{
 		// Update ProviderDetails
 
 		if cmd.Flags().Changed("airgap-install") {
-			logrus.Debug("Updating airgap install")
+			logrus.Debug("Updating airgap install\n")
 			airgapInstall, err := cmd.Flags().GetBool("airgap-install")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -387,7 +390,7 @@ func editK8sRegions(
 					if filePath, ok := region["config-file-path"]; ok {
 						var configContent string
 						if strings.TrimSpace(filePath) != "" {
-							logrus.Debug("Reading Region Kube Config")
+							logrus.Debug("Reading Region Kube Config\n")
 							configContent = util.YAMLtoString(filePath)
 						}
 						if len(strings.TrimSpace(configContent)) != 0 {
@@ -397,7 +400,7 @@ func editK8sRegions(
 					if filePath, ok := region["overrirdes-file-path"]; ok {
 						var overrides string
 						if strings.TrimSpace(filePath) != "" {
-							logrus.Debug("Reading Region Kubernetes Overrides")
+							logrus.Debug("Reading Region Kubernetes Overrides\n")
 							overrides = util.YAMLtoString(filePath)
 						}
 						if len(strings.TrimSpace(overrides)) != 0 {
@@ -425,13 +428,13 @@ func addK8sRegions(
 		region := providerutil.BuildRegionMapFromString(regionString, "")
 		if _, ok := region["name"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Name not specified in region.",
+				formatter.Colorize("Name not specified in region.\n",
 					formatter.RedColor))
 		}
 		var configContent string
 		if filePath, ok := region["config-file-path"]; ok {
 			if strings.TrimSpace(filePath) != "" {
-				logrus.Debug("Reading Region Kube Config")
+				logrus.Debug("Reading Region Kube Config\n")
 				configContent = util.YAMLtoString(filePath)
 			}
 		}
@@ -439,7 +442,7 @@ func addK8sRegions(
 		var overrides string
 		if filePath, ok := region["overrirdes-file-path"]; ok {
 			if strings.TrimSpace(filePath) != "" {
-				logrus.Debug("Reading Region Kubernetes Overrides")
+				logrus.Debug("Reading Region Kubernetes Overrides\n")
 				overrides = util.YAMLtoString(filePath)
 			}
 		}
@@ -477,7 +480,7 @@ func removeK8sZones(
 	if len(removeZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -496,7 +499,7 @@ func removeK8sZones(
 	}
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return zones
@@ -510,7 +513,7 @@ func editK8sZones(
 	if len(editZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -545,7 +548,7 @@ func editK8sZones(
 					if filePath, ok := zone["config-file-path"]; ok {
 						var configContent string
 						if strings.TrimSpace(filePath) != "" {
-							logrus.Debug("Reading Region Kube Config")
+							logrus.Debug("Reading Region Kube Config\n")
 							configContent = util.YAMLtoString(filePath)
 						}
 						if len(strings.TrimSpace(configContent)) != 0 {
@@ -555,7 +558,7 @@ func editK8sZones(
 					if filePath, ok := zone["overrirdes-file-path"]; ok {
 						var overrides string
 						if strings.TrimSpace(filePath) != "" {
-							logrus.Debug("Reading Region Kubernetes Overrides")
+							logrus.Debug("Reading Region Kubernetes Overrides\n")
 							overrides = util.YAMLtoString(filePath)
 						}
 						if len(strings.TrimSpace(overrides)) != 0 {
@@ -573,7 +576,7 @@ func editK8sZones(
 	}
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 
@@ -587,7 +590,7 @@ func addK8sZones(
 	if len(addZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -597,14 +600,14 @@ func addK8sZones(
 		var configContent string
 		if filePath, ok := zone["config-file-path"]; ok {
 			if strings.TrimSpace(filePath) != "" {
-				logrus.Debug("Reading Region Kube Config")
+				logrus.Debug("Reading Region Kube Config\n")
 				configContent = util.YAMLtoString(filePath)
 			}
 		}
 		var overrides string
 		if filePath, ok := zone["overrirdes-file-path"]; ok {
 			if strings.TrimSpace(filePath) != "" {
-				logrus.Debug("Reading Region Kubernetes Overrides")
+				logrus.Debug("Reading Region Kubernetes Overrides\n")
 				overrides = util.YAMLtoString(filePath)
 			}
 		}
@@ -632,7 +635,7 @@ func addK8sZones(
 	}
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return zones

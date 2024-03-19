@@ -61,8 +61,11 @@ var preflightNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			fmt.Println("No providers found\n")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		if r[0].GetCode() != util.OnpremProviderType {
@@ -122,7 +125,7 @@ var preflightNodesCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			fmt.Printf("The node %s (%s) has been checked\n",
+			logrus.Infof("The node %s (%s) has been checked\n",
 				formatter.Colorize(ip, formatter.GreenColor), nodeUUID)
 
 			nodesCtx := formatter.Context{
@@ -157,7 +160,7 @@ var preflightNodesCmd = &cobra.Command{
 			onprem.Write(nodesCtx, nodeInstanceList)
 
 		} else {
-			fmt.Println(msg)
+			logrus.Infoln(msg + "\n")
 		}
 	},
 }

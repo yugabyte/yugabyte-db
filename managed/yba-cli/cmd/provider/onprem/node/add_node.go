@@ -48,12 +48,16 @@ var addNodesCmd = &cobra.Command{
 		providerListRequest = providerListRequest.Name(providerName)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance", "Add - Fetch Provider")
+			errMessage := util.ErrorFromHTTPResponse(
+				response, err, "Node Instance", "Add - Fetch Provider")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			fmt.Println("No providers found\n")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		if r[0].GetCode() != util.OnpremProviderType {
@@ -134,7 +138,7 @@ var addNodesCmd = &cobra.Command{
 			Format: onprem.NewNodesFormat(viper.GetString("output")),
 		}
 
-		fmt.Printf("The node instance %s has been added to provider %s (%s)\n",
+		logrus.Infof("The node instance %s has been added to provider %s (%s)\n",
 			formatter.Colorize(nodeIP, formatter.GreenColor),
 			providerName,
 			providerUUID)
@@ -242,7 +246,7 @@ func buildNodeConfig(nodeConfigsStrings []string) *[]ybaclient.NodeConfig {
 			kvp := strings.Split(nInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in node config description.",
+					formatter.Colorize("Incorrect format in node config description.\n",
 						formatter.RedColor))
 			}
 			key := kvp[0]
@@ -264,12 +268,12 @@ func buildNodeConfig(nodeConfigsStrings []string) *[]ybaclient.NodeConfig {
 		}
 		if _, ok := nodeConfig["type"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Type not specified in node config.",
+				formatter.Colorize("Type not specified in node config.\n",
 					formatter.RedColor))
 		}
 		if _, ok := nodeConfig["value"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Value not specified in node config.",
+				formatter.Colorize("Value not specified in node config.\n",
 					formatter.RedColor))
 		}
 
