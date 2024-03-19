@@ -556,7 +556,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = true;
     defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
-    defaultUniverse.getUniverseDetails().rootCA = defaultCert.getUuid();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -603,7 +604,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = false;
     defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
-    defaultUniverse.getUniverseDetails().rootCA = defaultCert.getUuid();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -650,7 +652,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.enableNodeToNodeEncrypt = false;
     defaultUserIntent.enableClientToNodeEncrypt = true;
     defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
-    defaultUniverse.getUniverseDetails().rootCA = defaultCert.getUuid();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
