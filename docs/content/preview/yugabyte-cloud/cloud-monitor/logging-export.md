@@ -19,6 +19,19 @@ Export cluster database logs to third-party tools for analysis and customization
 
 Exporting logs may incur additional costs for network transfer, especially for cross-region and internet-based transfers. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
+{{< tip title="Session logging" >}}
+
+You can use all the PostgreSQL and pgaudit logging options in a [ysqlsh](../../cloud-connect/connect-client-shell/) or [Cloud Shell](../../cloud-connect/connect-cloud-shell/) session using the SET command. For example, to view DDL statements using pgaudit in a shell session, you would do the following:
+
+```sh
+CREATE EXTENSION IF NOT EXISTS pgaudit;
+SET pgaudit.log='DDL';
+SET pgaudit.log_client=ON;
+SET pgaudit.log_level=notice;
+```
+
+{{< /tip >}}
+
 ## Prerequisites
 
 Create an export configuration. An export configuration defines the settings and login information for the tool that you want to export your logs to. Refer to [Export configuration](../metrics-export/#export-configuration).
@@ -141,4 +154,4 @@ The YSQL audit logging settings are derived from the settings for logging used b
 
 ## Learn more
 
-- [Configure audit logging in YSQL](../../../secure/audit-logging/audit-logging-ysql/)
+- [Logging in YugabyteDB](../../../secure/audit-logging/)
