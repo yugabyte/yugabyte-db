@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: transaction-availability-local
     parent: fault-tolerance
-    weight: 20
+    weight: 60
 type: docs
 ---
 

@@ -1,14 +1,14 @@
 ---
 title: High availability during failures in YugabyteDB Anywhere
 headerTitle: High availability during node and zone failures
-linkTitle: HA during failures
+linkTitle: HA during node failures
 description: Simulate fault tolerance and resilience in a YugabyteDB Anywhere universe.
-headcontent: Keep serving requests through node, rack, zone, and region failures
+headcontent: Keep serving requests through node failures
 menu:
   preview:
     identifier: node-failure-2-macos
     parent: fault-tolerance
-    weight: 10
+    weight: 40
 type: docs
 ---
 

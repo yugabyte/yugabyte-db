@@ -34,8 +34,6 @@ The need for resilience in cloud databases arises from several factors:
 - **Cyber attacks**: Your applications could be exposed to security threats or attacks. Resilience can help protect applications against these threats by isolating components, and responding to anomalies, and thus ensuring that such incidents do not compromise the entire system.
 - **Planned upgrades**: You might have to upgrade your operating system or database or even update your software with security patches. For this, your applications have to be taken offline.
 
-
-
 ## Fault domains
 
 A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. YugabyteDB's RAFT-based replication and automatic rebalancing ensure that even if a domain fails, the database can continue to serve reads and writes without interruption. The fault tolerance of a YugabyteDB universe determines how resilient the universe is to domain outages. Fault tolerance is achieved by adding redundancy in the form of additional nodes across the fault domain.
@@ -44,20 +42,32 @@ A fault domain is a potential point of failure. Examples of fault domains would 
 
 In a universe with a replication factor (RF) of 3, the fault tolerance is equal to 1 node. That is, a minimum of 3 nodes is required to tolerate 1 node outage; an RF 5 universe needs a minimum of 5 nodes to tolerate 2 node outages. Each additional node increases the resilience to node failures.
 
-### Zone failure
-
-An RF 3 universe can survive 1 zone outage when spread across 3 zones. This setup ensures that even if an entire zone goes down, the database can continue operating.
-
-### Region failure
-
-This is similar to zone-level fault tolerance, but on a larger scale, where nodes are spread across multiple regions. This provides the highest level of protection, providing fault tolerance against region-wide outages.
+{{<tip>}}
+To understand how YugabyteDB is resilient to node failures, see [HA during node failures](./macos)
+{{</tip>}}
 
 ### Rack failure
 
 In the case of on-premises deployments, you can consider racks as zones to make your universe rack-aware and ensure that a universe spread across racks can survive rack-level failures.
 
-{{<tip title="Rack awareness">}}
-To use racks as fault domains, map them to zones using the [--cloud-location](../../reference/configuration/yugabyted/#flags) flag with [yugabyted](../../reference/configuration/yugabyted), or directly using the YB-TServer [--placement-zone](../../reference/configuration/yb-tserver/#placement-zone) flag.
+{{<tip>}}
+To understand how YugabyteDB is resilient to rack failures, see [HA during rack failures](./handling-rack-failures)
+{{</tip>}}
+
+### Zone failure
+
+An RF 3 universe can survive 1 zone outage when spread across 3 zones. This setup ensures that even if an entire zone goes down, the database can continue operating.
+
+{{<tip>}}
+To understand how YugabyteDB is resilient to zone failures, see [HA during zone failures](./handling-zone-failures)
+{{</tip>}}
+
+### Region failure
+
+This is similar to zone-level fault tolerance, but on a larger scale, where nodes are spread across multiple regions. This provides the highest level of protection, providing fault tolerance against region-wide outages.
+
+{{<tip>}}
+To understand how YugabyteDB is resilient to region failures, see [HA during region failures](./handling-region-failures)
 {{</tip>}}
 
 ## Recovery time
@@ -81,12 +91,6 @@ For more information, see the following:
 - [Synchronous replication](../../architecture/docdb-replication/replication/)
 
 {{<index/block>}}
-
-  {{<index/item
-    title="High availability during node and zone failures"
-    body="Continuously serve requests in the event of unplanned outages."
-    href="macos/"
-    icon="/images/section_icons/explore/zero_downtime.png">}}
 
   {{<index/item
     title="High availability of transactions"

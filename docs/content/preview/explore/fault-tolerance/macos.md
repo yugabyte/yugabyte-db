@@ -1,18 +1,20 @@
 ---
 title: High availability during failures in a local universe
-headerTitle: High availability during node and zone failures
-linkTitle: HA during failures
+headerTitle: High availability during node failures
+linkTitle: HA during node failures
 description: Simulate fault tolerance and resilience in a local YugabyteDB database.
-headcontent: Keep serving requests through node, rack, zone, and region failures
+headcontent: Keep serving requests through node failures
 menu:
   preview:
     identifier: node-failure-1-macos
     parent: fault-tolerance
-    weight: 10
+    weight: 40
 type: docs
 ---
 
-The ability to survive failures and be highly available is one of the foundational features of YugabyteDB. To better understand how YugabyteDB can continue to perform reads and writes even in case of node failures, run the following example.
+The ability to survive failures and be highly available is one of the foundational features of YugabyteDB. YugabyteDB is resilient to node failures. On a failure of a node, a leader election is triggered for all the tablets that had leaders in the lost node. Quickly within 3s, a follower on a different node is promoted to leader without any loss of data.
+
+Let's go over this with an example.
 
 ## Scenario
 

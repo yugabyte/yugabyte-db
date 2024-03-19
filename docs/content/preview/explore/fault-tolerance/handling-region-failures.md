@@ -1,14 +1,14 @@
 ---
 title: Handling region failures
 headerTitle:  Handling region failures
-linkTitle: Handling region failures
+linkTitle: HA during region failures
 description: YugabyteDB can handle region failure
 headcontent: Be resilient to failures of entire regions
 menu:
   preview:
     identifier: handling-region-failures
     parent: fault-tolerance
-    weight: 5
+    weight: 10
 type: docs
 ---
 
@@ -74,3 +74,10 @@ The following illustration shows how the primary application (assuming it is sti
 ![Primary region failure - Leader election
 ](/images/explore/fault-tolerance/primary-failure-smart-driver.png)
 
+## Region failure in a 2 region setup
+
+There may be scenarios where you want to deploy the database in just one region. It is quite common for enterprises to have 1 datacenter as their primary and another datacenter just for failover. For this scenario, you can deploy YugabyteDB in your primary datacenter and set up another cluster in the second datacenter that gets the data from the primary cluster via async replication. This is also known as the 2DC model.
+
+{{<tip>}}
+You can set this up by following the instructions of the [Active-Active Single-Master](../../../develop/build-global-apps/active-active-single-master) pattern.
+{{</tip>}}

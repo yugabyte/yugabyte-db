@@ -1,14 +1,14 @@
 ---
 title: Handling zone failures
 headerTitle:  Handling zone failures
-linkTitle: Handling zone failures
+linkTitle: HA during zone failures
 description: YugabyteDB can handle in-region failure of zones
 headcontent: YugabyteDB can handle in-region failure of zones
 menu:
   preview:
     identifier: handling-zone-failures
     parent: fault-tolerance
-    weight: 5
+    weight: 20
 type: docs
 ---
 
