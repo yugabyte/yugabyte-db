@@ -1,6 +1,6 @@
 ---
 title: Handling rack failures
-headerTitle:  Handling rack failures
+headerTitle: Handling rack failures
 linkTitle: HA during rack failures
 description: Racks can be treated as fault zones
 headcontent: Server Rack-Awareness in YugabyeDB

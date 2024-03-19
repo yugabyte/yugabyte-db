@@ -21,18 +21,18 @@ Resilience, in the context of cloud databases, refers to the ability to withstan
 
 YugabyteDB has been designed ground up to be resilient. YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region. YugabyteDB's [High availability](../../architecture/core-functions/high-availability/) is achieved through a combination of distributed architecture, data replication, consensus algorithms, automatic rebalancing, and failure detection mechanisms, ensuring that the database remains available, consistent, and resilient to failures of fault domains.
 
-In the following sections, we will explore the key strategies, technologies, and best practices for enhancing the resilience of cloud databases, enabling organizations to leverage the benefits of the cloud while maintaining the highest levels of data protection and service availability.
+In the following sections, explore the key strategies, technologies, and best practices for enhancing the resilience of cloud databases, enabling organizations to leverage the benefits of the cloud, while maintaining the highest levels of data protection and service availability.
 
 ## Need for resilience
 
 The need for resilience in cloud databases arises from several factors:
 
-- **Distributed Nature**: Cloud databases are often distributed across multiple physical locations, introducing complexities in data synchronization and potential points of failure.
-- **Ephemeral Instances**: Virtual machines are spawned on commodity hardware which can disappear at any time. They are ephemeral.
-- **Unpredictable Workloads**: Cloud databases must handle fluctuating and unpredictable workloads, which can strain resources and potentially lead to performance degradation or outages. High loads can cause power surges. Backup generators have failed too.
+- **Distributed nature**: Cloud databases are often distributed across multiple physical locations, introducing complexities in data synchronization and potential points of failure.
+- **Ephemeral instances**: Virtual machines are spawned on commodity hardware which can disappear at any time. They are ephemeral.
+- **Unpredictable workloads**: Cloud databases must handle fluctuating and unpredictable workloads, which can strain resources and potentially lead to performance degradation or outages. High loads can cause power surges. Backup generators have failed too.
 - **Failure of fault domains**: Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year. Disk and machines commonly fail due to multiple reasons.
 - **Cyber attacks**: Your applications could be exposed to security threats or attacks. Resilience can help protect applications against these threats by isolating components, and responding to anomalies, and thus ensuring that such incidents do not compromise the entire system.
-- **Planned upgrades**: You might have to upgrade your operating system or database or even update your software with security patches. For this, your applications have to be taken offline.
+- **Planned upgrades**: You might have to upgrade your operating system or database, or even update your software with security patches. For this, your applications have to be taken offline.
 
 ## Fault domains
 
@@ -43,7 +43,7 @@ A fault domain is a potential point of failure. Examples of fault domains would 
 In a universe with a replication factor (RF) of 3, the fault tolerance is equal to 1 node. That is, a minimum of 3 nodes is required to tolerate 1 node outage; an RF 5 universe needs a minimum of 5 nodes to tolerate 2 node outages. Each additional node increases the resilience to node failures.
 
 {{<tip>}}
-To understand how YugabyteDB is resilient to node failures, see [HA during node failures](./macos)
+See [HA during node failures](./macos), to understand how YugabyteDB is resilient to node failures.
 {{</tip>}}
 
 ### Rack failure
@@ -51,7 +51,7 @@ To understand how YugabyteDB is resilient to node failures, see [HA during node 
 In the case of on-premises deployments, you can consider racks as zones to make your universe rack-aware and ensure that a universe spread across racks can survive rack-level failures.
 
 {{<tip>}}
-To understand how YugabyteDB is resilient to rack failures, see [HA during rack failures](./handling-rack-failures)
+See [HA during rack failures](./handling-rack-failures), to understand how YugabyteDB is resilient to rack failures.
 {{</tip>}}
 
 ### Zone failure
@@ -59,7 +59,7 @@ To understand how YugabyteDB is resilient to rack failures, see [HA during rack 
 An RF 3 universe can survive 1 zone outage when spread across 3 zones. This setup ensures that even if an entire zone goes down, the database can continue operating.
 
 {{<tip>}}
-To understand how YugabyteDB is resilient to zone failures, see [HA during zone failures](./handling-zone-failures)
+See [HA during zone failures](./handling-zone-failures), to understand how YugabyteDB is resilient to zone failures.
 {{</tip>}}
 
 ### Region failure
@@ -67,7 +67,7 @@ To understand how YugabyteDB is resilient to zone failures, see [HA during zone 
 This is similar to zone-level fault tolerance, but on a larger scale, where nodes are spread across multiple regions. This provides the highest level of protection, providing fault tolerance against region-wide outages.
 
 {{<tip>}}
-To understand how YugabyteDB is resilient to region failures, see [HA during region failures](./handling-region-failures)
+See [HA during region failures](./handling-region-failures), to understand how YugabyteDB is resilient to region failures.
 {{</tip>}}
 
 ## Recovery time

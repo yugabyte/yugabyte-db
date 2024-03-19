@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The ability to survive failures and be highly available is one of the foundational features of YugabyteDB. YugabyteDB is resilient to node failures. On a failure of a node, a leader election is triggered for all the tablets that had leaders in the lost node. Quickly within 3s, a follower on a different node is promoted to leader without any loss of data.
+The ability to survive failures and be highly available is one of the foundational features of YugabyteDB. YugabyteDB is resilient to node failures. On a failure of a node, a leader election is triggered for all the tablets that had leaders in the lost node. Quickly in 3 seconds, a follower on a different node is promoted to leader without any loss of data.
 
 Let's go over this with an example.
 

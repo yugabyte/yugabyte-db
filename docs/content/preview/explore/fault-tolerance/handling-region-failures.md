@@ -1,6 +1,6 @@
 ---
 title: Handling region failures
-headerTitle:  Handling region failures
+headerTitle: Handling region failures
 linkTitle: HA during region failures
 description: YugabyteDB can handle region failure
 headcontent: Be resilient to failures of entire regions
