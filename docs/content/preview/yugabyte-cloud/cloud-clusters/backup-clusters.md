@@ -17,7 +17,7 @@ YugabyteDB Managed can perform full and incremental cluster (all namespaces) lev
 
 By default, clusters are backed up automatically every 24 hours, and these automatic full backups are retained for 8 days. The first automatic backup is triggered after 24 hours of creating a table, and is scheduled every 24 hours thereafter.
 
-Full backups are a complete copy of the cluster. You can additionally schedule incremental backups between full backups, where the backup only includes the data that has changed since the last backup, be it a full or incremental backup. Incremental backups provide the following advantages:
+Full backups are a complete copy of the cluster. You can additionally schedule incremental backups between full backups. Incremental backups only include the data that has changed since the last backup, be it a full or incremental backup. Incremental backups provide the following advantages:
 
 - Faster - Incremental backups are much quicker as they deal with a smaller amount of data.
 - Reduced storage - Because only the delta from previous backup is captured, incremental backups consume less storage space compared to full backups.
@@ -48,7 +48,7 @@ Backups are not supported for Sandbox clusters.
 ## Recommendations
 
 - Don't perform cluster operations at the same time as your scheduled backup.
-- Configure your [maintenance window](../cloud-maintenance/) and [backup schedule](#schedule-backups) so that they do not conflict.
+- Configure your [maintenance window](../cloud-maintenance/) and [backup schedule](#manage-scheduled-backups) so that they do not conflict.
 - Performing a backup or restore incurs a load on the cluster. Perform backup operations when the cluster isn't experiencing heavy traffic. Backing up during times of heavy traffic can temporarily degrade application performance and increase the length of time of the backup.
 - Avoid running a backup during or before a scheduled maintenance.
 
