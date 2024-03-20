@@ -1661,7 +1661,7 @@ Encryption status: ENABLED with key id <key_id_2>
 
 #### create_change_data_stream
 
-Creates a change data capture (CDC) DB stream for the specified namespace.
+Create a change data capture (CDC) DB stream for the specified namespace using the following command.
 
 **Syntax**
 
@@ -1684,7 +1684,7 @@ For example:
 
 ##### Creating a stream for Transactional CDC
 
-Creates a change data capture (CDC) DB stream for the specified namespace that can be used for Transactional CDC.
+Create a change data capture (CDC) DB stream for the specified namespace that can be used for Transactional CDC using the following command.
 This feature is {{<badge/tp>}}. Use the [yb_enable_cdc_consistent_snapshot_streams](../../reference/configuration/yb-tserver/#yb-enable-cdc-consistent-snapshot-streams) flag to enable the feature.
 
 **Syntax**
