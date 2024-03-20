@@ -68,7 +68,8 @@ INSERT INTO INT8_TBL VALUES
   ('+4567890123456789','-4567890123456789');
 VACUUM INT8_TBL;
 
-CREATE TABLE POINT_TBL(f1 point);
+-- YB note: add sorting column.
+CREATE TABLE POINT_TBL(f1 point, ybsort serial, PRIMARY KEY (ybsort ASC));
 
 INSERT INTO POINT_TBL(f1) VALUES
   ('(0.0,0.0)'),
@@ -76,6 +77,10 @@ INSERT INTO POINT_TBL(f1) VALUES
   ('(-3.0,4.0)'),
   ('(5.1, 34.5)'),
   ('(-5.0,-12.0)'),
+  ('(1e-300,-1e-300)'),  -- To underflow
+  ('(1e+300,Inf)'),  -- To overflow
+  ('(Inf,1e+300)'),  -- Transposed
+  (' ( Nan , NaN ) '),
   ('10.0,10.0');
 -- We intentionally don't vacuum point_tbl here; geometry depends on that
 
