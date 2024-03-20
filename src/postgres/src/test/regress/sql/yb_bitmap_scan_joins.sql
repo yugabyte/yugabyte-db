@@ -191,3 +191,17 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
 INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 ON (( table3.v = table2.v ) OR ( table3.b = table2.a ) ) ) )
         ON (( table3.a >= table2.a ) AND (table3.a <> table2.b ) )
      WHERE ( table1.v = 'g' AND table1.v = 's' ) OR table1.a <= table2.b;
+
+--
+-- Rescans where we don't need the actual rows
+-- This test is based off #21526 identified by the random query generator.
+-- To speed up the test, don't bother creating new tables.
+--
+/*+ BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+/*+ BitmapScan(joina) */
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+/*+ Set(enable_bitmapscan false) */
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
