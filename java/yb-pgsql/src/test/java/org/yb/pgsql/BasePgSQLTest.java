@@ -299,9 +299,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enableYsql(true);
-    String enableYsqlConnMgr = System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
-    if ((enableYsqlConnMgr != null) && enableYsqlConnMgr.equalsIgnoreCase("true")){
+
+    if (isTestRunningWithConnectionManager()) {
       builder.enableYsqlConnMgr(true);
+      builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
+        Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
     }
   }
 
@@ -2314,5 +2316,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     ResultSet resultSet = statement.executeQuery("SELECT CURRENT_USER");
     resultSet.next();
     return resultSet.getString(1);
+  }
+
+  // yb-tserver flag ysql_conn_mgr_stats_interval (stats_interval field
+  // in the odyssey's config) controls the interval at which the
+  // stats gets updated (src/odyssey/sources/cron.c:332).
+  public static final int CONNECTIONS_STATS_UPDATE_INTERVAL_SECS = 1;
+
+  public static void waitForStatsToGetUpdated() throws InterruptedException {
+    Thread.sleep(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS * 1000 * 2);
   }
 }
