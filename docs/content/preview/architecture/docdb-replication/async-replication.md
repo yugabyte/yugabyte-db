@@ -230,7 +230,7 @@ Note that if you attempt to insert the same row on both universes at the same ti
 
 ### Materialized views are not supported
 
-Setting up xCluster replication for materialized views is currently not supported. When setting up replication for a database, materialized views need to be excluded. YugabyteDB Anywhere automatically excludes materialized views from replication setup.
+Setting up xCluster replication for [materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) is currently not supported. When setting up replication for a database, materialized views need to be excluded. YugabyteDB Anywhere automatically excludes materialized views from replication setup.
 
 ### Non-transactional&ndash;mode consistency issues
 
