@@ -68,7 +68,7 @@ Licensing (such as a license file in the case of YBA Installer or Replicated, or
 
 ## Permissions
 
-For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](#non-sudo-installation).)
+For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](../../install-software/installer/#non-sudo-installation).)
 
 If your sudo permissions are limited, add the following to the allowed list for root in the sudoers file:
 
