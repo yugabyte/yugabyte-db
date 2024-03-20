@@ -100,7 +100,7 @@ typedef struct
 	pgbson *value;
 
 	/* "ok" field */
-	bool ok;
+	double ok;
 } FindAndModifyResult;
 
 
@@ -575,7 +575,7 @@ BuildResponseMessage(FindAndModifyResult *result)
 								   result->value);
 	}
 
-	PgbsonWriterAppendInt32(&resultWriter, "ok", strlen("ok"), result->ok);
+	PgbsonWriterAppendDouble(&resultWriter, "ok", strlen("ok"), result->ok);
 
 	return PgbsonWriterGetPgbson(&resultWriter);
 }
