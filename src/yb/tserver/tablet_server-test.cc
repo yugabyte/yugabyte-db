@@ -859,7 +859,8 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   auto table_info = std::make_shared<tablet::TableInfo>(
       "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
       YQL_TABLE_TYPE, schema, qlexpr::IndexMap(), boost::none /* index_info */,
-      0 /* schema_version */, partition_schema, "" /* pg_table_id */);
+      0 /* schema_version */, partition_schema, "" /* pg_table_id */,
+      tablet::SkipTableTombstoneCheck::kFalse);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
       table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 

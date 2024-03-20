@@ -199,7 +199,7 @@ class PgFKeyTestConcurrentModification : public PgFKeyTest,
     ASSERT_OK(AddFKConstraint(&aux_conn));
     state_.emplace(ASSERT_RESULT(MakeConnWithPriority(true)),
                    ASSERT_RESULT(MakeConnWithPriority(false)));
-    const auto clear_tables_query = Format("TRUNCATE $0, $1", kFKTable, kPKTable);
+    const auto clear_tables_query = Format("DELETE FROM $0; DELETE FROM $1", kFKTable, kPKTable);
     // Warm up internal caches.
     for (auto* conn : {&state_->high_priority_txn_conn.conn, &state_->low_priority_txn_conn.conn}) {
       ASSERT_OK(InsertItems(conn, kPKTable, 1, 2));

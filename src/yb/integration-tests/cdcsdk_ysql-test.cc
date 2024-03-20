@@ -7556,28 +7556,31 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().index(), checkpoint_resp.checkpoint().op_id().index());
 }
 
-TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
+TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
+  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
   ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
-  // Verify alter primary key, column type operations are disallowed on the table.
+  // Verify rewrite operations are disallowed on the table.
   auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
   res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
   res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(
-      res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  res = conn.ExecuteFormat("TRUNCATE $0", kTableName);
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  // Truncate should be allowed if enable_truncate_cdcsdk_table is set.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = true;
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {

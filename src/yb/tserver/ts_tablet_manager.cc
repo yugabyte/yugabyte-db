@@ -1257,6 +1257,8 @@ Status TSTabletManager::ApplyCloneTablet(
   const auto target_namespace_name = request->target_namespace_name().ToBuffer();
   const auto clone_request_seq_no = request->clone_request_seq_no();
   const auto target_pg_table_id = request->target_pg_table_id().ToBuffer();
+  const auto target_skip_table_tombstone_check =
+      request->target_skip_table_tombstone_check();
   const boost::optional<qlexpr::IndexInfo> target_table_index_info =
       request->has_target_index_info() ?
       boost::optional<qlexpr::IndexInfo>(request->target_index_info().ToGoogleProtobuf()) :
@@ -1344,7 +1346,8 @@ Status TSTabletManager::ApplyCloneTablet(
         std::move(target_table_index_info),
         source_table->schema_version, /* fixed by restore */
         target_partition_schema,
-        target_pg_table_id);
+        target_pg_table_id,
+        tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));
 
     // Setup raft group metadata. If we crash between here and when we set the tablet data state to
     // TABLET_DATA_READY, the tablet will be deleted on the next bootstrap.

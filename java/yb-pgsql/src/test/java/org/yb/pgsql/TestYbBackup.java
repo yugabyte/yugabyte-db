@@ -705,9 +705,9 @@ public class TestYbBackup extends BasePgSQLTest {
           "--keyspace", "ysql." + initialDBName);
       backupDir = new JSONObject(output).getString("snapshot_url");
 
-      // Truncate tables after taking the snapshot.
+      // Delete all rows from the tables after taking a snapshot.
       for (int j = 1; j <= num_tables; ++j) {
-        stmt.execute("TRUNCATE TABLE test_tbl" + String.valueOf(j));
+        stmt.execute("DELETE FROM test_tbl" + String.valueOf(j));
       }
 
       // Restore back into this same database, this way all the ids will happen to be the same.
