@@ -31,6 +31,7 @@ class ConstContiguousRow;
 class DocHybridTime;
 class EncodedDocHybridTime;
 class HybridTime;
+class MissingValueProvider;
 class TableProperties;
 class TransactionStatusManager;
 class TypeInfo;

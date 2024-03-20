@@ -111,7 +111,6 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
   @Test
   public void testConfigureYCQL() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
-    // Enable YSQL Auth for the universe.
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
 
@@ -131,7 +130,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     initYCQL(universe, true, YCQL_PASSWORD);
     verifyYCQL(universe, true, YCQL_PASSWORD);
 
-    // Disable YSQL Auth for the universe.
+    // Disable YCQL Auth for the universe.
     formData.enableYCQLAuth = false;
 
     result = configureYCQL(formData, universe.getUniverseUUID());

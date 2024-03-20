@@ -16,6 +16,8 @@
 #include <memory>
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/xcluster/master_xcluster_types.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -32,9 +34,6 @@ class GetXClusterSafeTimeRequestPB;
 class GetXClusterSafeTimeResponsePB;
 class SysXClusterConfigEntryPB;
 struct LeaderEpoch;
-
-// Map[NamespaceId]:xClusterSafeTime
-typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeMap;
 
 class XClusterManagerIf {
  public:

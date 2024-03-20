@@ -76,9 +76,11 @@ Status ReplaceSchemaVersionInPackedValue(Slice value,
 
 class PackableValue {
  public:
-  // limit - maximal number of bytes that could be packed. If packed value does not fit into this
-  // limit PackTo should do nothing and return false.
-  virtual bool PackTo(size_t limit, ValueBuffer* result) const = 0;
+  virtual bool IsNull() const = 0;
+  virtual size_t PackedSizeV1() const = 0;
+  virtual void PackToV1(ValueBuffer* result) const = 0;
+  virtual size_t PackedSizeV2() const = 0;
+  virtual void PackToV2(ValueBuffer* result) const = 0;
   virtual std::string ToString() const = 0;
 
   virtual ~PackableValue() = default;
@@ -89,11 +91,13 @@ class RowPackerBase {
   // packed_size_limit - don't pack column if packed row will be over limit after it.
   RowPackerBase(
       std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-      const ValueControlFields& row_control_fields, std::reference_wrapper<const Schema> schema);
+      const ValueControlFields& row_control_fields,
+      std::reference_wrapper<const MissingValueProvider> missing_value_provider);
 
   RowPackerBase(
       std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-      Slice control_fields, std::reference_wrapper<const Schema> schema);
+      Slice control_fields,
+      std::reference_wrapper<const MissingValueProvider> missing_value_provider);
 
   RowPackerBase(const RowPackerBase&) = delete;
   void operator=(const RowPackerBase&) = delete;
@@ -108,8 +112,8 @@ class RowPackerBase {
     return packing_;
   }
 
-  const Schema& schema() const {
-    return schema_;
+  const MissingValueProvider& missing_value_provider() const {
+    return missing_value_provider_;
   }
 
   ColumnId NextColumnId() const;
@@ -137,7 +141,7 @@ class RowPackerBase {
   // Resulting buffer.
   ValueBuffer result_;
 
-  const Schema& schema_;
+  const MissingValueProvider& missing_value_provider_;
 };
 
 // Packs the row with V1 encoding.
@@ -155,7 +159,7 @@ class RowPackerV1 : public RowPackerBase {
   // tail_size is added to proposed encoded size, to make decision whether encoded value fits
   // into bounds or not. Useful during repacking, when we know size of packed columns after this
   // one.
-  Result<bool> AddValue(ColumnId column_id, PackedValueV1 value, ssize_t tail_size);
+  Result<bool> AddValue(ColumnId column_id, PackedValueV1 value, ssize_t tail_size = 0);
   Result<bool> AddValue(ColumnId column_id, PackedValueV2 value, ssize_t tail_size);
   // Add value consisting of 2 parts - value_prefix+value_suffix.
   Result<bool> AddValue(
@@ -163,6 +167,7 @@ class RowPackerV1 : public RowPackerBase {
   Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, const LWQLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, Slice control_fields, const QLValuePB& value);
+  Result<bool> AddValue(ColumnId column_id, const PackableValue& value);
 
   Result<Slice> Complete();
 
@@ -198,7 +203,7 @@ class RowPackerV2 : public RowPackerBase {
   // tail_size is added to proposed encoded size, to make decision whether encoded value fits
   // into bounds or not.
   Result<bool> AddValue(ColumnId column_id, PackedValueV2 value, ssize_t tail_size);
-  Result<bool> AddValue(ColumnId column_id, PackedValueV1 value, ssize_t tail_size);
+  Result<bool> AddValue(ColumnId column_id, PackedValueV1 value, ssize_t tail_size = 0);
   // Add value consisting of 2 parts - value_prefix+value_suffix.
   Result<bool> AddValue(
       ColumnId column_id, Slice value_prefix, PackedValueV1 value_suffix, ssize_t tail_size);
@@ -220,5 +225,6 @@ class RowPackerV2 : public RowPackerBase {
 using RowPackerVariant = std::variant<RowPackerV1, RowPackerV2>;
 
 RowPackerBase& PackerBase(RowPackerVariant* packer_variant);
+size_t PackedSizeLimit(size_t value);
 
 } // namespace yb::dockv

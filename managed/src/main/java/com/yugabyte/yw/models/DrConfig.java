@@ -235,6 +235,10 @@ public class DrConfig extends Model {
         .collect(Collectors.toList());
   }
 
+  public static List<DrConfig> getAll() {
+    return find.query().findList();
+  }
+
   public static List<DrConfig> getBetweenUniverses(
       UUID sourceUniverseUuid, UUID targetUniverseUuid) {
     List<XClusterConfig> xClusterConfigs =

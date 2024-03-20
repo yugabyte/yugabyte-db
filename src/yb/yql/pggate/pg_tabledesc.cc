@@ -45,18 +45,27 @@ PgTableDesc::PgTableDesc(
 
 Status PgTableDesc::Init() {
   RETURN_NOT_OK(SchemaFromPB(resp_.schema(), &schema_));
+  schema_packing_.emplace(TableType::PGSQL_TABLE_TYPE, schema_);
   size_t idx = 0;
   for (const auto& column : schema().columns()) {
-    attr_num_map_.emplace(column.order(), idx++);
+    attr_num_map_.emplace_back(column.order(), idx++);
   }
+  std::sort(attr_num_map_.begin(), attr_num_map_.end());
   if (resp_.has_tablegroup_id()) {
     tablegroup_oid_ = VERIFY_RESULT(GetPgsqlTablegroupOid(resp_.tablegroup_id()));
   }
   if (resp_.has_pg_table_id() && !resp_.pg_table_id().empty()) {
-    pg_table_id_ =  VERIFY_RESULT(GetPgsqlTableOid(resp_.pg_table_id()));
+    pg_table_id_ = VERIFY_RESULT(GetPgsqlTableOid(resp_.pg_table_id()));
   }
   return dockv::PartitionSchema::FromPB(resp_.partition_schema(), schema_, &partition_schema_);
 }
+
+struct CmpAttrNum {
+  template <class P>
+  bool operator()(const P& lhs, int rhs) const {
+    return lhs.first < rhs;
+  }
+};
 
 Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
   // Find virtual columns.
@@ -65,21 +74,23 @@ Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
   }
 
   // Find physical column.
-  const auto itr = attr_num_map_.find(attr_num);
-  if (itr != attr_num_map_.end()) {
+  const auto itr = std::lower_bound(
+      attr_num_map_.begin(), attr_num_map_.end(), attr_num, CmpAttrNum());
+  if (itr != attr_num_map_.end() && itr->first == attr_num) {
     return itr->second;
   }
 
   return STATUS_FORMAT(InvalidArgument, "Invalid column number $0", attr_num);
 }
 
-Result<YBCPgColumnInfo> PgTableDesc::GetColumnInfo(int16_t attr_number) const {
+Result<YBCPgColumnInfo> PgTableDesc::GetColumnInfo(int attr_number) const {
   YBCPgColumnInfo column_info {
     .is_primary = false,
     .is_hash = false
   };
-  const auto itr = attr_num_map_.find(attr_number);
-  if (itr != attr_num_map_.end()) {
+  const auto itr = std::lower_bound(
+      attr_num_map_.begin(), attr_num_map_.end(), attr_number, CmpAttrNum());
+  if (itr != attr_num_map_.end() && itr->first == attr_number) {
     column_info.is_primary = itr->second < schema().num_key_columns();
     column_info.is_hash = itr->second < schema().num_hash_key_columns();
   }

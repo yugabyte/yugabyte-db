@@ -52,6 +52,8 @@ class PgDmlWrite : public PgDml {
 
   Status SetWriteTime(const HybridTime& write_time);
 
+  Status BindRow(YBCBindColumn* columns, int count);
+
  protected:
   // Constructor.
   PgDmlWrite(PgSession::ScopedRefPtr pg_session,

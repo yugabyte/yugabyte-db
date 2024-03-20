@@ -90,6 +90,8 @@ public class UniverseDetailsQuery {
       }
     } catch (Exception e) {
       log.error("Failed to get universe {} details", metadata.getId(), e);
+    } finally {
+      progress.setInProgress(false);
     }
 
     log.info("Processed universe {}", metadata.getId());

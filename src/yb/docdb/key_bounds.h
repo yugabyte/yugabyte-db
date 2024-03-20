@@ -14,12 +14,14 @@
 #pragma once
 
 #include "yb/common/hybrid_time.h"
+
 #include "yb/dockv/key_bytes.h"
-#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/rocksdb/rocksdb_fwd.h"
 
-namespace yb {
-namespace docdb {
+#include "yb/tablet/tablet_fwd.h"
+
+namespace yb::docdb {
 
 class HistoryRetentionPolicy;
 
@@ -59,17 +61,23 @@ struct DocDB {
   tablet::TabletMetrics* metrics = nullptr;
 
   static DocDB FromRegularUnbounded(rocksdb::DB* regular) {
-    return {regular, nullptr /* intents */, &KeyBounds::kNoBounds,
-        nullptr /* retention_policy */, nullptr /* metrics */};
+    return {
+      .regular = regular,
+      .intents = nullptr,
+      .key_bounds = &KeyBounds::kNoBounds,
+      .retention_policy = nullptr,
+      .metrics = nullptr,
+    };
   }
 
   DocDB WithoutIntents() {
-    return {regular, nullptr /* intents */, key_bounds, retention_policy, metrics};
+    auto result = *this;
+    result.intents = nullptr;
+    return result;
   }
 };
 
 // Checks whether key belongs to specified key_bounds, always true if key_bounds is nullptr.
 bool IsWithinBounds(const KeyBounds* key_bounds, const Slice& key);
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

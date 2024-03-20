@@ -1412,13 +1412,21 @@ class ReadFileFilter {
   virtual ~ReadFileFilter() {}
 };
 
-class TableReader;
+// Cache filter key produced from user key by particular transformer.
+struct FilterKeyCache {
+  explicit FilterKeyCache(Slice user_key) : filter_key(user_key) {}
+
+  Slice filter_key;
+  const void* transformer = nullptr;
+};
+
 class TableAwareReadFileFilter {
  public:
-  virtual bool Filter(TableReader*) const = 0;
+  virtual bool Filter(const ReadOptions& read_options, Slice user_key, FilterKeyCache* cache,
+                      TableReader* reader) const = 0;
 
  protected:
-  virtual ~TableAwareReadFileFilter() {}
+  virtual ~TableAwareReadFileFilter() = default;
 };
 
 // Options that control read operations
@@ -1520,7 +1528,9 @@ struct ReadOptions {
 
   // Filter for pruning SST files. RocksDB user can provide its own implementation to exclude SST
   // files from being added to MergeIterator. By default doesn't filter files.
-  std::shared_ptr<TableAwareReadFileFilter> table_aware_file_filter;
+  const TableAwareReadFileFilter* table_aware_file_filter = nullptr;
+
+  Slice user_key_for_filter;
 
   std::shared_ptr<ReadFileFilter> file_filter;
 

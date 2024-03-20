@@ -291,17 +291,10 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
     .doc_write_batch = &doc_write_batch,
     .read_operation_data = read_operation_data,
     .restart_read_ht = restart_read_ht,
-    .iterator = nullptr,
-    .restart_seek = true,
     .schema_packing_provider = schema_packing_provider,
   };
 
-  std::optional<DocRowwiseIterator> iterator;
-  DocOperation* prev_operation = nullptr;
-  SingleOperation single_operation(doc_write_ops.size() == 1);
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
-    RETURN_NOT_OK(doc_op->UpdateIterator(&data, prev_operation, single_operation, &iterator));
-    prev_operation = doc_op.get();
     Status s = doc_op->Apply(data);
     if (s.IsQLError() && doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION) {
       std::string error_msg;

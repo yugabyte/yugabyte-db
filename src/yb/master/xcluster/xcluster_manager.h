@@ -23,6 +23,8 @@
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
+#include "yb/master/xcluster/xcluster_source_manager.h"
+#include "yb/master/xcluster/xcluster_target_manager.h"
 
 namespace yb {
 
@@ -31,6 +33,7 @@ class CDCStreamInfo;
 class GetMasterXClusterConfigResponsePB;
 class PauseResumeXClusterProducerStreamsRequestPB;
 class PauseResumeXClusterProducerStreamsResponsePB;
+class PostTabletCreateTaskBase;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 class XClusterConfig;
@@ -40,10 +43,12 @@ struct SysCatalogLoadingState;
 // The XClusterManager class is responsible for managing all yb-master related control logic of
 // XCluster. All XCluster related RPCs and APIs are handled by this class.
 // TODO(#19714): Move XCluster related code from CatalogManager to this class.
-class XClusterManager : public XClusterManagerIf {
+class XClusterManager : public XClusterManagerIf,
+                        public XClusterSourceManager,
+                        public XClusterTargetManager {
  public:
   explicit XClusterManager(
-      Master* master, CatalogManager* catalog_manager, SysCatalogTable* sys_catalog);
+      Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);
 
   ~XClusterManager();
 
@@ -59,15 +64,13 @@ class XClusterManager : public XClusterManagerIf {
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const;
 
-  Status GetXClusterConfigEntryPB(SysXClusterConfigEntryPB* config) const EXCLUDES(mutex_) override;
+  Status GetXClusterConfigEntryPB(SysXClusterConfigEntryPB* config) const  override;
 
-  Status GetMasterXClusterConfig(GetMasterXClusterConfigResponsePB* resp) EXCLUDES(mutex_);
+  Status GetMasterXClusterConfig(GetMasterXClusterConfigResponsePB* resp);
 
   Result<uint32_t> GetXClusterConfigVersion() const;
 
-  void CreateXClusterSafeTimeTableAndStartService();
-
-  Status PrepareDefaultXClusterConfig(int64_t term, bool recreate) EXCLUDES(mutex_);
+  Status PrepareDefaultXClusterConfig(int64_t term, bool recreate);
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
 
@@ -88,13 +91,8 @@ class XClusterManager : public XClusterManagerIf {
       const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
   Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const override;
-
   Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
       const LeaderEpoch& epoch) override;
-
-  XClusterSafeTimeService* TEST_xcluster_safe_time_service() {
-    return xcluster_safe_time_service_.get();
-  }
 
   // OutboundReplicationGroup RPCs.
   Status XClusterCreateOutboundReplicationGroup(
@@ -120,54 +118,15 @@ class XClusterManager : public XClusterManagerIf {
       const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
+  std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
+      const TableInfoPtr& table_info, const LeaderEpoch& epoch);
+
  private:
-  template <template <class> class Loader, typename CatalogEntityWrapper>
-  Status Load(const std::string& key, CatalogEntityWrapper& catalog_entity_wrapper);
-
-  template <typename Loader, typename CatalogEntityPB>
-  Status Load(
-      const std::string& key, std::function<Status(const std::string&, const CatalogEntityPB&)>
-                                  catalog_entity_inserter_func);
-
-  Status InsertOutboundReplicationGroup(
-      const std::string& replication_group_id,
-      const SysXClusterOutboundReplicationGroupEntryPB& metadata)
-      EXCLUDES(outbound_replication_group_map_mutex_);
-
-  XClusterOutboundReplicationGroup InitOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id,
-      const SysXClusterOutboundReplicationGroupEntryPB& metadata);
-
-  Result<XClusterOutboundReplicationGroup*> GetOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id)
-      REQUIRES(outbound_replication_group_map_mutex_);
-
-  Result<const XClusterOutboundReplicationGroup*> GetOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id) const
-      REQUIRES_SHARED(outbound_replication_group_map_mutex_);
-
-  Result<std::vector<TableInfoPtr>> GetTablesToReplicate(const NamespaceId& namespace_id);
-
-  Result<std::vector<xrepl::StreamId>> BootstrapTables(
-      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline);
-
-  Master* const master_;
-  CatalogManager* const catalog_manager_;
-  SysCatalogTable* const sys_catalog_;
-
-  mutable std::shared_mutex mutex_;
+  Master& master_;
+  CatalogManager& catalog_manager_;
+  SysCatalogTable& sys_catalog_;
 
   std::unique_ptr<XClusterConfig> xcluster_config_;
-
-  std::unique_ptr<XClusterSafeTimeService> xcluster_safe_time_service_;
-
-  // The Catalog Entity is stored outside of XClusterSafeTimeService, since we may want to move the
-  // service out of master at a later time.
-  XClusterSafeTimeInfo xcluster_safe_time_info_;
-
-  mutable std::shared_mutex outbound_replication_group_map_mutex_;
-  std::map<xcluster::ReplicationGroupId, XClusterOutboundReplicationGroup>
-      outbound_replication_group_map_ GUARDED_BY(outbound_replication_group_map_mutex_);
 };
 
 }  // namespace master

@@ -291,6 +291,14 @@ std::string ToString(const std::chrono::duration<Rep, Period>& duration) {
 std::string ToString(const std::chrono::steady_clock::time_point& time_point);
 std::string ToString(const std::chrono::system_clock::time_point& time_point);
 
+template <OptionalType T>
+std::string ToString(const T& t) {
+  if (!t) {
+    return "<nullopt>";
+  }
+  return ToString(*t);
+}
+
 struct Identity {
   template <class T>
   const T& operator()(const T& t) const {

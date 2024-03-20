@@ -38,6 +38,11 @@ XClusterOutboundReplicationGroup::XClusterOutboundReplicationGroup(
   outbound_rg_info_->Load(outbound_replication_group_pb);
 }
 
+SysXClusterOutboundReplicationGroupEntryPB XClusterOutboundReplicationGroup::GetMetadata() const {
+  auto l = outbound_rg_info_->LockForRead();
+  return l->pb;
+}
+
 Status XClusterOutboundReplicationGroup::Upsert(
     XClusterOutboundReplicationGroupInfo::WriteLock& l, const LeaderEpoch& epoch) {
   auto status = helper_functions_.upsert_to_sys_catalog_func(epoch, outbound_rg_info_.get());

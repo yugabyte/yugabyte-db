@@ -14,11 +14,13 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -102,14 +104,27 @@ public class CustomerConfigService {
             .filter(schedule -> storageConfigUuids.contains(getStorageConfigUuid(schedule)))
             .collect(Collectors.groupingBy(this::getStorageConfigUuid, Collectors.toList()));
 
+    Map<UUID, List<DrConfig>> drConfigsByConfigUuid =
+        DrConfig.getAll().stream()
+            .collect(Collectors.groupingBy(DrConfig::getStorageConfigUuid, Collectors.toList()));
+
     Set<UUID> universeUuids =
-        Stream.concat(
+        Stream.of(
                 backupsByConfigUuid.values().stream()
                     .flatMap(Collection::stream)
                     .map(this::getUniverseUuid),
                 schedulesByConfigUuid.values().stream()
                     .flatMap(Collection::stream)
-                    .map(this::getUniverseUuid))
+                    .map(this::getUniverseUuid),
+                drConfigsByConfigUuid.values().stream()
+                    .flatMap(Collection::stream)
+                    .map(
+                        drConfig ->
+                            Arrays.asList(
+                                drConfig.getActiveXClusterConfig().getTargetUniverseUUID(),
+                                drConfig.getActiveXClusterConfig().getSourceUniverseUUID()))
+                    .flatMap(Collection::stream))
+            .flatMap(Function.identity())
             .collect(Collectors.toSet());
 
     Map<UUID, UniverseDetailSubset> universeMap =
@@ -121,11 +136,19 @@ public class CustomerConfigService {
       UUID storageUUID = configUI.getCustomerConfig().getConfigUUID();
 
       Set<UUID> storageUniverseUuids =
-          Stream.concat(
+          Stream.of(
                   backupsByConfigUuid.getOrDefault(storageUUID, Collections.emptyList()).stream()
                       .map(this::getUniverseUuid),
                   schedulesByConfigUuid.getOrDefault(storageUUID, Collections.emptyList()).stream()
-                      .map(this::getUniverseUuid))
+                      .map(this::getUniverseUuid),
+                  drConfigsByConfigUuid.getOrDefault(storageUUID, Collections.emptyList()).stream()
+                      .map(
+                          drConfig ->
+                              Arrays.asList(
+                                  drConfig.getActiveXClusterConfig().getTargetUniverseUUID(),
+                                  drConfig.getActiveXClusterConfig().getSourceUniverseUUID()))
+                      .flatMap(Collection::stream))
+              .flatMap(Function.identity())
               .collect(Collectors.toSet());
       configUI.setUniverseDetails(
           storageUniverseUuids.stream()

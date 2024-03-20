@@ -5658,7 +5658,7 @@ create_nestloop_plan(PlannerInfo *root,
 		join_plan = (NestLoop *) bnl_plan;
 		(void) prepare_sort_from_pathkeys((Plan *) bnl_plan,
 										  best_path->jpath.path.pathkeys,
-										  best_path->jpath.path.parent->relids,
+										  NULL,
 										  NULL,
 										  true,
 										  &bnl_plan->numSortCols,
@@ -8831,10 +8831,23 @@ is_projection_capable_path(Path *path)
 			 * get relaxed later.
 			 */
 			return false;
+		case T_NestLoop:
+			/*
+			 * Sorted Batched Nested Loop Joins cannot tolerate its tlist
+			 * being changed.
+			 */
+			return !(yb_is_nestloop_batched((NestPath *) path) &&
+					 path->pathkeys != NIL);
 		default:
 			break;
 	}
 	return true;
+}
+
+static bool
+is_bnl_projection_capable(YbBatchedNestLoop *bnl)
+{
+	return bnl->numSortCols == 0;
 }
 
 /*
@@ -8873,6 +8886,8 @@ is_projection_capable_plan(Plan *plan)
 			 * get relaxed later.
 			 */
 			return false;
+		case T_YbBatchedNestLoop:
+			return is_bnl_projection_capable((YbBatchedNestLoop *) plan);
 		default:
 			break;
 	}

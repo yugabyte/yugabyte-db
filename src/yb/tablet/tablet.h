@@ -622,11 +622,11 @@ class Tablet : public AbstractTablet,
 
   docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const {
     return {
-        regular_db_.get(),
-        intents_db_.get(),
-        &key_bounds_,
-        retention_policy_.get(),
-        metrics ? metrics : metrics_.get() };
+        .regular = regular_db_.get(),
+        .intents = intents_db_.get(),
+        .key_bounds = &key_bounds_,
+        .retention_policy = retention_policy_.get(),
+        .metrics = metrics ? metrics : metrics_.get() };
   }
 
   // Returns approximate middle key for tablet split:

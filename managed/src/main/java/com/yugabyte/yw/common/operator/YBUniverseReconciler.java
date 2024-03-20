@@ -631,8 +631,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
     userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
     userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();
-    userIntent.enableExposingService =
-        ExposingServiceState.valueOf(ybUniverse.getSpec().getEnableExposingService().name());
+
+    if (ybUniverse.getSpec().getEnableExposingService() != null) {
+      userIntent.enableExposingService =
+          ExposingServiceState.valueOf(ybUniverse.getSpec().getEnableExposingService().name());
+    }
 
     // Handle Passwords
     YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();

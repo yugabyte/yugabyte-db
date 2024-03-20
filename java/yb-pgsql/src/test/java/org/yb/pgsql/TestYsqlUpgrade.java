@@ -1979,7 +1979,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
 
     // Wait for tablespace info to be refreshed in load balancer.
-    Thread.sleep(MASTER_REFRESH_TABLESPACE_INFO_SECS); // TODO(esheng) 2x?
+    Thread.sleep(MASTER_REFRESH_TABLESPACE_INFO_SECS * 1000); // TODO(esheng) 2x?
 
     int expectedTServers = miniCluster.getTabletServers().size() + 1;
     miniCluster.startTServer(perTserverZonePlacementFlags.get(1));

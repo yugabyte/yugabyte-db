@@ -210,8 +210,6 @@ YbInitPgInheritsCache()
 	HASHCTL ctl = {0};
 	ctl.keysize = sizeof(Oid);
 	ctl.entrysize = sizeof(YbPgInheritsCacheEntryData);
-	/* TODO(deepthi): can we use HASH_BLOBS instead? */
-	ctl.hash = string_hash;
 	ctl.hcxt = CacheMemoryContext;
 	/*
 	 * It is hard to estimate how many partitioned tables there will be, so
@@ -219,7 +217,7 @@ YbInitPgInheritsCache()
 	*/
 	YbPgInheritsCache =
 		hash_create("YbPgInheritsCache", 8, &ctl,
-					HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+					HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 
 	CacheRegisterRelcacheCallback(YbPgInheritsCacheRelCallback, (Datum) 0);
 	elog(DEBUG3, "Initialized YbPgInherits cache");

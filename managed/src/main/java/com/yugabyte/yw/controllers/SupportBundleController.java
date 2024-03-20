@@ -105,15 +105,17 @@ public class SupportBundleController extends AuthenticatedController {
     // Support bundle for onprem and k8s universes was originally behind a runtime flag.
     // Now both are enabled by default.
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
-    Boolean k8s_enabled = confGetter.getGlobalConf(GlobalConfKeys.supportBundleK8sEnabled);
-    Boolean onprem_enabled = confGetter.getGlobalConf(GlobalConfKeys.supportBundleOnPremEnabled);
-    if (cloudType == CloudType.onprem && !onprem_enabled) {
+    Boolean k8sEnabled = confGetter.getGlobalConf(GlobalConfKeys.supportBundleK8sEnabled);
+    Boolean onpremEnabled = confGetter.getGlobalConf(GlobalConfKeys.supportBundleOnPremEnabled);
+    Boolean allowCoresCollection =
+        confGetter.getGlobalConf(GlobalConfKeys.supportBundleAllowCoresCollection);
+    if (CloudType.onprem.equals(cloudType) && !onpremEnabled) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Creating support bundle for on-prem universes is not enabled. "
               + "Please set onprem_enabled=true to create support bundle");
     }
-    if (cloudType == CloudType.kubernetes && !k8s_enabled) {
+    if (CloudType.kubernetes.equals(cloudType) && !k8sEnabled) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Creating support bundle for k8s universes is not enabled. "
@@ -127,6 +129,14 @@ public class SupportBundleController extends AuthenticatedController {
           "Component 'K8sInfo' is only applicable for kubernetes universes, not cloud type = "
               + cloudType.toString()
               + ". Continuing without it.");
+    }
+
+    if (bundleData.components.contains(ComponentType.CoreFiles) && !allowCoresCollection) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Core file collection is disabled globally. Either remove core files component from"
+              + " bundle creation, or enable runtime config"
+              + " 'yb.support_bundle.allow_cores_collection'.");
     }
 
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
@@ -258,11 +268,14 @@ public class SupportBundleController extends AuthenticatedController {
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getOrBadRequest(universeUUID, customer);
-    // Deletes row from the support_bundle db table
-    SupportBundle.delete(bundleUUID);
 
-    // Delete the actual archive file
-    supportBundleUtil.deleteFile(supportBundle.getPathObject());
+    // Throw error if support bundle is running.
+    if (SupportBundleStatusType.Running.equals(supportBundle.getStatus())) {
+      throw new PlatformServiceException(BAD_REQUEST, "The support bundle is in running state.");
+    }
+
+    // Delete file from disk and record from DB.
+    supportBundleUtil.deleteSupportBundle(supportBundle);
 
     auditService()
         .createAuditEntry(

@@ -94,8 +94,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     bool is_forward_scan,
     const DocKey& lower_doc_key,
     const DocKey& upper_doc_key,
-    const size_t prefix_length,
-    AddHighestToUpperDocKey add_highest_to_upper_doc_key)
+    const size_t prefix_length)
     : PgsqlScanSpec(
           schema, is_forward_scan, query_id,
           condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
@@ -108,9 +107,6 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()) {
   bounds_.lower = lower_doc_key.Encode();
   bounds_.upper = upper_doc_key.Encode();
-  if (add_highest_to_upper_doc_key) {
-    bounds_.upper.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
-  }
 
   if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
     options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
