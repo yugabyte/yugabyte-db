@@ -21,6 +21,7 @@ void SetUpPackedRowTestFlags();
 
 template <class Base>
 class PackedRowTestBase : public Base {
+ protected:
   void SetUp() override {
     SetUpPackedRowTestFlags();
     Base::SetUp();
