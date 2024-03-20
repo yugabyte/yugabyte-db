@@ -16,7 +16,7 @@ showRightNav: true
 
 ### Alerts
 
-Use YugabyteDB Managed [Alerts](cloud-alerts/) To be automatically notified of potential problems, enable alerts for cluster, database, and billing criteria. Configure alerts from the **Alerts** page.
+Use YugabyteDB Managed [Alerts](cloud-alerts/) to be automatically notified of potential problems. You can enable alerts for cluster, database, and billing criteria. Configure alerts from the **Alerts** page.
 
 ### Performance monitoring
 
@@ -35,7 +35,7 @@ Export database metrics and logs to third-party tools for analysis.
 
 | Feature | Description |
 | :--- | :--- |
-| [Metrics export](metrics-export/) | Export metrics to third-party monitoring tools such as Datadog and Grafana Cloud. |
+| [Metrics export](metrics-export/) | Export metrics to third-party monitoring tools such as Datadog, Grafana Cloud, and Sumo Logic. |
 | [Log export](logging-export/) | Export database audit and PostgreSQL logs to third-party monitoring tools. |
 
 ### Cluster properties

@@ -14,8 +14,8 @@ type: docs
 
 Export cluster database logs to third-party tools for analysis and customization. You can export the following types of logs:
 
-- Query log. This the standard [PostrgreSQL logging](https://www.postgresql.org/docs/11/runtime-config-logging.html) facility. Using these settings you can log query statements and errors.
-- Audit log. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides more fine-grained logs often required to comply with government, financial, or ISO certifications.
+- Database query log. This is the standard [PostgreSQL logging](https://www.postgresql.org/docs/11/runtime-config-logging.html) facility. Using these settings you can log query statements and errors.
+- Database audit log. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides more fine-grained logs often required to comply with government, financial, or ISO certifications.
 
 Exporting logs may incur additional costs for network transfer, especially for cross-region and internet-based transfers. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
@@ -68,7 +68,7 @@ Turn this option on to log SQL statements by type. You can choose the following 
 - mod - in addition to ddl statements, log data-modifying statements INSERT, UPDATE, DELETE, TRUNCATE, and COPY FROM.
 - all - log all statements
 
-Statements that fail before the execute phase, or that have syntax errors, are not included; to log error statements, use [Log SQL statements with severity](#log-sql-statements-with-severity-log_min_error_statement).
+Statements that fail before the execute phase, or that have syntax errors, are not included; to log error statements, use [Log SQL statements with severity](#log-sql-statements-with-severity-log-min-error-statement).
 
 Note that if this option is off, statements may still be logged, depending on the other logging settings.
 
@@ -127,9 +127,9 @@ To enable database audit logging for a cluster, do the following:
     - **Read** - SELECT and COPY when the source is a relation or a query.
     - **Write** - INSERT, UPDATE, DELETE, TRUNCATE, and COPY when the destination is a relation.
     - **Function** - Function calls and DO blocks.
-    - **Role** - Statements related to roles and privileges: GRANT, REVOKE, CREATE/ALTER/DROP ROLE.
+    - **Role** - Statements related to roles and privileges: GRANT, REVOKE, and CREATE/ALTER/DROP ROLE.
     - **DDL** - All DDL that is not included in the ROLE class.
-    - **Misc** - Miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, SET.
+    - **Misc** - Miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, and SET.
 
 1. Configure the [YSQL audit log settings](#ysql-audit-log-settings).
 
