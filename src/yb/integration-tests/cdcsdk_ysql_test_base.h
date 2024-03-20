@@ -203,7 +203,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const vector<string>& optional_cols_name = {});
 
   // The range is exclusive of end i.e. [start, end)
-  Status WriteRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster, uint32_t num_cols);
+  Status WriteRows(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, uint32_t num_cols,
+      std::string table_name = kTableName);
 
   void DropTable(PostgresMiniCluster* cluster, const char* table_name = kTableName);
 
@@ -261,7 +263,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::string& type_suffix = "");
   Status WriteRangeArrayCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
-  Status UpdateRows(uint32_t key, uint32_t value, PostgresMiniCluster* cluster);
+  Status UpdateRows(
+      uint32_t key, uint32_t value, PostgresMiniCluster* cluster,
+      std::string table_name = kTableName);
 
   Status UpdatePrimaryKey(uint32_t key, uint32_t value, PostgresMiniCluster* cluster);
 
@@ -278,7 +282,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t key,
       const std::map<std::string, uint32_t>& col_val_map, uint32_t num_cols);
 
-  Status DeleteRows(uint32_t key, PostgresMiniCluster* cluster);
+  Status DeleteRows(
+      uint32_t key, PostgresMiniCluster* cluster, std::string table_name = kTableName);
 
   Status SplitTablet(const TabletId& tablet_id, PostgresMiniCluster* cluster);
 
@@ -401,7 +406,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void CheckRecord(
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::ExpectedRecord expected_records,
       uint32_t* count, const bool& validate_old_tuple = false,
-      CDCSDKYsqlTest::ExpectedRecord expected_before_image_records = {});
+      CDCSDKYsqlTest::ExpectedRecord expected_before_image_records = {},
+      std::string table_name = kTableName, bool is_nothing_record = false);
 
   void CheckRecordWithThreeColumns(
       const CDCSDKProtoRecordPB& record,
