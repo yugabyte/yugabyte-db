@@ -30,6 +30,7 @@
  *  Note: Please keep this array sorted.
  */
 static const char *IgnoredCommonSpecFields[] = {
+	"$clusterTime",
 	"$db",
 	"$readPreference",
 	"$sort",
