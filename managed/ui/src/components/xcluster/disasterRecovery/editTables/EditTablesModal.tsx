@@ -274,9 +274,12 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           let bootstrapTableUuids: string[] | null = null;
           const hasSelectionError = false;
 
+          const tableUuidsToAdd = formValues.tableUuids.filter(
+            (tableUuid) => !props.xClusterConfig.tables.includes(tableUuid)
+          );
           try {
             bootstrapTableUuids = await getTablesForBootstrapping(
-              formValues.tableUuids,
+              tableUuidsToAdd,
               sourceUniverseUuid,
               targetUniverseUuid,
               sourceUniverseTables,
