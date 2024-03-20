@@ -101,7 +101,7 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 
 {{< /note >}}
 
-### User enforced consistency
+### User-enforced consistency
 
 {{<warning title="Caution">}}
 Opt for user-enforced consistency only when there is no other solution to your problem. User-enforced consistency requires considerable user effort to keep the index and table in sync.
