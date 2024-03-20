@@ -14,6 +14,8 @@ type: docs
 
 Using YugabyteDB Anywhere (YBA), you can deploy YugabyteDB universes on nodes with the following architectures and operating systems.
 
+(For information on prerequisites for the node running YBA, refer to [Prerequisites for YBA](../../install-yugabyte-platform/prerequisites/installer/).)
+
 ## Supported operating systems and CPU architectures
 
 YBA supports deploying YugabyteDB on both x86 and ARM (aarch64) architecture-based hardware.
