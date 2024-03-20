@@ -636,6 +636,12 @@ Status WriteQuery::DoExecute() {
     return Status::OK();
   }
 
+  // The request_id field should be populated for all write requests, but any read requests which
+  // trigger a write_query will not have it populated. In this case, we use -1 as the request_id,
+  // and conflict_resolution passes the serial_no to the wait queue as the request_id.
+  DCHECK(request().has_request_id() || request().write_batch().write_pairs_size() == 0);
+  auto request_id = request().has_request_id() ? request().request_id() : -1;
+
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     auto now = tablet->clock()->Now();
     auto conflict_management_policy = GetConflictManagementPolicy(wait_queue, write_batch);
@@ -656,9 +662,9 @@ Status WriteQuery::DoExecute() {
     }
     return docdb::ResolveOperationConflicts(
         doc_ops_, conflict_management_policy, now, write_batch.transaction().pg_txn_start_us(),
-        request_start_us(), tablet->doc_db(), partial_range_key_intents, transaction_participant,
-        tablet->metrics(), &prepare_result_.lock_batch,
-        wait_queue, deadline(),
+        request_start_us(), request_id, tablet->doc_db(), partial_range_key_intents,
+        transaction_participant, tablet->metrics(), &prepare_result_.lock_batch, wait_queue,
+        deadline(),
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
             ExecuteDone(result.status());
@@ -688,7 +694,7 @@ Status WriteQuery::DoExecute() {
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
-      request_start_us(), tablet->doc_db(), partial_range_key_intents,
+      request_start_us(), request_id, tablet->doc_db(), partial_range_key_intents,
       transaction_participant, tablet->metrics(),
       &prepare_result_.lock_batch, wait_queue, deadline(),
       [this](const Result<HybridTime>& result) {

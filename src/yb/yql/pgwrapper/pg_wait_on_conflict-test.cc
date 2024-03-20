@@ -138,29 +138,35 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
 
       ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", i));
+
+      auto txn_id = ASSERT_RESULT(conn.FetchAllAsString("SELECT yb_get_current_transaction()"));
       first_select.CountDown();
-      LOG(INFO) << "Finished first select " << i;
+      LOG(INFO) << "Finished first select thread " << i << " with txn " << txn_id;
 
       ASSERT_TRUE(first_select.WaitFor(5s * kTimeMultiplier));
 
+      LOG(INFO) << "Unblocked thread " << i;
+
       auto blocker_idx = GetBlockerIdx(i, kCycleSize);
+
+      LOG(INFO) << "Unblocked thread " << i << " " << blocker_idx;
 
       if (conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", blocker_idx).ok()) {
         succeeded_second_select++;
-        LOG(INFO) << "Second select succeeded " << i << " on blocker " << blocker_idx;
+        LOG(INFO) << "Second select succeeded thread " << i << " on blocker " << blocker_idx;
 
         if (conn.CommitTransaction().ok()) {
-          LOG(INFO) << "Commit succeeded " << i;
+          LOG(INFO) << "Commit succeeded thread " << i;
           succeeded_commit++;
         } else {
-          LOG(INFO) << "Commit failed " << i;
+          LOG(INFO) << "Commit failed thread " << i;
         }
       } else {
-        LOG(INFO) << "Second select failed " << i << " on blocker " << blocker_idx;
+        LOG(INFO) << "Second select failed thread " << i << " on blocker " << blocker_idx;
       }
 
       done.CountDown();
-      LOG(INFO) << "Thread done " << i;
+      LOG(INFO) << "Done thread " << i;
       ASSERT_TRUE(done.WaitFor(5s * kTimeMultiplier));
     });
   }
@@ -1101,7 +1107,6 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock))
   }
 }
 
-
 TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
   constexpr int kNumUpdateConns = 20;
   constexpr int kNumKeys = 40;
@@ -1279,6 +1284,62 @@ TEST_F(PgWaitQueuesTest, TestDDLsNotBlockedOnWaiters) {
   thread_holder.WaitAndStop(20s * kTimeMultiplier);
 }
 #endif // NDEBUG
+
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleRequestsPerTxn)) {
+  auto blocker_conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(blocker_conn.Execute(
+      "CREATE TABLE foo (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(blocker_conn.Execute("INSERT INTO foo SELECT generate_series(0, 1000), 0"));
+
+  ASSERT_OK(blocker_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(blocker_conn.Execute("UPDATE foo SET v=2 WHERE k > 500"));
+
+  TestThreadHolder thread_holder;
+
+  std::atomic_bool read_blocker_failed = false;
+  std::atomic_bool write_blocker_failed = false;
+
+  thread_holder.AddThreadFunctor([this, &read_blocker_failed] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.Execute("SET ysql_session_max_batch_size=1"));
+    ASSERT_OK(conn.Execute("SET ysql_max_in_flight_ops=10"));
+    LOG(INFO) << "About to block";
+    // This query should fail due to conflict after blocking
+    ASSERT_NOK(conn.Execute("UPDATE foo SET v=1 WHERE k > 500"));
+    read_blocker_failed = true;
+  });
+
+  thread_holder.AddThreadFunctor([this, &write_blocker_failed] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.Execute("SET ysql_session_max_batch_size=1"));
+    ASSERT_OK(conn.Execute("SET ysql_max_in_flight_ops=10"));
+    LOG(INFO) << "About to block";
+    // This query should fail due to conflict after blocking
+    ASSERT_NOK(conn.Fetch("SELECT * FROM foo WHERE k > 500 FOR UPDATE"));
+    write_blocker_failed = true;
+  });
+
+  std::this_thread::sleep_for(5s * kTimeMultiplier);
+
+  ASSERT_FALSE(read_blocker_failed);
+  ASSERT_FALSE(write_blocker_failed);
+
+  ASSERT_OK(blocker_conn.CommitTransaction());
+  LOG(INFO) << "Committed blocker conn";
+
+  thread_holder.WaitAndStop(25s * kTimeMultiplier);
+
+  ASSERT_TRUE(read_blocker_failed);
+  ASSERT_TRUE(write_blocker_failed);
+
+  // Confirm tserver is not in a bad state after the failed txn.
+  auto value = blocker_conn.FetchValue<int32_t>("SELECT v FROM foo WHERE k = 501");
+  ASSERT_OK(value);
+  ASSERT_EQ(value.get(), 2);
+}
 
 class PgWaitQueueRF1Test : public PgWaitQueuesTest {
  protected:
