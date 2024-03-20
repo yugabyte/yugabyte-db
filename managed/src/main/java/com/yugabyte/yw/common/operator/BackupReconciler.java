@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.DeleteBackupParams;
 import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.models.Customer;
@@ -109,6 +110,11 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
     }
     UUID universeUUID = universe.getUniverseUUID();
     UUID storageConfigUUID = getStorageConfigUUIDFromName(backup.getSpec().getStorageConfig());
+
+    KeyspaceTable kT = new KeyspaceTable();
+    kT.keyspace = backup.getSpec().getKeyspace();
+    ((ObjectNode) crJsonNode).remove("keyspace");
+    ((ObjectNode) crJsonNode).set("keyspaceTableList", Json.toJson(kT));
 
     ((ObjectNode) crJsonNode).put("universeUUID", universeUUID.toString());
     ((ObjectNode) crJsonNode).put("storageConfigUUID", storageConfigUUID.toString());

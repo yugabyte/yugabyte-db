@@ -2840,11 +2840,6 @@ Status ExternalTabletServer::Start(
   flags.Add("start_cql_proxy", start_cql_proxy_);
   flags.Add("tserver_master_addrs", master_addrs_);
 
-  // Use conservative number of threads for the mini cluster for unit test env
-  // where several unit tests tend to run in parallel.
-  flags.Add("tablet_server_svc_num_threads", "64");
-  flags.Add("ts_consensus_svc_num_threads", "20");
-
   for (const auto& flag_value : extra_flags) {
     flags.Add(flag_value.first, flag_value.second);
   }

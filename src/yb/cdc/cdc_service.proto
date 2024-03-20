@@ -478,9 +478,13 @@ message RowMessage {
   optional uint64 pg_lsn = 15;
   optional uint32 pg_transaction_id = 16;
 
-  // The ID of the table associated with the row. Only populated for DMLs
+  // The ID of the table associated with the row. Only populated for DMLs & DDLs
   // but not for other ops such as BEGIN/COMMIT/SAFEPOINT.
   optional string table_id = 17;
+
+  // DocKey for the row in a table. Only populated for DMLs in the streaming phase but not
+  // for other ops such as DDL/BEGIN/COMMIT/SAFEPOINT. Not populated in the Snapshot phase.
+  optional bytes primary_key = 18;
 }
 
 message CDCSDKProtoRecordPB {

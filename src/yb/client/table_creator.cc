@@ -17,6 +17,7 @@
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/common_util.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -35,7 +36,7 @@ using std::string;
 DECLARE_bool(client_suppress_created_logs);
 DECLARE_uint32(change_metadata_backoff_max_jitter_ms);
 DECLARE_uint32(change_metadata_backoff_init_exponent);
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
 DEFINE_test_flag(bool, duplicate_create_table_request, false,
                  "Whether a table creator should send duplicate CreateTableRequestPB to master.");
@@ -312,7 +313,7 @@ Status YBTableCreator::Create() {
 
   if (txn_) {
     txn_->ToPB(req.mutable_transaction());
-    req.set_ysql_ddl_rollback_enabled(FLAGS_ysql_ddl_rollback_enabled);
+    req.set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
   }
 
   // Setup the number splits (i.e. number of splits).

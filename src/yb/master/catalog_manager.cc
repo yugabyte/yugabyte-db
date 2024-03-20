@@ -1509,6 +1509,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
     ysql_ddl_txn_verfication_state_map_.clear();
   }
 
+  xcluster_manager_->Clear();
+
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
   for (const auto& ts_desc : descs) {
@@ -1551,7 +1553,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(LoadUniverseReplication());
   RETURN_NOT_OK(LoadUniverseReplicationBootstrap());
 
-  RETURN_NOT_OK(xcluster_manager_->RunLoaders());
+  RETURN_NOT_OK(xcluster_manager_->RunLoaders(hidden_tablets_));
   RETURN_NOT_OK(clone_state_manager_->ClearAndRunLoaders());
 
   return Status::OK();
@@ -1657,6 +1659,7 @@ Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
                                   universe_uuid);
 
   l.mutable_data()->pb.set_universe_uuid(universe_uuid);
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
   l.Commit();
   return Status::OK();
@@ -3239,35 +3242,37 @@ Status CatalogManager::SplitTablet(
   return SplitTablet(tablet, is_manual_split, epoch);
 }
 
-Status CatalogManager::XreplValidateSplitCandidateTable(const TableInfo& table) const {
+Status CatalogManager::XReplValidateSplitCandidateTable(const TableId& table_id) const {
   SharedLock lock(mutex_);
-  return XreplValidateSplitCandidateTableUnlocked(table);
+  return XReplValidateSplitCandidateTableUnlocked(table_id);
 }
 
-Status CatalogManager::XreplValidateSplitCandidateTableUnlocked(const TableInfo& table) const {
+Status CatalogManager::XReplValidateSplitCandidateTableUnlocked(const TableId& table_id) const {
   // Check if this table is part of a cdc stream.
   if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
-      IsXClusterEnabledUnlocked(table)) {
+      IsTablePartOfXClusterUnlocked(table_id)) {
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of"
-        " a CDC stream, table_id: $0", table.id());
+        " a CDC stream, table_id: $0",
+        table_id);
   }
   // Check if the table is in the bootstrapping phase of xCluster.
   if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) &&
-      IsTablePartOfBootstrappingCdcStreamUnlocked(table)) {
+      xcluster_manager_->DoesTableHaveAnyBootstrappingStream(table_id)) {
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of"
-        " a bootstrapping CDC stream, table_id: $0", table.id());
+        " a bootstrapping CDC stream, table_id: $0",
+        table_id);
   }
   // Check if this table is part of a cdcsdk stream.
-  if (!FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables &&
-      IsTablePartOfCDCSDK(table)) {
+  if (!FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables && IsTablePartOfCDCSDK(table_id)) {
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of"
-        " a CDCSDK stream, table_id: $0", table.id());
+        " a CDCSDK stream, table_id: $0",
+        table_id);
   }
   return Status::OK();
 }
@@ -3283,7 +3288,7 @@ Status CatalogManager::ValidateSplitCandidateUnlocked(
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
   RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTable(
       tablet->table(), ignore_disabled_list));
-  RETURN_NOT_OK(XreplValidateSplitCandidateTableUnlocked(*tablet->table()));
+  RETURN_NOT_OK(XReplValidateSplitCandidateTableUnlocked(tablet->table()->id()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
 
@@ -3325,8 +3330,7 @@ Status CatalogManager::DeleteNotServingTablet(
 
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
 
-  const auto delete_retainer =
-      VERIFY_RESULT(GetTabletDeleteRetainerInfo(*table_info, {tablet_info}));
+  const auto delete_retainer = VERIFY_RESULT(GetDeleteRetainerInfoForTabletDrop(*tablet_info));
 
   return DeleteOrHideTabletsAndSendRequests(
       {tablet_info}, delete_retainer,
@@ -3780,12 +3784,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   if (!orig_req->old_rewrite_table_id().empty()) {
     auto table_info = GetTableInfo(orig_req->old_rewrite_table_id());
     SharedLock lock(mutex_);
-    if (IsXClusterEnabledUnlocked(*table_info) || IsTablePartOfCDCSDK(*table_info)) {
-      return STATUS(
-          NotSupported,
-          "cannot rewrite a table that is a part of CDC or XCluster replication."
-          " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
-    }
+    SCHECK(
+        !IsTablePartOfXRepl(table_info->id()), NotSupported,
+        "cannot rewrite a table that is a part of CDC or XCluster replication."
+        " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
   }
 
   // Copy the request, so we can fill in some defaults.
@@ -4215,14 +4217,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TransactionMetadata txn;
   bool schedule_ysql_txn_verifier = false;
   if (req.has_transaction() &&
-      (FLAGS_enable_transactional_ddl_gc || req.ysql_ddl_rollback_enabled())) {
+      (FLAGS_enable_transactional_ddl_gc || req.ysql_yb_ddl_rollback_enabled())) {
     table->mutable_metadata()->mutable_dirty()->pb.mutable_transaction()->
         CopyFrom(req.transaction());
     txn = VERIFY_RESULT(TransactionMetadata::FromPB(req.transaction()));
     RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
 
     // Set the YsqlTxnVerifierState.
-    if (req.ysql_ddl_rollback_enabled()) {
+    if (req.ysql_yb_ddl_rollback_enabled()) {
       table->mutable_metadata()->mutable_dirty()->pb.add_ysql_ddl_txn_verifier_state()->
         set_contains_create_table_op(true);
       schedule_ysql_txn_verifier = true;
@@ -5758,22 +5760,17 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
       }
   }
 
-  if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && IsXClusterEnabled(*table)) {
-      return STATUS(
-          NotSupported,
-          "Cannot truncate a table in replication.",
-          table_id,
-          MasterError(MasterErrorPB::INVALID_REQUEST));
-  }
+  SCHECK_EC_FORMAT(
+      FLAGS_enable_delete_truncate_xcluster_replicated_table || !IsTablePartOfXCluster(table_id),
+      NotSupported, MasterError(MasterErrorPB::INVALID_REQUEST),
+      "Cannot truncate table $0 that is in xCluster replication", table_id);
+
   {
     SharedLock lock(mutex_);
-    if (!FLAGS_enable_truncate_cdcsdk_table && IsTablePartOfCDCSDK(*table)) {
-        return STATUS(
-            NotSupported,
-            "Cannot truncate a table in a CDCSDK Stream.",
-            table_id,
-            MasterError(MasterErrorPB::INVALID_REQUEST));
-    }
+    SCHECK_EC_FORMAT(
+        FLAGS_enable_truncate_cdcsdk_table || !IsTablePartOfCDCSDK(table_id), NotSupported,
+        MasterError(MasterErrorPB::INVALID_REQUEST),
+        "Cannot truncate a table $0 that has a CDCSDK Stream", table_id);
   }
 
   // Send a Truncate() request to each tablet in the table.
@@ -6246,7 +6243,7 @@ Status CatalogManager::DeleteTable(
   }
 
   // For now, only disable dropping YCQL tables under xCluster replication.
-  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsXClusterEnabled(*table);
+  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsTablePartOfXCluster(table->id());
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
     return STATUS(NotSupported,
                   "Cannot delete a table in replication.",
@@ -6254,7 +6251,7 @@ Status CatalogManager::DeleteTable(
                   MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
-  if (req->ysql_ddl_rollback_enabled()) {
+  if (req->ysql_yb_ddl_rollback_enabled()) {
     DCHECK(req->has_transaction());
     DCHECK(req->transaction().has_transaction_id());
   }
@@ -6284,7 +6281,7 @@ Status CatalogManager::DeleteTable(
     // If DDL Rollback is enabled, we will not delete the index now, but merely mark it for
     // deletion when the transaction commits. Thus set the response fields required by the client
     // right away.
-    if (is_pg_table && req->ysql_ddl_rollback_enabled()) {
+    if (is_pg_table && req->ysql_yb_ddl_rollback_enabled()) {
       auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
           indexed_table->namespace_id()));
       auto* resp_indexed_table = resp->mutable_indexed_table();
@@ -6296,7 +6293,7 @@ Status CatalogManager::DeleteTable(
   }
 
   // Check whether DDL rollback is enabled.
-  if (req->ysql_ddl_rollback_enabled() && req->has_transaction() &&
+  if (req->ysql_yb_ddl_rollback_enabled() && req->has_transaction() &&
       table->GetTableType() == PGSQL_TABLE_TYPE) {
     bool ysql_txn_verifier_state_present = false;
     auto l = table->LockForWrite();
@@ -6403,7 +6400,7 @@ Status CatalogManager::DeleteTableInternal(
   RSTATUS_DCHECK_GE(resp->deleted_table_ids_size(), 1, IllegalState,
       "DeleteTableInMemory expected to add the index id to resp");
 
-  RETURN_NOT_OK(DeleteCDCStreamsForTables(deleted_table_ids));
+  RETURN_NOT_OK(DropXClusterStreamsOfTables(deleted_table_ids));
   RETURN_NOT_OK(DeleteXReplStatesForIndexTables(deleted_index_ids));
 
   if (PREDICT_FALSE(FLAGS_catalog_manager_inject_latency_in_delete_table_ms > 0)) {
@@ -6482,7 +6479,7 @@ Status CatalogManager::DeleteTableInternal(
     }
   }
 
-  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTables(deleted_table_ids));
+  RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
 
   // If there are any permissions granted on this table find them and delete them. This is necessary
   // because we keep track of the permissions based on the canonical resource name which is a
@@ -6522,13 +6519,9 @@ Status CatalogManager::DeleteTableInternal(
 }
 
 Status CatalogManager::DeleteTableInMemory(
-    const TableIdentifierPB& table_identifier,
-    const bool is_index_table,
-    const bool update_indexed_table,
-    const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
-    const LeaderEpoch& epoch,
-    vector<DeletingTableData>* tables,
-    DeleteTableResponsePB* resp,
+    const TableIdentifierPB& table_identifier, const bool is_index_table,
+    const bool update_indexed_table, const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
+    const LeaderEpoch& epoch, vector<DeletingTableData>* tables, DeleteTableResponsePB* resp,
     rpc::RpcContext* rpc) {
   // TODO(NIC): How to handle a DeleteTable request when the namespace is being deleted?
   const char* const object_type = is_index_table ? "index" : "table";
@@ -6574,8 +6567,8 @@ Status CatalogManager::DeleteTableInMemory(
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
-  data.delete_retainer = VERIFY_RESULT(GetTabletDeleteRetainerInfo(
-      *table, table->GetTablets(IncludeInactive::kFalse), &schedules_to_tables_map));
+  data.delete_retainer =
+      VERIFY_RESULT(GetDeleteRetainerInfoForTableDrop(*table, schedules_to_tables_map));
 
   bool hide_only = data.delete_retainer.IsHideOnly();
 
@@ -6953,7 +6946,7 @@ Status ApplyAlterSteps(server::Clock* clock,
           return STATUS(InvalidArgument, "cannot remove a key column");
         }
 
-        if (req->ysql_ddl_rollback_enabled() &&
+        if (req->ysql_yb_ddl_rollback_enabled() &&
             VERIFY_RESULT(NeedTwoPhaseDeleteForColumn(current_pb, col_name))) {
           RETURN_NOT_OK(builder.MarkColumnForDeletion(col_name));
           ddl_log_entries->emplace_back(
@@ -7068,7 +7061,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
 
-  if (req->ysql_ddl_rollback_enabled()) {
+  if (req->ysql_yb_ddl_rollback_enabled()) {
     DCHECK(req->has_transaction());
     DCHECK(req->transaction().has_transaction_id());
   }
@@ -7078,7 +7071,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // If the table is already undergoing an alter operation, return failure.
-  if (req->ysql_ddl_rollback_enabled() && l->has_ysql_ddl_txn_verifier_state()) {
+  if (req->ysql_yb_ddl_rollback_enabled() && l->has_ysql_ddl_txn_verifier_state()) {
     if (l->pb_transaction_id() != req->transaction().transaction_id()) {
       auto txn_meta = VERIFY_RESULT(TransactionMetadata::FromPB(l->pb.transaction()));
       auto req_txn_meta = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
@@ -7218,7 +7211,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     SchemaToPB(new_schema, table_pb.mutable_schema());
   }
 
-  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) && IsTableXClusterConsumer(*table)) {
+  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) && IsTableXClusterConsumer(table->id())) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // ensure this alter is compatible with what we're expecting.
     RETURN_NOT_OK(ValidateNewSchemaWithCdc(*table, new_schema));
@@ -7253,7 +7246,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   bool schedule_ysql_txn_verifier = false;
   // DDL rollback is not applicable for the alter change that sets wal_retention_secs.
   if (!req->has_wal_retention_secs()) {
-    if (!req->ysql_ddl_rollback_enabled()) {
+    if (!req->ysql_yb_ddl_rollback_enabled()) {
       // If DDL rollback is no longer enabled, make sure that there is no transaction
       // verification state present.
       if (l->has_ysql_ddl_txn_verifier_state()) {
@@ -8757,7 +8750,7 @@ Status CatalogManager::CreateTablegroup(
   }
   if (req->has_transaction()) {
     ctreq.mutable_transaction()->CopyFrom(req->transaction());
-    ctreq.set_ysql_ddl_rollback_enabled(req->ysql_ddl_rollback_enabled());
+    ctreq.set_ysql_yb_ddl_rollback_enabled(req->ysql_yb_ddl_rollback_enabled());
   }
   ctreq.set_name(parent_table_name);
   ctreq.set_table_id(parent_table_id);
@@ -8825,7 +8818,7 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
     }
 
     if (!tablegroup->IsEmpty()) {
-      if (!req->has_ysql_ddl_rollback_enabled()) {
+      if (!req->has_ysql_yb_ddl_rollback_enabled()) {
         return SetupError(
             resp->mutable_error(),
             MasterErrorPB::INVALID_REQUEST,
@@ -8876,7 +8869,7 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   dtreq.mutable_table()->set_table_id(parent_table_id);
   dtreq.set_is_index_table(false);
   dtreq.mutable_transaction()->CopyFrom(req->transaction());
-  dtreq.set_ysql_ddl_rollback_enabled(req->ysql_ddl_rollback_enabled());
+  dtreq.set_ysql_yb_ddl_rollback_enabled(req->ysql_yb_ddl_rollback_enabled());
 
   // Delete the parent table.
   // This will also delete the tablegroup tablet, as well as the tablegroup entity.
@@ -9349,7 +9342,7 @@ Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<Namespa
     if (ltm->namespace_id() != database->id() || ltm->started_deleting()) {
       continue;
     }
-    if (IsXClusterEnabledUnlocked(*table)) {
+    if (IsTablePartOfXClusterUnlocked(table->id())) {
       LOG(ERROR) << "Error deleting database: " << database->id() << ", table: " << table->id()
                  << " is under replication"
                  << ". Cannot delete a database that contains tables under replication.";
@@ -9710,8 +9703,8 @@ Status CatalogManager::DeleteYsqlDBTables(
       index_list.push_back(table->id());
     }
   }
-  RETURN_NOT_OK(DeleteCDCStreamsForTables(table_ids));
-  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTables(table_ids));
+  RETURN_NOT_OK(DropXClusterStreamsOfTables(table_ids));
+  RETURN_NOT_OK(DropCDCSDKStreams(table_ids));
   RETURN_NOT_OK(DeleteXReplStatesForIndexTables(index_list));
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
@@ -11382,7 +11375,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
 
   // With Replication Enabled, verify that we've finished applying the New Schema.
   // This may need to be refactored when we support Replication + Active Index Backfill in #7613.
-  if (IsTableXClusterConsumer(*table)) {
+  if (IsTableXClusterConsumer(table->id())) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // resume replication now that the alter is complete.
     RETURN_NOT_OK(ResumeXClusterConsumerAfterNewSchema(*table, version));
@@ -12529,6 +12522,11 @@ Status CatalogManager::SetClusterConfig(
 
   if (config.cluster_uuid() != l->pb.cluster_uuid()) {
     Status s = STATUS(InvalidArgument, "Config cluster UUID cannot be updated");
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
+  }
+
+  if (config.universe_uuid() != l->pb.universe_uuid()) {
+    Status s = STATUS(InvalidArgument, "Config Universe UUID cannot be updated");
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
   }
 
@@ -13812,17 +13810,30 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
   ScheduleRefreshPgCatalogVersionsTask();
 }
 
-Result<TabletDeleteRetainerInfo> CatalogManager::GetTabletDeleteRetainerInfo(
-    const TableInfo& table_info, const TabletInfos& tablets_to_check,
-    const SnapshotSchedulesToObjectIdsMap* schedules_to_tables_map) {
+Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTabletDrop(
+    const TabletInfo& tablet_info) {
   TabletDeleteRetainerInfo retainer;
-  RETURN_NOT_OK(snapshot_coordinator_.PopulateTabletDeleteRetainerInfo(
-      table_info, tablets_to_check, schedules_to_tables_map, retainer));
+  RETURN_NOT_OK(
+      snapshot_coordinator_.PopulateDeleteRetainerInfoForTabletDrop(tablet_info, retainer));
+
+  xcluster_manager_->PopulateTabletDeleteRetainerInfoForTabletDrop(tablet_info, retainer);
 
   {
     SharedLock lock(mutex_);
-    XReplPopulateTabletDeleteRetainerInfo(table_info, tablets_to_check, retainer);
+    CDCSDKPopulateDeleteRetainerInfoForTabletDrop(tablet_info, retainer);
   }
+
+  return retainer;
+}
+
+Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTableDrop(
+    const TableInfo& table_info, const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map) {
+  TabletDeleteRetainerInfo retainer;
+  auto tablets_to_check = table_info.GetTablets(IncludeInactive::kFalse);
+  RETURN_NOT_OK(snapshot_coordinator_.PopulateDeleteRetainerInfoForTableDrop(
+      table_info, tablets_to_check, schedules_to_tables_map, retainer));
+
+  // xCluster and CDCSDK do not retain dropped tables.
 
   return retainer;
 }
@@ -13849,8 +13860,10 @@ void CatalogManager::RecordHiddenTablets(
     hidden_tablets_.insert(
         hidden_tablets_.end(), new_hidden_tablets.begin(), new_hidden_tablets.end());
 
-    LoadXReplRetainedTablets(new_hidden_tablets, delete_retainer);
+    RecordCDCSDKHiddenTablets(new_hidden_tablets, delete_retainer);
+    xcluster_manager_->RecordHiddenTablets(new_hidden_tablets, delete_retainer);
   }
+
 }
 
 bool CatalogManager::ShouldRetainHiddenTablet(
@@ -13860,8 +13873,12 @@ bool CatalogManager::ShouldRetainHiddenTablet(
     VLOG(1) << Format("Tablet $0 retained by snapshots", tablet_id);
     return true;
   }
-  if (RetainedByXRepl(tablet_id)) {
-    VLOG(1) << Format("Tablet $0 retained by xrepl", tablet_id);
+  if (xcluster_manager_->ShouldRetainHiddenTablet(tablet)) {
+    VLOG(1) << Format("Tablet $0 retained by xcluster", tablet_id);
+    return true;
+  }
+  if (CDCSDKShouldRetainHiddenTablet(tablet_id)) {
+    VLOG(1) << Format("Tablet $0 retained by CDCSDK", tablet_id);
     return true;
   }
 

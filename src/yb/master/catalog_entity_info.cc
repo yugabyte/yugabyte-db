@@ -1225,6 +1225,12 @@ bool CDCStreamInfo::IsConsistentSnapshotStream() const {
          l->pb.cdcsdk_stream_metadata().has_consistent_snapshot_option();
 }
 
+const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity>
+CDCStreamInfo::GetReplicaIdentityMap() const {
+  auto l = LockForRead();
+  return l->pb.replica_identity_map();
+}
+
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
   if (l->pb.has_namespace_id()) {

@@ -59,7 +59,13 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // So, generated node certs will still be of old rootCA after this step
           createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
           // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(getUniverse(), userIntent.ybSoftwareVersion, true, true);
+          createUpgradeTask(
+              getUniverse(),
+              userIntent.ybSoftwareVersion,
+              true /* isMasterChanged */,
+              true /* isTserverChanged */,
+              getUniverse().isYbcEnabled(),
+              getUniverse().getUniverseDetails().getYbcSoftwareVersion());
 
           // Now we will change the order of certs: new cert first, followed by old root cert
           // Also cert key will be pointing to new root cert key
@@ -67,7 +73,13 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Essentially equivalent to updating only node certs in this step
           createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCertReverse);
           // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(getUniverse(), userIntent.ybSoftwareVersion, true, true);
+          createUpgradeTask(
+              getUniverse(),
+              userIntent.ybSoftwareVersion,
+              true /* isMasterChanged */,
+              true /* isTserverChanged */,
+              getUniverse().isYbcEnabled(),
+              getUniverse().getUniverseDetails().getYbcSoftwareVersion());
 
           // Reset the temporary certs and update the universe to use new rootCA
           createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
@@ -76,8 +88,8 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           createUpgradeTask(
               getUniverse(),
               userIntent.ybSoftwareVersion,
-              true,
-              true,
+              true /* isMasterChanged */,
+              true /* isTserverChanged */,
               getUniverse().isYbcEnabled(),
               getUniverse().getUniverseDetails().getYbcSoftwareVersion());
         });

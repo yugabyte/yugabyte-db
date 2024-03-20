@@ -74,7 +74,7 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
   // Cleanup streams marked for deletion and get the list of xcluster streams.
   std::unordered_set<xrepl::StreamId> CleanupAndGetAllXClusterStreams() {
     catalog_manager_->RunXReplBgTasks(epoch_);
-    return catalog_manager_->GetAllXreplStreamIds();
+    return catalog_manager_->GetAllXReplStreamIds();
   }
 
   void VerifyNamespaceCheckpointInfo(

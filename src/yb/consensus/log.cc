@@ -167,8 +167,7 @@ TAG_FLAG(log_inject_latency, unsafe);
 TAG_FLAG(log_inject_latency_ms_mean, unsafe);
 TAG_FLAG(log_inject_latency_ms_stddev, unsafe);
 
-DEFINE_UNKNOWN_int32(log_inject_append_latency_ms_max, 0,
-             "The maximum latency to inject before the log append operation.");
+DEPRECATE_FLAG(int32, log_inject_append_latency_ms_max, "02_2024");
 
 DEFINE_test_flag(bool, log_consider_all_ops_safe, false,
             "If true, we consider all operations to be safe and will not wait"

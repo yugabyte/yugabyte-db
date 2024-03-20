@@ -661,7 +661,8 @@ public class SupportBundleUtil {
       Path nodeTargetFile,
       String nodeHomeDir,
       List<String> sourceNodeFiles,
-      String componentName) {
+      String componentName,
+      boolean skipUntar) {
     // Run command for large number of files in batches.
     List<List<String>> batchesNodeFiles = ListUtils.partition(sourceNodeFiles, 1000);
     int batchIndex = 0;
@@ -673,13 +674,15 @@ public class SupportBundleUtil {
               customer, universe, node, nodeHomeDir, batchNodeFiles, nodeTargetFile);
       try {
         if (Files.exists(targetFile)) {
-          File unZippedFile =
-              unGzip(
-                  new File(targetFile.toAbsolutePath().toString()),
-                  new File(bundlePath.toAbsolutePath().toString()));
-          Files.delete(targetFile);
-          unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
-          unZippedFile.delete();
+          if (!skipUntar) {
+            File unZippedFile =
+                unGzip(
+                    new File(targetFile.toAbsolutePath().toString()),
+                    new File(bundlePath.toAbsolutePath().toString()));
+            Files.delete(targetFile);
+            unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
+            unZippedFile.delete();
+          }
         } else {
           log.debug(
               "No files exist at the source path '{}' for universe '{}' for component '{}'.",
@@ -707,7 +710,8 @@ public class SupportBundleUtil {
       NodeDetails node,
       String nodeHomeDir,
       List<String> sourceNodeFiles,
-      String componentName)
+      String componentName,
+      boolean skipUntar)
       throws Exception {
     if (node == null) {
       String errMsg =
@@ -739,7 +743,8 @@ public class SupportBundleUtil {
         nodeTargetFile,
         nodeHomeDir,
         sourceNodeFiles,
-        componentName);
+        componentName,
+        skipUntar);
   }
 
   public void ignoreExceptions(Runnable r) {

@@ -13,7 +13,7 @@ m2|pid511933|:31270           schema_version: 0
 m2|pid511933|:31270           table_id: ".\n\000\000\000\000\000\200\0000\000\000\3463\000\000"
 m2|pid511933|:31270           table_id: "\355\004\000\000\000\000\000\200\0000\000\000\001\000\000\000"
 m2|pid511933|:31270         }
-m2|pid511933|:31270 
+m2|pid511933|:31270
 m3|pid511964|:14443       data: "$"
 m3|pid511964|:14443       data: "$"
 m3|pid511964|:14443         table_schema_version {
@@ -198,7 +198,7 @@ ts3|pid512140|:24182 I0707 23:01:42.489491 512169 tablet_service.cc:1340] Proces
 ts3|pid512140|:24182 I0707 23:01:42.489898 512171 tablet_service.cc:1340] Processing CreateTablet for T {selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id3} P {ts3_peer_id} (table=selectoncurrentresourceafterdroponnonpgcachedtable [id=000033e8000030008000000000004015]), partition=hash_split: [0x5555, 0xAAAA)
 ts3|pid512140|:24182 I0707 23:01:42.490764 512173 tablet_service.cc:1340] Processing CreateTablet for T {selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id2} P {ts3_peer_id} (table=selectoncurrentresourceafterdroponnonpgcachedtable [id=000033e8000030008000000000004015]), partition=hash_split: [0xAAAA, 0xFFFF)
 ts2|pid512092|:14645 I0707 23:01:42.490622 512350 tablet_service.cc:1340] Processing CreateTablet for T {selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id2} P {ts2_peer_id} (table=selectoncurrentresourceafterdroponnonpgcachedtable [id=000033e8000030008000000000004015]), partition=hash_split: [0xAAAA, 0xFFFF)
-ts3|pid512140|:24182 I0707 23:01:42.491627 512634 db_impl.cc:920] T {selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id3} P {ts3_peer_id} [R]: Creating manifest 1 
+ts3|pid512140|:24182 I0707 23:01:42.491627 512634 db_impl.cc:920] T {selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id3} P {ts3_peer_id} [R]: Creating manifest 1
 ts2|pid512092|:14645 I0707 23:01:42.494287 512635 docdb_rocksdb_util.cc:423] FLAGS_rocksdb_max_background_compactions was not set, automatically configuring 1 background compactions.
 ts1|pid512055|:12225 I0707 23:01:42.506093 512637 tablet_peer.cc:1239] T {selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id2} P {ts1_peer_id} [state=RUNNING]: Registered log gc
 m2|pid511933|:31270 W0707 23:01:42.509615 512627 async_rpc_tasks.cc:645] RunLeaderElection RPC for tablet {selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id3} (selectoncurrentresourceafterdroponnonpgcachedtable [id=000033e8000030008000000000004015]) on TS={ts2_peer_id} (task=0x00000000486ee8d8, state=kRunning): RunLeaderElection RPC for tablet {selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id3} on TS {ts2_peer_id} failed: Illegal state (yb/tserver/service_util.cc:253): Tablet {selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id3} not RUNNING: BOOTSTRAPPING (tablet server error 12) (raft group state error 0)
@@ -275,7 +275,7 @@ ts3|pid512140|:24182 I0707 23:01:45.292387 512169 tablet_service.cc:1340] Proces
 ts1|pid512055|:12225 I0707 23:01:45.293032 512081 tablet_service.cc:1340] Processing CreateTablet for T {selectoncurrentresourcebeforedroponpgcachedtable_tablet_id2} P {ts1_peer_id} (table=selectoncurrentresourcebeforedroponpgcachedtable [id=000033e8000030008000000000004024]), partition=hash_split: [0x0000, 0x5555)
 ts2|pid512092|:14645 I0707 23:01:45.293807 512117 tablet_service.cc:1340] Processing CreateTablet for T {selectoncurrentresourcebeforedroponpgcachedtable_tablet_id1} P {ts2_peer_id} (table=selectoncurrentresourcebeforedroponpgcachedtable [id=000033e8000030008000000000004024]), partition=hash_split: [0x5555, 0xAAAA)
 ts1|pid512055|:12225 I0707 23:01:45.293824 512349 tablet_service.cc:1340] Processing CreateTablet for T {selectoncurrentresourcebeforedroponpgcachedtable_tablet_id3} P {ts1_peer_id} (table=selectoncurrentresourcebeforedroponpgcachedtable [id=000033e8000030008000000000004024]), partition=hash_split: [0xAAAA, 0xFFFF)
-ts2|pid512092|:14645 I0707 23:01:45.295960 512838 db_impl.cc:920] T {selectoncurrentresourcebeforedroponpgcachedtable_tablet_id1} P {ts2_peer_id} [R]: Creating manifest 1 
+ts2|pid512092|:14645 I0707 23:01:45.295960 512838 db_impl.cc:920] T {selectoncurrentresourcebeforedroponpgcachedtable_tablet_id1} P {ts2_peer_id} [R]: Creating manifest 1
 ts3|pid512140|:24182 I0707 23:01:45.296196 512840 tablet_peer.cc:1346] T {selectoncurrentresourcebeforedroponpgcachedtable_tablet_id3} P {ts3_peer_id} [state=BOOTSTRAPPING]: Changed state from NOT_STARTED to BOOTSTRAPPING
 ts2|pid512092|:14645 I0707 23:01:45.305613 512838 raft_consensus.cc:502] T {selectoncurrentresourcebeforedroponpgcachedtable_tablet_id1} P {ts2_peer_id} [term 0 FOLLOWER]: Consensus starting up: Expiring fail detector timer to make a prompt election more likely
 ts1|pid512055|:12225 I0707 23:01:45.306893 512837 consensus_meta.cc:317] T {selectoncurrentresourcebeforedroponpgcachedtable_tablet_id2} P {ts1_peer_id}: Updating active role from FOLLOWER to FOLLOWER. Consensus state: current_term: 0 leader_uuid: "" config { opid_index: -1 peers { permanent_uuid: "{ts1_peer_id}" member_type: VOTER last_known_private_addr { host: "127.70.130.158" port: 12225 } cloud_info { placement_cloud: "cloud1" placement_region: "datacenter1" placement_zone: "rack1" } } peers { permanent_uuid: "{ts2_peer_id}" member_type: VOTER last_known_private_addr { host: "127.205.41.227" port: 14645 } cloud_info { placement_cloud: "cloud1" placement_region: "datacenter1" placement_zone: "rack1" } } peers { permanent_uuid: "{ts3_peer_id}" member_type: VOTER last_known_private_addr { host: "127.38.192.219" port: 24182 } cloud_info { placement_cloud: "cloud1" placement_region: "datacenter1" placement_zone: "rack1" } } }, has_pending_config = 0
@@ -293,7 +293,7 @@ ts3|pid512140|:24182 I0707 23:01:45.668568 512173 docdb_rocksdb_util.cc:435] FLA
 ts1|pid512055|:12225 I0707 23:01:45.669245 512349 ts_tablet_manager.cc:2284] Unregister data/wal directory assignment map for table: 000033e8000030008000000000004024 and tablet {selectoncurrentresourcebeforedroponpgcachedtable_tablet_id1}
 ts2|pid512092|:14645 I0707 23:01:45.665975 512123 log.cc:1310] T {selectoncurrentresourcebeforedroponpgcachedtable_tablet_id1} P {ts2_peer_id}: Deleting WAL dir ${TEST_TMPDIR}/ts-127.205.41.227-14645-1657234884463/yb-data/tserver/wals/table-000033e8000030008000000000004024/tablet-{selectoncurrentresourcebeforedroponpgcachedtable_tablet_id1}
 m2|pid511933|:31270     is_hash_key: true
-m2|pid511933|:31270 I0707 23:01:46.079111 512051 catalog_manager.cc:3588] CreateTable with IndexInfo 
+m2|pid511933|:31270 I0707 23:01:46.079111 512051 catalog_manager.cc:3588] CreateTable with IndexInfo
 ts2|pid512092|:14645 I0707 23:01:46.080992 512350 tablet_service.cc:1340] Processing CreateTablet for T {insertbeforedroponnonpgcachedunrelatedtable_tablet_id1} P {ts2_peer_id} (table=insertbeforedroponnonpgcachedunrelatedtable [id=000033e8000030008000000000004029]), partition=hash_split: [0xAAAA, 0xFFFF)
 ts1|pid512055|:12225 I0707 23:01:46.080953 512816 tablet_service.cc:1340] Processing CreateTablet for T {insertbeforedroponnonpgcachedunrelatedtable_tablet_id1} P {ts1_peer_id} (table=insertbeforedroponnonpgcachedunrelatedtable [id=000033e8000030008000000000004029]), partition=hash_split: [0xAAAA, 0xFFFF)
 ts2|pid512092|:14645 I0707 23:01:46.082993 512123 tablet_service.cc:1340] Processing CreateTablet for T {insertbeforedroponnonpgcachedunrelatedtable_tablet_id2} P {ts2_peer_id} (table=insertbeforedroponnonpgcachedunrelatedtable [id=000033e8000030008000000000004029]), partition=hash_split: [0x5555, 0xAAAA)
@@ -346,7 +346,7 @@ ts3|pid512140|:24182 I0707 23:01:51.159416 513028 docdb_rocksdb_util.cc:435] FLA
 ts3|pid512140|:24182 I0707 23:01:51.159736 512171 tablet_service.cc:1340] Processing CreateTablet for T {insertafterdroponnonpgcachedunrelatedtable_tablet_id2} P {ts3_peer_id} (table=insertafterdroponnonpgcachedunrelatedtable [id=000033e8000030008000000000004033]), partition=hash_split: [0x0000, 0x5555)
 ts3|pid512140|:24182 I0707 23:01:51.160172 512171 ts_tablet_manager.cc:682] T {insertafterdroponnonpgcachedunrelatedtable_tablet_id2} P {ts3_peer_id}: Created tablet metadata for table: 000033e8000030008000000000004033
 ts2|pid512092|:14645 I0707 23:01:51.160519 512117 tablet_service.cc:1340] Processing CreateTablet for T {insertafterdroponnonpgcachedunrelatedtable_tablet_id3} P {ts2_peer_id} (table=insertafterdroponnonpgcachedunrelatedtable [id=000033e8000030008000000000004033]), partition=hash_split: [0x5555, 0xAAAA)
-ts1|pid512055|:12225 I0707 23:01:51.160455 513027 db_impl.cc:920] T {insertafterdroponnonpgcachedunrelatedtable_tablet_id2} P {ts1_peer_id} [R]: Creating manifest 1 
+ts1|pid512055|:12225 I0707 23:01:51.160455 513027 db_impl.cc:920] T {insertafterdroponnonpgcachedunrelatedtable_tablet_id2} P {ts1_peer_id} [R]: Creating manifest 1
 ts1|pid512055|:12225 I0707 23:01:51.161338 512273 tablet_service.cc:1340] Processing CreateTablet for T {insertafterdroponnonpgcachedunrelatedtable_tablet_id3} P {ts1_peer_id} (table=insertafterdroponnonpgcachedunrelatedtable [id=000033e8000030008000000000004033]), partition=hash_split: [0x5555, 0xAAAA)
 ts1|pid512055|:12225 I0707 23:01:51.162235 513033 consensus_meta.cc:317] T {insertafterdroponnonpgcachedunrelatedtable_tablet_id3} P {ts1_peer_id}: Updating active role from UNKNOWN_ROLE to FOLLOWER. Consensus state: current_term: 0 leader_uuid: "" config { opid_index: -1 peers { permanent_uuid: "{ts1_peer_id}" member_type: VOTER last_known_private_addr { host: "127.70.130.158" port: 12225 } cloud_info { placement_cloud: "cloud1" placement_region: "datacenter1" placement_zone: "rack1" } } peers { permanent_uuid: "{ts2_peer_id}" member_type: VOTER last_known_private_addr { host: "127.205.41.227" port: 14645 } cloud_info { placement_cloud: "cloud1" placement_region: "datacenter1" placement_zone: "rack1" } } peers { permanent_uuid: "{ts3_peer_id}" member_type: VOTER last_known_private_addr { host: "127.38.192.219" port: 24182 } cloud_info { placement_cloud: "cloud1" placement_region: "datacenter1" placement_zone: "rack1" } } }, has_pending_config = 0
 ts2|pid512092|:14645 I0707 23:01:51.188943 513031 raft_consensus.cc:3356] T {insertafterdroponnonpgcachedunrelatedtable_tablet_id2} P {ts2_peer_id} [term 0 FOLLOWER]: Calling mark dirty synchronously for reason code CONSENSUS_STARTED
@@ -388,7 +388,7 @@ ts2|pid512092|:14645 I0707 23:01:52.368587 512121 consensus_meta.cc:317] T {inse
 ts3|pid512140|:24182 I0707 23:01:52.368145 512169 tablet_service.cc:1340] Processing CreateTablet for T {insertafterdroponpgcachedunrelatedtable_tablet_id2} P {ts3_peer_id} (table=insertafterdroponpgcachedunrelatedtable [id=000033e800003000800000000000403d]), partition=hash_split: [0x5555, 0xAAAA)
 ts2|pid512092|:14645 I0707 23:01:52.371801 513124 docdb_rocksdb_util.cc:423] FLAGS_rocksdb_max_background_compactions was not set, automatically configuring 1 background compactions.
 ts2|pid512092|:14645 I0707 23:01:52.371971 513124 tablet.cc:740] Opening RocksDB at: ${TEST_TMPDIR}/ts-127.205.41.227-14645-1657234884463/yb-data/tserver/data/rocksdb/table-000033e800003000800000000000403d/tablet-{insertafterdroponpgcachedunrelatedtable_tablet_id1}
-ts1|pid512055|:12225 I0707 23:01:52.376310 513125 db_impl.cc:920] T {insertafterdroponpgcachedunrelatedtable_tablet_id2} P {ts1_peer_id} [I]: Creating manifest 1 
+ts1|pid512055|:12225 I0707 23:01:52.376310 513125 db_impl.cc:920] T {insertafterdroponpgcachedunrelatedtable_tablet_id2} P {ts1_peer_id} [I]: Creating manifest 1
 ts1|pid512055|:12225 I0707 23:01:52.382876 513134 transaction_participant.cc:1096] T {insertafterdroponpgcachedunrelatedtable_tablet_id1} P {ts1_peer_id}: LoadFinished: starting transaction status resolution
 ts3|pid512140|:24182 I0707 23:01:52.395167 512986 consensus_queue.cc:1190] T {insertafterdroponpgcachedunrelatedtable_tablet_id1} P {ts3_peer_id} [LEADER]: Connected to new peer: { peer: {ts2_peer_id} is_new: 0 last_received: 0.0 next_index: 1 last_known_committed_idx: 0 is_last_exchange_successful: 0 needs_remote_bootstrap: 0 member_type: VOTER num_sst_files: 0 last_applied: 0.0 }
 ts1|pid512055|:12225 I0707 23:01:52.438009 512058 replica_state.cc:784] T {insertafterdroponpgcachedunrelatedtable_tablet_id2} P {ts1_peer_id} [term 1 LEADER]: Advanced the committed_op_id across terms. Last committed operation was: 0.0 New committed index is: 1.1
@@ -449,61 +449,63 @@ m3|pid511964|:14443     @     0xffff83891fa4 __GI___nanosleep
 
 Rewrites performed by the rewrite_test_log.py script:
 
-m1_peer_id = 337c5b8357bd4b77b0cd7fcf4ed7d3c8
-ts1_peer_id = 0e28a5c7df58445e82c1a1fd75b61473
-ts2_peer_id = 918b3bc385944018ab844b08872636f1
-ts3_peer_id = cb4e04c67220452fbd7debe3bc83f5d0
-insertoncurrentresourcebeforedroponnonpgcachedtable_tablet_id1 = 6309f961dba940b4be7a3ca696b7d9d7
-insertoncurrentresourcebeforedroponnonpgcachedtable_tablet_id2 = a22142aab7804036bc8c02124d37760b
-insertoncurrentresourcebeforedroponnonpgcachedtable_tablet_id3 = eb4176c006cc4020867c314e3e3e4571
-insertoncurrentresourcebeforedroponpgcachedtable_tablet_id1 = 664add799f7641bc9d8723befa579777
-insertoncurrentresourcebeforedroponpgcachedtable_tablet_id2 = 9bd5f96919d64ff691a2376c069e0737
-insertoncurrentresourcebeforedroponpgcachedtable_tablet_id3 = ab5f41e2547c42aabb2c12e369e337d3
-insertoncurrentresourceafterdroponnonpgcachedtable_tablet_id1 = 7ec2428d55184e2889ee2e52837630dd
-insertoncurrentresourceafterdroponnonpgcachedtable_tablet_id2 = 809fc858606245719598d99f68e8ca66
-insertoncurrentresourceafterdroponnonpgcachedtable_tablet_id3 = 88d6280033a842b0a781579d7b0536cd
-insertoncurrentresourceafterdroponpgcachedtable_tablet_id1 = 0ca79429dc854a6daddb763ee0556087
-insertoncurrentresourceafterdroponpgcachedtable_tablet_id2 = 15b865a42cee449da9ecb3d8a6c3a889
-insertoncurrentresourceafterdroponpgcachedtable_tablet_id3 = c43b69406b8c42e980ffdd733c10806b
-selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id1 = 4c1ef41e1e1e413096ac38f4e058b522
-selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id2 = 5550fa86a32948bf9b47f1fda62bdea8
-selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id3 = b1553b9f0f294dedb5b01548c21a5170
-selectoncurrentresourceafterdroponpgcachedtable_tablet_id1 = 1b232e028924496aa585f76fdeb8cfc7
-selectoncurrentresourceafterdroponpgcachedtable_tablet_id2 = 1f87f708fc7143f2a6099bd2b30e09d8
-selectoncurrentresourceafterdroponpgcachedtable_tablet_id3 = e76ef656c0b04e64bc2c92e5802ac8f9
-selectoncurrentresourcebeforedroponnonpgcachedtable_tablet_id1 = 516e583a908a400bbd95f100de37b214
-selectoncurrentresourcebeforedroponnonpgcachedtable_tablet_id2 = b19ab57cb2194fa1911f6973dae45b86
-selectoncurrentresourcebeforedroponnonpgcachedtable_tablet_id3 = b496d3c2864e42f3b4e81bab6245535f
-selectoncurrentresourcebeforedroponpgcachedtable_tablet_id1 = 6f23d604abb642669c72e0353db64fee
-selectoncurrentresourcebeforedroponpgcachedtable_tablet_id2 = a6eb39b041244c9c98443a76142ac3f2
-selectoncurrentresourcebeforedroponpgcachedtable_tablet_id3 = b007d8f38e7d4898b1d2beb18a717694
-insertbeforedroponnonpgcachedunrelatedtable_tablet_id1 = 1ad2d49347e843178ae769f29c89cbb0
-insertbeforedroponnonpgcachedunrelatedtable_tablet_id2 = c2851446704a491e9fc2a4656f245537
-insertbeforedroponnonpgcachedunrelatedtable_tablet_id3 = e5d2307362d041d58009d32dcfbe3822
-dummytableforinsertbeforedroponnonpgcachedunrelatedtable_tablet_id1 = 256eba565f7b400d83866ebc1ea80c69
-dummytableforinsertbeforedroponnonpgcachedunrelatedtable_tablet_id2 = 601e6d0c673f498f8af50d090e93be12
-dummytableforinsertbeforedroponnonpgcachedunrelatedtable_tablet_id3 = e373fda007a743c48732f6ba1e3b85c4
-insertafterdroponnonpgcachedunrelatedtable_tablet_id1 = 649a5b29ef694e31a1f1cf680f33d0af
-insertafterdroponnonpgcachedunrelatedtable_tablet_id2 = 72997e63a0c04792b16c52c885d6226d
-insertafterdroponnonpgcachedunrelatedtable_tablet_id3 = 97db9126a9b2473f863273092d2343eb
-dummytableforinsertafterdroponnonpgcachedunrelatedtable_tablet_id1 = 09a592b5810643c7bb4ae27487eece60
-dummytableforinsertafterdroponnonpgcachedunrelatedtable_tablet_id2 = 75cf7d60da084a16b35ebb60fb51f093
-dummytableforinsertafterdroponnonpgcachedunrelatedtable_tablet_id3 = a16ff2512ca1423b8cda183a29a10213
-insertafterdroponpgcachedunrelatedtable_tablet_id1 = 8cacc1bba2e4449c8ece39fd46190ecd
-insertafterdroponpgcachedunrelatedtable_tablet_id2 = 99ae1a3207914ecc91191a0c582b2b87
-insertafterdroponpgcachedunrelatedtable_tablet_id3 = 9a73c4c5752b4395ab218e337e09e1f3
-dummytableforinsertafterdroponpgcachedunrelatedtable_tablet_id1 = 10f71d0f009a4440b2ab6308b71b96a8
-dummytableforinsertafterdroponpgcachedunrelatedtable_tablet_id2 = 85e052cd83694283b6030256cb1856de
-dummytableforinsertafterdroponpgcachedunrelatedtable_tablet_id3 = b80a7637b246434aa650c759058c59c7
-runmultipletxnsbeforedroptable_tablet_id1 = 270ebf03138d4ae4a8c694421150921a
-runmultipletxnsbeforedroptable_tablet_id2 = 458df7852f03492eb11943efa4cd7f46
-runmultipletxnsbeforedroptable_tablet_id3 = e74c055a55c54085a5ad205d639da29e
-transactions_tablet_id1 = 9fff60d275324a7384334c92820d5c93
-transactions_tablet_id2 = b4446accdfc049fa93644e089db2ed36
-transactions_tablet_id3 = e9393a0aff3443fa8358c61bdc82eca5
-sys_catalog_tablet_id = 00000000000000000000000000000000
-BUILD_ROOT = /var/lib/jenkins/workspace/yugabyte-db/build/release-clang12-dynamic-ninja
-YB_SRC_ROOT = /var/lib/jenkins/workspace/yugabyte-db
-TEST_TMPDIR = /tmp/yb_test.org.yb.pgsql.TestDropTableWithConcurrentTxn#testDmlTxnDrop.20220707230115167368.7164446636
+337c5b8357bd4b77b0cd7fcf4ed7d3c8 -> m1_peer_id
+0e28a5c7df58445e82c1a1fd75b61473 -> ts1_peer_id
+918b3bc385944018ab844b08872636f1 -> ts2_peer_id
+cb4e04c67220452fbd7debe3bc83f5d0 -> ts3_peer_id
+6309f961dba940b4be7a3ca696b7d9d7 -> insertoncurrentresourcebeforedroponnonpgcachedtable_tablet_id1
+a22142aab7804036bc8c02124d37760b -> insertoncurrentresourcebeforedroponnonpgcachedtable_tablet_id2
+eb4176c006cc4020867c314e3e3e4571 -> insertoncurrentresourcebeforedroponnonpgcachedtable_tablet_id3
+664add799f7641bc9d8723befa579777 -> insertoncurrentresourcebeforedroponpgcachedtable_tablet_id1
+9bd5f96919d64ff691a2376c069e0737 -> insertoncurrentresourcebeforedroponpgcachedtable_tablet_id2
+ab5f41e2547c42aabb2c12e369e337d3 -> insertoncurrentresourcebeforedroponpgcachedtable_tablet_id3
+7ec2428d55184e2889ee2e52837630dd -> insertoncurrentresourceafterdroponnonpgcachedtable_tablet_id1
+809fc858606245719598d99f68e8ca66 -> insertoncurrentresourceafterdroponnonpgcachedtable_tablet_id2
+88d6280033a842b0a781579d7b0536cd -> insertoncurrentresourceafterdroponnonpgcachedtable_tablet_id3
+0ca79429dc854a6daddb763ee0556087 -> insertoncurrentresourceafterdroponpgcachedtable_tablet_id1
+15b865a42cee449da9ecb3d8a6c3a889 -> insertoncurrentresourceafterdroponpgcachedtable_tablet_id2
+c43b69406b8c42e980ffdd733c10806b -> insertoncurrentresourceafterdroponpgcachedtable_tablet_id3
+4c1ef41e1e1e413096ac38f4e058b522 -> selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id1
+5550fa86a32948bf9b47f1fda62bdea8 -> selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id2
+b1553b9f0f294dedb5b01548c21a5170 -> selectoncurrentresourceafterdroponnonpgcachedtable_tablet_id3
+1b232e028924496aa585f76fdeb8cfc7 -> selectoncurrentresourceafterdroponpgcachedtable_tablet_id1
+1f87f708fc7143f2a6099bd2b30e09d8 -> selectoncurrentresourceafterdroponpgcachedtable_tablet_id2
+e76ef656c0b04e64bc2c92e5802ac8f9 -> selectoncurrentresourceafterdroponpgcachedtable_tablet_id3
+516e583a908a400bbd95f100de37b214 -> selectoncurrentresourcebeforedroponnonpgcachedtable_tablet_id1
+b19ab57cb2194fa1911f6973dae45b86 -> selectoncurrentresourcebeforedroponnonpgcachedtable_tablet_id2
+b496d3c2864e42f3b4e81bab6245535f -> selectoncurrentresourcebeforedroponnonpgcachedtable_tablet_id3
+6f23d604abb642669c72e0353db64fee -> selectoncurrentresourcebeforedroponpgcachedtable_tablet_id1
+a6eb39b041244c9c98443a76142ac3f2 -> selectoncurrentresourcebeforedroponpgcachedtable_tablet_id2
+b007d8f38e7d4898b1d2beb18a717694 -> selectoncurrentresourcebeforedroponpgcachedtable_tablet_id3
+1ad2d49347e843178ae769f29c89cbb0 -> insertbeforedroponnonpgcachedunrelatedtable_tablet_id1
+c2851446704a491e9fc2a4656f245537 -> insertbeforedroponnonpgcachedunrelatedtable_tablet_id2
+e5d2307362d041d58009d32dcfbe3822 -> insertbeforedroponnonpgcachedunrelatedtable_tablet_id3
+256eba565f7b400d83866ebc1ea80c69 -> dummytableforinsertbeforedroponnonpgcachedunrelatedtable_tablet_id1
+601e6d0c673f498f8af50d090e93be12 -> dummytableforinsertbeforedroponnonpgcachedunrelatedtable_tablet_id2
+e373fda007a743c48732f6ba1e3b85c4 -> dummytableforinsertbeforedroponnonpgcachedunrelatedtable_tablet_id3
+649a5b29ef694e31a1f1cf680f33d0af -> insertafterdroponnonpgcachedunrelatedtable_tablet_id1
+72997e63a0c04792b16c52c885d6226d -> insertafterdroponnonpgcachedunrelatedtable_tablet_id2
+97db9126a9b2473f863273092d2343eb -> insertafterdroponnonpgcachedunrelatedtable_tablet_id3
+09a592b5810643c7bb4ae27487eece60 -> dummytableforinsertafterdroponnonpgcachedunrelatedtable_tablet_id1
+75cf7d60da084a16b35ebb60fb51f093 -> dummytableforinsertafterdroponnonpgcachedunrelatedtable_tablet_id2
+a16ff2512ca1423b8cda183a29a10213 -> dummytableforinsertafterdroponnonpgcachedunrelatedtable_tablet_id3
+8cacc1bba2e4449c8ece39fd46190ecd -> insertafterdroponpgcachedunrelatedtable_tablet_id1
+99ae1a3207914ecc91191a0c582b2b87 -> insertafterdroponpgcachedunrelatedtable_tablet_id2
+9a73c4c5752b4395ab218e337e09e1f3 -> insertafterdroponpgcachedunrelatedtable_tablet_id3
+10f71d0f009a4440b2ab6308b71b96a8 -> dummytableforinsertafterdroponpgcachedunrelatedtable_tablet_id1
+85e052cd83694283b6030256cb1856de -> dummytableforinsertafterdroponpgcachedunrelatedtable_tablet_id2
+b80a7637b246434aa650c759058c59c7 -> dummytableforinsertafterdroponpgcachedunrelatedtable_tablet_id3
+270ebf03138d4ae4a8c694421150921a -> runmultipletxnsbeforedroptable_tablet_id1
+458df7852f03492eb11943efa4cd7f46 -> runmultipletxnsbeforedroptable_tablet_id2
+e74c055a55c54085a5ad205d639da29e -> runmultipletxnsbeforedroptable_tablet_id3
+9fff60d275324a7384334c92820d5c93 -> transactions_tablet_id1
+b4446accdfc049fa93644e089db2ed36 -> transactions_tablet_id2
+e9393a0aff3443fa8358c61bdc82eca5 -> transactions_tablet_id3
+00000000000000000000000000000000 -> sys_catalog_tablet_id
+/var/lib/jenkins/workspace/yugabyte-db/build/release-clang12-dynamic-ninja/../.. -> YB_SRC_ROOT
+/var/lib/jenkins/workspace/yugabyte-db/build/release-clang12-dynamic-ninja -> BUILD_ROOT
+/var/lib/jenkins/workspace/yugabyte-db -> YB_SRC_ROOT
+/tmp/yb_test.org.yb.pgsql.TestDropTableWithConcurrentTxn#testDmlTxnDrop.20220707230115167368.7164446636 -> TEST_TMPDIR
+/home/some_user_name -> ~
 
 --------------------------------------------------------------------------------

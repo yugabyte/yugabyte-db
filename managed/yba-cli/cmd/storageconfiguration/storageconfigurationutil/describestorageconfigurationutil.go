@@ -59,7 +59,7 @@ func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 
 	r = storageConfigs
 
-	if len(r) > 0 && viper.GetString("output") == "table" {
+	if len(r) > 0 && util.IsOutputType("table") {
 		fullStorageConfigurationContext := *storageconfiguration.NewFullStorageConfigContext()
 		fullStorageConfigurationContext.Output = os.Stdout
 		fullStorageConfigurationContext.Format = storageconfiguration.
@@ -70,8 +70,12 @@ func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 	}
 
 	if len(r) < 1 {
-		fmt.Println("No storage configurations found")
-		return
+		logrus.Fatalf(
+			formatter.Colorize(
+				fmt.Sprintf("No storage configurations with name: %s found\n",
+					storageName),
+				formatter.RedColor,
+			))
 	}
 
 	storageConfigCtx := formatter.Context{

@@ -91,7 +91,7 @@ For instructions on installing YugabyteDB Anywhere, refer to [Install YugabyteDB
 
 ### What are the OS requirements and permissions to run YugabyteDB Anywhere?
 
-For a list of operating systems supported by YugabyteDB Anywhere, see [Operating system support](../../reference/configuration/operating-systems/#yugabytedb-anywhere).
+For a list of operating systems supported by YugabyteDB Anywhere, see [Operating system support](../../reference/configuration/operating-systems/). YugabyteDB Anywhere doesn't support ARM architectures (but can be used to deploy universes to ARM-based nodes).
 
 For Replicated-based installations, YugabyteDB Anywhere supports operating systems supported by Replicated. Replicated only supports Linux-based operating systems. The Linux OS should be 3.10+ kernel, 64-bit, and ready to run docker-engine 1.7.1 - 17.06.2-ce (with 17.06.2-ce being the recommended version). For a complete list of operating systems supported by Replicated, see [Supported Operating Systems](https://help.replicated.com/docs/native/customer-installations/supported-operating-systems/).
 
@@ -155,11 +155,11 @@ Installation depends on how the nodes are provisioned.
 
 Currently, there are three ways to provision a node, depending on the level of access provided to YBA, as follows:
 
-* _Automatic provisioning_, where an SSH user with sudo access for the node is provided to YBA (for example, the `ec2-user` for an AWS EC2 instance).
+- _Automatic provisioning_, where an SSH user with sudo access for the node is provided to YBA (for example, the `ec2-user` for an AWS EC2 instance).
 
-* [_Assisted manual provisioning_](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/) via a script (`provision_instance.py`), where YBA doesn't have access to an SSH user with sudo access, but you can run the script interactively in YBA, providing parameters for credentials for the SSH user with sudo access.
+- [_Assisted manual provisioning_](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/) via a script (`provision_instance.py`), where YBA doesn't have access to an SSH user with sudo access, but you can run the script interactively in YBA, providing parameters for credentials for the SSH user with sudo access.
 
-* [_Fully manual provisioning_](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/), where neither you nor YBA has access to an SSH user with sudo access. In this case, only a local (non-SSH) user with sudo access is available, and you must follow a series of manual steps to provision the node.
+- [_Fully manual provisioning_](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/), where neither you nor YBA has access to an SSH user with sudo access. In this case, only a local (non-SSH) user with sudo access is available, and you must follow a series of manual steps to provision the node.
 
 For cloud (AWS, GCP, and Azure) and automatic on-premises (sudo access provided) providers, agents are automatically installed on each universe node during provisioning using SSH. After the node agent is installed, all the legacy SSH calls are replaced with node agent calls. Just like an SSH daemon, node agent is run as a root user to perform provisioning of the nodes. After node provisioning, you can revoke the SSH access, but it's recommended to retain access for debugging.
 

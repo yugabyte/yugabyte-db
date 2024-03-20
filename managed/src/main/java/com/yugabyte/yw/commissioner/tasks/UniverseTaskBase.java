@@ -321,6 +321,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CertsRotate);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
+  // This mapping blocks/allows actions on the UI done by a mapping defined in
+  // UNIVERSE_ACTION_TO_FROZEN_TASK_MAP in "./managed/ui/src/redesign/helpers/constants.ts".
   private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
       ImmutableSet.of(
           TaskType.CreateBackup,
@@ -345,7 +347,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse,
           TaskType.ReinstallNodeAgent,
-          TaskType.ReadOnlyClusterDelete);
+          TaskType.ReadOnlyClusterDelete,
+          TaskType.CreateSupportBundle);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(TaskType.GFlagsUpgrade, TaskType.RestartUniverse, TaskType.VMImageUpgrade);
@@ -403,7 +406,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     private final UUID universeUuid;
     private final boolean blacklistLeaders;
     private final int leaderBacklistWaitTimeMs;
-    private final Duration waitForServerTimeout;
+    private final Duration waitForServerReadyTimeout;
     private final boolean followerLagCheckEnabled;
     private boolean loadBalancerOff = false;
     private final Set<UUID> lockedUniversesUuid = ConcurrentHashMap.newKeySet();
@@ -421,7 +424,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       followerLagCheckEnabled =
           confGetter.getConfForScope(universe, UniverseConfKeys.followerLagCheckEnabled);
 
-      waitForServerTimeout =
+      waitForServerReadyTimeout =
           confGetter.getConfForScope(universe, UniverseConfKeys.waitForServerReadyTimeout);
     }
 
@@ -437,8 +440,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return followerLagCheckEnabled;
     }
 
-    public Duration getWaitForServerTimeout() {
-      return waitForServerTimeout;
+    public Duration getWaitForServerReadyTimeout() {
+      return waitForServerReadyTimeout;
     }
 
     public void lockUniverse(UUID universeUUID) {
@@ -509,35 +512,42 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         universe -> {
           if (!SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(taskType)
               && confGetter.getConfForScope(universe, UniverseConfKeys.validateLocalRelease)) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            String ybSoftwareVersion =
-                universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion;
-            ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
-            if (release == null) {
-              String msg =
-                  String.format(
-                      "Universe %s does not have valid metadata.", universe.getUniverseUUID());
-              log.error(msg);
-              throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
-            }
-            if (release.hasLocalRelease()) {
-              Set<String> localFilePaths = release.getLocalReleasePathStrings();
-              localFilePaths.forEach(
-                  path -> {
-                    Path localPath = Paths.get(path);
-                    if (!Files.exists(localPath)) {
-                      String msg =
-                          String.format(
-                              "Could not find path %s on system for YB software version %s",
-                              localPath, ybSoftwareVersion);
-                      log.error(msg);
-                      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
-                    }
-                  });
+            if (!validateLocalFilepath(
+                universe,
+                releaseManager.getReleaseByVersion(
+                    universe
+                        .getUniverseDetails()
+                        .getPrimaryCluster()
+                        .userIntent
+                        .ybSoftwareVersion))) {
+              throw new PlatformServiceException(
+                  INTERNAL_SERVER_ERROR, "Error validating local release for universe.");
             }
           }
         };
     return releaseValidator;
+  }
+
+  public static boolean validateLocalFilepath(Universe universe, ReleaseContainer release) {
+    if (release == null) {
+      String msg =
+          String.format("Universe %s does not have valid metadata.", universe.getUniverseUUID());
+      log.error(msg);
+      return false;
+    }
+    Set<String> localFilePaths = release.getLocalReleasePathStrings();
+    for (String path : localFilePaths) {
+      Path localPath = Paths.get(path);
+      if (!Files.exists(localPath)) {
+        String msg =
+            String.format(
+                "Could not find path %s on system for YB software version %s",
+                localPath, release.getVersion());
+        log.error(msg);
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -2085,17 +2095,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param node node for which the check needs to be executed.
    * @param serverType server process type on the node to the check.
-   * @param sleepTimeMs sleep time to wait until server is ready
    * @return SubTaskGroup
    */
-  public SubTaskGroup createWaitForServerReady(
-      NodeDetails node, ServerType serverType, long sleepTimeMs) {
+  public SubTaskGroup createWaitForServerReady(NodeDetails node, ServerType serverType) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForServerReady");
     WaitForServerReady.Params params = new WaitForServerReady.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.nodeName = node.nodeName;
     params.serverType = serverType;
-    params.waitTimeMs = sleepTimeMs;
+    params.waitTimeMs = getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis();
     WaitForServerReady task = createTask(WaitForServerReady.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -3985,8 +3993,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         createChangeConfigTasks(node, true /* isAdd */, subGroupType);
       }
       if (sleepTimeFunction != null) {
-        createWaitForServerReady(node, processType, sleepTimeFunction.apply(processType))
-            .setSubTaskGroupType(subGroupType);
+        createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
       }
       if (wasStopped && processType == ServerType.TSERVER) {
         removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);

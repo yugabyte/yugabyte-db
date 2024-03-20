@@ -77,7 +77,7 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
 DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
@@ -115,8 +115,7 @@ DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
-DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
-    " of the method tserver is running");
+DECLARE_bool(TEST_ash_debug_aux);
 
 namespace {
 
@@ -321,6 +320,19 @@ uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) 
   return (component << YB_ASH_COMPONENT_POSITION) | code;
 }
 
+void AshCopyAuxInfo(
+    const WaitStateInfoPB& tserver_sample, uint32_t component, YBCAshSample* cb_sample) {
+  // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
+  // This expects compilation with -Wno-format-truncation.
+  const auto& tserver_aux_info = tserver_sample.aux_info();
+  snprintf(
+      cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
+      FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
+                               : (component == to_underlying(ash::Component::kYCQL)
+                                      ? tserver_aux_info.table_id().c_str()
+                                      : tserver_aux_info.tablet_id().c_str()));
+}
+
 void AshCopyTServerSample(
     YBCAshSample* cb_sample, uint32_t component, const WaitStateInfoPB& tserver_sample,
     uint64_t sample_time) {
@@ -344,12 +356,7 @@ void AshCopyTServerSample(
               tserver_metadata.yql_endpoint_tserver_uuid().data(),
               sizeof(cb_sample->yql_endpoint_tserver_uuid));
 
-  // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
-  // This expects compilation with -Wno-format-truncation.
-  const auto& tserver_aux_info = tserver_sample.aux_info();
-  snprintf(cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
-      FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
-                               : tserver_aux_info.tablet_id().c_str());
+  AshCopyAuxInfo(tserver_sample, component, cb_sample);
 
   cb_metadata->addr_family = AshGetTServerClientAddress(
       tserver_metadata.client_host_port().host(), cb_metadata->client_addr);
@@ -622,7 +629,7 @@ SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb) {
   }
 
   // then delete everything from b (a copy already exists in a)
-  YBCBitmapDeepDeleteSet(sb);
+  YBCBitmapDeepDeleteSet(b);
 
   return a;
 }
@@ -2219,6 +2226,12 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   VLOG(4) << "The GetConsistentChangesForCDC response: " << resp.DebugString();
   auto row_count = resp.cdc_sdk_proto_records_size();
 
+  // Used for logging a summary of the response received from the CDC service.
+  YBCPgXLogRecPtr min_resp_lsn = 0xFFFFFFFF;
+  YBCPgXLogRecPtr max_resp_lsn = 0;
+  uint32_t min_txn_id = 0xFFFF;
+  uint32_t max_txn_id = 0;
+
   auto resp_rows_pb = resp.cdc_sdk_proto_records();
   auto resp_rows = static_cast<YBCPgRowMessage *>(YBCPAlloc(sizeof(YBCPgRowMessage) * row_count));
   size_t row_idx = 0;
@@ -2322,6 +2335,12 @@ YBCStatus YBCPgGetCDCConsistentChanges(
         .lsn = row_message_pb.pg_lsn(),
         .xid = row_message_pb.pg_transaction_id()
     };
+
+    min_resp_lsn = std::min(min_resp_lsn, row_message_pb.pg_lsn());
+    max_resp_lsn = std::max(max_resp_lsn, row_message_pb.pg_lsn());
+    min_txn_id = std::min(min_txn_id, row_message_pb.pg_transaction_id());
+    max_txn_id = std::max(max_txn_id, row_message_pb.pg_transaction_id());
+
     row_idx++;
   }
 
@@ -2330,6 +2349,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       .row_count = row_count,
       .rows = resp_rows,
   };
+
+  VLOG(1) << "Summary of the GetConsistentChangesResponsePB response\n"
+          << "min_txn_id: " << min_txn_id << ", max_txn_id: " << max_txn_id
+          << "min_lsn: " << min_resp_lsn << ", max_lsn: " << max_resp_lsn;
 
   return YBCStatusOK();
 }
