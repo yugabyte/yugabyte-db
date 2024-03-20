@@ -56,20 +56,20 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } }, { "$addFields": { "newField2": "someOtherField" } } ], "cursor": {} }');
-                                                                QUERY PLAN                                                                 
--------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                  QUERY PLAN                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3500 collection
-   Output: bson_dollar_add_fields(collection.document, '{ "newField" : "1", "a.y" : [ "p", "q" ], "newField2" : "someOtherField" }'::bson)
+   Output: bson_dollar_add_fields(bson_dollar_add_fields(collection.document, '{ "newField" : "1", "a.y" : [ "p", "q" ] }'::bson), '{ "newField2" : "someOtherField" }'::bson)
    Recheck Cond: (collection.shard_key_value = '3500'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '3500'::bigint)
 (5 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } }, { "$set": { "newField2": "someOtherField" } } ], "cursor": {} }');
-                                                                QUERY PLAN                                                                 
--------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                  QUERY PLAN                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3500 collection
-   Output: bson_dollar_add_fields(collection.document, '{ "newField" : "1", "a.y" : [ "p", "q" ], "newField2" : "someOtherField" }'::bson)
+   Output: bson_dollar_add_fields(bson_dollar_add_fields(collection.document, '{ "newField" : "1", "a.y" : [ "p", "q" ] }'::bson), '{ "newField2" : "someOtherField" }'::bson)
    Recheck Cond: (collection.shard_key_value = '3500'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '3500'::bigint)
@@ -284,10 +284,10 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "x": 1, "y": 2, "xyz": 3 } }, { "$addFields": { "xyz": "$_id" } } ], "cursor": {} }');
-                                                                                  QUERY PLAN                                                                                   
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                    QUERY PLAN                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3500 collection
-   Output: bson_dollar_add_fields(collection.document, '{ "x" : { "$numberInt" : "1" }, "y" : { "$numberInt" : "2" }, "xyz" : { "$numberInt" : "3" }, "xyz" : "$_id" }'::bson)
+   Output: bson_dollar_add_fields(bson_dollar_add_fields(collection.document, '{ "x" : { "$numberInt" : "1" }, "y" : { "$numberInt" : "2" }, "xyz" : { "$numberInt" : "3" } }'::bson), '{ "xyz" : "$_id" }'::bson)
    Recheck Cond: (collection.shard_key_value = '3500'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '3500'::bigint)
@@ -1289,4 +1289,24 @@ SELECT drop_collection('db','aggregation_pipeline_empty_vector');
 -----------------
  t
 (1 row)
+
+-- $addFields nested usage
+SELECT helio_api.insert_one('db','aggregation_pipeline','{ "_id": 100, "student": "Maya", "homework": [10, 5, 10], "quiz": [10, 8], "extraCredit": 0 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','aggregation_pipeline','{ "_id": 200, "student": "Ryan", "homework": [5, 6, 5], "quiz": [8, 8], "extraCredit": 8 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$match": { "extraCredit": { "$gte": 0 } } }, { "$addFields": { "totalHomework": { "$sum": "$homework" }, "totalQuiz": { "$sum": "$quiz" } }}, { "$addFields": { "totalScore": { "$add": [ "$totalHomework", "$totalQuiz", "$extraCredit" ]} }} ], "cursor": {} }');
+                                                                                                                                                                                      document                                                                                                                                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "student" : "Maya", "homework" : [ { "$numberInt" : "10" }, { "$numberInt" : "5" }, { "$numberInt" : "10" } ], "quiz" : [ { "$numberInt" : "10" }, { "$numberInt" : "8" } ], "extraCredit" : { "$numberInt" : "0" }, "totalHomework" : { "$numberInt" : "25" }, "totalQuiz" : { "$numberInt" : "18" }, "totalScore" : { "$numberInt" : "43" } }
+ { "_id" : { "$numberInt" : "200" }, "student" : "Ryan", "homework" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "5" } ], "quiz" : [ { "$numberInt" : "8" }, { "$numberInt" : "8" } ], "extraCredit" : { "$numberInt" : "8" }, "totalHomework" : { "$numberInt" : "16" }, "totalQuiz" : { "$numberInt" : "16" }, "totalScore" : { "$numberInt" : "40" } }
+(2 rows)
 

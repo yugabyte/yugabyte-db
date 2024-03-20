@@ -832,26 +832,12 @@ TryInlineProjection(Node *currentExprNode, Oid functionOid, const
 		return true;
 	}
 
-	if (currentExpr->funcid == BsonDollarAddFieldsFunctionOid() &&
-		functionOid == BsonDollarAddFieldsFunctionOid())
-	{
-		/*
-		 * AddFields followed by add fields, in this case, we can concat the 2 together
-		 * They will be treated as a single addFields in the end.
-		 */
-		Const *addFieldsConst = lsecond(currentExpr->args);
-		pgbson *left = DatumGetPgBson(addFieldsConst->constvalue);
-
-		pgbson_writer writer;
-		PgbsonWriterInit(&writer);
-		PgbsonWriterConcat(&writer, left);
-		PgbsonWriterConcatBytes(&writer, projectValue->value.v_doc.data,
-								projectValue->value.v_doc.data_len);
-
-		addFieldsConst->constvalue = PointerGetDatum(PgbsonWriterGetPgbson(&writer));
-		return true;
-	}
-
+	/*
+	 * TODO: AddFields followed by add fields, in this case, we can concat the 2 together
+	 * only if the second one doesn't reference the firstone. Without validating this we can't
+	 * inline.
+	 * currentExpr->funcid == BsonDollarAddFieldsFunctionOid() && functionOid == BsonDollarAddFieldsFunctionOid()
+	 */
 	return false;
 }
 

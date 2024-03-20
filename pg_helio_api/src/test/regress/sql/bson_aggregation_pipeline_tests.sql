@@ -370,3 +370,9 @@ EXPLAIN (COSTS OFF)SELECT document FROM bson_aggregation_pipeline('db', '{ "aggr
 COMMIT;
 
 SELECT drop_collection('db','aggregation_pipeline_empty_vector');
+
+-- $addFields nested usage
+SELECT helio_api.insert_one('db','aggregation_pipeline','{ "_id": 100, "student": "Maya", "homework": [10, 5, 10], "quiz": [10, 8], "extraCredit": 0 }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline','{ "_id": 200, "student": "Ryan", "homework": [5, 6, 5], "quiz": [8, 8], "extraCredit": 8 }', NULL);
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$match": { "extraCredit": { "$gte": 0 } } }, { "$addFields": { "totalHomework": { "$sum": "$homework" }, "totalQuiz": { "$sum": "$quiz" } }}, { "$addFields": { "totalScore": { "$add": [ "$totalHomework", "$totalQuiz", "$extraCredit" ]} }} ], "cursor": {} }');
