@@ -82,3 +82,8 @@ export const ybFormatDate = (
 export const dateStrToMoment = (str: string) => {
   return moment(str);
 };
+
+export const getDiffHours = (startDateTime: any, endDateTime: any) => {
+  const diffHours = (endDateTime - startDateTime) / 3600000;
+  return diffHours;
+};
