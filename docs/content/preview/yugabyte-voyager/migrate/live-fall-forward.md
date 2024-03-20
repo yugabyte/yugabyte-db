@@ -55,12 +55,12 @@ The following illustration describes the workflow for live migration using YB Vo
 | [Archive changes](#archive-changes-optional) | Continuously archive migration changes to limit disk utilization. |
 | [Initiate cutover to target](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
 | [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
-| [Verify target](#cutover-to-the-target) | Check if the live migration is successful. |
+| [Verify target](#cutover-to-the-target) | Check if the live migration is successful on both the source and the target databases. |
 | [Initiate cutover to source-replica](#cutover-to-source-replica-optional) | Perform a cutover (stop streaming changes) from the target YugabyteDB database to the source-replica database only when the target YugabyteDB database is not working as expected, and then restart your applications pointing to YugabyteDB. |
 | [Wait for cutover to complete](#cutover-to-source-replica-optional) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
-| Import&nbsp;indexes&nbsp;and triggers to source-replica
-| [Verify source-replica](#cutover-to-source-replica-optional) | Check if the live migration is successful. |
-| [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source and target). |
+| [Import&nbsp;indexes&nbsp;and&nbsp;triggers&nbsp;to source-replica](#cutover-to-source-replica-optional) | After the snapshot import is complete, import indexes and triggers to the source-replica database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
+| [Verify source-replica](#cutover-to-source-replica-optional) | Check if the live migration is successful on both the target and the source-replica databases. |
+| [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source, source-replica, and target). |
 
 Before proceeding with migration, ensure that you have completed the following steps:
 

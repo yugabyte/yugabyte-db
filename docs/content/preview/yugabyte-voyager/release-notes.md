@@ -109,6 +109,8 @@ Removed redundant ALTER COLUMN DDLs present in the exported schema for certain c
 
 * Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-forward](../migrate/live-fall-forward/)) {{<badge/tp>}}.
 
+{{< youtube id="TJX7OlgPyUM" title="YugabyteDB Voyager 1.5 Demo" >}}
+
 Note that as the feature in Tech Preview, there are some known limitations. For details, refer to [Live migration limitations](../migrate/live-migrate/#limitations), and [Live migration with fall-forward limitations](../migrate/live-fall-forward/#limitations).
 
 ### Key enhancements

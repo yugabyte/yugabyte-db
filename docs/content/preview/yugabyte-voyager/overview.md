@@ -65,3 +65,8 @@ The following table shows the target database support for each migration type.
 | Offline | v2.16<br>v2.18<br>v2.19 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
 | Live | v2.16<br>v2.18<br>v2.19 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
 | Live with fall-forward <br> Live with fall-back | v2.18.2.x | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
+
+## Learn more
+
+- [How to Migrate from Oracle Database to YugabyteDB Using YugabyteDB Voyager](https://www.yugabyte.com/blog/migrate-from-oracle-database-to-yugabytedb-using-voyager/)
+- [Migrating from MySQL to YugabyteDB Using YugabyteDB Voyager](https://www.yugabyte.com/blog/migrate-web-application-mysql-yugabytedb-voyager/)
