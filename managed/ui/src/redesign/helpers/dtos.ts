@@ -495,6 +495,15 @@ export interface MetricsQueryParams {
   xClusterConfigUuid?: string;
 }
 
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/models/NodeInstance.java
+ */
+export enum OnPremNodeState {
+  DECOMMISSIONED = 'DECOMMISSIONED',
+  USED = 'USED',
+  FREE = 'FREE'
+}
+
 // ---------------------------------------------------------------------------
 // Metric Respose Types
 // Source:

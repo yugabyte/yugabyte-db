@@ -39,7 +39,7 @@ func WaitForUpdateProviderTask(
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
-		fmt.Printf("The provider %s (%s) has been updated\n",
+		logrus.Infof("The provider %s (%s) has been updated\n",
 			formatter.Colorize(providerName, formatter.GreenColor), providerUUID)
 
 		providerData, response, err = authAPI.GetListOfProviders().
@@ -56,7 +56,7 @@ func WaitForUpdateProviderTask(
 		providerFormatter.Write(providersCtx, providerData)
 
 	} else {
-		fmt.Println(msg)
+		logrus.Infoln(msg + "\n")
 	}
 
 }
@@ -71,7 +71,7 @@ func BuildZoneMapFromString(
 		kvp := strings.Split(zoneInfo, "=")
 		if len(kvp) != 2 {
 			logrus.Fatalln(
-				formatter.Colorize("Incorrect format in zone description",
+				formatter.Colorize("Incorrect format in zone description\n",
 					formatter.RedColor))
 		}
 		key := kvp[0]
@@ -160,7 +160,7 @@ func BuildZoneMapFromString(
 		}
 		logrus.Fatalln(
 			formatter.Colorize(
-				fmt.Sprintf("Name not specified in %s.", callsite),
+				fmt.Sprintf("Name not specified in %s.\n", callsite),
 				formatter.RedColor))
 	}
 	if _, ok := zone["region-name"]; !ok {
@@ -172,7 +172,7 @@ func BuildZoneMapFromString(
 		}
 		logrus.Fatalln(
 			formatter.Colorize(
-				fmt.Sprintf("Region name not specified in %s.", callsite),
+				fmt.Sprintf("Region name not specified in %s.\n", callsite),
 				formatter.RedColor))
 	}
 	return zone
@@ -187,7 +187,7 @@ func BuildRegionMapFromString(
 		kvp := strings.Split(regionInfo, "=")
 		if len(kvp) != 2 {
 			logrus.Fatalln(
-				formatter.Colorize("Incorrect format in region description.",
+				formatter.Colorize("Incorrect format in region description.\n",
 					formatter.RedColor))
 		}
 		key := kvp[0]
@@ -306,7 +306,7 @@ func BuildRegionMapFromString(
 		}
 		logrus.Fatalln(
 			formatter.Colorize(
-				fmt.Sprintf("Name not specified in %s.", callsite),
+				fmt.Sprintf("Name not specified in %s.\n", callsite),
 				formatter.RedColor))
 	}
 	return region

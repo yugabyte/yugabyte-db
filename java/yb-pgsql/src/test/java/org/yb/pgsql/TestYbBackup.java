@@ -168,6 +168,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE " + initialDBName);
       stmt.execute("DROP DATABASE " + restoreDBName);
     }
@@ -285,6 +287,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute(String.format("DROP DATABASE %s", initialDBName));
       stmt.execute(String.format("DROP DATABASE %s", restoreDBName));
     }
@@ -432,6 +436,8 @@ public class TestYbBackup extends BasePgSQLTest {
     }
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb1");
       stmt.execute("DROP DATABASE yb2");
       stmt.execute("DROP DATABASE yb3");
@@ -527,6 +533,8 @@ public class TestYbBackup extends BasePgSQLTest {
     }
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb1");
       stmt.execute("DROP DATABASE yb2");
       stmt.execute("DROP DATABASE yb3");
@@ -621,6 +629,8 @@ public class TestYbBackup extends BasePgSQLTest {
     }
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb1");
       stmt.execute("DROP DATABASE yb2");
       stmt.execute("DROP DATABASE yb3");
@@ -730,6 +740,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute(String.format("DROP DATABASE %s", initialDBName));
     }
   }
@@ -787,6 +799,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -843,6 +857,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -898,6 +914,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -978,6 +996,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1042,6 +1062,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1141,6 +1163,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1341,6 +1365,8 @@ public class TestYbBackup extends BasePgSQLTest {
     if (!targetDB.equals("yugabyte")) {
       // Cleanup.
       try (Statement stmt = connection.createStatement()) {
+        if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
         stmt.execute("DROP DATABASE " + targetDB);
       }
     }
@@ -1526,6 +1552,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1728,6 +1756,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1856,6 +1886,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1941,6 +1973,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -2031,6 +2065,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -2083,6 +2119,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -2216,6 +2254,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -2264,6 +2304,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }

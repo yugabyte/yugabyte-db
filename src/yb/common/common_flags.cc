@@ -168,6 +168,15 @@ REGISTER_CALLBACK(rpc_throttle_threshold_bytes, "RpcThrottleThresholdBytesValida
 DEFINE_RUNTIME_AUTO_bool(enable_xcluster_auto_flag_validation, kLocalPersisted, false, true,
     "Enables validation of AutoFlags between the xcluster universes");
 
+// If the cluster is upgraded to a release where --ysql_yb_ddl_rollback_enabled is true by default,
+// we do not want to have DDL transaction metadata to be stored persistently before the finalization
+// phase of cluster upgrade completes. This is because bad things can happen if we have stored
+// transaction metadata persistently and later rollback the upgrade. This auto flag is used for
+// this purpose. We can only start to store DDL transaction metadata persistently when both
+// --ysql_enable_ddl_atomicity_infra=true and --ysql_yb_ddl_rollback_enabled=true.
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_atomicity_infra, kLocalPersisted, false, true,
+    "Enables YSQL DDL atomicity");
+
 namespace yb {
 
 void InitCommonFlags() {

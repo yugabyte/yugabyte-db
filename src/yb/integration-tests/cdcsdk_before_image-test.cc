@@ -681,7 +681,6 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
 
   uint32_t seen_dml_records = 0;
   for (const auto& record : change_resp.cdc_sdk_proto_records()) {
-    LOG(INFO) << "DRDR test record: " << record.DebugString();
     if (record.row_message().op() == RowMessage::BEGIN ||
         record.row_message().op() == RowMessage::COMMIT) {
       continue;

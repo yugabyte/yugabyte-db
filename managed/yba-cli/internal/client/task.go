@@ -117,7 +117,7 @@ func (a *AuthAPIClient) WaitForTaskCI(taskUUID, message string) error {
 					subtasksStatus, taskMap["title"].(string), taskMap["state"].(string))
 			}
 			if subtasksStatus != "" {
-				logrus.Debugln(fmt.Sprintf("Subtasks: %s", subtasksStatus))
+				logrus.Debugln(fmt.Sprintf("Subtasks: %s\n", subtasksStatus))
 			}
 
 			if slices.Contains(util.CompletedStates(), currentStatus) {
@@ -148,7 +148,7 @@ func (a *AuthAPIClient) WaitForTaskCI(taskUUID, message string) error {
 
 				logrus.Info(
 					fmt.Sprintf(
-						"Operation failed. Retry operation with \"%s\" command\n",
+						"\nOperation failed. Retry operation with \"%s\" command\n",
 						formatter.Colorize(
 							fmt.Sprintf("yba task retry --task-uuid %s", taskUUID),
 							formatter.BlueColor,
@@ -159,11 +159,11 @@ func (a *AuthAPIClient) WaitForTaskCI(taskUUID, message string) error {
 					logrus.Fatalf(
 						formatter.Colorize(
 							"Operation failed with state: "+currentStatus+", error: "+
-								subtasksFailure, formatter.RedColor))
+								subtasksFailure+"\n", formatter.RedColor))
 				}
 				logrus.Fatalf(
 					formatter.Colorize(
-						"Operation failed with state: "+currentStatus, formatter.RedColor))
+						"Operation failed with state: "+currentStatus+"\n", formatter.RedColor))
 			}
 
 			if previousStatus != currentStatus {
@@ -247,7 +247,7 @@ func (a *AuthAPIClient) WaitForTaskProgressBar(taskUUID, message string) error {
 
 				logrus.Info(
 					fmt.Sprintf(
-						"Operation failed. Retry operation with \"%s\" command\n",
+						"\nOperation failed. Retry operation with \"%s\" command\n",
 						formatter.Colorize(
 							fmt.Sprintf("yba task retry --task-uuid %s", taskUUID),
 							formatter.BlueColor,

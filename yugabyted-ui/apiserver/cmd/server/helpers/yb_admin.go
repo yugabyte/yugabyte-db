@@ -10,6 +10,14 @@ type YBAdminFuture struct {
     Error  error
 }
 
+func (h *HelperContainer) ListSnapshotSchedules(masterAddresses string) (string,error) {
+    ybAdminFuture := make(chan YBAdminFuture)
+    params := []string{"-master_addresses", masterAddresses, "list_snapshot_schedules"}
+    go h.RunYBAdminFuture(params, ybAdminFuture)
+    ybAdminResult := <-ybAdminFuture
+    return ybAdminResult.Result, ybAdminResult.Error
+}
+
 func (h *HelperContainer) RunYBAdminFuture(params []string, future chan YBAdminFuture) {
     ybAdminFuture := YBAdminFuture{
         Result: "",

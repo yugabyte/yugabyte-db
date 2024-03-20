@@ -262,14 +262,14 @@ func buildGCPRegions(regionStrings []string, allowed bool, version string) (
 	res []ybaclient.Region) {
 	if len(regionStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one region is required per provider.",
+			formatter.Colorize("Atleast one region is required per provider.\n",
 				formatter.RedColor))
 	}
 	for _, regionString := range regionStrings {
 		region := providerutil.BuildRegionMapFromString(regionString, "")
 		if _, ok := region["shared-subnet"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Subnet ID not specified in region.",
+				formatter.Colorize("Subnet ID not specified in region.\n",
 					formatter.RedColor))
 		}
 
@@ -290,7 +290,7 @@ func buildGCPRegions(regionStrings []string, allowed bool, version string) (
 		if !allowed {
 			logrus.Info(
 				fmt.Sprintf("YugabyteDB Anywhere version %s does not support Instance "+
-					"Templates, ignoring value.", version))
+					"Templates, ignoring value.\n", version))
 		}
 		res = append(res, r)
 	}
@@ -304,7 +304,7 @@ func buildGCPZones(sharedSubnet string) (res []ybaclient.AvailabilityZone) {
 	res = append(res, z)
 	if len(res) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return res

@@ -53,8 +53,11 @@ var updateOnpremProviderCmd = &cobra.Command{
 		}
 
 		if len(r) < 1 {
-			fmt.Println("No providers found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		var provider ybaclient.Provider
@@ -66,7 +69,8 @@ var updateOnpremProviderCmd = &cobra.Command{
 		}
 
 		if len(strings.TrimSpace(provider.GetName())) == 0 {
-			errMessage := fmt.Sprintf("No provider %s in cloud type %s.", providerName, providerCode)
+			errMessage := fmt.Sprintf(
+				"No provider %s in cloud type %s.\n", providerName, providerCode)
 			logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
 		}
 
@@ -81,7 +85,7 @@ var updateOnpremProviderCmd = &cobra.Command{
 		}
 
 		if len(newProviderName) > 0 {
-			logrus.Debug("Updating provider name")
+			logrus.Debug("Updating provider name\n")
 			provider.SetName(newProviderName)
 			providerName = newProviderName
 		}
@@ -93,7 +97,7 @@ var updateOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(ybHomeDir) > 0 {
-			logrus.Debug("Updating Yb Home Directory")
+			logrus.Debug("Updating Yb Home Directory\n")
 			onpremCloudInfo.SetYbHomeDir(ybHomeDir)
 		}
 
@@ -105,7 +109,7 @@ var updateOnpremProviderCmd = &cobra.Command{
 		// Update ProviderDetails
 
 		if cmd.Flags().Changed("airgap-install") {
-			logrus.Debug("Updating airgap install")
+			logrus.Debug("Updating airgap install\n")
 			airgapInstall, err := cmd.Flags().GetBool("airgap-install")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -118,7 +122,7 @@ var updateOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(sshUser) > 0 {
-			logrus.Debug("Updating SSH user")
+			logrus.Debug("Updating SSH user\n")
 			details.SetSshUser(sshUser)
 		}
 
@@ -128,13 +132,13 @@ var updateOnpremProviderCmd = &cobra.Command{
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			if details.GetSshPort() != int32(sshPort) {
-				logrus.Debug("Updating SSH port")
+				logrus.Debug("Updating SSH port\n")
 				details.SetSshPort(int32(sshPort))
 			}
 		}
 
 		if cmd.Flags().Changed("passwordless-sudo-access") {
-			logrus.Debug("Updating passwordless sudo access")
+			logrus.Debug("Updating passwordless sudo access\n")
 			passwordlessSudoAccess, err := cmd.Flags().GetBool("passwordless-sudo-access")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -143,7 +147,7 @@ var updateOnpremProviderCmd = &cobra.Command{
 		}
 
 		if cmd.Flags().Changed("skip-provisioning") {
-			logrus.Debug("Updating skip provisioning")
+			logrus.Debug("Updating skip provisioning\n")
 			skipProvisioning, err := cmd.Flags().GetBool("skip-provisioning")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -152,7 +156,7 @@ var updateOnpremProviderCmd = &cobra.Command{
 		}
 
 		if cmd.Flags().Changed("install-node-exporter") {
-			logrus.Debug("Updating install node exporter")
+			logrus.Debug("Updating install node exporter\n")
 			installNodeExporter, err := cmd.Flags().GetBool("install-node-exporter")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -165,7 +169,7 @@ var updateOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(nodeExporterUser) > 0 {
-			logrus.Debug("Updating Node exporter user")
+			logrus.Debug("Updating Node exporter user\n")
 			details.SetNodeExporterUser(nodeExporterUser)
 		}
 
@@ -175,7 +179,7 @@ var updateOnpremProviderCmd = &cobra.Command{
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			if details.GetNodeExporterPort() != int32(nodeExporterPort) {
-				logrus.Debug("Updating Node exporter port")
+				logrus.Debug("Updating Node exporter port\n")
 				details.SetNodeExporterPort(int32(nodeExporterPort))
 			}
 		}
@@ -185,7 +189,7 @@ var updateOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(ntpServers) > 0 {
-			logrus.Debug("Updating NTP servers")
+			logrus.Debug("Updating NTP servers\n")
 			details.SetNtpServers(ntpServers)
 		}
 
@@ -362,7 +366,10 @@ func editOnpremRegions(
 					if len(region["latitude"]) != 0 {
 						latitude, err := strconv.ParseFloat(region["latitude"], 64)
 						if err != nil {
-							logrus.Error(err)
+							errMessage := err.Error() + " Using latitude as 0.0\n"
+							logrus.Errorln(
+								formatter.Colorize(errMessage, formatter.YellowColor),
+							)
 							latitude = 0.0
 						}
 						r.SetLatitude(latitude)
@@ -370,7 +377,10 @@ func editOnpremRegions(
 					if len(region["longitude"]) != 0 {
 						longitude, err := strconv.ParseFloat(region["longitude"], 64)
 						if err != nil {
-							logrus.Error(err)
+							errMessage := err.Error() + " Using longitude as 0.0\n"
+							logrus.Errorln(
+								formatter.Colorize(errMessage, formatter.YellowColor),
+							)
 							longitude = 0.0
 						}
 						r.SetLongitude(longitude)
@@ -399,12 +409,18 @@ func addOnpremRegions(
 
 		latitude, err := strconv.ParseFloat(region["latitude"], 64)
 		if err != nil {
-			logrus.Debug(err.Error() + "\n")
+			errMessage := err.Error() + " Using latitude as 0.0\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
 			latitude = 0.0
 		}
 		longitude, err := strconv.ParseFloat(region["longitude"], 64)
 		if err != nil {
-			logrus.Debug(err.Error() + "\n")
+			errMessage := err.Error() + " Using longitude as 0.0\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
 			longitude = 0.0
 		}
 		r := ybaclient.Region{
@@ -429,7 +445,7 @@ func removeOnpremZones(
 	if len(removeZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -448,7 +464,7 @@ func removeOnpremZones(
 	}
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return zones
@@ -462,7 +478,7 @@ func addOnpremZones(
 	if len(addZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -478,10 +494,9 @@ func addOnpremZones(
 			zones = append(zones, z)
 		}
 	}
-	fmt.Println("zones: ", zones)
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 

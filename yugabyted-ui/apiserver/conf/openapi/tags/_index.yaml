@@ -2,6 +2,8 @@
   description: APIs for cluster CRUD
 - name: cluster-info
   description: APIs for getting information about an existing cluster
+- name: pitr-info
+  description: APIs for getting Point-in-Time Recovery (PITR) schedules
 - name: voyager-info
   description: APIs for getting information about Voyager migrations
 - name: voyager-metrics
