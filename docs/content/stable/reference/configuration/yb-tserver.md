@@ -1074,7 +1074,7 @@ To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-
 
 Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
 
-Whether support for creation of streams for transactional CDC is enabled.
+Enable support for creating streams for transactional CDC.
 
 Default: `false`
 
