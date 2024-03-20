@@ -3238,8 +3238,9 @@ void TabletServiceImpl::GetTabletKeyRanges(
         const auto& tablet = leader_tablet_peer.tablet;
         RETURN_NOT_OK(tablet->GetTabletKeyRanges(
             req->lower_bound_key(), req->upper_bound_key(), req->max_num_ranges(),
-            req->range_size_bytes(), tablet::IsForward(req->is_forward()), req->max_key_length(),
-            &context.sidecars().Start()));
+            req->range_size_bytes(),
+            req->is_forward() ? tablet::Direction::kForward : tablet::Direction::kBackward,
+            req->max_key_length(), &context.sidecars().Start()));
         return Status::OK();
       });
 }

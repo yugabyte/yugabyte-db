@@ -1819,8 +1819,12 @@ void PgClientSession::GetTableKeyRanges(
     read_request->set_limit(max_num_ranges);
   }
 
+  read_request->set_is_forward_scan(is_forward);
   auto* req = read_request->mutable_get_tablet_key_ranges_request();
 
+  // IsInclusive is actually ignored by Tablet::GetTabletKeyRanges, and it always treats both
+  // boundaries as inclusive. But we are setting it here to avoid check failures inside
+  // YBPgsqlReadOp.
   if (!lower_bound_key.empty()) {
     read_request->mutable_lower_bound()->mutable_key()->assign(
         lower_bound_key.cdata(), lower_bound_key.size());
@@ -1831,10 +1835,9 @@ void PgClientSession::GetTableKeyRanges(
   if (!upper_bound_key.empty()) {
     read_request->mutable_upper_bound()->mutable_key()->assign(
         upper_bound_key.cdata(), upper_bound_key.size());
-    read_request->mutable_upper_bound()->set_is_inclusive(false);
+    read_request->mutable_upper_bound()->set_is_inclusive(true);
     req->mutable_upper_bound_key()->assign(upper_bound_key.cdata(), upper_bound_key.size());
   }
-  req->set_is_forward(is_forward);
   req->set_range_size_bytes(range_size_bytes);
   req->set_max_key_length(max_key_length);
 

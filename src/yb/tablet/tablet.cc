@@ -4602,19 +4602,43 @@ Status Tablet::ProcessPgsqlGetTableKeyRangesRequest(
       const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const {
   const auto& get_key_ranges_req = req.get_tablet_key_ranges_request();
   result->num_rows_read = 0;
-  const auto status = GetTabletKeyRanges(
+  bool has_reached_end = false;
+  Status key_error;
+  auto status = GetTabletKeyRanges(
       get_key_ranges_req.lower_bound_key(), get_key_ranges_req.upper_bound_key(), req.limit(),
-      get_key_ranges_req.range_size_bytes(), IsForward(get_key_ranges_req.is_forward()),
-      get_key_ranges_req.max_key_length(), [result](Slice key) {
+      get_key_ranges_req.range_size_bytes(),
+      req.is_forward_scan() ? Direction::kForward : Direction::kBackward,
+      get_key_ranges_req.max_key_length(),
+      [result, &has_reached_end, &key_error](Slice key) {
+        if (has_reached_end && key_error.ok()) {
+          key_error = STATUS_FORMAT(
+              InternalError, "Got key after reaching boundary: $0", key.ToDebugHexString());
+          YB_LOG_EVERY_N_SECS(DFATAL, 60) << key_error;
+        }
         pggate::WriteBinaryColumn(key, result->rows_data);
         ++result->num_rows_read;
+        has_reached_end |= key.empty();
       }, req.table_id());
+  if (status.ok() && !key_error.ok()) {
+    status = key_error;
+  }
   if (!status.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
     StatusToPB(status, result->response.add_error_status());
     return Status::OK();
   }
-  RETURN_NOT_OK(CreatePagingStateForRead(req, result->num_rows_read, &result->response));
+
+  if ((!req.has_limit() || result->num_rows_read < req.limit()) && !has_reached_end) {
+    auto* paging_state = result->response.mutable_paging_state();
+    paging_state->set_next_partition_key(
+        req.is_forward_scan() ? metadata_->partition()->partition_key_end()
+                              : metadata_->partition()->partition_key_start());
+    if (req.has_paging_state()) {
+      paging_state->set_total_num_rows_read(
+          req.paging_state().total_num_rows_read() + result->num_rows_read);
+    }
+  }
+
   result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
@@ -4625,23 +4649,23 @@ Result<TableInfoPtr> Tablet::GetTableInfo(ColocationId colocation_id) const {
 
 namespace {
 
-// Skips `num_keys_to_skip` keys using `skip_key_func` until `is_reached_end_key_func` return true.
-// Stops at first key that satisfies `is_reached_end_key_func`.
+// Skips `num_keys_to_skip` keys using `skip_key_func` until `no_more_keys_func` return true.
+// Stops at first key that satisfies `no_more_keys_func`.
 // Can skip more keys if `has_key_changed_func` returns false.
-template<typename IsReachedEndKeyFunc, typename SkipKeyFunc, typename HasKeyChangedFunc>
+template<typename NoMoreKeysFunc, typename SkipKeyFunc, typename HasKeyChangedFunc>
 bool SkipKeys(
-    const size_t num_keys_to_skip, IsReachedEndKeyFunc is_reached_end_key_func,
+    const size_t num_keys_to_skip, NoMoreKeysFunc no_more_keys_func,
     SkipKeyFunc skip_key_func, HasKeyChangedFunc has_key_changed_func) {
-  bool reached_end_key = is_reached_end_key_func();
-  for (size_t i = 0; i < num_keys_to_skip && !reached_end_key; ++i) {
+  bool no_more_keys = no_more_keys_func();
+  for (size_t i = 0; i < num_keys_to_skip && !no_more_keys; ++i) {
     skip_key_func();
-    reached_end_key = is_reached_end_key_func();
+    no_more_keys = no_more_keys_func();
   }
-  while (!has_key_changed_func() && !reached_end_key) {
+  while (!has_key_changed_func() && !no_more_keys) {
     skip_key_func();
-    reached_end_key = is_reached_end_key_func();
+    no_more_keys = no_more_keys_func();
   }
-  return reached_end_key;
+  return no_more_keys;
 }
 
 std::string IncrementedCopy(Slice key) {
@@ -4674,29 +4698,214 @@ Status Tablet::AbortSQLTransactions(CoarseTimePoint deadline) const {
 
 Status Tablet::GetTabletKeyRanges(
     const Slice lower_bound_key, const Slice upper_bound_key, const uint64_t max_num_ranges,
-    const uint64_t range_size_bytes, const IsForward is_forward, const uint32_t max_key_length,
+    const uint64_t range_size_bytes, const Direction direction, const uint32_t max_key_length,
     WriteBuffer* keys_buffer, const TableId& colocated_table_id) const {
   if (table_type_ != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
         NotSupported, "GetTabletKeyRanges is only supported for YSQL, tablet_id: ", tablet_id());
   }
+  if (!metadata_->colocated()) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "GetTabletKeyRanges is only supported for colocated tables, tablet_id: ", tablet_id());
+  }
+  if (!metadata_->partition_schema()->IsRangePartitioning()) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "GetTabletKeyRanges is only supported for range-sharded tables, tablet_id: ", tablet_id());
+  }
   return GetTabletKeyRanges(
-      lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
-      max_key_length,
+      lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, direction, max_key_length,
       [&keys_buffer](Slice key) {
         pggate::WriteBinaryColumn(key, keys_buffer);
       }, colocated_table_id);
 }
 
+namespace {
+
+// Retrieves from the data block full doc key pointed by index_iter.
+// If its length less or equal to max_key_length, pushes the key to the callback, updates
+// last_key and returns true.
+// Otherwise, skips the data block and returns false.
+template<Direction direction, typename Callback>
+Result<bool> RetrieveFullDocKey(
+    const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
+    std::string* last_key, const uint32_t max_key_length, Callback callback) {
+  RSTATUS_DCHECK(
+    index_iter->Valid(), InternalError,
+    "Not expected to reach this line when index iterator is invalid");
+  auto data_entry = data_iter->Seek(index_iter->key());
+  RSTATUS_DCHECK(
+      data_entry.Valid(), InternalError,
+      Format(
+          "Invalid data iterator after seeking to key from SST index: $0",
+          index_iter->KeyDebugHexString()));
+
+  for (; data_entry.Valid();
+       data_entry = (direction == Direction::kForward ? data_iter->Next() : data_iter->Prev())) {
+    VLOG_WITH_FUNC(2) << log_prefix << "data_entry.key: " << data_entry.key.ToDebugHexString();
+    // Use encoded doc key to avoid breaking data related to the same row into halves.
+    const auto doc_key_size_result =
+        dockv::DocKey::EncodedSize(data_entry.key, dockv::DocKeyPart::kWholeDocKey);
+
+    if (!doc_key_size_result.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << "Failed to get encoded size of key: " << data_entry.key.ToDebugHexString() << "."
+          << doc_key_size_result.status();
+      continue;
+    }
+    if (doc_key_size_result.get() > max_key_length) {
+      // Skip keys longer than max_key_length. Also skip the whole block for efficiency.
+      return false;
+    }
+    const auto key = data_entry.key.Prefix(doc_key_size_result.get());
+    if (direction == Direction::kBackward && !last_key->empty() && key >= *last_key) {
+      // Skips keys larger than last_key (can only happen during reverse scan).
+      continue;
+    }
+    VLOG_WITH_FUNC(2) << log_prefix << "key: " << key.ToDebugHexString();
+    callback(key);
+    *last_key = key.ToBuffer();
+    return true;
+  }
+  return false;
+}
+
+template <
+    Direction direction, typename NoMoreKeysFunc, typename SkipKeyFunc, typename HasKeyChangedFunc,
+    typename Callback>
+Status DoGetTabletKeyRanges(
+    const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
+    std::string* last_key, NoMoreKeysFunc no_more_keys_func, SkipKeyFunc skip_key_func,
+    HasKeyChangedFunc has_key_changed_func, const uint64_t max_num_ranges,
+    uint64_t num_blocks_to_skip, const uint64_t num_blocks_to_skip_after_first,
+    const uint32_t max_key_length, const Slice key_to_add_as_last, Callback callback) {
+  uint64_t num_keys = 1;
+
+  while (num_keys <= max_num_ranges) {
+    const auto no_more_keys = SkipKeys(
+        num_blocks_to_skip, no_more_keys_func, skip_key_func, has_key_changed_func);
+    num_blocks_to_skip = num_blocks_to_skip_after_first;
+
+    VLOG_WITH_FUNC(2) << log_prefix << "last_key: " << Slice(*last_key).ToDebugHexString()
+                      << ", index_iter: " << index_iter->KeyDebugHexString()
+                      << ", no_more_keys: " << no_more_keys
+                      << ", num_keys: " << num_keys;
+
+    if (no_more_keys) {
+      VLOG_WITH_FUNC(2) << log_prefix << "key: " << key_to_add_as_last.ToDebugHexString();
+      callback(key_to_add_as_last);
+      break;
+    }
+
+    if (VERIFY_RESULT(RetrieveFullDocKey<direction>(
+            log_prefix, index_iter, data_iter, last_key, max_key_length, callback))) {
+      ++num_keys;
+    }
+  }
+  return Status::OK();
+}
+
+// Not able to use typename Callback as template parameter because partial function template
+// specification is not allowed.
+template <Direction direction>
+Status DoGetTabletKeyRanges(
+    const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
+    Slice lower_bound_key, Slice upper_bound_key, const uint64_t max_num_ranges,
+    const uint64_t num_blocks_to_skip, const uint32_t max_key_length,
+    std::function<void(Slice key)> callback, const bool use_empty_as_last_key);
+
+template<>
+Status DoGetTabletKeyRanges<Direction::kForward>(
+    const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
+    Slice lower_bound_key, Slice upper_bound_key, const uint64_t max_num_ranges,
+    const uint64_t num_blocks_to_skip, const uint32_t max_key_length,
+    std::function<void(Slice key)> callback, const bool use_empty_as_last_key) {
+  if (lower_bound_key.empty()) {
+    index_iter->SeekToFirst();
+  } else {
+    index_iter->Seek(lower_bound_key);
+  }
+  VLOG_WITH_FUNC(2) << log_prefix << "index_iter: " << index_iter->KeyDebugHexString();
+
+  // First index key is the last key in first data block, so we treat it as we've already
+  // skipped one data block.
+  const auto treat_first_block_as_skipped =
+      index_iter->Valid() && index_iter->key() != lower_bound_key;
+
+  std::string last_key = lower_bound_key.ToBuffer();
+
+  auto has_iter_key_changed_func = [&index_iter, &last_key]() {
+    if (!index_iter->Valid()) {
+      return true;
+    }
+    return index_iter->key() > last_key;
+  };
+
+  auto no_more_keys_func = [&index_iter, upper_bound_key]() {
+    return !index_iter->Valid() ||
+           (!upper_bound_key.empty() && index_iter->key().GreaterOrEqual(upper_bound_key));
+  };
+
+  auto skip_key_func = [&index_iter]() { index_iter->Next(); };
+
+  return DoGetTabletKeyRanges<Direction::kForward>(
+      log_prefix, index_iter, data_iter, &last_key, no_more_keys_func, skip_key_func,
+      has_iter_key_changed_func, max_num_ranges, num_blocks_to_skip - treat_first_block_as_skipped,
+      num_blocks_to_skip, max_key_length, use_empty_as_last_key ? Slice{} : upper_bound_key,
+      callback);
+}
+
+template<>
+Status DoGetTabletKeyRanges<Direction::kBackward>(
+    const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
+    Slice lower_bound_key, Slice upper_bound_key, const uint64_t max_num_ranges,
+    const uint64_t num_blocks_to_skip, const uint32_t max_key_length,
+    std::function<void(Slice key)> callback, const bool use_empty_as_last_key) {
+  if (upper_bound_key.empty()) {
+    index_iter->SeekToLast();
+  } else {
+    index_iter->Seek(upper_bound_key);
+    if (!index_iter->Valid()) {
+      index_iter->SeekToLast();
+    }
+  }
+
+  VLOG_WITH_FUNC(2) << log_prefix << "index_iter: " << index_iter->KeyDebugHexString();
+
+  std::string last_key = upper_bound_key.ToBuffer();
+
+  auto has_iter_key_changed_func = [&index_iter, &last_key]() {
+    if (!index_iter->Valid()) {
+      return true;
+    }
+    return (last_key.empty() && !index_iter->key().empty()) || index_iter->key() < last_key;
+  };
+
+  auto no_more_keys_func = [&index_iter, lower_bound_key]() {
+    return !index_iter->Valid() || lower_bound_key.GreaterOrEqual(index_iter->key());
+  };
+
+  auto skip_key_func = [&index_iter]() { index_iter->Prev(); };
+
+  return DoGetTabletKeyRanges<Direction::kBackward>(
+      log_prefix, index_iter, data_iter, &last_key, no_more_keys_func, skip_key_func,
+      has_iter_key_changed_func, max_num_ranges, num_blocks_to_skip, num_blocks_to_skip,
+      max_key_length, use_empty_as_last_key ? Slice{} : upper_bound_key, callback);
+}
+
+} // namespace
+
 Status Tablet::GetTabletKeyRanges(
     Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
-    const uint64_t range_size_bytes, const IsForward is_forward, uint32_t max_key_length,
+    const uint64_t range_size_bytes, const Direction direction, uint32_t max_key_length,
     std::function<void(Slice key)> callback, const TableId& colocated_table_id) const {
-  VLOG_WITH_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
-                    << " upper_bound_key: " << upper_bound_key.ToDebugHexString()
-                    << " max_num_ranges: " << max_num_ranges
-                    << " range_size_bytes: " << range_size_bytes
-                    << " max_key_length: " << max_key_length;
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
+                               << " upper_bound_key: " << upper_bound_key.ToDebugHexString()
+                               << " max_num_ranges: " << max_num_ranges
+                               << " range_size_bytes: " << range_size_bytes
+                               << " max_key_length: " << max_key_length
+                               << " direction: " << AsString(direction);
   if (max_num_ranges == 0) {
     max_num_ranges = std::numeric_limits<decltype(max_num_ranges)>::max();
   }
@@ -4706,20 +4915,6 @@ Status Tablet::GetTabletKeyRanges(
 
   auto pending_op = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(pending_op);
-
-  const auto num_blocks_to_skip = std::max<size_t>(range_size_bytes / FLAGS_db_block_size_bytes, 1);
-
-  rocksdb::ReadOptions read_options;
-  // An index block contains one entry per data block, where the key is a string >= last key in that
-  // data block and < the first key in the successive data block. The value is the BlockHandle
-  // (file offset and length) for the data block.
-  // So, we need to skip last key in each SST index because there are no data keys after the last
-  // index key.
-  auto index_iter = regular_db_->NewIndexIterator(read_options, rocksdb::SkipLastEntry::kTrue);
-
-  // TODO(get_table_key_ranges): consider reusing index_iter and BlockHandle to avoid double SST
-  // index seek.
-  auto data_iter = std::unique_ptr<rocksdb::Iterator>(regular_db_->NewIterator(read_options));
 
   std::string encoded_partition_key_start;
   std::string encoded_partition_key_end;
@@ -4746,121 +4941,82 @@ Status Tablet::GetTabletKeyRanges(
     partition_lower_bound_key = encoded_partition_key_start;
     partition_upper_bound_key = encoded_partition_key_end;
   }
-  // Whether it make sense to continue fetching ranges for the caller if we reach end of
-  // tablet(table) or upper/lower bound.
-  bool use_empty_as_end_key;
 
-  if (partition_lower_bound_key > lower_bound_key) {
-    lower_bound_key = partition_lower_bound_key;
-  }
-  if (partition_upper_bound_key.empty() ||
-      (!upper_bound_key.empty() && partition_upper_bound_key >= upper_bound_key)) {
-    // Reaching partition upper bound means we can't have more keys in next tablet.
-    use_empty_as_end_key = true;
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "partition_lower_bound_key: "
+                               << Slice(partition_lower_bound_key).ToDebugHexString()
+                               << " partition_upper_bound_key: "
+                               << Slice(partition_upper_bound_key).ToDebugHexString();
+
+  // Whether it make sense to continue fetching ranges for the caller if we reach end/start of
+  // tablet(table) or upper/lower bound (depending on whether is_forward is true/false).
+  std::optional<bool> use_empty_as_last_key;
+
+  if (partition_lower_bound_key <= lower_bound_key) {
+    if (direction == Direction::kBackward) {
+      // Reaching lower bound means we can't have more keys in next tablet.
+      use_empty_as_last_key = true;
+    }
   } else {
-    // Partition upper bound is less than upper_bound_key, we can have more keys in the next
-    // tablet (unless colocated).
-    use_empty_as_end_key = is_colocated;
-    upper_bound_key = partition_upper_bound_key;
+    lower_bound_key = partition_lower_bound_key;
+    if (direction == Direction::kBackward) {
+      // Partition lower bound is higher than lower_bound_key, we can have more keys in the next (in
+      // reverse order) tablet (unless colocated).
+      use_empty_as_last_key = is_colocated;
+    }
   }
 
-  return is_forward ? GetTabletKeyRangesForward(
-                          index_iter.get(), data_iter.get(), lower_bound_key, upper_bound_key,
-                          max_num_ranges, num_blocks_to_skip, max_key_length, std::move(callback),
-                          use_empty_as_end_key)
-                    : GetTabletKeyRangesBackward(
-                          index_iter.get(), lower_bound_key, upper_bound_key, max_num_ranges,
-                          num_blocks_to_skip, max_key_length, std::move(callback));
-}
+  if (partition_upper_bound_key.empty() ||
+      (!upper_bound_key.empty() && upper_bound_key <= partition_upper_bound_key)) {
+    if (direction == Direction::kForward) {
+      // Reaching upper bound means we can't have more keys in next tablet.
+      use_empty_as_last_key = true;
+    }
+  } else {
+    upper_bound_key = partition_upper_bound_key;
+    if (direction == Direction::kForward) {
+      // Partition upper bound is less than upper_bound_key, we can have more keys in the next
+      // tablet (unless colocated).
+      use_empty_as_last_key = is_colocated;
+    }
+  }
 
-Status Tablet::GetTabletKeyRangesForward(
-    rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter, Slice lower_bound_key,
-    Slice upper_bound_key, const uint64_t max_num_ranges, const uint64_t num_blocks_to_skip,
-    const uint32_t max_key_length, std::function<void(Slice key)> callback,
-    const bool use_empty_as_end_key) const {
+  RSTATUS_DCHECK(
+      use_empty_as_last_key.has_value(), InternalError, "use_empty_as_last_key is not set");
+
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
+                               << " upper_bound_key: " << upper_bound_key.ToDebugHexString()
+                               << " use_empty_as_last_key: " << *use_empty_as_last_key;
+
+  const auto num_blocks_to_skip = std::max<size_t>(range_size_bytes / FLAGS_db_block_size_bytes, 1);
+
+  rocksdb::ReadOptions read_options;
+  // An index block contains one entry per data block, where the key is a string >= last key in that
+  // data block and < the first key in the successive data block. The value is the BlockHandle
+  // (file offset and length) for the data block.
+  // So, we need to skip last key in each SST index because there are no data keys after the last
+  // index key.
+  auto index_iter = regular_db_->NewIndexIterator(read_options, rocksdb::SkipLastEntry::kTrue);
+
+  // TODO(get_table_key_ranges): consider reusing index_iter and BlockHandle to avoid double SST
+  // index seek.
+  auto data_iter = std::unique_ptr<rocksdb::Iterator>(regular_db_->NewIterator(read_options));
+
   // TODO(get_table_key_ranges): As of 2023-09 we get full encoded doc keys and skip keys longer
   // than max_key_length. Consider reworking that to allow using key prefixes as lower/upper bound
   // for scan, currently it is not accepted by QLRocksDBStorage::GetIterator.
-
-  if (lower_bound_key.empty()) {
-    index_iter->SeekToFirst();
-  } else {
-    index_iter->Seek(lower_bound_key);
+  switch (direction) {
+    case Direction::kForward:
+        return DoGetTabletKeyRanges<Direction::kForward>(
+            LogPrefix(), index_iter.get(), data_iter.get(), lower_bound_key, upper_bound_key,
+            max_num_ranges, num_blocks_to_skip, max_key_length, std::move(callback),
+            *use_empty_as_last_key);
+    case Direction::kBackward:
+      return DoGetTabletKeyRanges<Direction::kBackward>(
+          LogPrefix(), index_iter.get(), data_iter.get(), lower_bound_key, upper_bound_key,
+          max_num_ranges, num_blocks_to_skip, max_key_length, std::move(callback),
+          *use_empty_as_last_key);
   }
-
-  // First index key is the last key in first data block, so we treat it as we've already
-  // skipped one data block.
-  bool treat_block_as_skipped = index_iter->Valid() && index_iter->key() != lower_bound_key;
-
-  std::string last_key = lower_bound_key.ToBuffer();
-
-  uint64_t num_keys = 1;
-
-  auto has_iter_key_changed_func = [&index_iter, &last_key]() {
-    if (!index_iter->Valid()) {
-      return true;
-    }
-    return index_iter->key() > last_key;
-  };
-
-  while (num_keys <= max_num_ranges) {
-    const auto reached_end_key = SkipKeys(
-        num_blocks_to_skip - treat_block_as_skipped,
-        [&index_iter, upper_bound_key]() {
-          return !index_iter->Valid() ||
-                 (!upper_bound_key.empty() && index_iter->key().GreaterOrEqual(upper_bound_key));
-        },
-        [&index_iter]() { index_iter->Next(); },
-        has_iter_key_changed_func);
-    treat_block_as_skipped = false;
-
-    if (reached_end_key) {
-      if (use_empty_as_end_key) {
-        callback("");
-      } else {
-        callback(upper_bound_key);
-      }
-      break;
-    }
-
-    auto data_entry = data_iter->Seek(index_iter->key());
-    RSTATUS_DCHECK(
-        data_entry.Valid(), InternalError,
-        Format(
-            "Invalid data iterator after seeking to key from SST index: $0",
-            index_iter->key().ToDebugHexString()));
-
-    for (; data_entry.Valid(); data_entry = data_iter->Next()) {
-      // Use encoded doc key to avoid breaking data related to the same row into halves.
-      const auto doc_key_size_result =
-          dockv::DocKey::EncodedSize(data_entry.key, dockv::DocKeyPart::kWholeDocKey);
-
-      if (!doc_key_size_result.ok()) {
-        YB_LOG_EVERY_N_SECS(WARNING, 60)
-            << "Failed to get encoded size of key: " << data_entry.key.ToDebugHexString() << "."
-            << doc_key_size_result.status();
-        continue;
-      }
-      if (doc_key_size_result.get() > max_key_length) {
-        // Skip keys longer than max_key_length.
-        continue;
-      }
-      const auto key = data_entry.key.Prefix(doc_key_size_result.get());
-      callback(key);
-      last_key = key.ToBuffer();
-      ++num_keys;
-      break;
-    }
-  }
-
-  return Status::OK();
-}
-
-Status Tablet::GetTabletKeyRangesBackward(
-    rocksdb::Iterator* index_iter, Slice lower_bound_key, Slice upper_bound_key,
-    const uint64_t max_num_ranges, const uint64_t num_blocks_to_skip, const uint32_t max_key_length,
-    std::function<void(Slice key)> callback) const {
-  return STATUS(NotSupported, "Tablet::GetTabletKeyRanges in backward order is not yet supported");
+  FATAL_INVALID_ENUM_VALUE(Direction, direction);
 }
 
 // ------------------------------------------------------------------------------------------------

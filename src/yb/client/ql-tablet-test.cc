@@ -78,6 +78,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -1940,33 +1941,44 @@ namespace {
 
 Status CalcKeysDistributionAcrossWorkers(
     tablet::Tablet* tablet, std::vector<std::string> range_end_keys, const size_t num_workers,
-    const double min_max_keys_ratio_limit) {
+    const double min_max_keys_ratio_limit, tablet::Direction direction) {
   std::vector<size_t> keys_per_worker(num_workers);
 
   auto iter = CreateRocksDBIterator(
       tablet->doc_db().regular, tablet->doc_db().key_bounds,
       docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId);
-  iter.SeekToFirst();
+  if (direction == tablet::Direction::kForward) {
+    iter.SeekToFirst();
+  } else {
+    iter.SeekToLast();
+  }
   std::string current_range_start_key;
 
+  auto range_key_iter = range_end_keys.begin();
   size_t current_range_idx = 0;
   size_t entries_in_current_range = 0;
-  while (iter.Valid() || current_range_idx < range_end_keys.size()) {
-    while (current_range_idx < range_end_keys.size() &&
-           (!iter.Valid() || (!range_end_keys[current_range_idx].empty() &&
-                              iter.key() >= range_end_keys[current_range_idx]))) {
+  while (iter.Valid() || range_key_iter != range_end_keys.end()) {
+    while (range_key_iter != range_end_keys.end() &&
+           (!iter.Valid() || (!range_key_iter->empty() && (direction == tablet::Direction::kForward
+                                                               ? iter.key() >= *range_key_iter
+                                                               : iter.key() <= *range_key_iter)))) {
       LOG(INFO) << "Range #" << current_range_idx << "["
                 << Slice(current_range_start_key).ToDebugHexString() << ", "
-                << Slice(range_end_keys[current_range_idx]).ToDebugHexString() << ") has "
-                << entries_in_current_range << " rocksdb records";
+                << Slice(*range_key_iter).ToDebugHexString() << ") has " << entries_in_current_range
+                << " rocksdb records";
       keys_per_worker[current_range_idx % num_workers] += entries_in_current_range;
-      current_range_start_key = range_end_keys[current_range_idx];
+      current_range_start_key = *range_key_iter;
+      ++range_key_iter;
       ++current_range_idx;
       entries_in_current_range = 0;
     }
     if (iter.Valid()) {
       ++entries_in_current_range;
-      iter.Next();
+      if (direction == tablet::Direction::kForward) {
+        iter.Next();
+      } else {
+        iter.Prev();
+      }
     }
   }
   RETURN_NOT_OK(iter.status());
@@ -1989,27 +2001,62 @@ Status CalcKeysDistributionAcrossWorkers(
 } // namespace
 
 TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetTabletKeyRanges) {
+  constexpr auto kValueSize = 16;
+  constexpr auto kWriteBatchSize = 128;
+  constexpr auto kNumWriteThreads = 2;
+
   constexpr auto kNumSstFiles = 4;
   constexpr auto kNumFlushes = 15;
+
   constexpr auto kNumWorkers = 5;
   constexpr auto kMinMaxKeysRatioLimit = 0.75;
 
   FLAGS_db_block_size_bytes = 4_KB;
   FLAGS_db_write_buffer_size = 200_KB;
 
-  TestWorkload workload(cluster_.get());
-  workload.set_table_name(kTable1Name);
-  workload.set_write_timeout_millis(30000);
-  workload.set_num_tablets(1);
-  workload.set_num_write_threads(2);
-  workload.set_write_batch_size(1);
-  workload.set_payload_bytes(16);
-  workload.Setup();
+  TableHandle table;
+
+  {
+    YBSchemaBuilder builder;
+    // TODO(get_table_key_ranges): also test for hash-based sharding as soon as it is properly
+    // supported by GetTabletKeyRanges.
+    builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->PrimaryKey()->NotNull();
+    builder.AddColumn(kValueColumn)->Type(DataType::STRING);
+    ASSERT_OK(table.Create(kTable1Name, /* num_tablets = */ 1, client_.get(), &builder));
+    table.NewInsertOp();
+  }
+
+  std::atomic<size_t> num_rows_inserted{0};
+  TestThreadHolder write_threads;
 
   LOG(INFO) << "Starting workload ...";
   Stopwatch s(Stopwatch::ALL_THREADS);
   s.start();
-  workload.Start();
+
+  for (auto t = 0; t < kNumWriteThreads; ++t) {
+    write_threads.AddThreadFunctor(
+        [this, &stop_requested = write_threads.stop_flag(), &table, &num_rows_inserted] {
+          auto session = CreateSession();
+          size_t num_ops_applied = 0;
+
+          while (!stop_requested) {
+            auto insert = table.NewInsertOp();
+            auto req = insert->mutable_request();
+            const auto key = RandomUniformInt<int32_t>();
+
+            QLAddInt32RangeValue(req, key);
+            table.AddStringColumnValue(req, kValueColumn, RandomString(kValueSize));
+            session->Apply(insert);
+            if (++num_ops_applied == kWriteBatchSize) {
+              const auto flush_status = session->TEST_FlushAndGetOpsErrors();
+              ASSERT_OK(flush_status.status);
+              ASSERT_EQ(flush_status.errors.size(), 0);
+              num_rows_inserted.fetch_add(num_ops_applied);
+              num_ops_applied = 0;
+            }
+          }
+        });
+  }
 
   const auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   ASSERT_EQ(peers.size(), 1);
@@ -2023,91 +2070,104 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetTabletKeyRanges) {
     std::this_thread::sleep_for(100ms);
   }
 
-  workload.StopAndJoin();
+  write_threads.Stop();
   s.stop();
   LOG(INFO) << "Workload stopped, it took: " << AsString(s.elapsed());
 
-  LOG(INFO) << "Rows inserted: " << workload.rows_inserted();
+  LOG(INFO) << "Rows inserted: " << num_rows_inserted;
   LOG(INFO) << "Number of SST files: " << db->GetCurrentVersionNumSSTFiles();
   LOG(INFO) << "SST data size: " << db->GetCurrentVersionSstFilesUncompressedSize();
 
+  NO_PENDING_FATALS();
+
   const auto range_size_bytes = db->GetCurrentVersionSstFilesUncompressedSize() / 50;
 
-  for (uint32_t max_key_length : {1024, 16, 8, 4, 2}) {
-    LOG(INFO) << "max_key_length: " << max_key_length;
+  for (auto direction : {tablet::Direction::kForward, tablet::Direction::kBackward}) {
+    for (uint32_t max_key_length : {1024, 16, 8, 4, 2}) {
+      LOG(INFO) << "max_key_length: " << max_key_length << " direction: " << AsString(direction);
 
-    std::vector<std::string> range_end_keys;
-    auto add_range_end_key = [&range_end_keys](Slice key) {
-      LOG(INFO) << "Got range end key: " << key.ToDebugHexString();
-      range_end_keys.push_back(key.ToBuffer());
-    };
-
-    ASSERT_OK(tablet->TEST_GetTabletKeyRanges(
-        Slice(), Slice(), std::numeric_limits<uint64_t>::max(), range_size_bytes,
-        tablet::IsForward::kTrue, max_key_length, add_range_end_key));
-
-    LOG(INFO) << "Ranges count: " << range_end_keys.size();
-
-    // We should have at least 1 range.
-    ASSERT_GE(range_end_keys.size(), 1);
-
-    ASSERT_EQ(range_end_keys.back(), "");
-    for (size_t i = 0; i + 2 < range_end_keys.size(); ++i) {
-      ASSERT_LT(range_end_keys[i], range_end_keys[i + 1]);
-    }
-
-    // TODO(get_table_key_ranges): For now we are returning full DocKeys and skipping ones that
-    // are longer than max_key_length, because truncated DocKeys are not supported as lower/upper
-    // bounds for scans. So, if DocKeys are longer than max_key_length we can have very uneven
-    // distribution across ranges/workers.
-    const auto min_max_keys_ratio_limit = max_key_length > 8 ? kMinMaxKeysRatioLimit : 0;
-
-    ASSERT_OK(CalcKeysDistributionAcrossWorkers(
-        tablet.get(), range_end_keys, kNumWorkers, min_max_keys_ratio_limit));
-
-    // Get ranges in multiple batches, verify it covers the whole space.
-    constexpr auto kNumRangesPerBatch = 5;
-    std::string lower_bound = "";
-
-    std::vector<string> range_end_keys_from_batches;
-    for (;;) {
-      std::vector<string> range_end_keys_batch;
-      LOG(INFO) << "Getting tablet key ranges starting from: "
-                << Slice(lower_bound).ToDebugHexString();
+      // List of range end/start keys depending on whether is_forward is true/false.
+      std::vector<std::string> range_boundary_keys;
+      auto add_range_boundary_key = [&range_boundary_keys](Slice key) {
+        LOG(INFO) << "Got range boundary key: " << key.ToDebugHexString();
+        range_boundary_keys.push_back(key.ToBuffer());
+      };
 
       ASSERT_OK(tablet->TEST_GetTabletKeyRanges(
-          lower_bound, Slice(), kNumRangesPerBatch, range_size_bytes, tablet::IsForward::kTrue,
-          max_key_length, [&range_end_keys_batch](Slice key) {
-            LOG(INFO) << "Got range end key: " << key.ToDebugHexString();
-            range_end_keys_batch.push_back(key.ToBuffer());
-          }));
+          Slice(), Slice(), std::numeric_limits<uint64_t>::max(), range_size_bytes,
+          direction, max_key_length, add_range_boundary_key));
 
-      ASSERT_LE(range_end_keys_batch.size(), kNumRangesPerBatch);
+      LOG(INFO) << "Ranges count: " << range_boundary_keys.size();
 
       // We should have at least 1 range.
-      ASSERT_GE(range_end_keys_batch.size(), 1);
+      ASSERT_GE(range_boundary_keys.size(), 1);
 
-      for (const auto& key : range_end_keys_batch) {
-        range_end_keys_from_batches.push_back(key);
+      ASSERT_EQ(range_boundary_keys.back(), "");
+      for (size_t i = 0; i + 2 < range_boundary_keys.size(); ++i) {
+        switch (direction) {
+          case tablet::Direction::kForward:
+            ASSERT_LT(range_boundary_keys[i], range_boundary_keys[i + 1]);
+            continue;
+          case tablet::Direction::kBackward:
+            ASSERT_GT(range_boundary_keys[i], range_boundary_keys[i + 1]);
+            continue;
+        }
+        FATAL_INVALID_ENUM_VALUE(tablet::Direction, direction);
       }
 
-      if (range_end_keys_batch.back().empty()) {
-        // We've reached the end.
-        break;
+      // TODO(get_table_key_ranges): For now we are returning full DocKeys and skipping ones that
+      // are longer than max_key_length, because truncated DocKeys are not supported as lower/upper
+      // bounds for scans. So, if DocKeys are longer than max_key_length we can have very uneven
+      // distribution across ranges/workers.
+      const auto min_max_keys_ratio_limit = max_key_length > 8 ? kMinMaxKeysRatioLimit : 0;
+
+      ASSERT_OK(CalcKeysDistributionAcrossWorkers(
+          tablet.get(), range_boundary_keys, kNumWorkers, min_max_keys_ratio_limit, direction));
+
+      // Get ranges in multiple batches, verify it covers the whole space.
+      constexpr auto kNumRangesPerBatch = 5;
+      std::string start_key = "";
+
+      std::vector<string> range_boundary_keys_from_batches;
+      for (;;) {
+        std::vector<string> range_boundary_keys_batch;
+        LOG(INFO) << "Getting tablet key ranges starting from: "
+                  << Slice(start_key).ToDebugHexString() << " direction: " << AsString(direction);
+
+        ASSERT_OK(tablet->TEST_GetTabletKeyRanges(
+            direction == tablet::Direction::kForward ? start_key : Slice(),
+            direction == tablet::Direction::kForward ? Slice() : start_key, kNumRangesPerBatch,
+            range_size_bytes, direction, max_key_length, [&range_boundary_keys_batch](Slice key) {
+              LOG(INFO) << "Got range boundary key: " << key.ToDebugHexString();
+              range_boundary_keys_batch.push_back(key.ToBuffer());
+            }));
+
+        ASSERT_LE(range_boundary_keys_batch.size(), kNumRangesPerBatch);
+
+        // We should have at least 1 range.
+        ASSERT_GE(range_boundary_keys_batch.size(), 1);
+
+        for (const auto& key : range_boundary_keys_batch) {
+          range_boundary_keys_from_batches.push_back(key);
+        }
+
+        if (range_boundary_keys_batch.back().empty()) {
+          // We've reached the end.
+          break;
+        }
+
+        ASSERT_EQ(range_boundary_keys_batch.size(), kNumRangesPerBatch);
+
+        // Use last returned key as start key for next batch of ranges.
+        start_key = range_boundary_keys_batch.back();
       }
 
-      ASSERT_EQ(range_end_keys_batch.size(), kNumRangesPerBatch);
-
-      // Use last returned key as lower bound for next batch of ranges.
-      lower_bound = range_end_keys_batch.back();
+      ASSERT_OK(CalcKeysDistributionAcrossWorkers(
+          tablet.get(), range_boundary_keys_from_batches, kNumWorkers, min_max_keys_ratio_limit,
+          direction));
     }
-
-    ASSERT_OK(CalcKeysDistributionAcrossWorkers(
-        tablet.get(), range_end_keys_from_batches, kNumWorkers, min_max_keys_ratio_limit));
   }
-  // TODO(get_table_key_ranges): test getting ranges in reverse order.
 }
-
 
 } // namespace client
 } // namespace yb
