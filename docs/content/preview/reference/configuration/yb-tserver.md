@@ -690,9 +690,13 @@ Default: `100`
 
 ##### --ysql_yb_fetch_size_limit
 
-Specifies the maximum size (in MB) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `--ysql_yb_fetch_row_limit` should be set to 0.
+Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
 
-If both `--ysql_yb_fetch_row_limit` and `--ysql_yb_fetch_size_limit` are set, then limit is taken as the lower bound of the two values.
+You can also specify the value as a string. For example, you can set it to `'10MB'`.
+
+You should have at least one of row limit or size limit set.
+
+If both `--ysql_yb_fetch_row_limit` and `--ysql_yb_fetch_size_limit` are greater than zero, then limit is taken as the lower bound of the two values.
 
 See also the [yb_fetch_size_limit](#yb-fetch-size-limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
@@ -702,11 +706,13 @@ Default: 0
 
 Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
-If both `--ysql_yb_fetch_row_limit` and `--ysql_yb_fetch_size_limit` are set, then limit is taken as the lower bound of the two values.
+You should have at least one of row limit or size limit set.
+
+If both `--ysql_yb_fetch_row_limit` and `--ysql_yb_fetch_size_limit` are greater than zero, then limit is taken as the lower bound of the two values.
 
 See also the [yb_fetch_row_limit](#yb-fetch-row-limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
-Default: 0
+Default: 1024
 
 ##### --ysql_log_statement
 
@@ -1389,7 +1395,7 @@ Default: false
 
 ##### yb_fetch_size_limit
 
-Maximum size (in MB) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
 
 If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
 
