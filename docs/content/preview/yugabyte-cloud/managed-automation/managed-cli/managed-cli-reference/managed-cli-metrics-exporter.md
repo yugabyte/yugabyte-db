@@ -34,7 +34,7 @@ ybm metrics-exporter create \
 Assign the configuration to a cluster:
 
 ```sh
-ybm metrics-exporter attach \
+ybm metrics-exporter assign \
     --config-name datadog1 \
     --cluster-name my_cluster
 ```
