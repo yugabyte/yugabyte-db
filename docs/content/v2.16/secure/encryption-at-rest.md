@@ -4,7 +4,6 @@ headerTitle: Encryption at rest
 linkTitle: Encryption at rest
 description: Enable encryption at rest in a YugabyteDB cluster with a user-generated key.
 headcontent: 
-image: /images/section_icons/secure/prepare-nodes.png
 menu:
   v2.16:
     identifier: encryption-at-rest

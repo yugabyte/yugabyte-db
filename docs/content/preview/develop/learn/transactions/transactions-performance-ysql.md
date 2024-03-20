@@ -19,7 +19,7 @@ To run the following examples, first set up a cluster and database schema as des
 
 ## Fast single-row transactions
 
-YugabytedDB has specific optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. These transactions are referred to as [single-row or fast-path](../../../../architecture/transactions/single-row-transactions/) transactions. These are much faster than [distributed](../../../../architecture/transactions/distributed-txns/) transactions that impact a set of rows distributed across shards that are themselves spread across multiple nodes distributed across a data center, region, or globally.
+YugabyteDB has specific optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. These transactions are referred to as [single-row or fast-path](../../../../architecture/transactions/single-row-transactions/) transactions. These are much faster than [distributed](../../../../architecture/transactions/distributed-txns/) transactions that impact a set of rows distributed across shards that are themselves spread across multiple nodes distributed across a data center, region, or globally.
 
 For example, consider a common scenario in transactions where a single row is updated and the new value is fetched. This is usually done in multiple steps as follows:
 
@@ -62,18 +62,6 @@ INSERT INTO txndemo VALUES (1,10)
 ```
 
 Now, the server automatically updates the row when it fails to insert. Again, this results in one less round trip between the application and the server.
-
-## Avoid long waits
-
-In the [READ COMMITTED](../../../../architecture/transactions/read-committed/) isolation level, clients do not need to retry or handle serialization errors. During conflicts, the server retries indefinitely based on the [retry options](../../../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
-
-To avoid getting stuck in a wait loop because of starvation, you should use a reasonable timeout for the statements, similar to the following:
-
-```plpgsql
-SET statement_timeout = '10s';
-```
-
-This ensures that the transaction would not be blocked for more than 10 seconds.
 
 ## Handle idle applications
 

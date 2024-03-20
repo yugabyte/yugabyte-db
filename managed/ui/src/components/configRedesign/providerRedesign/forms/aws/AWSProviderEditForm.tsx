@@ -72,7 +72,7 @@ import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { YBBanner, YBBannerVariant } from '../../../../common/descriptors';
 import { RuntimeConfigKey, YBAHost } from '../../../../../redesign/helpers/constants';
 import { isAxiosError, isYBPBeanValidationError } from '../../../../../utils/errorHandlingUtils';
-import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
+import { CloudType, YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSProviderCredentialType, VPC_SETUP_OPTIONS } from './constants';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
@@ -86,11 +86,13 @@ import {
   AWSProvider,
   AWSRegion,
   AWSRegionMutation,
-  ImageBundle,
   YBProviderMutation
 } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
+import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 
 interface AWSProviderEditFormProps {
   editProvider: EditProvider;
@@ -346,6 +348,8 @@ export const AWSProviderEditForm = ({
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
   const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
+  const imagebundles = formMethods.watch('imageBundles', defaultValues.imageBundles);
+
   /**
    * In use zones for selected region.
    */
@@ -575,6 +579,7 @@ export const AWSProviderEditForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
+            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.aws} viewMode='EDIT' providerStatus={providerConfig.usabilityState} />
             <FieldGroup
               heading="SSH Key Pairs"
               infoTitle="SSH Key Pairs"
@@ -815,6 +820,10 @@ export const AWSProviderEditForm = ({
           regionSelection={regionSelection}
           vpcSetupType={vpcSetupType}
           ybImageType={ybImageType}
+          imageBundles={imagebundles}
+          onImageBundleSubmit={(images) => {
+            formMethods.setValue("imageBundles", images);
+          }}
         />
       )}
       <DeleteRegionModal
@@ -841,7 +850,7 @@ const constructDefaultFormValues = (
   providerCredentialType: providerConfig.details.cloudInfo.aws.awsAccessKeySecret
     ? AWSProviderCredentialType.ACCESS_KEY
     : AWSProviderCredentialType.HOST_INSTANCE_IAM_ROLE,
-  imageBundles: providerConfig.imageBundles,
+  imageBundles: providerConfig.imageBundles as unknown as ImageBundle[],
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
@@ -868,12 +877,13 @@ const constructProviderPayload = async (
   try {
     sshPrivateKeyContent =
       formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-      formValues.sshPrivateKeyContent
+        formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
   } catch (error) {
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
+  const imageBundles = constructImageBundlePayload(formValues);
 
   const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
@@ -920,7 +930,7 @@ const constructProviderPayload = async (
       ...(formValues.sshPort && { sshPort: formValues.sshPort }),
       ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
-    imageBundles: formValues.imageBundles,
+    imageBundles,
     regions: [
       ...formValues.regions.map<AWSRegionMutation>((regionFormValues) => {
         const existingRegion = findExistingRegion<AWSProvider, AWSRegion>(
@@ -938,18 +948,18 @@ const constructProviderPayload = async (
               [ProviderCode.AWS]: {
                 ...(existingRegion
                   ? {
-                      ...(existingRegion.details.cloudInfo.aws.ybImage && {
-                        ybImage: existingRegion.details.cloudInfo.aws.ybImage
-                      }),
-                      ...(existingRegion.details.cloudInfo.aws.arch && {
-                        arch: existingRegion.details.cloudInfo.aws.arch
-                      })
-                    }
+                    ...(existingRegion.details.cloudInfo.aws.ybImage && {
+                      ybImage: existingRegion.details.cloudInfo.aws.ybImage
+                    }),
+                    ...(existingRegion.details.cloudInfo.aws.arch && {
+                      arch: existingRegion.details.cloudInfo.aws.arch
+                    })
+                  }
                   : regionFormValues.ybImage
-                  ? {
+                    ? {
                       ybImage: regionFormValues.ybImage
                     }
-                  : {
+                    : {
                       arch:
                         providerConfig.regions[0]?.details.cloudInfo.aws.arch ?? YBImageType.X86_64
                     }),

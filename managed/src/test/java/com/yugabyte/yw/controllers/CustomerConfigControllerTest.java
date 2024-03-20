@@ -20,6 +20,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -75,7 +76,10 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             app.injector().instanceOf(RuntimeConfGetter.class),
             mockAWSUtil,
             mockGCPUtil));
-    doCallRealMethod().when(mockAWSUtil).getConfigLocationInfo(any());
+    doCallRealMethod().when(mockAWSUtil).getRegionLocationsMap(any());
+    doCallRealMethod()
+        .when(mockAWSUtil)
+        .getCloudLocationInfo(nullable(String.class), any(), nullable(String.class));
   }
 
   @Test

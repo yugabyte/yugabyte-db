@@ -91,6 +91,10 @@ TEST_TIMEOUT_UPPER_BOUND_SEC = 35 * 60
 # Defaults for maximum test failure threshold, after which the Spark job will be aborted
 DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
 DEFAULT_MAX_NUM_TEST_FAILURES = 100
+# YB_TODO: BEGIN temporary modifications
+DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 500
+DEFAULT_MAX_NUM_TEST_FAILURES = 500
+# YB_TODO: END temporary modifications
 
 # Default for test artifact size limit to copy back to the build host, in bytes.
 MAX_ARTIFACT_SIZE_BYTES = 100 * 1024 * 1024
@@ -181,31 +185,16 @@ UNTAR_SCRIPT_TEMPLATE = """#!{bash_shebang}
 set -euo pipefail
 (
     PATH=/usr/local/bin:$PATH
-    # Options for asynchronous clean-up jobs.
-    # Optional argument for checking workspace path associated with this spark app.
-    if [[ "${{1:-none}}" == "path" ]]; then
-      echo '{remote_yb_src_root}'
-      exit 0
-    fi
-    # Optional argument for marking workspace to be removed.
-    if [[ "${{1:-none}}" == "remove" ]]; then
-      rm -f '{archive_path}'
-      mv '{remote_yb_src_job_dir}' '{remote_yb_src_removal}/'
-      exit 0
-    fi
     flock -w 180 200 || exit 5
-    # Clean up any pending removals before we unpack the archive.
-    rm -rf {remote_yb_src_removal}/*
     # Check existing workspace.
     if [[ -d '{remote_yb_src_root}' ]]; then
         previous_sha256_file_path='{remote_yb_src_root}/extracted_from_archive.sha256'
         if [[ ! -f $previous_sha256_file_path ]]; then
-            # Prevent accidental deletion of directories that were not installed by untarring
-            # an archive.
             echo "File $previous_sha256_file_path does not exist!" >&2
-            exit 1
+            previous_sha256sum="None-Found"
+        else
+            previous_sha256sum=$(<"$previous_sha256_file_path")
         fi
-        previous_sha256sum=$(<"$previous_sha256_file_path")
         if [[ $previous_sha256sum == '{expected_archive_sha256sum}' ]]; then
             echo "Found existing archive installation at '{remote_yb_src_root}' with correct" \
                  "expected checksum '$previous_sha256sum'."
@@ -595,15 +584,11 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
     # later.
     remote_yb_src_root = global_conf.yb_src_root
     remote_yb_src_job_dir = os.path.dirname(remote_yb_src_root)
-    # Job clean-up directory should be common on spark worker node for all jobs and should be on
-    # same filesystem as yb_src_root for efficient two-stage clean-up.
-    remote_yb_src_removal = os.environ.get('YB_SPARK_CLEAN_DIR', '/tmp/SPARK_TO_REMOVE')
 
     try:
         subprocess.check_call([
             'mkdir',
             '-p',
-            remote_yb_src_removal,
             remote_yb_src_job_dir])
 
         untar_script_path = os.path.join(
@@ -624,7 +609,6 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
                 expected_archive_sha256sum=expected_archive_sha256sum,
                 lock_path=lock_path,
                 remote_yb_src_job_dir=remote_yb_src_job_dir,
-                remote_yb_src_removal=remote_yb_src_removal,
                 remote_yb_src_root=remote_yb_src_root,
                 untar_script_path=untar_script_path,
                 untar_script_path_for_reference=untar_script_path_for_reference))
@@ -1065,24 +1049,6 @@ def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor
         java_test_descriptors = get_java_test_descriptors()
 
     test_descriptors = sorted(java_test_descriptors) + sorted(cpp_test_descriptors)
-
-    # YB_TODO: BEGIN temporary modifications
-    # For pg15, run only tests that we expect to pass.  To run more in addition to that, pass
-    # jenkins DSL "test regex", and that will be combined with the expected-pass tests.
-    src_root = yb_dist_tests.get_global_conf().yb_src_root
-    pg15_test_descriptors = subprocess.run(['awk', '{print$NF}',
-                                            f'{src_root}/pg15_tests/flaky_cxx.tsv',
-                                            f'{src_root}/pg15_tests/flaky_java.tsv',
-                                            f'{src_root}/pg15_tests/passing_cxx.tsv',
-                                            f'{src_root}/pg15_tests/passing_java.tsv'],
-                                           stdout=subprocess.PIPE,
-                                           text=True,
-                                           check=True).stdout.rstrip().split('\n')
-    if args.test_filter_re:
-        args.test_filter_re += '|' + '|'.join(pg15_test_descriptors)
-    else:
-        args.test_filter_re = '|'.join(pg15_test_descriptors)
-    # YB_TODO: END temporary modifications
 
     if args.test_filter_re:
         test_filter_re_compiled = re.compile(args.test_filter_re)

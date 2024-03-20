@@ -12,6 +12,7 @@
 
 #include "yb/cdc/xcluster_producer_bootstrap.h"
 
+#include "yb/cdc/cdc_error.h"
 #include "yb/cdc/cdc_service_context.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/client/meta_cache.h"
@@ -144,7 +145,7 @@ Status XClusterProducerBootstrap::ConstructServerToTabletsMapping() {
 
       // Mark the tablet for rollback.
       creation_state_->producer_entries_modified.push_back(
-          {.replication_group_id = {}, .stream_id = bootstrap_id, .tablet_id = tablet_id});
+          {.stream_id = bootstrap_id, .tablet_id = tablet_id});
 
       // Initially store invalid op_id to catch any missed streams later in VerifyTabletOpIds.
       tablet_op_ids_[bootstrap_tablet_pair] = yb::OpId::Invalid();
@@ -305,7 +306,7 @@ Status XClusterProducerBootstrap::FetchLatestOpIdsFromRemotePeers() {
     for (int i = 0; i < get_op_id_resp->op_ids_size(); i++) {
       const auto& bootstrap_id = leader_tablets.at(i).first;
       const auto& tablet_id = leader_tablets.at(i).second;
-      ProducerTabletInfo producer_tablet{{} /* Universe UUID */, bootstrap_id, tablet_id};
+      TabletStreamInfo producer_tablet{bootstrap_id, tablet_id};
       OpId op_id = OpId::FromPB(get_op_id_resp->op_ids(i));
 
       // Add op_id for tablet.
@@ -383,6 +384,7 @@ Status XClusterProducerBootstrap::SetLogRetentionForRemoteTabletPeers() {
       update_index_req.add_replicated_indices(tablet_op_ids_[bootstrap_id_tablet_id_pair].index);
       update_index_req.add_replicated_terms(tablet_op_ids_[bootstrap_id_tablet_id_pair].term);
     }
+    update_index_req.set_initial_retention_barrier(true);
 
     auto proxy = server_to_proxy_[server_id];
     // Todo: UpdateCdcReplicatedIndex does not seem to enforce this deadline.

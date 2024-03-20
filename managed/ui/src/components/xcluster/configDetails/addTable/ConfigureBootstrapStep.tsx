@@ -94,16 +94,16 @@ export const ConfigureBootstrapStep = ({ formik }: ConfigureBootstrapStepProps) 
           <b>Note!</b>
         </p>
         <p>
-          Bootstrapping is a <b>time intensive</b> process that involves creating a checkpoint on
-          the source, deleting the data on target, creating a copy of the source data using backup,
-          and replicating the data to target using restore.
+          Full copying is a <b>time intensive</b> process that involves creating a checkpoint on the
+          source, deleting the data on target, creating a copy of the source data using backup, and
+          replicating the data to target using restore.
         </p>
         <p>
-          <b>Data</b> on the target cluster <b>will be deleted</b> during bootstrapping. Queries to
+          <b>Data</b> on the target cluster <b>will be deleted</b> during full copying. Queries to
           these temporarily deleted tables will error out.
         </p>
         <p>
-          We recommend <b>bootstrapping during off-peak hours.</b>
+          We recommend <b>full copying during off-peak hours.</b>
         </p>
       </div>
     </>

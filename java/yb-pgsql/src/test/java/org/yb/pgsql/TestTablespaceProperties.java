@@ -206,6 +206,23 @@ public class TestTablespaceProperties extends BasePgSQLTest {
           customIndexCustomTable, tableInCustomTablegroup, transactionTableName));
   }
 
+  private void executeRewritesOnTestTables(String prefixName) throws Exception {
+    String defaultTable = prefixName + "_default_table";
+    String customTable = prefixName + "_custom_table";
+    String tableInDefaultTablegroup = prefixName + "_table_in_default_tablegroup";
+    String tableInCustomTablegroup = prefixName + "_table_in_custom_tablegroup";
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(
+          "ALTER TABLE " +  customTable + " ADD COLUMN b BIGSERIAL");
+      setupStatement.execute(
+          "ALTER TABLE " + defaultTable + " ADD COLUMN b SERIAL");
+      setupStatement.execute(
+          "ALTER TABLE " +  tableInDefaultTablegroup + " ADD COLUMN b BIGSERIAL");
+      setupStatement.execute(
+          "ALTER TABLE " +  tableInCustomTablegroup + " ADD COLUMN b SERIAL");
+    }
+  }
+
   private void addTserversAndWaitForLB() throws Exception {
     int expectedTServers = miniCluster.getTabletServers().size() + 1;
     miniCluster.startTServer(perTserverZonePlacementFlags.get(1));
@@ -307,6 +324,17 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     Thread.sleep(10 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
 
     LOG.info("Verify that tablets have been placed correctly even after master leader changed");
+    verifyPlacement();
+
+    // Execute table rewrites on the test tables. This is done so that the DocDB table
+    // ID and PG table OID no longer match, and allows us to verify that the table to tablespace map
+    // is constructed correctly even for rewritten tables.
+    executeRewritesOnTestTables("sanity_test");
+
+    addTserversAndWaitForLB();
+
+    LOG.info("Verify whether the load balancer maintained the placement of tablet replicas" +
+              " after the tables were rewritten and more TServers were added");
     verifyPlacement();
   }
 

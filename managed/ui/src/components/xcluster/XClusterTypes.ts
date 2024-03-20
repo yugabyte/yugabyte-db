@@ -9,7 +9,7 @@ import {
   XCLUSTER_SUPPORTED_TABLE_TYPES
 } from './constants';
 
-import { YBTable } from '../../redesign/helpers/dtos';
+import { Metric, MetricTrace, TableType, YBTable } from '../../redesign/helpers/dtos';
 import { XClusterTableDetails } from './dtos';
 
 /**
@@ -66,21 +66,6 @@ export type ReplicationItems = Record<
 >;
 //------------------------------------------------------------------------------------
 
-// TODO: Move the metric types to dtos.ts or another more appropriate file.
-
-export interface MetricTrace {
-  instanceName?: string;
-  name: string;
-  type: string;
-  x: number[];
-  y: string[] | number[];
-  mode?: string;
-  line?: {
-    dash: string;
-    width: number;
-  };
-}
-
 export type Metrics<MetricNameType extends MetricName> = {
   [metricName in MetricNameType]: {
     data: MetricTrace[];
@@ -99,6 +84,8 @@ export type Metrics<MetricNameType extends MetricName> = {
     queryKey: string;
   };
 };
+
+//------------------------------------------------------------------------------------
 
 // Time range selector types.
 

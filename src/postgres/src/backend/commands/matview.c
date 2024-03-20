@@ -304,7 +304,8 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	 */
 	OIDNewHeap = make_new_heap(matviewOid, tableSpace,
 							   matviewRel->rd_rel->relam,
-							   relpersistence, ExclusiveLock);
+							   relpersistence, ExclusiveLock,
+							   false /* yb_copy_split_options */);
 	LockRelationOid(OIDNewHeap, AccessExclusiveLock);
 	dest = CreateTransientRelDestReceiver(OIDNewHeap);
 
@@ -333,26 +334,6 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	else
 	{
 		refresh_by_heap_swap(matviewOid, OIDNewHeap, relpersistence);
-		
-		if (YBIsRefreshMatviewFailureInjected())
-		{
-			elog(ERROR, "Injecting error.");
-		}
-	
-		/*
-		 * In YB mode, we must also rename the relation in DocDB.
-		 *
-		 */
-		if (IsYugaByteEnabled()) {
-			YBCPgStatement	handle     = NULL;
-			Oid				databaseId = YBCGetDatabaseOidByRelid(matviewOid);
-			char		   *db_name	   = get_database_name(databaseId);
-			HandleYBStatus(YBCPgNewAlterTable(databaseId,
-											  OIDNewHeap,
-											  &handle));
-			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, RelationGetRelationName(matviewRel)));
-			HandleYBStatus(YBCPgExecAlterTable(handle));
-		}
 
 		/*
 		 * Inform cumulative stats system about our activity: basically, we
@@ -713,9 +694,9 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	{
 		appendStringInfo(&querybuf,
 						"CREATE TEMP TABLE %s AS "
-						"SELECT mv, newdata "
+						"SELECT mv.*::%s AS mv, newdata.*::%s AS newdata "
 						"FROM %s mv FULL JOIN %s newdata ON (",
-						diffname, matviewname, tempname);
+						diffname, matviewname, tempname, matviewname, tempname);
 	}
 	else
 	{
@@ -849,8 +830,8 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	{
 		/* Can't use TID in YB mode */
 		appendStringInfoString(&querybuf,
-							   " AND newdata OPERATOR(pg_catalog.*=) mv) "
-							   "WHERE newdata IS NULL OR mv IS NULL ");	
+							   " AND newdata.* OPERATOR(pg_catalog.*=) mv.*) "
+							   "WHERE newdata.* IS NULL OR mv.* IS NULL ");
 	}
 	else
 	{
@@ -901,7 +882,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 				appendStringInfo(&querybuf, "AND ");
 
 		}
-		
+
 		if (SPI_execute(querybuf.data, false, 1) != SPI_OK_SELECT)
 			elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 		if (SPI_processed > 0)
@@ -921,9 +902,9 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	{
 		/* Can't use TID in YB mode */
 		appendStringInfo(&querybuf,
-						 "DELETE FROM %s mv WHERE mv OPERATOR(pg_catalog.=) ANY "
+						 "DELETE FROM %s mv WHERE mv.*::%s OPERATOR(pg_catalog.=) ANY "
 						 "(SELECT mv FROM %s diff WHERE (", 
-						 matviewname, diffname);
+						 matviewname, matviewname, diffname);
 		TupleDesc tuple_desc = RelationGetDescr(matviewRel);
 
 		for (int i = 1; i <= tuple_desc->natts; i++) {
@@ -994,7 +975,8 @@ static void
 refresh_by_heap_swap(Oid matviewOid, Oid OIDNewHeap, char relpersistence)
 {
 	finish_heap_swap(matviewOid, OIDNewHeap, false, false, true, true,
-					 RecentXmin, ReadNextMultiXactId(), relpersistence);
+					 RecentXmin, ReadNextMultiXactId(), relpersistence,
+					 false /* yb_copy_split_options */);
 }
 
 /*

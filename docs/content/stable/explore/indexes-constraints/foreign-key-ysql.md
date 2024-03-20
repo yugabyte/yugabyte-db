@@ -4,7 +4,6 @@ headerTitle: Foreign keys
 linkTitle: Foreign keys
 description: Defining Foreign key constraint in YSQL
 headContent: Explore foreign keys in YugabyteDB using YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: foreign-key-ysql

@@ -22,12 +22,22 @@ import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -37,14 +47,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.JoinTable;
-import javax.persistence.ManyToOne;
-import javax.persistence.OneToMany;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -180,8 +182,6 @@ public class XClusterConfig extends Model {
   private Date modifyTime;
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
-  @ApiModelProperty(value = "Tables participating in this xCluster config")
-  @JsonProperty("tableDetails")
   private Set<XClusterTableConfig> tables = new HashSet<>();
 
   @ApiModelProperty(value = "Replication group name in the target universe cluster config")
@@ -359,14 +359,20 @@ public class XClusterConfig extends Model {
     return tableConfigs;
   }
 
-  @JsonIgnore
+  @ApiModelProperty(value = "Tables participating in this xCluster config")
+  @JsonProperty("tableDetails")
   public Set<XClusterTableConfig> getTableDetails() {
-    return tables;
+    return tables.stream()
+        .sorted(Comparator.comparing(XClusterTableConfig::getStatus))
+        .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
   @JsonProperty("tables")
   public Set<String> getTableIds() {
-    return this.tables.stream().map(XClusterTableConfig::getTableId).collect(Collectors.toSet());
+    return this.tables.stream()
+        .sorted(Comparator.comparing(XClusterTableConfig::getStatus))
+        .map(XClusterTableConfig::getTableId)
+        .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
   @JsonIgnore

@@ -9,9 +9,10 @@ import { UniverseRuntimeConfig } from './UniverseRuntimeConfig';
 import { ProviderRuntimeConfig } from './ProviderRuntimeConfig';
 
 import { Action, Resource } from '../../../redesign/features/rbac';
-import '../AdvancedConfig.scss';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
+import '../AdvancedConfig.scss';
 
 interface RuntimeConfigProps {
   activeTab: string;
@@ -50,13 +51,18 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           title={t('admin.advanced.globalConfig.GlobalConfigTitle')}
           unmountOnExit
         >
-          <GlobalRuntimeConfig
-            setRuntimeConfig={setRuntimeConfig}
-            deleteRunTimeConfig={deleteRunTimeConfig}
-            fetchRuntimeConfigs={fetchRuntimeConfigs}
-            resetRuntimeConfigs={resetRuntimeConfigs}
-            configTagFilter={configTagFilter}
-          />
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.GET_RUNTIME_CONFIG_BY_SCOPE}
+            overrideStyle={{ marginTop: '150px' }}
+          >
+            <GlobalRuntimeConfig
+              setRuntimeConfig={setRuntimeConfig}
+              deleteRunTimeConfig={deleteRunTimeConfig}
+              fetchRuntimeConfigs={fetchRuntimeConfigs}
+              resetRuntimeConfigs={resetRuntimeConfigs}
+              configTagFilter={configTagFilter}
+            />
+          </RbacValidator>
         </Tab>
 
         <Tab
@@ -84,11 +90,8 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           unmountOnExit
         >
           <RbacValidator
-            customValidateFunction={(perms) => {
-              const universeWithReadPerm = perms.filter((p) => {
-                return p.resourceType === Resource.UNIVERSE && p.actions.includes(Action.READ);
-              });
-              return universeWithReadPerm.length !== 0;
+            customValidateFunction={() => {
+              return userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ);
             }}
             overrideStyle={{ marginTop: '150px' }}
           >

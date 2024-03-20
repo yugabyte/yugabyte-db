@@ -49,7 +49,8 @@ public class UniverseController extends AuthenticatedController {
 
   /** List the universes for a given customer. */
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. List universes",
+      notes = "Available since YBA version 2.2.0.0.",
+      value = "List universes",
       response = UniverseResp.class,
       responseContainer = "List",
       nickname = "listUniverses")
@@ -83,7 +84,8 @@ public class UniverseController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. Get a universe",
+      notes = "Available since YBA version 2.2.0.0.",
+      value = "Get a universe",
       response = UniverseResp.class,
       nickname = "getUniverse")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
@@ -101,7 +103,8 @@ public class UniverseController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. Delete a universe",
+      notes = "Available since YBA version 2.2.0.0.",
+      value = "Delete a universe",
       response = YBPTask.class,
       nickname = "deleteUniverse")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")

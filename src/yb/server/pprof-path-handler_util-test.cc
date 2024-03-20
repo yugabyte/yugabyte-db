@@ -57,21 +57,21 @@ void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_freq_bytes) {
   int64_t old_rate;
 #if YB_GPERFTOOLS_TCMALLOC
   old_rate = MallocExtension::instance()->GetProfileSamplingRate();
-  MallocExtension::instance()->SetProfileSamplingRate(sample_freq_bytes);
   if (old_rate == 0) {
     old_rate = 16_MB;
   }
 #else
   old_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
-  tcmalloc::MallocExtension::SetProfileSamplingRate(sample_freq_bytes);
 #endif
+  SetTCMallocSamplingFrequency(sample_freq_bytes);
 
   // The probability of sampling an allocation of size X with sampling rate Y is 1 - e^(-X/Y).
   // An allocation of size Y * 14 is thus sampled with probability > 99.9999%.
   InternalAllocArrayOfSize(old_rate * 14);
 }
 
-std::unique_ptr<char[]> SamplingProfilerTest::TestAllocArrayOfSize(int64_t alloc_size) {
+[[nodiscard]] std::unique_ptr<char[]> SamplingProfilerTest::TestAllocArrayOfSize(
+    int64_t alloc_size) {
   std::unique_ptr<char[]> alloc(new char[alloc_size]);
   // Clang in release mode can optimize out the above allocation unless
   // we do something with the pointer... so we just log it.
@@ -82,7 +82,8 @@ std::unique_ptr<char[]> SamplingProfilerTest::TestAllocArrayOfSize(int64_t alloc
 // Duplicate of TestAllocArrayOfSize which will not be found by GetTestAllocs.
 // NB: We cannot just call this from TestAllocArrayOfSize since there does not seem to be a
 // cross-compiler way to reliably disable inlining (attribute noinline still results in inlining).
-std::unique_ptr<char[]> SamplingProfilerTest::InternalAllocArrayOfSize(int64_t alloc_size) {
+[[nodiscard]] std::unique_ptr<char[]> SamplingProfilerTest::InternalAllocArrayOfSize(
+    int64_t alloc_size) {
   std::unique_ptr<char[]> alloc(new char[alloc_size]);
   VLOG(8) << static_cast<void*>(alloc.get());
   return alloc;
@@ -96,6 +97,26 @@ vector<Sample> SamplingProfilerTest::GetTestAllocs(const vector<Sample>& samples
     }
   }
   return test_samples;
+}
+
+Result<vector<Sample>> GetSamplesFromHeapSnapshot(HeapSnapshotType snapshot_type) {
+#if YB_GPERFTOOLS_TCMALLOC
+  SCHECK_EQ(snapshot_type, HeapSnapshotType::kCurrentHeap, InvalidArgument,
+      "snapshot_type must be kCurrentHeap for gperftools tcmalloc");
+  return GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount);
+#else
+  auto current_profile = GetHeapSnapshot(snapshot_type);
+  return AggregateAndSortProfile(
+      current_profile, false /* only_growth */, SampleOrder::kSampledCount);
+#endif
+}
+
+TEST_F(SamplingProfilerTest, DisableSampling) {
+  SetProfileSamplingRate(0);
+  auto v = TestAllocArrayOfSize(10_KB);
+
+  auto samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap));
+  ASSERT_EQ(GetTestAllocs(samples).size(), 0);
 }
 
 #if YB_GPERFTOOLS_TCMALLOC
@@ -117,11 +138,6 @@ TEST_F(SamplingProfilerTest, HeapSnapshot) {
 #endif
 
 #if YB_GOOGLE_TCMALLOC
-std::vector<Sample> GetSamplesFromHeapSnapshot(HeapSnapshotType snapshot_type) {
-  auto current_profile = GetHeapSnapshot(snapshot_type);
-  return AggregateAndSortProfile(
-      current_profile, false /* only_growth */, SampleOrder::kSampledCount);
-}
 
 // Basic test for pprof/heap_snapshot.
 TEST_F(SamplingProfilerTest, HeapSnapshot) {
@@ -133,18 +149,18 @@ TEST_F(SamplingProfilerTest, HeapSnapshot) {
     // Make a large allocation. We expect to find it in the current and peak heap snapshots.
     std::unique_ptr<char[]> big_alloc = TestAllocArrayOfSize(kAllocSize);
 
-    auto samples = GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap);
+    auto samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap));
     ASSERT_EQ(GetTestAllocs(samples).size(), 1);
 
-    samples = GetSamplesFromHeapSnapshot(HeapSnapshotType::kPeakHeap);
+    samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kPeakHeap));
     ASSERT_EQ(GetTestAllocs(samples).size(), 1);
   }
   // After the deallocation, the stack should no longer be found in the current heap snapshot,
   // but should be in the peak heap snapshot.
-  auto samples = GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap);
+  auto samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap));
   ASSERT_EQ(GetTestAllocs(samples).size(), 0);
 
-  samples = GetSamplesFromHeapSnapshot(HeapSnapshotType::kPeakHeap);
+  samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kPeakHeap));
   ASSERT_EQ(GetTestAllocs(samples).size(), 1);
 }
 
@@ -224,7 +240,7 @@ TEST_F(SamplingProfilerTest, EstimatedBytesAndCount) {
     v.push_back(TestAllocArrayOfSize(kAllocSize));
   }
 
-  auto samples = GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap);
+  auto samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap));
 
   // Allocations should get aggregated into one sample.
   ASSERT_EQ(GetTestAllocs(samples).size(), 1);

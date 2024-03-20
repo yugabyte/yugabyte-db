@@ -586,6 +586,16 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 	 * keys, and puts the TID into scan->xs_heaptid.  It should also set
 	 * scan->xs_recheck and possibly scan->xs_itup/scan->xs_hitup, though we
 	 * pay no attention to those fields here.
+	 *
+	 * YB note:
+	 * TID should not be set for YB relations since it is not used.  The slot
+	 * is filled from other sources:
+	 * - aggregate pushdown: yb_agg_slot
+	 * - Index Scan: xs_hitup
+	 * - Index Only Scan: xs_itup
+	 * Upstream PG needs TID in these cases:
+	 * - Index Only Scan: heap fetch using TID in case of invisible tuples
+	 * - Index Scan: heap fetch using TID
 	 */
 	found = scan->indexRelation->rd_indam->amgettuple(scan, direction);
 
@@ -603,10 +613,15 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 		return NULL;
 	}
 	/*
-	 * YB should not set TID (neither t_self nor t_ybctid).  Update this code
-	 * after merging with master D31232.
+	 * YB should not set TID and should instead set at least one of
+	 * yb_agg_slot, xs_hitup, or xs_itup.  (See above note.)
 	 */
-	Assert(IsYBRelation(scan->indexRelation) ||
+	Assert(IsYBRelation(scan->indexRelation) ?
+		   (!ItemPointerIsValid(&scan->xs_heaptid) &&
+			YbItemPointerYbctid(&scan->xs_heaptid) == 0 &&
+			(!TupIsNull(scan->yb_agg_slot) ||
+			 scan->xs_hitup != NULL ||
+			 scan->xs_itup != NULL)) :
 		   ItemPointerIsValid(&scan->xs_heaptid));
 
 	pgstat_count_index_tuples(scan->indexRelation, 1);
@@ -703,11 +718,15 @@ index_getnext_slot(IndexScanDesc scan, ScanDirection direction, TupleTableSlot *
 				break;
 
 			/*
-			 * YB should not set TID (neither t_self nor t_ybctid).  Update
-			 * this code after merging with master D31232.
+			 * YB should not set TID and should instead set at least one of
+			 * yb_agg_slot or xs_hitup.  (See index_getnext_tid note.)
 			 */
-			Assert(IsYBRelation(scan->indexRelation) ||
-				   ItemPointerEquals(tid, &scan->xs_heaptid));
+			Assert(IsYBRelation(scan->indexRelation) ?
+				   (!ItemPointerIsValid(&scan->xs_heaptid) &&
+					YbItemPointerYbctid(&scan->xs_heaptid) == 0 &&
+					(!TupIsNull(scan->yb_agg_slot) ||
+					 scan->xs_hitup != NULL)) :
+				   ItemPointerIsValid(&scan->xs_heaptid));
 		}
 
 		/*
@@ -715,10 +734,14 @@ index_getnext_slot(IndexScanDesc scan, ScanDirection direction, TupleTableSlot *
 		 * If we don't find anything, loop around and grab the next TID from
 		 * the index.
 		 *
-		 * YB should not set TID (neither t_self nor t_ybctid).  Update this
-		 * code after merging with master D31232.
+		 * YB should not set TID and should instead set at least one of
+		 * yb_agg_slot or xs_hitup.  (See index_getnext_tid note.)
 		 */
-		Assert(IsYBRelation(scan->indexRelation) ||
+		Assert(IsYBRelation(scan->indexRelation) ?
+			   (!ItemPointerIsValid(&scan->xs_heaptid) &&
+				YbItemPointerYbctid(&scan->xs_heaptid) == 0 &&
+				(!TupIsNull(scan->yb_agg_slot) ||
+				 scan->xs_hitup != NULL)) :
 			   ItemPointerIsValid(&scan->xs_heaptid));
 		if (index_fetch_heap(scan, slot))
 			return true;

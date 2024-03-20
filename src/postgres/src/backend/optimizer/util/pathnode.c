@@ -2712,12 +2712,6 @@ create_nestloop_path(PlannerInfo *root,
 		restrict_clauses = jclauses;
 	}
 
-	if (is_batched)
-	{
-		Assert(yb_bnl_batch_size > 1);
-		pathkeys = NIL;
-	}
-
 	pathnode->jpath.path.pathtype = T_NestLoop;
 	pathnode->jpath.path.parent = joinrel;
 	pathnode->jpath.path.pathtarget = joinrel->reltarget;

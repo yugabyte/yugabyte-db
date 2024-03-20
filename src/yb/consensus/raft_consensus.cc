@@ -2836,6 +2836,10 @@ Status RaftConsensus::UnsafeChangeConfig(
   return s;
 }
 
+std::vector<FollowerCommunicationTime> RaftConsensus::GetFollowerCommunicationTimes() {
+  return queue_->GetFollowerCommunicationTimes();
+}
+
 void RaftConsensus::Shutdown() {
   LOG_WITH_PREFIX(INFO) << "Shutdown.";
 

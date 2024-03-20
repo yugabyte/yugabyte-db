@@ -117,6 +117,12 @@ public class CustomerConfigController extends AuthenticatedController {
                 + configUUID.toString()
                 + " is in progress.");
       }
+
+      // If storageConfig is used by DR, do not allow deletion.
+      if (customerConfig.isStorageConfigUsedForDr()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "DR Config is associated with Configuration " + configUUID.toString());
+      }
       if (isDeleteBackups) {
         DeleteCustomerConfig.Params taskParams = new DeleteCustomerConfig.Params();
         taskParams.customerUUID = customerUUID;
@@ -177,6 +183,13 @@ public class CustomerConfigController extends AuthenticatedController {
                 + configUUID.toString()
                 + " is in progress.");
       }
+
+      // If storageConfig is used by DR, do not allow deletion.
+      if (customerConfig.isStorageConfigUsedForDr()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "DR Config is associated with Configuration " + configUUID.toString());
+      }
+
       DeleteCustomerStorageConfig.Params taskParams = new DeleteCustomerStorageConfig.Params();
       taskParams.customerUUID = customerUUID;
       taskParams.configUUID = configUUID;

@@ -16,7 +16,6 @@
 #include "yb/yql/pggate/pg_session.h"
 
 #include <algorithm>
-#include <functional>
 #include <future>
 #include <memory>
 #include <optional>
@@ -223,6 +222,12 @@ Status UpdateReadTime(tserver::PgPerformOptionsPB* options, const ReadHybridTime
   return Status::OK();
 }
 
+// This function is used as a dummy function when the GFlag FLAGS_TEST_yb_enable_ash
+// is disabled. This will be removed once the flag is removed.
+uint32_t PgstatReportWaitStartNoOp(uint32_t wait_event) {
+  return wait_event;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -261,8 +266,8 @@ class PgSession::RunHelper {
     // can never occur).
 
     VLOG(2) << "Apply " << (op->is_read() ? "read" : "write") << " op, table name: "
-            << table.table_name().table_name() << ", table id: " << table.id()
-            << ", force_non_bufferable: " << force_non_bufferable;
+            << table.table_name().table_name() << ", table relfilenode id: "
+            << table.relfilenode_id() << ", force_non_bufferable: " << force_non_bufferable;
     auto& buffer = pg_session_.buffer_;
 
     // Try buffering this operation if it is a write operation, buffering is enabled and no
@@ -310,7 +315,7 @@ class PgSession::RunHelper {
 
     const auto row_mark_type = GetRowMarkType(*op);
 
-    operations_.Add(std::move(op), table.id());
+    operations_.Add(std::move(op), table.relfilenode_id());
 
     if (!IsTransactional()) {
       return Status::OK();
@@ -392,12 +397,14 @@ PgSession::PgSession(
     : pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       metrics_(stats_state),
-      buffer_(
-          std::bind(
-              &PgSession::FlushOperations, this, std::placeholders::_1, std::placeholders::_2),
-          buffering_settings_,
-          &metrics_),
       pg_callbacks_(pg_callbacks),
+      wait_starter_(FLAGS_TEST_yb_enable_ash
+          ? pg_callbacks_.PgstatReportWaitStart : &PgstatReportWaitStartNoOp),
+      buffer_(
+          [this](BufferableOperations&& ops, bool transactional) {
+            return FlushOperations(std::move(ops), transactional);
+          },
+          &metrics_, wait_starter_, buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade) {
   Update(&buffering_settings_);
 }
@@ -633,7 +640,7 @@ Result<bool> PgSession::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
 
-Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool transactional) {
+Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool transactional) {
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
     LOG(INFO) << "Flushing buffered operations, using "
               << (transactional ? "transactional" : "non-transactional")
@@ -641,10 +648,9 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
   }
 
   if (transactional) {
-    auto txn_priority_requirement = kLowerPriorityRange;
-    if (GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
-      txn_priority_requirement = kHighestPriority;
-    }
+    const auto txn_priority_requirement =
+        GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED
+            ? kHighestPriority : kLowerPriorityRange;
 
     RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
         false /* read_only */, txn_priority_requirement));
@@ -662,8 +668,7 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
   //
   // EnsureReadTimeIsSet helps PgClientService to determine whether it can safely use the
   // optimization of allowing docdb (which serves the operation) to pick the read time.
-  return Perform(
-      std::move(ops), {.ensure_read_time_is_set = EnsureReadTimeIsSet::kTrue});
+  return Perform(std::move(ops), {.ensure_read_time_is_set = EnsureReadTimeIsSet::kTrue});
 }
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
@@ -703,7 +708,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
         "DDL operation should not be performed while yb_read_time is set to nonzero.");
     ReadHybridTime::FromMicros(yb_read_time).ToPB(options.mutable_read_time());
   }
-  auto promise = std::make_shared<std::promise<PerformResult>>();
 
   // If all operations belong to the same database then set the namespace.
   // System database template1 is ignored as we may read global system catalog like tablespaces
@@ -758,10 +762,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
-  pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
-    promise->set_value(result);
-  });
-  return PerformFuture(promise->get_future(), this, std::move(ops.relations));
+  auto future = pg_client_.PerformAsync(&options, &ops.operations);
+  return PerformFuture(std::move(future), this, std::move(ops.relations));
 }
 
 Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
@@ -1014,6 +1016,10 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlot
 Result<tserver::PgGetReplicationSlotStatusResponsePB> PgSession::GetReplicationSlotStatus(
     const ReplicationSlotName& slot_name) {
   return pg_client_.GetReplicationSlotStatus(slot_name);
+}
+
+PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
+  return {wait_starter_, wait_event};
 }
 
 }  // namespace yb::pggate

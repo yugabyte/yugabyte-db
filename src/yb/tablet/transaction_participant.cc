@@ -59,6 +59,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
@@ -230,7 +231,7 @@ class TransactionParticipant::Impl
 
   void CompleteShutdown() EXCLUDES(mutex_, status_resolvers_mutex_) {
     LOG_IF_WITH_PREFIX(DFATAL, !Closing()) << __func__ << " w/o StartShutdown";
-
+    DEBUG_ONLY_TEST_SYNC_POINT("TransactionParticipant::Impl::CompleteShutdown");
     if (wait_queue_) {
       wait_queue_->CompleteShutdown();
     }
@@ -254,12 +255,11 @@ class TransactionParticipant::Impl
       std::lock_guard lock(status_resolvers_mutex_);
       status_resolvers.swap(status_resolvers_);
     }
-
-    rpcs_.Shutdown();
     loader_.CompleteShutdown();
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
+    rpcs_.Shutdown();
     shutdown_done_.store(true, std::memory_order_release);
   }
 
@@ -1237,6 +1237,17 @@ class TransactionParticipant::Impl
   }
 
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
+    // Once a WriteQuery passes conflict resolution, it performs all the required read operations
+    // as part of docdb::AssembleDocWriteBatch. While iterating over the relevant intents, it
+    // requests statuses of the corresponding transactions as of the picked read time. On seeing
+    // an ABORTED status, it decides to wait until the coordinator returned safe time so as to not
+    // wrongly interpret a COMMITTED transaction as aborted. A shutdown request could arrive in
+    // the meanwhile and change the state of the tablet peer. If so, return a retryable error
+    // instead of invoking the downstream code which eventually does a blocking wait until the
+    // deadline passes.
+    if (Closing()) {
+      return STATUS_FORMAT(IllegalState, "$0Transaction Participant is shutting down", LogPrefix());
+    }
     return participant_context_.WaitForSafeTime(safe_time, deadline);
   }
 

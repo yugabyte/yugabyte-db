@@ -189,7 +189,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
   private void validateAMI(
       Provider provider, Region region, SetMultimap<String, String> validationErrorsMap) {
     String imageId = region.getYbImage();
-    String fieldDetails = "REGION." + region.getCode() + "." + "IMAGE";
+    String fieldDetails = "REGION." + region.getCode() + ".IMAGE";
     try {
       if (!StringUtils.isEmpty(imageId)) {
         Image image = awsCloudImpl.describeImageOrBadRequest(provider, region, imageId);

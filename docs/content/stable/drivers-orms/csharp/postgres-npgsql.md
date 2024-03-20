@@ -3,7 +3,6 @@ title: PostgreSQL Npgsql driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C# application using PostgreSQL Npgsql driver
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     identifier: postgres-npgsql-driver

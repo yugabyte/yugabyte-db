@@ -12,6 +12,7 @@ import com.google.common.collect.Maps;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.DB;
 import io.ebean.Database;
@@ -169,6 +170,29 @@ public class TestHelper {
     UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
     userIntent.ybSoftwareVersion = version;
     details.upsertPrimaryCluster(userIntent, null);
+    universe.setUniverseDetails(details);
+    universe.save();
+  }
+
+  public static void updateUniverseSoftwareUpgradeState(
+      Universe universe, SoftwareUpgradeState state) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.softwareUpgradeState = state;
+    universe.setUniverseDetails(details);
+    universe.save();
+  }
+
+  public static void updateUniverseIsRollbackAllowed(Universe universe, boolean isRollbackAllowed) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.isSoftwareRollbackAllowed = isRollbackAllowed;
+    universe.setUniverseDetails(details);
+    universe.save();
+  }
+
+  public static void updateUniversePrevSoftwareConfig(
+      Universe universe, UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.prevYBSoftwareConfig = ybSoftwareConfig;
     universe.setUniverseDetails(details);
     universe.save();
   }

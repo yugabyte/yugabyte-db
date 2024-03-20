@@ -1,4 +1,23 @@
 \set ECHO none
+
+-- wait for other processes, wait max 100 sec
+do $$
+declare c int;
+begin
+  if pg_try_advisory_xact_lock(1) then
+    for i in 1..1000 loop
+      perform pg_sleep(0.1);
+      c := (select count(*) from pg_locks where locktype = 'advisory' and objid = 1 and not granted);
+      if c = 1 then
+        return;
+      end if;
+    end loop;
+  else
+    perform pg_advisory_xact_lock(1);
+  end if;
+end;
+$$;
+
 \set VERBOSITY terse
 --Wait for 'pipe_test_owner' created notification to be sent by session A
 SELECT dbms_pipe.receive_message('pipe_test_owner_created_notifier');

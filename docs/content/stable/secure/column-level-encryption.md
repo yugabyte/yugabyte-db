@@ -4,7 +4,6 @@ headerTitle: Column-level encryption
 linkTitle: Column-level encryption
 description: Using column-level encryption in a YugabyteDB cluster.
 headcontent: Enable encryption at rest with a user-generated key
-image: /images/section_icons/secure/prepare-nodes.png
 menu:
   stable:
     identifier: column-level-encryption

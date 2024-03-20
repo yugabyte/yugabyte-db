@@ -9,12 +9,14 @@ CREATE TABLE testpub_tbl3_nopk (foo int, bar int);
 CREATE TABLE testpub_tbl4_nopk (foo int, bar int);
 CREATE PUBLICATION testpub FOR ALL TABLES;
 NOTICE:  tables without primary key will be skipped
+WARNING:  wal_level is insufficient to publish logical changes
+HINT:  Set wal_level to "logical" before creating subscriptions.
 -- testpub_tbl3_nopk should get filtered out.
 SELECT * FROM pg_publication_tables;
- pubname | schemaname |  tablename
----------+------------+--------------
- testpub | public     | testpub_tbl1
- testpub | public     | testpub_tbl2
+ pubname | schemaname |  tablename   | attnames  | rowfilter
+---------+------------+--------------+-----------+-----------
+ testpub | public     | testpub_tbl1 | {id,data} |
+ testpub | public     | testpub_tbl2 | {id,data} |
 (2 rows)
 
 -- errors out since tables without pk are unsupported.

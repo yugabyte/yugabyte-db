@@ -2,7 +2,6 @@
 title: Covering indexes
 linkTitle: Covering indexes
 description: Using covering indexes in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: covering-index-ysql

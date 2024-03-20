@@ -842,6 +842,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
       boolean rotateClientRootCA,
       boolean rootAndClientRootCASame)
       throws IOException, NoSuchAlgorithmException {
+
     UUID rootCA = UUID.randomUUID();
     UUID clientRootCA = UUID.randomUUID();
 

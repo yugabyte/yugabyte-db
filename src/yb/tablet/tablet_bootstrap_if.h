@@ -127,6 +127,10 @@ class TabletBootstrapTestHooksIf {
   // OpIds have been flushed in to regular and intents RocksDBs.
   virtual boost::optional<DocDbOpIds> GetFlushedOpIdsOverride() const = 0;
 
+  // This is called during TabletBootstrap initialization so that the test can pretent certain
+  // OpId has been flushed in retryable requests;
+  virtual boost::optional<OpId> GetFlushedRetryableRequestsOpIdOverride() const = 0;
+
   // TabletBootstrap calls this when an operation is replayed.
   // replay_decision is true for transaction update operations that have already been applied to the
   // regular RocksDB but not to the intents RocksDB.
@@ -154,6 +158,10 @@ class TabletBootstrapTestHooksIf {
   // it discovers the first OpId of a log segment. OpId will be invalid if we could not read the
   // first OpId. This is called in the order from newer to older segments;
   virtual void FirstOpIdOfSegment(const std::string& path, OpId first_op_id) = 0;
+
+  // Tablet bootstrap calls this before replaying each segment to track the first entry read from
+  // the segment. OpId will be invalid if nothing read from the segment.
+  virtual void FirstOpIdReadFromReplayedSegment(const std::string& path, OpId first_op_id) = 0;
 };
 
 struct BootstrapTabletData {

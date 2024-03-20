@@ -194,6 +194,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           requestedTableInfoList,
           true /* isReplicationConfigCreated */,
           taskParams().getPitrParams());
+
+      if (xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                State.Replicating,
+                SourceUniverseState.ReplicatingData,
+                TargetUniverseState.ReceivingData,
+                null /* keyspacePending */)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
     }
 
     // Add the subtasks to set up replication for tables that need bootstrapping if any.

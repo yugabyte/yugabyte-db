@@ -15,6 +15,7 @@
 
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+
 #include "yb/util/thread.h"
 
 namespace yb {
@@ -35,10 +36,16 @@ Status BackgroundTask::Init() {
   return Status::OK();
 }
 
+void BackgroundTask::SetInterval(std::chrono::milliseconds interval_msec) {
+  std::unique_lock lock(mutex_);
+  interval_ = interval_msec;
+  VLOG(2) << "BackgroundTask interval changed to " << ToString(interval_msec);
+}
+
 // Wait for pending tasks and shut down
 void BackgroundTask::Shutdown() {
   {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock lock(mutex_);
     if (closing_) {
       VLOG(2) << "BackgroundTask already shut down";
       return;
@@ -69,8 +76,8 @@ void BackgroundTask::Run() {
 }
 
 bool BackgroundTask::WaitForJob() {
-  std::unique_lock<std::mutex> lock(mutex_);
-  while(true) {
+  std::unique_lock lock(mutex_);
+  while (true) {
     if (closing_) {
       return false;
     }

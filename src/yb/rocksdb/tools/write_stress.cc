@@ -92,34 +92,33 @@ int main() {
 using GFLAGS::ParseCommandLineFlags;
 using GFLAGS::SetUsageMessage;
 
-DEFINE_UNKNOWN_int32(key_size, 10, "Key size");
-DEFINE_UNKNOWN_int32(value_size, 100, "Value size");
-DEFINE_UNKNOWN_string(db, "", "Use the db with the following name.");
-DEFINE_UNKNOWN_bool(destroy_db, true,
-            "Destory the existing DB before running the test");
+DEFINE_NON_RUNTIME_int32(key_size, 10, "Key size");
+DEFINE_NON_RUNTIME_int32(value_size, 100, "Value size");
+DEFINE_NON_RUNTIME_string(db, "", "Use the db with the following name.");
+DEFINE_NON_RUNTIME_bool(destroy_db, true, "Destory the existing DB before running the test");
 
-DEFINE_UNKNOWN_int32(runtime_sec, 10 * 60, "How long are we running for, in seconds");
-DEFINE_UNKNOWN_int32(seed, 139, "Random seed");
+DEFINE_NON_RUNTIME_int32(runtime_sec, 10 * 60, "How long are we running for, in seconds");
+DEFINE_NON_RUNTIME_int32(seed, 139, "Random seed");
 
-DEFINE_UNKNOWN_double(prefix_mutate_period_sec, 1.0,
-              "How often are we going to mutate the prefix");
-DEFINE_UNKNOWN_double(first_char_mutate_probability, 0.1,
-              "How likely are we to mutate the first char every period");
-DEFINE_UNKNOWN_double(second_char_mutate_probability, 0.2,
-              "How likely are we to mutate the second char every period");
-DEFINE_UNKNOWN_double(third_char_mutate_probability, 0.5,
-              "How likely are we to mutate the third char every period");
+DEFINE_NON_RUNTIME_double(prefix_mutate_period_sec, 1.0,
+    "How often are we going to mutate the prefix");
+DEFINE_NON_RUNTIME_double(first_char_mutate_probability, 0.1,
+    "How likely are we to mutate the first char every period");
+DEFINE_NON_RUNTIME_double(second_char_mutate_probability, 0.2,
+    "How likely are we to mutate the second char every period");
+DEFINE_NON_RUNTIME_double(
+    third_char_mutate_probability, 0.5, "How likely are we to mutate the third char every period");
 
-DEFINE_UNKNOWN_int32(iterator_hold_sec, 5,
-             "How long will the iterator hold files before it gets destroyed");
+DEFINE_NON_RUNTIME_int32(iterator_hold_sec, 5,
+    "How long will the iterator hold files before it gets destroyed");
 
-DEFINE_UNKNOWN_double(sync_probability, 0.01, "How often are we syncing writes");
-DEFINE_UNKNOWN_bool(delete_obsolete_files_with_fullscan, false,
-            "If true, we delete obsolete files after each compaction/flush "
-            "using GetChildren() API");
-DEFINE_UNKNOWN_bool(low_open_files_mode, false,
-            "If true, we set max_open_files to 20, so that every file access "
-            "needs to reopen it");
+DEFINE_NON_RUNTIME_double(sync_probability, 0.01, "How often are we syncing writes");
+DEFINE_NON_RUNTIME_bool(delete_obsolete_files_with_fullscan, false,
+    "If true, we delete obsolete files after each compaction/flush "
+    "using GetChildren() API");
+DEFINE_NON_RUNTIME_bool(low_open_files_mode, false,
+    "If true, we set max_open_files to 20, so that every file access "
+    "needs to reopen it");
 
 namespace rocksdb {
 

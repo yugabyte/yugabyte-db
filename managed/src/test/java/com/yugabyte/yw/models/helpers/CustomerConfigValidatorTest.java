@@ -17,6 +17,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNA
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -93,8 +94,14 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             mockAWSUtil,
             mockGCPUtil);
     when(mockStorageUtilFactory.getCloudUtil("AZ")).thenReturn(mockAZUtil);
-    doCallRealMethod().when(mockAWSUtil).getConfigLocationInfo(any());
-    doCallRealMethod().when(mockGCPUtil).getConfigLocationInfo(any());
+    doCallRealMethod().when(mockAWSUtil).getRegionLocationsMap(any());
+    doCallRealMethod().when(mockGCPUtil).getRegionLocationsMap(any());
+    doCallRealMethod()
+        .when(mockAWSUtil)
+        .getCloudLocationInfo(nullable(String.class), any(), nullable(String.class));
+    doCallRealMethod()
+        .when(mockGCPUtil)
+        .getCloudLocationInfo(nullable(String.class), any(), nullable(String.class));
   }
 
   @Test

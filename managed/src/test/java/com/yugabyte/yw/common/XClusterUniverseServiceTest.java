@@ -7,10 +7,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
@@ -23,6 +26,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.Before;
@@ -41,12 +45,15 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
   @Mock private YBClientService ybService;
   @Mock private AutoFlagUtil mockAutoFlagUtil;
   @Mock RuntimeConfGetter mockConfGetter;
+  @Mock ThreadPoolExecutor executor;
 
   @Before
   public void setup() {
     ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse("univ-1");
     TestHelper.updateUniverseVersion(defaultUniverse, "2.17.0.0-b1");
+    when(mockPlatformExecutorFactory.createExecutor(anyString(), any())).thenReturn(executor);
+
     xClusterUniverseService =
         new XClusterUniverseService(
             mockGFlagsValidation,
@@ -92,9 +99,6 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
       when(mockConfGetter.getConfForScope(
               any(Universe.class), eq(UniverseConfKeys.promoteAutoFlag)))
           .thenReturn(true);
-      when(mockConfGetter.getConfForScope(
-              any(Universe.class), eq(UniverseConfKeys.enableRollbackSupport)))
-          .thenReturn(false);
       GFlagsValidation.AutoFlagDetails flag = new GFlagsValidation.AutoFlagDetails();
       flag.name = "FLAG_1";
       GFlagsValidation.AutoFlagsPerServer flagsPerServer =
@@ -117,7 +121,6 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
       assertFalse(
           xClusterUniverseService.canPromoteAutoFlags(universeSet, defaultUniverse, "2.17.0.0-b1"));
     } catch (Exception e) {
-      System.out.println(e.getMessage());
       fail();
     }
   }
@@ -178,5 +181,40 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
                 .map(Universe::getUniverseUUID)
                 .collect(Collectors.toSet()),
             Collections.singleton(excludeConfig.getUuid())));
+  }
+
+  @Test
+  public void testGetImpactedTargetUniverseWithUpgradeFinalize() throws Exception {
+    Universe univ1 = ModelFactory.createUniverse("univ-2");
+    XClusterConfig.create("test-1", defaultUniverse.getUniverseUUID(), univ1.getUniverseUUID());
+    TestHelper.updateUniverseVersion(univ1, "2.16.0.0-b1");
+    Universe univ2 = ModelFactory.createUniverse("univ-3");
+    XClusterConfig.create("test-2", defaultUniverse.getUniverseUUID(), univ2.getUniverseUUID());
+    TestHelper.updateUniverseVersion(univ2, "2.24.0.0-b1");
+
+    GFlagsValidation.AutoFlagDetails flag1 = new GFlagsValidation.AutoFlagDetails();
+    flag1.name = "FLAG_1";
+    flag1.flagClass = 3;
+    GFlagsValidation.AutoFlagDetails flag2 = new GFlagsValidation.AutoFlagDetails();
+    flag2.name = "FLAG_2";
+    flag2.flagClass = 4;
+    GFlagsValidation.AutoFlagsPerServer flagsPerServer = new GFlagsValidation.AutoFlagsPerServer();
+    flagsPerServer.autoFlagDetails = Arrays.asList(flag1, flag2);
+    when(mockGFlagsValidation.extractAutoFlags(anyString(), (UniverseTaskBase.ServerType) any()))
+        .thenReturn(flagsPerServer);
+
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenReturn(ImmutableSet.of("FLAG_1", "FLAG_2"));
+    assertEquals(
+        ImmutableSet.of(univ1.getUniverseUUID()),
+        xClusterUniverseService.getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(
+            defaultUniverse));
+
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenReturn(ImmutableSet.of("FLAG_1"));
+    assertEquals(
+        ImmutableSet.of(univ1.getUniverseUUID(), univ2.getUniverseUUID()),
+        xClusterUniverseService.getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(
+            defaultUniverse));
   }
 }

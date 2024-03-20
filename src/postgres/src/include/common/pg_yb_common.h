@@ -130,11 +130,6 @@ extern const char *YbGetTmpDir();
 extern bool YBIsCollationEnabled();
 
 /**
- * Returns whether failure injection is enabled for matview refreshes.
- */
-extern bool YBIsRefreshMatviewFailureInjected();
-
-/**
  * Returns the value of the configration variable `max_clock_sec_usec`
  * returns -1 if the configuration was not found.
  */
@@ -166,5 +161,10 @@ extern bool YBIsTestOnlinePg11ToPg15Upgrade();
  * Used for online upgrades.
  */
 Oid YBGetDatabaseOidFromEnv(const char *database_name);
+
+/**
+ * Returns true if Active Session History should be enabled.
+ */
+extern bool YBEnableAsh();
 
 #endif /* PG_YB_COMMON_H */

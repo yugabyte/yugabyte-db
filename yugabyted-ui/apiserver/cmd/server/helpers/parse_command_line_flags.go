@@ -6,7 +6,8 @@ import (
 
 var (
     HOST          string
-    PORT          int
+    YsqlPort      int
+    YcqlPort      int
     Secure        bool
     DbName        string
     DbYsqlUser    string
@@ -22,7 +23,8 @@ var (
 func init() {
     flag.StringVar(&HOST, "database_host", "127.0.0.1",
         "Advertise address of the local YugabyteDB node.")
-    flag.IntVar(&PORT, "database_port", 5433, "YSQL port.")
+    flag.IntVar(&YsqlPort, "ysql_port", 5433, "YSQL port.")
+    flag.IntVar(&YcqlPort, "ycql_port", 9042, "YCQL port.")
     flag.BoolVar(&Secure, "secure", false, "API server use secure or insecure mode.")
     flag.StringVar(&DbName, "database_name", "yugabyte", "database for retrieving metrics.")
     flag.StringVar(&DbYsqlUser, "ysql_username", "yugabyte",

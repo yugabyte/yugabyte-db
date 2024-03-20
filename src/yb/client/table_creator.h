@@ -73,7 +73,9 @@ class YBTableCreator {
 
   YBTableCreator& is_matview(bool is_matview);
 
-  YBTableCreator& matview_pg_table_id(const std::string& matview_pg_table_id);
+  YBTableCreator& pg_table_id(const std::string& pg_table_id);
+
+  YBTableCreator& old_rewrite_table_id(const std::string& old_rewrite_table_id);
 
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
@@ -221,7 +223,12 @@ class YBTableCreator {
 
   boost::optional<bool> is_matview_;
 
-  std::string matview_pg_table_id_;
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  TableId pg_table_id_;
+
+  // Used during table rewrite - the TableId of the old DocDB table that is being rewritten.
+  TableId old_rewrite_table_id_;
 
   const TransactionMetadata* txn_ = nullptr;
 

@@ -4,30 +4,31 @@ SET DATESTYLE TO ISO;
 SET client_encoding = utf8;
 \set ECHO all
 
+SET search_path TO public, oracle;
+
 --
 -- test built-in date type oracle compatibility functions
 --
 
-SELECT add_months ('2003-08-01', 3);
-SELECT add_months ('2003-08-01', -3);
-SELECT add_months ('2003-08-21', -3);
-SELECT add_months ('2003-01-31', 1);
-SELECT add_months ('2008-02-28', 1);
-SELECT add_months ('2008-02-29', 1);
-SELECT add_months ('2008-01-31', 12);
-SELECT add_months ('2008-01-31', -12);
-SELECT add_months ('2008-01-31', 95903);
-SELECT add_months ('2008-01-31', -80640);
-SELECT add_months ('03-21-2008',3);
-SELECT add_months ('21-MAR-2008',3);
-SELECT add_months ('21-MAR-08',3);
-SELECT add_months ('2008-MAR-21',3);
-SELECT add_months ('March 21,2008',3);
-SELECT add_months('03/21/2008',3);
-SELECT add_months('20080321',3);
-SELECT add_months('080321',3);
+SELECT add_months (date '2003-08-01', 3);
+SELECT add_months (date '2003-08-01', -3);
+SELECT add_months (date '2003-08-21', -3);
+SELECT add_months (date '2003-01-31', 1);
+SELECT add_months (date '2008-02-28', 1);
+SELECT add_months (date '2008-02-29', 1);
+SELECT add_months (date '2008-01-31', 12);
+SELECT add_months (date '2008-01-31', -12);
+SELECT add_months (date '2008-01-31', 95903);
+SELECT add_months (date '2008-01-31', -80640);
+SELECT add_months (date '03-21-2008',3);
+SELECT add_months (date '21-MAR-2008',3);
+SELECT add_months (date '21-MAR-08',3);
+SELECT add_months (date '2008-MAR-21',3);
+SELECT add_months (date 'March 21,2008',3);
+SELECT add_months(date '03/21/2008',3);
+SELECT add_months(date '20080321',3);
+SELECT add_months(date '080321',3);
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT add_months ('2003-08-01 10:12:21', 3);
 SELECT add_months ('2003-08-01 10:21:21', -3);
 SELECT add_months ('2003-08-21 12:21:21', -3);
@@ -46,15 +47,14 @@ SELECT add_months ('March 21,2008 12:32:12',3);
 SELECT add_months('03/21/2008 12:32:12',3);
 SELECT add_months('20080321 123244',3);
 SELECT add_months('080321 121212',3);
-SET search_path TO default;
 
 SELECT last_day(to_date('2003/03/15', 'yyyy/mm/dd'));
 SELECT last_day(to_date('2003/02/03', 'yyyy/mm/dd'));
 SELECT last_day(to_date('2004/02/03', 'yyyy/mm/dd'));
-SELECT last_day('1900-02-01');
-SELECT last_day('2000-02-01');
-SELECT last_day('2007-02-01');
-SELECT last_day('2008-02-01');
+SELECT last_day(date '1900-02-01');
+SELECT last_day(date '2000-02-01');
+SELECT last_day(date '2007-02-01');
+SELECT last_day(date '2008-02-01');
 
 SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT last_day(to_date('2003/03/15 11:12:21', 'yyyy/mm/dd hh:mi:ss'));
@@ -64,17 +64,16 @@ SELECT last_day('1900-02-01 12:12:11');
 SELECT last_day('2000-02-01 121143');
 SELECT last_day('2007-02-01 12:21:33');
 SELECT last_day('2008-02-01 121212');
-SET search_path TO default;
 
-SELECT next_day ('2003-08-01', 'TUESDAY');
-SELECT next_day ('2003-08-06', 'WEDNESDAY');
-SELECT next_day ('2003-08-06', 'SUNDAY');
-SELECT next_day ('2008-01-01', 'sun');
-SELECT next_day ('2008-01-01', 'sunAAA');
-SELECT next_day ('2008-01-01', 1);
-SELECT next_day ('2008-01-01', 7);
+SET search_path TO public, oracle;
+SELECT next_day (date '2003-08-01', 'TUESDAY');
+SELECT next_day (date '2003-08-06', 'WEDNESDAY');
+SELECT next_day (date '2003-08-06', 'SUNDAY');
+SELECT next_day (date '2008-01-01', 'sun');
+SELECT next_day (date '2008-01-01', 'sunAAA');
+SELECT next_day (date '2008-01-01', 1);
+SELECT next_day (date '2008-01-01', 7);
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT next_day ('2003-08-01 111211', 'TUESDAY');
 SELECT next_day ('2003-08-06 10:11:43', 'WEDNESDAY');
 SELECT next_day ('2003-08-06 11:21:21', 'SUNDAY');
@@ -82,7 +81,6 @@ SELECT next_day ('2008-01-01 111343', 'sun');
 SELECT next_day ('2008-01-01 121212', 'sunAAA');
 SELECT next_day ('2008-01-01 111213', 1);
 SELECT next_day ('2008-01-01 11:12:13', 7);
-SET search_path TO default;
 
 SELECT months_between (to_date ('2003/01/01', 'yyyy/mm/dd'), to_date ('2003/03/14', 'yyyy/mm/dd'));
 SELECT months_between (to_date ('2003/07/01', 'yyyy/mm/dd'), to_date ('2003/03/14', 'yyyy/mm/dd'));
@@ -94,7 +92,6 @@ SELECT months_between ('2008-02-29', '2008-03-31');
 SELECT months_between ('2008-02-29', '2008-04-30');
 SELECT trunc(months_between('21-feb-2008', '2008-02-29'));
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT months_between (to_date ('2003/01/01 12:12:12', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/03/14 11:11:11', 'yyyy/mm/dd h24:mi:ss'));
 SELECT months_between (to_date ('2003/07/01 10:11:11', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/03/14 10:12:12', 'yyyy/mm/dd h24:mi:ss'));
 SELECT months_between (to_date ('2003/07/02 11:21:21', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/07/02 11:11:11', 'yyyy/mm/dd h24:mi:ss'));
@@ -104,7 +101,6 @@ SELECT months_between ('2008-01-31 11:32:11', '2008-02-29 11:12:12');
 SELECT months_between ('2008-02-29 10:11:13', '2008-03-31 10:12:11');
 SELECT months_between ('2008-02-29 111111', '2008-04-30 12:12:12');
 SELECT trunc(months_between('21-feb-2008 12:11:11', '2008-02-29 11:11:11'));
-SET search_path TO default;
 
 select length('jmenuji se Pavel Stehule'),dbms_pipe.pack_message('jmenuji se Pavel Stehule');
 select length('a bydlim ve Skalici'),dbms_pipe.pack_message('a bydlim ve Skalici');
@@ -210,7 +206,7 @@ SET search_path TO oracle,"$user", public, pg_catalog;
 select next_day(to_date('01-Aug-03 101111', 'DD-MON-YY h24miss'), 'TUESDAY') = to_date ('05-Aug-03 101111', 'DD-MON-YY h24miss');
 select next_day(to_date('06-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS'), 'WEDNESDAY') = to_date ('13-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS');
 select next_day(to_date('06-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS'), 'SUNDAY') = to_date ('10-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS');
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 select instr('Tech on the net', 'e') =2;
 select instr('Tech on the net', 'e', 1, 1) = 2;
@@ -233,13 +229,26 @@ select 0 = instr('abcabcabc', 'abca', -10);
 select 1 = instr('abcabcabc', 'abca', 1, 1);
 select 4 = instr('abcabcabc', 'abca', 1, 2);
 select 0 = instr('abcabcabc', 'abca', 1, 3);
+select 0 =  instr('ab;cdx', ';', 0);
 select oracle.substr('This is a test', 6, 2) = 'is';
 select oracle.substr('This is a test', 6) =  'is a test';
 select oracle.substr('TechOnTheNet', 1, 4) =  'Tech';
 select oracle.substr('TechOnTheNet', -3, 3) =  'Net';
 select oracle.substr('TechOnTheNet', -6, 3) =  'The';
 select oracle.substr('TechOnTheNet', -8, 2) =  'On';
+
+set orafce.using_substring_zero_width_in_substr TO orafce;
 select oracle.substr('TechOnTheNet', -8, 0) =  '';
+
+set orafce.using_substring_zero_width_in_substr TO oracle;
+select oracle.substr('TechOnTheNet', -8, 0) is null;
+
+set orafce.using_substring_zero_width_in_substr TO warning_oracle;
+select oracle.substr('TechOnTheNet', -8, 0) is null;
+
+set orafce.using_substring_zero_width_in_substr TO default;
+select oracle.substr('TechOnTheNet', -8, 0) is null;
+
 select oracle.substr('TechOnTheNet', -8, -1) =  '';
 select oracle.substr(1234567,3.6::smallint)='4567';
 select oracle.substr(1234567,3.6::int)='4567';
@@ -283,7 +292,7 @@ select nvl('A'::text, 'B');
 select nvl(NULL::text, 'B');
 select nvl(NULL::text, NULL);
 select nvl(1, 2);
-select nvl(NULL, 2);
+select nvl(NULL::int, 2);
 select nvl2('A'::text, 'B', 'C');
 select nvl2(NULL::text, 'B', 'C');
 select nvl2('A'::text, NULL, 'C');
@@ -501,6 +510,17 @@ select to_char(1234567890.12345);
 select to_char('4.00'::numeric);
 select to_char('4.0010'::numeric);
 
+select to_char('-44444');
+select to_char('1234567890123456');
+select to_char('123.456');
+select to_char('123abc');
+select to_char('你好123@$%abc');
+select to_char('1234567890123456789012345678901234567890123456789012345678901234567890');
+select to_char('');
+select to_char(' ');
+select to_char(null);
+
+
 SELECT to_number('123'::text);
 SELECT to_number('123.456'::text);
 SELECT to_number(123);
@@ -641,7 +661,7 @@ select to_date('21052014 12:13:44+05:30');
 set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select to_date('210514 12:13:44+05:30');
 set orafce.nls_date_format='DDMMYY HH24:MI:SS.MS';
-select pg_catalog.to_date('210514 12:13:44.55');
+select oracle.orafce__obsolete_to_date('210514 12:13:44.55');
 select oracle.to_date('210514 12:13:44.55');
 
 -- Tests for oracle.to_date(text,text)
@@ -659,7 +679,7 @@ select to_date('14-Jan08 11:44:49+05:30' ,'YY-MonDD HH24:MI:SS');
 select to_date('14-08Jan 11:44:49+05:30','YY-DDMon HH24:MI:SS');
 select to_date('21052014 12:13:44+05:30','DDMMYYYY HH24:MI:SS');
 select to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS');
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 -- Tests for + operator with DATE and number(smallint,integer,bigint,numeric)
 SET search_path TO oracle,"$user", public, pg_catalog;
@@ -704,7 +724,7 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') + 9::numeric;
 SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-01-01 00:00:00') + 1.5;
 SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') + 1.5;
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 -- Tests for - operator with DATE and number(smallint,integer,bigint,numeric)
 SET search_path TO oracle,"$user", public, pg_catalog;
@@ -749,7 +769,7 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') - 9::numeric;
 SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-01-01 00:00:00') - 1.5;
 SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') - 1.5;
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 --Tests for oracle.to_char(timestamp)-used to set the DATE output format
 SET search_path TO oracle,"$user", public, pg_catalog;
@@ -789,7 +809,7 @@ set orafce.nls_date_format='YY-MonDD HH24:MI:SS';
 select oracle.to_char(oracle.to_date('21052014 12:13:44+05:30','DDMMYYYY HH24:MI:SS'));
 set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS'));
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 --Tests for oracle.-(oracle.date,oracle.date)
 SET search_path TO oracle,"$user", public, pg_catalog;
@@ -810,7 +830,7 @@ SELECT trunc(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
 SELECT round(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
 
 
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 --
 -- Note: each Japanese character used below has display width of 2, otherwise 1.
@@ -1003,7 +1023,10 @@ CREATE TRIGGER trg_test_xx BEFORE INSERT OR UPDATE
 
 INSERT INTO trg_test VALUES('',10, 'AHOJ', NULL, NULL);
 INSERT INTO trg_test VALUES('AHOJ', NULL, '', '2020-01-01', 100);
-SELECT * FROM trg_test order by a asc;
+
+SELECT * FROM (
+SELECT * FROM trg_test
+LIMIT ALL) ybview ORDER BY a DESC;
 
 DELETE FROM trg_test;
 
@@ -1015,7 +1038,9 @@ CREATE TRIGGER trg_test_xx BEFORE INSERT OR UPDATE
 INSERT INTO trg_test VALUES(NULL, 10, 'AHOJ', NULL, NULL);
 INSERT INTO trg_test VALUES('AHOJ', NULL, NULL, '2020-01-01', 100);
 
-SELECT * FROM trg_test order by a asc;
+SELECT * FROM (
+SELECT * FROM trg_test
+LIMIT ALL) ybview ORDER BY a NULLS FIRST;
 
 DROP TABLE trg_test;
 
@@ -1030,3 +1055,61 @@ SELECT oracle.unistr('wrong: \+2FFFFF');
 SELECT oracle.unistr('wrong: \udb99\u0061');
 SELECT oracle.unistr('wrong: \U0000db99\U00000061');
 SELECT oracle.unistr('wrong: \U002FFFFF');
+----
+-- Tests for the greatest/least scalar function
+----
+-- The PostgreSQL native function returns NULL only if all parameters are nulls
+SELECT greatest(2, 6, 8);
+SELECT greatest(2, NULL, 8);
+SELECT least(2, 6, 8);
+SELECT least(2, NULL, 8);
+
+-- The Oracle function returns NULL on NULL input, even a single parameter
+SELECT oracle.greatest(2, 6, 8, 4);
+SELECT oracle.greatest(2, NULL, 8, 4);
+SELECT oracle.least(2, 6, 8, 1);
+SELECT oracle.least(2, NULL, 8, 1);
+
+-- Test different data type
+SELECT oracle.greatest('A'::text, 'B'::text, 'C'::text, 'D'::text);
+SELECT oracle.greatest('A'::bpchar, 'B'::bpchar, 'C'::bpchar, 'D'::bpchar);
+SELECT oracle.greatest(1::bigint,2::bigint,3::bigint,4::bigint);
+SELECT oracle.greatest(1::integer,2::integer,3::integer,4::integer);
+SELECT oracle.greatest(1::smallint,2::smallint,3::smallint,4::smallint);
+SELECT oracle.greatest(1.2::numeric,2.4::numeric,2.3::numeric,2.2::numeric);
+SELECT oracle.greatest(1.2::double precision,2.4::double precision,2.3::double precision,2.2::double precision);
+SELECT oracle.greatest(1.2::real,2.4::real,2.2::real,2.3::real);
+SELECT oracle.least('A'::text, 'B'::text, 'C'::text, 'D'::text);
+SELECT oracle.least('A'::bpchar, 'B'::bpchar, 'C'::bpchar, 'D'::bpchar);
+SELECT oracle.least(1::bigint,2::bigint,3::bigint,4::bigint);
+SELECT oracle.least(1::integer,2::integer,3::integer,4::integer);
+SELECT oracle.least(1::smallint,2::smallint,3::smallint,4::smallint);
+SELECT oracle.least(1.2::numeric,2.4::numeric,2.3::numeric,2.2::numeric);
+SELECT oracle.least(1.2::double precision,2.4::double precision,2.3::double precision,2.2::double precision);
+SELECT oracle.least(1.2::real,2.4::real,2.2::real,2.3::real);
+
+SELECT i, oracle.greatest(100, 24, 1234, 12, i) FROM generate_series(1,3) g(i);
+
+-- test remainder function
+-- YB note: add ordering column.
+CREATE TABLE testorafce_remainder(v1 int, v2 int,
+                                  ybsort serial, PRIMARY KEY (ybsort ASC));
+
+INSERT INTO testorafce_remainder VALUES(24, 7);
+INSERT INTO testorafce_remainder VALUES(24, 6);
+INSERT INTO testorafce_remainder VALUES(24, 5);
+INSERT INTO testorafce_remainder VALUES(-58, -10);
+INSERT INTO testorafce_remainder VALUES(58, 10);
+INSERT INTO testorafce_remainder VALUES(58, -10);
+INSERT INTO testorafce_remainder VALUES(58, 10);
+INSERT INTO testorafce_remainder VALUES(-44, -10);
+INSERT INTO testorafce_remainder VALUES(44, 10);
+INSERT INTO testorafce_remainder VALUES(44, -10);
+INSERT INTO testorafce_remainder VALUES(44, 10);
+
+SELECT v1, v2, oracle.remainder(v1, v2) FROM testorafce_remainder;
+SELECT v1, v2, oracle.remainder(v1::smallint, v2::smallint) FROM testorafce_remainder;
+SELECT v1, v2, oracle.remainder(v1::bigint, v2::bigint) FROM testorafce_remainder;
+SELECT v1, v2, oracle.remainder(v1::numeric, v2::numeric) FROM testorafce_remainder;
+
+DROP TABLE testorafce_remainder;

@@ -39,6 +39,13 @@ import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.Where;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Transient;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -49,16 +56,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.ManyToOne;
-import javax.persistence.OneToMany;
-import javax.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -93,7 +93,7 @@ public class Region extends Model {
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Moved to details.cloudInfo aws/gcp/azure ybImage property",
       example = "TODO",
       accessMode = READ_WRITE)
@@ -166,7 +166,7 @@ public class Region extends Model {
   @ApiModelProperty(
       required = false,
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Moved to regionDetails.cloudInfo aws/azure securityGroupId property")
   public String getSecurityGroupId() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
@@ -193,7 +193,7 @@ public class Region extends Model {
   @ApiModelProperty(
       required = false,
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Moved to regionDetails.cloudInfo aws/azure vnet property")
   public String getVnetName() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);

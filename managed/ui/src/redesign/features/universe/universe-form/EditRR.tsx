@@ -9,6 +9,7 @@ import { UniverseForm } from './form/UniverseForm';
 import {
   DeleteClusterModal,
   FullMoveModal,
+  KubernetesPlacementModal,
   PlacementModal,
   ResizeNodeModal,
   SmartResizeModal
@@ -49,6 +50,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
   const [showSRModal, setSRModal] = useState(false); //SR -> Smart Resize
   const [showRNModal, setRNModal] = useState(false); //RN -> Resize Nodes
   const [showPlacementModal, setPlacementModal] = useState(false);
+  const [showK8Modal, setK8Modal] = useState(false);
   const [showDeleteRRModal, setShowDeleteRRModal] = useState(false);
   const [universePayload, setUniversePayload] = useState<UniverseDetails | null>(null);
 
@@ -117,7 +119,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
       else if (updateOptions.includes(UpdateActions.SMART_RESIZE_NON_RESTART)) setRNModal(true);
       else if (updateOptions.includes(UpdateActions.FULL_MOVE)) setFMModal(true);
       else setPlacementModal(true);
-    } else editReadReplica(configurePayload);
+    } else setK8Modal(true);
   };
 
   if (isLoading || contextState.isLoading) return <YBLoading />;
@@ -185,6 +187,16 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
               oldConfigData={universe.universeDetails}
               newConfigData={universePayload}
               onClose={() => setPlacementModal(false)}
+              onSubmit={() => editReadReplica(universePayload)}
+            />
+          )}
+          {showK8Modal && (
+            <KubernetesPlacementModal
+              open={showK8Modal}
+              isPrimary={false}
+              oldConfigData={universe.universeDetails}
+              newConfigData={universePayload}
+              onClose={() => setK8Modal(false)}
               onSubmit={() => editReadReplica(universePayload)}
             />
           )}

@@ -47,6 +47,7 @@ export const NonEditableInUseProviderField: {
   ],
   [ProviderCode.GCP]: [
     'gceProject',
+    'sharedVPCProject',
     'vpcSetupType',
     'destVpcId',
     'sshUser',

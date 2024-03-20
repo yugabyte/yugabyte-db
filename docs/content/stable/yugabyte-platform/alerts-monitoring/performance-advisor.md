@@ -3,7 +3,6 @@ title: YBA Performance Advisor
 linkTitle: Performance Advisor
 description: Scan your universe to discover performance optimizations.
 headcontent: Scan your universe to discover performance optimizations
-image: /images/section_icons/deploy/enterprise.png
 earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
   stable_yugabyte-platform:

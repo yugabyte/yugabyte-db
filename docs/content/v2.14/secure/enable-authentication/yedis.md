@@ -2,7 +2,6 @@
 title: Enable users in YEDIS
 headerTitle: Enable users in YEDIS
 description: Enable users in YEDIS.
-image: /images/section_icons/secure/authentication.png
 menu:
   v2.14:
     name: Enable users

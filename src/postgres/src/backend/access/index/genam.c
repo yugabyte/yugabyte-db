@@ -129,6 +129,16 @@ RelationGetIndexScan(Relation indexRelation, int nkeys, int norderbys)
 	scan->xs_hitup = NULL;
 	scan->xs_hitupdesc = NULL;
 
+	/*
+	 * Upstream PG commit c2fe139c201c48f1133e9fbea2dd99b8efe2fadd removes
+	 * setting the item pointer invalid.  Bring that back for the sake of YB
+	 * asserts that that PG field is not changed in YB logic.
+	 *
+	 * YB_TODO(jason): the intention of this is to set both PG and YB fields
+	 * invalid, so watch out in case we decide to change the definition of this
+	 * macro to only set the PG fields invalid.
+	 */
+	ItemPointerSetInvalid(&scan->xs_heaptid);
 	scan->yb_exec_params = NULL;
 	scan->yb_scan_plan = NULL;
 	scan->yb_rel_pushdown = NULL;

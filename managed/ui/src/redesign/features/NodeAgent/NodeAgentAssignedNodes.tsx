@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { useQuery, useMutation } from 'react-query';
 import { NodeAgentAPI, QUERY_KEY } from './api';
 import { NodeAgentData } from './NodeAgentData';

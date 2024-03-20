@@ -4,7 +4,6 @@ headerTitle: Partial indexes
 linkTitle: Partial indexes
 description: Using Partial indexes in YCQL
 headContent: Explore partial indexes in YugabyteDB using YCQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: partial-index-ycql

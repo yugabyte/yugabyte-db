@@ -3,7 +3,6 @@ title: View COPY status with pg_stat_progress_copy
 linkTitle: View COPY status
 description: Use pg_stat_progress_copy to get the COPY command status, number of tuples processed, and other COPY progress reports.
 headerTitle: View COPY status with pg_stat_progress_copy
-image: /images/section_icons/index/develop.png
 menu:
   stable:
     identifier: pg-stat-progress-copy

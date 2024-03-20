@@ -2,7 +2,6 @@
 title: Collations
 linkTitle: Collations
 description: YSQL collations
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: advanced-features-collations

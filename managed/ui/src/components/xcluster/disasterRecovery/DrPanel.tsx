@@ -39,11 +39,9 @@ import { FailoverIcon } from '../icons/FailoverIcon';
 import { RepairDrConfigModal } from './repairConfig/RepairDrConfigModal';
 import { DrConfigOverview } from './drConfig/DrConfigOverview';
 import { DrBannerSection } from './DrBannerSection';
-import {
-  RbacValidator,
-  hasNecessaryPerm
-} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 
 import { TableType } from '../../../redesign/helpers/dtos';
 import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
@@ -157,6 +155,29 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     }))
   ) as UseQueryResult<XClusterConfig>[];
 
+  const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
+    drConfigQuery.data ?? {};
+  // For DR, the currentUniverseUuid is not guaranteed to be the sourceUniverseUuid.
+  const participantUniveresUuid =
+    currentUniverseUuid !== targetUniverseUuid ? targetUniverseUuid : sourceUniverseUuid;
+  const participantUniverseQuery = useQuery(
+    universeQueryKey.detail(participantUniveresUuid),
+    () => api.fetchUniverse(participantUniveresUuid),
+    { enabled: !!participantUniveresUuid }
+  );
+
+  const [sourceUniverse, targetUniverse] =
+    currentUniverseUuid !== targetUniverseUuid
+      ? [currentUniverseQuery.data, participantUniverseQuery.data]
+      : [participantUniverseQuery.data, currentUniverseQuery.data];
+  useInterval(() => {
+    if (getUniverseStatus(sourceUniverse)?.state === UniverseState.PENDING) {
+      queryClient.invalidateQueries(universeQueryKey.detail(sourceUniverse?.universeUUID));
+    }
+    if (getUniverseStatus(targetUniverse)?.state === UniverseState.PENDING) {
+      queryClient.invalidateQueries(universeQueryKey.detail(targetUniverse?.universeUUID));
+    }
+  }, PollingIntervalMs.UNIVERSE_STATE_TRANSITIONS);
   // Polling for metrics and config updates.
   useInterval(() => {
     queryClient.invalidateQueries('xcluster-metric'); // TODO: Add a dedicated key for 'latest xCluster metrics'.
@@ -170,17 +191,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
       queryClient.invalidateQueries(drConfigQueryKey.detail(drConfigUuid));
     }
   }, PollingIntervalMs.DR_CONFIG_STATE_TRANSITIONS);
-
-  const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
-    drConfigQuery.data ?? {};
-  // For DR, the currentUniverseUuid is not guaranteed to be the sourceUniverseUuid.
-  const participantUniveresUuid =
-    currentUniverseUuid !== targetUniverseUuid ? targetUniverseUuid : sourceUniverseUuid;
-  const participantUniverseQuery = useQuery(
-    universeQueryKey.detail(participantUniveresUuid),
-    () => api.fetchUniverse(participantUniveresUuid),
-    { enabled: !!participantUniveresUuid }
-  );
 
   if (currentUniverseQuery.isError || participantUniverseQuery.isError) {
     return (
@@ -222,11 +232,12 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
           onConfigureDrButtonClick={openCreateConfigModal}
           isDisabled={universeHasTxnXCluster}
         />
-        <CreateConfigModal
-          onHide={closeCreateConfigModal}
-          visible={isCreateConfigModalOpen}
-          sourceUniverseUuid={currentUniverseUuid}
-        />
+        {isCreateConfigModalOpen && (
+          <CreateConfigModal
+            sourceUniverseUuid={currentUniverseUuid}
+            modalProps={{ open: isCreateConfigModalOpen, onClose: closeCreateConfigModal }}
+          />
+        )}
       </>
     );
   }
@@ -265,10 +276,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     setIsActionMenuOpen(isOpen);
   };
 
-  const [sourceUniverse, targetUniverse] =
-    currentUniverseUuid !== targetUniverseUuid
-      ? [currentUniverseQuery.data, participantUniverseQuery.data]
-      : [participantUniverseQuery.data, currentUniverseQuery.data];
   const enabledDrConfigActions = getEnabledDrConfigActions(
     drConfig,
     sourceUniverse,
@@ -282,7 +289,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   );
   return (
     <>
-      <RbacValidator accessRequiredOn={ApiPermissionMap.GET_DR_CONFIG_BY_ID}>
+      <RbacValidator accessRequiredOn={ApiPermissionMap.GET_DR_CONFIG}>
         <DrBannerSection
           drConfig={drConfig}
           openRepairConfigModal={openRepairConfigModal}
@@ -291,7 +298,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         <div className={classes.header}>
           <Typography variant="h3">{t('heading')}</Typography>
           <div className={classes.actionButtonContainer}>
-            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_DR_CONFIG_FAILOVER} isControl>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.DR_CONFIG_SWITCHOVER} isControl>
               <YBButton
                 variant="primary"
                 size="large"
@@ -315,20 +322,26 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                 parentDropdownOpen={isActionMenuOpen}
                 mainMenu={(showSubmenu) => (
                   <>
-                    <MenuItem
-                      eventKey={XClusterConfigAction.MANAGE_TABLE}
-                      onSelect={openEditTablesModal}
-                      disabled={
-                        !enabledXClusterConfigActions.includes(XClusterConfigAction.MANAGE_TABLE)
-                      }
-                    >
-                      <YBMenuItemLabel
-                        label={t('actionButton.actionMenu.editTables')}
-                        preLabelElement={<i className="fa fa-table" />}
-                      />
-                    </MenuItem>
                     <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.MODIFY_DR_CONFIG_BY_ID}
+                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_SET_TABLES}
+                      overrideStyle={{ display: 'block' }}
+                      isControl
+                    >
+                      <MenuItem
+                        eventKey={XClusterConfigAction.MANAGE_TABLE}
+                        onSelect={openEditTablesModal}
+                        disabled={
+                          !enabledXClusterConfigActions.includes(XClusterConfigAction.MANAGE_TABLE)
+                        }
+                      >
+                        <YBMenuItemLabel
+                          label={t('actionButton.actionMenu.editTables')}
+                          preLabelElement={<i className="fa fa-table" />}
+                        />
+                      </MenuItem>
+                    </RbacValidator>
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA}
                       overrideStyle={{ display: 'block' }}
                       isControl
                     >
@@ -359,7 +372,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                     </MenuItem>
                     <MenuItem divider />
                     <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.MODIFY_DR_CONFIG_FAILOVER}
+                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_SWITCHOVER}
                       overrideStyle={{ display: 'block' }}
                       isControl
                     >
@@ -381,7 +394,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                       </MenuItem>
                     </RbacValidator>
                     <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.MODIFY_DR_CONFIG_FAILOVER}
+                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_FAILOVER}
                       overrideStyle={{ display: 'block' }}
                       isControl
                     >
@@ -432,18 +445,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                         />
                       </MenuItem>
                       <RbacValidator
-                        customValidateFunction={() => {
-                          return (
-                            hasNecessaryPerm({
-                              ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
-                              onResource: sourceUniverseUuid
-                            }) &&
-                            hasNecessaryPerm({
-                              ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
-                              onResource: targetUniverseUuid
-                            })
-                          );
-                        }}
+                        accessRequiredOn={ApiPermissionMap.DR_CONFIG_RESTART}
                         overrideStyle={{ display: 'block' }}
                         isControl
                       >
@@ -461,10 +463,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                         </MenuItem>
                       </RbacValidator>
                       <RbacValidator
-                        accessRequiredOn={{
-                          ...ApiPermissionMap.SYNC_XCLUSTER_REQUIREMENT,
-                          onResource: targetUniverseUuid
-                        }}
+                        accessRequiredOn={ApiPermissionMap.DR_CONFIG_SYNC}
                         overrideStyle={{ display: 'block' }}
                         isControl
                       >

@@ -125,8 +125,13 @@ YBTableCreator& YBTableCreator::is_matview(bool is_matview) {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::matview_pg_table_id(const std::string& matview_pg_table_id) {
-  matview_pg_table_id_ = matview_pg_table_id;
+YBTableCreator& YBTableCreator::pg_table_id(const std::string& pg_table_id) {
+  pg_table_id_ = pg_table_id;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::old_rewrite_table_id(const std::string& old_rewrite_table_id) {
+  old_rewrite_table_id_ = old_rewrite_table_id;
   return *this;
 }
 
@@ -287,8 +292,12 @@ Status YBTableCreator::Create() {
     req.set_is_matview(*is_matview_);
   }
 
-  if (!matview_pg_table_id_.empty()) {
-    req.set_matview_pg_table_id(matview_pg_table_id_);
+  if (!pg_table_id_.empty()) {
+    req.set_pg_table_id(pg_table_id_);
+  }
+
+  if (!old_rewrite_table_id_.empty()) {
+    req.set_old_rewrite_table_id(old_rewrite_table_id_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or

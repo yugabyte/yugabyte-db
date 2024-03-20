@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.join(
 
 
 from yugabyte import remote
-from yugabyte.common_util import init_logging, YB_SRC_ROOT
+from yugabyte.common_util import init_logging, YB_SRC_ROOT, EnvVarContext
 
 
 def add_extra_yb_build_args(yb_build_args: List[str], extra_args: List[str]) -> List[str]:
@@ -83,8 +83,9 @@ def main() -> None:
     try:
         args = parser.parse_args()
     except ArgumentParserError as ex:
-        yb_build_args_validation_result = subprocess.run(
-            [os.path.join(YB_SRC_ROOT, 'yb_build.sh'), '--validate-args-only'] + arg_list)
+        with EnvVarContext(YB_BUILD_SKIP_RC_FILES='1'):
+            yb_build_args_validation_result = subprocess.run(
+                [os.path.join(YB_SRC_ROOT, 'yb_build.sh'), '--validate-args-only'] + arg_list)
         if yb_build_args_validation_result.returncode != 0:
             ex.report_error_and_exit(
                 "Also could not interpret them as arguments to yb_build.py (see the error above). "

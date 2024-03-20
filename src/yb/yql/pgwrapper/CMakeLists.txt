@@ -17,6 +17,7 @@ set(YB_PCH_DEP_LIBS opid_proto)
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
+    yb_ash
     yb_common
     yb_pggate_flags
     yb_process_wrapper

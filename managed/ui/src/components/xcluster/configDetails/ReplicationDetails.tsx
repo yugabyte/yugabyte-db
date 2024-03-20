@@ -13,8 +13,8 @@ import {
   fetchXClusterConfig,
   fetchTaskUntilItCompletes,
   editXClusterState,
-  queryLagMetricsForTable,
-  fetchTablesInUniverse
+  fetchTablesInUniverse,
+  fetchReplicationLag
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -22,13 +22,14 @@ import { YBTabsPanel } from '../../panels';
 import { ReplicationContainer } from '../../tables';
 import {
   XClusterConfigAction,
-  REPLICATION_LAG_ALERT_NAME,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
   XClusterConfigState,
   XClusterModalName,
   XClusterTableStatus,
   XCLUSTER_CONFIG_REFETCH_INTERVAL_MS,
-  XCLUSTER_METRIC_REFETCH_INTERVAL_MS
+  XCLUSTER_METRIC_REFETCH_INTERVAL_MS,
+  AlertName,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../constants';
 import {
   MaxAcceptableLag,
@@ -45,7 +46,13 @@ import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
 import { DeleteConfigModal } from './DeleteConfigModal';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
 import { YBBanner, YBBannerVariant, YBLabelWithIcon } from '../../common/descriptors';
-import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
+import {
+  alertConfigQueryKey,
+  api,
+  metricQueryKey,
+  universeQueryKey,
+  xClusterQueryKey
+} from '../../../redesign/helpers/api';
 import { getAlertConfigurations } from '../../../actions/universe';
 import { MenuItemsContainer } from '../../universes/UniverseDetail/compounds/MenuItemsContainer';
 import { SyncXClusterConfigModal } from './SyncXClusterModal';
@@ -97,43 +104,41 @@ export function ReplicationDetails({
   );
 
   const sourceUniverseTableQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfigQuery.data?.sourceUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(
+      xClusterConfigQuery.data?.sourceUniverseUUID,
+      XCLUSTER_UNIVERSE_TABLE_FILTERS
+    ),
     () =>
-      fetchTablesInUniverse(xClusterConfigQuery.data?.sourceUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data),
+      fetchTablesInUniverse(
+        xClusterConfigQuery.data?.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data),
     { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
   );
 
   const xClusterConfigTables = xClusterConfigQuery.data?.tableDetails ?? [];
-  const tableLagQueries = useQueries(
-    xClusterConfigTables.map((xClusterTable) => ({
-      queryKey: [
-        'xcluster-metric',
-        sourceUniverseQuery.data?.universeDetails.nodePrefix,
-        xClusterTable.tableId,
-        xClusterTable.streamId,
-        'metric'
-      ],
-      queryFn: () =>
-        queryLagMetricsForTable(
-          xClusterTable.streamId,
-          xClusterTable.tableId,
-          sourceUniverseQuery.data?.universeDetails.nodePrefix
-        ),
-      enabled: !!sourceUniverseQuery.data
-    }))
+  const tableReplicationLagQueries = useQueries(
+    xClusterConfigTables.map((xClusterTable) => {
+      const replciationLagMetricRequestParams = {
+        nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
+        streamId: xClusterTable.streamId,
+        tableId: xClusterTable.tableId
+      };
+      return {
+        queryKey: metricQueryKey.detail(replciationLagMetricRequestParams),
+        queryFn: () => fetchReplicationLag(replciationLagMetricRequestParams),
+        enabled: !!sourceUniverseQuery.data?.universeDetails.nodePrefix
+      };
+    })
+    // The unsafe cast is required due to an issue with useQueries typing.
+    // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
   ) as UseQueryResult<Metrics<'tserver_async_replication_lag_micros'>>[];
 
   const alertConfigFilter = {
-    name: REPLICATION_LAG_ALERT_NAME,
+    name: AlertName.REPLICATION_LAG,
     targetUuid: currentUniverseUUID
   };
-  const maxAcceptableLagQuery = useQuery(['alert', 'configurations', alertConfigFilter], () =>
+  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
@@ -350,7 +355,7 @@ export function ReplicationDetails({
         (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
       )
     );
-    for (const tableLagQuery of tableLagQueries) {
+    for (const tableLagQuery of tableReplicationLagQueries) {
       if (tableLagQuery.isSuccess) {
         const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
         if (maxNodeLag && maxNodeLag > maxAcceptableLag) {
@@ -653,9 +658,9 @@ export function ReplicationDetails({
                   <Col lg={6}>
                     <span className="lag-text">
                       <CurrentReplicationLag
-                        xClusterConfigUUID={xClusterConfig.uuid}
+                        xClusterConfigUuid={xClusterConfig.uuid}
                         xClusterConfigStatus={xClusterConfig.status}
-                        sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
+                        sourceUniverseUuid={xClusterConfig.sourceUniverseUUID}
                       />
                     </span>
                   </Col>
@@ -690,7 +695,10 @@ export function ReplicationDetails({
                   )}
                 </Tab>
                 <Tab eventKey={'tables'} title={'Tables'}>
-                  <ReplicationTables xClusterConfig={xClusterConfig} />
+                  <ReplicationTables
+                    xClusterConfig={xClusterConfig}
+                    isActive={window.location.search === '?tab=tables'}
+                  />
                 </Tab>
                 <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
                   <ReplicationContainer

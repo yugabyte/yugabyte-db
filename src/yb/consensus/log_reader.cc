@@ -621,8 +621,24 @@ void LogLoadingFromSegmentsMessage(
 
 } // namespace
 
-Result<LogIndexEntry> LogReader::GetIndexEntry(const int64_t op_index) const {
+Result<LogIndexEntry> LogReader::GetIndexEntry(
+    const int64_t op_index, ReadableLogSegment* segment) const {
+  const auto index_entry = VERIFY_RESULT(DoGetIndexEntry(op_index, segment));
+  RSTATUS_DCHECK(
+      !segment || index_entry.segment_sequence_number == segment->header().sequence_number(),
+      IllegalState,
+      Format("The requested op $0 is expected in segment $1, actual segment: $2",
+             op_index, segment->header().sequence_number(), index_entry.segment_sequence_number));
+  return index_entry;
+}
+
+Result<LogIndexEntry> LogReader::DoGetIndexEntry(
+    const int64_t op_index, ReadableLogSegment* segment) const {
   LogIndexEntry index_entry;
+
+  if (!log_index_) {
+    return STATUS(NotFound, "log_index_ is not initialized");
+  }
 
   auto s = log_index_->GetEntry(op_index, &index_entry);
   if (PREDICT_TRUE(s.ok())) {
@@ -633,10 +649,9 @@ Result<LogIndexEntry> LogReader::GetIndexEntry(const int64_t op_index) const {
     return s;
   }
 
-  VLOG_WITH_PREFIX(2) << "Trying to lazy load log index from WAL segments for op index "
-                      << op_index;
-
-  {
+  if (!segment) {
+    VLOG_WITH_PREFIX(2) << "Trying to lazy load log index from WAL segments for op index "
+                        << op_index;
     // Prevent concurrent lazy loading of the index.
     std::lock_guard lock(load_index_mutex_);
 
@@ -688,13 +703,21 @@ Result<LogIndexEntry> LogReader::GetIndexEntry(const int64_t op_index) const {
 
     // Load index starting from latest WAL segment.
     for (auto it = segments_to_load_index.rbegin(); it != segments_to_load_index.rend(); ++it) {
-      const auto stop_loading = !VERIFY_RESULT(log_index_->LoadFromSegment(it->get()));
+      const auto stop_loading = !VERIFY_RESULT(log_index_->LazyLoadOneSegment(it->get()));
       if (stop_loading) {
         // Concurrent log GC happened and removed at least beginning of just loaded segment, no
         // need to continue loading.
         break;
       }
     }
+  } else {
+    const auto seq_no = segment->header().sequence_number();
+    VLOG_WITH_PREFIX(2) << "Trying to load log index from segment " << seq_no
+                        << " for op index " << op_index;
+    // Prevent concurrent loading of the index.
+    std::lock_guard lock(load_index_mutex_);
+    int64_t first_op_index ATTRIBUTE_UNUSED = 0;
+    RETURN_NOT_OK(log_index_->LoadFromSegment(segment, &first_op_index));
   }
 
   s = log_index_->GetEntry(op_index, &index_entry);

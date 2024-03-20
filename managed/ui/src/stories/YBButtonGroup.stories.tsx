@@ -6,7 +6,7 @@ import {
   YBButtonGroupProps
 } from '../redesign/components/YBButtonGroup/YBButtonGroup';
 
-const meta: Meta<YBButtonGroupProps> = {
+const meta: Meta<YBButtonGroupProps<Number>> = {
   title: 'Components/YBButtonGroup',
   component: YBButtonGroup,
   tags: ['autodocs'],

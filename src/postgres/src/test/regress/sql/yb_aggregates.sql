@@ -3,6 +3,10 @@
 --
 -- Test basic aggregates and verify overflow is handled properly.
 --
+
+-- avoid bit-exact output here because operations may not be bit-exact.
+SET extra_float_digits = 0;
+
 CREATE TABLE ybaggtest (
     id         int PRIMARY KEY,
     int_2      int2,

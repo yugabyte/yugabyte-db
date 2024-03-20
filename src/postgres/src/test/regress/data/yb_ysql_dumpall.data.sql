@@ -31,9 +31,42 @@ ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPL
 -- Tablespaces
 --
 
-CREATE TABLESPACE tsp1 OWNER yugabyte_test LOCATION '';
-CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
-CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');
+-- Set variable ignore_existing_tablespaces (if not already set)
+\if :{?ignore_existing_tablespaces}
+\else
+\set ignore_existing_tablespaces false
+\endif
+
+\set tablespace_exists false
+\if :ignore_existing_tablespaces
+    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp1') AS tablespace_exists \gset
+\endif
+\if :tablespace_exists
+    \echo 'Tablespace tsp1 already exists.'
+\else
+    CREATE TABLESPACE tsp1 OWNER yugabyte_test LOCATION '';
+\endif
+
+\set tablespace_exists false
+\if :ignore_existing_tablespaces
+    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp2') AS tablespace_exists \gset
+\endif
+\if :tablespace_exists
+    \echo 'Tablespace tsp2 already exists.'
+\else
+    CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
+\endif
+
+\set tablespace_exists false
+\if :ignore_existing_tablespaces
+    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp_unused') AS tablespace_exists \gset
+\endif
+\if :tablespace_exists
+    \echo 'Tablespace tsp_unused already exists.'
+\else
+    CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');
+\endif
+
 
 
 \connect template1

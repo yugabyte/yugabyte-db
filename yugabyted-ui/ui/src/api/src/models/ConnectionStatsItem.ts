@@ -24,6 +24,9 @@ export interface ConnectionStatsItem  {
    * 
    * @type {string}
    * @memberof ConnectionStatsItem
+   *
+   * GH #19722 : Structure of Ysql Connection Manager stats
+   * have changed.
    */
   pool?: string;
   /**

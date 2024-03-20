@@ -2,7 +2,6 @@
 title: Stored Procedures
 linkTitle: Stored Procedures
 description: Stored Procedures in YSQL
-image: /images/section_icons/index/explore.png
 menu:
   v2.14:
     identifier: explore-ysql-language-features-stored-procedures

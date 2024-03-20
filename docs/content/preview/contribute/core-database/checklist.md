@@ -3,7 +3,6 @@ title: Contribution checklist
 headerTitle: Contribution checklist
 linkTitle: Contribution checklist
 description: Review the steps to start contributing code and documentation.
-image: /images/section_icons/index/quick_start.png
 headcontent: Checklist for contributing to the core database.
 menu:
   preview:

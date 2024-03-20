@@ -56,7 +56,11 @@ import { NTP_SERVER_REGEX } from '../constants';
 
 import { GCPRegionMutation, GCPAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
+import { CloudType } from '../../../../../redesign/helpers/dtos';
+import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 
 interface GCPProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -73,6 +77,7 @@ interface GCPProviderCreateFormFieldValues {
   providerCredentialType: ProviderCredentialType;
   providerName: string;
   regions: CloudVendorRegionField[];
+  sharedVPCProject: string;
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number;
@@ -80,6 +85,7 @@ interface GCPProviderCreateFormFieldValues {
   sshUser: string;
   vpcSetupType: VPCSetupType;
   ybFirewallTags: string;
+  imageBundles: ImageBundle[];
 }
 
 const ProviderCredentialType = {
@@ -189,7 +195,7 @@ export const GCPProviderCreateForm = ({
     try {
       sshPrivateKeyContent =
         formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-          formValues.sshPrivateKeyContent
+        formValues.sshPrivateKeyContent
           ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
           : '';
     } catch (error) {
@@ -201,38 +207,41 @@ export const GCPProviderCreateForm = ({
     const vpcConfig =
       formValues.vpcSetupType === VPCSetupType.HOST_INSTANCE
         ? {
-          useHostVPC: true
-        }
+            useHostVPC: true
+          }
         : formValues.vpcSetupType === VPCSetupType.EXISTING
-          ? {
+        ? {
             useHostVPC: true,
             destVpcId: formValues.destVpcId
           }
-          : formValues.vpcSetupType === VPCSetupType.NEW
-            ? {
-              useHostVPC: false,
-              destVpcId: formValues.destVpcId
-            }
-            : assertUnreachableCase(formValues.vpcSetupType);
+        : formValues.vpcSetupType === VPCSetupType.NEW
+        ? {
+            useHostVPC: false,
+            destVpcId: formValues.destVpcId
+          }
+        : assertUnreachableCase(formValues.vpcSetupType);
 
     const gcpCredentials =
       formValues.providerCredentialType === ProviderCredentialType.HOST_INSTANCE_SERVICE_ACCOUNT
         ? {
-          useHostCredentials: true
-        }
+            useHostCredentials: true
+          }
         : formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT
-          ? {
+        ? {
             gceApplicationCredentials: googleServiceAccount,
-            gceProject: formValues.gceProject ?? googleServiceAccount?.project_id ?? '',
+            gceProject: googleServiceAccount?.project_id ?? '',
             useHostCredentials: false
           }
-          : assertUnreachableCase(formValues.providerCredentialType);
+        : assertUnreachableCase(formValues.providerCredentialType);
 
     const allAccessKeysPayload = constructAccessKeysCreatePayload(
       formValues.sshKeypairManagement,
       formValues.sshKeypairName,
       sshPrivateKeyContent
     );
+
+    const imageBundles = constructImageBundlePayload(formValues);
+
     const providerPayload: YBProviderMutation = {
       code: ProviderCode.GCP,
       name: formValues.providerName,
@@ -243,6 +252,7 @@ export const GCPProviderCreateForm = ({
           [ProviderCode.GCP]: {
             ...vpcConfig,
             ...gcpCredentials,
+            ...(formValues.sharedVPCProject && { sharedVPCProject: formValues.sharedVPCProject }),
             ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
           }
         },
@@ -268,7 +278,8 @@ export const GCPProviderCreateForm = ({
           name: zone.code,
           subnet: regionFormValues.sharedSubnet ?? ''
         }))
-      }))
+      })),
+      imageBundles
     };
     try {
       await createInfraProvider(providerPayload);
@@ -385,10 +396,15 @@ export const GCPProviderCreateForm = ({
                 </FormField>
               )}
               <FormField>
-                <FieldLabel>GCE Project Name (Optional Override)</FieldLabel>
+                <FieldLabel
+                  infoTitle="Shared VPC Project"
+                  infoContent="If you want to use Shared VPC to connect resources from multiple projects to a common VPC, you can specify the project for the same here."
+                >
+                  Shared VPC Project (Optional)
+                </FieldLabel>
                 <YBInputField
                   control={formMethods.control}
-                  name="gceProject"
+                  name="sharedVPCProject"
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -461,6 +477,11 @@ export const GCPProviderCreateForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
+            <LinuxVersionCatalog
+              control={formMethods.control as any}
+              providerType={CloudType.gcp}
+              viewMode="CREATE"
+            />
             <FieldGroup heading="SSH Key Pairs">
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>

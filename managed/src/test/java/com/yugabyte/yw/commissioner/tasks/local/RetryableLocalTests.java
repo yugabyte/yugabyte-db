@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
@@ -31,6 +32,11 @@ public class RetryableLocalTests extends LocalProviderUniverseTestBase {
   private static final String ENV_VAR = "RUN_RETRYABLE_TESTS";
 
   private CustomerTaskManager customerTaskManager;
+
+  @Override
+  protected Pair<Integer, Integer> getIpRange() {
+    return new Pair(60, 90);
+  }
 
   @Override
   public void setUp() {

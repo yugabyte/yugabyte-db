@@ -86,7 +86,7 @@ set yb_transaction_priority = 0.3; -- ERROR
 -- High priority transaction
 set yb_transaction_priority_lower_bound = 0.4;
 set yb_transaction_priority_upper_bound = 0.4;
-BEGIN TRANSACTION;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
 show yb_transaction_priority;
 COMMIT;
@@ -94,7 +94,7 @@ COMMIT;
 -- Highest priority transaction
 set yb_transaction_priority_upper_bound = 1;
 set yb_transaction_priority_lower_bound = 1;
-BEGIN TRANSACTION;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
 show yb_transaction_priority;
 COMMIT;

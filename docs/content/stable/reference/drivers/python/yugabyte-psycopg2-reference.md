@@ -4,7 +4,6 @@ headerTitle: Python Drivers
 linkTitle: Python Drivers
 description: YugabyteDB Psycopg2 Smart Driver for YSQL
 headcontent: Python Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     name: Python Drivers

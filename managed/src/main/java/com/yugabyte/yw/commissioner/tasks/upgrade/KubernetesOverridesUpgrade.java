@@ -34,6 +34,13 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
@@ -45,7 +52,7 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
 
           // Create Kubernetes Upgrade Task.
           createUpgradeTask(
-              getUniverse(),
+              universe,
               cluster.userIntent.ybSoftwareVersion,
               // We don't know which overrides can affect masters or tservers so set both to true.
               /* isMasterChanged */ true,

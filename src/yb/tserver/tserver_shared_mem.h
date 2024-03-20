@@ -19,6 +19,8 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/interprocess/ipc/message_queue.hpp>
 
+#include "yb/gutil/strings/escaping.h"
+
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/atomic.h"
@@ -91,6 +93,15 @@ class TServerSharedData {
     return postgres_auth_key_;
   }
 
+  void SetTserverUuid(const std::string& tserver_uuid) {
+    DCHECK_EQ(tserver_uuid.size(), 32);
+    a2b_hex(tserver_uuid.c_str(), tserver_uuid_, 16);
+  }
+
+  const unsigned char* tserver_uuid() const {
+    return tserver_uuid_;
+  }
+
  private:
   // Endpoint that should be used by local processes to access this tserver.
   Endpoint endpoint_;
@@ -98,6 +109,7 @@ class TServerSharedData {
 
   std::atomic<uint64_t> catalog_version_{0};
   uint64_t postgres_auth_key_;
+  unsigned char tserver_uuid_[16]; // Tserver UUID is stored as raw bytes.
 
   std::atomic<uint64_t> db_catalog_versions_[kMaxNumDbCatalogVersions] = {0};
 };
@@ -110,7 +122,9 @@ class SharedExchange {
   ~SharedExchange();
 
   std::byte* Obtain(size_t required_size);
-  Result<Slice> SendRequest(CoarseTimePoint deadline);
+  Status SendRequest();
+  Result<Slice> FetchResponse(CoarseTimePoint deadline);
+  bool ResponseReady() const;
   bool ReadyToSend() const;
   void Respond(size_t size);
   Result<size_t> Poll();

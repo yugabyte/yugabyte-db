@@ -57,7 +57,7 @@ struct CBTabletMetadata {
     return !wrong_placement_tablet_servers.empty() || !blacklisted_tablet_servers.empty();
   }
 
-  bool has_blacklisted_leader() {
+  bool has_badly_placed_leader() {
     return !leader_blacklisted_tablet_servers.empty();
   }
 
@@ -381,8 +381,6 @@ class PerTableLoadState {
 
   void SortDriveLeaderLoad();
 
-  void LogSortedLeaderLoad();
-
   int AdjustLeaderBalanceThreshold(int zone_set_size);
 
   Status AddRunningTablet(const TabletId& tablet_id,
@@ -393,10 +391,12 @@ class PerTableLoadState {
 
   Status AddStartingTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
+  // Note: this does not call SortLeaderLoad.
   Status AddLeaderTablet(const TabletId& tablet_id,
                          const TabletServerId& ts_uuid,
                          const TabletServerId& ts_path);
 
+  // Note: this does not call SortLeaderLoad.
   Status RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   Status AddDisabledByTSTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
@@ -427,7 +427,8 @@ class PerTableLoadState {
     out << Format("tablets_missing_replicas: $0, ", tablets_missing_replicas_);
     out << Format("tablets_over_replicated: $0, ", tablets_over_replicated_);
     out << Format("tablets_wrong_placement: $0, ", tablets_wrong_placement_);
-    out << Format("tablets_added: $0, ", tablets_wrong_placement_);
+    out << Format("tablets_with_badly_placed_leaders: $0, ", tablets_with_badly_placed_leaders_);
+    out << Format("tablets_added: $0, ", tablets_added_);
     out << Format("leader_balance_threshold: $0, ", leader_balance_threshold_);
     out << Format("sorted_leader_load: $0, ", sorted_leader_load_);
     out << Format("use_preferred_zones: $0, ", use_preferred_zones_);
@@ -481,6 +482,9 @@ class PerTableLoadState {
 
   // Set of tablet ids that have been determined to have replicas in incorrect placements.
   std::set<TabletId> tablets_wrong_placement_;
+
+  // Set of tablet ids that have leaders in leader blacklisted placements.
+  std::set<TabletId> tablets_with_badly_placed_leaders_;
 
   // List of tablet ids that have been added to a new tablet server.
   std::set<TabletId> tablets_added_;

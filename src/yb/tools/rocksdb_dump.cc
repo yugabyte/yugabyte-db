@@ -24,12 +24,12 @@
 #include "yb/rocksdb/db_dump_tool.h"
 #include "yb/tablet/tablet_options.h"
 
-DEFINE_UNKNOWN_string(db_path, "", "Path to the db that will be dumped");
-DEFINE_UNKNOWN_string(dump_location, "", "Path to where the dump file location");
-DEFINE_UNKNOWN_bool(anonymous, false,
-            "Remove information like db path, creation time from dumped file");
-DEFINE_UNKNOWN_string(db_options, "",
-              "Options string used to open the database that will be dumped");
+DEFINE_NON_RUNTIME_string(db_path, "", "Path to the db that will be dumped");
+DEFINE_NON_RUNTIME_string(dump_location, "", "Path to where the dump file location");
+DEFINE_NON_RUNTIME_bool(anonymous, false,
+    "Remove information like db path, creation time from dumped file");
+DEFINE_NON_RUNTIME_string(db_options, "",
+    "Options string used to open the database that will be dumped");
 
 int main(int argc, char** argv) {
   GFLAGS::ParseCommandLineFlags(&argc, &argv, true);

@@ -83,6 +83,7 @@ main {
         left: 16px;
       }
 
+
       >*:not(code) {
         margin: 1em 0;
 
@@ -129,6 +130,52 @@ main {
       }
     }
 
+    .admonition.waving {
+      border: 1px solid #CAC9DF;
+      background: #F5F5FF;
+      margin:20px 0 40px ;
+      display:flex;
+      justify-content:space-between;
+      padding-top: 10px;
+      padding-bottom: 10px;
+      align-items:center;
+      .cross-btn{
+        cursor:pointer;
+        display:inline-block;
+      }
+      p {
+        font-family: 'inter';
+        color: #5D5FEF;
+        font-size: 13px;
+        font-style: normal;
+        font-weight: 600;
+        line-height: 16px;
+        padding: 6px 0;
+
+        a {
+          text-decoration: underline;
+          color: #5D5FEF;
+          font-size: 13px;
+          font-style: normal;
+          font-weight: 600;
+          line-height: 16px;
+          text-underline-offset:2px;
+
+          &:hover {
+            text-decoration: underline;
+            border: 0;
+            text-underline-offset:2px;
+          }
+        }
+      }
+      &::before {
+        width: 24px;
+        height: 25px;
+        background-image: url(/icons/waving-icon.svg);
+        background-size: contain;
+        top:10px;
+      }
+    }
     .admonition.note {
       &::before {
         background-size: 19px 20px;

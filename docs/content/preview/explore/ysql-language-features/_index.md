@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: explore-ysql-language-features
     parent: explore
-    weight: 200
+    weight: 100
 type: indexpage
 showRightNav: true
 ---

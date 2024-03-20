@@ -11,8 +11,6 @@
 // under the License.
 //
 
-// TODO(janand): Block the client from using the user same as that of the control connection.
-
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
 
 #include <fstream>
@@ -25,10 +23,12 @@
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/string_util.h"
+#include "yb/util/pg_util.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 DECLARE_bool(logtostderr);
+DECLARE_bool(ysql_conn_mgr_use_unix_conn);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
 DECLARE_uint32(ysql_conn_mgr_max_conns_per_db);
@@ -160,7 +160,12 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%application_name_add_host%}", BoolToString(application_name_add_host_)},
     {"{%log_debug%}", BoolToString(log_debug_)},
     {"{%stats_interval%}", std::to_string(FLAGS_ysql_conn_mgr_stats_interval)},
-    {"{%min_pool_size%}", std::to_string(FLAGS_ysql_conn_mgr_min_conns_per_db)}};
+    {"{%min_pool_size%}", std::to_string(FLAGS_ysql_conn_mgr_min_conns_per_db)},
+    {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
+    {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
+    {"{%unix_socket_dir%}",
+      PgDeriveSocketDir(postgres_address_)}}; // Return unix socket
+            //  file path = "/tmp/.yb.host_ip:port"
 
   AddSslConfig(&ysql_conn_mgr_configs);
 

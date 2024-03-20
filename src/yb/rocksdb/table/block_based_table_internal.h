@@ -16,6 +16,8 @@
 #include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/table/format.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/util/file_system.h"
 #include "yb/util/logging.h"
 
@@ -36,6 +38,7 @@ inline Status ReadBlockFromFile(
     const BlockHandle& handle, std::unique_ptr<Block>* result, Env* env,
     const std::shared_ptr<yb::MemTracker>& mem_tracker,
     bool do_uncompress = true) {
+  SCOPED_WAIT_STATUS(RocksDB_ReadBlockFromFile);
   BlockContents contents;
   Status s = ReadBlockContents(file, footer, options, handle, &contents, env,
                                mem_tracker, do_uncompress);

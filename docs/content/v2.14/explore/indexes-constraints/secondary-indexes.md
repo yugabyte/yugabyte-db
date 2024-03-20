@@ -2,7 +2,6 @@
 title: Secondary indexes
 linkTitle: Secondary indexes
 description: Overview of Secondary indexes in YSQL and YCQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.14:
     identifier: secondary-indexes

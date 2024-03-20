@@ -79,19 +79,6 @@ DELETE FROM TIMESTAMP_TBL;
 INSERT INTO TIMESTAMP_TBL VALUES (10, '-infinity');
 INSERT INTO TIMESTAMP_TBL VALUES (20, 'infinity');
 INSERT INTO TIMESTAMP_TBL VALUES (30, 'epoch');
--- Obsolete special values
-INSERT INTO TIMESTAMP_TBL VALUES (40, 'invalid');
-ERROR:  date/time value "invalid" is no longer supported
-LINE 1: INSERT INTO TIMESTAMP_TBL VALUES (40, 'invalid');
-                                              ^
-INSERT INTO TIMESTAMP_TBL VALUES (50, 'undefined');
-ERROR:  date/time value "undefined" is no longer supported
-LINE 1: INSERT INTO TIMESTAMP_TBL VALUES (50, 'undefined');
-                                              ^
-INSERT INTO TIMESTAMP_TBL VALUES (60, 'current');
-ERROR:  date/time value "current" is no longer supported
-LINE 1: INSERT INTO TIMESTAMP_TBL VALUES (60, 'current');
-                                              ^
 -- Postgres v6.0 standard output format
 INSERT INTO TIMESTAMP_TBL VALUES (70, 'Mon Feb 10 17:32:01 1997 PST');
 -- Variations on Postgres v6.1 standard output format

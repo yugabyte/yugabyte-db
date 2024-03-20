@@ -576,7 +576,7 @@ TEST_F(MetricsTest, TestStreamLevelAggregation) {
   attrs[kLabel] = kLabelVal;
   attrs["stream_id"] = "stream_id_1";
   attrs["table_id"] = "table_id_1";
-  attrs["metric_type"] = kCdcMetricEntityName;
+  attrs["metric_type"] = kXClusterMetricEntityName;
 
   MetricEntity::AttributeMap expected_attrs = attrs;
   expected_attrs.erase("table_id");
@@ -614,8 +614,8 @@ int StringOccurence(const string& s, const string& target) {
 
 METRIC_DEFINE_histogram(server, t_hist, "Test Histogram Label",
     MetricUnit::kMilliseconds, "Test histogram description", 100000000L, 2);
-METRIC_DEFINE_entity(cdc);
-METRIC_DEFINE_event_stats(cdc, t_event_stats, "Test EventStats Label",
+METRIC_DEFINE_entity(xcluster);
+METRIC_DEFINE_event_stats(xcluster, t_event_stats, "Test EventStats Label",
     MetricUnit::kMilliseconds, "Test event stats description");
 METRIC_DEFINE_counter(tablet, t_counter, "Test Counter Label", MetricUnit::kMilliseconds,
     "Test counter description");
@@ -635,15 +635,15 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
       METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_44", entity_attr);
   auto server_entity = METRIC_ENTITY_server.Instantiate(&registry_, "server_entity_id_45");
   entity_attr["stream_id"] = "stream_id_46";
-  auto cdc_entity =
-      METRIC_ENTITY_cdc.Instantiate(&registry_, "cdc_entity_id_47", entity_attr);
+  auto xcluster_entity =
+      METRIC_ENTITY_xcluster.Instantiate(&registry_, "xcluster_entity_id_47", entity_attr);
   auto cdcsdk_entity =
       METRIC_ENTITY_cdcsdk.Instantiate(&registry_, "cdcsdk_entity_id_48", entity_attr);
 
   scoped_refptr<Gauge> gauge = METRIC_t_gauge.Instantiate(tablet_entity, 0);
   scoped_refptr<Counter> counter = METRIC_t_counter.Instantiate(tablet_entity);
   scoped_refptr<Histogram> hist = METRIC_t_hist.Instantiate(server_entity);
-  scoped_refptr<EventStats> event_stats = METRIC_t_event_stats.Instantiate(cdc_entity);
+  scoped_refptr<EventStats> event_stats = METRIC_t_event_stats.Instantiate(xcluster_entity);
   scoped_refptr<MillisLag> lag = METRIC_t_lag.Instantiate(cdcsdk_entity);
 
   MetricPrometheusOptions opts;
@@ -678,60 +678,4 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
       "# HELP t_lag Test lag description\n# TYPE t_lag gauge"));
 }
 
-TEST_F(MetricsTest, PrometheusMetricFilterTest) {
-  MetricEntity::AttributeMap entity_attr;
-  entity_attr["tablet_id"] = "tablet_id_42";
-  entity_attr["table_name"] = "test_table";
-  entity_attr["table_id"] = "table_id_43";
-  scoped_refptr<MetricEntity> tablet_entity =
-      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id", entity_attr);
-  // Initilize two tablet metrics.
-  scoped_refptr<Gauge> gauge = METRIC_t_gauge.Instantiate(tablet_entity, 0);
-  scoped_refptr<Counter> counter = METRIC_t_counter.Instantiate(tablet_entity);
-  std::string kGaugeName = "t_gauge";
-  std::string kCounterName = "t_counter";
-  {
-    // Test priority_regex.
-    MetricPrometheusOptions opts;
-    opts.priority_regex_string = "t_c.*r";
-    std::stringstream output;
-    PrometheusWriter writer(&output, opts);
-    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
-    MetricAggregationMap* filter =
-        writer.TEST_GetPrometheusMetricFilter()->TEST_GetAggregationMap();
-    ASSERT_EQ(kServerLevel | kStreamLevel, (*filter)[kGaugeName]);
-    ASSERT_EQ(kTableLevel | kServerLevel | kStreamLevel, (*filter)[kCounterName]);
-    int line_num = 0;
-    std::string line;
-    while (std::getline(output, line)) {
-      if (line.find("table_id=") != std::string::npos) {
-        // If line contain table id, it means metric is on table level.
-        ASSERT_TRUE(line.starts_with(kCounterName));
-      } else {
-        // Otherwise, it is server level.
-        ASSERT_TRUE(line.starts_with(kGaugeName));
-      }
-      line_num++;
-    }
-    ASSERT_EQ(2, line_num);
-  }
-  {
-    // Test default.
-    MetricPrometheusOptions opts;
-    std::stringstream output;
-    PrometheusWriter writer(&output, opts);
-    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
-    MetricAggregationMap* filter =
-        writer.TEST_GetPrometheusMetricFilter()->TEST_GetAggregationMap();
-    EXPECT_EQ(kTableLevel | kServerLevel | kStreamLevel, (*filter)[kGaugeName]);
-    EXPECT_EQ(kTableLevel | kServerLevel | kStreamLevel, (*filter)[kCounterName]);
-    int line_num = 0;
-    std::string line;
-    while (std::getline(output, line)) {
-      ASSERT_TRUE(line.find("table_id=") != std::string::npos);
-      line_num++;
-    }
-    ASSERT_EQ(2, line_num);
-  }
-}
 } // namespace yb

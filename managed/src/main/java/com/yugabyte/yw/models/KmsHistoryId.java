@@ -12,12 +12,12 @@ package com.yugabyte.yw.models;
 
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import java.io.Serializable;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.Embeddable;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import play.libs.Json;

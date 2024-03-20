@@ -3,7 +3,6 @@ title: Supported Versions
 linkTitle: Supported Versions
 description: Supported Versions for NodeJS Drivers, ORMs and AppDev Frameworks
 headcontent: Supported Versions for NodeJS Drivers, ORMs and AppDev Frameworks
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     identifier: nodejs-compatibility

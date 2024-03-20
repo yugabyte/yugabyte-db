@@ -8,7 +8,7 @@ menu:
   v2.16_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: upgrade
-    weight: 649
+    weight: 690
 type: indexpage
 ---
 

@@ -3,7 +3,6 @@ title: Explore Yugabyte SQL
 linkTitle: Explore distributed SQL
 description: Use distributed SQL to explore core features of YugabteDB.
 headcontent:
-image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:
     identifier: qs-explore-1-ysql

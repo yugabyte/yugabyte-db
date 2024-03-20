@@ -411,8 +411,7 @@ Result<ReadOpsResult> LogCache::ReadOps(
           Substitute("Failed to read ops $0..$1", next_index, up_to));
 
       metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
-      LOG_WITH_PREFIX(INFO)
-          << "Successfully read " << raw_replicate_ptrs.size() << " ops from disk.";
+      VLOG_WITH_PREFIX(1) << "Successfully read " << raw_replicate_ptrs.size() << " ops from disk.";
       l.lock();
 
       for (auto& msg : raw_replicate_ptrs) {

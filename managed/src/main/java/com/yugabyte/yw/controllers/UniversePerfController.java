@@ -56,9 +56,8 @@ public class UniversePerfController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Get query distribution improvement suggestion for a universe",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get query distribution improvement suggestion for a universe",
       nickname = "getQueryDistributionSuggestions",
       response = QueryDistributionSuggestionResponse.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.16.0.0")
@@ -83,8 +82,10 @@ public class UniversePerfController extends AuthenticatedController {
    * @return list of serialized HashedTimestampColumnFinderResponse entries.
    */
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Return list of hash indexes",
-      notes = "Returns list of hash indexes on timestamp columns.",
+      notes =
+          "WARNING: This is a preview API that could change. Returns list of hash indexes on"
+              + " timestamp columns.",
+      value = "Return list of hash indexes",
       nickname = "getRangeHash",
       response = HashedTimestampColumnFinderResponse.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.16.0.0")
@@ -112,10 +113,10 @@ public class UniversePerfController extends AuthenticatedController {
    * @return list of serialized UnusedIndexFinderResponse entries.
    */
   @ApiOperation(
-      value =
+      notes =
           "WARNING: This is a preview API that could change. "
-              + "Return list of each unused index across the universe",
-      notes = "Returns list of unused indexes, along with their database and table.",
+              + "Returns list of unused indexes, along with their database and table.",
+      value = "Return list of each unused index across the universe",
       nickname = "getUnusedIndexes",
       response = UnusedIndexFinderResponse.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.16.0.0")

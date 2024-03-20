@@ -115,7 +115,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     String expectedToken =
         Base64.getEncoder().encodeToString(defaultCustomer.getUuid().toString().getBytes());
     assertEquals(expectedToken, headers.getValue().get("X-AUTH-TOKEN"));
-    assertEquals("http://yw-diagnostics.yugabyte.com", url.getValue());
+    assertEquals("https://yw-diagnostics.yugabyte.com", url.getValue());
   }
 
   @Test
@@ -133,7 +133,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
 
     JsonNode expectedPayload = callHomePayload(u);
     JsonNode actualPayload =
-        callHomeManager.CollectDiagnostics(defaultCustomer, CollectionLevel.MEDIUM);
+        callHomeManager.collectDiagnostics(defaultCustomer, CollectionLevel.MEDIUM);
     assertEquals(expectedPayload, actualPayload);
   }
 

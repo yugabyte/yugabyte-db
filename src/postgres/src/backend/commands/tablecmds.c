@@ -1166,9 +1166,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	if (IsYugaByteEnabled())
 	{
 		CheckIsYBSupportedRelationByKind(relkind);
-		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId,
-					   tablegroupId, colocation_id, tablespaceId,
-					   InvalidOid /* matviewPgTableId */);
+		YBCCreateTable(stmt, relname, relkind, descriptor, relationId,
+					   namespaceId, tablegroupId, colocation_id, tablespaceId,
+					   InvalidOid /* pgTableId */,
+					   InvalidOid /* oldRelfileNodeId */);
 	}
 
 	/*
@@ -1280,6 +1281,25 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		if (OidIsValid(defaultPartOid))
 		{
 			check_default_partition_contents(parent, defaultRel, bound);
+
+			if (IsYugaByteEnabled())
+			{
+				/*
+				* Increment the schema version of the default partition to
+				* ensure concurrent operations do not insert any data matching
+				* this new partition into the default partition.
+				*/
+				YBCPgStatement alter_cmd_handle = NULL;
+				HandleYBStatus(
+					YBCPgNewAlterTable(
+						YBCGetDatabaseOidByRelid(defaultPartOid),
+						YbGetRelfileNodeId(defaultRel),
+						&alter_cmd_handle));
+				HandleYBStatus(
+					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
+				YBCExecAlterTable(alter_cmd_handle, defaultPartOid);
+			}
+
 			/* Keep the lock until commit. */
 			table_close(defaultRel, NoLock);
 		}
@@ -2208,7 +2228,8 @@ ExecuteTruncateGuts(List *explicit_rels,
 			 * as the relfilenode value. The old storage file is scheduled for
 			 * deletion at commit.
 			 */
-			RelationSetNewRelfilenode(rel, rel->rd_rel->relpersistence);
+			RelationSetNewRelfilenode(rel, rel->rd_rel->relpersistence,
+									  false /* yb_copy_split_options */);
 
 			heap_relid = RelationGetRelid(rel);
 
@@ -2222,7 +2243,8 @@ ExecuteTruncateGuts(List *explicit_rels,
 													 AccessExclusiveLock);
 
 				RelationSetNewRelfilenode(toastrel,
-										  toastrel->rd_rel->relpersistence);
+										  toastrel->rd_rel->relpersistence,
+										  false /* yb_copy_split_options */);
 				table_close(toastrel, NoLock);
 			}
 
@@ -2230,7 +2252,9 @@ ExecuteTruncateGuts(List *explicit_rels,
 			 * Reconstruct the indexes to match, and we're done.
 			 */
 			reindex_relation(heap_relid, REINDEX_REL_PROCESS_TOAST,
-							 &reindex_params);
+							 &reindex_params,
+							 false /* is_yb_table_rewrite */,
+							 false /* yb_copy_split_options */);
 		}
 
 		pgstat_count_truncate(rel);
@@ -5167,6 +5191,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 	ListCell *lc = NULL;
 	for (pass = 0; pass < AT_NUM_PASSES; pass++)
 	{
+		Oid relfilenode_id;
 		/*
 		 * Execute the YB alter table (if needed).
 		 *
@@ -5220,6 +5245,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 					(pass == AT_PASS_ALTER_TYPE || pass == AT_PASS_ADD_INDEX))
 				{
 					main_relid = RelationGetRelid(tab->rel);
+					relfilenode_id = YbGetRelfileNodeId(tab->rel);
 					yb_table_cloned = true;
 				}
 			}
@@ -5254,7 +5280,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 			{
 				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
 				YBCPgAlterTableSetTableId(
-					handle, YBCGetDatabaseOidByRelid(main_relid), main_relid);
+					handle, YBCGetDatabaseOidByRelid(main_relid),
+					relfilenode_id);
 			}
 			yb_table_cloned = false;
 		}
@@ -5887,12 +5914,23 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 						 errmsg("cannot rewrite table \"%s\" used as a catalog table",
 								RelationGetRelationName(OldHeap))));
 
-			if (IsYBBackedRelation(OldHeap))
+			if (IsYBBackedRelation(OldHeap) && !yb_enable_alter_table_rewrite)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("Rewriting of YB table is not yet implemented"),
 						 errhint("See https://github.com/yugabyte/yugabyte-db/issues/13278. "
 						         "React with thumbs up to raise its priority")));
+
+			if (IsYBRelation(OldHeap) && !YBSuppressUnsafeAlterNotice())
+				ereport(NOTICE,
+						(errmsg("table rewrite may lead to inconsistencies"),
+						 errdetail("Concurrent DMLs may not be reflected in"
+								   " the new table."),
+						 errhint("See https://github.com/yugabyte/yugabyte-db/"
+								 "issues/19860. "
+								 "Set 'ysql_suppress_unsafe_alter_notice'"
+								 " yb-tserver gflag to true to suppress this"
+								 " notice.")));
 
 			/*
 			 * Don't allow rewrite on temp tables of other backends ... their
@@ -5961,7 +5999,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			 * unlogged anyway.
 			 */
 			OIDNewHeap = make_new_heap(tab->relid, NewTableSpace, NewAccessMethod,
-									   persistence, lockmode);
+									   persistence, lockmode,
+									   true /* yb_copy_split_options */);
 
 			/*
 			 * Copy the heap data into the new table with the desired
@@ -5983,7 +6022,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 							 !OidIsValid(tab->newTableSpace),
 							 RecentXmin,
 							 ReadNextMultiXactId(),
-							 persistence);
+							 persistence,
+							 true /* yb_copy_split_options */);
 
 			InvokeObjectPostAlterHook(RelationRelationId, tab->relid, 0);
 		}
@@ -6459,8 +6499,23 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 
 			/* Write the tuple out to the new relation */
 			if (newrel)
-				table_tuple_insert(newrel, insertslot, mycid,
-								   ti_options, bistate);
+			{
+				if (IsYBRelation(newrel))
+				{
+					HeapTuple	tuple;
+					bool		shouldFree;
+
+					tuple = ExecFetchSlotHeapTuple(newslot, true, &shouldFree);
+					Assert(!shouldFree);
+					YBCExecuteInsert(newrel,
+									 RelationGetDescr(newrel),
+									 tuple,
+									 ONCONFLICT_NONE);
+				}
+				else
+					table_tuple_insert(newrel, insertslot, mycid,
+									   ti_options, bistate);
+			}
 
 			ResetExprContext(econtext);
 
@@ -9116,7 +9171,7 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 						  false,	/* check_not_in_use - we did it already */
 						  skip_build,
 						  quiet);
-	if (IsYBRelation(*mutable_rel) && stmt->primary)
+	if (IsYBRelation(*mutable_rel) && stmt->primary && !skip_build)
 	{
 		/* Table will be re-created, along with the dummy PK index. */
 		*mutable_rel =
@@ -20495,7 +20550,7 @@ YbATValidateChangePrimaryKey(Relation rel, IndexStmt *stmt)
 
 	bool is_object_part_of_xrepl;
 	HandleYBStatus(YBCIsObjectPartOfXRepl(MyDatabaseId,
-										  RelationGetRelid(rel),
+										  YbGetRelfileNodeId(rel),
 										  &is_object_part_of_xrepl));
 	if (is_object_part_of_xrepl)
 		ereport(ERROR,
@@ -22000,92 +22055,6 @@ YbATCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt *stmt,
 }
 
 /*
- * Copies the primary key of a relation to a create stmt intended to clone that
- * relation.
- */
-static void
-YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
-							   CreateStmt *create_stmt)
-{
-	ScanKeyData key;
-	SysScanDesc scan;
-	HeapTuple	tuple;
-
-	ScanKeyInit(&key, Anum_pg_constraint_conrelid, BTEqualStrategyNumber,
-				F_OIDEQ, ObjectIdGetDatum(RelationGetRelid(rel)));
-	scan = systable_beginscan(pg_constraint, ConstraintRelidTypidNameIndexId,
-							  true /* indexOK */, NULL /* snapshot */,
-							  1 /* nkeys */, &key);
-
-	bool pk_copied = false;
-	while (!pk_copied && HeapTupleIsValid(tuple = systable_getnext(scan)))
-	{
-		Form_pg_constraint con_form = (Form_pg_constraint) GETSTRUCT(tuple);
-
-		/*
-		 * Sanity check, should never happen as we've already checked for
-		 * inheritance.
-		 */
-		if (con_form->coninhcount > 0)
-			elog(ERROR, "constraint '%s' is inherited!",
-				 NameStr(con_form->conname));
-
-		switch (con_form->contype)
-		{
-			case CONSTRAINT_PRIMARY:
-			{
-				/*
-				 * We don't actually need to map attributes here since there
-				 * isn't a new relation yet, but we still need a map to generate
-				 * an index stmt.
-				 */
-				AttrMap *att_map = build_attrmap_by_name(
-					RelationGetDescr(rel), RelationGetDescr(rel),
-					false /* yb_ignore_type_mismatch */);
-
-				Relation idx_rel =
-					index_open(con_form->conindid, AccessShareLock);
-				IndexStmt *index_stmt = generateClonedIndexStmt(
-					NULL, idx_rel, att_map, NULL);
-
-				Constraint *pk_constr = makeNode(Constraint);
-				pk_constr->contype = CONSTR_PRIMARY;
-				pk_constr->conname = index_stmt->idxname;
-				pk_constr->options = index_stmt->options;
-				pk_constr->indexspace = index_stmt->tableSpace;
-
-				ListCell *cell;
-				foreach(cell, index_stmt->indexParams)
-				{
-					IndexElem *ielem = lfirst(cell);
-					pk_constr->keys =
-						lappend(pk_constr->keys, makeString(ielem->name));
-					pk_constr->yb_index_params =
-						lappend(pk_constr->yb_index_params, ielem);
-				}
-				create_stmt->constraints =
-					lappend(create_stmt->constraints, pk_constr);
-
-				index_close(idx_rel, AccessShareLock);
-				pk_copied = true;
-				break;
-			}
-			case CONSTRAINT_CHECK:
-			case CONSTRAINT_FOREIGN:
-			case CONSTRAINT_UNIQUE:
-			case CONSTRAINT_TRIGGER:
-			case CONSTRAINT_EXCLUSION:
-				break;
-			default:
-				elog(ERROR, "invalid constraint type \"%c\"",
-					 con_form->contype);
-				break;
-		}
-	}
-	systable_endscan(scan);
-}
-
-/*
  * Update a particular column type in a create stmt. Specifically, update the
  * collation id and type name for the column with the specified name. This
  * function should be used when there is an existing relation which the create
@@ -22131,7 +22100,7 @@ YbATValidateAlterColumnType(Relation rel)
 
 	bool is_object_part_of_xrepl;
 	HandleYBStatus(YBCIsObjectPartOfXRepl(MyDatabaseId,
-										  RelationGetRelid(rel),
+										  YbGetRelfileNodeId(rel),
 										  &is_object_part_of_xrepl));
 	if (is_object_part_of_xrepl)
 		ereport(ERROR,

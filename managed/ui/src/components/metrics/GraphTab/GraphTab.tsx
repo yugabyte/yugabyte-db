@@ -12,15 +12,9 @@ import {
 } from '../../../actions/graph';
 import { getTabContent } from '../../../utils/GraphUtils';
 import { isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
-import { GraphFilter, MetricQueryParams } from '../../../redesign/helpers/dtos';
-import {
-  MetricMeasure,
-  MetricConsts,
-  SplitType,
-  MetricTypes,
-  NodeAggregation,
-  NodeType
-} from '../../metrics/constants';
+import { GraphFilter, MetricsQueryParams } from '../../../redesign/helpers/dtos';
+import { MetricMeasure, MetricConsts, MetricTypes, NodeType } from '../../metrics/constants';
+import { SplitType, NodeAggregation } from '../dtos';
 
 interface MetricsData {
   type: string;
@@ -132,7 +126,7 @@ export const GraphTab: FC<MetricsData> = ({
     queryMetricsVaues(params, type);
   };
 
-  const queryMetricsVaues = (params: MetricQueryParams, type: string) => {
+  const queryMetricsVaues = (params: MetricsQueryParams, type: string) => {
     dispatch(resetMetrics());
     dispatch(queryMetrics(params)).then((response: any) => {
       if (!response.error) {

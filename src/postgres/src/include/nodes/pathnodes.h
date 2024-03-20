@@ -1335,9 +1335,9 @@ typedef struct IndexPath
 	ScanDirection indexscandir;
 	Cost		indextotalcost;
 	Selectivity indexselectivity;
-	double				yb_estimated_num_nexts;
-	double				yb_estimated_num_seeks;
-	YbIndexPathInfo		yb_index_path_info;	/* fields used for YugabyteDB */
+	double		yb_estimated_num_nexts;
+	double		yb_estimated_num_seeks;
+	YbIndexPathInfo yb_index_path_info;	/* fields used for YugabyteDB */
 } IndexPath;
 
 /*

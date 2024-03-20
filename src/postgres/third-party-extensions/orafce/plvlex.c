@@ -3,7 +3,7 @@
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006-2018
+  PostgreSQL implementation author: Pavel Stehule, 2006-2023
 
   This module is under BSD Licence
 
@@ -35,24 +35,11 @@ typedef struct {
 
 PG_FUNCTION_INFO_V1(plvlex_tokens);
 
-extern int      orafce_sql_yyparse();
 extern void orafce_sql_yyerror(List **result, const char *message);
 extern void orafce_sql_scanner_init(const char *str);
 extern void orafce_sql_scanner_finish(void);
 
 static orafce_lexnode *__node;
-
-static char *__result;
-static int __len;
-
-#define CSTRING(txt) \
-	( \
-    __len = VARSIZE(txt) - VARHDRSZ, \
-    __result = palloc(__len + 1), \
-    memcpy(__result, VARDATA(txt), __len), \
-    __result[__len] = '\0', \
-    __result)
-
 
 #define COPY_TO_S(src,dest,col)	(dest->col = (src->col ? pstrdup(src->col) : NULL))
 #define COPY_TO(src,dest,col)	(dest->col = src->col)
@@ -133,7 +120,6 @@ filterList(List *list, bool skip_spaces, bool qnames)
 {
 	List *result = NIL;
 	ListCell *cell;
-	bool isdot = false;
 	orafce_lexnode *a = NULL;
 	orafce_lexnode *dot = NULL;
 
@@ -143,7 +129,7 @@ filterList(List *list, bool skip_spaces, bool qnames)
 
 		if (qnames)
 		{
-			isdot = (IsType(nd, OTHERS) && (nd->str[0] == '.'));
+			bool		isdot = (IsType(nd, OTHERS) && (nd->str) && (nd->str[0] == '.'));
 
 			if (IsType(nd, IDENT) && dot && a)
 			{
@@ -197,7 +183,7 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 		bool skip_spaces = PG_GETARG_BOOL(1);
 		bool qnames = PG_GETARG_BOOL(2);
 
-		orafce_sql_scanner_init(CSTRING(src));
+		orafce_sql_scanner_init(text_to_cstring(src));
 		if (orafce_sql_yyparse(&lexems) != 0)
 			orafce_sql_yyerror(NULL, "bogus input");
 
@@ -215,7 +201,6 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 
 		fctx->values = (char **) palloc (6 * sizeof (char *));
 		fctx->values  [0] = (char*) palloc (16 * sizeof (char));
-		fctx->values  [1] = (char*) palloc (1024 * sizeof (char));
 		fctx->values  [2] = (char*) palloc (16 * sizeof (char));
 		fctx->values  [3] = (char*) palloc (16 * sizeof (char));
 		fctx->values  [4] = (char*) palloc (255 * sizeof (char));
@@ -244,7 +229,6 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 		MemoryContextSwitchTo (oldcontext);
 	}
 
-
 	funcctx = SRF_PERCALL_SETUP ();
 	fctx = (tokensFctx*) funcctx->user_fctx;
 
@@ -263,7 +247,9 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 		back_vals[5] = values[5];
 
 		snprintf(values[0],    16, "%d", nd->lloc);
-		snprintf(values[1], 10000, "%s", SF(nd->str));
+
+		values[1] = nd->str;
+
 		snprintf(values[2],    16, "%d", nd->keycode);
 		snprintf(values[3],    16, "%s", nd->classname);
 		snprintf(values[4],   255, "%s", SF(nd->sep));

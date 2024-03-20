@@ -1,3 +1,5 @@
+SET search_path TO public, oracle;
+
 -- Tests for the aggregate listagg
 SELECT listagg(i::text) from generate_series(1,3) g(i);
 SELECT listagg(i::text, ',') from generate_series(1,3) g(i);
@@ -11,6 +13,7 @@ DECLARE
  med real;
 
 BEGIN
+        -- YB note: DROP TABLE here fails.
 	CREATE TABLE median_test (salary real);
         INSERT INTO median_test VALUES (4500);
         INSERT INTO median_test VALUES (NULL);
@@ -28,6 +31,7 @@ DECLARE
  med real;
 
 BEGIN
+        -- YB note: DROP TABLE here fails.
         CREATE TABLE median_test1 (salary real);
         INSERT INTO median_test1 VALUES (4500);
         INSERT INTO median_test1 VALUES (1500);
@@ -44,6 +48,7 @@ CREATE FUNCTION checkMedianDoubleOdd() RETURNS double precision AS $$
 DECLARE
   med double precision;
 BEGIN
+        -- YB note: DROP TABLE here fails.
         CREATE TABLE median_test2 (salary double precision);
         INSERT INTO median_test2 VALUES (4500);
         INSERT INTO median_test2 VALUES (1500);
@@ -60,6 +65,7 @@ DECLARE
  med double precision;
 
 BEGIN
+        -- YB note: DROP TABLE here fails.
         CREATE TABLE median_test3 (salary double precision);
         INSERT INTO median_test3 VALUES (4500);
         INSERT INTO median_test3 VALUES (1500);
@@ -82,6 +88,7 @@ DROP FUNCTION checkMedianRealEven();
 DROP FUNCTION checkMedianDoubleOdd();
 DROP FUNCTION checkMedianDoubleEven();
 
+-- YB note: cleanup of above workarounds.
 DROP TABLE median_test;
 DROP TABLE median_test1;
 DROP TABLE median_test2;

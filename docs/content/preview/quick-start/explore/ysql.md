@@ -3,7 +3,6 @@ title: Explore YSQL, the Yugabyte SQL API
 headerTitle: Explore Yugabyte SQL
 linkTitle: Explore distributed SQL APIs
 description: Explore Yugabyte SQL (YSQL), a PostgreSQL-compatible fully-relational distributed SQL API
-image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
   - /preview/quick-start/explore-ysql/
   - /preview/quick-start/explore/

@@ -121,7 +121,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
               Paths.get(bundlePath.toAbsolutePath().toString(), node.nodeName);
           Files.createDirectories(nodeComponentsDirPath);
           supportBundleComponent.downloadComponentBetweenDates(
-              customer, universe, nodeComponentsDirPath, startDate, endDate, node);
+              taskParams(), customer, universe, nodeComponentsDirPath, startDate, endDate, node);
         } catch (Exception e) {
           // Log the error and continue with the rest of support bundle collection.
           log.error(
@@ -146,7 +146,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
         Path globalComponentsDirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
         Files.createDirectories(globalComponentsDirPath);
         supportBundleComponent.downloadComponentBetweenDates(
-            customer, universe, globalComponentsDirPath, startDate, endDate, null);
+            taskParams(), customer, universe, globalComponentsDirPath, startDate, endDate, null);
       } catch (Exception e) {
         // Log the error and continue with the rest of support bundle collection.
         log.error(

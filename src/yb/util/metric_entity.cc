@@ -176,11 +176,6 @@ void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {
       << "Metric name is not compatible with Prometheus: " << proto->name();
 }
 
-scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype) const {
-  std::lock_guard l(lock_);
-  return FindPtrOrNull(metric_map_, &prototype);
-}
-
 bool MetricEntity::TEST_ContainMetricName(const std::string& metric_name) const {
   std::lock_guard l(lock_);
   for (const MetricMap::value_type& val : metric_map_) {
@@ -295,7 +290,7 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     // This is tablet_id in the case of tablet, but otherwise names the server type, eg: yb.master
     prometheus_attr["metric_id"] = id_;
     aggregation_levels = kServerLevel;
-  } else if (strcmp(prototype_->name(), kCdcMetricEntityName) == 0) {
+  } else if (strcmp(prototype_->name(), kXClusterMetricEntityName) == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["table_type"] = attrs["table_type"];

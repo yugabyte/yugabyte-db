@@ -4,7 +4,6 @@ headerTitle: TPC-C
 linkTitle: TPC-C
 description: Benchmark YSQL performance using TPC-C
 headcontent: Benchmark YSQL performance using TPC-C
-image: /images/section_icons/quick_start/explore_ysql.png
 menu:
   v2.18:
     identifier: tpcc-ysql

@@ -60,6 +60,7 @@
 #include "utils/tuplesort.h"
 
 /* Yugabyte includes */
+#include "catalog/pg_constraint.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/planner.h"
 
@@ -659,7 +660,8 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 	OIDNewHeap = make_new_heap(tableOid, tableSpace,
 							   accessMethod,
 							   relpersistence,
-							   AccessExclusiveLock);
+							   AccessExclusiveLock,
+							   true /* yb_copy_split_options */);
 
 	/* Copy the heap data into the new table in the desired order */
 	copy_table_data(OIDNewHeap, tableOid, indexOid, verbose,
@@ -672,7 +674,8 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 	finish_heap_swap(tableOid, OIDNewHeap, is_system_catalog,
 					 swap_toast_by_content, false, true,
 					 frozenXid, cutoffMulti,
-					 relpersistence);
+					 relpersistence,
+					 true /* yb_copy_split_options */);
 }
 
 
@@ -685,10 +688,12 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
  *
  * After this, the caller should load the new heap with transferred/modified
  * data, then call finish_heap_swap to complete the operation.
+ * YB Note: In YB, this function is used during table rewrite operations.
  */
 Oid
 make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
-			  char relpersistence, LOCKMODE lockmode)
+			  char relpersistence, LOCKMODE lockmode,
+			  bool yb_copy_split_options)
 {
 	TupleDesc	OldHeapDesc;
 	char		NewHeapName[NAMEDATALEN];
@@ -767,18 +772,26 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 
 	if (IsYugaByteEnabled() && relpersistence != RELPERSISTENCE_TEMP)
 	{
-		CreateStmt *dummyStmt = makeNode(CreateStmt);
-		dummyStmt->relation   = makeRangeVar(NULL, NewHeapName, -1);
-		char relkind          = RELKIND_RELATION;
-		Oid matviewPgTableId  = InvalidOid;
-
-		if (OldHeap->rd_rel->relkind == RELKIND_MATVIEW) {
-			relkind = RELKIND_MATVIEW;
-			matviewPgTableId = OIDOldHeap;
+		CreateStmt *dummyStmt	 = makeNode(CreateStmt);
+		dummyStmt->relation		 = makeRangeVar(NULL, NewHeapName, -1);
+		Relation pg_constraint = table_open(ConstraintRelationId,
+										    RowExclusiveLock);
+		YbATCopyPrimaryKeyToCreateStmt(OldHeap, pg_constraint, dummyStmt);
+		table_close(pg_constraint, RowExclusiveLock);
+		if (yb_copy_split_options)
+		{
+			YbGetTableProperties(OldHeap);
+			dummyStmt->split_options = YbGetSplitOptions(OldHeap);
 		}
+		YBCCreateTable(dummyStmt, RelationGetRelationName(OldHeap),
+					   OldHeap->rd_rel->relkind, OldHeapDesc, OIDNewHeap,
+					   namespaceid,
+					   YbGetTableProperties(OldHeap)->tablegroup_oid,
+					   InvalidOid, NewTableSpace, OIDOldHeap,
+					   OldHeap->rd_rel->relfilenode);
 
-		YBCCreateTable(dummyStmt, relkind, OldHeapDesc, OIDNewHeap, namespaceid,
-					   InvalidOid, InvalidOid, NewTableSpace, matviewPgTableId);
+		if (yb_test_fail_table_rewrite_after_creation)
+			elog(ERROR, "Injecting error.");
 	}
 
 	ReleaseSysCache(tuple);
@@ -1456,7 +1469,8 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 				 bool is_internal,
 				 TransactionId frozenXid,
 				 MultiXactId cutoffMulti,
-				 char newrelpersistence)
+				 char newrelpersistence,
+				 bool yb_copy_split_options)
 {
 	ObjectAddress object;
 	Oid			mapped_tables[4];
@@ -1519,7 +1533,9 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 	pgstat_progress_update_param(PROGRESS_CLUSTER_PHASE,
 								 PROGRESS_CLUSTER_PHASE_REBUILD_INDEX);
 
-	reindex_relation(OIDOldHeap, reindex_flags, &reindex_params);
+	reindex_relation(OIDOldHeap, reindex_flags, &reindex_params,
+					 true /* is_yb_table_rewrite */,
+					 yb_copy_split_options);
 
 	/* Report that we are now doing clean up */
 	pgstat_progress_update_param(PROGRESS_CLUSTER_PHASE,

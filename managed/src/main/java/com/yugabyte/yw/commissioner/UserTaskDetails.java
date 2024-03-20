@@ -173,6 +173,9 @@ public class UserTaskDetails {
     // Delete Kubernetes volumes created by helm chart.
     KubernetesVolumeDelete,
 
+    // Delete Kubernetes Volumes for a shell mode master before creating it.
+    KubernetesVolumeDeleteMasterShellMode,
+
     // Delete kubernetes namespace
     KubernetesNamespaceDelete,
 
@@ -252,7 +255,9 @@ public class UserTaskDetails {
     ValidateConfigurations,
 
     // Manage Otel Collector.
-    ManageOtelCollector
+    ManageOtelCollector,
+
+    ValidatingNode
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -474,6 +479,10 @@ public class UserTaskDetails {
         title = "Delete Kubernetes Volumes";
         description = "Delete Kubernetes Volumes";
         break;
+      case KubernetesVolumeDeleteMasterShellMode:
+        title = "Delete Kubernetes Volumes for a master before creating it in shell mode";
+        description = "Delete Kubernetes Volumes for master pod before creating it in shell mode";
+        break;
       case KubernetesNamespaceDelete:
         title = "Delete Kubernetes Namespace";
         description = "Delete Kubernetes Namespace";
@@ -588,6 +597,10 @@ public class UserTaskDetails {
       case ManageOtelCollector:
         title = "Managing OpenTelemetry Collector";
         description = "Managing OpenTelemetry Collector";
+        break;
+      case ValidatingNode:
+        title = "Validating node status";
+        description = "Validating node's current state before proceeding";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

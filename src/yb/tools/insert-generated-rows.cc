@@ -59,8 +59,8 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_string(master_address, "localhost",
-              "Comma separated list of master addresses to run against.");
+DEFINE_NON_RUNTIME_string(master_address, "localhost",
+    "Comma separated list of master addresses to run against.");
 
 namespace yb {
 namespace tools {

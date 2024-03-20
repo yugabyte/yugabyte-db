@@ -1,10 +1,10 @@
 package com.yugabyte.yw.common.logging;
 
-import akka.dispatch.DispatcherPrerequisites;
-import akka.dispatch.MessageDispatcher;
-import akka.dispatch.MessageDispatcherConfigurator;
 import com.typesafe.config.Config;
 import java.util.concurrent.TimeUnit;
+import org.apache.pekko.dispatch.DispatcherPrerequisites;
+import org.apache.pekko.dispatch.MessageDispatcher;
+import org.apache.pekko.dispatch.MessageDispatcherConfigurator;
 import scala.concurrent.duration.FiniteDuration;
 
 public class MDCPropagatingDispatcherConfigurator extends MessageDispatcherConfigurator {

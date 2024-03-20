@@ -44,7 +44,7 @@ public class UpdateDiskSize extends UniverseDefinitionTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe =
-          lockUniverseForUpdate(
+          lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
                 // Set the task param data to universe in-memory.

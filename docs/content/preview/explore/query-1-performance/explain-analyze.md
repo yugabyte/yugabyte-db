@@ -4,7 +4,6 @@ linkTitle: Analyze queries
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
 aliases:
 headerTitle: Analyze queries with EXPLAIN
-image: /images/section_icons/index/develop.png
 menu:
   preview:
     identifier: explain-analyze

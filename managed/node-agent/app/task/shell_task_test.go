@@ -8,6 +8,7 @@ import (
 	pb "node-agent/generated/service"
 	"node-agent/model"
 	"node-agent/util"
+	"os/user"
 	"reflect"
 	"testing"
 )
@@ -257,5 +258,26 @@ func TestPreflightCheckParamConversion(t *testing.T) {
 		if pField != gField {
 			t.Fatalf("Expected %v, found %v", gField, pField)
 		}
+	}
+}
+
+func TestShellTaskEnv(t *testing.T) {
+	testShellTask := NewShellTask("test_env", "echo", []string{"test"})
+	ctx := context.Background()
+	currentUser, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	userDetail, err := util.UserInfo(currentUser.Username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := testShellTask.userEnv(ctx, userDetail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Env: %v", env)
+	if len(env) == 0 {
+		t.Fatalf("At least one env var is expected")
 	}
 }

@@ -4,7 +4,6 @@ headerTitle: Global database
 linkTitle: Global database
 description: Build highly available global applications
 headcontent: Design highly-available applications using a global database
-image: /images/section_icons/quick_start/sample_apps.png
 menu:
   preview:
     identifier: global-apps-global-database

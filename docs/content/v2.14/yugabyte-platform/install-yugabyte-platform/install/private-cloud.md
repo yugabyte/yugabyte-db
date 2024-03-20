@@ -3,7 +3,6 @@ title: Install YugabyteDB Anywhere
 headerTitle: Select installation type
 linkTitle: Install
 description: Installing YugabyteDB Anywhere on private cloud
-image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing YugabyteDB Anywhere on private cloud
 menu:
   v2.14_yugabyte-platform:

@@ -368,59 +368,6 @@ UPDATE t3 SET ADD = 2;
 SELECT * from t3;
 DROP TABLE t3;
 
--- YB_TODO: BEGIN: remove this after tracking yb_pg_triggers
--- UPDATE view with INSTEAD OF UPDATE trigger
-CREATE OR REPLACE FUNCTION view_trigger() RETURNS trigger
-LANGUAGE plpgsql AS $$
-declare
-    argstr text := '';
-begin
-    for i in 0 .. TG_nargs - 1 loop
-        if i > 0 then
-            argstr := argstr || ', ';
-        end if;
-        argstr := argstr || TG_argv[i];
-    end loop;
-
-    raise notice '% % % % (%)', TG_RELNAME, TG_WHEN, TG_OP, TG_LEVEL, argstr;
-
-    if TG_LEVEL = 'ROW' then
-        if TG_OP = 'INSERT' then
-            raise NOTICE 'NEW: %', NEW;
-            INSERT INTO main_table VALUES (NEW.a, NEW.b);
-            RETURN NEW;
-        end if;
-
-        if TG_OP = 'UPDATE' then
-            raise NOTICE 'OLD: %, NEW: %', OLD, NEW;
-            UPDATE main_table SET a = NEW.a, b = NEW.b WHERE a = OLD.a AND b = OLD.b;
-            if NOT FOUND then RETURN NULL; end if;
-            RETURN NEW;
-        end if;
-
-        if TG_OP = 'DELETE' then
-            raise NOTICE 'OLD: %', OLD;
-            DELETE FROM main_table WHERE a = OLD.a AND b = OLD.b;
-            if NOT FOUND then RETURN NULL; end if;
-            RETURN OLD;
-        end if;
-    end if;
-
-    RETURN NULL;
-end;
-$$;
-
-CREATE TABLE main_table (a int, b int);
-CREATE VIEW main_view AS SELECT a, b FROM main_table;
-CREATE TRIGGER instead_of_update_trig INSTEAD OF UPDATE ON main_view
-FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_upd');
-INSERT INTO main_view VALUES (20, 30);
-INSERT INTO main_view VALUES (21, 31);
-UPDATE main_view SET b = 31 WHERE a = 20;
-SELECT * FROM main_view WHERE a = 20;
-DROP TABLE main_table CASCADE;
--- YB_TODO: END: remove this after tracking yb_pg_triggers
-
 -- Test whether single row optimization is invoked when
 -- only one partition is being updated.
 CREATE TABLE list_parted (a int, b int, c int, primary key(a,b)) PARTITION BY list (a);
@@ -496,15 +443,10 @@ SELECT * FROM test_include WHERE c1 = 2;
 DROP TABLE test_include;
 -- YB_TODO: end
 
--- YB_TODO: Remove after tracking yb_pg_triggers
-CREATE TABLE min_updates_test (
-   f1  text,
-   f2 int,
-   f3 int);
-INSERT INTO min_updates_test VALUES ('a',1,2),('b','2',null);
-CREATE TRIGGER z_min_update
-BEFORE UPDATE ON min_updates_test
-FOR EACH ROW EXECUTE PROCEDURE suppress_redundant_updates_trigger();
-UPDATE min_updates_test SET f1 = f1;
-SELECT * FROM min_updates_test ORDER BY f1;
--- YB_TODO: end
+-- suppress warning that depends on wal_level
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION p;
+RESET client_min_messages;
+ALTER PUBLICATION p ADD TABLES IN SCHEMA public;
+ALTER PUBLICATION p DROP TABLES IN SCHEMA CURRENT_SCHEMA;
+ALTER PUBLICATION p SET CURRENT_SCHEMA;

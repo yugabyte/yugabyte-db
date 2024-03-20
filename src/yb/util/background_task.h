@@ -27,7 +27,7 @@ class Thread;
 // A task that runs periodically every interval_msec, with the option to be explicitly woken up.
 // Executions of RunTask are serialized. If interval_msec is 0, the task only runs when explicitly
 // woken up.
-// TODO(bojanserafimov): Use in CatalogManagerBgTasks
+// TODO(bojanserafimov): Use in CatalogManagerBgTasks.
 class BackgroundTask {
  public:
   BackgroundTask(
@@ -37,7 +37,10 @@ class BackgroundTask {
 
   Status Init();
 
-  // Wait for pending tasks and shut down
+  // Set a new run period of the task. Can be used for custom backoff strategy.
+  void SetInterval(std::chrono::milliseconds interval_msec);
+
+  // Wait for pending tasks and shut down.
   void Shutdown();
 
   Status Wake();

@@ -1,0 +1,46 @@
+# LANGUAGE message translation file for pg_hint_plan description.
+# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# This file is distributed under the same license as the pg_hint_plan
+# package.
+# Julien Rouhaud <rjuju123@gmail.com>, 2023.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_hint_plan \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-03-14 16:08+0800\n"
+"PO-Revision-Date: 2023-03-14 16:08+0800\n"
+"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"Language: ja\n"
+"Language-Team: ja <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.12.1\n"
+
+#: ../../description.md:1 492c2876625149a7933a40a6ca6a37bc
+msgid "Description"
+msgstr ""
+
+#: ../../description.md:3 563b48c038c24b86ac6017e6643433e6
+msgid "Basic Usage"
+msgstr ""
+
+#: ../../description.md:5 f2442db1185c4220a8a3146eec62a7bd
+msgid ""
+"`pg_hint_plan` reads hinting phrases in a comment of special form given "
+"with the target SQL statement. The special form is beginning by the "
+"character sequence `\"/\\*+\"` and ends with `\"\\*/\"`. Hint phrases are"
+" consists of hint name and following parameters enclosed by parentheses "
+"and delimited by spaces. Each hinting phrases can be delimited by new "
+"lines for readability."
+msgstr ""
+
+#: ../../description.md:11 a1611a789c7747d5b32eddff4b33381e
+msgid ""
+"In the example below, hash join is selected as the joining method and "
+"scanning `pgbench_accounts` by sequential scan method."
+msgstr ""
+

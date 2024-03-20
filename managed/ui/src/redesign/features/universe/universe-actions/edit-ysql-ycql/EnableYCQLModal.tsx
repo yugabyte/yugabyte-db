@@ -145,7 +145,7 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
         enableYCQL: values.enableYCQL ?? false,
         enableYCQLAuth: values.enableYCQL && values.enableYCQLAuth ? values.enableYCQLAuth : false,
         ycqlPassword: values.ycqlPassword ?? '',
-        CommunicationPorts: {
+        communicationPorts: {
           yqlServerHttpPort:
             values.overridePorts && values.yqlServerHttpPort
               ? values.yqlServerHttpPort

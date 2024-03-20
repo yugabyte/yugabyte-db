@@ -3,7 +3,6 @@ title: Configure a CLion project
 headerTitle: Configure a CLion project
 linkTitle: Configure a CLion project
 description: Configure a CLion project for building YugabyteDB using cmake or ninja.
-image: /images/section_icons/index/quick_start.png
 headcontent: CLion project setup.
 menu:
   preview:

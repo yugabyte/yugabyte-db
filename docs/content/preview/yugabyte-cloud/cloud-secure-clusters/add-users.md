@@ -3,7 +3,6 @@ title: Add database users
 linkTitle: Add database users
 description: Add users to YugabyteDB Managed clusters
 headcontent: Grant team members and applications access to your database
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: add-users

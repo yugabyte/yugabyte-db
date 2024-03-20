@@ -40,6 +40,7 @@ class PgMutationCounter;
 
 // Forwards call to corresponding PgClientSession sync method (see PG_CLIENT_SESSION_METHODS).
 #define YB_PG_CLIENT_METHODS \
+    (ActiveSessionHistory) \
     (AlterDatabase) \
     (AlterTable) \
     (BackfillIndex) \

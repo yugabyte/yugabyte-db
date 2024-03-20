@@ -1,19 +1,20 @@
-import { FC } from 'react';
+import { isEqual } from 'lodash';
 import { ButtonGroup, makeStyles } from '@material-ui/core';
 import { YBButton } from '../YBButton/YBButton';
 import { themeVariables } from '../../theme/variables';
 import clsx from 'clsx';
 
-export interface YBButtonGroupProps {
+export interface YBButtonGroupProps<T> {
   variant?: 'outlined' | 'text' | 'contained';
   color?: 'default' | 'secondary' | 'primary';
-  values: number[];
-  selectedNum: number;
+  values: T[];
+  selectedNum: T;
   disabled?: boolean;
   dataTestId?: string;
   btnClassName?: any;
   btnGroupClassName?: any;
-  handleSelect: (selectedNum: number) => void;
+  handleSelect: (selectedNum: T) => void;
+  displayLabelFn?: (elem: T) => JSX.Element;
 }
 
 const useStyles = makeStyles(() => ({
@@ -27,7 +28,7 @@ const useStyles = makeStyles(() => ({
   }
 }));
 
-export const YBButtonGroup: FC<YBButtonGroupProps> = (props) => {
+export const YBButtonGroup = <T,>(props: YBButtonGroupProps<T>) => {
   const {
     variant,
     color,
@@ -37,7 +38,8 @@ export const YBButtonGroup: FC<YBButtonGroupProps> = (props) => {
     dataTestId,
     btnClassName,
     btnGroupClassName,
-    handleSelect
+    handleSelect,
+    displayLabelFn
   } = props;
   const classes = useStyles();
 
@@ -48,20 +50,20 @@ export const YBButtonGroup: FC<YBButtonGroupProps> = (props) => {
       color={color ?? 'default'}
       className={clsx(btnGroupClassName, classes.btnGroup)}
     >
-      {values.map((value) => {
+      {values.map((value, i) => {
         return (
           <YBButton
-            key={value}
+            key={i}
             className={btnClassName ?? classes.button}
             data-testid={`${dataTestId}-option${value}`}
-            disabled={value !== selectedNum && !!disabled}
-            variant={value === selectedNum ? 'primary' : 'secondary'}
+            disabled={!isEqual(value, selectedNum) && !!disabled}
+            variant={isEqual(value, selectedNum) ? 'primary' : 'secondary'}
             onClick={(e: any) => {
               if (!!disabled) e.preventDefault();
               else handleSelect(value);
             }}
           >
-            {value}
+            {displayLabelFn ? displayLabelFn(value) : value}
           </YBButton>
         );
       })}

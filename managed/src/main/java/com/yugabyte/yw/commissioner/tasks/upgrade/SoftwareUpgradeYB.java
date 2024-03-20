@@ -130,6 +130,11 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
 
+          if (!taskParams().rollbackSupport) {
+            createFinalizeUpgradeTasks(taskParams().upgradeSystemCatalog);
+            return;
+          }
+
           boolean upgradeRequireFinalize;
           try {
             upgradeRequireFinalize =

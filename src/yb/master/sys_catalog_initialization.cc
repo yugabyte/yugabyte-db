@@ -13,6 +13,8 @@
 
 #include "yb/master/sys_catalog_initialization.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -91,6 +93,7 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
   const string metadata_changes_file = JoinPathSegments(
       dest_path,
       kSysCatalogSnapshotTabletMetadataChangesFile);
+  SCOPED_WAIT_STATUS(WriteSysCatalogSnapshotToDisk);
   RETURN_NOT_OK(WritePBContainerToPath(
       Env::Default(),
       metadata_changes_file,

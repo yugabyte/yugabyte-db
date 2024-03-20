@@ -17,9 +17,10 @@ showRightNav: true
 
 The following project is recommended for implementing Rust applications using the YugabyteDB YSQL API.
 
-| Project | Documentation and Guides | Example Apps |
-| ------- | ------------------------ | ------------ |
-| Diesel | [Documentation](diesel/) <br/> [Hello World](../orms/rust/ysql-diesel/) | [Diesel app](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/rust/diesel)
+| Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version | Example Apps |
+| ------- | ------------------------ | --------------------- | ---------------------------- | ------------ |
+| YugabyteDB Rust-Postgres Smart Driver [Recommended] | [Documentation](yb-rust-postgres/)<br /> [Reference](../../reference/drivers/rust/rust-postgres-reference/) | [yb-postgres](https://crates.io/crates/yb-postgres) (synchronous YSQL client): v0.19.7-yb-1-beta <br/> [yb-tokio-postgres](https://crates.io/crates/yb-tokio-postgres) (asynchronous YSQL client): v0.7.10-yb-1-beta | 2.19 and later
+| Diesel | [Documentation](diesel/) <br/> [Hello World](../orms/rust/ysql-diesel/) | | |[Diesel app](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/rust/diesel) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
@@ -30,7 +31,7 @@ For fully-runnable code snippets and explanations of common operations, see the 
 To develop Rust applications for YugabyteDB, you need the following:
 
 - **Rust**\
-  To download and install Rust, refer to the [Rust](https://nodejs.org/en/download/) documentation.\
+  To download and install Rust, refer to the [Rust](https://doc.rust-lang.org/cargo/getting-started/installation.html) documentation.\
   To check the version of Rust, use the following command:
 
   ```sh
@@ -52,4 +53,4 @@ To develop Rust applications for YugabyteDB, you need the following:
 
 ## Next step
 
-- [Use an ORM](diesel/)
+- [Connect an app](yb-rust-postgres/)

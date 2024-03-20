@@ -16,6 +16,14 @@
 #include "utils/backend_progress.h"
 
 
+/*
+ * The number of attempts to read a BEEntry before proceeding with inconsistent
+ * results. This must be a multiple of YB_BEENTRY_LOGGING_INTERVAL
+ */
+#define YB_MAX_BEENTRIES_ATTEMPTS 1000
+/* How often to log BEEntry read failures */
+#define YB_BEENTRY_LOGGING_INTERVAL 100
+
 /* ----------
  * Backend states
  * ----------
@@ -220,7 +228,8 @@ typedef struct PgBackendStatus
  *
  * Reader logic should follow this sketch:
  *
- *		for (;;)
+ *		int attempt = 1;
+ *		while (yb_pgstat_log_read_activity(beentry, ++attempt))
  *		{
  *			int before_ct, after_ct;
  *
@@ -354,12 +363,14 @@ extern int	pgstat_fetch_stat_numbackends(void);
 extern PgBackendStatus *pgstat_fetch_stat_beentry(int beid);
 extern LocalPgBackendStatus *pgstat_fetch_stat_local_beentry(int beid);
 extern char *pgstat_clip_activity(const char *raw_activity);
-extern PgBackendStatus **getBackendStatusArrayPointer(void);
 
 /* ----------
  * YB functions called from backends
  * ----------
  */
 extern void yb_pgstat_add_session_info(uint64_t session_id);
+
+extern bool yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt);
+
 
 #endif							/* BACKEND_STATUS_H */

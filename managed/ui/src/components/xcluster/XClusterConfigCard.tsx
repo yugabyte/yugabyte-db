@@ -107,9 +107,9 @@ export const XClusterConfigCard = ({
               <div className={styles.label}>Current Lag</div>
               <div className={styles.value}>
                 <CurrentReplicationLag
-                  xClusterConfigUUID={xClusterConfig.uuid}
+                  xClusterConfigUuid={xClusterConfig.uuid}
                   xClusterConfigStatus={xClusterConfig.status}
-                  sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
+                  sourceUniverseUuid={xClusterConfig.sourceUniverseUUID}
                 />
               </div>
             </div>

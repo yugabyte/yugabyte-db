@@ -3,8 +3,7 @@ title: Transaction priorities
 headerTitle: Transaction priorities
 linkTitle: Transaction priorities
 description: Transaction priorities in YugabyteDB.
-headcontent: Transaction priorities in YugabyteDB.
-image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+headcontent: Transaction priorities in YugabyteDB
 menu:
   preview:
     name: Transaction priorities

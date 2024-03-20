@@ -254,8 +254,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     flagMap.put("ysql_beta_features", "true");
-    flagMap.put("ysql_sleep_before_retry_on_txn_conflict", "false");
-    flagMap.put("ysql_max_write_restart_attempts", "2");
     flagMap.put("ysql_enable_reindex", "true");
 
     return flagMap;
@@ -332,6 +330,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     connection = createTestRole();
+    allowSchemaPublic();
     pgInitialized = true;
   }
 
@@ -344,6 +343,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     return getConnectionBuilder().connect();
+  }
+
+  private void allowSchemaPublic() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("GRANT ALL ON SCHEMA public TO public");
+    }
   }
 
   public void restartClusterWithFlags(

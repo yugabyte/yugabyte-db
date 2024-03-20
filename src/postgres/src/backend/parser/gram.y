@@ -11253,7 +11253,6 @@ CreatePublicationStmt:
 				}
 			| CREATE PUBLICATION name FOR ALL TABLES opt_definition
 				{
-					parser_ybc_not_support(@1, "CREATE PUBLICATION");
 					CreatePublicationStmt *n = makeNode(CreatePublicationStmt);
 
 					n->pubname = $3;
@@ -11263,7 +11262,6 @@ CreatePublicationStmt:
 				}
 			| CREATE PUBLICATION name FOR pub_obj_list opt_definition
 				{
-					parser_ybc_not_support(@1, "CREATE PUBLICATION");
 					CreatePublicationStmt *n = makeNode(CreatePublicationStmt);
 
 					n->pubname = $3;
@@ -11299,6 +11297,7 @@ PublicationObjSpec:
 				}
 			| TABLES IN_P SCHEMA ColId
 				{
+					parser_ybc_not_support(@1, "CREATE/ALTER PUBLICATION SCHEMA");
 					$$ = makeNode(PublicationObjSpec);
 					$$->pubobjtype = PUBLICATIONOBJ_TABLES_IN_SCHEMA;
 					$$->name = $4;
@@ -11306,6 +11305,7 @@ PublicationObjSpec:
 				}
 			| TABLES IN_P SCHEMA CURRENT_SCHEMA
 				{
+					parser_ybc_not_support(@1, "CREATE/ALTER PUBLICATION SCHEMA");
 					$$ = makeNode(PublicationObjSpec);
 					$$->pubobjtype = PUBLICATIONOBJ_TABLES_IN_CUR_SCHEMA;
 					$$->location = @4;
@@ -11359,6 +11359,7 @@ PublicationObjSpec:
 				}
 			| CURRENT_SCHEMA
 				{
+					parser_ybc_not_support(@1, "CREATE/ALTER PUBLICATION SCHEMA");
 					$$ = makeNode(PublicationObjSpec);
 					$$->pubobjtype = PUBLICATIONOBJ_CONTINUATION;
 					$$->location = @1;

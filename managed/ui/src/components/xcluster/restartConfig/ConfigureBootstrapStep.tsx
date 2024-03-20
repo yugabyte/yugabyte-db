@@ -94,20 +94,20 @@ export const ConfigureBootstrapStep = ({ formik }: ConfigureBootstrapStepProps) 
           <b>Note!</b>
         </p>
         <p>
-          Restart replication runs a bootstrap to bring the tables on your target universe to the
+          Restart replication runs a full copy to bring the tables on your target universe to the
           same checkpoint as your source universe before re-enabling asynchronous replication.
         </p>
         <p>
-          Bootstrapping is a <b>time intensive</b> process that involves creating a checkpoint on
-          the source, deleting the data on target, creating a copy of the source data using backup,
-          and replicating the data to target using restore.
+          Full copying is a <b>time intensive</b> process that involves creating a checkpoint on the
+          source, deleting the data on target, creating a copy of the source data using backup, and
+          replicating the data to target using restore.
         </p>
         <p>
-          <b>Data</b> on the target cluster <b>will be deleted</b> during bootstrapping. Queries to
+          <b>Data</b> on the target cluster <b>will be deleted</b> during full copying. Queries to
           these temporarily deleted tables will error out.
         </p>
         <p>
-          We recommend <b>bootstrapping during off-peak hours.</b>
+          We recommend <b>full copying during off-peak hours.</b>
         </p>
       </div>
     </>

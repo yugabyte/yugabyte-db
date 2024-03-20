@@ -57,10 +57,11 @@ set(PGGATE_SRCS
 
 ADD_YB_LIBRARY(yb_pggate_flags
                SRCS pggate_flags.cc
-               DEPS yb_util)
+               DEPS yb_ash yb_util)
 
 set(PGGATE_LIBS
     consensus_error
+    yb_ash
     yb_util
     yb_common
     yb_client

@@ -26,11 +26,11 @@ You can use the following common patterns to store and retrieve time series data
 
     To understand how to efficiently store and retrieve data in this pattern, see [Global ordering by time](./global-ordering).
 
-- **Ordering by entity**
+- **Ordering by time per entity**
 
     In this pattern, the data is ordered by time in a specific entity.
 
-    To understand how to distribute the entities effectively and avoid hot shards, see [Ordering by entity](./ordering-by-entity).
+    To understand how to distribute the entities effectively and avoid hot shards, see [Ordering by time per entity](./ordering-by-entity).
 
 - **Automatic data expiration**
 

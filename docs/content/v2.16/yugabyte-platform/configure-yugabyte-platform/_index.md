@@ -8,7 +8,7 @@ menu:
   v2.16_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
-    weight: 642
+    weight: 620
 type: indexpage
 ---
 
@@ -58,18 +58,6 @@ type: indexpage
       </div>
       <div class="body">
         On-premises, AWS, GCP, Azure, Kubernetes, OpenShift, Tanzu providers.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="backup-target/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Configure backup targets</div>
-      </div>
-      <div class="body">
-        Targets for scheduled backups of YugbyteDB universe data.
       </div>
     </a>
   </div>

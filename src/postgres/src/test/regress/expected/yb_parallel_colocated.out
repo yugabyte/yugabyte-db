@@ -383,19 +383,18 @@ SELECT pctest1.* FROM pctest1, pctest2
 EXPLAIN (costs off)
 /*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
+                                 QUERY PLAN
+----------------------------------------------------------------------------
  Gather Merge
    Workers Planned: 2
-   ->  Sort
-         Sort Key: pctest1.k
-         ->  YB Batched Nested Loop Join
-               Join Filter: (pctest1.k = pctest2.k)
-               ->  Parallel Index Scan using pctest1_c_idx on pctest1
-                     Index Cond: (c = 42)
-               ->  Index Scan using pctest2_pkey on pctest2
-                     Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
-(10 rows)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (pctest1.k = pctest2.k)
+         Sort Keys: pctest1.k
+         ->  Parallel Index Scan using pctest2_pkey on pctest2
+         ->  Index Scan using pctest1_pkey on pctest1
+               Index Cond: (k = ANY (ARRAY[pctest2.k, $1, $2, ..., $1023]))
+               Remote Filter: (c = 42)
+(9 rows)
 
 /*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
@@ -748,5 +747,46 @@ SELECT count(*) FROM pctest1;
    991
 (1 row)
 
+-- index scan with aggregates pushdown such that #atts being pushed down > #atts in relation
+CREATE TABLE pctest3(k int primary key, a int unique) WITH (colocation = true);
+INSERT INTO pctest3 SELECT i, i FROM generate_series(1, 1000) i;
+EXPLAIN (costs off) SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Scan using pctest3_pkey on pctest3
+                     Index Cond: (k > 123)
+                     Partial Aggregate: true
+(7 rows)
+
+SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
+ count | max  | min 
+-------+------+-----
+   877 | 1000 | 124
+(1 row)
+
+-- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
+EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Only Scan using pctest3_a_key on pctest3
+                     Index Cond: (a > 123)
+                     Partial Aggregate: true
+(7 rows)
+
+SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
+ count | max  | min 
+-------+------+-----
+   877 | 1000 | 124
+(1 row)
+
 DROP TABLE pctest1;
 DROP TABLE pctest2;
+DROP TABLE pctest3;

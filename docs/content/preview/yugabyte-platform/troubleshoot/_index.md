@@ -13,7 +13,7 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: troubleshoot-yp
-    weight: 680
+    weight: 710
 type: indexpage
 ---
 
