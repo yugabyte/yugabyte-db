@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
@@ -93,10 +94,11 @@ public class CoreFilesComponentTest extends FakeDBApplication {
     // Mock all the invocations with fake data
     doCallRealMethod()
         .when(mockSupportBundleUtil)
-        .downloadNodeLevelComponent(any(), any(), any(), any(), any(), any(), any(), any());
+        .downloadNodeLevelComponent(
+            any(), any(), any(), any(), any(), any(), any(), any(), eq(true));
     doCallRealMethod()
         .when(mockSupportBundleUtil)
-        .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(true));
     List<Pair<Long, String>> fileSizeNameList =
         Arrays.asList(
             new Pair<>(101L, "core_test.2"),
@@ -184,8 +186,16 @@ public class CoreFilesComponentTest extends FakeDBApplication {
     // found on the DB node.
     verify(mockSupportBundleUtil)
         .downloadNodeLevelComponent(
-            any(), any(), any(), any(), any(), any(), captorSourceNodeFiles.capture(), any());
-    List<String> expectedSourceNodeFiles = Arrays.asList("cores/core_test.3", "cores/core_test.1");
+            any(),
+            any(),
+            any(),
+            any(),
+            any(),
+            any(),
+            captorSourceNodeFiles.capture(),
+            any(),
+            eq(true));
+    List<String> expectedSourceNodeFiles = Arrays.asList("core_test.3", "core_test.1");
     System.out.println("CAPTOR: " + captorSourceNodeFiles.getValue().toString());
     assertEquals(expectedSourceNodeFiles, captorSourceNodeFiles.getValue());
 
