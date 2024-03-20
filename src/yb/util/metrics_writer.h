@@ -47,9 +47,7 @@ class PrometheusWriter {
       return STATUS(
           InvalidArgument, "Expect no table_id in attr argument when calling this function.");
     }
-    if (export_help_and_type_) {
-      FlushHelpAndType(name, type, help);
-    }
+    FlushHelpAndTypeIfRequested(name, type, help);
     RETURN_NOT_OK(FlushSingleEntry(attr, name, value));
     return Status::OK();
   }
@@ -83,16 +81,17 @@ class PrometheusWriter {
   virtual Status FlushSingleEntry(
       const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value);
 
-  void FlushHelpAndType(
+  void FlushHelpAndTypeIfRequested(
       const std::string& name, const char* type, const char* description);
 
   void InvalidAggregationFunction(AggregationFunction aggregation_function);
 
   void AddAggregatedEntry(const std::string& key,
+                          const char* type, const char* description,
                           const MetricEntity::AttributeMap& attr,
                           const std::string& name, int64_t value,
                           AggregationFunction aggregation_function,
-                          const char* type, const char* description);
+                          const std::string& metric_entity_type);
 
   // Map metric name to type and description.
   std::unordered_map<std::string, MetricHelpAndType> metric_help_and_type_;
@@ -102,7 +101,10 @@ class PrometheusWriter {
   std::unordered_map<std::string, EntityIdToValues> aggregated_values_;
 
   using EntityIdToAttributes = std::unordered_map<std::string, MetricEntity::AttributeMap>;
-  EntityIdToAttributes aggregated_id_to_attributes_;
+
+  std::unordered_map<std::string, EntityIdToAttributes> aggregated_attributes_by_metric_type_;
+
+  std::unordered_map<std::string, std::string> metric_name_to_entity_type_;
 
   // Output stream
   std::stringstream* output_;

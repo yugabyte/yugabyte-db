@@ -99,9 +99,18 @@ class MetricsTest : public YBTest {
                           const string& metric_name,
                           int expected_aggregation_value,
                           const MetricEntity::AttributeMap& expected_attrs) {
-    auto attrs_it = writer.aggregated_id_to_attributes_.find(entity_id);
-    ASSERT_NE(attrs_it, writer.aggregated_id_to_attributes_.end());
-    auto actual_attrs = attrs_it->second;
+    auto metric_entity_type_it = writer.metric_name_to_entity_type_.find(metric_name);
+    ASSERT_NE(metric_entity_type_it, writer.metric_name_to_entity_type_.end());
+    auto expected_metric_entity_type = expected_attrs.at("metric_type");
+    ASSERT_EQ(metric_entity_type_it->second, expected_metric_entity_type);
+
+    auto attrs_it =
+        writer.aggregated_attributes_by_metric_type_.find(metric_entity_type_it->second);
+    ASSERT_NE(attrs_it, writer.aggregated_attributes_by_metric_type_.end());
+    auto attr_it = attrs_it->second.find(entity_id);
+    ASSERT_NE(attr_it, attrs_it->second.end());
+
+    auto actual_attrs = attr_it->second;
     for (const auto& expected_attr : expected_attrs) {
       auto actual_attr_it = actual_attrs.find(expected_attr.first);
       ASSERT_NE(actual_attr_it, actual_attrs.end());
@@ -281,6 +290,7 @@ TEST_F(MetricsTest, AggregationTest) {
     }
     // Check table aggregation.
     MetricEntity::AttributeMap expected_attrs;
+    expected_attrs["metric_type"] = "tablet";
     expected_attrs["table_id"] = "table_1_id";
     expected_attrs["table_name"] = "table_1";
     DoAggregationCheck(writer, "table_1_id", METRIC_test_sum_gauge.name(), 19, expected_attrs);
@@ -298,9 +308,11 @@ TEST_F(MetricsTest, AggregationTest) {
     for (const auto& tablet : tablets) {
       ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, opts));
     }
-    // Check server aggregation. Using metric_type as entity_id.
-    DoAggregationCheck(writer, "tablet", METRIC_test_sum_gauge.name(), 34, {});
-    DoAggregationCheck(writer, "tablet", METRIC_test_max_gauge.name(), 10, {});
+    MetricEntity::AttributeMap expected_attrs;
+    expected_attrs["metric_type"] = "tablet";
+    // Check server aggregation. Using metric_entity_type as entity_id.
+    DoAggregationCheck(writer, "tablet", METRIC_test_sum_gauge.name(), 34, expected_attrs);
+    DoAggregationCheck(writer, "tablet", METRIC_test_max_gauge.name(), 10, expected_attrs);
   }
 }
 
