@@ -27,6 +27,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/thread.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -823,12 +824,17 @@ Status XClusterYsqlTestBase::CheckpointReplicationGroup() {
   return Status::OK();
 }
 
-Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish() {
+Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish(
+    const std::string& target_master_addresses) {
   RETURN_NOT_OK(LoggedWaitFor(
-      [this]() {
-        return client::XClusterClient(*producer_client())
-            .IsCreateXClusterReplicationDone(
-                kReplicationGroupId, consumer_cluster()->GetMasterAddresses());
+      [this, &target_master_addresses]() -> Result<bool> {
+        auto result = VERIFY_RESULT(
+            client::XClusterClient(*producer_client())
+                .IsCreateXClusterReplicationDone(kReplicationGroupId, target_master_addresses));
+        if (!result.status().ok()) {
+          return result.status();
+        }
+        return result.done();
       },
       MonoDelta::FromSeconds(kRpcTimeout), __func__));
 
@@ -836,15 +842,19 @@ Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish() {
   return WaitForSafeTimeToAdvanceToNow();
 }
 
-Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint() {
+Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
+    const std::string& target_master_addresses) {
   RETURN_NOT_OK(SetupCertificates(kReplicationGroupId));
 
-  auto master_addr = consumer_cluster()->GetMasterAddresses();
+  auto master_addr = target_master_addresses;
+  if (master_addr.empty()) {
+    master_addr = consumer_cluster()->GetMasterAddresses();
+  }
 
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateXClusterReplication(kReplicationGroupId, master_addr));
 
-  return WaitForCreateReplicationToFinish();
+  return WaitForCreateReplicationToFinish(master_addr);
 }
 
 }  // namespace yb
