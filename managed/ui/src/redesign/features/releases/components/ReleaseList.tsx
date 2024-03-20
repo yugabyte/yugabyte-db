@@ -273,10 +273,11 @@ export const NewReleaseList = () => {
         {row.artifacts.length < 3 && (
           <YBButton
             className={helperClasses.overrideMuiStartIcon}
-            onClick={() => {
+            onClick={(e: any) => {
               setSelectedReleaseDetails(row);
               onNewReleaseButtonClick();
               onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
+              e.stopPropagation();
             }}
             startIcon={<Add />}
             variant="secondary"

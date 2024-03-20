@@ -171,7 +171,7 @@ export const AddReleaseModal = ({
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const { watch, control, handleSubmit, setValue } = formMethods;
+  const { watch, control, handleSubmit, setValue, getValues } = formMethods;
 
   const hideModal = () => {
     onClose();
@@ -330,7 +330,7 @@ export const AddReleaseModal = ({
       // When metadata fetch fails, we display a different view where we want
       // the default selection of platform to be linux
       setValue('platform', ReleasePlatform.LINUX);
-      setValue('architecture', '');
+      setValue('architecture', ReleasePlatformArchitecture.X86);
       setValue('version', '');
       toast.error('Failed to extract metadata from URL');
     }
@@ -383,6 +383,8 @@ export const AddReleaseModal = ({
           setValue('version', response.version);
           setValue('ybType', response.yb_type);
           setValue('sha256', response.sha256);
+          setValue('platform', ReleasePlatform.LINUX);
+          setValue('architecture', ReleasePlatformArchitecture.X86);
           toast.error('Failed to extract metadata from URL');
         }
       },
@@ -394,7 +396,7 @@ export const AddReleaseModal = ({
         // When metadata fetch fails, we display a different view where we want
         // the default selection of platform to be linux
         setValue('platform', ReleasePlatform.LINUX);
-        setValue('architecture', '');
+        setValue('architecture', ReleasePlatformArchitecture.X86);
         setValue('version', '');
         toast.error('Failed to extract metadata from URL');
       }
@@ -417,7 +419,7 @@ export const AddReleaseModal = ({
         // When metadata fetch fails, we display a different view where we want
         // the default selection of platform to be linux
         setValue('platform', ReleasePlatform.LINUX);
-        setValue('architecture', '');
+        setValue('architecture', ReleasePlatformArchitecture.X86);
         setValue('version', '');
         toast.error('Failed to extract metadata from the file');
       }
@@ -430,15 +432,16 @@ export const AddReleaseModal = ({
       const newReleasePayload: any = {
         version: formValues.version,
         release_tag: formValues.releaseTag,
-        yb_type: formValues.ybType,
+        yb_type: formValues.ybType ?? ReleaseYBType.YUGABYTEDB,
         artifacts: [
           {
             sha256: formValues.sha256,
             platform: formValues.platform,
-            architecture: formValues.architecture
+            architecture:
+              formValues.platform === ReleasePlatform.KUBERNETES ? null : formValues.architecture
           }
         ],
-        release_type: formValues.releaseType,
+        release_type: formValues.releaseType ?? '',
         release_date: formValues.releaseDate,
         release_notes: formValues.releaseNotes
       };
@@ -456,8 +459,10 @@ export const AddReleaseModal = ({
       newArchitecturePayload.artifacts.push({
         sha256: formValues.sha256,
         platform: formValues.platform,
-        architecture: formValues.architecture
+        architecture:
+          formValues.platform === ReleasePlatform.KUBERNETES ? null : formValues.architecture
       });
+      newArchitecturePayload.release_tag = formValues.releaseTag;
       setIsSubmitting(true);
       const artifactsLength = newArchitecturePayload.artifacts.length;
       if (importMethodValue === AddReleaseImportMethod.URL) {
@@ -490,7 +495,7 @@ export const AddReleaseModal = ({
   const handleReleaseThirdPart = (event: React.ChangeEvent<HTMLInputElement>) => {
     setValue(
       'version',
-      releaseBasePart + releaseFirstPart + releaseSecondPart + event.target.value
+      `${releaseBasePart}.${releaseFirstPart}.${releaseSecondPart}.${event.target.value}`
     );
     setReleaseThirdPart(event.target.value);
   };
@@ -539,11 +544,11 @@ export const AddReleaseModal = ({
     if (importMethodValue === AddReleaseImportMethod.URL) {
       if (isNonEmptyString(errorHelperText)) {
         return true;
-      } else if (!isNonEmptyString(versionValue) && !isNonEmptyString(architectureValue)) {
+      } else if (!isNonEmptyString(versionValue)) {
         return true;
       } else if (!isNonEmptyString(installationPackageUrlValue)) {
         return true;
-      } else if (!urlMetadata) {
+      } else if (!releaseMetadatFetchError && !urlMetadata) {
         return true;
       }
     }
