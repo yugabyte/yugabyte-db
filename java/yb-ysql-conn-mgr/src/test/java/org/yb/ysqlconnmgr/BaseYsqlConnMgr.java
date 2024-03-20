@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
+import org.yb.pgsql.BasePgSQLTest;
 import org.yb.pgsql.ConnectionBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

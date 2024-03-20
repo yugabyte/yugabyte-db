@@ -14,7 +14,6 @@ package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -26,15 +25,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.pgsql.BasePgSQLTest;
 import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestDropAndRenameDb extends BaseYsqlConnMgr {
-  // yb-tserver flag ysql_conn_mgr_stats_interval (stats_interval field
-  // in the odyssey's config) controls the interval at which the
-  // stats gets updated (src/odyssey/sources/cron.c:332).
-  private static final int CONNECTIONS_STATS_UPDATE_INTERVAL_SECS = 1;
-
   private static final String GET_CURRENT_DB_QUERY = "SELECT current_database()";
 
   private static final String TEST_DB_DROP = "test_db_drop_database_fails";
@@ -64,11 +59,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
     super.customizeMiniClusterBuilder(builder);
 
     builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
-        Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
-  }
-
-  private void waitForStatsToGetUpdated() throws InterruptedException {
-    Thread.sleep(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS * 1000 * 2);
+        Integer.toString(BasePgSQLTest.CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
   }
 
   private void dropDatabase(String dbName, boolean shouldSucceed) {
@@ -157,7 +148,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
       fail();
     }
 
-    waitForStatsToGetUpdated();
+    BasePgSQLTest.waitForStatsToGetUpdated();
     dropDatabase(TEST_DB_DROP, true);
   }
 
@@ -391,7 +382,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
   public void TestConcurrentOperations() throws InterruptedException {
     testConcurrentCreateDb(DB_PREFIX_CONCURRENCY_TEST,
         NUM_THREADS_DB_CONCURRENCY_TESTING, NUM_DB_CONCURRENCY_TESTING);
-    waitForStatsToGetUpdated();
+    BasePgSQLTest.waitForStatsToGetUpdated();
     testConcurrentDropDb(DB_PREFIX_CONCURRENCY_TEST,
         NUM_THREADS_DB_CONCURRENCY_TESTING, NUM_DB_CONCURRENCY_TESTING);
   }
