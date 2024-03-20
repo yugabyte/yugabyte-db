@@ -1045,7 +1045,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		YBCCreateTable(stmt, relname, relkind, descriptor, relationId,
 					   namespaceId, tablegroupId, colocation_id, tablespaceId,
 					   InvalidOid /* pgTableId */,
-					   InvalidOid /* oldRelfileNodeId */);
+					   InvalidOid /* oldRelfileNodeId */,
+					   false /* isTruncate */);
 	}
 
 	/*
@@ -1874,13 +1875,13 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 		 * truncate it in-place, because a rollback would cause the whole
 		 * table or the current physical file to be thrown away anyway.
 		 */
-		if (IsYBRelation(rel))
+		if (IsYBRelation(rel) && !yb_enable_alter_table_rewrite)
 		{
 			// Call YugaByte API to truncate tables.
 			YbTruncate(rel);
 		}
 		else if (rel->rd_createSubid == mySubid ||
-				 rel->rd_newRelfilenodeSubid == mySubid)
+				 rel->rd_newRelfilenodeSubid == mySubid || !IsYBRelation(rel))
 		{
 			/* Immediate, non-rollbackable truncation is OK */
 			heap_truncate_one_rel(rel);
@@ -1938,7 +1939,7 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 			 * Reconstruct the indexes to match, and we're done.
 			 */
 			reindex_relation(heap_relid, REINDEX_REL_PROCESS_TOAST, 0,
-							 false /* is_yb_table_rewrite */,
+							 true /* is_yb_table_rewrite */,
 							 false /* yb_copy_split_options */);
 		}
 

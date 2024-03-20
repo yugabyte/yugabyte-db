@@ -80,6 +80,7 @@ const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 YB_STRONGLY_TYPED_BOOL(Primary);
 YB_STRONGLY_TYPED_BOOL(OnlyIfDirty);
 YB_STRONGLY_TYPED_BOOL(LazySuperblockFlushEnabled);
+YB_STRONGLY_TYPED_BOOL(SkipTableTombstoneCheck);
 
 struct TableInfo {
  private:
@@ -110,6 +111,10 @@ struct TableInfo {
   // (as the table's TableId no longer matches).
   TableId pg_table_id;
 
+  // Whether we can skip table tombstone check for this table
+  // (only applies to colocated tables).
+  SkipTableTombstoneCheck skip_table_tombstone_check;
+
   // A vector of column IDs that have been deleted, so that the compaction filter can free the
   // associated memory. As of 01/2019, deleted column IDs are persisted forever, even if all the
   // associated data has been discarded. In the future, we can garbage collect such column IDs to
@@ -120,7 +125,10 @@ struct TableInfo {
   uint32_t wal_retention_secs = 0;
 
   // Public ctor with private argument to allow std::make_shared, but prevent public usage.
-  TableInfo(const std::string& log_prefix, TableType table_type, PrivateTag);
+  TableInfo(const std::string& log_prefix,
+            TableType table_type,
+            SkipTableTombstoneCheck skip_table_tombstone_check,
+            PrivateTag);
   TableInfo(const std::string& tablet_log_prefix,
             Primary primary,
             std::string table_id,
@@ -132,7 +140,8 @@ struct TableInfo {
             const boost::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
             dockv::PartitionSchema partition_schema,
-            TableId pg_table_id);
+            TableId pg_table_id,
+            SkipTableTombstoneCheck skip_table_tombstone_check);
   TableInfo(const TableInfo& other,
             const Schema& schema,
             const qlexpr::IndexMap& index_map,
@@ -498,7 +507,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                 const boost::optional<qlexpr::IndexInfo>& index_info,
                 const SchemaVersion schema_version,
                 const OpId& op_id,
-                const TableId& pg_table_id) EXCLUDES(data_mutex_);
+                const TableId& pg_table_id,
+                const SkipTableTombstoneCheck skip_table_tombstone_check) EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
 
