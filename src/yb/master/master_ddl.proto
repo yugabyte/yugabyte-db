@@ -120,6 +120,9 @@ message CreateTableRequestPB {
   optional bytes old_rewrite_table_id = 29;
 
   optional bool is_clone = 30;
+
+  // Set to true when the table is being re-written as part of a TRUNCATE operation.
+  optional bool is_truncate = 31;
 }
 
 message CreateTableResponsePB {

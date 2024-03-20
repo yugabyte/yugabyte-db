@@ -136,6 +136,11 @@ YBTableCreator& YBTableCreator::old_rewrite_table_id(const std::string& old_rewr
   return *this;
 }
 
+YBTableCreator& YBTableCreator::is_truncate(bool is_truncate) {
+  is_truncate_ = is_truncate;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   schema_ = schema;
   return *this;
@@ -299,6 +304,10 @@ Status YBTableCreator::Create() {
 
   if (!old_rewrite_table_id_.empty()) {
     req.set_old_rewrite_table_id(old_rewrite_table_id_);
+  }
+
+  if (is_truncate_) {
+    req.set_is_truncate(*is_truncate_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or

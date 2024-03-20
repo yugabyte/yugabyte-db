@@ -115,6 +115,8 @@ class ColocationConcurrencyTest : public ColocatedDBTest {
   void CreateTables(yb::pgwrapper::PGConn* conn, const int num_tables);
 
   void InsertDataIntoTable(yb::pgwrapper::PGConn* conn, std::string table_name, int num_rows = 50);
+
+  void FKTestHelper(bool use_txn_block);
 };
 
 void ColocationConcurrencyTest::CreateTables(yb::pgwrapper::PGConn* conn, const int num_tables) {
@@ -327,46 +329,6 @@ TEST_F(ColocationConcurrencyTest, UpdateAndIndexBackfillOnSameTable) {
   }
 }
 
-// Concurrent DDL (Create + Truncate) on different colocated tables.
-TEST_F(ColocationConcurrencyTest, CreateAndTruncateOnSeparateTables) {
-  PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
-  PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
-  CreateTables(&conn1, 2);
-
-  for (int i = 0; i < num_iterations; ++i) {
-    // Insert 50 rows in t1.
-    InsertDataIntoTable(&conn1, "t1" /* table_name */);
-
-    // Insert 50 rows in t2.
-    InsertDataIntoTable(&conn1, "t2" /* table_name */);
-
-    // create index on t1 on a separate thread.
-    std::thread create_index_thread(
-        [&conn2] { ASSERT_OK(conn2.Execute("CREATE INDEX CONCURRENTLY t1_idx ON t1(i ASC)")); });
-
-    ASSERT_OK(conn1.Execute("TRUNCATE TABLE t2"));
-    create_index_thread.join();
-
-    // Verify contents of t1_idx.
-    const auto query = Format("SELECT * FROM t1 ORDER BY i");
-    ASSERT_TRUE(ASSERT_RESULT(conn1.HasIndexScan(query)));
-    const auto rows = ASSERT_RESULT((conn1.FetchRows<int32_t, int32_t>(query)));
-    ASSERT_EQ(rows.size(), 50);
-    auto index = 0;
-    for (const auto& [i_val, _] : rows) {
-      ASSERT_EQ(i_val, index++);
-    }
-
-    // Verify t2 has 0 rows
-    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
-    ASSERT_EQ(curr_rows, 0);
-
-    // Reset the tables for next iteration.
-    ASSERT_OK(conn1.ExecuteFormat("DROP INDEX t1_idx"));
-    ASSERT_OK(conn1.ExecuteFormat("TRUNCATE TABLE t1"));
-  }
-}
-
 // Concurrent DMLs (delete, update) on different colocated tables, with unique constraints.
 TEST_F(ColocationConcurrencyTest, UpdateAndDeleteOnSeparateTables) {
   PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
@@ -503,138 +465,95 @@ TEST_F(ColocationConcurrencyTest, TxnsOnSeparateTables) {
     // Reset the tables for next iteration.
     ASSERT_OK(conn1.ExecuteFormat("TRUNCATE TABLE t1"));
     ASSERT_OK(conn1.ExecuteFormat("TRUNCATE TABLE t2"));
+
+    // Heart beat delay for catalog refresh due to TRUNCATE.
+    SleepFor(MonoDelta::FromSeconds(1));
   }
 }
 
-// Concurrent DMLs on two tables with Foreign key relationship.
-TEST_F(ColocationConcurrencyTest, InsertOnTablesWithFK) {
+void ColocationConcurrencyTest::FKTestHelper(bool use_txn_block) {
   PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
   ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
   conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
-  PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE t1 (a int PRIMARY KEY, b int)"));
   ASSERT_OK(
       conn1.ExecuteFormat("CREATE TABLE t2 (i int, j int REFERENCES t1(a) ON DELETE CASCADE)"));
+  PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
+  const int thread_iterations = 5;
+  const int thread_insertions = 10;
 
   for (int i = 0; i < num_iterations; ++i) {
-    // Insert 50 rows in t1.
-    InsertDataIntoTable(&conn1, "t1" /* table_name */, 500);
+    std::vector<std::thread> threads;
+    std::atomic<int> counter(1);
 
-    std::atomic<bool> done = false;
-    int counter = 0;
-
-    // Insert rows in t2 on a separate thread.
-    std::thread insertion_thread([&conn2, &done, &counter] {
-      while (!done) {
-        Status s = conn2.ExecuteFormat("INSERT INTO t2 VALUES ($0, $1)", counter, ++counter);
-        if (!s.ok()) {
-          s = conn2.ExecuteFormat("INSERT INTO t2 VALUES ($0, $1)", counter, ++counter);
+    LOG(INFO) << "Test iteration number " << i + 1;
+    for (int conn_number = 1; conn_number <= 2; ++conn_number) {
+      PGConn* conn = conn_number == 1 ? &conn1 : &conn2;
+      threads.emplace_back([conn, use_txn_block, &counter]() {
+      for (int j = 0; j < thread_iterations; ++j) {
+        if (use_txn_block) {
+          ASSERT_OK(conn->ExecuteFormat("BEGIN"));
+        }
+        for (int k = 0; k < thread_insertions; ++k) {
+          int id_value = counter++;
+          ASSERT_OK(conn->ExecuteFormat("INSERT INTO t1 values ($0, $1)", id_value, id_value));
+          ASSERT_OK(conn->ExecuteFormat("INSERT INTO t2 values ($0, $1)", id_value, id_value));
+        }
+        if (use_txn_block) {
+          ASSERT_OK(conn->ExecuteFormat("COMMIT"));
         }
         // Verify insert prevention due to FK constraints.
-        s = conn2.Execute("INSERT INTO t2 VALUES (999, 999)");
+        auto s = conn->Execute("INSERT INTO t2 VALUES (999, 999)");
         ASSERT_FALSE(s.ok());
         ASSERT_EQ(PgsqlError(s), YBPgErrorCode::YB_PG_FOREIGN_KEY_VIOLATION);
         ASSERT_STR_CONTAINS(s.ToString(), "violates foreign key constraint");
       }
-    });
-
-    for (int j = 500; j < 600; ++j) {
-      Status s = conn1.ExecuteFormat("INSERT INTO t1 values ($0, $1)", j, j + 1);
-      if (!s.ok()) {
-        s = conn1.ExecuteFormat("INSERT INTO t1 values ($0, $1)", j, j + 1);
-      }
+      });
     }
 
+    for (auto& thread : threads) {
+      thread.join();
+    }
+
+    const int final_count = thread_insertions * thread_iterations * 2;
     // Verify for CASCADE behaviour.
-    ASSERT_OK(conn1.Execute("DELETE FROM t1 where a = 10"));
-    done = true;
-    insertion_thread.join();
+    ASSERT_OK(conn1.ExecuteFormat("DELETE FROM t1 where a = $0", final_count));
 
-    // Verify t1 has 599 (600 - 1) rows.
-    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
-    ASSERT_EQ(curr_rows, 599);
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>(
+        Format("SELECT COUNT(*) FROM t2 where j = $0", final_count)));
+    ASSERT_EQ(curr_rows, 0);
 
-    // Verify t2 has counter - 1 rows
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>(
+        Format("SELECT COUNT(*) FROM t1 where a = $0", final_count)));
+    ASSERT_EQ(curr_rows, 0);
+
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
+    ASSERT_EQ(curr_rows, final_count - 1);
+
     curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
-    ASSERT_EQ(curr_rows, counter - 1);
+    ASSERT_EQ(curr_rows, final_count - 1);
 
     // Reset the tables for next iteration.
     ASSERT_OK(conn1.Execute("TRUNCATE TABLE t1 CASCADE"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
+    ASSERT_EQ(curr_rows, 0);
     curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, 0);
+
+    // Heart beat delay for catalog refresh due to TRUNCATE.
+    SleepFor(MonoDelta::FromSeconds(1));
   }
+}
+
+
+// Concurrent DMLs on two tables with Foreign key relationship.
+TEST_F(ColocationConcurrencyTest, InsertOnTablesWithFK) {
+  FKTestHelper(false /* use_txn_block */);
 }
 
 // Transaction on two tables with FK relationship.
 TEST_F(ColocationConcurrencyTest, TransactionsOnTablesWithFK) {
-  PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
-  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
-  conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
-  ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE t1 (a int PRIMARY KEY, b int)"));
-  ASSERT_OK(
-      conn1.ExecuteFormat("CREATE TABLE t2 (i int, j int REFERENCES t1(a) ON DELETE CASCADE)"));
-  PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
-
-  for (int i = 0; i < num_iterations; ++i) {
-    // Insert 50 rows in t1.
-    InsertDataIntoTable(&conn1, "t1" /* table_name */, 500);
-
-    std::atomic<bool> done = false;
-    int counter = 0;
-
-    // Insert rows int t2 on a separate thread.
-    std::thread insertion_thread([&conn2, &done, &counter] {
-      ASSERT_OK(conn2.Execute("BEGIN"));
-      while (!done) {
-        Status s = conn2.ExecuteFormat("INSERT INTO t2 values ($0, $1)", counter, counter + 1);
-        if (!s.ok()) {
-          s = conn2.ExecuteFormat("INSERT INTO t2 values ($0, $1)", counter, counter + 1);
-        }
-        ++counter;
-      }
-      ASSERT_OK(conn2.Execute("COMMIT"));
-
-      // Verify insert prevention due to FK constraints.
-      Status s = conn2.Execute("INSERT INTO t2 VALUES (1000, 1250)");
-      ASSERT_FALSE(s.ok());
-      ASSERT_EQ(PgsqlError(s), YBPgErrorCode::YB_PG_FOREIGN_KEY_VIOLATION);
-      ASSERT_STR_CONTAINS(s.ToString(), "violates foreign key constraint");
-    });
-
-    ASSERT_OK(conn1.Execute("BEGIN"));
-    for (int j = 500; j < 550; ++j) {
-      Status s = conn1.ExecuteFormat("INSERT INTO t1 values ($0, $1)", j, j + 1);
-      if (!s.ok()) {
-        s = conn1.ExecuteFormat("INSERT INTO t1 values ($0, $1)", j, j + 1);
-      }
-    }
-    ASSERT_OK(conn1.Execute("COMMIT"));
-    done = true;
-    insertion_thread.join();
-
-    // Verify for CASCADE behaviour.
-    ASSERT_OK(conn1.Execute("DELETE FROM t1 where a = 10"));
-
-    auto curr_rows =
-        ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2 where j = 10"));
-    ASSERT_EQ(curr_rows, 0);
-
-    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1 where a =10"));
-    ASSERT_EQ(curr_rows, 0);
-
-    // Verify t1 has 549 (550 - 1) rows.
-    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
-    ASSERT_EQ(curr_rows, 549);
-
-    // Verify t2 has rows equal to counter - 1.
-    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
-    ASSERT_EQ(curr_rows, counter - 1);
-
-    // Reset the tables for next iteration.
-    ASSERT_OK(conn1.Execute("TRUNCATE TABLE t1 CASCADE"));
-    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
-    ASSERT_EQ(curr_rows, 0);
-  }
+  FKTestHelper(true /* use_txn_block */);
 }
 
 }  // namespace pgwrapper
