@@ -1245,6 +1245,41 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
   }
 }
 
+#ifndef NDEBUG
+TEST_F(PgWaitQueuesTest, TestDDLsNotBlockedOnWaiters) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 120000;
+
+  constexpr int kNumTxns = 2;
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(0, 10), 0"));
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestDDLsNotBlockedOnWaiters"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  CountDownLatch ddl_finished{1};
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < kNumTxns; i++) {
+    thread_holder.AddThreadFunctor([&] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      auto s = conn.Execute("UPDATE foo SET v=v+1 WHERE k=1");
+      ddl_finished.WaitFor(10s * kTimeMultiplier);
+      ASSERT_FALSE(s.ok() && conn.CommitTransaction().ok());
+    });
+  }
+
+  DEBUG_ONLY_TEST_SYNC_POINT("TestDDLsNotBlockedOnWaiters");
+  ASSERT_OK(WaitFor([&] {
+    return setup_conn.Execute("ALTER TABLE foo ADD COLUMN v1 TEXT DEFAULT 'def'").ok();
+  }, 2s * kTimeMultiplier, "DLL timed-out"));
+  ddl_finished.CountDown();
+  thread_holder.WaitAndStop(20s * kTimeMultiplier);
+}
+#endif // NDEBUG
+
 class PgWaitQueueRF1Test : public PgWaitQueuesTest {
  protected:
   size_t NumTabletServers() override {
