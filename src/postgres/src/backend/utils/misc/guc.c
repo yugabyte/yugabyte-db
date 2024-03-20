@@ -2529,6 +2529,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_locks_txn_locks_per_tablet", PGC_USERSET, LOCK_MANAGEMENT,
+		 gettext_noop("Sets the maximum number of rows per transaction per tablet to return in pg_locks."),
+		 NULL
+		},
+		&yb_locks_txn_locks_per_tablet,
+		200, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"max_standby_archive_delay", PGC_SIGHUP, REPLICATION_STANDBY,
 			gettext_noop("Sets the maximum delay before canceling queries when a hot standby server is processing archived WAL data."),
 			NULL,

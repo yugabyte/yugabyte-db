@@ -164,6 +164,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 1000,
     "Delay in milliseconds between stages of online index build. Set high to give online "
     "transactions more time to complete.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_txn_locks_per_tablet, 200,
+    "Sets the maximum number of rows to return per transaction per tablet in pg_locks.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 60 * 1000, // 5 min
     "Timeout in milliseconds to wait for backends to reach desired catalog versions. The actual"
     " time spent may be longer than that by as much as master flag"

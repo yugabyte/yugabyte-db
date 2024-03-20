@@ -54,3 +54,5 @@ int yb_fetch_size_limit = 0;
 int yb_locks_min_txn_age = 1000;
 
 int yb_locks_max_transactions = 16;
+
+int yb_locks_txn_locks_per_tablet = 200;
