@@ -341,8 +341,6 @@ Status BulkLoadTask::InsertRow(const string &row,
       .read_operation_data = docdb::ReadOperationData::FromSingleReadTime(
           HybridTime::FromMicros(kYugaByteMicrosecondEpoch)),
       .restart_read_ht = nullptr,
-      .iterator = nullptr,
-      .restart_seek = true,
       .schema_packing_provider = db_fixture,
   }));
   return Status::OK();

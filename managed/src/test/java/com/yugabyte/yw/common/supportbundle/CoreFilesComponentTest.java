@@ -69,6 +69,7 @@ public class CoreFilesComponentTest extends FakeDBApplication {
     // Setup fake temp files, universe, customer
     this.customer = ModelFactory.testCustomer();
     this.universe = ModelFactory.createUniverse(customer.getId());
+    Files.createDirectories(Paths.get(fakeBundlePath));
 
     // Add a fake node to the universe with a node name
     node.nodeName = "u-n1";

@@ -78,4 +78,6 @@ class DocDbAwareV3FilterPolicy : public DocDbAwareFilterPolicyBase {
   const KeyTransformer* GetKeyTransformer() const override;
 };
 
+Result<Slice> ExtractFilterPrefixFromKey(Slice key);
+
 }  // namespace yb::docdb

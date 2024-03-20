@@ -2201,7 +2201,6 @@ AlterTableStmt:
 				}
 		|	ALTER INDEX qualified_name alter_table_cmds
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 
 					n->relation = $3;
@@ -2212,7 +2211,6 @@ AlterTableStmt:
 				}
 		|	ALTER INDEX IF_P EXISTS qualified_name alter_table_cmds
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 
 					n->relation = $5;
@@ -2963,7 +2961,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET TABLESPACE <tablespacename> */
 			| SET TABLESPACE name
 				{
-					parser_ybc_beta_feature(@1, "tablespace_alteration", true);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_SetTableSpace;

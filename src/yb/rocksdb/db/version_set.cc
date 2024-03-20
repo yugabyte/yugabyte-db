@@ -823,6 +823,7 @@ void Version::AddLevel0Iterators(
     MergeIteratorBuilderType* merge_iter_builder,
     Arena* arena,
     const CreateIteratorFunc& create_iterator_func) {
+  FilterKeyCache filter_key_cache(read_options.user_key_for_filter);
   for (size_t i = 0; i < storage_info_.LevelFilesBrief(0).num_files; i++) {
     const auto& file = storage_info_.LevelFilesBrief(0).files[i];
     if (!read_options.file_filter || read_options.file_filter->Filter(file)) {
@@ -833,7 +834,9 @@ void Version::AddLevel0Iterators(
           false);
       if (s.ok()) {
         if (!read_options.table_aware_file_filter ||
-            read_options.table_aware_file_filter->Filter(trwh.table_reader)) {
+            read_options.table_aware_file_filter->Filter(
+                read_options, read_options.user_key_for_filter, &filter_key_cache,
+                trwh.table_reader)) {
           file_iter = create_iterator_func(&trwh, i);
         } else {
           file_iter = nullptr;

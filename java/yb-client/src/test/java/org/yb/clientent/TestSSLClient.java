@@ -93,10 +93,10 @@ public class TestSSLClient extends TestYBClient {
     setup(TestMode.TLS);
 
     YBClient myClient = null;
-    // The mutliCA cert has two different root certs, with the first entry in the file
+    // The combinedCA cert has two different root certs, with the first entry in the file
     // being the pseudo root, which is not the one the server certs have been signed
     // with.
-    String multiCA = String.format("%s/%s", certsDir(), "multiCA.crt");
+    String multiCA = String.format("%s/%s", certsDir(), "CA2/combinedCA.crt");
 
     AsyncYBClient aClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses)
                             .sslCertFile(multiCA)

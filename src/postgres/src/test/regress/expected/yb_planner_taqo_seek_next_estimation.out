@@ -275,10 +275,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k5 >= 4 and k5 < 14;
 
 -- Query Hash: b5562a3ef44a737b2846f0975cf9e1c7
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8);
-                QUERY PLAN
--------------------------------------------
- Seq Scan on t1
-   Filter: (k1 = ANY ('{4,8}'::integer[]))
+                  QUERY PLAN
+-----------------------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: (k1 = ANY ('{4,8}'::integer[]))
 (2 rows)
 
 -- Query Hash: 6a8ead9b8b122eea0e5460236bc6c19b

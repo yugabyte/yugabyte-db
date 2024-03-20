@@ -1177,7 +1177,7 @@ class TestRpcSecure : public RpcTestBase {
     RpcTestBase::SetUp();
     secure_context_ = std::make_unique<SecureContext>(
         RequireClientCertificate::kFalse, UseClientCertificate::kFalse);
-    EXPECT_OK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1", MatchingCertKeyPair::kTrue));
+    EXPECT_OK(secure_context_->TEST_GenerateKeys(2048, "127.0.0.1", MatchingCertKeyPair::kTrue));
   }
 
  protected:

@@ -446,6 +446,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     clusterJson.set("uuid", Json.toJson(cluster.uuid));
     ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.put("nodePrefix", u.getUniverseDetails().nodePrefix);
     bodyJson.set("nodeDetailsSet", Json.newArray());
 
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
@@ -500,6 +501,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     clusterJson.set("uuid", Json.toJson(cluster.uuid));
     ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.put("nodePrefix", u.getUniverseDetails().nodePrefix);
     bodyJson.set("nodeDetailsSet", Json.newArray());
 
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
@@ -573,6 +575,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     clusterJson.set("uuid", Json.toJson(cluster.uuid));
     ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.put("nodePrefix", u.getUniverseDetails().nodePrefix);
     bodyJson.set("nodeDetailsSet", Json.newArray());
     bodyJson.put("enableYbc", true);
     bodyJson.put("ybcSoftwareVersion", "");
@@ -1075,6 +1078,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     ObjectNode bodyJson = Json.newObject();
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.put("nodePrefix", u.getUniverseDetails().nodePrefix);
     bodyJson.set("nodeDetailsSet", nodeDetailsJsonArray);
 
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
@@ -2177,6 +2181,20 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
     assertErrorResponse(result, "Cannot change systemd setting for existing node");
+  }
+
+  @Test
+  public void testUniverseUpdateNodePrefixFail() {
+    Universe u = setUpUniverse();
+    u.getUniverseDetails().nodePrefix = "new_prefix";
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT", url, authToken, Json.toJson(u.getUniverseDetails())));
+    assertErrorResponse(
+        result, "Cannot change node prefix (from yb-tc-Test universe to new_prefix)");
   }
 
   private Universe addNode(Universe u) {

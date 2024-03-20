@@ -67,6 +67,10 @@ bool ThreadRestrictions::SetIOAllowed(bool allowed) {
   return previous_allowed;
 }
 
+bool ThreadRestrictions::IsIOAllowed() {
+  return LoadTLS()->io_allowed;
+}
+
 void ThreadRestrictions::AssertIOAllowed() {
   CHECK(LoadTLS()->io_allowed)
     << "Function marked as IO-only was called from a thread that "

@@ -18,6 +18,9 @@
 
 namespace yb::master {
 
+// Map[NamespaceId]:xClusterSafeTime
+typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeMap;
+
 struct NamespaceCheckpointInfo {
   bool initial_bootstrap_required = false;
   struct TableInfo {

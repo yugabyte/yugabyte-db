@@ -156,7 +156,7 @@ const RegionZoneComponent = (classes: ClassNameMap, t: TFunction) => (
                 {region_and_zone.zone}
             </Typography>
         </Box>
-        {region_and_zone.preference !== undefined &&
+        {region_and_zone.preference !== undefined && region_and_zone.preference !== -1 &&
             <YBTextBadge>
                 {t('clusterDetail.nodes.preference', { preference: region_and_zone.preference })}
             </YBTextBadge>
@@ -164,6 +164,8 @@ const RegionZoneComponent = (classes: ClassNameMap, t: TFunction) => (
     </Box>
     );
 }
+
+const NODE_COLUMNS_LS_KEY = "node-columns";
 
 export const NodesTab: FC = () => {
   const classes = useStyles();
@@ -248,7 +250,10 @@ export const NodesTab: FC = () => {
       master_tserver_status: false,
       master_tserver_uptime: false
   };
-  const [columns, setColumns] = useState(defaultValues);
+  const [columns, setColumns] = useState({
+    ...defaultValues,
+    ...(JSON.parse(localStorage.getItem(NODE_COLUMNS_LS_KEY)!) || {})
+  });
   const { control, handleSubmit, reset, setValue, getValues } = useForm({
     mode: 'onChange',
     defaultValues: columns
@@ -260,6 +265,7 @@ export const NodesTab: FC = () => {
   };
   const applyColumnChanges = handleSubmit((formData) => {
     setColumns(formData);
+    localStorage.setItem(NODE_COLUMNS_LS_KEY, JSON.stringify(formData));
     closeQueryOptionsModal();
   });
 

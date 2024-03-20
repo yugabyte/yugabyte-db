@@ -212,6 +212,22 @@ class SysCatalogTable {
 
   Status Visit(VisitorBase* visitor);
 
+  template <template <class> class Loader, typename CatalogEntityWrapper>
+  Status Load(const std::string& type, CatalogEntityWrapper& catalog_entity_wrapper) {
+    Loader<CatalogEntityWrapper> loader(catalog_entity_wrapper);
+    RETURN_NOT_OK_PREPEND(Visit(&loader), "Failed while visiting " + type + " in sys catalog");
+    return Status::OK();
+  }
+
+  template <typename Loader, typename CatalogEntityPB>
+  Status Load(
+      const std::string& type, std::function<Status(const std::string&, const CatalogEntityPB&)>
+                                   catalog_entity_inserter_func) {
+    Loader loader(catalog_entity_inserter_func);
+    RETURN_NOT_OK_PREPEND(Visit(&loader), "Failed while visiting " + type + " in sys catalog");
+    return Status::OK();
+  }
+
   typedef std::function<Status(const ReadHybridTime&, HybridTime*)> ReadRestartFn;
   Status ReadWithRestarts(
       const ReadRestartFn& fn,

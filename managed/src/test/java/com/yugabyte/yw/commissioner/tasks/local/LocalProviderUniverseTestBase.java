@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -185,6 +186,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected BackupHelper backupHelper;
   protected YcqlQueryExecutor ycqlQueryExecutor;
   protected UniverseTableHandler tableHandler;
+  protected CertificateHelper certificateHelper;
 
   @BeforeClass
   public static void setUpEnv() {
@@ -369,8 +371,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     return build.substring(0, build.indexOf("-"));
   }
 
-  @Before
-  public void setUp() {
+  private void injectDependencies() {
     universeCRUDHandler = app.injector().instanceOf(UniverseCRUDHandler.class);
     upgradeUniverseHandler = app.injector().instanceOf(UpgradeUniverseHandler.class);
     nodeUIApiHelper = app.injector().instanceOf(NodeUIApiHelper.class);
@@ -381,6 +382,12 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     backupHelper = app.injector().instanceOf(BackupHelper.class);
     ycqlQueryExecutor = app.injector().instanceOf(YcqlQueryExecutor.class);
     tableHandler = app.injector().instanceOf(UniverseTableHandler.class);
+    certificateHelper = app.injector().instanceOf(CertificateHelper.class);
+  }
+
+  @Before
+  public void setUp() {
+    injectDependencies();
 
     Pair<Integer, Integer> ipRange = getIpRange();
     localNodeManager.setIpRangeStart(ipRange.getFirst());
@@ -498,7 +505,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
       };
 
   private void tearDown(boolean failed) {
-    log.error("tear down " + testName + " failed " + failed);
+    log.info("tear down " + testName + " failed " + failed);
     if (!failed || !KEEP_FAILED_UNIVERSE) {
       localNodeManager.shutdown();
       try {
