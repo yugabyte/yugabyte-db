@@ -232,5 +232,8 @@ services:
       # allow platform to bind to port 443
       AmbientCapabilities=CAP_NET_BIND_SERVICE
 
+      # Sigterm causes exit status 143 for java
+      SuccessExitStatus=143
+
       [Install]
       WantedBy=multi-user.target
