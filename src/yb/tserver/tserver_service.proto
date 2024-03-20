@@ -398,6 +398,9 @@ message AbortTransactionRequestPB {
   optional bytes tablet_id = 1;
   optional bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
+
+  // Status containing deadlock info if the transaction is being aborted due to deadlock.
+  optional AppStatusPB deadlock_reason = 4;
 }
 
 message AbortTransactionResponsePB {

@@ -45,6 +45,7 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -1323,6 +1324,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   tablet.tablet->transaction_coordinator()->Abort(
       txn_id,
       tablet.leader_term,
+      req->has_deadlock_reason() ? StatusFromPB(req->deadlock_reason()) : Status::OK(),
       [resp, context_ptr, clock, peer = tablet.peer](Result<TransactionStatusResult> result) {
         resp->set_propagated_hybrid_time(clock->Now().ToUint64());
         Status status;
