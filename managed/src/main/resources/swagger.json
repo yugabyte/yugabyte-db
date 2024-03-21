@@ -6623,8 +6623,8 @@
           "type" : "integer"
         },
         "ldapSearchFilter" : {
-          "description" : "LDAP search filter to get the user entries",
-          "example" : "(objectclass=person)",
+          "description" : "LDAP search filter to get the user entries. This filter can also be used to search for the users based on their group memberships.",
+          "example" : "(objectclass=person), (&(objectclass=person)(|(groupName=CN=group1,CN=Groups,DC=example,DC=com)(groupName=CN=group2,CN=Groups,DC=example,DC=com)))",
           "type" : "string"
         },
         "ldapServer" : {
