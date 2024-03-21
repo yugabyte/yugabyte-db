@@ -25,6 +25,7 @@ public abstract class AnomalyDetectorTestBase {
   @Autowired protected RestTemplate prometheusClientTemplate;
   protected MockRestServiceServer server;
   @Autowired protected ObjectMapper objectMapper;
+  @Autowired protected RuntimeConfigService runtimeConfigService;
 
   protected String universeUuid() {
     return "59b6e66f-83ed-4fff-a3c6-b93568237fab";
