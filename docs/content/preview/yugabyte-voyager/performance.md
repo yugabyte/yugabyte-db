@@ -90,7 +90,7 @@ As more optimizations are introduced, average throughput increases. The followin
 | 24 parallel jobs (default) | 3 node [RF](../../architecture/docdb-replication/replication/#replication-factor) 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=24 | ~80% | 44014 rows/sec |
 | Increase jobs<br>(1 per core) | 3 node RF 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~95% | 47696 rows/sec |
 | Add nodes | 6 Node RF 3 cluster,<br> c5.4x large (16 cores 32GB) <br> 4 EBS Type gp3 disks per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~80% | 86547 rows/sec |
-| Enabling packed rows | 3 node RF 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48<br>YB-TServer GFlag: `ysql_enable_packed_row` = `true` | ~95% | 134048 rows/sec |
+| Enabling packed rows | 3 node RF 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48<br> | ~95% | 134048 rows/sec |
 
 {{< note title="Note" >}}
 
