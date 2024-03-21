@@ -1500,12 +1500,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CDCStreamInfoPtr stream, std::set<TabletId>* tablets_with_streams,
       std::set<TableId>* dropped_tables);
 
-  Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch);
+  // Delete specified CDC streams metadata.
+  Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
   using StreamTablesMap = std::unordered_map<xrepl::StreamId, std::set<TableId>>;
 
-  Status CleanUpCDCSDKMetadataFromSystemCatalog(
-      const StreamTablesMap& drop_stream_tablelist, const LeaderEpoch& epoch);
+  Result<CDCStreamInfoPtr> GetXReplStreamInfo(const xrepl::StreamId& stream_id) EXCLUDES(mutex_);
+
+  Status CleanupCDCSDKDroppedTablesFromStreamInfo(
+      const LeaderEpoch& epoch,
+      const StreamTablesMap& drop_stream_tablelist) EXCLUDES(mutex_);
 
   Status CleanupXReplStreamFromMaps(CDCStreamInfoPtr stream) REQUIRES(mutex_);
 
