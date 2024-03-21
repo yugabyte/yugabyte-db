@@ -1,7 +1,7 @@
 ---
 title: Handling rack failures
 headerTitle: Handling rack failures
-linkTitle: HA during rack failures
+linkTitle: Rack failures
 description: Racks can be treated as fault zones
 headcontent: Server Rack-Awareness in YugabyeDB
 menu:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Data centers provide secure and reliable storage for large amounts of digital information. They also serve as hubs for network connectivity, providing a high-speed and reliable networking infrastructure to transmit data between servers, users, and other devices. To accomplish these, data centers maintain and manage all their machines/routers/switches in server racks.
+Data centers provide secure and reliable storage for large amounts of digital information. They also serve as hubs for network connectivity, providing a high-speed and reliable networking infrastructure to transmit data between servers, users, and other devices. To accomplish these, data centers maintain and manage all their machines, routers, and switches in server racks.
 
 YugabyteDB has been designed from the ground up for high availability and fault tolerance, enabling it to survive failures across fault domains. Fault domains can be nodes, zones, regions, or in this case, racks To survive an outage of one fault domain/rack, a YugabyteDB cluster just needs to replicate its data across three fault domains - this is known as having a replication factor (RF) of 3. To survive the failure of two fault domains, a cluster would need an RF of 5.
 
@@ -20,9 +20,9 @@ YugabyteDB has been designed from the ground up for high availability and fault 
 In YugabyteDB, a zone is the default fault domain.
 {{</note>}}
 
-## Node Placement Definition
+## Node placement definition
 
-The placement of a node using a three-part naming convention in the form cloud.region.zone. The "cloud" represents the actual cloud provider, like AWS, GCP, or Azure. The region represents the geographic location, like US-East or EU-Central. The zone refers to the availability zone where the node is present, like us-east-1a or eu-central-2b. For on-prem data centers, you would set cloud to the data center name, region to the city, and zone to a rack or a group of racks.
+The placement of a node is specified using a three-part naming convention in the form cloud.region.zone. The "cloud" represents the actual cloud provider, like AWS, GCP, or Azure. The region represents the geographic location, like US-East or EU-Central. The zone refers to the availability zone where the node is present, like us-east-1a or eu-central-2b. For on-premises data centers, you would set cloud to the data center name, region to the city, and zone to a rack or a group of racks.
 
 ## Racks as Virtual Zones
 

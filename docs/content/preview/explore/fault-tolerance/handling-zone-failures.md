@@ -1,7 +1,7 @@
 ---
 title: Handling zone failures
 headerTitle: Handling zone failures
-linkTitle: HA during zone failures
+linkTitle: Zone failures
 description: YugabyteDB can handle in-region failure of zones
 headcontent: YugabyteDB can handle in-region failure of zones
 menu:
