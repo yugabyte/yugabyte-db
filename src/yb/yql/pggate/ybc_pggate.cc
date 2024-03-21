@@ -622,7 +622,7 @@ SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb) {
   }
 
   // then delete everything from b (a copy already exists in a)
-  YBCBitmapDeepDeleteSet(sb);
+  YBCBitmapDeepDeleteSet(b);
 
   return a;
 }
