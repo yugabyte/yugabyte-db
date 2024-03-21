@@ -780,6 +780,11 @@ class PostgresBuilder(YbBuildToolBase):
             self.pg_build_root,
             # self.pg_build_root,
             # os.path.join(self.pg_build_root, 'contrib'),
+            # YB_TODO: begin: cleanup the below when all extensions in contrib directory work
+            os.path.join(self.pg_build_root, 'contrib/pgcrypto'),
+            os.path.join(self.pg_build_root, 'contrib/uuid-ossp'),
+            os.path.join(self.pg_build_root, 'contrib/file_fdw'),
+            # YB_TODO: end
             third_party_extensions_dir,
         ]
 
