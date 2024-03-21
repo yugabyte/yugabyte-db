@@ -60,7 +60,7 @@ class XClusterClient {
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::string& target_master_addresses);
 
-  virtual Result<bool> IsCreateXClusterReplicationDone(
+  virtual Result<IsOperationDoneResult> IsCreateXClusterReplicationDone(
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::string& target_master_addresses);
 
