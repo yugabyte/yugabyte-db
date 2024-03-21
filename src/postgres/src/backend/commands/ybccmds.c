@@ -560,7 +560,7 @@ void
 YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid relationId, Oid namespaceId, Oid tablegroupId,
 			   Oid colocationId, Oid tablespaceId, Oid pgTableId,
-			   Oid oldRelfileNodeId)
+			   Oid oldRelfileNodeId, bool isTruncate)
 {
 	bool is_internal_rewrite = oldRelfileNodeId != InvalidOid;
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
@@ -767,6 +767,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   is_matview,
 									   pgTableId,
 									   oldRelfileNodeId,
+									   isTruncate,
 									   &handle));
 
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,

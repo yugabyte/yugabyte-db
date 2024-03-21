@@ -278,15 +278,16 @@ public class ReleaseArtifact extends Model {
   }
 
   public void setSha256(String sha256) {
-    if (!sha256.toLowerCase().startsWith("sha256:")) {
-      sha256 = String.format("sha256:%s", sha256);
-    }
     this.sha256 = sha256;
     save();
   }
 
   public String getSha256() {
-    if (!sha256.toLowerCase().startsWith("sha256:")) {
+    return sha256;
+  }
+
+  public String getFormattedSha256() {
+    if (sha256 != null && !sha256.toLowerCase().startsWith("sha256:")) {
       return String.format("sha256:%s", sha256);
     }
     return sha256;

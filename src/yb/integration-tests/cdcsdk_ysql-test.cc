@@ -1003,22 +1003,21 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeCDCStreamDelet
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   DropTable(&test_cluster_, kTableName);
 
-  // Drop table will trigger the background thread to start the stream metadata cleanup, here
-  // test case wait for the metadata cleanup to finish by the background thread.
+  // Drop table will trigger the background thread to start the stream metadata update.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         while (true) {
           auto resp = GetDBStreamInfo(stream_id);
-          if (resp.ok() && resp->has_error()) {
+          if (resp.ok() && !resp->has_error() && resp->table_info_size() == 0) {
             return true;
           }
           continue;
         }
         return false;
       },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata update."));
   // Deleting the created DB Stream ID.
-  ASSERT_EQ(DeleteCDCStream(stream_id), false);
+  ASSERT_EQ(DeleteCDCStream(stream_id), /*force_delete=*/ true);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTable)) {
@@ -3010,8 +3009,6 @@ TEST_F(CDCSDKYsqlTest, TestGetTabletListToPollForCDCWithConsistentSnapshot) {
 }
 
 // Here creating a single table inside a namespace and a CDC stream on top of the namespace.
-// Deleting the table should clean every thing from master cache as well as the system
-// catalog.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupAndDropTable)) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -3030,13 +3027,17 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupAndDropT
       [&]() -> Result<bool> {
         while (true) {
           auto get_resp = GetDBStreamInfo(stream_id);
-          // Wait until the background thread cleanup up the stream-id.
-          if (get_resp.ok() && get_resp->has_error() && get_resp->table_info_size() == 0) {
-            return true;
+          if (!get_resp.ok()) {
+            continue;
           }
+          if (get_resp->has_error()) {
+            LOG(INFO) << "GetDBStreamInfo response = " << get_resp.ToString();
+            RETURN_NOT_OK(StatusFromPB(get_resp->error().status()));
+          }
+          return (get_resp->table_info_size() == 0);
         }
       },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata update."));
 }
 
 // Here we are creating multiple tables and a CDC stream on the same namespace.
@@ -3266,7 +3267,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDrop
           }
           // stream-1 is associated with a single table, so as part of table drop, stream-1 should
           // be cleaned and wait until the background thread is done with cleanup.
-          if (idx == 1 && false == get_resp->has_error()) {
+          if (idx == 1 && get_resp->table_info_size() > 0) {
             continue;
           }
           // stream-2 is associated with both tables, so dropping one table, should not clean the
@@ -7542,28 +7543,31 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().index(), checkpoint_resp.checkpoint().op_id().index());
 }
 
-TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
+TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
+  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
   ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
-  // Verify alter primary key, column type operations are disallowed on the table.
+  // Verify rewrite operations are disallowed on the table.
   auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
   res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
   res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(
-      res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  res = conn.ExecuteFormat("TRUNCATE $0", kTableName);
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  // Truncate should be allowed if enable_truncate_cdcsdk_table is set.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = true;
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {

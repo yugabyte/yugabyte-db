@@ -1942,9 +1942,6 @@ TEST_F(XClusterYsqlTest, TruncateTableChecks) {
   ASSERT_NOK(TruncateTable(&producer_cluster_, {producer_table_id}));
   ASSERT_NOK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_delete_truncate_xcluster_replicated_table) = true;
-  ASSERT_OK(TruncateTable(&producer_cluster_, {producer_table_id}));
-  ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 }
 
 TEST_F(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
@@ -2665,33 +2662,35 @@ TEST_F_EX(XClusterYsqlTest, DdlAndReadOperationsAllowedOnStandbyCluster, XCluste
   }
 }
 
-TEST_F(XClusterYsqlTest, TestAlterOperationTableRewrite) {
+TEST_F(XClusterYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams({1}, {1}, 3, 1));
   constexpr auto kColumnName = "c1";
+  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
   ASSERT_OK(SetupUniverseReplication(producer_tables_));
   for (int i = 0; i <= 1; ++i) {
     auto conn = i == 0 ? EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name))
                        : EXPECT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
     const auto kTableName =
         i == 0 ? producer_table_->name().table_name() : consumer_table_->name().table_name();
-    // Verify alter primary key, column type operations are disallowed on the table.
+    // Verify rewrite operations are disallowed on the table.
     auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
     ASSERT_NOK(res);
-    ASSERT_STR_CONTAINS(
-        res.ToString(),
-        "cannot rewrite a table that is a part of CDC or XCluster replication");
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
     ASSERT_OK(
         conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 varchar(10)", kTableName, kColumnName));
     res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
     ASSERT_NOK(res);
-    ASSERT_STR_CONTAINS(
-        res.ToString(),
-        "cannot rewrite a table that is a part of CDC or XCluster replication");
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
     res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
     ASSERT_NOK(res);
-    ASSERT_STR_CONTAINS(
-        res.ToString(),
-        "cannot rewrite a table that is a part of CDC or XCluster replication");
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
+    res = conn.ExecuteFormat("TRUNCATE $0", kTableName);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
+    // Truncate should be disallowed even if enable_delete_truncate_xcluster_replicated_table
+    // is set.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_delete_truncate_xcluster_replicated_table) = true;
+    ASSERT_NOK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
   }
 }
 

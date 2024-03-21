@@ -3012,10 +3012,12 @@
     "BundleInfo" : {
       "properties" : {
         "sshPortOverride" : {
+          "description" : "sshPortOverride for the bundle. <b style=\"color:#ff0000\">Deprecated since YBA version 2.20.3.0.</b> Use imageBundles.details.sshUser instead.",
           "format" : "int32",
           "type" : "integer"
         },
         "sshUserOverride" : {
+          "description" : "sshUserOverride for the bundle. <b style=\"color:#ff0000\">Deprecated since YBA version 2.20.3.0.</b> Use imageBundles.details.sshUser instead.",
           "type" : "string"
         },
         "ybImage" : {
@@ -5815,6 +5817,13 @@
           },
           "description" : "Regions override for image bundle",
           "type" : "object"
+        },
+        "sshPort" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sshUser" : {
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -6614,8 +6623,8 @@
           "type" : "integer"
         },
         "ldapSearchFilter" : {
-          "description" : "LDAP search filter to get the user entries",
-          "example" : "(objectclass=person)",
+          "description" : "LDAP search filter to get the user entries. This filter can also be used to search for the users based on their group memberships.",
+          "example" : "(objectclass=person), (&(objectclass=person)(|(groupName=CN=group1,CN=Groups,DC=example,DC=com)(groupName=CN=group2,CN=Groups,DC=example,DC=com)))",
           "type" : "string"
         },
         "ldapServer" : {
