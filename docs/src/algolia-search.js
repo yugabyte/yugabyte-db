@@ -82,12 +82,8 @@ import algoliasearch from 'algoliasearch';
    *
    * @returns string
    */
-  function encodedSearchedTerm(userInput) {
-    let searchedValue = searchInput.value.trim();
-    if (userInput) {
-      searchedValue = userInput;
-    }
-
+  function encodedSearchedTerm() {
+    const searchedValue = searchInput.value.trim();
     const encodedValue = searchedValue.replace(/[\u00A0-\u9999<>&]/g, i => `&#${i.charCodeAt(0)};`);
 
     return encodedValue;
