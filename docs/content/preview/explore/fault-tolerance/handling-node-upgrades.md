@@ -16,7 +16,29 @@ There are many scenarios where you have to do planned maintenance on your cluste
 
 ## Setup
 
-Consider a setup where YugabyteDB is deployed in a single region(us-east-1) across 3 zones. Say it is an RF3 cluster with leaders and followers distributed across the 3 zones (a,b,c) with 6 nodes 1,2,3,4,5 & 6. The application typically connects to all the nodes in the cluster as shown in the following illustration.
+Consider a setup where YugabyteDB is deployed in a single region(us-east-1) across 3 zones. Say it is an RF3 cluster with leaders and followers distributed across the 3 zones (a,b,c) with 6 nodes 1,2,3,4,5 & 6.
+
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<collapse title="Setup a local cluster">}}
+{{<setup/local
+  numnodes="6"
+  rf="3"
+  locations="aws.us-east.us-east-1a,aws.us-east.us-east-1a,aws.us-east.us-east-1b,aws.us-east.us-east-1b,aws.us-east.us-east-1c,aws.us-east.us-east-1c"
+  fault-domain="zone">}}
+{{</collapse>}}
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}} {{<setup/cloud>}} {{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+The application typically connects to all the nodes in the cluster as shown in the following illustration.
 
 {{<note>}}
 In all the illustrations on this page, the solid circles are tablet leaders and the dotted circles are followers.
@@ -26,7 +48,35 @@ In all the illustrations on this page, the solid circles are tablet leaders and 
 
 ## Upgrading a node
 
-When upgrading a node, the first step is taking it offline. But there are a few actions that need to be taken before it is taken offline. In the illustration below, we have chosen node 4 to be upgraded.
+When upgrading a node, the first step is taking it offline. But there are a few actions that need to be taken before it is taken offline.
+
+<!-- begin nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<collapse title="Take a node offline locally">}}
+To simulate taking a node offline locally, you can just stop the fourth node.
+
+```bash
+./bin/yugabyted stop --base_dir=/tmp/ybd4
+```
+
+{{</collapse>}}
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}}
+{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes) {{</note>}}
+{{</nav/panel>}}
+
+{{<nav/panel name="cloud">}}
+{{<note>}} Please reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in [YB Managed](../../../yugabyte-cloud/) for an upgrade {{</note>}}
+{{</nav/panel>}}
+
+{{</nav/panels>}}
+
+In the illustration below, we have chosen node 4 to be upgraded.
 
 ![Upgrade a single node](/images/explore/fault-tolerance/node-upgrades-take-offline.png)
 
@@ -47,6 +97,31 @@ Once the leaders are moved out of the node, it can be taken offline. During this
 ## Node online
 
 Once the upgrade and the needed maintenance are complete, once the node is restarted, it is automatically added back into the cluster. The cluster will notice that the leaders and followers are unbalanced across the cluster and will trigger a rebalance and leader election. This will ensure that the leaders and followers are evenly distributed across the cluster. All the nodes in the cluster are fully functional and can start taking in load. There is neither data loss nor service disruption during the entire time.
+
+<!-- begin nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+{{<collapse title="Bring back a node online locally">}}
+To simulate bring back a node online locally, you can just start the stopped node.
+
+```bash
+./bin/yugabyted start --base_dir=/tmp/ybd4
+```
+
+{{</collapse>}}
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}}
+{{<note>}} To restart a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes) {{</note>}}
+{{</nav/panel>}}
+
+{{<nav/panel name="cloud">}}
+{{<note>}} Please reach out [YugabyteDB support](https://support.yugabyte.com) to restart a node in [YB Managed](../../../yugabyte-cloud/)  {{</note>}}
+{{</nav/panel>}}
+
+{{</nav/panels>}}
 
 Notice in the illustration that the tablet followers in node-4 are updated with the latest data and made leaders.
 

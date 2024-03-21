@@ -71,6 +71,22 @@ This is similar to zone-level fault tolerance, but on a larger scale, where node
 See [Handling region failures](./handling-region-failures) to understand how YugabyteDB is resilient to region failures.
 {{</tip>}}
 
+## Planned maintenance
+
+The benefits of continuous availability extend to performing maintenance and database upgrades. You can maintain and [upgrade your universe](../../manage/upgrade-deployment/) to a newer version of YugabyteDB by performing a rolling upgrade; that is, stopping each node, upgrading the software, and restarting the node, with zero downtime for the universe as a whole. YugayteDB manages such scenarios without any service interruption.
+
+{{<tip>}}
+See [High availability during region failures](./handling-node-upgrades), to understand how YugabyteDB continues without any service interruption during planned node outages.
+{{</tip>}}
+
+## Transaction resilience
+
+YugabyteDB ensures that the [provisional records](../.././architecture/transactions/distributed-txns/#provisional-records) are replicated across fault domains to ensure that transactions do not fail on the failure of fault domains.
+
+{{<tip>}}
+See [High availability of transactions](./transaction-availability), to understand how transactions do not fail during fault domain failures.
+{{</tip>}}
+
 ## Recovery time
 
 If a fault domain experiences a failure, an active replica is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
@@ -82,15 +98,7 @@ This is reflected in both the recovery point objective (RPO) and recovery time o
 
 ![RPO vs RTO](/images/architecture/replication/rpo-vs-rto-zone-outage.png)
 
-YugabyteDB also provides HA of transactions by replicating the uncommitted values, also known as [provisional records](../../architecture/transactions/distributed-txns/#provisional-records), across the fault domains.
-
-{{<tip>}}
-See [High availability of transactions](./transaction-availability) to understand how YugabyteDB transactions survive common failure scenarios.
-{{</tip>}}
-
-The benefits of continuous availability extend to performing maintenance and database upgrades. You can maintain and [upgrade your universe](../../manage/upgrade-deployment/) to a newer version of YugabyteDB by performing a rolling upgrade; that is, stopping each node, upgrading the software, and restarting the node, with zero downtime for the universe as a whole.
-
-For more information, see the following:
+## Learn more
 
 - [Continuous Availability with YugabyteDB video](https://www.youtube.com/watch?v=4PpiOMcq-j8)
 - [Synchronous replication](../../architecture/docdb-replication/replication/)

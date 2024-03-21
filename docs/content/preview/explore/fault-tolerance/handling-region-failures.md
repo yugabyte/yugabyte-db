@@ -28,9 +28,9 @@ Consider a scenario where you have deployed your database across three regions -
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-<details> <summary>Setup a local cluster</summary>
-{{<setup/local numnodes="3" rf="3" locations="aws.us-east.us-east-1a,aws.us-central.us-central-1a,aws.us-west.us-west-1a">}}
-</details>
+{{<collapse title="Setup a local cluster">}}
+{{<setup/local numnodes="3" rf="3" locations="aws.us-east.us-east-1a,aws.us-central.us-central-1a,aws.us-west.us-west-1a" fault-domain="region">}}
+{{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
@@ -58,14 +58,14 @@ If the third (least preferred) region fails, availability is not affected at all
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-<details> <summary>Simulate failure of the third region locally</summary>
+{{<collapse title="Simulate failure of the third region locally">}}
 To simulate the failure of the 3rd region locally, you can just stop the third node.
 
 ```bash
 ./bin/yugabyted stop --base_dir=/tmp/ybd3
 ```
 
-</details>
+{{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
