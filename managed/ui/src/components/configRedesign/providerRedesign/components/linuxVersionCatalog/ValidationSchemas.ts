@@ -13,11 +13,14 @@ import { TFunction } from 'i18next';
 import { ProviderCode } from '../../constants';
 import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
 import { ImageBundle } from '../../types';
+import { isDefined } from '../../../../../jsApi/requests/core/request';
 
 export const getAddLinuxVersionSchema = (
   providerCode: ProviderCode,
   t: TFunction,
-  existingImageBundles: ImageBundle[]
+  existingImageBundles: ImageBundle[],
+  isEditMode: boolean,
+  isYBAManagedBundle: boolean
 ) => {
   const translationPrefix = 'linuxVersion.form.validationMsg';
 
@@ -44,6 +47,7 @@ export const getAddLinuxVersionSchema = (
           'globalYBImage',
           t('globalYBImagenameRequired', { keyPrefix: translationPrefix }),
           (value: any) => {
+            if (isEditMode && isYBAManagedBundle) return true;
             return providerCode === ProviderCode.AWS ? true : isNonEmptyString(value);
           }
         ),
@@ -55,7 +59,21 @@ export const getAddLinuxVersionSchema = (
             });
           })
         )
-      )
+      ),
+      sshPort: yup
+        .number()
+        .typeError(t('sshPortRequired', { keyPrefix: translationPrefix }))
+        .test('sshPort', t('sshPortRequired', { keyPrefix: translationPrefix }), function (value) {
+          if (isEditMode && isYBAManagedBundle) return true;
+          return isDefined(value);
+        }),
+
+      sshUser: yup
+        .string()
+        .test('sshUser', t('sshUserRequired', { keyPrefix: translationPrefix }), function (value) {
+          if (isEditMode && isYBAManagedBundle) return true;
+          return isNonEmptyString(value);
+        })
     })
   });
 
