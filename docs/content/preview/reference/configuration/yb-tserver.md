@@ -1396,17 +1396,17 @@ Default: `true`
 
 {{< note title="Important" >}}
 
-After a DDL statement is executed, if the DDL statement increments the catalog
+Previously, after a DDL statement is executed, if the DDL statement increments the catalog
 version, then all the existing connections need to refresh catalog caches before
 they execute the next statement. When per database catalog version mode is
 enabled, multiple DDL statements can be concurrently executed if each DDL only
 affects its current database and is executed in a separate database. Existing
 connections only need to refresh their catalog caches if they are connected to
-the same database as that of a DDL statement. It is recommended to avoid refreshing catalog cache as it is an expensive operation.
+the same database as that of a DDL statement. It is recommended to keep the default value of this flag because per database catalog version mode helps to avoid unnecessary cross-database catalog cache refresh which is considered as an expensive operation.
 
 {{< /note >}}
 
-If you encounter any issues, you can disable per database catalog version mode using the following steps:
+If you encounter any issues caused by per-database catalog version mode, you can disable per database catalog version mode using the following steps:
 
 1. Shutdown the cluster.
 
