@@ -52,9 +52,7 @@ DECLARE_int32(cql_update_system_query_cache_msecs);
 DEFINE_UNKNOWN_int64(cql_service_max_prepared_statement_size_bytes, 128_MB,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
              "statements. 0 or negative means unlimited.");
-DEFINE_UNKNOWN_int32(cql_ybclient_reactor_threads, 24,
-             "The number of reactor threads to be used for processing ybclient "
-             "requests originating in the cql layer");
+DEPRECATE_FLAG(int32, cql_ybclient_reactor_threads, "02_2024");
 DEFINE_UNKNOWN_int32(password_hash_cache_size, 64, "Number of password hashes to cache. 0 or "
              "negative disables caching.");
 DEFINE_UNKNOWN_int64(cql_processors_limit, -4000,

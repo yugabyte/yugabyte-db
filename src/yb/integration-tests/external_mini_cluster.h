@@ -457,6 +457,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const ExternalTabletServer& ts,
       const yb::TabletId& tablet_id, bool fail_on_response_error = true);
 
+  // Flushes all tablets if tablets_ids is empty.
   Status FlushTabletsOnSingleTServer(
       ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
       tserver::FlushTabletsRequestPB_Operation operation);

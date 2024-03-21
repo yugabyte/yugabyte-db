@@ -264,7 +264,7 @@ func buildAWSRegions(regionStrings, zoneStrings []string, allowed bool,
 	version string) (res []ybaclient.Region) {
 	if len(regionStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one region is required per provider.",
+			formatter.Colorize("Atleast one region is required per provider.\n",
 				formatter.RedColor))
 	}
 	for _, regionString := range regionStrings {
@@ -289,7 +289,7 @@ func buildAWSRegions(regionStrings, zoneStrings []string, allowed bool,
 		if !allowed {
 			logrus.Info(
 				fmt.Sprintf("YugabyteDB Anywhere version %s does not support specifying "+
-					"Architecture, ignoring value.", version))
+					"Architecture, ignoring value.\n", version))
 		}
 		res = append(res, r)
 	}
@@ -302,7 +302,7 @@ func buildAWSZones(zoneStrings []string, regionName string) (res []ybaclient.Ava
 
 		if _, ok := zone["subnet"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Subnet not specified in zone info.",
+				formatter.Colorize("Subnet not specified in zone info.\n",
 					formatter.RedColor))
 		}
 
@@ -318,7 +318,7 @@ func buildAWSZones(zoneStrings []string, regionName string) (res []ybaclient.Ava
 	}
 	if len(res) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return res

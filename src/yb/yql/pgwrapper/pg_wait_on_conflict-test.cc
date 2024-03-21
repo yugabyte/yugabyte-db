@@ -31,6 +31,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -64,6 +65,7 @@ DECLARE_uint64(TEST_inject_process_update_resp_delay_ms);
 DECLARE_uint64(TEST_delay_rpc_status_req_callback_ms);
 DECLARE_int32(TEST_txn_participant_inject_delay_on_start_shutdown_ms);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_uint64(transaction_heartbeat_usec);
 
 using namespace std::literals;
 
@@ -1043,8 +1045,12 @@ TEST_F(
   // re-run conflict resolution periodically, this deadlock wouldn't be detected in the current
   // implementation.
   ASSERT_OK(conn3.Execute("UPDATE foo SET v2=v2+1000 WHERE k=1"));
-  ASSERT_FALSE(
-      conn3.Execute("UPDATE foo SET v2=v2+1000 WHERE k=2").ok() && status_future.get().ok());
+  auto conn3_status = conn3.Execute("UPDATE foo SET v2=v2+1000 WHERE k=2");
+  ASSERT_STR_CONTAINS(conn3_status.ToUserMessage(true /*include_code*/), "Deadlock");
+  ASSERT_OK(conn1.CommitTransaction());
+
+  ASSERT_STR_CONTAINS(
+      status_future.get().ToString(), "could not serialize access due to concurrent update");
 }
 
 TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock)) {
@@ -1057,6 +1063,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock))
       "INSERT INTO foo SELECT generate_series(0, $0), 0", kNumKeys * 5));
 
   for (int deadlock_idx = 1; deadlock_idx <= kNumKeys; ++deadlock_idx) {
+    LOG(INFO) << "Begin test of deadlock_idx " << deadlock_idx;
     auto update_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(update_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(update_conn.Fetch("SELECT * FROM foo WHERE k=0 FOR UPDATE"));
@@ -1104,6 +1111,80 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock))
       LOG(INFO) << "Thread 0 failed to update " << s;
       did_deadlock.CountDown();
     }
+    LOG(INFO) << "End test of deadlock_idx " << deadlock_idx;
+  }
+}
+
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(DeadlockResolvesYoungestTxn)) {
+  // Tests that in a large cyclic deadlock, the youngest transaction is always the *only*
+  // transaction which is aborted.
+  constexpr int kNumKeys = 20;
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO foo SELECT generate_series(0, $0), 0", kNumKeys * 5));
+
+  for (int last_locker_idx = 0; last_locker_idx < kNumKeys; ++last_locker_idx) {
+    LOG(INFO) << "Begin test of last_locker_idx " << last_locker_idx;
+
+    CountDownLatch did_deadlock(1);
+    CountDownLatch did_commit(kNumKeys - 1);
+    CountDownLatch did_first_select(kNumKeys - 1);
+    CountDownLatch did_deadlock_select(1);
+    TestThreadHolder thread_holder;
+    for (int offset_idx = 1; offset_idx < kNumKeys; ++offset_idx) {
+      auto key_idx = (last_locker_idx + offset_idx) % kNumKeys;
+      thread_holder.AddThreadFunctor(
+          [this, key_idx, &did_deadlock, &did_commit, &did_first_select, &did_deadlock_select] {
+        LOG(INFO) << "Starting thread " << key_idx;
+        auto conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", key_idx));
+        did_first_select.CountDown();
+        auto txn_id = ASSERT_RESULT(conn.FetchRow<Uuid>("SELECT yb_get_current_transaction()"));
+
+        LOG(INFO) << "Thread " << key_idx
+                  << " locked key " << key_idx
+                  << " for txn " << yb::ToString(txn_id);
+        ASSERT_TRUE(did_deadlock_select.WaitFor(20s * kTimeMultiplier));
+
+        ASSERT_OK(conn.FetchFormat(
+            "SELECT * FROM foo WHERE k=$0 FOR UPDATE", (key_idx + 1) % kNumKeys));
+        LOG(INFO) << "Thread " << key_idx << " locked key " << (key_idx + 1) % kNumKeys;
+
+        did_deadlock.WaitFor(30s * kTimeMultiplier);
+        ASSERT_OK(conn.CommitTransaction());
+        LOG(INFO) << "Thread " << key_idx << " committed";
+        did_commit.CountDown();
+      });
+    }
+
+    ASSERT_TRUE(did_first_select.WaitFor(10s * kTimeMultiplier));
+    std::this_thread::sleep_for(500ms * kTimeMultiplier);
+
+    LOG(INFO) << "Starting deadlock conn " << last_locker_idx;
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", last_locker_idx));
+    std::this_thread::sleep_for(2us * FLAGS_transaction_heartbeat_usec);
+    did_deadlock_select.CountDown();
+    auto txn_id = ASSERT_RESULT(conn.FetchRow<Uuid>("SELECT yb_get_current_transaction()"));
+
+    LOG(INFO) << "Deadlocker thread " << last_locker_idx
+              << " locked key " << last_locker_idx
+              << " for txn " << yb::ToString(txn_id);
+
+    auto s = conn.FetchFormat(
+        "SELECT * FROM foo WHERE k=$0 FOR UPDATE", (last_locker_idx + 1) % kNumKeys);
+    ASSERT_NOK(s);
+    ASSERT_STR_CONTAINS(s.status().ToUserMessage(true /*include_code*/), "Deadlock");
+    did_deadlock.CountDown();
+    LOG(INFO) << "Finished deadlocker thread";
+
+    ASSERT_TRUE(did_commit.WaitFor(30s * kTimeMultiplier));
+    LOG(INFO) << "End test of last_locker_idx " << last_locker_idx;
+
+    thread_holder.JoinAll();
   }
 }
 

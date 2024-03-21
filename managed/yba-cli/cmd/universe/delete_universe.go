@@ -56,8 +56,11 @@ var deleteUniverseCmd = &cobra.Command{
 		}
 
 		if len(r) < 1 {
-			fmt.Println("No universes found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No universes with name: %s found\n", universeName),
+					formatter.RedColor,
+				))
 		}
 
 		var universeUUID string
@@ -102,11 +105,11 @@ var deleteUniverseCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			fmt.Printf("The universe %s (%s) has been deleted\n",
+			logrus.Infof("The universe %s (%s) has been deleted\n",
 				formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 			return
 		}
-		fmt.Println(msg)
+		logrus.Infoln(msg + "\n")
 	},
 }
 

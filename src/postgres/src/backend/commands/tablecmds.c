@@ -599,6 +599,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	Oid			rowTypeId = InvalidOid;
 	bool		relisshared = false;
 	bool		use_initdb_acl = false;
+	ListCell   *opt_cell;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time, as
@@ -806,6 +807,27 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	Oid tablegroupId = stmt->tablegroupname
 		? get_tablegroup_oid(stmt->tablegroupname, false)
 		: InvalidOid;
+
+	if (IsYugaByteEnabled())
+	{
+		foreach(opt_cell, stmt->options)
+		{
+			DefElem *def = (DefElem *) lfirst(opt_cell);
+
+			/*
+			 * A check in parse_utilcmd.c makes sure only one of these two options
+			 * can be specified.
+			 */
+			if (strcmp(def->defname, "colocated") == 0 ||
+				strcmp(def->defname, "colocation") == 0)
+			{
+				if (OidIsValid(tablegroupId))
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
+			}
+		}
+	}
 
 	/*
 	 * Check permissions for tablegroup. To create a table within a tablegroup, a user must
@@ -1023,7 +1045,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		YBCCreateTable(stmt, relname, relkind, descriptor, relationId,
 					   namespaceId, tablegroupId, colocation_id, tablespaceId,
 					   InvalidOid /* pgTableId */,
-					   InvalidOid /* oldRelfileNodeId */);
+					   InvalidOid /* oldRelfileNodeId */,
+					   false /* isTruncate */);
 	}
 
 	/*
@@ -1852,13 +1875,13 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 		 * truncate it in-place, because a rollback would cause the whole
 		 * table or the current physical file to be thrown away anyway.
 		 */
-		if (IsYBRelation(rel))
+		if (IsYBRelation(rel) && !yb_enable_alter_table_rewrite)
 		{
 			// Call YugaByte API to truncate tables.
 			YbTruncate(rel);
 		}
 		else if (rel->rd_createSubid == mySubid ||
-				 rel->rd_newRelfilenodeSubid == mySubid)
+				 rel->rd_newRelfilenodeSubid == mySubid || !IsYBRelation(rel))
 		{
 			/* Immediate, non-rollbackable truncation is OK */
 			heap_truncate_one_rel(rel);
@@ -1916,7 +1939,7 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 			 * Reconstruct the indexes to match, and we're done.
 			 */
 			reindex_relation(heap_relid, REINDEX_REL_PROCESS_TOAST, 0,
-							 false /* is_yb_table_rewrite */,
+							 true /* is_yb_table_rewrite */,
 							 false /* yb_copy_split_options */);
 		}
 
@@ -3952,7 +3975,7 @@ ATController(AlterTableStmt *parsetree,
 	}
 	PG_CATCH();
 	{
-		if (!yb_ddl_rollback_enabled)
+		if (!YbDdlRollbackEnabled())
 		{
 			/*
 			 * The new way of doing ddl rollback is disabled, fall back to the
@@ -12085,7 +12108,7 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 				 errmsg("cannot set tablespaces for temporary tables")));
 	}
 
-	if (IsYugaByteEnabled() && tablespacename && 
+	if (IsYugaByteEnabled() && tablespacename &&
 		rel->rd_index &&
 		rel->rd_index->indisprimary) {
 		/*
@@ -12580,7 +12603,7 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	/* Notify the user that this command is async */
 	ereport(NOTICE,
-			(errmsg("Data movement for table %s is successfully initiated.", 
+			(errmsg("Data movement for table %s is successfully initiated.",
 					RelationGetRelationName(rel)),
 			 errdetail("Data movement is a long running asynchronous process "
 					   "and can be monitored by checking the tablet placement "

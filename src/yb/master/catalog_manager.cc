@@ -509,7 +509,8 @@ DEFINE_test_flag(bool, error_after_creating_single_split_tablet, false,
                  "after calling Upsert.");
 
 DEFINE_RUNTIME_bool(enable_delete_truncate_xcluster_replicated_table, false,
-            "When set, enables deleting/truncating tables currently in xCluster replication");
+            "When set, enables deleting/truncating YCQL tables currently in xCluster replication. "
+            "For YSQL tables, deletion is always allowed and TRUNCATE is always disallowed.");
 
 DEFINE_RUNTIME_bool(xcluster_wait_on_ddl_alter, true,
     "When xCluster replication sends a DDL change, wait for the user to enter a "
@@ -524,7 +525,9 @@ DEFINE_RUNTIME_bool(disable_truncate_table, false,
     "When enabled, truncate table will be disallowed");
 
 DEFINE_RUNTIME_bool(enable_truncate_on_pitr_table, false,
-    "When enabled, truncate table will be allowed on PITR tables");
+    "When enabled, truncate table will be allowed on PITR tables in YCQL. For PITR tables in YSQL, "
+    "truncate is always allowed by default, and it can be turned off by setting the "
+    "ysql_yb_enable_alter_table_rewrite autoflag to false.");
 
 DEFINE_test_flag(double, fault_crash_after_registering_split_children, 0.0,
                  "Crash after registering the children for a tablet split.");
@@ -3782,12 +3785,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (!orig_req->old_rewrite_table_id().empty()) {
-    auto table_info = GetTableInfo(orig_req->old_rewrite_table_id());
+    auto table_id = orig_req->old_rewrite_table_id();
     SharedLock lock(mutex_);
-    SCHECK(
-        !IsTablePartOfXRepl(table_info->id()), NotSupported,
-        "cannot rewrite a table that is a part of CDC or XCluster replication."
-        " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
+    // Fail rewrites on tables that are part of CDC or XCluster replication, except for
+    // TRUNCATEs on CDC tables when FLAGS_enable_truncate_cdcsdk_table is enabled.
+    if (IsTablePartOfXClusterUnlocked(table_id) || (IsTablePartOfCDCSDK(table_id) &&
+        (!orig_req->is_truncate() || !FLAGS_enable_truncate_cdcsdk_table))) {
+      return STATUS(
+          NotSupported,
+          "cannot rewrite a table that is a part of CDC or XCluster replication."
+          " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
+    }
   }
 
   // Copy the request, so we can fill in some defaults.

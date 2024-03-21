@@ -117,8 +117,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       bool delete_op = false, bool use_transaction = false);
 
   Status CheckpointReplicationGroup();
-  Status CreateReplicationFromCheckpoint();
-  Status WaitForCreateReplicationToFinish();
+  Status CreateReplicationFromCheckpoint(const std::string& target_master_addresses = {});
+  Status WaitForCreateReplicationToFinish(const std::string& target_master_addresses);
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);

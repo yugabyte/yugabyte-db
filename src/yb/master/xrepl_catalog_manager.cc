@@ -137,6 +137,8 @@ DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
+DECLARE_bool(ysql_yb_enable_replica_identity);
+
 
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
@@ -781,7 +783,11 @@ Status CatalogManager::CreateCDCStream(
     if (option.key() == cdc::kSourceType) {
       source_type_option_value = option.value();
     }
-    if (option.key() == cdc::kRecordType) {
+    if (option.key() == cdc::kRecordType ) {
+      if (FLAGS_ysql_yb_enable_replica_identity) {
+        LOG(WARNING) << " The value for Before Image RecordType will be ignored as "
+                        "ysql_yb_enable_replica_identity is enabled.";
+      }
       record_type_option_value = option.value();
     }
   }
@@ -872,6 +878,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   bool has_consistent_snapshot_option = false;
   bool consistent_snapshot_option_use = false;
+  bool has_replica_identity_full = false;
 
   CDCStreamInfoPtr stream;
   xrepl::StreamId stream_id = xrepl::StreamId::Nil();
@@ -943,6 +950,20 @@ Status CatalogManager::CreateNewCdcsdkStream(
   metadata->set_namespace_id(*namespace_id);
   for (const auto& table_id : table_ids) {
     metadata->add_table_id(table_id);
+    if (FLAGS_ysql_yb_enable_replica_identity) {
+      auto table = VERIFY_RESULT(FindTableById(table_id));
+      Schema schema;
+      RETURN_NOT_OK(table->GetSchema(&schema));
+      PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();
+
+      // If atleast one of the tables in the stream has replica identity full, we will set the
+      // history cutoff. UpdatepPeersAndMetrics thread will remove the retention barriers for
+      // the tablets belonging to the tables with "non-full" replica identity.
+      has_replica_identity_full |= (replica_identity == PgReplicaIdentity::FULL);
+
+      metadata->mutable_replica_identity_map()->insert({table_id, replica_identity});
+      VLOG(1) << "Replica identity for table " << table_id << " is " << replica_identity;
+    }
   }
 
   metadata->set_transactional(req.transactional());
@@ -1028,10 +1049,11 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   uint64 consistent_snapshot_time = 0;
   bool record_type_option_all = false;
-
-  for (auto option : req.options()) {
-    if (option.key() == cdc::kRecordType) {
-      record_type_option_all = option.value() == CDCRecordType_Name(cdc::CDCRecordType::ALL);
+  if (!FLAGS_ysql_yb_enable_replica_identity) {
+    for (auto option : req.options()) {
+      if (option.key() == cdc::kRecordType) {
+        record_type_option_all = option.value() == CDCRecordType_Name(cdc::CDCRecordType::ALL);
+      }
     }
   }
 
@@ -1047,11 +1069,12 @@ Status CatalogManager::CreateNewCdcsdkStream(
   RETURN_NOT_OK(
       TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kAfterDummyCDCStateEntries"));
 
-  // Step 2: Set retention barriers for all tables.
-  auto require_history_cutoff = consistent_snapshot_option_use || record_type_option_all;
-  RETURN_NOT_OK(SetAllCDCSDKRetentionBarriers(
-      req, rpc, epoch, table_ids, stream->StreamId(), has_consistent_snapshot_option,
-      require_history_cutoff));
+    // Step 2: Set retention barriers for all tables.
+    auto require_history_cutoff =
+        consistent_snapshot_option_use || record_type_option_all || has_replica_identity_full;
+    RETURN_NOT_OK(SetAllCDCSDKRetentionBarriers(
+        req, rpc, epoch, table_ids, stream->StreamId(), has_consistent_snapshot_option,
+        require_history_cutoff));
 
   RETURN_NOT_OK(
       TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kAfterRetentionBarriers"));
@@ -1655,6 +1678,10 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
     return STATUS(InvalidArgument, "Invalid CDCRecordType value", record_type_option_value);
   }
 
+  if (FLAGS_ysql_yb_enable_replica_identity) {
+    return Status::OK();
+  }
+
   switch (record_type_pb) {
     case cdc::CDCRecordType::PG_FULL:
       FALLTHROUGH_INTENDED;
@@ -1682,6 +1709,7 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
       return Status::OK();
     }
   }
+
   return Status::OK();
 }
 
@@ -1911,48 +1939,50 @@ void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
   }
 }
 
-Status CatalogManager::CleanUpCDCSDKMetadataFromSystemCatalog(
-    const StreamTablesMap& drop_stream_tablelist, const LeaderEpoch& epoch) {
-  std::vector<CDCStreamInfoPtr> streams_to_delete;
+Result<CDCStreamInfoPtr> CatalogManager::GetXReplStreamInfo(const xrepl::StreamId& stream_id) {
+  SharedLock lock(mutex_);
+  auto stream_info = FindPtrOrNull(cdc_stream_map_, stream_id);
+  SCHECK(stream_info, NotFound, Format("XRepl Stream $0 not found", stream_id));
+  return stream_info;
+}
+
+Status CatalogManager::CleanupCDCSDKDroppedTablesFromStreamInfo(
+    const LeaderEpoch& epoch,
+    const StreamTablesMap& drop_stream_tablelist) {
   std::vector<CDCStreamInfoPtr> streams_to_update;
   std::vector<CDCStreamInfo::WriteLock> locks;
 
   TRACE("Cleaning CDCSDK streams from map and system catalog.");
   {
-    LockGuard lock(mutex_);
-    for (auto& [delete_stream_id, drop_table_list] : drop_stream_tablelist) {
-      if (cdc_stream_map_.contains(delete_stream_id)) {
-        CDCStreamInfoPtr cdc_stream_info = cdc_stream_map_[delete_stream_id];
-        auto ltm = cdc_stream_info->LockForWrite();
-        // Delete the stream from cdc_stream_map_ if all tables associated with stream are dropped.
-        if (ltm->table_id().size() == static_cast<int>(drop_table_list.size())) {
-          RETURN_NOT_OK(CleanUpXReplStreamFromMaps(cdc_stream_info));
-          streams_to_delete.push_back(cdc_stream_info);
-        } else {
-          // Remove those tables info, that are dropped from the cdc_stream_map_ and update the
-          // system catalog.
-          for (auto table_id : drop_table_list) {
-            auto table_id_iter =
-                std::find(ltm->table_id().begin(), ltm->table_id().end(), table_id);
-            if (table_id_iter != ltm->table_id().end()) {
-              ltm.mutable_data()->pb.mutable_table_id()->erase(table_id_iter);
-            }
-          }
-          streams_to_update.push_back(cdc_stream_info);
+    for (auto& [stream_id, drop_table_list] : drop_stream_tablelist) {
+      auto cdc_stream_info = VERIFY_RESULT(GetXReplStreamInfo(stream_id));
+      auto ltm = cdc_stream_info->LockForWrite();
+      bool need_to_update_stream = false;
+
+      // Remove those tables info, that are dropped from the cdc_stream_map_ and update the
+      // system catalog.
+      for (auto table_id : drop_table_list) {
+        auto table_id_iter = std::find(ltm->table_id().begin(), ltm->table_id().end(), table_id);
+        if (table_id_iter != ltm->table_id().end()) {
+          need_to_update_stream = true;
+          ltm.mutable_data()->pb.mutable_table_id()->erase(table_id_iter);
         }
+      }
+      if (need_to_update_stream) {
+        streams_to_update.push_back(cdc_stream_info);
         locks.push_back(std::move(ltm));
       }
+    }
+    // Return if there are no stream to update.
+    if (streams_to_update.size() == 0) {
+      return Status::OK();
     }
   }
 
   // Do system catalog UPDATE and DELETE based on the streams_to_update and streams_to_delete.
-  auto writer = sys_catalog_->NewWriter(epoch.leader_term);
-  RETURN_NOT_OK(writer->Mutate<true>(QLWriteRequestPB::QL_STMT_DELETE, streams_to_delete));
-  RETURN_NOT_OK(writer->Mutate<true>(QLWriteRequestPB::QL_STMT_UPDATE, streams_to_update));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->SyncWrite(writer.get()), "Error cleaning CDCSDK streams from system catalog");
-  LOG(INFO) << "Successfully cleaned up CDCSDK streams "
-            << CDCStreamInfosAsString(streams_to_delete) << " from system catalog";
+  RETURN_ACTION_NOT_OK(
+      sys_catalog_->Upsert(epoch, streams_to_update),
+      "Updating CDC streams in system catalog");
 
   for (auto& lock : locks) {
     lock.Commit();
@@ -2028,7 +2058,7 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
   RETURN_NOT_OK(cdc_state_table_->DeleteEntries(keys_to_delete));
 
   // Cleanup the streams from system catalog and from internal maps.
-  return CleanUpCDCSDKMetadataFromSystemCatalog(drop_stream_table_list, epoch);
+  return CleanupCDCSDKDroppedTablesFromStreamInfo(epoch, drop_stream_table_list);
 }
 
 Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
@@ -2230,6 +2260,9 @@ Status CatalogManager::GetCDCStream(
   if (stream_lock->pb.has_stream_creation_time()) {
     stream_info->set_stream_creation_time(stream_lock->pb.stream_creation_time());
   }
+
+  auto replica_identity_map = stream_lock->pb.replica_identity_map();
+  stream_info->mutable_replica_identity_map()->swap(replica_identity_map);
 
   return Status::OK();
 }

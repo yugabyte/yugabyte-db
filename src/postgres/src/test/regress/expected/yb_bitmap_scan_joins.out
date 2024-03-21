@@ -745,3 +745,255 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
                ->  Bitmap Index Scan on test_join_filter_a_idx (actual rows=5 loops=33)
                      Index Cond: (a <= table2.b)
 (15 rows)
+
+--
+-- Rescans where we don't need the actual rows
+-- This test is based off #21526 identified by the random query generator.
+-- To speed up the test, don't bother creating new tables.
+--
+/*+ BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Sort (actual rows=6 loops=1)
+   Sort Key: joinb.k
+   Sort Method: quicksort
+   ->  Seq Scan on joinb (actual rows=6 loops=1)
+         Filter: ((SubPlan 1) OR (c = 1))
+         Rows Removed by Filter: 4
+         SubPlan 1
+           ->  YB Bitmap Table Scan on joina (actual rows=1 loops=10)
+                 ->  Bitmap Index Scan on joina_a_idx (actual rows=3 loops=10)
+                       Index Cond: (a >= joinb.d)
+(10 rows)
+
+/*+ BitmapScan(joina) */
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+ k | c  | d
+---+----+----
+ 1 |  2 |  3
+ 2 |  4 |  6
+ 3 |  6 |  9
+ 4 |  8 | 12
+ 5 | 10 | 15
+ 6 | 12 | 18
+(6 rows)
+
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Sort (actual rows=6 loops=1)
+   Sort Key: joinb.k
+   Sort Method: quicksort
+   ->  Seq Scan on joinb (actual rows=6 loops=1)
+         Filter: ((SubPlan 1) OR (c = 1))
+         Rows Removed by Filter: 4
+         SubPlan 1
+           ->  Index Only Scan using joina_a_idx on joina (actual rows=1 loops=10)
+                 Index Cond: (a >= joinb.d)
+                 Heap Fetches: 0
+(10 rows)
+
+/*+ Set(enable_bitmapscan false) */
+SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
+ k | c  | d
+---+----+----
+ 1 |  2 |  3
+ 2 |  4 |  6
+ 3 |  6 |  9
+ 4 |  8 | 12
+ 5 | 10 | 15
+ 6 | 12 | 18
+(6 rows)
+
+--
+-- BitmapAnd tests
+-- This is issue #21495 identified by the random query generator.
+--
+CREATE TABLE bb (
+    pk serial,
+    col_int_nokey integer,
+    col_int_key integer,
+    col_date_key date,
+    col_date_nokey date,
+    col_time_key time without time zone,
+    col_time_nokey time without time zone,
+    col_datetime_key timestamp without time zone,
+    col_datetime_nokey timestamp without time zone,
+    col_varchar_key character varying(1),
+    col_varchar_nokey character varying(1),
+    CONSTRAINT bb_pkey PRIMARY KEY(pk ASC)
+);
+CREATE INDEX bb_int_key ON bb USING lsm (col_int_key ASC);
+CREATE TABLE c (
+    pk serial,
+    col_int_nokey integer,
+    col_int_key integer,
+    col_date_key date,
+    col_date_nokey date,
+    col_time_key time without time zone,
+    col_time_nokey time without time zone,
+    col_datetime_key timestamp without time zone,
+    col_datetime_nokey timestamp without time zone,
+    col_varchar_key character varying(1),
+    col_varchar_nokey character varying(1),
+    CONSTRAINT c_pkey PRIMARY KEY(pk ASC)
+);
+CREATE INDEX c_int_key ON c USING lsm (col_int_key ASC);
+CREATE INDEX c_varchar_key ON c USING lsm (col_varchar_key ASC, col_int_key ASC);
+COPY bb (pk, col_int_nokey, col_int_key, col_date_key, col_date_nokey, col_time_key, col_time_nokey, col_datetime_key, col_datetime_nokey, col_varchar_key, col_varchar_nokey) FROM stdin;
+COPY c (pk, col_int_nokey, col_int_key, col_date_key, col_date_nokey, col_time_key, col_time_nokey, col_datetime_key, col_datetime_nokey, col_varchar_key, col_varchar_nokey) FROM stdin;
+/*+ BitmapScan(subquery1_t1) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
+                                                                          QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=1 loops=1)
+   Join Filter: (subquery1_t1.pk = bb.col_int_key)
+   ->  Nested Loop (actual rows=17 loops=1)
+         ->  Seq Scan on c (actual rows=20 loops=1)
+         ->  YB Bitmap Table Scan on c subquery1_t1 (actual rows=1 loops=20)
+               Filter: (((SubPlan 1) AND (pk = c.col_int_key)) OR (col_int_key = c.col_int_key))
+               ->  BitmapAnd (actual rows=1 loops=20)
+                     ->  BitmapOr (actual rows=5 loops=20)
+                           ->  Bitmap Index Scan on c_pkey (actual rows=1 loops=20)
+                                 Index Cond: (pk = c.col_int_key)
+                           ->  Bitmap Index Scan on c_int_key (actual rows=4 loops=20)
+                                 Index Cond: (col_int_key = c.col_int_key)
+                     ->  Bitmap Index Scan on c_varchar_key (actual rows=1 loops=20)
+                           Index Cond: ((col_varchar_key)::text = (c.col_varchar_key)::text)
+               SubPlan 1
+                 ->  Seq Scan on c c_1 (actual rows=7 loops=17)
+                       Storage Filter: (((col_varchar_key)::text <> (c.col_varchar_key)::text) AND ((col_varchar_nokey)::text >= (c.col_varchar_nokey)::text))
+   ->  Index Only Scan using bb_int_key on bb (actual rows=1 loops=1)
+         Index Cond: (col_int_key = ANY (ARRAY[subquery1_t1.pk, $7, $8, ..., $1029]))
+         Heap Fetches: 0
+(20 rows)
+
+/*+ BitmapScan(subquery1_t1) */
+SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
+ pk
+----
+  8
+(1 row)
+
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
+                                                                       QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=1 loops=1)
+   Join Filter: (subquery1_t1.pk = bb.col_int_key)
+   ->  Merge Join (actual rows=17 loops=1)
+         Merge Cond: ((subquery1_t1.col_varchar_key)::text = (c.col_varchar_key)::text)
+         Join Filter: (((SubPlan 1) AND (subquery1_t1.pk = c.col_int_key)) OR (subquery1_t1.col_int_key = c.col_int_key))
+         Rows Removed by Join Filter: 10
+         ->  Index Scan using c_varchar_key on c subquery1_t1 (actual rows=18 loops=1)
+         ->  Materialize (actual rows=28 loops=1)
+               ->  Index Scan using c_varchar_key on c (actual rows=18 loops=1)
+         SubPlan 1
+           ->  Seq Scan on c c_1 (actual rows=6 loops=27)
+                 Storage Filter: (((col_varchar_key)::text <> (c.col_varchar_key)::text) AND ((col_varchar_nokey)::text >= (c.col_varchar_nokey)::text))
+   ->  Index Only Scan using bb_int_key on bb (actual rows=1 loops=1)
+         Index Cond: (col_int_key = ANY (ARRAY[subquery1_t1.pk, $4, $5, ..., $1026]))
+         Heap Fetches: 0
+(15 rows)
+
+/*+ Set(enable_bitmapscan false) */
+SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
+ pk
+----
+  8
+(1 row)
+
+--
+-- Semi Join
+--
+/*+ BitmapScan(joinb) */ EXPLAIN ANALYZE
+SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+                                                 QUERY PLAN
+-------------------------------------------------------------------------------------------------------------
+ Nested Loop Semi Join  (cost=3.30..3439.72 rows=333 width=4) (actual rows=6 loops=1)
+   ->  Index Scan using joina_a_idx on joina  (cost=0.00..124.00 rows=1000 width=8) (actual rows=10 loops=1)
+   ->  YB Bitmap Table Scan on joinb  (cost=3.30..7.43 rows=333 width=4) (actual rows=1 loops=10)
+         ->  Bitmap Index Scan on joinb_c_idx  (cost=0.00..3.30 rows=10 width=0) (actual rows=3 loops=10)
+               Index Cond: (c >= joina.b)
+(5 rows)
+
+SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+ a
+----
+  2
+  4
+  6
+  8
+ 10
+ 12
+(6 rows)
+
+/*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
+SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+                                                     QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=188.39..189.22 rows=333 width=4) (actual rows=6 loops=1)
+   Sort Key: joina.a
+   Sort Method: quicksort
+   ->  Nested Loop Semi Join  (cost=0.00..174.44 rows=333 width=4) (actual rows=6 loops=1)
+         ->  Seq Scan on joina  (cost=0.00..100.00 rows=1000 width=8) (actual rows=10 loops=1)
+         ->  Index Only Scan using joinb_c_idx on joinb  (cost=0.00..1.10 rows=10 width=4) (actual rows=1 loops=10)
+               Index Cond: (c >= joina.b)
+               Heap Fetches: 0
+(8 rows)
+
+SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+ a
+----
+  2
+  4
+  6
+  8
+ 10
+ 12
+(6 rows)
+
+--
+-- Anti Join
+--
+/*+ BitmapScan(joinb) */ EXPLAIN ANALYZE
+SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+                                                 QUERY PLAN
+-------------------------------------------------------------------------------------------------------------
+ Nested Loop Anti Join  (cost=3.30..3439.72 rows=667 width=4) (actual rows=4 loops=1)
+   ->  Index Scan using joina_a_idx on joina  (cost=0.00..124.00 rows=1000 width=8) (actual rows=10 loops=1)
+   ->  YB Bitmap Table Scan on joinb  (cost=3.30..7.43 rows=333 width=4) (actual rows=1 loops=10)
+         ->  Bitmap Index Scan on joinb_c_idx  (cost=0.00..3.30 rows=10 width=0) (actual rows=3 loops=10)
+               Index Cond: (c >= joina.b)
+(5 rows)
+
+SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+ a
+----
+ 14
+ 16
+ 18
+ 20
+(4 rows)
+
+/*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
+SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+                                                  QUERY PLAN
+--------------------------------------------------------------------------------------------------------------
+ Nested Loop Anti Join  (cost=0.00..198.44 rows=667 width=4) (actual rows=4 loops=1)
+   ->  Index Scan using joina_a_idx on joina  (cost=0.00..124.00 rows=1000 width=8) (actual rows=10 loops=1)
+   ->  Index Only Scan using joinb_c_idx on joinb  (cost=0.00..1.10 rows=10 width=4) (actual rows=1 loops=10)
+         Index Cond: (c >= joina.b)
+         Heap Fetches: 0
+(5 rows)
+
+SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+ a
+----
+ 14
+ 16
+ 18
+ 20
+(4 rows)

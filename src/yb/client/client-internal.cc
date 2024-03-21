@@ -54,6 +54,7 @@
 #include "yb/client/table_info.h"
 
 #include "yb/qlexpr/index.h"
+#include "yb/common/common_util.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/schema.h"
@@ -621,7 +622,7 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   if (!table_id.empty()) {
     req.mutable_table()->set_table_id(table_id);
   }
-  if (FLAGS_ysql_yb_ddl_rollback_enabled && txn) {
+  if (YsqlDdlRollbackEnabled() && txn) {
     // If 'txn' is set, this means this delete operation should actually result in the
     // deletion of table data only if this transaction is a success. Therefore ensure that
     // 'wait' is not set, because it makes no sense to wait for the deletion to complete if we want
@@ -806,7 +807,7 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
 
   if (txn) {
     txn->ToPB(req.mutable_transaction());
-    req.set_ysql_yb_ddl_rollback_enabled(FLAGS_ysql_yb_ddl_rollback_enabled);
+    req.set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
   }
 
   int attempts = 0;
@@ -884,7 +885,7 @@ Status YBClient::Data::DeleteTablegroup(YBClient* client,
   // and perform the actual deletion only after the transaction commits. Thus there is no point
   // waiting for the table to be deleted here if DDL Rollback is enabled.
   bool wait = true;
-  if (txn && FLAGS_ysql_yb_ddl_rollback_enabled) {
+  if (txn && YsqlDdlRollbackEnabled()) {
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(true);
     wait = false;

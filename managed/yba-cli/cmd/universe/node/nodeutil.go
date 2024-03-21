@@ -43,8 +43,11 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 	}
 
 	if len(r) < 1 {
-		fmt.Println("No universes found")
-		return
+		logrus.Fatalf(
+			formatter.Colorize(
+				fmt.Sprintf("No universe with name: %s found\n", universeName),
+				formatter.RedColor,
+			))
 	}
 
 	universeInUse := r[0]
@@ -100,7 +103,7 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
-		fmt.Printf("The node %s operation %s has been completed\n",
+		logrus.Infof("The node %s operation %s has been completed\n",
 			formatter.Colorize(nodeName, formatter.GreenColor), operation)
 
 		nodesCtx := formatter.Context{
@@ -121,7 +124,7 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 		universe.NodeWrite(nodesCtx, nodeInstanceList)
 
 	} else {
-		fmt.Println(msg)
+		logrus.Infoln(msg + "\n")
 	}
 
 }

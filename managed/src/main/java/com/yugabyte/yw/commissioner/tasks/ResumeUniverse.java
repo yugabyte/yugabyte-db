@@ -101,10 +101,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
 
       createStartMasterProcessTasks(masterNodeList);
       for (NodeDetails nodeDetails : masterNodeList) {
-        createWaitForServerReady(
-                nodeDetails,
-                ServerType.MASTER,
-                getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis())
+        createWaitForServerReady(nodeDetails, ServerType.MASTER)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       }
 
@@ -117,10 +114,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
       createWaitForServersTasks(tserverNodeList, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       for (NodeDetails nodeDetails : tserverNodeList) {
-        createWaitForServerReady(
-                nodeDetails,
-                ServerType.TSERVER,
-                getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis())
+        createWaitForServerReady(nodeDetails, ServerType.TSERVER)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       }
 

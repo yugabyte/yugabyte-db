@@ -1378,19 +1378,15 @@ class PgClientServiceImpl::Impl {
             << " wait-states: " << yb::ToString(resp->wait_states());
   }
 
-  void AddRaftAppenderThreadWaitStates(tserver::WaitStatesPB* resp) {
+  void AddWaitStatesToResponse(const ash::WaitStateTracker& tracker, tserver::WaitStatesPB* resp) {
+    Result<Uuid> local_uuid = Uuid::FromHexString(instance_id_);
+    DCHECK_OK(local_uuid);
     resp->set_component(yb::to_underlying(ash::Component::kTServer));
-    for (auto& wait_state_ptr : ash::RaftLogAppenderWaitStatesTracker().GetWaitStates()) {
+    for (auto& wait_state_ptr : tracker.GetWaitStates()) {
       if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
-        wait_state_ptr->ToPB(resp->add_wait_states());
-      }
-    }
-  }
-
-  void AddPriorityThreadPoolWaitStates(tserver::WaitStatesPB* resp) {
-    resp->set_component(yb::to_underlying(ash::Component::kTServer));
-    for (auto& wait_state_ptr : ash::FlushAndCompactionWaitStatesTracker().GetWaitStates()) {
-      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
+        if (local_uuid) {
+          wait_state_ptr->set_yql_endpoint_tserver_uuid(*local_uuid);
+        }
         wait_state_ptr->ToPB(resp->add_wait_states());
       }
     }
@@ -1403,10 +1399,13 @@ class PgClientServiceImpl::Impl {
       GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
     }
     if (req.fetch_flush_and_compaction_states()) {
-      AddPriorityThreadPoolWaitStates(resp->mutable_flush_and_compaction_wait_states());
+      AddWaitStatesToResponse(
+          ash::FlushAndCompactionWaitStatesTracker(),
+          resp->mutable_flush_and_compaction_wait_states());
     }
     if (req.fetch_raft_log_appender_states()) {
-      AddRaftAppenderThreadWaitStates(resp->mutable_raft_log_appender_wait_states());
+      AddWaitStatesToResponse(
+          ash::RaftLogAppenderWaitStatesTracker(), resp->mutable_raft_log_appender_wait_states());
     }
     if (req.fetch_cql_states()) {
       GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states());

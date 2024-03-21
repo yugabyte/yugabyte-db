@@ -142,9 +142,7 @@ DEPRECATE_FLAG(int32, scanner_max_batch_size_bytes, "10_2022");
 
 DEPRECATE_FLAG(int32, scanner_batch_size_rows, "10_2022");
 
-DEFINE_UNKNOWN_int32(max_wait_for_safe_time_ms, 5000,
-    "Maximum time in milliseconds to wait for the safe time to advance when trying to "
-    "scan at the given hybrid_time.");
+DEPRECATE_FLAG(int32, max_wait_for_safe_time_ms, "02_2024");
 
 DEFINE_RUNTIME_int32(num_concurrent_backfills_allowed, -1,
     "Maximum number of concurrent backfill jobs that is allowed to run.");
@@ -259,6 +257,8 @@ DEFINE_test_flag(int32, set_tablet_follower_lag_ms, 0,
 
 DEFINE_test_flag(bool, pause_before_tablet_health_response, false,
     "Whether to pause before responding to CheckTserverTabletHealth.");
+
+DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -1582,7 +1582,8 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
       req->table_type(), schema, qlexpr::IndexMap(),
       req->has_index_info() ? boost::optional<qlexpr::IndexInfo>(req->index_info()) : boost::none,
-      0 /* schema_version */, partition_schema, req->pg_table_id());
+      0 /* schema_version */, partition_schema, req->pg_table_id(),
+      tablet::SkipTableTombstoneCheck(FLAGS_ysql_yb_enable_alter_table_rewrite));
 
   if (req->has_wal_retention_secs()) {
     table_info->wal_retention_secs = req->wal_retention_secs();
@@ -2257,9 +2258,6 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   }
 
   const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_tablet_id()) {
-    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = req->tablet_id(), .method = "Write"});
-  }
   if (wait_state && req->has_ash_metadata()) {
     wait_state->UpdateMetadataFromPB(req->ash_metadata());
   }
@@ -2294,9 +2292,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   }
 
   const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_tablet_id()) {
-    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = req->tablet_id(), .method = "Read"});
-  }
   if (wait_state && req->has_ash_metadata()) {
     wait_state->UpdateMetadataFromPB(req->ash_metadata());
   }
@@ -3248,8 +3243,9 @@ void TabletServiceImpl::GetTabletKeyRanges(
         const auto& tablet = leader_tablet_peer.tablet;
         RETURN_NOT_OK(tablet->GetTabletKeyRanges(
             req->lower_bound_key(), req->upper_bound_key(), req->max_num_ranges(),
-            req->range_size_bytes(), tablet::IsForward(req->is_forward()), req->max_key_length(),
-            &context.sidecars().Start()));
+            req->range_size_bytes(),
+            req->is_forward() ? tablet::Direction::kForward : tablet::Direction::kBackward,
+            req->max_key_length(), &context.sidecars().Start()));
         return Status::OK();
       });
 }

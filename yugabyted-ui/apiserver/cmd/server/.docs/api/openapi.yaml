@@ -29,6 +29,8 @@ tags:
   name: cluster
 - description: APIs for getting information about an existing cluster
   name: cluster-info
+- description: APIs for getting Point-in-Time Recovery (PITR) schedules
+  name: pitr-info
 - description: APIs for getting information about Voyager migrations
   name: voyager-info
 - description: APIs for getting Voyager data migrations metrics
@@ -807,6 +809,32 @@ paths:
       summary: Get the node address for the current node
       tags:
       - cluster-info
+  /pitr:
+    get:
+      description: Retrieve the list of PITR schedules in the YugabyteDB cluster.
+      operationId: getPITRSchedules
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PITRScheduleListResponse'
+          description: List of PITR Schedules in the cluster
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get PITR Schedules
+      tags:
+      - pitr-info
 components:
   requestBodies:
     ClusterSpec:
@@ -936,6 +964,12 @@ components:
           schema:
             type: string
       description: Node address
+    PITRScheduleListResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PITRSchedule'
+      description: List of PITR Schedules in the cluster
   schemas:
     VoyagerMigrationDetails:
       description: Information regarding a specific voyager migration task
@@ -2579,6 +2613,33 @@ components:
             $ref: '#/components/schemas/ConnectionStats'
           type: object
       title: YSQL connection manager stats
+      type: object
+    PITRSchedule:
+      description: Details of a Point-in-Time Recovery (PITR) schedule
+      example:
+        databaseKeyspace: databaseKeyspace
+        interval: interval
+        id: 0
+        retention: retention
+        earliestRecoverableTime: earliestRecoverableTime
+      properties:
+        id:
+          type: integer
+        databaseKeyspace:
+          type: string
+        interval:
+          type: string
+        retention:
+          type: string
+        earliestRecoverableTime:
+          type: string
+      required:
+      - databaseKeyspace
+      - earliestRecoverableTime
+      - id
+      - interval
+      - retention
+      title: List of PITR Schedules in the cluster
       type: object
     API_for_Plan_and_Asses_page:
       example:

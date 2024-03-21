@@ -52,8 +52,11 @@ var updateAzureProviderCmd = &cobra.Command{
 		}
 
 		if len(r) < 1 {
-			fmt.Println("No providers found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		var provider ybaclient.Provider
@@ -65,7 +68,8 @@ var updateAzureProviderCmd = &cobra.Command{
 		}
 
 		if len(strings.TrimSpace(provider.GetName())) == 0 {
-			errMessage := fmt.Sprintf("No provider %s in cloud type %s.", providerName, providerCode)
+			errMessage := fmt.Sprintf(
+				"No provider %s in cloud type %s.\n", providerName, providerCode)
 			logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
 		}
 
@@ -80,7 +84,7 @@ var updateAzureProviderCmd = &cobra.Command{
 		}
 
 		if len(newProviderName) > 0 {
-			logrus.Debug("Updating provider name")
+			logrus.Debug("Updating provider name\n")
 			provider.SetName(newProviderName)
 			providerName = newProviderName
 		}
@@ -94,7 +98,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(azureCreds.ResourceGroup) > 0 {
-			logrus.Debug("Updating Azure Resource Group")
+			logrus.Debug("Updating Azure Resource Group\n")
 			azureCloudInfo.SetAzuClientId(azureCreds.ResourceGroup)
 		}
 
@@ -103,7 +107,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(azureCreds.ClientID) > 0 {
-			logrus.Debug("Updating Azure Client ID")
+			logrus.Debug("Updating Azure Client ID\n")
 			azureCloudInfo.SetAzuClientId(azureCreds.ClientID)
 		}
 
@@ -112,7 +116,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(azureCreds.ClientSecret) > 0 {
-			logrus.Debug("Updating Azure Client Secret")
+			logrus.Debug("Updating Azure Client Secret\n")
 			azureCloudInfo.SetAzuClientId(azureCreds.ClientSecret)
 		}
 
@@ -121,7 +125,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(azureCreds.TenantID) > 0 {
-			logrus.Debug("Updating Azure Tenant ID")
+			logrus.Debug("Updating Azure Tenant ID\n")
 			azureCloudInfo.SetAzuClientId(azureCreds.TenantID)
 		}
 
@@ -130,7 +134,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(azureCreds.SubscriptionID) > 0 {
-			logrus.Debug("Updating Azure Subscription ID")
+			logrus.Debug("Updating Azure Subscription ID\n")
 			azureCloudInfo.SetAzuClientId(azureCreds.SubscriptionID)
 		}
 
@@ -139,7 +143,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(networkRG) > 0 {
-			logrus.Debug("Updating Azure Network Resource Group")
+			logrus.Debug("Updating Azure Network Resource Group\n")
 			azureCloudInfo.SetAzuClientId(networkRG)
 		}
 
@@ -148,7 +152,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(networkSubscriptionID) > 0 {
-			logrus.Debug("Updating Azure Network Subscription ID")
+			logrus.Debug("Updating Azure Network Subscription ID\n")
 			azureCloudInfo.SetAzuClientId(networkSubscriptionID)
 		}
 
@@ -157,7 +161,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(hostedZoneID) > 0 {
-			logrus.Debug("Updating Hosted Zone ID")
+			logrus.Debug("Updating Hosted Zone ID\n")
 			azureCloudInfo.SetAzuHostedZoneId(hostedZoneID)
 		}
 
@@ -169,7 +173,7 @@ var updateAzureProviderCmd = &cobra.Command{
 		// Update ProviderDetails
 
 		if cmd.Flags().Changed("airgap-install") {
-			logrus.Debug("Updating airgap install")
+			logrus.Debug("Updating airgap install\n")
 			airgapInstall, err := cmd.Flags().GetBool("airgap-install")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -182,7 +186,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(sshUser) > 0 {
-			logrus.Debug("Updating SSH user")
+			logrus.Debug("Updating SSH user\n")
 			details.SetSshUser(sshUser)
 		}
 
@@ -192,7 +196,7 @@ var updateAzureProviderCmd = &cobra.Command{
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			if details.GetSshPort() != int32(sshPort) {
-				logrus.Debug("Updating SSH port")
+				logrus.Debug("Updating SSH port\n")
 				details.SetSshPort(int32(sshPort))
 			}
 		}
@@ -202,7 +206,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(ntpServers) > 0 {
-			logrus.Debug("Updating NTP servers")
+			logrus.Debug("Updating NTP servers\n")
 			details.SetNtpServers(ntpServers)
 		}
 
@@ -471,7 +475,7 @@ func removeAzureZones(
 	if len(removeZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -490,7 +494,7 @@ func removeAzureZones(
 	}
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return zones
@@ -504,7 +508,7 @@ func editAzureZones(
 	if len(editZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -528,7 +532,7 @@ func editAzureZones(
 	}
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 
@@ -543,7 +547,7 @@ func addAzureZones(
 	if len(addZones) == 0 {
 		if len(zones) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Atleast one zone is required per region.",
+				formatter.Colorize("Atleast one zone is required per region.\n",
 					formatter.RedColor))
 		}
 		return zones
@@ -553,7 +557,7 @@ func addAzureZones(
 
 		if _, ok := zone["subnet"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Subnet not specified in add-zone.",
+				formatter.Colorize("Subnet not specified in add-zone.\n",
 					formatter.RedColor))
 		}
 
@@ -569,7 +573,7 @@ func addAzureZones(
 	}
 	if len(zones) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 

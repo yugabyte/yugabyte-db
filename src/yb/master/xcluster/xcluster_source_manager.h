@@ -28,6 +28,7 @@
 namespace yb {
 
 class IsOperationDoneResult;
+class JsonWriter;
 
 namespace cdc {
 class CDCStateTable;
@@ -39,6 +40,7 @@ class XClusterOutboundReplicationGroup;
 class XClusterOutboundReplicationGroupInfo;
 class XClusterOutboundReplicationGroupTaskFactory;
 struct TabletDeleteRetainerInfo;
+struct XClusterStatus;
 
 class XClusterSourceManager {
  public:
@@ -119,6 +121,11 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch);
 
+  Status PopulateXClusterStatus(
+      XClusterStatus& xcluster_status, const SysXClusterConfigEntryPB& xcluster_config) const;
+
+  Status PopulateXClusterStatusJson(JsonWriter& jw) const;
+
  private:
   friend class XClusterOutboundReplicationGroup;
 
@@ -168,6 +175,8 @@ class XClusterSourceManager {
       std::function<void(Result<bool>)> user_callback);
 
   std::vector<CDCStreamInfoPtr> GetStreamsForTable(const TableId& table_id) const;
+
+  std::unordered_map<TableId, std::vector<CDCStreamInfoPtr>> GetAllStreams() const;
 
   Master& master_;
   CatalogManager& catalog_manager_;

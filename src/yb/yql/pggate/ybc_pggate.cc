@@ -115,8 +115,7 @@ DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
-DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
-    " of the method tserver is running");
+DECLARE_bool(TEST_ash_debug_aux);
 
 namespace {
 
@@ -321,6 +320,19 @@ uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) 
   return (component << YB_ASH_COMPONENT_POSITION) | code;
 }
 
+void AshCopyAuxInfo(
+    const WaitStateInfoPB& tserver_sample, uint32_t component, YBCAshSample* cb_sample) {
+  // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
+  // This expects compilation with -Wno-format-truncation.
+  const auto& tserver_aux_info = tserver_sample.aux_info();
+  snprintf(
+      cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
+      FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
+                               : (component == to_underlying(ash::Component::kYCQL)
+                                      ? tserver_aux_info.table_id().c_str()
+                                      : tserver_aux_info.tablet_id().c_str()));
+}
+
 void AshCopyTServerSample(
     YBCAshSample* cb_sample, uint32_t component, const WaitStateInfoPB& tserver_sample,
     uint64_t sample_time) {
@@ -344,12 +356,7 @@ void AshCopyTServerSample(
               tserver_metadata.yql_endpoint_tserver_uuid().data(),
               sizeof(cb_sample->yql_endpoint_tserver_uuid));
 
-  // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
-  // This expects compilation with -Wno-format-truncation.
-  const auto& tserver_aux_info = tserver_sample.aux_info();
-  snprintf(cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
-      FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
-                               : tserver_aux_info.tablet_id().c_str());
+  AshCopyAuxInfo(tserver_sample, component, cb_sample);
 
   cb_metadata->addr_family = AshGetTServerClientAddress(
       tserver_metadata.client_host_port().host(), cb_metadata->client_addr);
@@ -622,7 +629,7 @@ SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb) {
   }
 
   // then delete everything from b (a copy already exists in a)
-  YBCBitmapDeepDeleteSet(sb);
+  YBCBitmapDeepDeleteSet(b);
 
   return a;
 }
@@ -897,6 +904,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_matview,
                               YBCPgOid pg_table_oid,
                               YBCPgOid old_relfilenode_oid,
+                              bool is_truncate,
                               YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
@@ -907,7 +915,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
       if_not_exist, add_primary_key, is_colocated_via_database, tablegroup_id, colocation_id,
-      tablespace_id, is_matview, pg_table_id, old_relfilenode_id, handle));
+      tablespace_id, is_matview, pg_table_id, old_relfilenode_id, is_truncate, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -2025,10 +2033,6 @@ YBCStatus YBCGetTableKeyRanges(
   }
 
   auto& encoded_table_range_slices = res->encoded_range_end_keys;
-  if (!is_forward) {
-    return ToYBCStatus(
-        STATUS(NotSupported, "YBCGetTableKeyRanges is not supported yet for reverse order"));
-  }
 
   if (current_tserver_ht) {
     *current_tserver_ht = res->current_ht.ToUint64();
