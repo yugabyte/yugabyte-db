@@ -1,7 +1,7 @@
 ---
 title: Continuous availability
 headerTitle: Continuous availability
-linkTitle: Continuous availability
+linkTitle: Resilience
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
 headcontent: High availability, fault tolerance, and resilience
 aliases:
