@@ -1,7 +1,7 @@
 ---
 title: High availability of transactions
 headerTitle:  High availability of transactions
-linkTitle: HA of transactions
+linkTitle: Transactions
 description: Simulate fault tolerance and resilience of transactions in a local YugabyteDB database universe.
 headcontent: Highly available and fault tolerant transactions
 menu:

@@ -12,11 +12,11 @@ menu:
 type: docs
 ---
 
-YugabyteDB is resilient to a single-domain failure in an RF3 cluster. To survive region failures, you deploy across multiple regions. Let's see how YugabyteDB survives a region failure.
+YugabyteDB is resilient to a single-domain failure in a deployment with a replication factor (RF) of 3. To survive region failures, you deploy across multiple regions. Let's see how YugabyteDB survives a region failure.
 
 ## Setup
 
-Consider a scenario where you have deployed your database across 3 regions - us-west, us-east, and us-central. Typically, you choose one region as the [preferred region](../../multi-region-deployments/synchronous-replication-ysql/#preferred-region) for your database. This is the region where your applications are active. Then determine which region is closest to the preferred to be the failover region for your applications, and set this region as your second preferred region for the database. The third region needs no explicit setting and automatically becomes the third preferred region.
+Consider a scenario where you have deployed your database across three regions - us-west, us-east, and us-central. Typically, you choose one region as the [preferred region](../../multi-region-deployments/synchronous-replication-ysql/#preferred-region) for your database. This is the region where your applications are active. Then determine which region is closest to the preferred to be the failover region for your applications, and set this region as your second preferred region for the database. The third region needs no explicit setting and automatically becomes the third preferred region.
 
 In the following illustration, the leaders are in us-east (the preferred region), which is also where the applications are active. The standby application is in us-central and will be the failover. This has been set as the second preferred region for the database.
 
@@ -30,7 +30,7 @@ As us-central is closer to us-east than us-west, the followers in central will a
 
 ## Third region failure
 
-When the third (least preferred) region fails, availability is not affected at all. This is because the leaders will be in the preferred region, and there will be one follower in the second preferred region. There is no data loss and no recovery is needed.
+If the third (least preferred) region fails, availability is not affected at all. This is because the leaders will be in the preferred region, and there will be one follower in the second preferred region. There is no data loss and no recovery is needed.
 
 The following illustration shows the scenario of the third region (us-west) region failing. As us-east has been set as the preferred region, there are no leaders in us-west. When this region fails, availability of the applications is not affected at all as there is still one follower active (in us-central) for replication to continue correctly.
 
