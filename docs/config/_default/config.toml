@@ -42,7 +42,7 @@ enableGitInfo = true
       target = "assets/vendor/Font-Awesome-Pro/scss"
     [[module.imports.mounts]]
       source = "webfonts"
-      target = "static/webfonts"
+      target = "static/webfonts/font-awesome-pro"
 
 [markup.goldmark.parser.attribute]
     block = true
