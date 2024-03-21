@@ -327,8 +327,17 @@
     hideChildren = true
 
 [[home]]
-  name = "Quick Start"
+  name = "Resource guide"
   weight = 3
+  identifier = "get-started-guide"
+  url = "/preview/get-started-guide/"
+  [home.params]
+    showSection = true
+    hideChildren = true
+
+[[home]]
+  name = "Quick Start"
+  weight = 4
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   [home.params]
@@ -338,7 +347,7 @@
 
 [[home]]
   name = "YugabyteDB"
-  weight = 4
+  weight = 10
   identifier = "yugabytedb"
   url = "/stable/"
   [home.params]
@@ -346,7 +355,7 @@
 
 [[home]]
   name = "YugabyteDB Anywhere"
-  weight = 5
+  weight = 11
   identifier = "yugabytedb-anywhere"
   url = "/stable/yugabyte-platform/"
   [home.params]
@@ -354,7 +363,7 @@
 
 [[home]]
   name = "YugabyteDB Managed"
-  weight = 6
+  weight = 12
   identifier = "yugabytedb-managed"
   url = "/preview/yugabyte-cloud/"
   [home.params]
@@ -363,7 +372,7 @@
 
 [[home]]
   name = "YugabyteDB Voyager"
-  weight = 7
+  weight = 13
   identifier = "migrate"
   url = "/preview/yugabyte-voyager/"
   [home.params]
@@ -399,8 +408,17 @@
     hideChildren = true
 
 [[preview]]
-  name = "Quick Start"
+  name = "Resource guide"
   weight = 4
+  identifier = "get-started-guide"
+  url = "/preview/get-started-guide/"
+  [preview.params]
+    showSection = true
+    hideChildren = true
+
+[[preview]]
+  name = "Quick Start"
+  weight = 5
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   [preview.params]
@@ -409,7 +427,7 @@
 
 [[preview]]
   name = "Explore"
-  weight = 5
+  weight = 6
   identifier = "explore"
   url = "/preview/explore/"
   [preview.params]
@@ -417,7 +435,7 @@
 
 [[preview]]
   name = "Develop"
-  weight = 6
+  weight = 7
   identifier = "develop"
   url = "/preview/develop/"
   [preview.params]
