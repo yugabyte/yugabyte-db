@@ -1,6 +1,8 @@
 package com.yugabyte.troubleshoot.ts.service.anomaly;
 
 import com.yugabyte.troubleshoot.ts.models.Anomaly;
+import com.yugabyte.troubleshoot.ts.models.RuntimeConfig;
+import com.yugabyte.troubleshoot.ts.models.UniverseMetadata;
 import java.time.Instant;
 import java.util.*;
 import lombok.Builder;
@@ -28,11 +30,16 @@ public interface AnomalyDetector {
   @Value
   @Builder(toBuilder = true)
   @Accessors(chain = true)
-  public static class AnomalyDetectionContext {
-    UUID universeUuid;
+  class AnomalyDetectionContext {
+    UniverseMetadata universeMetadata;
     Instant startTime;
     Long stepSeconds;
     Instant endTime;
     Object customContext;
+    RuntimeConfig config;
+
+    UUID getUniverseUuid() {
+      return universeMetadata.getId();
+    }
   }
 }
