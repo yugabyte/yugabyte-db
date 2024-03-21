@@ -1661,7 +1661,7 @@ Encryption status: ENABLED with key id <key_id_2>
 
 #### create_change_data_stream
 
-Creates a change data capture (CDC) DB stream for the specified table.
+Create a change data capture (CDC) DB stream for the specified namespace using the following command.
 
 **Syntax**
 
@@ -1682,7 +1682,32 @@ For example:
     create_change_data_stream ysql.yugabyte
 ```
 
+##### Creating a stream for Transactional CDC
 
+Create a change data capture (CDC) DB stream for the specified namespace that can be used for Transactional CDC using the following command.
+This feature is {{<badge/tp>}}. Use the [yb_enable_cdc_consistent_snapshot_streams](../../reference/configuration/yb-tserver/#yb-enable-cdc-consistent-snapshot-streams) flag to enable the feature.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_change_data_stream ysql.<namespace_name> EXPLICIT CHANGE USE_SNAPSHOT
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *namespace_name*: The namespace on which the DB stream ID is to be created.
+* `EXPLICIT`: Checkpointing type on the server.
+* `CHANGE`: Record type indicating to the server that the stream should send only the new values of the changed columns.
+* `USE_SNAPSHOT`: Snapshot option indicating intention of client to consume the snapshot. If you don't want the client to consume the snapshot, use the `NOEXPORT_SNAPSHOT` option.
+
+For example:
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.1:7100 \
+    create_change_data_stream ysql.yugabyte EXPLICIT CHANGE USE_SNAPSHOT
+```
 
 ##### Enabling before image
 
@@ -1699,7 +1724,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
 * `IMPLICIT`: Checkpointing type on the server.
-* `ALL`: Record type indicating the server that the stream should send the before image too.
+* `ALL`: Record type indicating to the server that the stream should send the before image too.
 
 A successful operation of the above command returns a message with a DB stream ID:
 
