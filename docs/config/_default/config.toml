@@ -19,6 +19,12 @@ enableGitInfo = true
   [module.hugoVersion]
     extended = true
     min = "0.104.3"
+  [[module.mounts]]
+    source = "node_modules/@fortawesome/fontawesome-pro"
+    target = "assets/vendor/Font-Awesome-Pro"
+  [[module.mounts]]
+    source = "node_modules/@fortawesome/fontawesome-pro/webfonts"
+    target = "static/webfonts"
   [[module.imports]]
     path = "github.com/google/docsy"
     disable = false
@@ -28,6 +34,15 @@ enableGitInfo = true
   [[module.imports]]
     path = "github.com/trunkcode/hugo-seo"
     disable = false
+  [[module.imports]]
+    path = "../node_modules/@fortawesome/fontawesome-pro"
+    disable = false
+    [[module.imports.mounts]]
+      source = "scss"
+      target = "assets/vendor/Font-Awesome-Pro/scss"
+    [[module.imports.mounts]]
+      source = "webfonts"
+      target = "static/webfonts"
 
 [markup.goldmark.parser.attribute]
     block = true
