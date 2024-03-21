@@ -38,7 +38,6 @@ JAVA	org.yb.pgsql.TestPgRegressPlanner#testPgRegressDml
 JAVA	org.yb.pgsql.TestPgRegressPublication
 JAVA	org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
 JAVA	org.yb.pgsql.TestPgRegressReplicationSlot
-JAVA	org.yb.pgsql.TestPgRegressSecondaryIndexScan
 JAVA	org.yb.pgsql.TestPgRegressTabletSplit
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgHintPlan
 JAVA	org.yb.pgsql.TestPgRegressTypesGeo
