@@ -1510,7 +1510,8 @@ Status YBClient::GetCDCStream(
     cdc::StreamModeTransactional* transactional,
     std::optional<uint64_t>* consistent_snapshot_time,
     std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option,
-    std::optional<uint64_t>* stream_creation_time) {
+    std::optional<uint64_t>* stream_creation_time,
+    std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1540,6 +1541,15 @@ Status YBClient::GetCDCStream(
   }
 
   *transactional = cdc::StreamModeTransactional(resp.stream().transactional());
+
+  if (replica_identity_map) {
+    replica_identity_map->clear();
+    replica_identity_map->reserve(resp.stream().replica_identity_map_size());
+    for (const auto& entry : resp.stream().replica_identity_map()) {
+        replica_identity_map->emplace(entry.first, entry.second);
+    }
+  }
+
   if (consistent_snapshot_time && resp.stream().has_cdcsdk_consistent_snapshot_time()) {
     *consistent_snapshot_time = resp.stream().cdcsdk_consistent_snapshot_time();
   }

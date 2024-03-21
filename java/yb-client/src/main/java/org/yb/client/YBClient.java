@@ -337,6 +337,17 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get information about master heartbeat delays as seen by the master leader.
+   *
+   * @return rpc response object containing the master heartbeat delays and rpc error if any
+   * @throws Exception when the rpc fails
+   */
+  public GetMasterHeartbeatDelaysResponse getMasterHeartbeatDelays() throws Exception {
+    Deferred<GetMasterHeartbeatDelaysResponse> d = asyncClient.getMasterHeartbeatDelays();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Helper method that checks and waits until the completion of an alter command.
    * It will block until the alter command is done or the timeout is reached.
    * @param keyspace CQL keyspace to which this table belongs

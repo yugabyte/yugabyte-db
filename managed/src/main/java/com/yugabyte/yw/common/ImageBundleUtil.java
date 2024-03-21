@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class ImageBundleUtil {
@@ -44,6 +45,7 @@ public class ImageBundleUtil {
     ImageBundle.NodeProperties properties = new ImageBundle.NodeProperties();
     ImageBundle bundle = ImageBundle.getOrBadRequest(imageBundleUUID);
     ProviderDetails providerDetails = bundle.getProvider().getDetails();
+    ImageBundleDetails bundleDetails = bundle.getDetails();
     if (Common.CloudType.aws.toString().equals(cloudCode)) {
       Map<String, ImageBundleDetails.BundleInfo> regionsBundleInfo =
           bundle.getDetails().getRegions();
@@ -53,8 +55,8 @@ public class ImageBundleUtil {
         if (regionsBundleInfo.containsKey(region)) {
           bundleInfo = regionsBundleInfo.get(region);
           properties.setMachineImage(bundleInfo.getYbImage());
-          properties.setSshPort(bundleInfo.getSshPortOverride());
-          properties.setSshUser(bundleInfo.getSshUserOverride());
+          properties.setSshPort(bundleDetails.getSshPort());
+          properties.setSshUser(bundleDetails.getSshUser());
         } else if (imageBundleValidationDisabled) {
           // In case the region object is not present in the imageBundle, & we have
           // disabled imageBundleValidation, add the empty BundleInfo object for that region.
@@ -88,8 +90,16 @@ public class ImageBundleUtil {
       }
     } else {
       properties.setMachineImage(bundle.getDetails().getGlobalYbImage());
-      properties.setSshUser(providerDetails.getSshUser());
-      properties.setSshPort(providerDetails.getSshPort());
+      String sshUser = bundleDetails.getSshUser();
+      if (StringUtils.isBlank(sshUser)) {
+        sshUser = providerDetails.getSshUser();
+      }
+      Integer sshPort = bundleDetails.getSshPort();
+      if (sshPort == null) {
+        sshPort = providerDetails.getSshPort();
+      }
+      properties.setSshUser(sshUser);
+      properties.setSshPort(sshPort);
     }
 
     return properties;
@@ -114,7 +124,6 @@ public class ImageBundleUtil {
               }
               if (ybImage != null) {
                 info.setYbImage(ybImage);
-                info.setSshUserOverride(provider.getDetails().getSshUser());
               }
               bundle.getDetails().setRegions(bundleInfo);
               bundle.update();
@@ -161,6 +170,7 @@ public class ImageBundleUtil {
   }
 
   public void migrateImageBundlesForProviders(Provider provider) {
+    boolean enableVMOSPatching = runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
     List<ImageBundle> bundles = provider.getImageBundles();
     if (bundles.size() == 0) {
       return;
@@ -211,14 +221,20 @@ public class ImageBundleUtil {
 
     // Populate the new YBA_ACTIVE bundle for x86 arch.
     CloudImageBundleSetup.generateYBADefaultImageBundle(
-        provider, cloudQueryHelper, Architecture.x86_64, x86YBADefaultBundleMarkedDefault, true);
+        provider,
+        cloudQueryHelper,
+        Architecture.x86_64,
+        x86YBADefaultBundleMarkedDefault,
+        true,
+        enableVMOSPatching);
     // Populate the new YBA_ACTIVE bundle for aarch64 arch.
     CloudImageBundleSetup.generateYBADefaultImageBundle(
         provider,
         cloudQueryHelper,
         Architecture.aarch64,
         aarch64YBADefaultBundleMarkedDefault,
-        true);
+        true,
+        enableVMOSPatching);
   }
 
   public Map<UUID, ImageBundle> collectUniversesImageBundles() {

@@ -31,6 +31,11 @@ import {
   VM_PATCHING_RUNTIME_CONFIG,
   isImgBundleSupportedByProvider
 } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { getDiffHours } from '../../../../../../helpers/DateUtils';
+import { isNonEmptyString } from '../../../../../../../utils/ObjectUtils';
+import { useQuery } from 'react-query';
+import { fetchGlobalRunTimeConfigs } from '../../../../../../../api/admin';
+import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 
 const CONTAINER_WIDTH = '605px';
 
@@ -53,6 +58,14 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const helperClasses = useStyles();
   const { t } = useTranslation();
 
+  const globalRuntimeConfigs = useQuery(['globalRuntimeConfigs'], () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  );
+
+  const AwsCoolDownPeriod = globalRuntimeConfigs?.data?.configEntries?.find(
+    (c: any) => c.key === RuntimeConfigKey.AWS_COOLDOWN_HOURS
+  )?.value;
+
   // Value of runtime config key
   const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.use_k8s_custom_resources'
@@ -71,6 +84,8 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const { mode, clusterType, newUniverse, universeConfigureTemplate, isViewMode } = useContext(
     UniverseFormContext
   )[0];
+  const currentDateTime = new Date();
+  let diffInHours: number | null = null;
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isCreateMode = mode === ClusterModes.CREATE; //Form is in edit mode
   const isCreatePrimary = isCreateMode && isPrimary; //Creating Primary Cluster
@@ -82,6 +97,12 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const masterPlacement = isPrimary
     ? useWatch({ name: MASTER_PLACEMENT_FIELD })
     : getValues(MASTER_PLACEMENT_FIELD);
+  const updateOptions = universeConfigureTemplate?.updateOptions;
+  let lastVolumeUpdateTime = universeConfigureTemplate?.nodeDetailsSet?.[0].lastVolumeUpdateTime;
+  if (isNonEmptyString(lastVolumeUpdateTime)) {
+    lastVolumeUpdateTime = new Date(lastVolumeUpdateTime);
+    diffInHours = getDiffHours(lastVolumeUpdateTime, currentDateTime);
+  }
 
   // Wrapper elements to get instance metadata and dedicated container element
   const getInstanceMetadataElement = (isDedicatedMasterField: boolean) => {
@@ -110,16 +131,18 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               disabled={isViewMode}
             />
             <VolumeInfoField
-              isNodeResizable={isNodeResizable}
               isEditMode={!isCreateMode}
               isPrimary={isPrimary}
               disableVolumeSize={!isNodeResizable || isViewMode}
-              disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}
+              disableNumVolumes={isViewMode}
               disableStorageType={!isCreatePrimary && !isCreateRR}
               disableIops={!isCreatePrimary && !isCreateRR}
               disableThroughput={!isCreatePrimary && !isCreateRR}
               isDedicatedMasterField={isDedicatedMasterField}
               maxVolumeCount={maxVolumeCount}
+              updateOptions={updateOptions}
+              diffInHours={diffInHours}
+              AwsCoolDownPeriod={AwsCoolDownPeriod}
             />
           </>
         )}

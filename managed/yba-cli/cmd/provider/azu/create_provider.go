@@ -279,14 +279,14 @@ func init() {
 func buildAzureRegions(regionStrings, zoneStrings []string) (res []ybaclient.Region) {
 	if len(regionStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one region is required per provider.",
+			formatter.Colorize("Atleast one region is required per provider.\n",
 				formatter.RedColor))
 	}
 	for _, regionString := range regionStrings {
 		region := providerutil.BuildRegionMapFromString(regionString, "")
 		if _, ok := region["vnet"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Virtual Network not specified in region info.",
+				formatter.Colorize("Virtual Network not specified in region info.\n",
 					formatter.RedColor))
 
 		}
@@ -317,7 +317,7 @@ func buildAzureZones(zoneStrings []string, regionName string) (res []ybaclient.A
 
 		if _, ok := zone["subnet"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Subnet not specified in zone info.",
+				formatter.Colorize("Subnet not specified in zone info.\n",
 					formatter.RedColor))
 		}
 
@@ -333,7 +333,7 @@ func buildAzureZones(zoneStrings []string, regionName string) (res []ybaclient.A
 	}
 	if len(res) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return res

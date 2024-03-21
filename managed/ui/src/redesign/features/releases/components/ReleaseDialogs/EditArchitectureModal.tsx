@@ -445,7 +445,7 @@ export const EditArchitectureModal = ({
     setReleaseThirdPart(event.target.value);
     setValue(
       'version',
-      releaseBasePart + releaseFirstPart + releaseSecondPart + event.target.value
+      `${releaseBasePart}.${releaseFirstPart}.${releaseSecondPart}.${event.target.value}`
     );
   };
 

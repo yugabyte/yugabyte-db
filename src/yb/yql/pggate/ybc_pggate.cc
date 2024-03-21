@@ -629,7 +629,7 @@ SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb) {
   }
 
   // then delete everything from b (a copy already exists in a)
-  YBCBitmapDeepDeleteSet(sb);
+  YBCBitmapDeepDeleteSet(b);
 
   return a;
 }
@@ -2032,10 +2032,6 @@ YBCStatus YBCGetTableKeyRanges(
   }
 
   auto& encoded_table_range_slices = res->encoded_range_end_keys;
-  if (!is_forward) {
-    return ToYBCStatus(
-        STATUS(NotSupported, "YBCGetTableKeyRanges is not supported yet for reverse order"));
-  }
 
   if (current_tserver_ht) {
     *current_tserver_ht = res->current_ht.ToUint64();

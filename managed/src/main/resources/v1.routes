@@ -634,7 +634,7 @@ DELETE /customers/:cUUID/telemetry_provider/:intUUID                           c
 
 # New Release APIs
 POST /customers/:cUUID/ybdb_release                                            com.yugabyte.yw.controllers.ReleasesController.create(cUUID: java.util.UUID, request: Request)
-GET /customers/:cUUID/ybdb_release                                             com.yugabyte.yw.controllers.ReleasesController.list(cUUID: java.util.UUID, request: Request)
+GET /customers/:cUUID/ybdb_release                                             com.yugabyte.yw.controllers.ReleasesController.list(cUUID: java.util.UUID, deployment_type: String ?= null, request: Request)
 GET /customers/:cUUID/ybdb_release/:rUUID                                       com.yugabyte.yw.controllers.ReleasesController.get(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 DELETE /customers/:cUUID/ybdb_release/:rUUID                                    com.yugabyte.yw.controllers.ReleasesController.delete(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 PUT /customers/:cUUID/ybdb_release/:rUUID                                       com.yugabyte.yw.controllers.ReleasesController.update(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)

@@ -61,7 +61,7 @@ var createK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		logrus.Debug("Reading Kubernetes Pull Secret")
+		logrus.Debug("Reading Kubernetes Pull Secret\n")
 		pullSecretContent := util.YAMLtoString(pullSecretFilePath)
 
 		configFilePath, err := cmd.Flags().GetString("kubeconfig-file")
@@ -71,7 +71,7 @@ var createK8sProviderCmd = &cobra.Command{
 
 		var configContent string
 		if len(configFilePath) > 0 {
-			logrus.Debug("Reading Kube Config")
+			logrus.Debug("Reading Kube Config\n")
 			configContent = util.YAMLtoString(configFilePath)
 		}
 
@@ -191,7 +191,7 @@ func buildK8sRegions(
 	zoneStrings []string) (res []ybaclient.Region) {
 	if len(regionStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one region is required per provider.",
+			formatter.Colorize("Atleast one region is required per provider.\n",
 				formatter.RedColor))
 	}
 	for _, regionString := range regionStrings {
@@ -199,7 +199,7 @@ func buildK8sRegions(
 		var configContent string
 		if filePath, ok := region["config-file-path"]; ok {
 			if strings.TrimSpace(filePath) != "" {
-				logrus.Debug("Reading Region Kube Config")
+				logrus.Debug("Reading Region Kube Config\n")
 				configContent = util.YAMLtoString(filePath)
 			}
 		}
@@ -207,7 +207,7 @@ func buildK8sRegions(
 		var overrides string
 		if filePath, ok := region["overrirdes-file-path"]; ok {
 			if strings.TrimSpace(filePath) != "" {
-				logrus.Debug("Reading Region Kubernetes Overrides")
+				logrus.Debug("Reading Region Kubernetes Overrides\n")
 				overrides = util.YAMLtoString(filePath)
 			}
 		}
@@ -246,7 +246,7 @@ func buildK8sZones(
 		var configContent string
 		if filePath, ok := zone["config-file-path"]; ok {
 			if strings.TrimSpace(filePath) != "" {
-				logrus.Debug("Reading Region Kube Config")
+				logrus.Debug("Reading Region Kube Config\n")
 				configContent = util.YAMLtoString(filePath)
 			}
 		}
@@ -254,7 +254,7 @@ func buildK8sZones(
 		var overrides string
 		if filePath, ok := zone["overrirdes-file-path"]; ok {
 			if strings.TrimSpace(filePath) != "" {
-				logrus.Debug("Reading Region Kubernetes Overrides")
+				logrus.Debug("Reading Region Kubernetes Overrides\n")
 				overrides = util.YAMLtoString(filePath)
 			}
 		}
@@ -283,7 +283,7 @@ func buildK8sZones(
 	}
 	if len(res) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return res

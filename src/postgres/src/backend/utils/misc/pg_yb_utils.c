@@ -1353,6 +1353,12 @@ bool yb_test_stay_in_global_catalog_version_mode = false;
 
 bool yb_test_table_rewrite_keep_old_table = false;
 
+/*
+ * These two GUC variables are used together to control whether DDL atomicity
+ * is enabled. See comments for the gflag --ysql_yb_enable_ddl_atomicity_infra
+ * in common_flags.cc.
+ */
+bool yb_enable_ddl_atomicity_infra = true;
 bool yb_ddl_rollback_enabled = false;
 
 bool yb_silence_advisory_locks_not_supported_error = false;

@@ -16,7 +16,6 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
@@ -64,7 +63,6 @@ public class WaitForServerReady extends ServerSubTaskBase {
     String errorMessage = null;
     boolean shouldLog = false;
 
-    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     // Max timeout to wait for check to complete.
     Stopwatch stopwatch = Stopwatch.createStarted();
     Duration maxSubtaskTimeout = Duration.ofMillis(taskParams().waitTimeMs);

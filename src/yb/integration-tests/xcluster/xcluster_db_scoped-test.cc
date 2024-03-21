@@ -60,6 +60,9 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   ASSERT_OK(SetUpClusters());
 
   ASSERT_OK(CheckpointReplicationGroup());
+
+  ASSERT_NOK(CreateReplicationFromCheckpoint("bad-master-addr"));
+
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Verify that universe was setup on consumer.
@@ -80,8 +83,10 @@ TEST_F(XClusterDBScopedTest, CreateTable) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Creating a new table on target first should fail.
-  ASSERT_NOK(CreateYsqlTable(
-      /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_));
+  auto status = CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Table public.test_table_1 not found");
 
   auto new_producer_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));

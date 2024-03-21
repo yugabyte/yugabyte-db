@@ -53,7 +53,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 		if !skipValidations {
 			_, universe, err := UpgradeValidations(cmd, util.UpgradeOperation)
 			if err != nil {
-				logrus.Fatalf(err.Error() + "\n")
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 
 			isValidVersion, err := util.IsYBVersion(ybdbVersion)
@@ -63,7 +63,10 @@ var upgradeSoftwareCmd = &cobra.Command{
 			if !isValidVersion {
 				logrus.Fatal(
 					formatter.Colorize(
-						fmt.Sprintf("%s is not a valid Yugbayte version string", ybdbVersion), formatter.RedColor,
+						fmt.Sprintf(
+							"%s is not a valid Yugbayte version string\n",
+							ybdbVersion),
+						formatter.RedColor,
 					),
 				)
 			}
@@ -80,7 +83,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 					util.UniverseType, universeName, oldYBDBVersion, ybdbVersion),
 				viper.GetBool("force"))
 			if err != nil {
-				logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			return
 		}
@@ -89,7 +92,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 				util.UniverseType, universeName, ybdbVersion),
 			viper.GetBool("force"))
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -100,37 +103,41 @@ var upgradeSoftwareCmd = &cobra.Command{
 
 		ybdbVersion, err := cmd.Flags().GetString("yb-db-version")
 		if err != nil {
-			logrus.Fatalf(err.Error() + "\n")
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		universeName := universe.GetName()
 		universeUUID := universe.GetUniverseUUID()
 		universeDetails := universe.GetUniverseDetails()
 		clusters := universeDetails.GetClusters()
 		if len(clusters) < 1 {
-			fmt.Println("No clusters found in universe " + universeName + " (" + universeUUID + ")")
-			return
+			logrus.Fatalln(
+				formatter.Colorize(
+					"No clusters found in universe "+
+						universeName+" ("+universeUUID+")\n",
+					formatter.RedColor),
+			)
 		}
 		var oldYBDBVersion string
 		userIntent := clusters[0].GetUserIntent()
 		oldYBDBVersion = userIntent.GetYbSoftwareVersion()
 		upgradeOption, err := cmd.Flags().GetString("upgrade-option")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		upgradeSysCatalog, err := cmd.Flags().GetBool("upgrade-system-catalog")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		tserverDelay, err := cmd.Flags().GetInt32("delay-between-tservers")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		req := ybaclient.SoftwareUpgradeParams{
