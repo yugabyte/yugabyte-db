@@ -5,9 +5,9 @@ SET helio_api.next_collection_index_id TO 2500;
 -- Note that this should not report any logs related to collection catalog lookup.
 SET citus.log_remote_commands TO ON;
 SELECT helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"a":5},{"a":{"$gt":0}}]},"limit":0}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 RESET citus.log_remote_commands;
@@ -117,9 +117,9 @@ NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
-                                       delete                                       
-------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""10"" } }",t)
+                                         delete                                          
+-----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""10"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme');
@@ -132,9 +132,9 @@ rollback;
 -- delete some
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$lte":3}},"limit":0}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""3"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme');
@@ -147,9 +147,9 @@ rollback;
 -- arbitrary limit type works in Mongo
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$lte":3}},"limit":{"hello":"world"}}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""3"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme');
@@ -161,24 +161,24 @@ select count(*) from helio_api.collection('db', 'removeme');
 rollback;
 -- delete all from non-existent collection
 select helio_api.delete('db', '{"delete":"notexists", "deletes":[{"q":{},"limit":0}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 -- query syntax errors are added the response
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$ltr":5}},"limit":0}]}');
-                                                                                                                   delete                                                                                                                    
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
+                                                                                                                      delete                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
 (1 row)
 
 -- when ordered, expect only first delete to be executed
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":1},"limit":0},{"q":{"$a":2},"limit":0},{"q":{"a":3},"limit":0}]}');
-                                                                                                                                                                       delete                                                                                                                                                                        
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+                                                                                                                                                                          delete                                                                                                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme');
@@ -191,9 +191,9 @@ rollback;
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":1},"limit":0},{"q":{"$a":2},"limit":0},{"q":{"a":3},"limit":0}],"ordered":true}');
 NOTICE:  using bson_query_match implementation
-                                                                                                                                                                       delete                                                                                                                                                                        
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+                                                                                                                                                                          delete                                                                                                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme');
@@ -226,9 +226,9 @@ NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
-                                                                                                                                                                       delete                                                                                                                                                                        
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""2"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+                                                                                                                                                                          delete                                                                                                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme');
@@ -242,9 +242,9 @@ rollback;
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":1}]}');
 NOTICE:  using bson_query_match implementation
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme');
@@ -258,15 +258,15 @@ rollback;
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":1}]}', NULL, 'xact-1');
 NOTICE:  using bson_query_match implementation
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":1}]}', NULL, 'xact-1');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme');
@@ -279,9 +279,9 @@ rollback;
 -- delete 1 is supported in the _id case
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":6},"limit":1}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":6}';
@@ -294,9 +294,9 @@ rollback;
 -- delete 1 is supported in the multiple identical _id case
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":6}]},"limit":1}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":6}';
@@ -309,9 +309,9 @@ rollback;
 -- delete 1 is supported in the multiple distinct _id case (but a noop)
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":5}]},"limit":1}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":6}';
@@ -325,15 +325,15 @@ rollback;
 begin;
 set local citus.log_remote_commands to on;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":6},"limit":1}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":5}]},"limit":1}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 reset citus.log_remote_commands;
@@ -348,9 +348,9 @@ select helio_api.shard_collection('db', 'removeme', '{"a":"hashed"}', false);
 -- make sure we get the expected results after sharding a collection
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$lte":5}},"limit":0}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""5"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""5"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"a":1}';
@@ -383,9 +383,9 @@ select count(*) from helio_api.collection('db', 'removeme');
 set local citus.log_remote_commands to on;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":0}]}');
 NOTICE:  using bson_query_match implementation
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 reset citus.log_remote_commands;
@@ -412,9 +412,9 @@ select count(*) from helio_api.collection('db', 'removeme');
 set local citus.log_remote_commands to on;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"a":5},{"a":{"$gt":0}}]},"limit":0}]}');
 NOTICE:  using bson_query_match implementation
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 reset citus.log_remote_commands;
@@ -433,9 +433,9 @@ select count(*) from helio_api.collection('db', 'removeme');
 rollback;
 -- delete 1 without filters is unsupported for sharded collections
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":1}]}');
-                                                                                                                                        delete                                                                                                                                         
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""1088"" }, ""errmsg"" : ""delete query with limit 1 must include either _id or shard key filter"" } ] }",f)
+                                                                                                                                           delete                                                                                                                                           
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""1088"" }, ""errmsg"" : ""delete query with limit 1 must include either _id or shard key filter"" } ] }",f)
 (1 row)
 
 -- delete 1 with shard key filters is supported for sharded collections
@@ -448,9 +448,9 @@ select count(*) from helio_api.collection('db', 'removeme');
 
 set local citus.log_remote_commands to on;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":1}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 reset citus.log_remote_commands;
@@ -470,15 +470,15 @@ rollback;
 -- delete 1 with shard key filters is retryable
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":1}]}', NULL, 'xact-2');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":1}]}', NULL, 'xact-2');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme');
@@ -491,9 +491,9 @@ rollback;
 -- delete 1 that does not match any rows is still retryable
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":15}},"limit":1}]}', NULL, 'xact-3');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select 1 from helio_api.insert_one('db', 'removeme', '{"a":15,"_id":15}');
@@ -503,9 +503,9 @@ select 1 from helio_api.insert_one('db', 'removeme', '{"a":15,"_id":15}');
 (1 row)
 
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":15}},"limit":1}]}', NULL, 'xact-3');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 rollback;
@@ -520,9 +520,9 @@ select 1 from helio_api.insert_one('db', 'removeme', '{"a":11,"_id":10}');
 
 -- delete first row where _id = 10
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},"limit":1}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":10}';
@@ -533,9 +533,9 @@ select count(*) from helio_api.collection('db', 'removeme') where document @@ '{
 
 -- delete second row where _id = 10
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},"limit":1}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":10}';
@@ -546,9 +546,9 @@ select count(*) from helio_api.collection('db', 'removeme') where document @@ '{
 
 -- no more row where _id = 10
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},"limit":1}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":10}';
@@ -575,16 +575,16 @@ select 1 from helio_api.insert_one('db', 'removeme', '{"a":11,"_id":10}');
 
 -- delete first row where _id = 10
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},"limit":1}]}', NULL, 'xact-4');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 -- second time is a noop
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},"limit":1}]}', NULL, 'xact-4');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme');
@@ -597,9 +597,9 @@ rollback;
 -- delete 1 is supported in the multiple identical _id case
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":6}]},"limit":1}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":6}';
@@ -612,9 +612,9 @@ rollback;
 -- delete 1 is unsupported in the multiple distinct _id case
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":5}]},"limit":1}]}');
-                                                                                                                                        delete                                                                                                                                         
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""1088"" }, ""errmsg"" : ""delete query with limit 1 must include either _id or shard key filter"" } ] }",f)
+                                                                                                                                           delete                                                                                                                                           
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""1088"" }, ""errmsg"" : ""delete query with limit 1 must include either _id or shard key filter"" } ] }",f)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":6}';
@@ -628,15 +628,15 @@ rollback;
 begin;
 set local citus.log_remote_commands to on;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a": 11, "_id":6},"limit":0}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"a": 11},{"_id":6},{"_id":5}]},"limit":0}]}');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 reset citus.log_remote_commands;
@@ -650,9 +650,9 @@ select count(*) from helio_api.collection('db', 'removeme');
 (1 row)
 
 select helio_api.delete('db', '{"delete":"removeme"}', '{ "":[{"q":{"a":{"$eq":5}},"limit":1}] }');
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+                                         delete                                         
+----------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"a":5}';
@@ -782,9 +782,9 @@ SELECT helio_api.delete(
         "ordered": true
      }'
 );
-                                                                                                                                                                       delete                                                                                                                                                                        
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+                                                                                                                                                                          delete                                                                                                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
 (1 row)
 
 -- ii) ordered=false
@@ -802,9 +802,9 @@ SELECT helio_api.delete(
         "ordered": false
      }'
 );
-                                                                                                                                                                                                                                                                                             delete                                                                                                                                                                                                                                                                                              
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $d. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+                                                                                                                                                                                                                                                                                                delete                                                                                                                                                                                                                                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $d. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
 (1 row)
 
 SELECT helio_api.create_collection('delete', 'no_match');
@@ -830,9 +830,9 @@ SELECT helio_api.delete(
         "ordered": true
      }'
 );
-                                                                                                                                                                       delete                                                                                                                                                                        
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+                                                                                                                                                                          delete                                                                                                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
 (1 row)
 
 -- ii) ordered=false
@@ -850,8 +850,8 @@ SELECT helio_api.delete(
         "ordered": false
      }'
 );
-                                                                                                                                                                                                                                                                                             delete                                                                                                                                                                                                                                                                                              
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $d. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+                                                                                                                                                                                                                                                                                                delete                                                                                                                                                                                                                                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $d. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
 (1 row)
 

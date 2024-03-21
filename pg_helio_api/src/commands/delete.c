@@ -67,7 +67,7 @@ typedef struct
 typedef struct
 {
 	/* response status (seems to always be 1?) */
-	int ok;
+	double ok;
 
 	/* number of rows deleted */
 	uint64 rowsDeleted;
@@ -1241,8 +1241,8 @@ BuildResponseMessage(BatchDeletionResult *batchResult)
 {
 	pgbson_writer resultWriter;
 	PgbsonWriterInit(&resultWriter);
-	PgbsonWriterAppendInt32(&resultWriter, "ok", 2, batchResult->ok);
 	PgbsonWriterAppendInt32(&resultWriter, "n", 1, batchResult->rowsDeleted);
+	PgbsonWriterAppendDouble(&resultWriter, "ok", 2, batchResult->ok);
 
 	if (batchResult->writeErrors != NIL)
 	{
