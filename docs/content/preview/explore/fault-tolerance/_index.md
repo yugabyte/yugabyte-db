@@ -15,6 +15,7 @@ menu:
     parent: explore
     weight: 220
 type: indexpage
+showRightNav: true
 ---
 
 Resilience, in the context of cloud databases, refers to the ability to withstand and recover from various types of failures, ranging from hardware malfunctions and software bugs to network outages and natural disasters. A resilient database system is designed to maintain data integrity, accessibility, and continuity of operations, even in the face of adverse events. Achieving resilience in cloud databases requires a multi-faceted approach, involving robust architectural design, effective data replication and backup strategies, load balancing, failover mechanisms, and comprehensive monitoring and incident response procedures.
@@ -83,19 +84,13 @@ This is reflected in both the recovery point objective (RPO) and recovery time o
 
 YugabyteDB also provides HA of transactions by replicating the uncommitted values, also known as [provisional records](../../architecture/transactions/distributed-txns/#provisional-records), across the fault domains.
 
+{{<tip>}}
+See [High availability of transactions](./transaction-availability) to understand how YugabyteDB transactions survive common failure scenarios.
+{{</tip>}}
+
 The benefits of continuous availability extend to performing maintenance and database upgrades. You can maintain and [upgrade your universe](../../manage/upgrade-deployment/) to a newer version of YugabyteDB by performing a rolling upgrade; that is, stopping each node, upgrading the software, and restarting the node, with zero downtime for the universe as a whole.
 
 For more information, see the following:
 
 - [Continuous Availability with YugabyteDB video](https://www.youtube.com/watch?v=4PpiOMcq-j8)
 - [Synchronous replication](../../architecture/docdb-replication/replication/)
-
-{{<index/block>}}
-
-  {{<index/item
-    title="High availability of transactions"
-    body="YugabyteDB transactions survive common failure scenarios."
-    href="transaction-availability/"
-    icon="/images/section_icons/architecture/distributed_acid.png">}}
-
-{{</index/block>}}
