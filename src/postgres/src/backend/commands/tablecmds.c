@@ -12571,8 +12571,9 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		 * replica placement
 		 */
 		for (int i = 0; i < num_options; i++) {
-			char *option = VARDATA(options[i]);
+			char *option = text_to_cstring(DatumGetTextP(options[i]));
 			YBCValidatePlacement(option);
+			pfree(option);
 		}
 	}
 
