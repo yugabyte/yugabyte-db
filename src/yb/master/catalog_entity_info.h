@@ -1167,6 +1167,9 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   std::string ToString() const override;
 
+  bool IsXClusterStream() const;
+  bool IsCDCSDKStream() const;
+
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;
   ~CDCStreamInfo() = default;
