@@ -1,6 +1,6 @@
 main {
   .td-content {
-    :not(pre)>code {
+    :not(pre) > code {
       overflow: hidden;
     }
 
@@ -11,75 +11,74 @@ main {
       font-size: inherit !important;
       line-height: 110%;
       max-width: 100%;
-      background: #f7fafc !important;
+      background: #f7fafc!important;
       border: 1px solid #d7dee4;
       border-radius: 4px;
       color: $yb-font-gray;
       padding: 3 6px;
     }
 
-    p>a {
+    p > a {
       &:hover {
-        >code {
+        > code {
           text-decoration: underline;
         }
       }
     }
 
-    dl dt>code,
-    dl dd>code,
-    td>code,
-    td>a>code,
-    li>a>code,
-    li p>a>code,
-    li>code,
-    li>em code,
-    p>strong>code,
-    p>a>code,
-    p>code {
+    dl dt > code,
+    dl dd > code,
+    td > code,
+    td > a > code,
+    li > a > code,
+    li p > a > code,
+    li > code,
+    li > em code,
+    p > strong > code,
+    p > a > code,
+    p > code {
       font-size: 13px !important;
       line-height: 16px;
     }
 
-    h1>code,
-    h2>code,
-    h3>code,
-    h4>code,
-    h5>code,
-    h6>code {
+    h1 > code,
+    h2 > code,
+    h3 > code,
+    h4 > code,
+    h5 > code,
+    h6 > code {
       color: inherit !important;
       margin: 0 0 2px;
     }
 
-    *:not(.tabs-name)>li:not(.nav-item)>a,
-    p>a,
-    td>a {
+    *:not(.tabs-name) > li:not(.nav-item) > a,
+    p > a,
+    td > a {
       position: relative;
       z-index: 1;
 
-      >code {
+      > code {
         position: relative;
       }
     }
 
-    >pre,
+    > pre,
     .highlight {
       margin: 20px 0;
     }
 
-    li>p+pre,
-    li>p+.highlight {
+    li > p + pre,
+    li > p + .highlight {
       margin-top: 16px;
     }
 
-    pre+p,
-    .highlight+p {
+    pre + p,
+    .highlight + p {
       margin-top: 24px;
     }
 
-    >pre.can-be-copied {
+    > pre.can-be-copied {
       + {
-
         h2,
         h4 {
           margin-top: 0;
@@ -100,7 +99,7 @@ main {
       margin-bottom: 20px;
       max-width: calc(100% - 5px);
 
-      >code {
+      > code {
         font-size: 100%;
         display: block;
         width: 100% !important;
@@ -123,7 +122,7 @@ main {
         }
 
         &:not(:only-child) {
-          >span>span {
+          > span > span {
             padding-right: 40px;
           }
         }
@@ -142,7 +141,7 @@ main {
       .highlight {
         margin-bottom: 20px !important;
 
-        >pre {
+        > pre {
           margin-top: 1rem;
           margin-bottom: 1rem;
         }
@@ -220,7 +219,7 @@ main {
 
     table {
       pre {
-        >code {
+        > code {
           white-space: pre-line !important;
         }
       }
@@ -265,12 +264,12 @@ main {
     }
 
     .badcode {
-      >pre {
+      > pre {
         button.copy.unclicked:not(:hover) {
           filter: contrast(100);
         }
 
-        >code {
+        > code {
           background: #efb2b2 !important;
           border-color: #f00 !important;
         }
@@ -306,7 +305,7 @@ body .tab-content .tab-pane li .highlight {
 }
 
 @media (min-width: 992px) {
-  .td-content>pre {
+  .td-content > pre {
     max-width: 100%;
   }
 }

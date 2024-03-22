@@ -2,7 +2,6 @@
 // Left side navigation
 //
 @keyframes focus {
-
   0%,
   100% {
     transform: scale(1);
@@ -14,7 +13,6 @@
 }
 
 @keyframes focus-m {
-
   0%,
   100% {
     transform: scale(0.8);
@@ -168,7 +166,7 @@
         border-radius: 6px;
       }
 
-      >ul {
+      > ul {
         padding-left: 0;
         padding-top: 16px;
 
@@ -187,7 +185,7 @@
           flex-flow: wrap;
           min-height: 40px;
 
-          >i {
+          > i {
             border: 0;
             position: absolute;
             left: 2px;
@@ -213,14 +211,14 @@
             }
           }
 
-          &.open> {
+          &.open > {
             i {
               &::before {
                 content: "\f0d7";
               }
             }
 
-            a~ul {
+            a ~ ul {
               &::after {
                 content: "";
                 width: 1px;
@@ -312,7 +310,7 @@
               z-index: 1;
             }
 
-            &:not(.open):not(.unlink-list-)>ul {
+            &:not(.open):not(.unlink-list-) > ul {
               max-height: 0;
               transition: all 0.5s ease;
             }
@@ -330,7 +328,7 @@
             li {
               padding-left: 13px;
 
-              >i {
+              > i {
                 left: -12px;
               }
 
@@ -352,8 +350,8 @@
                 }
               }
 
-              &.open> {
-                a~ul {
+              &.open > {
+                a ~ ul {
                   &::after {
                     left: 0;
                   }
@@ -372,7 +370,7 @@
         }
 
         &:not(.animated) {
-          >li {
+          > li {
             color: #0b1117;
             font-style: normal;
             font-weight: 600;
@@ -392,7 +390,7 @@
               }
             }
 
-            >ul {
+            > ul {
               padding-left: 15px;
             }
           }
@@ -421,7 +419,7 @@
           font-weight: 400;
           color: #4e5f6d;
 
-          &.open> {
+          &.open > {
             i {
               &::before {
                 content: "\f0d7";
