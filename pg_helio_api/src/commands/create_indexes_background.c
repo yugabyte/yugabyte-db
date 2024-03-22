@@ -1212,7 +1212,7 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 	{
 		/* There's none in the queue, get index build status from the main index queue */
 		int validIndexCount = IndexIdListGetValidCount(indexIdList);
-		if (validIndexCount == list_length(indexIdList))
+		if (validIndexCount == list_length(indexIdList) || validIndexCount == 0)
 		{
 			result->ok = true;
 			result->finish = true;
