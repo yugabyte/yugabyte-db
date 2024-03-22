@@ -205,7 +205,7 @@ typedef struct
 typedef struct
 {
 	/* response status (seems to always be 1?) */
-	int ok;
+	double ok;
 
 	/* number of rows that matched the query for update (matched + upserted) */
 	uint64 rowsMatched;
@@ -2257,7 +2257,7 @@ BuildResponseMessage(BatchUpdateResult *batchResult)
 {
 	pgbson_writer resultWriter;
 	PgbsonWriterInit(&resultWriter);
-	PgbsonWriterAppendInt32(&resultWriter, "ok", 2, batchResult->ok);
+	PgbsonWriterAppendDouble(&resultWriter, "ok", 2, batchResult->ok);
 	PgbsonWriterAppendInt64(&resultWriter, "nModified", 9, batchResult->rowsModified);
 	PgbsonWriterAppendInt64(&resultWriter, "n", 1, batchResult->rowsMatched);
 
