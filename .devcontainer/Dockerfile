@@ -26,13 +26,13 @@ RUN curl -4sSf https://packagecloud.io/install/repositories/citusdata/community/
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive \
     && apt-get install -y \
-    postgresql-15 \
-    postgresql-server-dev-15 \
+    postgresql-16 \
+    postgresql-server-dev-16 \
     libpq-dev \
-    postgresql-15-pgcron \
-    postgresql-15-pgvector \
-    postgresql-15-postgis-3 \
-    postgresql-15-rum \
+    postgresql-16-pgcron \
+    postgresql-16-pgvector \
+    postgresql-16-postgis-3 \
+    postgresql-16-rum \
     &&  rm -rf /var/lib/apt/lists/*
 
 # Install Libbson, decimal128, pcre
