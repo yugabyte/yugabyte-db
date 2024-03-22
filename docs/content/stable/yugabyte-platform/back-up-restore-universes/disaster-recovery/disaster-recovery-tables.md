@@ -17,7 +17,7 @@ When DDL changes are made to databases in replication for xCluster disaster reco
 - performed at the SQL level on both the DR primary and replica, and then
 - updated at the YBA level in the DR configuration.
 
-You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth.
+You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
 
 | DB Change&nbsp;on&nbsp;DR&nbsp;primary | On DR replica | In YBA |
 | :----------- | :----------- | :--- |
