@@ -986,17 +986,19 @@ GetDateStringWithFormat(int64_t dateInMs, ExtensionTimezone timezone, StringView
 	 * will be allocating a string of length 6. */
 
 	int bufferSize = format.length * 3;
+	char *allocBuffer = NULL;
 	char *buffer;
+	char tmp[256];
 
 	/* If we need less than 256 bytes, allocate it on the stack, if greater, on the heap. */
-	if (bufferSize <= 256)
+	if (bufferSize > 256)
 	{
-		char tmp[256];
-		buffer = tmp;
+		allocBuffer = palloc0(sizeof(char) * bufferSize);
+		buffer = allocBuffer;
 	}
 	else
 	{
-		buffer = palloc0(sizeof(char) * bufferSize);
+		buffer = tmp;
 	}
 
 	char *currentPtr = buffer;
@@ -1187,10 +1189,10 @@ GetDateStringWithFormat(int64_t dateInMs, ExtensionTimezone timezone, StringView
 	result.length = finalLength;
 	result.string = finalString;
 
-	if (bufferSize > 256)
+	if (allocBuffer != NULL)
 	{
 		/* We allocated on the heap and need to free the buffer. */
-		pfree(buffer);
+		pfree(allocBuffer);
 	}
 
 	return result;
