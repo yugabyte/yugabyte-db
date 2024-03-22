@@ -448,10 +448,9 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
         checkSetLocalStatements(stmt, sp);
         checkResetAllStatements(stmt, sp);
 
-        // Drop the role created to test AUTH_PARAM parameters.
+        // Reset from the role created to test AUTH_PARAM parameters.
         if (sp.exceptionSet.contains(ExceptionType.AUTH_PARAM)) {
           modifyParameterValue(stmt, sp, QueryType.RESET);
-          stmt.execute(String.format("DROP ROLE %s", sp.expectedValue));
         }
       }
     } catch (Exception e) {

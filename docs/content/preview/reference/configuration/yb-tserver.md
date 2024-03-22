@@ -1070,6 +1070,14 @@ Default: `false`
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
+##### --yb_enable_cdc_consistent_snapshot_streams
+
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+
+Enable support for creating streams for transactional CDC.
+
+Default: `false`
+
 ##### --cdc_state_checkpoint_update_interval_ms
 
 The rate at which CDC state's checkpoint is updated.
@@ -1339,6 +1347,14 @@ You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
 Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
 
 Default: `1GB`
+
+##### default_transaction_isolation
+
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+
+See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
+
+Default: `read committed`
 
 ## Advanced flags
 

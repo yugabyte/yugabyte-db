@@ -242,9 +242,32 @@ public class ReleaseArtifact extends Model {
     return artifact;
   }
 
+  public static ReleaseArtifact getForReleaseMatchingType(
+      UUID releaseUUID, Platform plat, Architecture arch) {
+    ReleaseArtifact artifact =
+        find.query()
+            .where()
+            .eq("release", releaseUUID)
+            .eq("platform", plat)
+            .eq("architecture", arch)
+            .findOne();
+    if (artifact != null) {
+      artifact.fillJsonText();
+    }
+    return artifact;
+  }
+
   public static List<ReleaseArtifact> getForReleaseLocalFile(UUID releaseUUID) {
     List<ReleaseArtifact> artifacts =
         find.query().where().eq("release", releaseUUID).isNotNull("package_file_id").findList();
+    artifacts.forEach(a -> a.fillJsonText());
+    return artifacts;
+  }
+
+  public static List<ReleaseArtifact> getAllPlatformArchitecture(
+      Platform platform, Architecture architecture) {
+    List<ReleaseArtifact> artifacts =
+        find.query().where().eq("platform", platform).eq("architecture", architecture).findList();
     artifacts.forEach(a -> a.fillJsonText());
     return artifacts;
   }
@@ -257,6 +280,17 @@ public class ReleaseArtifact extends Model {
   public void setSha256(String sha256) {
     this.sha256 = sha256;
     save();
+  }
+
+  public String getSha256() {
+    return sha256;
+  }
+
+  public String getFormattedSha256() {
+    if (sha256 != null && !sha256.toLowerCase().startsWith("sha256:")) {
+      return String.format("sha256:%s", sha256);
+    }
+    return sha256;
   }
 
   public boolean isKubernetes() {

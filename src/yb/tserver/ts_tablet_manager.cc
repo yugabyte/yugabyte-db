@@ -251,11 +251,8 @@ DEFINE_UNKNOWN_int32(read_pool_max_queue_size, 128,
              "is used to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
 
-DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_threads, 1,
-             "DEPRECATED. Use full_compaction_pool_max_threads.");
-
-DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
-             "DEPRECATED. Use full_compaction_pool_max_queue_size.");
+DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_threads, "02_2024");
+DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_queue_size, "02_2024");
 
 DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
              "The maximum number of threads allowed for full_compaction_pool_. This "
@@ -269,8 +266,7 @@ DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 500,
              "on a scheduled basis or after they have been split and still contain irrelevant data "
              "from the tablet they were sourced from.");
 
-DEFINE_NON_RUNTIME_int32(scheduled_full_compaction_check_interval_min, 15,
-             "DEPRECATED. Use auto_compact_check_interval_sec.");
+DEPRECATE_FLAG(int32, scheduled_full_compaction_check_interval_min, "02_2024");
 
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
@@ -1257,6 +1253,8 @@ Status TSTabletManager::ApplyCloneTablet(
   const auto target_namespace_name = request->target_namespace_name().ToBuffer();
   const auto clone_request_seq_no = request->clone_request_seq_no();
   const auto target_pg_table_id = request->target_pg_table_id().ToBuffer();
+  const auto target_skip_table_tombstone_check =
+      request->target_skip_table_tombstone_check();
   const boost::optional<qlexpr::IndexInfo> target_table_index_info =
       request->has_target_index_info() ?
       boost::optional<qlexpr::IndexInfo>(request->target_index_info().ToGoogleProtobuf()) :
@@ -1344,7 +1342,8 @@ Status TSTabletManager::ApplyCloneTablet(
         std::move(target_table_index_info),
         source_table->schema_version, /* fixed by restore */
         target_partition_schema,
-        target_pg_table_id);
+        target_pg_table_id,
+        tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));
 
     // Setup raft group metadata. If we crash between here and when we set the tablet data state to
     // TABLET_DATA_READY, the tablet will be deleted on the next bootstrap.
@@ -1494,6 +1493,14 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
           Format("remote bootstrapping tablet from peer $0", bootstrap_peer_uuid), &deleter)));
 
   bool replacing_tablet = old_tablet_peer != nullptr;
+  bool has_faulty_drive = fs_manager_->has_faulty_drive();
+  if (has_faulty_drive && !replacing_tablet) {
+    return STATUS(ServiceUnavailable,
+                  "Reject RBS because tserver cannot create new tablet if there is faulty drive. "
+                  "If the faulty drive has been fixed, the tserver needs to be restarted for "
+                  "the FSManager state to be refreshed");
+  }
+
   RaftGroupMetadataPtr meta = replacing_tablet ? old_tablet_peer->tablet_metadata() : nullptr;
 
   HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(

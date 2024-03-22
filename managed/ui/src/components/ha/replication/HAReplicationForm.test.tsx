@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import { render, fireEvent, waitFor } from '../../../test-utils';
 import { FREQUENCY_MULTIPLIER, HAInstanceTypes, HAReplicationForm } from './HAReplicationForm';
-import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
+import { HaConfig, HaReplicationSchedule } from '../dtos';
 import { api } from '../../../redesign/helpers/api';
 import { MOCK_HA_WS_RUNTIME_CONFIG, MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS } from './mockUtils';
 
@@ -19,13 +19,13 @@ const mockConfig = {
       is_local: true
     }
   ]
-} as HAConfig;
-const mockSchedule: HAReplicationSchedule = {
+} as HaConfig;
+const mockSchedule: HaReplicationSchedule = {
   frequency_milliseconds: 5 * FREQUENCY_MULTIPLIER,
   is_running: false // intentionally set enable replication toggle fo "off" to test all edge cases
 };
 
-const setup = (hasPeerCerts: boolean, config?: HAConfig, schedule?: HAReplicationSchedule) => {
+const setup = (hasPeerCerts: boolean, config?: HaConfig, schedule?: HaReplicationSchedule) => {
   const backToView = jest.fn();
   const fetchRuntimeConfigs = jest.fn();
   const setRuntimeConfig = jest.fn();
@@ -102,10 +102,10 @@ describe('HA replication configuration form', () => {
   });
 
   it('should show error toast on incorrect config', () => {
-    const config = { instances: [{}] } as HAConfig;
+    const config = { instances: [{}] } as HaConfig;
     const toastError = jest.fn();
     jest.spyOn(toast, 'error').mockImplementation(toastError);
-    setup(true, config, {} as HAReplicationSchedule);
+    setup(true, config, {} as HaReplicationSchedule);
     expect(toastError).toBeCalled();
   });
 
@@ -245,7 +245,7 @@ describe('HA replication configuration form', () => {
     userEvent.click(component.getByRole('button', { name: /create/i }));
 
     await waitFor(() => {
-      expect(api.createHAConfig).toBeCalledWith(fakeValues.clusterKey);
+      expect(api.createHAConfig).toBeCalledWith({ cluster_key: fakeValues.clusterKey });
       expect(api.createHAInstance).toBeCalledWith(
         fakeValues.configId,
         fakeValues.instanceAddress,
@@ -288,7 +288,7 @@ describe('HA replication configuration form', () => {
     userEvent.click(component.getByRole('button', { name: /create/i }));
 
     await waitFor(() => {
-      expect(api.createHAConfig).toBeCalledWith(fakeValues.clusterKey);
+      expect(api.createHAConfig).toBeCalledWith({ cluster_key: fakeValues.clusterKey });
       expect(api.createHAInstance).toBeCalledWith(
         fakeValues.configId,
         fakeValues.instanceAddress,

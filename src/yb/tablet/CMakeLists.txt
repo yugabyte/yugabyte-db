@@ -52,6 +52,7 @@ set(TABLET_SRCS
   transaction_loader.cc
   transaction_participant.cc
   transaction_status_resolver.cc
+  write_post_apply_metadata_task.cc
   operations/operation.cc
   operations/change_auto_flags_config_operation.cc
   operations/change_metadata_operation.cc

@@ -60,6 +60,8 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
   @After
   public void cleanup() throws Exception {
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.executeUpdate(String.format("DROP DATABASE %s", COLOCATED_DB));
     }
     connection.close();

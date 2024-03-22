@@ -100,6 +100,10 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       createStartMasterProcessTasks(masterNodeList);
+      for (NodeDetails nodeDetails : masterNodeList) {
+        createWaitForServerReady(nodeDetails, ServerType.MASTER)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      }
 
       // Make sure clock skew is low enough on the tserver nodes.
       createWaitForClockSyncTasks(universe, tserverNodeList)
@@ -109,6 +113,10 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       createWaitForServersTasks(tserverNodeList, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      for (NodeDetails nodeDetails : tserverNodeList) {
+        createWaitForServerReady(nodeDetails, ServerType.TSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      }
 
       if (universe.isYbcEnabled()) {
         createStartYbcTasks(tserverNodeList)

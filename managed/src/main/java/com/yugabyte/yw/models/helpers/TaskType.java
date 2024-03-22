@@ -7,6 +7,8 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.CustomerTask;
 import java.lang.reflect.Field;
@@ -936,7 +938,13 @@ public enum TaskType {
 
   CheckLeaderlessTablets(CheckLeaderlessTablets.class),
 
-  ValidateNodeDiskSize(com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize.class);
+  CheckNodesAreSafeToTakeDown(CheckNodesAreSafeToTakeDown.class),
+
+  ValidateNodeDiskSize(com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize.class),
+
+  CheckNodeReachable(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable.class),
+
+  WaitStartingFromTime(WaitStartingFromTime.class);
 
   private final Class<? extends ITask> taskClass;
 

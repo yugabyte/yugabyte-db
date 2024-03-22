@@ -517,3 +517,17 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+'/pitr':
+  get:
+    summary: Get PITR Schedules
+    description: Retrieve the list of PITR schedules in the YugabyteDB cluster.
+    operationId: getPITRSchedules
+    tags:
+      - pitr-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/PITRScheduleListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'

@@ -25,7 +25,6 @@ import {
 } from '../../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
-  AlertName,
   DEFAULT_METRIC_TIME_RANGE_OPTION,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
@@ -35,7 +34,8 @@ import {
 import {
   adaptMetricDataForRecharts,
   formatUuidFromXCluster,
-  getMetricTimeRange
+  getMetricTimeRange,
+  getStrictestReplicationLagAlertThreshold
 } from '../../ReplicationUtils';
 import { CustomDatePicker } from '../../../metrics/CustomDatePicker/CustomDatePicker';
 import { formatDatetime, YBTimeFormats } from '../../../../redesign/helpers/DateUtils';
@@ -55,6 +55,10 @@ import {
   MetricTrace
 } from '../../../../redesign/helpers/dtos';
 import { NodeAggregation, SplitMode, SplitType } from '../../../metrics/dtos';
+import {
+  AlertTemplate,
+  IAlertConfiguration as AlertConfiguration
+} from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 interface ConfigReplicationLagGraphProps {
   xClusterConfig: XClusterConfig;
@@ -137,19 +141,14 @@ export const XClusterMetrics = ({
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: xClusterConfig.sourceUniverseUUID
   };
-  const alertConfigQuery = useQuery<any[]>(alertConfigQueryKey.list(alertConfigFilter), () =>
-    getAlertConfigurations(alertConfigFilter)
+  const alertConfigQuery = useQuery<AlertConfiguration[]>(
+    alertConfigQueryKey.list(alertConfigFilter),
+    () => getAlertConfigurations(alertConfigFilter)
   );
-  const maxAcceptableLag = alertConfigQuery.data?.length
-    ? Math.min(
-        ...alertConfigQuery.data.map(
-          (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-        )
-      )
-    : undefined;
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(alertConfigQuery.data);
   const isCustomTimeRange = selectedTimeRangeOption.type === TimeRangeType.CUSTOM;
   const metricTimeRange = isCustomTimeRange
     ? { startMoment: customStartMoment, endMoment: customEndMoment }

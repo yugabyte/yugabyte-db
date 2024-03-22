@@ -273,11 +273,14 @@ HybridTime XClusterPoller::GetSafeTime() const {
 
 void XClusterPoller::UpdateSafeTime(int64 new_time) {
   HybridTime new_hybrid_time(new_time);
-  if (!new_hybrid_time.is_special()) {
-    std::lock_guard l(safe_time_lock_);
-    if (producer_safe_time_.is_special() || new_hybrid_time > producer_safe_time_) {
-      producer_safe_time_ = new_hybrid_time;
-    }
+  if (new_hybrid_time.is_special()) {
+    LOG(WARNING) << "Received invalid xCluster safe time: " << new_hybrid_time;
+    return;
+  }
+
+  std::lock_guard l(safe_time_lock_);
+  if (producer_safe_time_.is_special() || new_hybrid_time > producer_safe_time_) {
+    producer_safe_time_ = new_hybrid_time;
   }
 }
 

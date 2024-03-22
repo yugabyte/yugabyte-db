@@ -62,7 +62,8 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid colocationId,
 						   Oid tablespaceId,
 						   Oid pgTableId,
-						   Oid oldRelfileNodeId);
+						   Oid oldRelfileNodeId,
+						   bool isTruncate);
 
 extern void YBCDropTable(Relation rel);
 

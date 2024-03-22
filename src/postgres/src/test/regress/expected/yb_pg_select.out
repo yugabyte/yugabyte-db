@@ -292,7 +292,7 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
 (19 rows)
 
 RESET enable_seqscan;
-RESET enable_bitmapscan;
+SET enable_bitmapscan = on;
 RESET enable_sort;
 SELECT two, stringu1, ten, string4
    INTO TABLE tmp
@@ -693,3 +693,5 @@ LIMIT ALL) ybview ORDER BY unique2;
      494 |      11
        0 |     998
 (2 rows)
+
+RESET enable_bitmapscan;

@@ -92,7 +92,8 @@ namespace {
                    const bool exists) {
     ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
       auto ret = client->TableExists(
-          client::YBTableName(YQL_DATABASE_PGSQL, database_name, table_name));
+          client::YBTableName(YQL_DATABASE_PGSQL, database_name, table_name),
+          true /* skip_hidden */);
       WARN_NOT_OK(ResultToStatus(ret), "TableExists call failed");
       return ret.ok() && ret.get() == exists;
     }, MonoDelta::FromSeconds(timeout_secs),

@@ -65,5 +65,9 @@ int yb_locks_max_transactions = 16;
 
 int yb_locks_txn_locks_per_tablet = 200;
 
+int yb_walsender_poll_sleep_duration_nonempty_ms = 1;
+
+int yb_walsender_poll_sleep_duration_empty_ms = 1 * 1000;
+
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;

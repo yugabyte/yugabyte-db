@@ -32,6 +32,8 @@
 
 #pragma once
 
+#include <span>
+
 #include <boost/intrusive/list.hpp>
 
 #include "yb/common/common_fwd.h"
@@ -96,7 +98,7 @@ namespace tablet {
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
-YB_STRONGLY_TYPED_BOOL(IsForward)
+YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
@@ -316,6 +318,8 @@ class Tablet : public AbstractTablet,
   Status RemoveIntents(
       const RemoveIntentsData& data, RemoveReason reason,
       const TransactionIdSet& transactions) override;
+
+  Status WritePostApplyMetadata(std::span<const PostApplyTransactionMetadata> metadatas) override;
 
   Status GetIntents(
       const TransactionId& id,
@@ -919,27 +923,27 @@ class Tablet : public AbstractTablet,
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const override;
 
   // Breaks tablet data into ranges of approximately range_size_bytes each, at most into
-  // `max_num_ranges` and adds to `keys_buffer` a list of these ranges end keys.
+  // `max_num_ranges` and adds to `keys_buffer` a list of these ranges boundary keys (depending on
+  // is_forward).
   //
   // It is guaranteed that returned keys are at most max_key_length bytes.
-  // lower_bound_key is inclusive, upper_bound_key is exclusive. They are adjusted by this function
+  // Both lower_bound_key and upper_bound_key are inclusive. They are adjusted by this function
   // to be within tablet boundaries (key_bounds_ if set or based on metadata()->partition() if
-  // key_bounds_ is not set) and to be no longer than max_key_length. Due to truncation the last
-  // returned key can be outside tablet partition boundaries.
+  // key_bounds_ is not set) and to be no longer than max_key_length.
   //
   // If `is_forward` is set, list will consist of:
-  // - 1st_range_end_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
-  // - 2nd_range_end_key \in (1st_range_end_key, adjusted_upper_bound_key)
+  // - 1st_range_boundary_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
+  // - 2nd_range_boundary_key \in (1st_range_boundary_key, adjusted_upper_bound_key)
   // ...
-  // - nth_range_end_key \in ((n-1)th_range_end_key, adjusted_upper_bound_key]
+  // - nth_range_boundary_key \in ((n-1)th_range_boundary_key, adjusted_upper_bound_key]
   //   or empty key iff next tablet can't have more keys (meaning we've already reached
   //   specified upper_bound_key or the end of the last tablet).
   //
   // If `is_forward` is not set, list will consist of:
-  // - 1st_range_end_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
-  // - 2nd_range_end_key \in (adjusted_lower_bound_key, 1st_range_end_key)
+  // - 1st_range_boundary_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
+  // - 2nd_range_boundary_key \in (adjusted_lower_bound_key, 1st_range_boundary_key)
   // ...
-  // - nth_range_end_key \in [adjusted_lower_bound_key, (n-1)_th_range_key)
+  // - nth_range_boundary_key \in [adjusted_lower_bound_key, (n-1)_th_range_boundary_key)
   //   or empty key iff next tablet can't have more keys (meaning we've already reached
   //   specified lower_bound_key or the beginning of the first tablet).
   //
@@ -947,15 +951,15 @@ class Tablet : public AbstractTablet,
   // If max_num_ranges is 0, nothing will be written to the `keys_buffer`.
   Status GetTabletKeyRanges(
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
-      uint64_t range_size_bytes, IsForward is_forward, uint32_t max_key_length,
+      uint64_t range_size_bytes, Direction direction, uint32_t max_key_length,
       WriteBuffer* keys_buffer, const TableId& colocated_table_id = "") const;
 
   Status TEST_GetTabletKeyRanges(
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
-      uint64_t range_size_bytes, IsForward is_forward, uint32_t max_key_length,
+      uint64_t range_size_bytes, Direction direction, uint32_t max_key_length,
       std::function<void(Slice key)> callback, const TableId& colocated_table_id = "") const {
     return GetTabletKeyRanges(
-        lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+        lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, direction,
         max_key_length, std::move(callback), colocated_table_id);
   }
 
@@ -968,6 +972,7 @@ class Tablet : public AbstractTablet,
   mutable simple_spinlock cdcsdk_retention_barrier_lock_;
   MonoTime cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
 
+  void CleanupIntentFiles();
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1050,19 +1055,8 @@ class Tablet : public AbstractTablet,
 
   Status GetTabletKeyRanges(
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
-      uint64_t range_size_bytes, IsForward is_forward, uint32_t max_key_length,
+      uint64_t range_size_bytes, Direction direction, uint32_t max_key_length,
       std::function<void(Slice key)> callback, const TableId& colocated_table_id) const;
-
-  Status GetTabletKeyRangesForward(
-      rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter, Slice lower_bound_key,
-      Slice upper_bound_key, uint64_t max_num_ranges, uint64_t num_blocks_to_skip,
-      uint32_t max_key_length, std::function<void(Slice key)> callback,
-      bool use_empty_as_end_key) const;
-
-  Status GetTabletKeyRangesBackward(
-      rocksdb::Iterator* index_iter, Slice lower_bound_key, Slice upper_bound_key,
-      uint64_t max_num_ranges, uint64_t num_blocks_to_skip, uint32_t max_key_length,
-      std::function<void(Slice key)> callback) const;
 
   Status ProcessPgsqlGetTableKeyRangesRequest(
       const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
@@ -1200,7 +1194,6 @@ class Tablet : public AbstractTablet,
   Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);
 
   // Tries to find intent .SST files that could be deleted and remove them.
-  void CleanupIntentFiles();
   void DoCleanupIntentFiles();
 
   void RegularDbFilesChanged();

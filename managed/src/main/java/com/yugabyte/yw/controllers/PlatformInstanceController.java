@@ -144,6 +144,9 @@ public class PlatformInstanceController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete local instance");
     }
 
+    // Clear metrics for remote instance
+    replicationManager.clearMetrics(instanceToDelete.get());
+
     auditService()
         .createAuditEntry(
             request,

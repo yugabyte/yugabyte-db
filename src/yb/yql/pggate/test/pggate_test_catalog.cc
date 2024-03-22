@@ -56,6 +56,7 @@ TEST_F(PggateTestCatalog, TestDml) {
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
+                                       false /* is_truncate */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "company_id", ++col_count,
                                              DataType::INT64, false, true));
@@ -410,6 +411,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
+                                       false /* is_truncate */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "key", 1, DataType::INT32, false, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "value", 2, DataType::INT32, false, false));

@@ -26,11 +26,16 @@ DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_int64(rpcs_shutdown_extra_delay_ms);
 DECLARE_int64(rpcs_shutdown_timeout_ms);
 DECLARE_string(TEST_fetch_next_delay_column);
+DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
 
 namespace yb::pgwrapper {
 
 class PgTabletShutdownTest : public PgMiniTestBase {
  protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry) = true;
+    pgwrapper::PgMiniTestBase::SetUp();
+  }
   void SetUpTable() {
     constexpr auto kNumRows = 1000;
     auto conn = ASSERT_RESULT(Connect());
@@ -55,6 +60,7 @@ class PgTabletShutdownTest : public PgMiniTestBase {
       // Request should be aborted during tablet shutdown.
       ASSERT_FALSE(rows_count_result.ok());
       LOG(INFO) << "Scan result: " << rows_count_result.ToString();
+      ASSERT_STR_CONTAINS(rows_count_result.ToString(), "aborted pending operations");
 
       const auto time_elapsed = CoarseMonoClock::now() - start_time;
       // Abort should be fast.

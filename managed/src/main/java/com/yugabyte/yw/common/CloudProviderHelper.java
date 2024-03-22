@@ -931,7 +931,7 @@ public class CloudProviderHelper {
           }
           ImageBundle currentImageBundle = currentImageBundles.get(uuid);
           if (imageBundle.getUniverseCount() > 0
-              && currentImageBundle.isUpdateNeeded(imageBundle)) {
+              && !currentImageBundle.allowUpdateDuringUniverseAssociation(imageBundle)) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(

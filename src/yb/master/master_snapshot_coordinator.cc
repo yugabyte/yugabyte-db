@@ -1100,30 +1100,27 @@ class MasterSnapshotCoordinator::Impl {
     return false;
   }
 
-  Status PopulateTabletDeleteRetainerInfo(
+  Status PopulateDeleteRetainerInfoForTableDrop(
       const TableInfo& table_info, const TabletInfos& tablets_to_check,
-      const SnapshotSchedulesToObjectIdsMap* schedules_to_tables_map,
+      const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
       TabletDeleteRetainerInfo& delete_retainer) const {
-    if (schedules_to_tables_map) {
-      delete_retainer.snapshot_schedules =
-          GetSchedulesForTable(*schedules_to_tables_map, table_info.id());
-    } else {
-      delete_retainer.snapshot_schedules =
-          VERIFY_RESULT(GetSnapshotSchedules(SysRowEntryType::TABLE, table_info.id()));
-    }
+    delete_retainer.snapshot_schedules =
+        GetSchedulesForTable(schedules_to_tables_map, table_info.id());
 
     // If even one tablet has an active snapshot then hide the table.
-    // Potential optimization opportunity:
-    // For colocated tables, the following scenario could happen.
-    // 1. Snapshot has colocated tables t1, t2 and t3.
-    // 2. User created t4 after snapshot is complete.
-    // 3. User dropped t4, ideally we can delete this table (instead of hiding)
-    // but the below logic will hide it instead. This is ok from a correctness
-    // standpoint but can be a potential optimization worth considering especially
-    // if the table occupies a lot of space on disk and/or snapshot is long lived.
     delete_retainer.active_snapshot = std::any_of(
         tablets_to_check.begin(), tablets_to_check.end(),
         [this](const auto& tablet) { return IsTabletCoveredBySnapshot(tablet->tablet_id()); });
+
+    return Status::OK();
+  }
+
+  Status PopulateDeleteRetainerInfoForTabletDrop(
+      const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const {
+    delete_retainer.snapshot_schedules =
+        VERIFY_RESULT(GetSnapshotSchedules(SysRowEntryType::TABLE, tablet_info.table()->id()));
+
+    delete_retainer.active_snapshot = IsTabletCoveredBySnapshot(tablet_info.tablet_id());
 
     return Status::OK();
   }
@@ -1217,6 +1214,15 @@ class MasterSnapshotCoordinator::Impl {
 
   bool IsTabletCoveredBySnapshot(
       const TabletId& tablet_id, const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil()) const {
+    // Potential optimization opportunity:
+    // For colocated tables, the following scenario could happen.
+    // 1. Snapshot has colocated tables t1, t2 and t3.
+    // 2. User created t4 after snapshot is complete.
+    // 3. User dropped t4, ideally we can delete this table (instead of hiding)
+    // but the below logic will hide it instead. This is ok from a correctness
+    // standpoint but can be a potential optimization worth considering especially
+    // if the table occupies a lot of space on disk and/or snapshot is long lived.
+
     std::lock_guard l(mutex_);
     auto* snapshots = FindOrNull(tablet_to_covering_snapshots_, tablet_id);
     // If snapshot_id is nil then return true if any snapshot covers the particular tablet
@@ -2431,12 +2437,17 @@ bool MasterSnapshotCoordinator::TEST_IsTabletCoveredBySnapshot(
   return impl_->IsTabletCoveredBySnapshot(tablet_id, snapshot_id);
 }
 
-Status MasterSnapshotCoordinator::PopulateTabletDeleteRetainerInfo(
+Status MasterSnapshotCoordinator::PopulateDeleteRetainerInfoForTableDrop(
     const TableInfo& table_info, const TabletInfos& tablets_to_check,
-    const SnapshotSchedulesToObjectIdsMap* schedules_to_tables_map,
+    const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
     TabletDeleteRetainerInfo& delete_retainer) const {
-  return impl_->PopulateTabletDeleteRetainerInfo(
+  return impl_->PopulateDeleteRetainerInfoForTableDrop(
       table_info, tablets_to_check, schedules_to_tables_map, delete_retainer);
+}
+
+Status MasterSnapshotCoordinator::PopulateDeleteRetainerInfoForTabletDrop(
+    const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const {
+  return impl_->PopulateDeleteRetainerInfoForTabletDrop(tablet_info, delete_retainer);
 }
 
 bool MasterSnapshotCoordinator::ShouldRetainHiddenTablet(

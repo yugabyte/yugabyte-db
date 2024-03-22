@@ -36,6 +36,10 @@ message CDCStreamInfoPB {
   optional uint64 cdcsdk_consistent_snapshot_time = 7;
   optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 8;
   optional uint64 stream_creation_time = 9;
+
+  // This map stores the replica identity for each table in the stream at the time of stream
+  // creation. The key for this map is table_id and the value is replica identity for that table.
+  map<string, PgReplicaIdentity> replica_identity_map = 10;
 }
 
 message ValidateReplicationInfoRequestPB {

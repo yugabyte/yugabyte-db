@@ -151,7 +151,7 @@ The final step is to click **Create** and wait for the YugabyteDB cluster to app
 
 The following illustration shows the universe in its pending state:
 
-![Universe pending](/images/yb-platform/kubernetes-config10.png)
+![Pending universe](/images/yb-platform/kubernetes-config10.png)
 
 ## Examine the universe and connect to nodes
 
