@@ -17,6 +17,7 @@
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_RUNTIME_uint32(max_xcluster_streams_to_checkpoint_in_parallel, 200,
     "Maximum number of xCluster streams to checkpoint in parallel");
@@ -129,6 +130,8 @@ void XClusterOutboundReplicationGroup::StartNamespaceCheckpointTasks(
 
 Status XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap(
     const NamespaceId& namespace_id, const LeaderEpoch& epoch) {
+  TEST_SYNC_POINT("XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap");
+
   std::lock_guard mutex_l(mutex_);
   auto l = VERIFY_RESULT(LockForWrite());
 
@@ -261,6 +264,24 @@ Result<bool> XClusterOutboundReplicationGroup::MarkBootstrapTablesAsCheckpointed
       "Namespace in unexpected state");
 
   if (table_ids.empty()) {
+    auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
+    std::set<TableId> tables;
+    std::transform(
+        table_infos.begin(), table_infos.end(), std::inserter(tables, tables.begin()),
+        [](const auto& table_info) { return table_info->id(); });
+
+    std::set<TableId> checkpointed_tables;
+    std::transform(
+        ns_info->table_infos().begin(), ns_info->table_infos().end(),
+        std::inserter(checkpointed_tables, checkpointed_tables.begin()),
+        [](const auto& table_info) { return table_info.first; });
+
+    auto diff = STLSetSymmetricDifference(tables, checkpointed_tables);
+    SCHECK_FORMAT(
+        diff.empty(), IllegalState,
+        "List of tables changed during xCluster checkpoint of replication group $0: $1", ToString(),
+        yb::ToString(diff));
+
     LOG_WITH_PREFIX(INFO) << "Marking namespace " << namespace_id << " as READY";
     ns_info->set_state(NamespaceInfoPB::READY);
     done = true;
