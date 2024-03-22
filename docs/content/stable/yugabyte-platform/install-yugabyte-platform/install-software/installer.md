@@ -64,7 +64,7 @@ Make sure your machine satisfies the [minimum prerequisites](../../prerequisites
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
 
-1. Obtain your license from Yugabyte Support.
+1. Obtain your license from {{% support-platform %}}.
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
@@ -217,7 +217,7 @@ The `install` command runs all [preflight checks](#run-preflight-checks) first, 
 
 {{< note >}}
 
-Migrating from Replicated using YBA Installer is [Early Access](/preview/releases/versioning/#feature-availability).
+Migrating from Replicated using YBA Installer is in [Early Access](/preview/releases/versioning/#feature-availability).
 
 {{</note >}}
 
