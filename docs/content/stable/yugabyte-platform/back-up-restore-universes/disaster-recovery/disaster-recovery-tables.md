@@ -26,7 +26,7 @@ You should perform these actions in a specific order, depending on whether perfo
 | 1. CREATE INDEX | 2. CREATE INDEX | 3. [Resynchronize](#resynchronize-yba) |
 | 1. DROP INDEX   | 2. DROP INDEX   | 3. [Resynchronize](#resynchronize-yba) |
 | 1. CREATE TABLE foo PARTITION OF bar | 2. CREATE TABLE foo PARTITION OF bar | 3. Add the table to replication |
-| 1. ALTER TABLE or INDEX | 2. ALTER TABLE or INDEX | No changes needed |
+| 2. ALTER TABLE or INDEX | 1. ALTER TABLE or INDEX | No changes needed |
 
 In addition, keep in mind the following:
 
