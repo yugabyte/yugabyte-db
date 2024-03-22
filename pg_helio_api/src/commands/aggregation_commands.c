@@ -429,7 +429,7 @@ command_count_query(PG_FUNCTION_ARGS)
 		pgbson_writer defaultWriter;
 		PgbsonWriterInit(&defaultWriter);
 		PgbsonWriterAppendInt32(&defaultWriter, "n", 1, 0);
-		PgbsonWriterAppendInt32(&defaultWriter, "ok", 2, 1);
+		PgbsonWriterAppendDouble(&defaultWriter, "ok", 2, 1);
 		response = PgbsonWriterGetPgbson(&defaultWriter);
 	}
 

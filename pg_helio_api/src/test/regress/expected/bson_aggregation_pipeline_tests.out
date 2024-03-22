@@ -606,33 +606,33 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipelin
 
 -- count
 SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline" }');
-                            document                             
------------------------------------------------------------------
- { "n" : { "$numberInt" : "3" }, "ok" : { "$numberInt" : "1" } }
+                               document                               
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "3" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": { "_id": { "$gt": "1" } } }');
-                            document                             
------------------------------------------------------------------
- { "n" : { "$numberInt" : "2" }, "ok" : { "$numberInt" : "1" } }
+                               document                               
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT document FROM bson_aggregation_count('db', '{ "count": "non_existent_coll" }');
-                            document                             
------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberInt" : "1" } }
+                               document                               
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": { "_id": { "$gt": "1" } } }');
-                            document                             
------------------------------------------------------------------
- { "n" : { "$numberInt" : "2" }, "ok" : { "$numberInt" : "1" } }
+                               document                               
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline" }');
-                            document                             
------------------------------------------------------------------
- { "n" : { "$numberInt" : "3" }, "ok" : { "$numberInt" : "1" } }
+                               document                               
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "3" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- distinct

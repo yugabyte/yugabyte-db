@@ -1424,7 +1424,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 	/* Now add the "ok": 1 as an add fields stage. */
 	pgbson_writer addFieldsWriter;
 	PgbsonWriterInit(&addFieldsWriter);
-	PgbsonWriterAppendInt32(&addFieldsWriter, "ok", 2, 1);
+	PgbsonWriterAppendDouble(&addFieldsWriter, "ok", 2, 1);
 	pgbson *addFieldsSpec = PgbsonWriterGetPgbson(&addFieldsWriter);
 	bson_value_t addFieldsValue = ConvertPgbsonToBsonValue(addFieldsSpec);
 	query = HandleAddFields(&addFieldsValue, query, &context);
