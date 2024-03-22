@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB is resilient to a single-domain failure in a deployment with a replication factor (RF) of 3. To survive region failures, you deploy across multiple regions. Let's see how YugabyteDB survives a region failure.
 
-{{<tip title="RF3 vs RF5">}}
+{{<tip title="RF 3 vs RF 5">}}
 Although you could use an RF 3 cluster, an RF 5 cluster provides quicker failover; with two replicas in the preferred regions, when a leader fails, a local follower can be elected as a leader, rather than a follower in a different region.
 {{</tip>}}
 
@@ -28,7 +28,7 @@ Consider a scenario where you have deployed your database across three regions -
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-{{<collapse title="Setup a local cluster">}}
+{{<collapse title="Set up a local cluster">}}
 {{<setup/local numnodes="3" rf="3" locations="aws.us-east.us-east-1a,aws.us-central.us-central-1a,aws.us-west.us-west-1a" fault-domain="region">}}
 {{</collapse>}}
 {{</nav/panel>}}
@@ -73,7 +73,7 @@ To simulate the failure of the 3rd region locally, you can just stop the third n
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
-{{<note>}} Please reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed. {{</note>}}
+{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed. {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -107,7 +107,7 @@ To simulate the failure of the secondary region locally, you can just stop the s
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
-{{<note>}} Please reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed. {{</note>}}
+{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed. {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -141,7 +141,7 @@ To simulate the failure of the primary region locally, you can just stop the fir
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
-{{<note>}} Please reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed. {{</note>}}
+{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed. {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
