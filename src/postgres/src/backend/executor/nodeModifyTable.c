@@ -180,7 +180,8 @@ static void ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
 											   ResultRelInfo *destPartInfo,
 											   ItemPointer tupleid,
 											   TupleTableSlot *oldslot,
-											   TupleTableSlot *newslot);
+											   TupleTableSlot *newslot,
+											   HeapTuple yb_oldtuple);
 static bool ExecOnConflictUpdate(ModifyTableContext *context,
 								 ResultRelInfo *resultRelInfo,
 								 ItemPointer conflictTid,
@@ -2325,7 +2326,8 @@ lreplace:;
 												   resultRelInfo,
 												   insert_destrel,
 												   tupleid, slot,
-												   inserted_tuple);
+												   inserted_tuple,
+												   NULL);
 
 			return TM_Ok;
 		}
@@ -2376,6 +2378,7 @@ lreplace:;
 	return result;
 }
 
+/* YB_TODO(arpan): Deduplicate code between YBExecUpdateAct and ExecUpdateAct */
 /* YB_REVIEW(neil) Revisit later. */
 static bool
 YBExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
@@ -2469,8 +2472,8 @@ yb_lreplace:;
 				resultRelInfo->ri_TrigDesc->trig_update_after_row)
 				ExecCrossPartitionUpdateForeignKey(context, resultRelInfo,
 												   insert_destrel, tupleid,
-												   slot, inserted_tuple);
-
+												   slot, inserted_tuple,
+												   oldtuple);
 			return true;
 		}
 
@@ -2631,7 +2634,8 @@ ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
 								   ResultRelInfo *destPartInfo,
 								   ItemPointer tupleid,
 								   TupleTableSlot *oldslot,
-								   TupleTableSlot *newslot)
+								   TupleTableSlot *newslot,
+								   HeapTuple yb_oldtuple)
 {
 	ListCell   *lc;
 	ResultRelInfo *rootRelInfo;
@@ -2686,7 +2690,9 @@ ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
 	/* Perform the root table's triggers. */
 	ExecARUpdateTriggers(context->estate,
 						 rootRelInfo, sourcePartInfo, destPartInfo,
-						 tupleid, NULL, newslot, NIL, NULL, true);
+						 tupleid,
+						 IsYBRelation(sourcePartInfo->ri_RelationDesc) ? yb_oldtuple : NULL,
+						 newslot, NIL, NULL, true);
 }
 
 /* ----------------------------------------------------------------
