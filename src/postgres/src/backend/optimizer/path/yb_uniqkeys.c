@@ -169,9 +169,9 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
 	 */
 	foreach(lc, index->indrestrictinfo)
 	{
-		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		RestrictInfo   *rinfo = lfirst_node(RestrictInfo, lc);
 
-		if (!list_member_ptr(index_clauses, rinfo))
+		if (!is_redundant_with_indexclauses(rinfo, index_clauses))
 			exprs = lappend(exprs, rinfo->clause);
 	}
 
@@ -202,20 +202,24 @@ yb_is_const_clause_for_distinct_pushdown(PlannerInfo *root,
 {
 	ListCell *lc;
 
-	/* Boolean clauses. */
-	if (indexcol_is_bool_constant_for_query(root, index, indexcol))
-		return true;
-
 	foreach(lc, index_clauses)
 	{
-		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
-		Expr		 *clause = rinfo->clause;
+		IndexClause  *ic = lfirst_node(IndexClause, lc);
+		RestrictInfo *rinfo;
+		Expr		 *clause;
 		Node		 *left_op,
 					 *right_op;
 		int			  op_strategy;
 
+		if (ic->lossy || list_length(ic->indexquals) != 1)
+			continue;
+
+		rinfo = linitial_node(RestrictInfo, ic->indexquals);
+		clause = rinfo->clause;
+
 		/* Must be a binary operation. */
-		if (!is_opclause(clause))
+		if (!is_opclause(clause)
+			|| list_length(((OpExpr *) clause)->args) != 2)
 			continue;
 
 		left_op = get_leftop(clause);
@@ -224,20 +228,12 @@ yb_is_const_clause_for_distinct_pushdown(PlannerInfo *root,
 			continue;
 
 		op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno,
-											   index->opfamily[indexcol]);
+												index->opfamily[indexcol]);
 		if (op_strategy != BTEqualStrategyNumber)
 			continue;
 
 		/* Check whether the clause is of the form indexkey = constant. */
-		if (equal(indexkey, left_op) &&
-			!bms_is_member(index->rel->relid, rinfo->right_relids) &&
-			!contain_volatile_functions(right_op))
-			return true;
-
-		/* Check whether the indexkey is on the right. */
-		if (equal(indexkey, right_op) &&
-			!bms_is_member(index->rel->relid, rinfo->left_relids) &&
-			!contain_volatile_functions(left_op))
+		if (equal(indexkey, left_op) && IsA(right_op, Const))
 			return true;
 	}
 
