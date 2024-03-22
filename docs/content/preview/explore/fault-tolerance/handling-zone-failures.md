@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: handling-zone-failures
     parent: fault-tolerance
-    weight: 20
+    weight: 30
 type: docs
 ---
 

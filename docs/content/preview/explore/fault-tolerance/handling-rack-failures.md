@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: handling-rack-failures
     parent: fault-tolerance
-    weight: 30
+    weight: 20
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: node-failure-1-macos
     parent: fault-tolerance
-    weight: 40
+    weight: 10
 type: docs
 ---
 
