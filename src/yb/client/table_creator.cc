@@ -36,7 +36,6 @@ using std::string;
 DECLARE_bool(client_suppress_created_logs);
 DECLARE_uint32(change_metadata_backoff_max_jitter_ms);
 DECLARE_uint32(change_metadata_backoff_init_exponent);
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
 DEFINE_test_flag(bool, duplicate_create_table_request, false,
                  "Whether a table creator should send duplicate CreateTableRequestPB to master.");

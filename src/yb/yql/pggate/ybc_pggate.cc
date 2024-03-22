@@ -77,8 +77,6 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
-
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 
 DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,

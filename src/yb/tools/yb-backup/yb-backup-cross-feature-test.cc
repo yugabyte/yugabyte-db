@@ -1815,14 +1815,6 @@ INSTANTIATE_TEST_CASE_P(
         std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse)));
 
 class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDdlAtomicityTestBase {
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    LibPqTestBase::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
-    options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=true");
-  }
-
  public:
   Status RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error);
 };

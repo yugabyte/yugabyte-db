@@ -59,7 +59,7 @@ DEFINE_NON_RUNTIME_bool(disable_deadlock_detection, false,
 TAG_FLAG(disable_deadlock_detection, advanced);
 TAG_FLAG(disable_deadlock_detection, hidden);
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_ddl_rollback_enabled, false,
+DEFINE_RUNTIME_PG_FLAG(bool, yb_ddl_rollback_enabled, true,
     "If true, upon failure of a YSQL DDL transaction that affects the DocDB syscatalog, the "
     "YB-Master will rollback the changes made to the DocDB syscatalog.");
 
