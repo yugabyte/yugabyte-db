@@ -31,7 +31,6 @@ You should perform these actions in a specific order, depending on whether perfo
 In addition, keep in mind the following:
 
 - If you are using Colocated tables, you CREATE TABLE on DR primary, then CREATE TABLE on DR replica making sure that you force the Colocation ID to be identical to that on DR primary.
-- If you're using ALTER TABLE to add or drop columns, make sure you also do these operations on the DR Replica, and in the identical order.
 - If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
 
 Use the following guidance when managing tables and indexes in universes with DR configured.
