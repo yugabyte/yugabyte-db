@@ -49,7 +49,7 @@ import { NTP_SERVER_REGEX } from '../constants';
 
 import { AZURegionMutation, AZUAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
@@ -157,6 +157,10 @@ export const AZUProviderCreateForm = ({
   });
 
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
+
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
+
   if (hostInfoQuery.isLoading) {
     return <YBLoading />;
   }
@@ -397,12 +401,13 @@ export const AZUProviderCreateForm = ({
               viewMode="CREATE"
             />
             <FieldGroup heading="SSH Key Pairs">
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -413,7 +418,7 @@ export const AZUProviderCreateForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
