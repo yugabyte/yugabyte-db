@@ -309,7 +309,7 @@ explain (costs off)
  Aggregate
    ->  YB Batched Nested Loop Join
          Join Filter: (tenk1.unique1 = tenk2.unique1)
-         ->  Seq Scan on tenk2
+         ->  Index Only Scan using tenk2_unique1 on tenk2
          ->  Index Only Scan using tenk1_unique1 on tenk1
                Index Cond: (unique1 = ANY (ARRAY[tenk2.unique1, $1, $2, ..., $1023]))
 (6 rows)
