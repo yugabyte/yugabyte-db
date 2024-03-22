@@ -663,8 +663,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   bool IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion, CoarseTimePoint deadline);
 
-  Status DeleteXReplStatesForIndexTables(const std::vector<TableId>& table_ids) EXCLUDES(mutex_);
-
   // Delete CDC streams metadata for a table.
   Status DropCDCSDKStreams(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
 
@@ -1375,15 +1373,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Alter Universe Replication.
   Status AlterUniverseReplication(
-      const AlterUniverseReplicationRequestPB* req,
-      AlterUniverseReplicationResponsePB* resp,
-      rpc::RpcContext* rpc);
+      const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
   Status UpdateProducerAddress(
-      scoped_refptr<UniverseReplicationInfo> universe,
-      const AlterUniverseReplicationRequestPB* req);
-
-  Status RemoveTablesFromReplication(
       scoped_refptr<UniverseReplicationInfo> universe,
       const AlterUniverseReplicationRequestPB* req);
 
@@ -1514,7 +1507,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CleanUpCDCSDKMetadataFromSystemCatalog(
       const StreamTablesMap& drop_stream_tablelist, const LeaderEpoch& epoch);
 
-  Status CleanUpXReplStreamFromMaps(CDCStreamInfoPtr stream) REQUIRES(mutex_);
+  Status CleanupXReplStreamFromMaps(CDCStreamInfoPtr stream) REQUIRES(mutex_);
 
   Status UpdateCDCStreams(
       const std::vector<xrepl::StreamId>& stream_ids,
@@ -1579,6 +1572,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   XClusterConsumerTableStreamIds GetXClusterConsumerStreamIdsForTable(const TableId& table_id) const
       EXCLUDES(mutex_);
 
+  void ClearXClusterConsumerTableStreams(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::set<TableId>& tables_to_clear) EXCLUDES(mutex_);
+
   std::shared_ptr<ClusterConfigInfo> ClusterConfig() const;
 
   auto GetTasksTracker() { return tasks_tracker_; }
@@ -1598,6 +1595,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       EXCLUDES(mutex_);
 
   Status BackfillMetadataForXRepl(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
+
+  Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) override
+      EXCLUDES(mutex_);
+
+  // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
+  Status DropXReplStreams(
+      const std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State delete_state);
+
+  std::unordered_map<TableId, XClusterConsumerTableStreamIds> GetXClusterConsumerTableStreams()
+      const EXCLUDES(mutex_);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2074,8 +2081,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock)
       EXCLUDES(mutex_);
 
-  Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) override
-      EXCLUDES(mutex_);
   Result<scoped_refptr<TabletInfo>> GetTabletInfoUnlocked(const TabletId& tablet_id)
       REQUIRES_SHARED(mutex_);
 
@@ -2817,10 +2822,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Return all CDC streams.
   void GetAllCDCStreams(std::vector<CDCStreamInfoPtr>* streams);
 
-  // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
-  Status DropXReplStreams(
-      const std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State delete_state);
-
   // This method returns all tables in the namespace suitable for CDCSDK.
   std::vector<TableInfoPtr> FindAllTablesForCDCSDK(const NamespaceId& ns_id) REQUIRES(mutex_);
 
@@ -3057,9 +3058,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // True when the cluster is a consumer of a NS-level replication stream.
   std::atomic<bool> namespace_replication_enabled_{false};
 
-  Status WaitForSetupUniverseReplicationToFinish(
-      const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline);
-
   void RemoveTableFromCDCSDKUnprocessedMap(const TableId& table_id, const NamespaceId& ns_id);
 
   void ClearXReplState() REQUIRES(mutex_);
@@ -3100,8 +3098,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status BumpVersionAndStoreClusterConfig(
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);
-
-  Status RemoveTableFromXcluster(const std::vector<TabletId>& table_ids);
 
   // Background task that refreshes the in-memory map for YSQL pg_yb_catalog_version table.
   void RefreshPgCatalogVersionInfoPeriodically()

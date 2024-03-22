@@ -62,6 +62,8 @@ class XClusterManager : public XClusterManagerIf,
 
   void SysCatalogLoaded();
 
+  void RunBgTasks(const LeaderEpoch& epoch) override;
+
   void DumpState(std::ostream* out, bool on_disk_dump = false) const;
 
   Result<XClusterStatus> GetXClusterStatus() const override;
@@ -76,7 +78,7 @@ class XClusterManager : public XClusterManagerIf,
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
 
   // Remove deleted xcluster stream IDs from producer stream Id map.
-  Status RemoveStreamFromXClusterConfig(
+  Status RemoveStreamsFromSysCatalog(
       const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams);
 
   Status PauseResumeXClusterProducerStreams(
