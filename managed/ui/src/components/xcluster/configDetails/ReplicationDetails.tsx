@@ -28,7 +28,6 @@ import {
   XClusterTableStatus,
   XCLUSTER_CONFIG_REFETCH_INTERVAL_MS,
   XCLUSTER_METRIC_REFETCH_INTERVAL_MS,
-  AlertName,
   XCLUSTER_UNIVERSE_TABLE_FILTERS,
   MetricName,
   liveMetricTimeRangeUnit,
@@ -69,6 +68,7 @@ import { EditTablesModal } from '../disasterRecovery/editTables/EditTablesModal'
 import { XClusterConfig } from '../dtos';
 import { MetricsQueryParams, TableType, YBTable } from '../../../redesign/helpers/dtos';
 import { NodeAggregation, SplitType } from '../../metrics/dtos';
+import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import './ReplicationDetails.scss';
 
@@ -145,7 +145,7 @@ export function ReplicationDetails({
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: currentUniverseUuid
   };
   const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>

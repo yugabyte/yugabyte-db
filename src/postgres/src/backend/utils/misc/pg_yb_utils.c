@@ -2138,20 +2138,17 @@ YBTxnDdlProcessUtility(
 				/*
 				 * In order to support concurrent non-global-impact DDLs
 				 * across different databases, call YbInitPinnedCacheIfNeeded
-				 * now which triggers a scan of pg_shdepend and pg_depend.
-				 * This ensure that the scan is done without using a read time
-				 * of the DDL transaction so that yb-master can retry read
-				 * restarts automatically. Otherwise, a read restart error is
+				 * now which triggers a scan of pg_shdepend. This ensure that
+				 * the scan is done without using a read time of the DDL
+				 * transaction so that yb-master can retry read restarts
+				 * automatically. Otherwise, a read restart error is
 				 * returned to the PG backend the DDL statement will fail
 				 * because DDLs cannot be restarted.
 				 *
 				 * YB NOTE: this implies a performance hit for DDL statements
 				 * that do not need to call YbInitPinnedCacheIfNeeded.
-				 *
-				 * TODO(myang): we can optimize to only read pg_shdepend here
-				 * to reduce its performance penalty.
 				 */
-				YbInitPinnedCacheIfNeeded();
+				YbInitPinnedCacheIfNeeded(true /* shared_only */);
 
 			YBIncrementDdlNestingLevel(ddl_mode.value);
 		}
