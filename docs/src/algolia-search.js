@@ -358,7 +358,8 @@ import algoliasearch from 'algoliasearch';
                       bubbles: true,
                     });
 
-                    aiSearchInput.setAttribute('value', searchedTerm);
+                    // Add the original searched input.
+                    aiSearchInput.setAttribute('value', searchInput.value.trim());
 
                     document.querySelector('.mantine-TextInput-input').dispatchEvent(event);
                   }
