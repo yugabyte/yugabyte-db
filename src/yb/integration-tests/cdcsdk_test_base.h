@@ -40,6 +40,7 @@ DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(cdc_populate_safepoint_record);
+DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
 namespace yb {
 using client::YBClient;
@@ -95,6 +96,7 @@ class CDCSDKTestBase : public YBTest {
 
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_flush_rocksdb_on_shutdown = false;
+    FLAGS_ysql_enable_packed_row_for_colocated_table = true;
   }
 
   void TearDown() override;
