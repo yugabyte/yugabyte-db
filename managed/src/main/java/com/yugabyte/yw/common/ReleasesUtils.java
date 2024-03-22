@@ -43,7 +43,8 @@ public class ReleasesUtils {
 
   public final String YB_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
-  public final String YB_HELM_PACKAGE_REGEX = "(.*)yugabyte-(?:ee-)?(.*)-(helm)(.*).tar.gz";
+  // We can see helm packages as either yugabyte-<version>.tgz or yugabyte-version-helm.tgz
+  public final String YB_HELM_PACKAGE_REGEX = "yugabyte-(?:ee-)?(.*?)(?:-helm)?.tar.gz";
   // Match release form 2.16.1.2 and return 2.16 or 2024.1.0.0 and return 2024
   public final String YB_VERSION_TYPE_REGEX = "(2\\.\\d+|\\d\\d\\d\\d)";
 
@@ -251,7 +252,7 @@ public class ReleasesUtils {
       }
     } else if (helmPackage.find()) {
       em.platform = ReleaseArtifact.Platform.KUBERNETES;
-      em.version = helmPackage.group(2);
+      em.version = helmPackage.group(1);
       em.architecture = null;
     } else {
       throw new RuntimeException("failed to parse package " + fileName);

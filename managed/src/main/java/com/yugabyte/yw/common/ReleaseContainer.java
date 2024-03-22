@@ -447,4 +447,12 @@ public class ReleaseContainer {
     }
     throw new RuntimeException("Unable to find matching artifact for package " + ybPackage);
   }
+
+  public boolean isActive() {
+    if (isLegacy()) {
+      return this.metadata.state == ReleaseManager.ReleaseState.ACTIVE;
+    } else {
+      return this.release.getState() == Release.ReleaseState.ACTIVE;
+    }
+  }
 }
