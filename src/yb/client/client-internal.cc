@@ -119,7 +119,6 @@ DEFINE_RUNTIME_uint32(change_metadata_backoff_init_exponent, 1,
 DECLARE_int64(reset_master_leader_timeout_ms);
 
 DECLARE_string(flagfile);
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
 namespace yb {
 
