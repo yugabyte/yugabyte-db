@@ -52,8 +52,6 @@ DEFINE_UNKNOWN_bool(master_ignore_deleted_on_load, true,
 DEFINE_test_flag(uint64, slow_cluster_config_load_secs, 0,
                  "When set, it pauses load of cluster config during sys catalog load.");
 
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
-
 namespace yb {
 namespace master {
 

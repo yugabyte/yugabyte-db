@@ -25,8 +25,6 @@
 
 using std::string;
 
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
-
 namespace yb {
 namespace client {
 

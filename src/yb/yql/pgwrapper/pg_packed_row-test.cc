@@ -736,6 +736,10 @@ TEST_P(PgPackedRowTest, AddDropColumn) {
         conn = ASSERT_RESULT(Connect());
         continue;
       }
+      if (status.ToString().find("marked for deletion") != std::string::npos) {
+        // This is an expected error if writes are performed while columns are being dropped.
+        continue;
+      }
       ASSERT_OK(status);
     }
   }
@@ -992,7 +996,7 @@ TEST_P(PgPackedRowTest, SstDumpNoMetadata) {
   ASSERT_STR_EQ_VERBOSE_TRIMMED(util::ApplyEagerLineContinuation(
       R"#(
           SubDocKey(DocKey(0x1210, [1], []), [HT{}]) -> PACKED_ROW[0](04000000536F6E65)
-          SubDocKey(DocKey(0x9eaf, [4], []), [HT{}]) -> PACKED_ROW[2](080000005363686574797265)
+          SubDocKey(DocKey(0x9eaf, [4], []), [HT{}]) -> PACKED_ROW[3](080000005363686574797265)
           SubDocKey(DocKey(0xc0c4, [2], []), [HT{}]) -> PACKED_ROW[0](040000005374776F)
           SubDocKey(DocKey(0xfca0, [3], []), [HT{}]) -> \
               PACKED_ROW[1](060000000A00000053746872656553747269)

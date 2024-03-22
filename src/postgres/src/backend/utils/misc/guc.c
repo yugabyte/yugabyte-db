@@ -2488,7 +2488,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_ddl_rollback_enabled,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 

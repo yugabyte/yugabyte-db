@@ -435,9 +435,7 @@ CREATE INDEX test_add_column_idx ON test_add_column(b ASC)
     SPLIT AT VALUES ((5), (10));
 INSERT INTO test_add_column VALUES (1, 1);
 ALTER TABLE test_add_column ADD COLUMN c SERIAL;
-SET yb_ddl_rollback_enabled = ON;
 ALTER TABLE test_add_column ADD COLUMN d SERIAL PRIMARY KEY;
-SET yb_ddl_rollback_enabled = OFF;
 SELECT num_tablets, num_hash_key_columns FROM
     yb_table_properties('test_add_column'::regclass);
  num_tablets | num_hash_key_columns 
