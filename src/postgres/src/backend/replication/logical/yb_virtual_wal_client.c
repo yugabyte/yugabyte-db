@@ -32,6 +32,7 @@
 #include "utils/memutils.h"
 
 static MemoryContext virtual_wal_context = NULL;
+static MemoryContext cached_records_context = NULL;
 static MemoryContext unacked_txn_list_context = NULL;
 
 /* Cached records received from the CDC service. */
@@ -76,8 +77,6 @@ static void TrackUnackedTransaction(YBCPgVirtualWalRecord *record);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
-static void DeepFreeRecordBatch(YBCPgChangeRecordBatch *record_batch);
-
 void
 YBCInitVirtualWal(List *yb_publication_names)
 {
@@ -88,6 +87,15 @@ YBCInitVirtualWal(List *yb_publication_names)
 	virtual_wal_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 												"YB virtual WAL context",
 												ALLOCSET_DEFAULT_SIZES);
+	/*
+	 * A separate memory context for the cached record batch that we receive
+	 * from the CDC service as a child of the virtual wal context. Makes it
+	 * easier to free the batch before requesting another batch.
+	 */
+	cached_records_context = AllocSetContextCreate(virtual_wal_context,
+													 "YB cached record batch "
+													 "context",
+													 ALLOCSET_DEFAULT_SIZES);
 	/*
 	 * A separate memory context for the unacked txn list as a child of the
 	 * virtual wal context.
@@ -123,6 +131,9 @@ YBCDestroyVirtualWal()
 
 	if (unacked_txn_list_context)
 		MemoryContextDelete(unacked_txn_list_context);
+
+	if (cached_records_context)
+		MemoryContextDelete(cached_records_context);
 
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
@@ -174,7 +185,7 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 
 	elog(DEBUG4, "YBCReadRecord");
 
-	caller_context = MemoryContextSwitchTo(virtual_wal_context);
+	caller_context = MemoryContextSwitchTo(cached_records_context);
 
 	/* reset error state */
 	*errormsg = NULL;
@@ -206,7 +217,7 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 
 		/* We no longer need the earlier record batch. */
 		if (cached_records)
-			DeepFreeRecordBatch(cached_records);
+			MemoryContextReset(cached_records_context);
 
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
 								   &cached_records);
@@ -413,28 +424,4 @@ CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 		else
 			break;
 	}
-}
-
-static void
-DeepFreeRecordBatch(YBCPgChangeRecordBatch *record_batch)
-{
-	int row_index = 0;
-
-	for (row_index = 0; row_index < record_batch->row_count; row_index++)
-	{
-		YBCPgRowMessage *row = &record_batch->rows[row_index];
-		int				col_index = 0;
-
-		/* cols can be NULL for DDL/BEGIN/COMMIT records. */
-		if (row->cols)
-		{
-			for (col_index = 0; col_index < row->col_count; col_index++)
-				pfree((void *) row->cols[col_index].column_name);
-
-			pfree(row->cols);
-		}
-	}
-
-	pfree(record_batch->rows);
-	pfree(record_batch);
 }

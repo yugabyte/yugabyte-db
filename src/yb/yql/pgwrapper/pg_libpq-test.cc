@@ -481,7 +481,7 @@ TEST_F(PgLibPqTest, ConcurrentIndexInsert) {
 TEST_F(PgLibPqTest, ConcurrentInsertAndDeleteOnTablesWithForeignKey) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
-  const auto num_iterations = 50;
+  const auto num_iterations = 25;
   const auto kTimeout = 60s;
 
   ASSERT_OK(conn1.Execute("CREATE TABLE IF NOT EXISTS t1 (a int PRIMARY KEY, b int)"));

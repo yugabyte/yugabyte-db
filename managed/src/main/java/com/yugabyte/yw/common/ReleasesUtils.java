@@ -82,9 +82,6 @@ public class ReleasesUtils {
     String sha256 = null;
     try {
       sha256 = Util.computeFileChecksum(releaseFilePath, "SHA256");
-      if (!sha256.toLowerCase().startsWith("sha256:")) {
-        sha256 = String.format("sha256:%s", sha256);
-      }
     } catch (Exception e) {
       log.error("could not compute sha256", e);
     }
@@ -300,10 +297,10 @@ public class ReleasesUtils {
     s3Location.paths = new ReleaseMetadata.PackagePaths();
     if (artifact.isKubernetes()) {
       s3Location.paths.helmChart = s3File.path;
-      s3Location.paths.helmChartChecksum = artifact.getSha256();
+      s3Location.paths.helmChartChecksum = artifact.getFormattedSha256();
     } else {
       s3Location.paths.x86_64 = s3File.path;
-      s3Location.paths.x86_64_checksum = artifact.getSha256();
+      s3Location.paths.x86_64_checksum = artifact.getFormattedSha256();
     }
     return s3Location;
   }
@@ -315,10 +312,10 @@ public class ReleasesUtils {
     gcsLocation.paths = new ReleaseMetadata.PackagePaths();
     if (artifact.isKubernetes()) {
       gcsLocation.paths.helmChart = gcsFile.path;
-      gcsLocation.paths.helmChartChecksum = artifact.getSha256();
+      gcsLocation.paths.helmChartChecksum = artifact.getFormattedSha256();
     } else {
       gcsLocation.paths.x86_64 = gcsFile.path;
-      gcsLocation.paths.x86_64_checksum = artifact.getSha256();
+      gcsLocation.paths.x86_64_checksum = artifact.getFormattedSha256();
     }
     return gcsLocation;
   }
@@ -328,10 +325,10 @@ public class ReleasesUtils {
     httpLocation.paths = new ReleaseMetadata.PackagePaths();
     if (artifact.isKubernetes()) {
       httpLocation.paths.helmChart = artifact.getPackageURL();
-      httpLocation.paths.helmChartChecksum = artifact.getSha256();
+      httpLocation.paths.helmChartChecksum = artifact.getFormattedSha256();
     } else {
       httpLocation.paths.x86_64 = artifact.getPackageURL();
-      httpLocation.paths.x86_64_checksum = artifact.getSha256();
+      httpLocation.paths.x86_64_checksum = artifact.getFormattedSha256();
     }
     return httpLocation;
   }

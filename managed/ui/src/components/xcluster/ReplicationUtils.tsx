@@ -11,8 +11,7 @@ import {
   XClusterConfigStatus,
   BROKEN_XCLUSTER_CONFIG_STATUSES,
   XClusterConfigType,
-  XClusterTableEligibility,
-  AlertName
+  XClusterTableEligibility
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -37,6 +36,7 @@ import {
 import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
 import {
+  AlertTemplate,
   AlertThresholdCondition,
   IAlertConfiguration as AlertConfiguration
 } from '../../redesign/features/alerts/TemplateComposer/ICustomVariables';
@@ -51,7 +51,7 @@ export const MaxAcceptableLag = ({
   currentUniverseUUID: string | undefined;
 }) => {
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: currentUniverseUUID
   };
   const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
@@ -65,9 +65,9 @@ export const MaxAcceptableLag = ({
     return <span>-</span>;
   }
 
-  const maxAcceptableLag = getStrictestReplicationLagAlertConfig(
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
     replicationLagAlertConfigQuery.data
-  )?.thresholds?.SEVERE?.threshold;
+  );
   return <span>{maxAcceptableLag ? formatLagMetric(maxAcceptableLag) : '-'}</span>;
 };
 
@@ -98,7 +98,7 @@ export const CurrentReplicationLag = ({
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: sourceUniverseUuid
   };
   const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
@@ -179,7 +179,7 @@ export const CurrentTableReplicationLag = ({
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: sourceUniverseUUID
   };
   const replicationLagAlertConfigQuery = useQuery(
@@ -446,12 +446,15 @@ export const getStrictestReplicationLagAlertConfig = (
   alertConfigs: AlertConfiguration[] | undefined
 ): AlertConfiguration | undefined =>
   alertConfigs?.reduce(
-    (strictestReplicationLagAlertConfig: any, currentReplicationLagAlertConfig: any) => {
+    (
+      strictestReplicationLagAlertConfig: AlertConfiguration | undefined,
+      currentReplicationLagAlertConfig
+    ) => {
       const isUpperLimitThreshold =
         currentReplicationLagAlertConfig.thresholds.SEVERE?.condition ===
         AlertThresholdCondition.GREATER_THAN;
       const isReplicationLagAlert =
-        currentReplicationLagAlertConfig.name === AlertName.REPLICATION_LAG;
+        currentReplicationLagAlertConfig.template === AlertTemplate.REPLICATION_LAG;
       const strictestThreshold = strictestReplicationLagAlertConfig?.thresholds.SEVERE?.threshold;
       const currentThreshold = currentReplicationLagAlertConfig.thresholds.SEVERE?.threshold;
 

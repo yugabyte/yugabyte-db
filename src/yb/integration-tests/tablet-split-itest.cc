@@ -1709,24 +1709,33 @@ TEST_F(AutomaticTabletSplitITest, SizeRatio) {
 
   // splitting_tablet will be the largest tablet, candidate1 will be the tablet on the same tserver
   // as the largest tablet, and candidate2 will be a tablet on another tserver.
-  int splitting_tablet_idx, candidate1_idx, candidate2_idx;
+  int splitting_table_idx  = -1;
+  int candidate1_table_idx = -1;
+  int candidate2_table_idx = -1;
   for (auto& [_, table_indexes] : ts_to_table_indexes) {
     if (table_indexes.size() == 2) {
-      splitting_tablet_idx = table_indexes[0];
-      candidate1_idx = table_indexes[1];
+      splitting_table_idx  = table_indexes[0];
+      candidate1_table_idx = table_indexes[1];
     } else {
-      candidate2_idx = table_indexes[0];
+      candidate2_table_idx = table_indexes[0];
     }
   }
+  // Sanity check to make sure all indexes have been set.
+  ASSERT_GE(splitting_table_idx, 0);
+  ASSERT_LT(splitting_table_idx, kNumTables);
+  ASSERT_GE(candidate1_table_idx, 0);
+  ASSERT_LT(candidate1_table_idx, kNumTables);
+  ASSERT_GE(candidate2_table_idx, 0);
+  ASSERT_LT(candidate2_table_idx, kNumTables);
 
-  LOG(INFO) << "Splitting tablet table id: " << table_handles[splitting_tablet_idx]->id()
-            << ", same tserver tablet table id: " << table_handles[candidate1_idx]->id()
-            << ", other tserver tablet table id: " << table_handles[candidate2_idx]->id();
+  LOG(INFO) << "Splitting tablet table id: "       << table_handles[splitting_table_idx]->id()
+            << ", same tserver tablet table id: "  << table_handles[candidate1_table_idx]->id()
+            << ", other tserver tablet table id: " << table_handles[candidate2_table_idx]->id();
 
   // Write rows.
-  ASSERT_OK(WriteRowsAndFlush(&table_handles[splitting_tablet_idx], 4 * kNumRowsPerBatch));
-  ASSERT_OK(WriteRowsAndFlush(&table_handles[candidate1_idx], 2 * kNumRowsPerBatch));
-  ASSERT_OK(WriteRowsAndFlush(&table_handles[candidate2_idx], kNumRowsPerBatch));
+  ASSERT_OK(WriteRowsAndFlush(&table_handles[splitting_table_idx],  4 * kNumRowsPerBatch));
+  ASSERT_OK(WriteRowsAndFlush(&table_handles[candidate1_table_idx], 2 * kNumRowsPerBatch));
+  ASSERT_OK(WriteRowsAndFlush(&table_handles[candidate2_table_idx], kNumRowsPerBatch));
 
   // Wait for the SST sizes to be reported, then enable tablet splitting.
   SleepFor(FLAGS_tserver_heartbeat_metrics_interval_ms * 2ms);
@@ -1734,28 +1743,28 @@ TEST_F(AutomaticTabletSplitITest, SizeRatio) {
 
   // Wait for biggest tablet to start splitting.
   ASSERT_OK(WaitForTabletSplitCompletion(
-      kNumInitialTablets + 1,              // expected_non_split_tablets
-      0,                                   // expected_split_tablets (default)
-      0,                                   // num_replicas_online (default)
-      table_names[splitting_tablet_idx])); // table
+      kNumInitialTablets + 1,             // expected_non_split_tablets
+      0,                                  // expected_split_tablets (default)
+      0,                                  // num_replicas_online (default)
+      table_names[splitting_table_idx])); // table
 
   // Check that neither candidate splits. candidate1 cannot split without exceeding
   // FLAGS_outstanding_tablet_split_limit_per_tserver, and candidate2 is too small because
   // FLAGS_tablet_split_min_size_ratio = 1.
   SleepForBgTaskIters(2);
-  table_handles[candidate1_idx]->RefreshPartitions(client_.get(), DoNothingStatusCB);
-  table_handles[candidate2_idx]->RefreshPartitions(client_.get(), DoNothingStatusCB);
-  ASSERT_EQ(table_handles[candidate1_idx]->GetPartitionCount(), 1);
-  ASSERT_EQ(table_handles[candidate2_idx]->GetPartitionCount(), 1);
+  table_handles[candidate1_table_idx]->RefreshPartitions(client_.get(), DoNothingStatusCB);
+  table_handles[candidate2_table_idx]->RefreshPartitions(client_.get(), DoNothingStatusCB);
+  ASSERT_EQ(table_handles[candidate1_table_idx]->GetPartitionCount(), 1);
+  ASSERT_EQ(table_handles[candidate2_table_idx]->GetPartitionCount(), 1);
 
   // Lower the split size ratio so candidate 2 can split. The expected ratio between candidate1 and
   // candidate2 is actually 0.5, but set the value a bit lower here for test stability).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_min_size_ratio) = 0.3;
   ASSERT_OK(WaitForTabletSplitCompletion(
-      kNumInitialTablets + 1,        // expected_non_split_tablets
-      0,                             // expected_split_tablets (default)
-      0,                             // num_replicas_online (default)
-      table_names[candidate2_idx])); // table
+      kNumInitialTablets + 1,              // expected_non_split_tablets
+      0,                                   // expected_split_tablets (default)
+      0,                                   // num_replicas_online (default)
+      table_names[candidate2_table_idx])); // table
 
   // TODO(asrivastava): Investigate why cluster verification and the MetaCache destructor sometimes
   // fails with a segfault in release mode without this sleep.

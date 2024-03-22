@@ -73,7 +73,8 @@ public class ReleasesControllerTest extends FakeDBApplication {
     List<ReleaseArtifact> artifacts = foundRelease.getArtifacts();
     assertEquals(1, artifacts.size());
     assertEquals("http://download.yugabyte.com/my_release.tgz", artifacts.get(0).getPackageURL());
-    assertEquals("sha256:1234asdf", artifacts.get(0).getSha256());
+    assertEquals("1234asdf", artifacts.get(0).getSha256());
+    assertEquals("sha256:1234asdf", artifacts.get(0).getFormattedSha256());
     assertEquals(ReleaseArtifact.Platform.LINUX, artifacts.get(0).getPlatform());
     assertEquals(Architecture.x86_64, artifacts.get(0).getArchitecture());
   }
@@ -107,7 +108,8 @@ public class ReleasesControllerTest extends FakeDBApplication {
     List<ReleaseArtifact> artifacts = foundRelease.getArtifacts();
     assertEquals(1, artifacts.size());
     assertEquals("http://download.yugabyte.com/my_release.tgz", artifacts.get(0).getPackageURL());
-    assertEquals("sha256:1234asdf", artifacts.get(0).getSha256());
+    assertEquals("1234asdf", artifacts.get(0).getSha256());
+    assertEquals("sha256:1234asdf", artifacts.get(0).getFormattedSha256());
     assertEquals(ReleaseArtifact.Platform.KUBERNETES, artifacts.get(0).getPlatform());
     assertNull(artifacts.get(0).getArchitecture());
   }
@@ -298,7 +300,8 @@ public class ReleasesControllerTest extends FakeDBApplication {
     Result result = doPutRequest(url, jsonBody);
     assertOk(result);
     ReleaseArtifact foundRA = ReleaseArtifact.get(ra1.getArtifactUUID());
-    assertEquals("sha256:new_sha256", foundRA.getSha256());
+    assertEquals("new_sha256", foundRA.getSha256());
+    assertEquals("sha256:new_sha256", foundRA.getFormattedSha256());
   }
 
   @Test

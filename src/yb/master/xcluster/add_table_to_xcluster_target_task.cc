@@ -110,9 +110,12 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
     client::BootstrapProducerResult bootstrap_result) {
   const auto& replication_group_id = universe_->ReplicationGroupId();
 
-  auto [producer_table_ids, bootstrap_ids, bootstrap_time] = VERIFY_RESULT_PREPEND(
-      std::move(bootstrap_result),
-      Format("Failed to bootstrap table for xCluster replication group $0", replication_group_id));
+  SCHECK_EC_FORMAT(
+      bootstrap_result, InvalidArgument, MasterError(MasterErrorPB::INVALID_REQUEST),
+      "Failed to bootstrap table on the source universe of xCluster replication group $0: $1",
+      replication_group_id, bootstrap_result.status().ToString());
+
+  auto& [producer_table_ids, bootstrap_ids, bootstrap_time] = *bootstrap_result;
 
   CHECK_EQ(producer_table_ids.size(), 1);
   CHECK_EQ(bootstrap_ids.size(), 1);
