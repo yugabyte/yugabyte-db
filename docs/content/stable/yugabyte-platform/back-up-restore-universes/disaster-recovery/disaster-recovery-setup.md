@@ -14,6 +14,8 @@ type: docs
 
 ## Prerequisites
 
+Enable the Disaster Recovery feature by [turning on the runtime configuration](../../manage-runtime-config/) `yb.xcluster.dr.enabled`.
+
 Create two universes, the DR primary universe which will serve reads and writes, and the DR replica.
 
 Ensure the universes have the following characteristics:
