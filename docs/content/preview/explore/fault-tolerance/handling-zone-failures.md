@@ -67,6 +67,10 @@ To simulate the failure of the 2nd zone locally, you can just stop the second no
 {{</nav/panels>}}
 <!-- end nav tabs -->
 
+{{<note>}}
+All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout#legend-for-illustrations)
+{{</note>}}
+
 For example, in the following illustration, tablet B has lost its leader.
 
 ![Zone failure](/images/explore/fault-tolerance/single-region-zone-failure.png)
