@@ -3285,7 +3285,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Save backupUUID to taskInfo of the CreateBackup task.
       try {
         TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
-        taskInfo.setDetails(mapper.valueToTree(backupRequestParams));
+        taskInfo.setTaskParams(mapper.valueToTree(backupRequestParams));
         taskInfo.save();
       } catch (Exception ex) {
         log.error(ex.getMessage());
@@ -3339,7 +3339,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     restoreParams.category = isYbc ? BackupCategory.YB_CONTROLLER : BackupCategory.YB_BACKUP_SCRIPT;
     // Update task params for this
     ObjectMapper mapper = new ObjectMapper();
-    taskInfo.setDetails(mapper.valueToTree(restoreParams));
+    taskInfo.setTaskParams(mapper.valueToTree(restoreParams));
     taskInfo.save();
   }
 

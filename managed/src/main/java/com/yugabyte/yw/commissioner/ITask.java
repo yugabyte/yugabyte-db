@@ -62,7 +62,7 @@ public interface ITask extends Runnable {
    * Return a string representation (usually JSON) of the task details. This is used to describe the
    * task to a user in a read-only mode.
    */
-  JsonNode getTaskDetails();
+  JsonNode getTaskParams();
 
   /**
    * Sets the UUID info of the task. E.g subtask UUID. It is invoked by the task executor.

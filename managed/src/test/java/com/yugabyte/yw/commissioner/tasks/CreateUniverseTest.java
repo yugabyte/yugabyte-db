@@ -238,7 +238,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
     taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
-    taskParams = Json.fromJson(taskInfo.getDetails(), UniverseDefinitionTaskParams.class);
+    taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
     taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
     // Retry the task.
     taskInfo = submitTask(taskParams);
@@ -259,7 +259,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
     taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
-    taskParams = Json.fromJson(taskInfo.getDetails(), UniverseDefinitionTaskParams.class);
+    taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
     taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
     primaryCluster.userIntent.enableYCQL = true;
     primaryCluster.userIntent.enableYCQLAuth = true;
@@ -335,7 +335,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         (int)
             taskInfo.getSubTasks().stream()
                 .filter(t -> t.getTaskType() == TaskType.AnsibleClusterServerCtl)
-                .map(t -> t.getDetails())
+                .map(t -> t.getTaskParams())
                 .filter(t -> t.has("process") && t.get("process").asText().equals("tserver"))
                 .filter(t -> t.has("command") && t.get("command").asText().equals("start"))
                 .count();

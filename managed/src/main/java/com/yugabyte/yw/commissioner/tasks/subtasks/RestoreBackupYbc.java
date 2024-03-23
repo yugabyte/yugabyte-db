@@ -91,7 +91,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
     String nodeIp = null;
 
     RestoreBackupParams restoreBackupParams =
-        Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
+        Json.fromJson(taskInfo.getTaskParams(), RestoreBackupParams.class);
     if (isResumable) {
       taskId = restoreBackupParams.currentYbcTaskId;
       nodeIp = restoreBackupParams.nodeIp;
@@ -204,7 +204,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
         restoreBackupParams.currentIdx = taskParams().index;
         restoreBackupParams.nodeIp = nodeIp;
         restoreParams = Json.toJson(restoreBackupParams);
-        getRunnableTask().setTaskDetails(restoreParams);
+        getRunnableTask().setTaskParams(restoreParams);
       }
 
       try {
@@ -215,7 +215,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
           restoreBackupParams.nodeIp = null;
           restoreBackupParams.currentIdx++;
           restoreParams = Json.toJson(restoreBackupParams);
-          getRunnableTask().setTaskDetails(restoreParams);
+          getRunnableTask().setTaskParams(restoreParams);
         }
       } catch (Exception e) {
         log.error(

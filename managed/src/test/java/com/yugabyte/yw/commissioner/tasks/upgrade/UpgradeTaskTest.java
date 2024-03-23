@@ -351,7 +351,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
   protected void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
     List<String> nodeNames =
         subTasks.stream()
-            .map(t -> t.getDetails().get("nodeName").textValue())
+            .map(t -> t.getTaskParams().get("nodeName").textValue())
             .collect(Collectors.toList());
     int nodeCount = (int) assertValues.getOrDefault("nodeCount", 1);
     assertEquals(nodeCount, nodeNames.size());
@@ -362,7 +362,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     }
 
     List<JsonNode> subTaskDetails =
-        subTasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+        subTasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
     assertValues.forEach(
         (expectedKey, expectedValue) -> {
           if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
@@ -472,7 +472,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       if (key.equals("nodeNames") || key.equals("nodeCount")) {
         result.put(key, "?");
       } else {
-        JsonNode details = task.getDetails();
+        JsonNode details = task.getTaskParams();
         JsonNode data =
             PROPERTY_KEYS.contains(key) ? details.get("properties").get(key) : details.get(key);
         Object dataObj = null;
