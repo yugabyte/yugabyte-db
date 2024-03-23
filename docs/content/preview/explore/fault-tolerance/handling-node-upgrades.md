@@ -21,7 +21,7 @@ Let's see how YugabyteDB is resilient during planned maintenance, continuing wit
 Consider a setup where YugabyteDB is deployed in a single region (us-east-1) across 3 zones, with leaders and followers distributed across the 3 zones (a,b,c) with 6 nodes 1-6.
 
 <!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+{{<nav/tabs list="local,anywhere" active="local"/>}}
 
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
@@ -36,7 +36,6 @@ Consider a setup where YugabyteDB is deployed in a single region (us-east-1) acr
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}} {{<setup/cloud>}} {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
@@ -53,7 +52,7 @@ In all the following illustrations, the solid circles are tablet leaders and the
 When upgrading a node or performing maintenance, the first step is to take it offline.
 
 <!-- begin nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+{{<nav/tabs list="local,anywhere" active="local"/>}}
 
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
@@ -70,10 +69,6 @@ To take a node offline locally, you can just stop the node.
 
 {{<nav/panel name="anywhere">}}
 {{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
-{{</nav/panel>}}
-
-{{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in [YB Managed](../../../yugabyte-cloud/) for an upgrade. {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -103,7 +98,7 @@ At this point, you can perform your maintenance, add new software, or upgrade th
 After completing the upgrade and the required maintenance, you restart the node.
 
 <!-- begin nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+{{<nav/tabs list="local,anywhere" active="local"/>}}
 
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
@@ -120,10 +115,6 @@ To simulate bringing back a node online locally, you can just start the stopped 
 
 {{<nav/panel name="anywhere">}}
 {{<note>}} To restart a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
-{{</nav/panel>}}
-
-{{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to restart a node in [YB Managed](../../../yugabyte-cloud/).  {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
