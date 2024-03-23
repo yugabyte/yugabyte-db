@@ -692,19 +692,29 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     Set<String> configuredMasters =
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
-            .filter(t -> t.getDetails().get("type").asText().equals("Software"))
+            .filter(t -> t.getTaskParams().get("type").asText().equals("Software"))
             .filter(
-                t -> t.getDetails().get("properties").get("processType").asText().equals("MASTER"))
-            .map(t -> t.getDetails().get("nodeName").asText())
+                t ->
+                    t.getTaskParams()
+                        .get("properties")
+                        .get("processType")
+                        .asText()
+                        .equals("MASTER"))
+            .map(t -> t.getTaskParams().get("nodeName").asText())
             .collect(Collectors.toSet());
 
     Set<String> configuredTservers =
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
-            .filter(t -> t.getDetails().get("type").asText().equals("Software"))
+            .filter(t -> t.getTaskParams().get("type").asText().equals("Software"))
             .filter(
-                t -> t.getDetails().get("properties").get("processType").asText().equals("TSERVER"))
-            .map(t -> t.getDetails().get("nodeName").asText())
+                t ->
+                    t.getTaskParams()
+                        .get("properties")
+                        .get("processType")
+                        .asText()
+                        .equals("TSERVER"))
+            .map(t -> t.getTaskParams().get("nodeName").asText())
             .collect(Collectors.toSet());
 
     Set<String> expectedMasters =

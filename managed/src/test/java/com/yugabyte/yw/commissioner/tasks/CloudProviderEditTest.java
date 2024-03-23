@@ -848,7 +848,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse, null);
     backupTaskInfo.setTaskState(TaskInfo.State.Running);
     backupTaskInfo.setTaskUUID(backupTaskUUID);
-    backupTaskInfo.setDetails(Json.newObject());
+    backupTaskInfo.setTaskParams(Json.newObject());
     backupTaskInfo.setOwner("Myself");
     backupTaskInfo.save();
     ScheduleTask.create(backupTaskUUID, UUID.randomUUID());
@@ -881,7 +881,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse, null);
     backupTaskInfo.setTaskState(TaskInfo.State.Running);
     backupTaskInfo.setTaskUUID(backupTaskUUID);
-    backupTaskInfo.setDetails(Json.newObject());
+    backupTaskInfo.setTaskParams(Json.newObject());
     backupTaskInfo.setOwner("Myself");
     backupTaskInfo.save();
     ScheduleTask.create(backupTaskUUID, UUID.randomUUID());

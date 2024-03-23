@@ -205,7 +205,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
       assertEquals(taskType, tasks.get(0).getTaskType());
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }

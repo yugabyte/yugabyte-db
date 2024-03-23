@@ -1826,7 +1826,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   /** Sets the task params from the DB. */
   public void fetchTaskDetailsFromDB() {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
-    taskParams = Json.fromJson(taskInfo.getDetails(), UniverseDefinitionTaskParams.class);
+    taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
   }
 
   /**
@@ -1836,7 +1836,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
     getRunnableTask()
-        .setTaskDetails(
+        .setTaskParams(
             RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
   }
 
