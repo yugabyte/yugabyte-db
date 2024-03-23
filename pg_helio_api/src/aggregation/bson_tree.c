@@ -707,9 +707,9 @@ ReplaceTreeInNodeCore(BsonPathNode *previousNode, BsonPathNode *baseNode,
 	if (previousNode == NULL)
 	{
 		/* Case 1: previous node is not initialized by the caller
-		 * in the foreach_child semantics, this means that we the baseNode
+		 * in the foreach_child semantics, this means that the baseNode
 		 * was the First node visited in the loop, which implies it is
-		 * the head of hte linked list: the current node is the first node (parent->child->next)
+		 * the head of the linked list: the current node is the first node (parent->child->next)
 		 */
 		Assert(baseNode == baseNode->parent->childData.children->next);
 
@@ -735,6 +735,12 @@ ReplaceTreeInNodeCore(BsonPathNode *previousNode, BsonPathNode *baseNode,
 		 * somewhere in the linked list (parent->child->next) */
 		previousNode->next = newNode;
 		newNode->next = baseNode->next;
+
+		/* Replace the parent's child if it's the tail */
+		if (baseNode == baseNode->parent->childData.children)
+		{
+			baseNode->parent->childData.children = newNode;
+		}
 	}
 }
 
@@ -889,14 +895,22 @@ ResetNodeWithValueOrField(const BsonLeafPathNode *baseLeafNode, const char *rela
 	BsonPathNode *currentNode;
 
 	/* Find the previous node to the node asked for */
+	bool found = false;
 	foreach_child(currentNode, baseNode->parent)
 	{
 		if (currentNode == baseNode)
 		{
+			found = true;
 			break;
 		}
 
 		previousNode = currentNode;
+	}
+
+	if (!found)
+	{
+		ereport(ERROR, (errcode(MongoInternalError), errmsg(
+							"Unable to find base node in projection tree's children")));
 	}
 
 	ReplaceTreeInNodeCore(previousNode, baseNode, leafPathNode);
