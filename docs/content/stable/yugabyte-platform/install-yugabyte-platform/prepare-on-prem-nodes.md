@@ -24,7 +24,7 @@ The following ports must be opened for intra-cluster communication (they do not 
 
 The following ports must be exposed for intra-cluster communication. You should expose these ports to administrators or users monitoring the system, as these ports provide diagnostic troubleshooting and metrics:
 
-- 9300 - Prometheus metrics
+- 9300 - Prometheus Node Exporter
 - 7000 - YB-Master HTTP endpoint
 - 9000 - YB-TServer HTTP endpoint
 - 11000 - YEDIS API
