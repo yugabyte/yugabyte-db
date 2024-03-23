@@ -39,7 +39,6 @@ After the free trial begins, you can use your credits to create dedicated cluste
 ## Limitations
 
 - Only one free trial can be applied to an account.
-- Free trials are limited to 24 vCPUs across all clusters you create.
 - The free trial features the Professional plan. Enterprise plan features are not included.
 - Not all regions are available during free trials.
 - After your trial ends, depending on your plan, you may lose access to some features.
