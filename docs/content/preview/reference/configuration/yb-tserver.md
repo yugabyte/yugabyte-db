@@ -1259,103 +1259,6 @@ type and help information regardless of the setting of this flag.
 
 Default: `true`
 
-## PostgreSQL server options
-
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
-
-You can modify these parameters in the following ways:
-
-- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
-
-- Set the option per-database:
-
-    ```sql
-    ALTER DATABASE database_name SET temp_file_limit=-1;
-    ```
-
-- Set the option per-role:
-
-    ```sql
-    ALTER ROLE yugabyte SET temp_file_limit=-1;
-    ```
-
-    When setting a parameter at the role or database level, you have to open a new session for the changes to take effect.
-
-- Set the option for the current session:
-
-    ```sql
-    SET temp_file_limit=-1;
-    --- alternative way
-    SET SESSION temp_file_limit=-1;
-    ```
-
-    If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
-
-    If the surrounding transaction commits, the effects will persist for the whole session.
-
-- Set the option for the current transaction:
-
-    ```sql
-    SET LOCAL temp_file_limit=-1;
-    ```
-
-- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
-
-    ```sql
-    --- To change the minimum transaction age to 5 seconds:
-    SET session yb_locks_min_txn_age = 5000;
-    ```
-
-- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
-
-    ```sql
-    --- To change the maximum number of transactions to display to 10:
-    SET session yb_locks_max_transactions = 10;
-    ```
-
-For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
-
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
-
-##### log_line_prefix
-
-YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
-
-- %C = cloud name
-- %R = region / data center name
-- %Z = availability zone / rack name
-- %U = cluster UUID
-- %N = node and cluster name
-- %H = current hostname
-
-For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
-
-##### suppress_nonpg_logs (boolean)
-
-When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
-
-Default: `off`
-
-##### temp_file_limit
-
-Specifies the amount of disk space used for temporary files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
-
-Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
-
-You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
-
-Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
-
-Default: `1GB`
-
-##### default_transaction_isolation
-
-Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
-
-See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
-
-Default: `read committed`
-
 ## Catalog flags
 
 ##### ysql_catalog_preload_additional_table_list
@@ -1472,6 +1375,103 @@ Default: -1, where the system automatically calculates the value to be approxima
 The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
 
 Default: 128
+
+## PostgreSQL server options
+
+YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
+
+You can modify these parameters in the following ways:
+
+- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
+
+- Set the option per-database:
+
+    ```sql
+    ALTER DATABASE database_name SET temp_file_limit=-1;
+    ```
+
+- Set the option per-role:
+
+    ```sql
+    ALTER ROLE yugabyte SET temp_file_limit=-1;
+    ```
+
+    When setting a parameter at the role or database level, you have to open a new session for the changes to take effect.
+
+- Set the option for the current session:
+
+    ```sql
+    SET temp_file_limit=-1;
+    --- alternative way
+    SET SESSION temp_file_limit=-1;
+    ```
+
+    If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
+
+    If the surrounding transaction commits, the effects will persist for the whole session.
+
+- Set the option for the current transaction:
+
+    ```sql
+    SET LOCAL temp_file_limit=-1;
+    ```
+
+- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
+
+    ```sql
+    --- To change the minimum transaction age to 5 seconds:
+    SET session yb_locks_min_txn_age = 5000;
+    ```
+
+- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
+
+    ```sql
+    --- To change the maximum number of transactions to display to 10:
+    SET session yb_locks_max_transactions = 10;
+    ```
+
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
+
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
+
+##### log_line_prefix
+
+YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
+
+- %C = cloud name
+- %R = region / data center name
+- %Z = availability zone / rack name
+- %U = cluster UUID
+- %N = node and cluster name
+- %H = current hostname
+
+For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
+
+##### suppress_nonpg_logs (boolean)
+
+When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
+
+Default: `off`
+
+##### temp_file_limit
+
+Specifies the amount of disk space used for temporary files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
+
+Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
+
+You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
+
+Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
+
+Default: `1GB`
+
+##### default_transaction_isolation
+
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+
+See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
+
+Default: `read committed`
 
 ## Admin UI
 

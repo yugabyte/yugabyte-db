@@ -835,7 +835,7 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## Advanced flags
 
-#### ysql_index_backfill_rpc_timeout_ms
+##### ysql_index_backfill_rpc_timeout_ms
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 
