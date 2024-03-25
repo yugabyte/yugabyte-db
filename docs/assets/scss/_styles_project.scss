@@ -149,6 +149,15 @@ html {
     max-width: 66px;
     height: auto;
   }
+
+	> i[class^="fa-"] {
+    font-size: 75px;
+		color: $YB_ORANGE;
+  }
+
+  > i.fa-brands {
+    font-size: 86px;
+  }
 }
 
 .heading-content {
