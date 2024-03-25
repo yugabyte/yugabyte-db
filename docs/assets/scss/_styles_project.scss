@@ -150,16 +150,13 @@ html {
     height: auto;
   }
 
-  > i[class^="fa-"] {
-    font-size: 65px;
+	> i[class^="fa-"] {
+    font-size: 75px;
+		color: $YB_ORANGE;
   }
 
   > i.fa-brands {
     font-size: 86px;
-  }
-
-  > i.fa-solid {
-    font-size: 70px;
   }
 }
 
