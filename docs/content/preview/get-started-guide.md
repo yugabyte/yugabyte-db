@@ -44,23 +44,38 @@ Test YugabyteDB features using a demo application in real time.
 
 Learn the essential capabilities of YugabyteDB.
 
-## Resilience and continuous availability
-
-**Video**: [Architecting a Highly Available and Resilient Systems of Record](https://www.youtube.com/watch?v=34n6QSa-_Pc)
-
-**Documentation**: [Continuous availability](../explore/fault-tolerance/)
-
 ## Migrate from PostgreSQL
 
 **Video**: [Migrating from PostgreSQL to YugabyteDB With YugabyteDB Voyager](https://www.youtube.com/watch?v=GXjttCbc4dw)
 
-Learn how you can migrate databases to YugabyteDB quickly and securely.
-
 **Playlist**: [Database Migration using YugabyteDB Voyager](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJuqQ2ZH1cnL1yxVEi9swwR)
+
+Learn how you can migrate databases to YugabyteDB quickly and securely.
 
 **Blog**: [Simplify Database Migration with New YugabyteDB Voyager](https://www.yugabyte.com/blog/simplify-database-migration-voyager/)
 
 Use YugabyteDB Voyager to migrate from legacy and single-cloud databases.
 
-## Develop YugabyteDB
+## Database operations
+
+
+
+**Documentation**: [Deploy YugabyteDB](../deploy/manual-deployment/)
+
+**Documentation**: [Backup and restore](../manage/backup-restore/)
+
+**Documentation**: [Upgrade YugabyteDB](../manage/upgrade-deployment/)
+
+**
+
+
+## Develop
+
+
+
+## Resilience and continuous availability
+
+**Video**: [Architecting a Highly Available and Resilient Systems of Record](https://www.youtube.com/watch?v=34n6QSa-_Pc)
+
+**Documentation**: [Continuous availability](../explore/fault-tolerance/)
 
