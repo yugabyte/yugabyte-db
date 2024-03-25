@@ -48,7 +48,12 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
   void SetUp() override {
     YB_SKIP_TEST_IN_TSAN();
     XClusterYsqlTestBase::SetUp();
-    ASSERT_OK(SET_FLAG(vmodule, "backfill_index*=4,xrepl*=4,xcluster*=4,add_table*=4,catalog*=4"));
+    google::SetVLOGLevel("backfill_index*", 4);
+    google::SetVLOGLevel("xrepl*", 4);
+    google::SetVLOGLevel("xcluster*", 4);
+    google::SetVLOGLevel("add_table*", 4);
+    google::SetVLOGLevel("catalog*", 4);
+    google::SetVLOGLevel("table_creation_task*", 4);
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = NonTsanVsTsan(60, 90);
 
@@ -307,11 +312,11 @@ TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
   ASSERT_OK(CreateIndex(*producer_conn_));
 
   SyncPoint::GetInstance()->LoadDependency(
-      {{"AddTableToXClusterTask::RunInternal::BeforeBootstrap",
+      {{"AddTableToXClusterTargetTask::RunInternal::BeforeBootstrap",
         "MasterFailoverRetryAddTableToXcluster::BeforeStepDown"}});
 
   SyncPoint::GetInstance()->SetCallBack(
-      "AddTableToXClusterTask::RunInternal::BeforeBootstrap",
+      "AddTableToXClusterTargetTask::RunInternal::BeforeBootstrap",
       [](void* stuck_add_table_to_xcluster) {
         *(reinterpret_cast<bool*>(stuck_add_table_to_xcluster)) = true;
       });

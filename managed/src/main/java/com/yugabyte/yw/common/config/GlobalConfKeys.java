@@ -255,6 +255,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "This config lets you enable support bundle creation for onprem universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> supportBundleAllowCoresCollection =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.allow_cores_collection",
+          ScopeType.GLOBAL,
+          "Allow collection of cores in Support Bundle",
+          "This global config allows you to disable collection of cores in support bundle, even if"
+              + " it is passed as a component while creating.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
       new ConfKeyInfo<>(
           "yb.snapshot_creation.max_attempts",
@@ -286,7 +295,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow Platform Downgrade",
           "Allow Downgrading the Platform Version",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> ybcUpgradeInterval =
       new ConfKeyInfo<>(
           "ybc.upgrade.scheduler_interval",

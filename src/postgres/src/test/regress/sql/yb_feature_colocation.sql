@@ -310,6 +310,7 @@ GRANT CREATE ON TABLEGROUP "default" TO test_role;
 REVOKE CREATE ON TABLEGROUP "default" FROM test_role;
 
 -- Any user can create tables/indexes in an implicit tablegroup
+GRANT CREATE ON SCHEMA public TO test_role;
 SET SESSION AUTHORIZATION test_role;
 CREATE TABLE test_role_table (k INT PRIMARY KEY, v TEXT);
 SELECT * FROM pg_tables WHERE tablename = 'test_role_table';

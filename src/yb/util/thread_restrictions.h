@@ -104,6 +104,8 @@ class ThreadRestrictions {
   // Returns the previous value.
   static bool SetIOAllowed(bool allowed);
 
+  static bool IsIOAllowed();
+
   // Check whether the current thread is allowed to make IO calls,
   // and FATALs if not.  See the block comment above the class for
   // a discussion of where to add these checks.
@@ -123,6 +125,7 @@ class ThreadRestrictions {
   // compiled out.
   static bool SetIOAllowed(bool allowed) { return true; }
   static void AssertIOAllowed() {}
+  static bool IsIOAllowed() { return true; }
   static bool SetWaitAllowed(bool allowed) { return true; }
   static void AssertWaitAllowed() {}
   static bool IsWaitAllowed() { return true; }

@@ -1319,8 +1319,9 @@ Status SysCatalogTable::ReadPgClassInfo(
     // From PostgreSQL docs: r = ordinary table, i = index, S = sequence, t = TOAST table,
     // v = view, m = materialized view, c = composite type, f = foreign table,
     // p = partitioned table, I = partitioned index
-    if (relkind != 'r' && relkind != 'i' && relkind != 'p' && relkind != 'I') {
-      // This database object is not a table/index/partitioned table/partitioned index.
+    if (relkind != 'r' && relkind != 'i' && relkind != 'p' && relkind != 'I' && relkind != 'm') {
+      // This database object is not a table/index/partitioned table/partitioned index/
+      // materialized view.
       // Skip this.
       continue;
     }
@@ -1329,22 +1330,16 @@ Status SysCatalogTable::ReadPgClassInfo(
     if (is_colocated_database) {
       // A table in a colocated database is colocated unless it opted out
       // of colocation.
-      is_colocated_table = true;
-      const auto& reloptions_col = row.GetValue(reloptions_col_id);
-      if (!reloptions_col) {
-        return STATUS(Corruption, "Could not read reloptions column from pg_class for oid " +
-            std::to_string(oid));
+      auto table_info =
+          master_->catalog_manager()->GetTableInfo(GetPgsqlTableId(database_oid, oid));
+
+      if (!table_info) {
+        // Primary key indexes are a separate entry in pg_class but they do not have
+        // their own entry in YugaByte's catalog manager. So, we skip them here.
+        continue;
       }
-      if (!reloptions_col->binary_value().empty()) {
-        auto reloptions = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
-            reloptions_col.value()));
-        for (const auto& reloption : reloptions) {
-          if (reloption.compare("colocated=false") == 0) {
-            is_colocated_table = false;
-            break;
-          }
-        }
-      }
+
+      is_colocated_table = table_info->IsColocatedUserTable();
     }
 
     if (is_colocated_table) {

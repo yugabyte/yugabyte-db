@@ -28,6 +28,8 @@ class InternalIterator;
 class Iterator;
 class ReadFileFilter;
 class Statistics;
+class TableAwareReadFileFilter;
+class TableReader;
 class UserFrontiers;
 class WriteBatch;
 
@@ -36,6 +38,7 @@ struct CompactionContextOptions;
 struct CompactionInputFiles;
 struct KeyValueEntry;
 struct Options;
+struct ReadOptions;
 struct TableBuilderOptions;
 struct TableProperties;
 

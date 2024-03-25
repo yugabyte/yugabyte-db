@@ -49,7 +49,8 @@ class YsqlUpgradeHelper {
   Result<std::unique_ptr<DatabaseEntry>> MakeDatabaseEntry(std::string database_name);
 
   // Migrate a given database to the next version, updating it in the given database entry.
-  Status MigrateOnce(DatabaseEntry* db_entry);
+  // If historical_version isn't nullptr, use it to override db_entry->version_.
+  Status MigrateOnce(DatabaseEntry* db_entry, const Version* historical_version = nullptr);
 
   const HostPort ysql_proxy_addr_;
 

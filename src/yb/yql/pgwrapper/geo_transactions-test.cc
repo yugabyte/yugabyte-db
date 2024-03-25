@@ -37,12 +37,6 @@ namespace yb {
 namespace client {
 
 namespace {
-
-YB_DEFINE_ENUM(ExpectedLocality, (kLocal)(kGlobal)(kNoCheck));
-YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionsGFlag);
-YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionSessionVar);
-YB_STRONGLY_TYPED_BOOL(WaitForHashChange);
-YB_STRONGLY_TYPED_BOOL(InsertToLocalFirst);
 // 90 leaders per zone and a total of 3 zones so 270 leader distributions. Worst-case even if the LB
 // is doing 1 leader move per run (it does more than that in practice) then at max it will take 270
 // runs i.e. 270 secs (1 run = 1 sec)
@@ -86,47 +80,6 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
         ++current_version;
       }
     }
-  }
-
-  void ValidateAllTabletLeaderinZone(std::vector<TabletId> tablet_uuids, int region) {
-    std::string region_str = yb::Format("rack$0", region);
-    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    for (const auto& tablet_id : tablet_uuids) {
-      auto table_info = ASSERT_RESULT(catalog_manager.GetTabletInfo(tablet_id));
-      auto leader = ASSERT_RESULT(table_info->GetLeader());
-      auto server_reg_pb = leader->GetRegistration();
-      ASSERT_EQ(server_reg_pb.common().cloud_info().placement_region(), region_str);
-    }
-  }
-
-  Result<uint32_t> GetTablespaceOidForRegion(int region) {
-    auto conn = EXPECT_RESULT(Connect());
-    uint32_t tablespace_oid = EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
-        "SELECT oid FROM pg_catalog.pg_tablespace WHERE spcname = 'tablespace$0'", region)));
-    return tablespace_oid;
-  }
-
-  Result<std::vector<TabletId>> GetStatusTablets(int region, ExpectedLocality locality) {
-    YBTableName table_name;
-    if (locality == ExpectedLocality::kNoCheck) {
-      return std::vector<TabletId>();
-    } else if (locality == ExpectedLocality::kGlobal) {
-      table_name = YBTableName(
-          YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
-    } else if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
-      auto tablespace_oid = EXPECT_RESULT(GetTablespaceOidForRegion(region));
-      table_name = YBTableName(
-          YQL_DATABASE_CQL, master::kSystemNamespaceName,
-          yb::Format("transactions_$0", tablespace_oid));
-    } else {
-      table_name = YBTableName(
-          YQL_DATABASE_CQL, master::kSystemNamespaceName,
-          yb::Format("transactions_region$0", region));
-    }
-    std::vector<TabletId> tablet_uuids;
-    RETURN_NOT_OK(client_->GetTablets(
-        table_name, 1000 /* max_tablets */, &tablet_uuids, nullptr /* ranges */));
-    return tablet_uuids;
   }
 
   void CheckSuccess(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
@@ -768,6 +721,100 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestLeaderDistribution)) {
       [&]() -> Result<bool> { return VerifyReplicaDistribution(tables, servers_group_by_zone); },
       kWaitLeaderDistributionTimeout* kTimeMultiplier,
       "Timeout waiting for leaders to be evenly distributed"));
+}
+
+// Test that local -> global promotion works even after a table is moved using
+// ALTER TABLE SET TABLESPACE.
+// This test is similar to TestTransactionTabletSelection, except this time tables
+// are created in the local regions and then later distributed among regions.
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPromotionAfterTablespaceChange)) {
+  constexpr int tables_per_region = 1;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+
+  // Create all tables in the local tablespace.
+  SetupTablespaces();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+  tables_per_region_ = tables_per_region;
+
+  // Create all tables in the local tablespace.
+  auto conn = ASSERT_RESULT(Connect());
+  for (size_t region_idx = 1; region_idx <= NumRegions(); ++region_idx) {
+    for (size_t table_idx = 1; table_idx <= tables_per_region; ++table_idx) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0$1_$2(value int, other_value int) TABLESPACE tablespace$3",
+          kTablePrefix, region_idx, table_idx, kLocalRegion));
+    }
+  }
+
+  // Move tables to the "right" tablespace using ALTER TABLE SET TABLESPACE.
+  for (size_t region_idx = 1; region_idx <= NumRegions(); ++region_idx) {
+    for (size_t table_idx = 1; table_idx <= tables_per_region; ++table_idx) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "ALTER TABLE $0$1_$2 SET TABLESPACE tablespace$1",
+          kTablePrefix, region_idx, table_idx, kLocalRegion));
+    }
+  }
+
+  CreateTransactionTable(kOtherRegion);
+  CreateTransactionTable(kLocalRegion);
+
+  // Promotion now allowed. We do not check the status tablet for the promoted case in this test,
+  // because the transaction object we have access to here is from the original request sent
+  // to the tserver, which is normally discarded and thus not kept up to date.
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kLocal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kNoCheck);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+}
+
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetTablespaceMidTxn)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+  constexpr int tables_per_region = 1;
+  SetupTablesAndTablespaces(tables_per_region);
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  // Start a transaction on a local table.
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn1.ExecuteFormat(
+      "INSERT INTO $0$1_1(value) VALUES (0)", kTablePrefix, kLocalRegion));
+
+  // Move the table to a different region.
+  ASSERT_OK(conn2.ExecuteFormat("ALTER TABLE $0$1_1 SET TABLESPACE tablespace$2",
+                                kTablePrefix, kLocalRegion, kOtherRegion));
+
+  // The transaction should fail cleanly with a "Catalog Version Mismatch" error.
+  Status commitStatus = conn1.CommitTransaction();
+  // Verify that the transaction did not commit successfully.
+  ASSERT_FALSE(commitStatus.ok());
+  // Check that the error message contains the expected text.
+  std::string msg = commitStatus.ToString();
+  ASSERT_NE(msg.find("Catalog Version Mismatch"), std::string::npos);
 }
 
 } // namespace client

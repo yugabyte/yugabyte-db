@@ -7,6 +7,7 @@ package provider
 import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/create"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/onprem"
 )
 
 // ProviderCmd set of commands are used to perform operations on providers
@@ -25,4 +26,5 @@ func init() {
 	ProviderCmd.AddCommand(describeProviderCmd)
 	ProviderCmd.AddCommand(deleteProviderCmd)
 	ProviderCmd.AddCommand(create.CreateProviderCmd)
+	ProviderCmd.AddCommand(onprem.OnpremProviderCmd)
 }

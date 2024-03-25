@@ -41,6 +41,7 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/filtering_iterator.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/compression.h"
@@ -269,8 +270,9 @@ rocksdb::ReadOptions PrepareReadOptions(
   if (FLAGS_use_docdb_aware_bloom_filter &&
     bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER) {
     DCHECK(user_key_for_filter);
-    read_opts.table_aware_file_filter = rocksdb->GetOptions().table_factory->
-        NewTableAwareReadFileFilter(read_opts, user_key_for_filter.get());
+    static const rocksdb::BloomFilterAwareFileFilter bloom_filter_aware_file_filter;
+    read_opts.table_aware_file_filter = &bloom_filter_aware_file_filter;
+    read_opts.user_key_for_filter = *user_key_for_filter;
   }
   read_opts.file_filter = std::move(file_filter);
   read_opts.iterate_upper_bound = iterate_upper_bound;

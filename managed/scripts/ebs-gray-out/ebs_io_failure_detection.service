@@ -1,0 +1,11 @@
+[Unit]
+Description=EBS Grey Out Detection Script Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python /home/yugabyte/ebs_io_failure_detection.py
+Restart=always
+
+[Install]
+WantedBy=default.target

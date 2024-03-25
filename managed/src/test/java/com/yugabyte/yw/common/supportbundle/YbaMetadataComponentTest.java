@@ -38,7 +38,6 @@ public class YbaMetadataComponentTest extends FakeDBApplication {
   private Customer customer;
   public SupportBundleUtil mockSupportBundleUtil = new SupportBundleUtil();
   private String fakeSupportBundleBasePath = "/tmp/yugaware_tests/support_bundle-application_logs/";
-  //   private String fakeSourceLogsPath = fakeSupportBundleBasePath + "logs/";
   private String fakeBundlePath =
       fakeSupportBundleBasePath + "yb-support-bundle-test-20220308000000.000-logs";
 
@@ -47,19 +46,6 @@ public class YbaMetadataComponentTest extends FakeDBApplication {
     // Setup fake temp log files, universe, customer
     this.customer = ModelFactory.testCustomer();
     this.universe = ModelFactory.createUniverse(customer.getId());
-    // List<String> fakeLogsList =
-    //     Arrays.asList(
-    //         "application-log-2022-03-05.gz",
-    //         "application-log-2022-03-06.gz",
-    //         "application-log-2022-03-07.gz",
-    //         "application-log-2022-03-08.gz",
-    //         "application.log");
-    // for (String fileName : fakeLogsList) {
-    //   File fakeFile = new File(fakeSourceLogsPath + fileName);
-    //   if (!fakeFile.exists()) {
-    //     createTempFile(fakeSourceLogsPath, fileName, "test-application-logs-content");
-    //   }
-    // }
 
     // Mock all the config invocations with fake data
     when(mockBaseTaskDependencies.getConfig()).thenReturn(mockConfig);

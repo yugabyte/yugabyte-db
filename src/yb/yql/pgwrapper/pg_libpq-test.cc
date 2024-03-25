@@ -3243,9 +3243,11 @@ TEST_F_EX(PgLibPqTest,
   for (int i = 0; i < 50; i++) {
     ASSERT_OK(WaitFor([postmaster_pid]() -> Result<bool> {
       string count;
-      RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0 | wc -l", postmaster_pid), &count);
-      return count[0] == '1';
-    }, 1500ms, "Webserver restarting..."));
+      // The Mac implementation of pgrep has a bug and requires -P before -f.
+      // Otherwise, the -f argument is ignored.
+      RunShellProcess(Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid), &count);
+      return count.find("1") != string::npos;
+    }, 2500ms, "Webserver restarting..."));
     ASSERT_TRUE(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid),
                                 &message));
   }

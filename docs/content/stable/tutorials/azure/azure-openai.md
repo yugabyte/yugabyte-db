@@ -90,21 +90,21 @@ docker network create custom-network
 docker run -d --name yugabytedb_node1 --net custom-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb_node2 --net custom-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} \
     bin/yugabyted start --join=yugabytedb_node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb_node3 --net custom-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} \
     bin/yugabyted start --join=yugabytedb_node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```

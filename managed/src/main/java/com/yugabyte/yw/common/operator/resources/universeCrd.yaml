@@ -166,6 +166,7 @@ spec:
                   rule: self == oldSelf
               enableExposingService:
                 type: string
+                default: NONE
                 enum:
                 - EXPOSED
                 - NONE

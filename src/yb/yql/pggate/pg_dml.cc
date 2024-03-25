@@ -225,6 +225,11 @@ void PgDml::ColRefsToPB() {
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
+  // Convert to wire protocol. See explanation in pg_system_attr.h.
+  if (attr_num == static_cast<int>(PgSystemAttrNum::kPGInternalYBTupleId)) {
+    attr_num = static_cast<int>(PgSystemAttrNum::kYBTupleId);
+  }
+
   if (secondary_index_query_) {
     // Bind by secondary key.
     return secondary_index_query_->BindColumn(attr_num, attr_value);

@@ -15,280 +15,51 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import java.util.concurrent.BrokenBarrierException;
-import java.util.concurrent.CyclicBarrier;
-import java.util.List;
-import java.util.Map;
-
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.yugabyte.util.PSQLException;
-
-import org.yb.CommonNet.CloudInfoPB;
-import org.yb.client.*;
-import org.yb.master.CatalogEntityInfo;
-import org.yb.master.MasterDdlOuterClass;
-import org.yb.minicluster.MiniYBCluster;
-import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.YBTestRunner;
-
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 
+import com.yugabyte.util.PSQLException;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.*;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.junit.*;
+import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.yb.CommonNet.CloudInfoPB;
+import org.yb.YBTestRunner;
+import org.yb.client.*;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.minicluster.MiniYBCluster;
+
 @RunWith(value = YBTestRunner.class)
-public class TestTablespaceProperties extends BasePgSQLTest {
+public class TestTablespaceProperties extends BaseTablespaceTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestTablespaceProperties.class);
-
-  ArrayList<String> tablesWithDefaultPlacement = new ArrayList<String>();
-  ArrayList<String> tablesWithCustomPlacement = new ArrayList<String>();
-
-  private static final int MASTER_REFRESH_TABLESPACE_INFO_SECS = 2;
-
-  private static final int MASTER_LOAD_BALANCER_WAIT_TIME_MS = 60 * 1000;
-
-  private static final int LOAD_BALANCER_MAX_CONCURRENT = 10;
-
-  private static final String tablespaceName = "testTablespace";
-
-  private static String placementUuid = "";
-
-  private static final List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
-      ImmutableMap.of(
-          "placement_cloud", "cloud1",
-          "placement_region", "region1",
-          "placement_zone", "zone1"),
-      ImmutableMap.of(
-          "placement_cloud", "cloud2",
-          "placement_region", "region2",
-          "placement_zone", "zone2"),
-      ImmutableMap.of(
-          "placement_cloud", "cloud3",
-          "placement_region", "region3",
-          "placement_zone", "zone3"));
 
   @Override
   public int getTestMethodTimeoutSec() {
     return getPerfMaxRuntime(1500, 1700, 2000, 2000, 2000);
   }
 
-  @Override
-  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
-    super.customizeMiniClusterBuilder(builder);
-    builder.enablePgTransactions(true);
-    builder.addMasterFlag("vmodule", "sys_catalog=5,cluster_balance=1");
-    builder.addMasterFlag("ysql_tablespace_info_refresh_secs",
-                          Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS));
-    builder.addMasterFlag("auto_create_local_transaction_tables", "true");
-    builder.addMasterFlag("TEST_name_transaction_tables_with_tablespace_id", "true");
-
-    // We wait for the load balancer whenever it gets triggered anyways, so there's
-    // no concerns about the load balancer taking too many resources.
-    builder.addMasterFlag("load_balancer_max_concurrent_tablet_remote_bootstraps",
-                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
-    builder.addMasterFlag("load_balancer_max_concurrent_tablet_remote_bootstraps_per_table",
-                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
-    builder.addMasterFlag("load_balancer_max_concurrent_adds",
-                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
-    builder.addMasterFlag("load_balancer_max_concurrent_removals",
-                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
-    builder.addMasterFlag("load_balancer_max_concurrent_moves",
-                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
-    builder.addMasterFlag("load_balancer_max_concurrent_moves_per_table",
-                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
-
-    builder.perTServerFlags(perTserverZonePlacementFlags);
-    builder.addCommonTServerFlag("placement_uuid", placementUuid);
-  }
-
-  public void setPlacementUuid(String uuid) {
-    placementUuid = uuid;
-  }
-
   @Before
-  public void setupTablespaces() throws Exception {
-    try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute("DROP TABLESPACE IF EXISTS " + tablespaceName);
-      setupStatement.execute(
-          " CREATE TABLESPACE " + tablespaceName +
-          "  WITH (replica_placement=" +
-          "'{\"num_replicas\":2, \"placement_blocks\":" +
-          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
-          "\"min_num_replicas\":1}," +
-          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
-          "\"min_num_replicas\":1}]}')");
-    }
+  public void setupTablespaces() {
+    customTablespace.dropIfExists(connection);
+    customTablespace.create(connection);
   }
 
-  /**
-   * Sets placement_uuid on master.
+  /*
+   * Basic Tests
    */
-  @Override
-  protected void afterStartingMiniCluster() throws Exception {
-    super.afterStartingMiniCluster();
-    if (placementUuid.isEmpty()) {
-      return;
-    }
-    LOG.info("Modifying placement_info on master to set placement_uuid");
-    runProcess(TestUtils.findBinary("yb-admin"),
-      "--master_addresses", masterAddresses,
-      "modify_placement_info",
-      "cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3",
-      Integer.toString(3),
-      placementUuid);
-
-    Thread.sleep(1000);
-  }
-
-  private void createTestData (String prefixName) throws Exception {
-    // Setup tables.
-    String defaultTable = prefixName + "_default_table";
-    String customTable = prefixName + "_custom_table";
-    String defaultIndex = prefixName + "_default_index";
-    String customIndex = prefixName + "_custom_index";
-    String defaultTablegroup = prefixName + "_default_tablegroup";
-    String customTablegroup = prefixName + "_custom_tablegroup";
-    String tableInDefaultTablegroup = prefixName + "_table_in_default_tablegroup";
-    String tableInCustomTablegroup = prefixName + "_table_in_custom_tablegroup";
-    String defaultIndexCustomTable = prefixName + "_default_idx_on_custom_table";
-    String customIndexCustomTable = prefixName + "_custom_idx_on_custom_table";
-    try (Statement setupStatement = connection.createStatement()) {
-      // Create tablegroups in default and custom tablegroups
-      setupStatement.execute("CREATE TABLEGROUP " +  customTablegroup +
-          " TABLESPACE testTablespace");
-      setupStatement.execute("CREATE TABLEGROUP " +  defaultTablegroup);
-
-      // Create tables in default and custom tablespaces.
-      setupStatement.execute(
-          "CREATE TABLE " +  customTable + "(a SERIAL) TABLESPACE testTablespace");
-
-      setupStatement.execute(
-          "CREATE TABLE " + defaultTable + "(a int CONSTRAINT " + customIndex +
-          " UNIQUE USING INDEX TABLESPACE testTablespace)");
-
-      // Create indexes in default and custom tablespaces.
-      setupStatement.execute("CREATE INDEX " + defaultIndexCustomTable + " on " +
-          customTable + "(a)");
-
-      setupStatement.execute("CREATE INDEX " + customIndexCustomTable + " on " +
-          customTable + "(a) TABLESPACE testTablespace");
-
-      setupStatement.execute("CREATE INDEX " + defaultIndex + " on " +
-          defaultTable + "(a)");
-
-      // Create tables in tablegroups (in default and custom tablespaces)
-      setupStatement.execute(
-        "CREATE TABLE " +  tableInDefaultTablegroup + "(a SERIAL) TABLEGROUP " + defaultTablegroup);
-
-      setupStatement.execute(
-        "CREATE TABLE " +  tableInCustomTablegroup + "(a SERIAL) TABLEGROUP " + customTablegroup);
-    }
-    String transactionTableName = getTablespaceTransactionTableName();
-    tablesWithDefaultPlacement.clear();
-    tablesWithDefaultPlacement.addAll(Arrays.asList(defaultTable, defaultIndex,
-          defaultIndexCustomTable, tableInDefaultTablegroup));
-
-    tablesWithCustomPlacement.clear();
-    tablesWithCustomPlacement.addAll(Arrays.asList(customTable, customIndex,
-          customIndexCustomTable, tableInCustomTablegroup, transactionTableName));
-  }
-
-  private void executeRewritesOnTestTables(String prefixName) throws Exception {
-    String defaultTable = prefixName + "_default_table";
-    String customTable = prefixName + "_custom_table";
-    String tableInDefaultTablegroup = prefixName + "_table_in_default_tablegroup";
-    String tableInCustomTablegroup = prefixName + "_table_in_custom_tablegroup";
-    try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute(
-          "ALTER TABLE " +  customTable + " ADD COLUMN b BIGSERIAL");
-      setupStatement.execute(
-          "ALTER TABLE " + defaultTable + " ADD COLUMN b SERIAL");
-      setupStatement.execute(
-          "ALTER TABLE " +  tableInDefaultTablegroup + " ADD COLUMN b BIGSERIAL");
-      setupStatement.execute(
-          "ALTER TABLE " +  tableInCustomTablegroup + " ADD COLUMN b SERIAL");
-    }
-  }
-
-  private void addTserversAndWaitForLB() throws Exception {
-    int expectedTServers = miniCluster.getTabletServers().size() + 1;
-    miniCluster.startTServer(perTserverZonePlacementFlags.get(1));
-    miniCluster.waitForTabletServers(expectedTServers);
-
-    // Wait for loadbalancer to run.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    // Wait for load balancer to become idle.
-    assertTrue(miniCluster.getClient().waitForLoadBalance(Long.MAX_VALUE, expectedTServers));
-  }
-
-  /**
-   * Negative test: Create an index for a table (created inside a tablegroup) and specify its
-   * tablespace. This would throw an error as we do not support tablespaces for indexes on
-   * Colocated tables.
-   */
-  @Test
-  public void disallowTableSpaceForIndexOnColocatedTables() throws Exception {
-    String customTablegroup =  "test_custom_tablegroup";
-    try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute("CREATE TABLEGROUP " +  customTablegroup +
-          " TABLESPACE testTablespace");
-      setupStatement.execute("CREATE TABLE t (a INT, b FLOAT) TABLEGROUP " + customTablegroup);
-
-      // Create index without specifying tablespace.
-      setupStatement.execute("CREATE INDEX t_idx1 ON t(a)");
-
-      // Create an index and also specify its tablespace.
-      String errorMsg = "TABLESPACE is not supported for indexes on colocated tables.";
-      executeAndAssertErrorThrown("CREATE INDEX t_idx2 ON t(b) TABLESPACE testTablespace",
-                                  errorMsg);
-    }
-  }
-
-  @Test
-  public void testTablesOptOutOfColocation() throws Exception {
-    final String dbname = "testdatabase";
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", dbname));
-    }
-    final String colocatedTableName = "colocated_table";
-    final String nonColocatedTable = "colocation_opt_out_table";
-    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
-         Statement stmt = connection2.createStatement()) {
-      stmt.execute(String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                                 "WITH (colocated = false) TABLESPACE testTablespace",
-                                 nonColocatedTable));
-      stmt.execute(String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT)",
-                                 colocatedTableName));
-    }
-    verifyDefaultPlacement(colocatedTableName);
-    verifyCustomPlacement(nonColocatedTable);
-
-    // Wait for tablespace info to be refreshed in load balancer.
-    Thread.sleep(5 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
-
-    // Verify that load balancer is indeed idle.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
-               MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    verifyDefaultPlacement(colocatedTableName);
-    verifyCustomPlacement(nonColocatedTable);
-  }
-
   @Test
   public void sanityTest() throws Exception {
     markClusterNeedsRecreation();
@@ -304,18 +75,19 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     // Verify that the table was created and its tablets were placed
     // according to the tablespace replication info.
     LOG.info("Verify whether tablet replicas were placed correctly at creation time");
-    verifyPlacement();
+    verifyPlacement(false /* skipTransactionTables */);
 
     // Wait for tablespace info to be refreshed in load balancer.
-    Thread.sleep(2 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
+    Thread.sleep(2 * 1000 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
 
     addTserversAndWaitForLB();
 
     // Verify that the loadbalancer also placed the tablets of the table based on the
     // tablespace replication info.
-    LOG.info("Verify whether the load balancer maintained the placement of tablet replicas" +
-             " after TServers were added");
-    verifyPlacement();
+    LOG.info(
+        "Verify whether the load balancer maintained the placement of tablet replicas"
+            + " after TServers were added");
+    verifyPlacement(false /* skipTransactionTables */);
 
     // Trigger a master leader change.
     LeaderStepDownResponse resp = client.masterLeaderStepDown();
@@ -324,22 +96,12 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     Thread.sleep(10 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
 
     LOG.info("Verify that tablets have been placed correctly even after master leader changed");
-    verifyPlacement();
-
-    // Execute table rewrites on the test tables. This is done so that the DocDB table
-    // ID and PG table OID no longer match, and allows us to verify that the table to tablespace map
-    // is constructed correctly even for rewritten tables.
-    executeRewritesOnTestTables("sanity_test");
-
-    addTserversAndWaitForLB();
-
-    LOG.info("Verify whether the load balancer maintained the placement of tablet replicas" +
-              " after the tables were rewritten and more TServers were added");
-    verifyPlacement();
+    verifyPlacement(false /* skipTransactionTables */);
   }
 
   @Test
   public void testDisabledTablespaces() throws Exception {
+    markClusterNeedsRecreation();
     // Create some tables with custom and default placements.
     // These tables will be placed according to their tablespaces
     // by the create table path.
@@ -353,12 +115,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
     // At this point, since tablespaces are disabled, the LB will detect that the older
     // tables have not been correctly placed. Wait until the load balancer is active.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    // Wait for LB to finish its run.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+    waitForLoadBalancer();
 
     // Now create some new tables. The table creation path will place these
     // tables according to the cluster config.
@@ -372,6 +129,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
   @Test
   public void testLBTablespacePlacement() throws Exception {
+    markClusterNeedsRecreation();
     // This test disables using tablespaces at creation time. Thus, the tablets of the table will be
     // incorrectly placed based on cluster config at creation time, and we will rely on the LB to
     // correctly place the table based on its tablespace.
@@ -390,337 +148,194 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     // Since the tablespace-id was not checked during creation, the tablet replicas
     // would have been placed wrongly. This condition will be detected by the load
     // balancer. Wait until it starts running to fix these wrongly placed tablets.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    // Wait for LB to finish its run.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+    waitForLoadBalancer();
 
     // Verify that the loadbalancer placed the tablets of the table based on the
     // tablespace replication info. Skip checking transaction tables, as they would
     // not have been created when tablespaces were disabled.
-    LOG.info("Verify whether tablet replicas placed incorrectly at creation time are moved to " +
-             "their appropriate placement by the load balancer");
+    LOG.info(
+        "Verify whether tablet replicas placed incorrectly at creation time are moved to "
+            + "their appropriate placement by the load balancer");
     verifyPlacement(true /* skipTransactionTables */);
   }
 
   @Test
   public void negativeTest() throws Exception {
-    YBClient client = miniCluster.getClient();
-
-    // Set required YB-Master flags.
-    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
-    }
-
+    markClusterNeedsRecreation();
     // Create tablespaces with invalid placement.
     try (Statement setupStatement = connection.createStatement()) {
       // Create a tablespace specifying a cloud that does not exist.
-      setupStatement.execute(
-          "CREATE TABLESPACE invalid_tblspc WITH (replica_placement=" +
-          "'{\"num_replicas\":2, \"placement_blocks\":" +
-          "[{\"cloud\":\"cloud3\",\"region\":\"region1\",\"zone\":\"zone1\"," +
-          "\"min_num_replicas\":1}," +
-          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
-          "\"min_num_replicas\":1}]}')");
+      Tablespace invalid_tblspc =
+          new Tablespace(
+              "invalid_tblspc",
+              2,
+              Arrays.asList(
+                  new PlacementBlock(2), new PlacementBlock("cloud3", "region1", "zone1", 1)));
+      invalid_tblspc.create(connection);
 
       // Create a tablespace wherein the individual min_num_replicas can be
       // satisfied, but the total replication factor cannot.
-      setupStatement.execute(
-          "CREATE TABLESPACE insufficient_rf_tblspc WITH (replica_placement=" +
-          "'{\"num_replicas\":5, \"placement_blocks\":" +
-          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
-          "\"min_num_replicas\":1}," +
-          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
-          "\"min_num_replicas\":1}]}')");
+      Tablespace insufficient_rf_tblspc =
+          new Tablespace(
+              "insufficient_rf_tblspc",
+              5,
+              Arrays.asList(new PlacementBlock(1), new PlacementBlock(2)));
+      insufficient_rf_tblspc.create(connection);
+
+      // Create a valid tablespace.
+      Tablespace valid_tblspc = new Tablespace("valid_tblspc", Arrays.asList(1, 2));
+      valid_tblspc.create(connection);
 
       // Create a table that can be used for the index test below.
       setupStatement.execute("CREATE TABLE negativeTestTable (a int)");
     }
 
-    final String not_enough_tservers_msg =
-      "Not enough tablet servers in the requested placements";
+    final String not_enough_tservers_msg = "Not enough tablet servers in the requested placements";
 
     // Test creation of table in invalid tablespace.
     executeAndAssertErrorThrown(
-      "CREATE TABLE invalidPlacementTable (a int) TABLESPACE invalid_tblspc",
-      not_enough_tservers_msg);
+        "CREATE TABLE invalidPlacementTable (a int) TABLESPACE invalid_tblspc",
+        not_enough_tservers_msg);
 
     // Test creation of index in invalid tablespace.
     executeAndAssertErrorThrown(
-      "CREATE INDEX invalidPlacementIdx ON negativeTestTable(a) TABLESPACE invalid_tblspc",
-      not_enough_tservers_msg);
+        "CREATE INDEX invalidPlacementIdx ON negativeTestTable(a) TABLESPACE invalid_tblspc",
+        not_enough_tservers_msg);
 
     // Test creation of tablegroup in invalid tablespace.
     executeAndAssertErrorThrown(
-      "CREATE TABLEGROUP invalidPlacementTablegroup TABLESPACE invalid_tblspc",
-      not_enough_tservers_msg);
+        "CREATE TABLEGROUP invalidPlacementTablegroup TABLESPACE invalid_tblspc",
+        not_enough_tservers_msg);
 
     // Test creation of table when the replication factor cannot be satisfied.
     executeAndAssertErrorThrown(
-      "CREATE TABLE insufficentRfTable (a int) TABLESPACE insufficient_rf_tblspc",
-      not_enough_tservers_msg);
+        "CREATE TABLE insufficentRfTable (a int) TABLESPACE insufficient_rf_tblspc",
+        not_enough_tservers_msg);
 
     // Test creation of tablegroup when the replication factor cannot be satisfied.
     executeAndAssertErrorThrown(
-      "CREATE TABLEGROUP insufficientRfTablegroup TABLESPACE insufficient_rf_tblspc",
-      not_enough_tservers_msg);
+        "CREATE TABLEGROUP insufficientRfTablegroup TABLESPACE insufficient_rf_tblspc",
+        not_enough_tservers_msg);
 
-    testTableCreationFailure();
-  }
+    // Test creation of index when the replication factor cannot be satisfied.
+    executeAndAssertErrorThrown(
+        "CREATE INDEX invalidPlacementIdx ON negativeTestTable(a) "
+            + "TABLESPACE insufficient_rf_tblspc",
+        not_enough_tservers_msg);
 
-  public void executeAndAssertErrorThrown(String statement, String err_msg) throws Exception{
-    boolean error_thrown = false;
+    // Test creation of materialized view when the replication factor cannot be satisfied.
+    executeAndAssertErrorThrown(
+        "CREATE MATERIALIZED VIEW invalidPlacementMv TABLESPACE insufficient_rf_tblspc AS "
+            + "SELECT * FROM negativeTestTable",
+        not_enough_tservers_msg);
+
+    // Test ALTER ... SET TABLESPACE
+
+    // Create a table, index, and materialized view in the valid tablespace.
     try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute(statement);
-    } catch (PSQLException e) {
-      String actualError = e.getMessage();
-      assertTrue("Expected: " + err_msg + " Actual: " + actualError, actualError.contains(err_msg));
-      error_thrown = true;
+      setupStatement.execute("CREATE TABLE validPlacementTable (a int) TABLESPACE valid_tblspc");
+      setupStatement.execute(
+          "CREATE INDEX validPlacementIdx ON validPlacementTable(a) TABLESPACE valid_tblspc");
+      setupStatement.execute(
+          "CREATE MATERIALIZED VIEW validPlacementMv TABLESPACE valid_tblspc AS "
+              + "SELECT * FROM validPlacementTable");
     }
 
-    // Verify that error was indeed thrown.
-    assertTrue(error_thrown);
+    // Test ALTER ... SET TABLESPACE to invalid tablespace.
+    executeAndAssertErrorThrown(
+        "ALTER TABLE validPlacementTable SET TABLESPACE invalid_tblspc", not_enough_tservers_msg);
+
+    executeAndAssertErrorThrown(
+        "ALTER INDEX validPlacementIdx SET TABLESPACE invalid_tblspc", not_enough_tservers_msg);
+
+    executeAndAssertErrorThrown(
+        "ALTER MATERIALIZED VIEW validPlacementMv SET TABLESPACE invalid_tblspc",
+        not_enough_tservers_msg);
+
+    // Test ALTER ... SET TABLESPACE to insufficient replication factor tablespace.
+    executeAndAssertErrorThrown(
+        "ALTER TABLE validPlacementTable SET TABLESPACE insufficient_rf_tblspc",
+        not_enough_tservers_msg);
+
+    executeAndAssertErrorThrown(
+        "ALTER INDEX validPlacementIdx SET TABLESPACE insufficient_rf_tblspc",
+        not_enough_tservers_msg);
+
+    executeAndAssertErrorThrown(
+        "ALTER MATERIALIZED VIEW validPlacementMv SET TABLESPACE insufficient_rf_tblspc",
+        not_enough_tservers_msg);
   }
 
-  public void testTableCreationFailure() throws Exception {
-    final YBClient client = miniCluster.getClient();
-    int previousBGWait = MiniYBCluster.CATALOG_MANAGER_BG_TASK_WAIT_MS;
+  /*
+   * Colocation Tests
+   */
+  @Test
+  public void disallowTableSpaceForIndexOnColocatedTables() throws Exception {
+    markClusterNeedsRecreation();
+    String customTablegroup = "test_custom_tablegroup";
+    final String tablespaceClause = "TABLESPACE " + tablespaceName;
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(
+          String.format("CREATE TABLEGROUP %s %s", customTablegroup, tablespaceClause));
 
+      setupStatement.execute("CREATE TABLE t (a INT, b FLOAT) TABLEGROUP " + customTablegroup);
+
+      // Verify that tablespace cannot be set for an index during creation.
+      String errorMsg = "TABLESPACE is not supported for indexes on colocated tables.";
+      executeAndAssertErrorThrown("CREATE INDEX t_idx2 ON t(b) " + tablespaceClause, errorMsg);
+
+      // Verify that tablespace cannot be set for an index during alter.
+      setupStatement.execute("CREATE INDEX t_idx1 ON t(a)");
+      errorMsg = "cannot move colocated table to a different tablespace";
+      executeAndAssertErrorThrown("ALTER INDEX t_idx1 SET " + tablespaceClause, errorMsg);
+    }
+  }
+
+  @Test
+  public void testTablesOptOutOfColocation() throws Exception {
+    markClusterNeedsRecreation();
+    final String dbname = "testdatabase";
     try (Statement stmt = connection.createStatement()) {
-      for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-        // Increase the interval between subsequent runs of bg thread so that
-        // it assigns replicas for tablets of both the tables concurrently.
-        assertTrue(client.setFlag(hp, "catalog_manager_bg_task_wait_ms", "10000"));
-        assertTrue(client.setFlag(
-              hp, "TEST_skip_placement_validation_createtable_api", "true", true));
-      }
-      LOG.info("Increased the delay between successive runs of bg threads.");
-      // Create tablespace with valid placement.
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", dbname));
+    }
+
+    final String colocatedTableName = "colocated_table";
+    final String nonColocatedTable = "colocation_opt_out_table";
+    final String nonColocatedIndex = "colocation_opt_out_idx";
+    final String tablespaceClause = "TABLESPACE " + tablespaceName;
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+        Statement stmt = connection2.createStatement()) {
       stmt.execute(
-          " CREATE TABLESPACE valid_ts " +
-          "  WITH (replica_placement=" +
-          "'{\"num_replicas\":2, \"placement_blocks\":" +
-          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
-          "\"min_num_replicas\":1}," +
-          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
-          "\"min_num_replicas\":1}]}')");
-      LOG.info("Created a tablespace with valid placement information.");
-      // Create tablespace with invalid placement.
+          String.format(
+              "CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT) WITH (colocated = false) %s",
+              nonColocatedTable, tablespaceClause));
       stmt.execute(
-          " CREATE TABLESPACE invalid_ts " +
-          "  WITH (replica_placement=" +
-          "'{\"num_replicas\":2, \"placement_blocks\":" +
-          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
-          "\"min_num_replicas\":1}," +
-          "{\"cloud\":\"cloud4\",\"region\":\"region4\",\"zone\":\"zone4\"," +
-          "\"min_num_replicas\":1}]}')");
-      LOG.info("Created a tablespace with invalid placement information.");
-
-      int count = 2;
-      final AtomicBoolean errorsDetectedForValidTable = new AtomicBoolean(false);
-      final AtomicBoolean errorsDetectedForInvalidTable = new AtomicBoolean(false);
-      final CyclicBarrier barrier = new CyclicBarrier(count);
-      final Thread[] threads = new Thread[count];
-      final Connection[] connections = new Connection[count];
-
-      // Create connections for concurrent create table.
-      for (int i = 0; i < count; ++i) {
-        ConnectionBuilder b = getConnectionBuilder();
-        b.withTServer(count % miniCluster.getNumTServers());
-        connections[i] = b.connect();
-      }
-
-      // Enqueue a couple of concurrent table creation jobs.
-      // Thread that creates an invalid table.
-      threads[0] = new Thread(() -> {
-        try (Statement lstmt = connections[0].createStatement()) {
-          barrier.await();
-          try {
-            LOG.info("Creating a table with invalid placement information.");
-            lstmt.execute("CREATE TABLE invalidplacementtable (a int) TABLESPACE invalid_ts");
-          } catch (Exception e) {
-            LOG.error(e.getMessage());
-            errorsDetectedForInvalidTable.set(true);
-          }
-        } catch (InterruptedException | BrokenBarrierException | SQLException throwables) {
-          LOG.info("Infrastructure exception, can be ignored", throwables);
-        } finally {
-          barrier.reset();
-        }
-      });
-
-      // Thread that creates a valid table.
-      threads[1] = new Thread(() -> {
-        try (Statement lstmt = connections[1].createStatement()) {
-          barrier.await();
-          try {
-            LOG.info("Creating a table with valid placement information.");
-            lstmt.execute("CREATE TABLE validplacementtable (a int) TABLESPACE valid_ts");
-          } catch (Exception e) {
-            LOG.error(e.getMessage());
-            errorsDetectedForValidTable.set(true);
-          }
-        } catch (InterruptedException | BrokenBarrierException | SQLException throwables) {
-          LOG.info("Infrastructure exception, can be ignored", throwables);
-        } finally {
-          barrier.reset();
-        }
-      });
-
-      // Wait for join.
-      Arrays.stream(threads).forEach(t -> t.start());
-      for (Thread t : threads) {
-        t.join();
-      }
-
-      // Reset the bg threads delay.
-      for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-        assertTrue(client.setFlag(
-              hp, "catalog_manager_bg_task_wait_ms", Integer.toString(previousBGWait)));
-        assertTrue(client.setFlag(
-              hp, "TEST_skip_placement_validation_createtable_api", "false", true));
-      }
-      // Verify that the transaction DDL garbage collector removes this table.
-      assertTrue(client.waitForTableRemoval(30000, "invalidplacementtable"));
-
-      LOG.info("Valid table created successfully: " + !errorsDetectedForValidTable.get());
-      LOG.info("Invalid table created successfully: " + !errorsDetectedForInvalidTable.get());
-      assertFalse(errorsDetectedForValidTable.get());
-      assertTrue(errorsDetectedForInvalidTable.get());
+          String.format(
+              "CREATE INDEX %s ON %s (a) %s",
+              nonColocatedIndex, nonColocatedTable, tablespaceClause));
+      stmt.execute(
+          String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT)", colocatedTableName));
     }
-  }
 
-  // Verify that the tables and indices have been placed in appropriate
-  // zones.
-  void verifyPlacement() throws Exception {
-    verifyPlacement(false /* skipTransactionTables */);
-  }
+    verifyTablePlacement(nonColocatedTable, customTablespace);
+    verifyTablePlacement(nonColocatedIndex, customTablespace);
 
-  void verifyPlacement(boolean skipTransactionTables) throws Exception {
-    for (final String table : tablesWithDefaultPlacement) {
-      verifyDefaultPlacement(table);
+    // Test that ALTER ... SET TABLESPACE works on the non-colocated table/index.
+    Tablespace ts1 = new Tablespace("tablespaceOptOutColocation", Collections.singletonList(1));
+    ts1.create(connection);
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+        Statement stmt = connection2.createStatement()) {
+      stmt.execute(String.format("ALTER TABLE %s SET TABLESPACE %s", nonColocatedTable, ts1.name));
+      stmt.execute(String.format("ALTER INDEX %s SET TABLESPACE %s", nonColocatedIndex, ts1.name));
     }
-    for (final String table : tablesWithCustomPlacement) {
-      if (skipTransactionTables && table.contains("transaction")) {
-        continue;
-      }
-      verifyCustomPlacement(table);
-    }
+
+    // Wait for load balancer to run.
+    waitForLoadBalancer();
+
+    verifyTablePlacement(nonColocatedTable, ts1);
+    verifyTablePlacement(nonColocatedIndex, ts1);
   }
-
-  void verifyDefaultPlacementForAll() throws Exception {
-    for (final String table : tablesWithDefaultPlacement) {
-      verifyDefaultPlacement(table);
-    }
-    for (final String table : tablesWithCustomPlacement) {
-      verifyDefaultPlacement(table);
-    }
-  }
-
-  void verifyCustomPlacement(final String table) throws Exception {
-    final YBClient client = miniCluster.getClient();
-    client.waitForReplicaCount(getTableFromName(table), 2, 30_000);
-
-    List<LocatedTablet> tabletLocations = getTableFromName(table).getTabletsLocations(30_000);
-    String errorMsg = "Invalid custom placement for table '" + table + "': "
-        + getPlacementInfoString(tabletLocations);
-
-    // Get tablets for table.
-    for (LocatedTablet tablet : tabletLocations) {
-      List<LocatedTablet.Replica> replicas = tablet.getReplicas();
-
-      // Verify that both tablets either belong to zone1 or zone2.
-      for (LocatedTablet.Replica replica : replicas) {
-        final String role = replica.getRole();
-        assertFalse(role, role.contains("READ_REPLICA"));
-        CloudInfoPB cloudInfo = replica.getCloudInfo();
-        if ("cloud1".equals(cloudInfo.getPlacementCloud())) {
-          assertEquals(errorMsg, "region1", cloudInfo.getPlacementRegion());
-          assertEquals(errorMsg, "zone1", cloudInfo.getPlacementZone());
-          continue;
-        }
-        assertEquals(errorMsg, "cloud2", cloudInfo.getPlacementCloud());
-        assertEquals(errorMsg, "region2", cloudInfo.getPlacementRegion());
-        assertEquals(errorMsg, "zone2", cloudInfo.getPlacementZone());
-      }
-    }
-  }
-
-  void verifyDefaultPlacement(final String table) throws Exception {
-    final YBClient client = miniCluster.getClient();
-    client.waitForReplicaCount(getTableFromName(table), 3, 30_000);
-
-    List<LocatedTablet> tabletLocations = getTableFromName(table).getTabletsLocations(30_000);
-    String errorMsg = "Invalid default placement for table '" + table + "': "
-        + getPlacementInfoString(tabletLocations);
-
-    // Get tablets for table.
-    for (LocatedTablet tablet : tabletLocations) {
-      List<LocatedTablet.Replica> replicas = tablet.getReplicas();
-      // Verify that tablets can be present in any zone.
-      for (LocatedTablet.Replica replica : replicas) {
-        CloudInfoPB cloudInfo = replica.getCloudInfo();
-        if ("cloud1".equals(cloudInfo.getPlacementCloud())) {
-          assertEquals(errorMsg, "region1", cloudInfo.getPlacementRegion());
-          assertEquals(errorMsg, "zone1", cloudInfo.getPlacementZone());
-          continue;
-        } else if ("cloud2".equals(cloudInfo.getPlacementCloud())) {
-          assertEquals(errorMsg, "region2", cloudInfo.getPlacementRegion());
-          assertEquals(errorMsg, "zone2", cloudInfo.getPlacementZone());
-          continue;
-        }
-        assertEquals(errorMsg, "cloud3", cloudInfo.getPlacementCloud());
-        assertEquals(errorMsg, "region3", cloudInfo.getPlacementRegion());
-        assertEquals(errorMsg, "zone3", cloudInfo.getPlacementZone());
-      }
-    }
-  }
-
-  public String getPlacementInfoString(List<LocatedTablet> locatedTablets) {
-    StringBuilder sb = new StringBuilder("[");
-    for (LocatedTablet tablet : locatedTablets) {
-      sb.append("[");
-      List<LocatedTablet.Replica> replicas = new ArrayList<>(tablet.getReplicas());
-      // Somewhat dirty but would do.
-      replicas
-          .sort((r1, r2) -> r1.getCloudInfo().toString().compareTo(r2.getCloudInfo().toString()));
-      for (LocatedTablet.Replica replica : replicas) {
-        if (sb.charAt(sb.length() - 1) != '[') {
-          sb.append(", ");
-        }
-        sb.append("{\n");
-        sb.append(Stream.<String>of(replica.getCloudInfo().toString().trim().split("\n"))
-            .map((s) -> " " + s)
-            .collect(Collectors.joining(",\n")));
-        sb.append("\n}");
-      }
-      sb.append("]");
-    }
-    sb.append("]");
-    return sb.toString();
-  }
-
-  public String getTablespaceTransactionTableName() throws Exception {
-    try (Statement setupStatement = connection.createStatement()) {
-      ResultSet s = setupStatement.executeQuery(
-          "SELECT oid FROM pg_catalog.pg_tablespace " +
-          "WHERE UPPER(spcname) = UPPER('" + tablespaceName + "')");
-      assertTrue(s.next());
-      return "transactions_" + s.getInt(1);
-    }
-  }
-
-  YBTable getTableFromName(final String table) throws Exception {
-    final YBClient client = miniCluster.getClient();
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tables =
-      client.getTablesList(table).getTableInfoList();
-    assertEquals("More than one table found with name " + table, 1, tables.size());
-    return client.openTableByUUID(
-      tables.get(0).getId().toStringUtf8());
-  }
-
 
   @Test
   public void readReplicaWithTablespaces() throws Exception {
@@ -735,41 +350,49 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     int expectedTServers = miniCluster.getTabletServers().size() + 1;
 
     LOG.info("Adding a TServer for read-replica cluster");
-    Map<String, String> readReplicaPlacement = ImmutableMap.of(
-        "placement_cloud", "cloud1",
-        "placement_region", "region1",
-        "placement_zone", "zone1",
-        "placement_uuid", "readcluster");
+    PlacementBlock zone1 = new PlacementBlock(1);
+    Map<String, String> readReplicaPlacement = new HashMap<>(zone1.toPlacementMap());
+    readReplicaPlacement.put("placement_uuid", "readcluster");
     miniCluster.startTServer(readReplicaPlacement);
     miniCluster.waitForTabletServers(expectedTServers);
 
-    CloudInfoPB cloudInfo0 = CloudInfoPB.newBuilder()
+    CloudInfoPB cloudInfo0 =
+        CloudInfoPB.newBuilder()
             .setPlacementCloud("cloud1")
             .setPlacementRegion("region1")
             .setPlacementZone("zone1")
             .build();
 
-    CatalogEntityInfo.PlacementBlockPB placementBlock0 = CatalogEntityInfo.PlacementBlockPB.
-        newBuilder().setCloudInfo(cloudInfo0).setMinNumReplicas(1).build();
+    CatalogEntityInfo.PlacementBlockPB placementBlock0 =
+        CatalogEntityInfo.PlacementBlockPB.newBuilder()
+            .setCloudInfo(cloudInfo0)
+            .setMinNumReplicas(1)
+            .build();
 
     List<CatalogEntityInfo.PlacementBlockPB> placementBlocksLive =
         new ArrayList<CatalogEntityInfo.PlacementBlockPB>();
     placementBlocksLive.add(placementBlock0);
 
     List<CatalogEntityInfo.PlacementBlockPB> placementBlocksReadOnly =
-            new ArrayList<CatalogEntityInfo.PlacementBlockPB>();
+        new ArrayList<CatalogEntityInfo.PlacementBlockPB>();
     placementBlocksReadOnly.add(placementBlock0);
 
-    CatalogEntityInfo.PlacementInfoPB livePlacementInfo = CatalogEntityInfo.PlacementInfoPB.
-        newBuilder().addAllPlacementBlocks(placementBlocksLive).setNumReplicas(1).
-        setPlacementUuid(ByteString.copyFromUtf8("")).build();
+    CatalogEntityInfo.PlacementInfoPB livePlacementInfo =
+        CatalogEntityInfo.PlacementInfoPB.newBuilder()
+            .addAllPlacementBlocks(placementBlocksLive)
+            .setNumReplicas(1)
+            .setPlacementUuid(ByteString.copyFromUtf8(""))
+            .build();
 
-    CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfo = CatalogEntityInfo.PlacementInfoPB.
-        newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).setNumReplicas(1).
-        setPlacementUuid(ByteString.copyFromUtf8("readcluster")).build();
+    CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfo =
+        CatalogEntityInfo.PlacementInfoPB.newBuilder()
+            .addAllPlacementBlocks(placementBlocksReadOnly)
+            .setNumReplicas(1)
+            .setPlacementUuid(ByteString.copyFromUtf8("readcluster"))
+            .build();
 
-    List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacements = Arrays.asList(
-        readOnlyPlacementInfo);
+    List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacements =
+        Arrays.asList(readOnlyPlacementInfo);
 
     ModifyClusterConfigReadReplicas readOnlyOperation =
         new ModifyClusterConfigReadReplicas(client, readOnlyPlacements);
@@ -787,55 +410,248 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       assertTrue(false);
     }
 
-    LOG.info("Waiting for the loadbalancer to become active...");
-
-    // Wait for loadbalancer to run.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    LOG.info("Waiting for the load balancer to become idle...");
-    assertTrue(miniCluster.getClient().waitForLoadBalance(Long.MAX_VALUE, expectedTServers));
+    waitForLoadBalancer(expectedTServers);
 
     for (final String table : tablesWithDefaultPlacement) {
       verifyPlacementForReadReplica(table);
     }
-    for (final String table : tablesWithCustomPlacement) {
-      verifyCustomPlacement(table);
+
+    verifyPlacement(tablesWithCustomPlacement, customTablespace);
+
+    // Alter tables with custom tablespaces to move to pg_default.
+    List<String> movedTables = moveCreatedTestDataToDefaultTablespace("read_replica");
+
+    waitForLoadBalancer();
+    for (final String table : movedTables) {
+      verifyPlacementForReadReplica(table);
     }
   }
 
   void verifyPlacementForReadReplica(final String table) throws Exception {
+    LOG.info("Verifying placement for read replica for table " + table);
     final YBClient client = miniCluster.getClient();
-    client.waitForReplicaCount(getTableFromName(table), 1, 30_000);
+    client.waitForReplicaCount(getTableFromName(table), 2, DEFAULT_TIMEOUT_MS);
 
-    List<LocatedTablet> tabletLocations = getTableFromName(table).getTabletsLocations(30_000);
+    List<LocatedTablet> tabletLocations =
+        getTableFromName(table).getTabletsLocations(DEFAULT_TIMEOUT_MS);
+
     // Get tablets for table.
     for (LocatedTablet tablet : tabletLocations) {
-      boolean foundReadOnlyReplica = false;
-      boolean foundLiveReplica = false;
       List<LocatedTablet.Replica> replicas = tablet.getReplicas();
-      // Verify that tablets can be present in any zone.
-      for (LocatedTablet.Replica replica : replicas) {
-        CloudInfoPB cloudInfo = replica.getCloudInfo();
-        final String errorMsg = "Unexpected cloud.region.zone: " + cloudInfo.toString();
 
-        if (replica.getRole().contains("READ_REPLICA")) {
-          assertFalse(foundReadOnlyReplica);
-          foundReadOnlyReplica = true;
-        } else {
-          assertFalse(foundLiveReplica);
-          foundLiveReplica = true;
-        }
-        assertEquals(errorMsg, "cloud1", cloudInfo.getPlacementCloud());
-        assertEquals(errorMsg, "region1", cloudInfo.getPlacementRegion());
-        assertEquals(errorMsg, "zone1", cloudInfo.getPlacementZone());
-      }
+      long readReplicas =
+          replicas.stream().filter(replica -> replica.getRole().contains("READ_REPLICA")).count();
+
+      long liveReplicas = replicas.size() - readReplicas;
+
       // A live replica must be found.
-      assertTrue(foundLiveReplica);
+      assertEquals(1, liveReplicas);
 
       // A read-only replica must be found.
-      assertTrue(foundReadOnlyReplica);
+      assertEquals(1, readReplicas);
     }
+  }
+
+  @Test
+  public void testAlterTableSetTablespace() throws Exception {
+    markClusterNeedsRecreation();
+
+    String tableName = "testtable";
+    String indexName = "testindex";
+    String matViewName = "testmatview";
+    try (Statement setupStatement = connection.createStatement()) {
+      // Create table.
+      setupStatement.execute(String.format("CREATE TABLE %s (a SERIAL)", tableName));
+
+      // Create index.
+      setupStatement.execute(String.format("CREATE INDEX %s ON %s(a)", indexName, tableName));
+
+      // Create materialized view.
+      setupStatement.execute(
+          String.format("CREATE MATERIALIZED VIEW %s AS SELECT * FROM %s", matViewName, tableName));
+    }
+
+    // Verify placement.
+    LOG.info("Verifying whether tablet replicas were placed correctly at creation time");
+    verifyTablePlacement(tableName, defaultTablespace);
+    verifyTablePlacement(indexName, defaultTablespace);
+    verifyTablePlacement(matViewName, defaultTablespace);
+
+    // Alter tablespace.
+    try (Statement setupStatement = connection.createStatement()) {
+      // Alter table set tablespace.
+      setupStatement.execute(
+          String.format("ALTER TABLE %s SET TABLESPACE %s", tableName, tablespaceName));
+      // Alter index set tablespace.
+      setupStatement.execute(
+          String.format("ALTER INDEX %s SET TABLESPACE %s", indexName, tablespaceName));
+
+      // Alter materialized view set tablespace.
+      setupStatement.execute(
+          String.format(
+              "ALTER MATERIALIZED VIEW %s SET TABLESPACE %s", matViewName, tablespaceName));
+    }
+
+    // Verify placement.
+    LOG.info("Verifying whether tablet replicas were placed correctly after alter");
+    waitForLoadBalancer();
+    verifyTablePlacement(tableName, customTablespace);
+    verifyTablePlacement(indexName, customTablespace);
+    verifyTablePlacement(matViewName, customTablespace);
+
+    // Refresh materialized view.
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(String.format("REFRESH MATERIALIZED VIEW %s", matViewName));
+    }
+
+    // Verify placement.
+    LOG.info("Verifying whether tablet replicas were placed correctly after REFRESH");
+    verifyTablePlacement(matViewName, customTablespace);
+  }
+
+  /** Test ALTER TABLE SET TABLESPACE running concurrently with the load balancer. */
+  @Test
+  public void testAlterConcurrentWithLoadBalancer() throws Exception {
+    markClusterNeedsRecreation();
+
+    String tableName = "testtable";
+    String indexName = "testindex";
+    String matViewName = "testmatview";
+    try (Statement setupStatement = connection.createStatement()) {
+      // Create table.
+      setupStatement.execute(String.format("CREATE TABLE %s (a SERIAL)", tableName));
+
+      // Create index.
+      setupStatement.execute(String.format("CREATE INDEX %s ON %s(a)", indexName, tableName));
+
+      // Create materialized view.
+      setupStatement.execute(
+        String.format("CREATE MATERIALIZED VIEW %s AS SELECT * FROM %s", matViewName, tableName));
+    }
+
+    // Verify placement.
+    LOG.info("Verifying whether tablet replicas were placed correctly at creation time");
+    verifyTablePlacement(tableName, defaultTablespace);
+    verifyTablePlacement(indexName, defaultTablespace);
+    verifyTablePlacement(matViewName, defaultTablespace);
+
+    // Alter tablespace.
+    try (Statement setupStatement = connection.createStatement()) {
+      // Alter table set tablespace.
+      setupStatement.execute(
+        String.format("ALTER TABLE %s SET TABLESPACE %s", tableName, tablespaceName));
+      // Alter index set tablespace.
+      setupStatement.execute(
+        String.format("ALTER INDEX %s SET TABLESPACE %s", indexName, tablespaceName));
+
+      // Alter materialized view set tablespace.
+      setupStatement.execute(
+        String.format(
+          "ALTER MATERIALIZED VIEW %s SET TABLESPACE %s", matViewName, tablespaceName));
+    }
+
+    LOG.info("Waiting for the loadbalancer to become active...");
+    assertTrue(
+      miniCluster.getClient().waitForLoadBalancerActive(MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    // Alter tablespace concurrently with the load balancer.
+    try (Statement setupStatement = connection.createStatement()) {
+      // Alter table set tablespace.
+      setupStatement.execute(
+        String.format("ALTER TABLE %s SET TABLESPACE %s", tableName, defaultTablespace.name));
+      // Alter index set tablespace.
+      setupStatement.execute(
+        String.format("ALTER INDEX %s SET TABLESPACE %s", indexName, defaultTablespace.name));
+
+      // Alter materialized view set tablespace.
+      setupStatement.execute(
+        String.format(
+          "ALTER MATERIALIZED VIEW %s SET TABLESPACE %s", matViewName, defaultTablespace.name));
+    }
+
+    LOG.info("Waiting for the load balancer to become idle...");
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
+      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    // Verify placement.
+    LOG.info("Verifying whether tablet replicas were placed correctly after alter");
+
+    verifyTablePlacement(tableName, defaultTablespace);
+    verifyTablePlacement(indexName, defaultTablespace);
+    verifyTablePlacement(matViewName, defaultTablespace);
+  }
+
+  /**
+   * Geo-partitioned table test
+   *
+   * <p>Creates a table with two partitions, each with its own tablespace, then moves one of the
+   * partitions to a new tablespace.
+   */
+  @Test
+  public void testTablespacePartitioning() throws Exception {
+    markClusterNeedsRecreation();
+
+    // Create original tablespace with a single placement block on cloud1.region1.zone1
+    Tablespace ts1 = new Tablespace("testTablespaceZone1", Collections.singletonList(1));
+    ts1.create(connection);
+
+    // Create new tablespace with a single placment block on cloud2.region2.zone2
+    Tablespace ts2 = new Tablespace("testTablespaceZone2", Collections.singletonList(2));
+    ts2.create(connection);
+
+    // Create new tablespace with a single placment block on cloud3.region3.zone3
+    Tablespace ts3 = new Tablespace("testTablespaceZone3", Collections.singletonList(3));
+    ts3.create(connection);
+
+    // Create a table with two partitions, each with its own tablespace.
+    final String table = "geo_partition_test_table";
+    try (Statement stmt = connection.createStatement()) {
+      // Create partitioned table.
+      stmt.execute(String.format("CREATE TABLE %s (a int) PARTITION BY RANGE (a)", table));
+
+      // Create partitions.
+      stmt.execute(
+          String.format(
+              "CREATE TABLE %s_p1 PARTITION OF %s FOR VALUES FROM (0) TO (100) TABLESPACE %s",
+              table, table, ts1.name));
+
+      stmt.execute(
+          String.format(
+              "CREATE TABLE %s_p2 PARTITION OF %s FOR VALUES FROM (100) TO (200) TABLESPACE %s",
+              table, table, ts2.name));
+
+      // Create indexes on the partitions.
+      stmt.execute(
+          String.format(
+              "CREATE INDEX %s_idx_p1 ON %s_p1(a) TABLESPACE %s", table, table, ts1.name));
+
+      stmt.execute(
+          String.format(
+              "CREATE INDEX %s_idx_p2 ON %s_p2(a) TABLESPACE %s", table, table, ts2.name));
+    }
+
+    LOG.info("Verifying whether tablet replicas were placed correctly at creation time");
+    verifyTablePlacement("geo_partition_test_table_p1", ts1);
+    verifyTablePlacement("geo_partition_test_table_p2", ts2);
+    verifyTablePlacement("geo_partition_test_table_idx_p1", ts1);
+    verifyTablePlacement("geo_partition_test_table_idx_p2", ts2);
+
+    // Execute the ALTER TABLE SET TABLESPACE command
+    LOG.info("Moving table to new tablespace" + tablespaceName);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("ALTER TABLE %s_p2 SET TABLESPACE %s", table, ts3.name));
+      stmt.execute(String.format("ALTER INDEX %s_idx_p2 SET TABLESPACE %s", table, ts3.name));
+    }
+
+    waitForLoadBalancer();
+
+    LOG.info("Verifying whether tablet replicas were moved to the new tablespace");
+    verifyTablePlacement("geo_partition_test_table_p2", ts3);
+    verifyTablePlacement("geo_partition_test_table_idx_p2", ts3);
+
+    // Verify that the tablets for the other partition were not moved.
+    verifyTablePlacement("geo_partition_test_table_p1", ts1);
+    verifyTablePlacement("geo_partition_test_table_idx_p1", ts1);
   }
 
   @Test
@@ -860,25 +676,20 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     }
 
     LOG.info("Verifying whether tablet replicas were placed correctly at creation time");
-    verifyDefaultPlacement(testTable);
+    verifyTablePlacement(testTable, defaultTablespace);
 
     // Execute the ALTER TABLE SET TABLESPACE command
     setupTablespaces();
     LOG.info("Moving test_table to new tablespace " + tablespaceName);
     try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute(String.format("ALTER TABLE %s SET TABLESPACE %s",
-                                           testTable, tablespaceName));
+      setupStatement.execute(
+          String.format("ALTER TABLE %s SET TABLESPACE %s", testTable, tablespaceName));
     }
 
     // Wait for loadbalancer to run.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    LOG.info("Waiting for the load balancer to become idle...");
-    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+    waitForLoadBalancer();
 
     LOG.info("Verifying whether tablet replicas were moved to the new tablespace");
-    verifyCustomPlacement(testTable);
+    verifyTablePlacement(testTable, customTablespace);
   }
 }

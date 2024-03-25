@@ -76,7 +76,9 @@ public class XClusterConfigCreateFormData {
       public UUID storageConfigUUID;
 
       // The number of concurrent commands to run on nodes over SSH
-      @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
+      @ApiModelProperty(
+          value =
+              "Number of concurrent commands used by yb_backup (not ybc) to run on nodes over SSH")
       public int parallelism = 8;
     }
   }

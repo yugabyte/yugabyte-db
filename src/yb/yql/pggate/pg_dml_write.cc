@@ -15,7 +15,14 @@
 
 #include "yb/yql/pggate/pg_dml_write.h"
 
+#include "yb/dockv/packed_row.h"
+
 #include "yb/gutil/casts.h"
+
+#include "yb/util/decimal.h"
+
+DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
+     "Enabled packing inserted columns into a single packed value in postgres layer.");
 
 namespace yb {
 namespace pggate {
@@ -179,6 +186,244 @@ LWPgsqlColRefPB *PgDmlWrite::AllocColRefPB() {
 
 void PgDmlWrite::ClearColRefPBs() {
   write_req_->mutable_col_refs()->clear();
+}
+
+template <class T>
+T DatumToYb(const YBCPgTypeEntity* type_entity, uint64_t datum) {
+  T value;
+  type_entity->datum_to_yb(datum, &value, nullptr);
+  return value;
+}
+
+template <class T>
+void PackAsUInt32(
+    const YBCPgTypeEntity* type_entity, uint64_t datum, dockv::ValueEntryType type,
+    ValueBuffer* out) {
+  char* buf = out->GrowByAtLeast(1 + sizeof(uint32_t));
+  *buf++ = static_cast<char>(type);
+  BigEndian::Store32(buf, DatumToYb<T>(type_entity, datum));
+}
+
+template <class T>
+void PackAsUInt64(
+    const YBCPgTypeEntity* type_entity, uint64_t datum, dockv::ValueEntryType type,
+    ValueBuffer* out) {
+  char* buf = out->GrowByAtLeast(1 + sizeof(uint64_t));
+  *buf++ = static_cast<char>(type);
+  BigEndian::Store64(buf, DatumToYb<T>(type_entity, datum));
+}
+
+class PackableBindColumn final : public dockv::PackableValue {
+ public:
+  explicit PackableBindColumn(YBCBindColumn* column) : column_(column) {}
+
+  void PackToV1(ValueBuffer* out) const override {
+    using dockv::ValueEntryType;
+    using dockv::ValueEntryTypeAsChar;
+
+    const auto* type_entity = column_->type_entity;
+    auto datum = column_->datum;
+
+    switch (type_entity->yb_type) {
+      case YB_YQL_DATA_TYPE_INT8:
+        PackAsUInt32<int8_t>(type_entity, datum, ValueEntryType::kInt32, out);
+        return;
+
+      case YB_YQL_DATA_TYPE_INT16:
+        PackAsUInt32<int16_t>(type_entity, datum, ValueEntryType::kInt32, out);
+        return;
+
+      case YB_YQL_DATA_TYPE_INT32:
+        PackAsUInt32<int32_t>(type_entity, datum, ValueEntryType::kInt32, out);
+        return;
+
+      case YB_YQL_DATA_TYPE_UINT32:
+        PackAsUInt32<uint32_t>(type_entity, datum, ValueEntryType::kUInt32, out);
+        return;
+
+      case YB_YQL_DATA_TYPE_FLOAT:
+        out->push_back(ValueEntryTypeAsChar::kFloat);
+        util::AppendBigEndianUInt32(
+            bit_cast<uint32_t>(util::CanonicalizeFloat(DatumAsYb<float>())), out);
+        return;
+
+      case YB_YQL_DATA_TYPE_TIMESTAMP: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_INT64:
+        PackAsUInt64<int64_t>(type_entity, datum, ValueEntryType::kInt64, out);
+        return;
+
+      case YB_YQL_DATA_TYPE_DOUBLE:
+        out->push_back(ValueEntryTypeAsChar::kDouble);
+        util::AppendBigEndianUInt64(
+            bit_cast<uint64_t>(util::CanonicalizeDouble(DatumAsYb<double>())), out);
+        return;
+
+      case YB_YQL_DATA_TYPE_UINT64:
+        PackAsUInt64<uint64_t>(type_entity, datum, ValueEntryType::kUInt64, out);
+        return;
+
+      case YB_YQL_DATA_TYPE_BINARY: {
+        char *value;
+        int64_t bytes = type_entity->datum_fixed_size;
+        type_entity->datum_to_yb(datum, &value, &bytes);
+        out->push_back(ValueEntryTypeAsChar::kString);
+        out->append(value, bytes);
+        return;
+      }
+
+      case YB_YQL_DATA_TYPE_STRING: {
+        char *value;
+        int64_t bytes = type_entity->datum_fixed_size;
+        type_entity->datum_to_yb(column_->datum, &value, &bytes);
+        if (column_->collation_info.collate_is_valid_non_c) {
+          CHECK(false);
+        } else {
+          out->push_back(ValueEntryTypeAsChar::kString);
+          out->append(value, bytes);
+          return;
+        }
+        break;
+      }
+
+      case YB_YQL_DATA_TYPE_BOOL:
+        out->push_back(
+            DatumAsYb<bool>() ? ValueEntryTypeAsChar::kTrue : ValueEntryTypeAsChar::kFalse);
+        return;
+
+      case YB_YQL_DATA_TYPE_DECIMAL: {
+        char* plaintext;
+        type_entity->datum_to_yb(column_->datum, &plaintext, nullptr);
+        util::Decimal yb_decimal(plaintext);
+        out->push_back(ValueEntryTypeAsChar::kDecimal);
+        out->append(yb_decimal.EncodeToComparable());
+        return;
+      }
+
+      case YB_YQL_DATA_TYPE_GIN_NULL: [[fallthrough]];
+      YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
+      YB_PG_INVALID_TYPES_IN_SWITCH:
+        break;
+    }
+
+    LOG(FATAL) << "Internal error: unsupported type " << type_entity->yb_type;
+  }
+
+  bool IsNull() const override {
+    return column_->is_null;
+  }
+
+  size_t PackedSizeV1() const override {
+    const auto* type_entity = column_->type_entity;
+
+    switch (type_entity->yb_type) {
+      case YB_YQL_DATA_TYPE_INT8: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_INT16: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_FLOAT: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_INT32: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_UINT32:
+        return 5;
+
+      case YB_YQL_DATA_TYPE_INT64: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_DOUBLE: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_TIMESTAMP: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_UINT64:
+        return 9;
+
+      case YB_YQL_DATA_TYPE_BINARY: {
+        char *value;
+        int64_t bytes = type_entity->datum_fixed_size;
+        type_entity->datum_to_yb(column_->datum, &value, &bytes);
+        return bytes + 1;
+      }
+
+      case YB_YQL_DATA_TYPE_STRING: {
+        char *value;
+        int64_t bytes = type_entity->datum_fixed_size;
+        type_entity->datum_to_yb(column_->datum, &value, &bytes);
+        if (column_->collation_info.collate_is_valid_non_c) {
+          CHECK(false);
+        } else {
+          return bytes + 1;
+        }
+        break;
+      }
+
+      case YB_YQL_DATA_TYPE_BOOL:
+        return 1;
+
+      case YB_YQL_DATA_TYPE_DECIMAL: {
+        char* plaintext;
+        type_entity->datum_to_yb(column_->datum, &plaintext, nullptr);
+        util::Decimal yb_decimal(plaintext);
+        return yb_decimal.EncodeToComparable().size() + 1;
+      }
+
+      case YB_YQL_DATA_TYPE_GIN_NULL: [[fallthrough]];
+      YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
+      YB_PG_INVALID_TYPES_IN_SWITCH:
+        LOG(FATAL) << "Internal error: unsupported type " << type_entity->yb_type;
+    }
+
+    return -1;
+  }
+
+  void PackToV2(ValueBuffer* out) const override {
+    CHECK(false);
+  }
+
+  size_t PackedSizeV2() const override {
+    CHECK(false);
+    return 0;
+  }
+
+  std::string ToString() const override {
+    return Format("{ type_oid: $0 yb_type: $1 }",
+                  column_->type_entity->type_oid, column_->type_entity->yb_type);
+  }
+
+ private:
+  template <class T>
+  T DatumAsYb() const {
+    return DatumToYb<T>(column_->type_entity, column_->datum);
+  }
+
+  YBCBindColumn* column_;
+};
+
+class EmptyMissingValueProvider : public MissingValueProvider {
+ public:
+  Result<const QLValuePB&> GetMissingValueByColumnId(ColumnId id) const final {
+    static const QLValuePB null;
+    return null;
+  }
+};
+
+Status PgDmlWrite::BindRow(YBCBindColumn* columns, int count) {
+  std::optional<dockv::RowPackerV1> packer;
+  for (auto it = columns, end = columns + count; it != end; ++it) {
+    auto& column_desc = VERIFY_RESULT_REF(bind_.ColumnForAttr(it->attr_num));
+    if (FLAGS_ysql_pack_inserted_value && !column_desc.is_primary()) {
+      if (!packer) {
+        static EmptyMissingValueProvider missing_value_provider;
+        packer.emplace(
+            bind_->schema_version(), bind_->schema_packing(), std::numeric_limits<ssize_t>::max(),
+            Slice(), missing_value_provider);
+      }
+      PackableBindColumn packable(it);
+      auto added = VERIFY_RESULT(packer->AddValue(ColumnId(column_desc.id()), packable));
+      SCHECK(added, InternalError, "Unexpectedly failed to pack column value");
+    } else {
+      auto* expr = arena().NewObject<PgConstant>(
+          &arena(), it->type_entity, it->collation_info.collate_is_valid_non_c,
+          it->collation_info.sortkey, it->datum, it->is_null);
+      RETURN_NOT_OK(BindColumn(it->attr_num, expr));
+    }
+  }
+  if (packer) {
+    write_req_->dup_packed_value(VERIFY_RESULT(packer->Complete()));
+  }
+
+  return Status::OK();
 }
 
 }  // namespace pggate
