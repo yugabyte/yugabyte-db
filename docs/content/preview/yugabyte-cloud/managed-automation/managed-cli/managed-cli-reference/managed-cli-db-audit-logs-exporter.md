@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `db-audit-logs-exporter` resource to create database audit log export configurations for third-party tools, and assign them to clusters.
+Use the `db-audit-logs-exporter` resource to configure [database audit logs](../../../../cloud-monitor/logging-export/) for export to third-party tools.
 
 ## Syntax
 
@@ -22,39 +22,32 @@ Usage: ybm db-audit-logs-exporter [command] [flags]
 
 ## Example
 
-Create a configuration:
-
-```sh
-ybm db-audit-logs-exporter create \
-    --config-name datadog1 \
-    --type DATADOG \
-    --datadog-spec api-key=efXXXXXXXXXXXXXXXXXXXXXXXXXXXXee,site=US1
-```
-
-Assign the configuration to a cluster:
+Assign a configuration to a cluster:
 
 ```sh
 ybm db-audit-logs-exporter assign \
-    --config-name datadog1 \
-    --cluster-name my_cluster
+    --cluster-name my_cluster \
+    --integration-id 3c03c101-e1b1-12b3-ac45-123e4b5677e8
+    --statement_classes=READ,WRITE \
+    --ysql-config==log_catalog=true,log_client=false,log_level=INFO,log_parameter=true
 ```
 
 ## Commands
 
 ### assign
 
-Assign a database audit log export configuration to the specified cluster.
+Export the specified cluster's database audit logs using the specified integration configuration.
 
 | Flag | Description |
 | :--- | :--- |
 | --cluster-name | Required. Name of the cluster. |
+| --integration-name | Required. The name of the integration configuration you are using to export the logs to. |
 | --statement-classes | Required. The YSQL statements to log, provided as key-value pairs. <br>Arguments:<ul><li>statement_classes=READ, WRITE, or MISC</li></ul> |
-| --telemetry-provider-id | Required. The ID of the provider you are exporting the logs to. |
 | --ysql-config | Required. The pgaudit options, provided as key-value pairs.<br>Arguments:<ul><li>log_catalog=BOOLEAN</li><li>log_level=LOG_LEVEL</li><li>log_client=BOOLEAN</li><li>log_parameter=BOOLEAN</li><li>log_relation=BOOLEAN</li><li>log_statement_once=BOOLEAN</li></ul> |
 
 ### list
 
-List the database audit log export configuration for a cluster.
+List the database audit log export settings for a cluster.
 
 | Flag | Description |
 | :--- | :--- |
@@ -77,6 +70,6 @@ Update a database audit log export configuration.
 | :--- | :--- |
 | --cluster-name | Required. Name of the cluster. |
 | --export-config-id | Required. The ID of the DB audit export configuration. |
+| --integration-id | Required. The ID of the integration configuration you are using to export the logs. |
 | --statement-classes | Required. The YSQL statements to log, provided as key-value pairs. <br>Arguments:<ul><li>statement_classes=READ, WRITE, or MISC</li></ul> |
-| --telemetry-provider-id | Required. The ID of the provider you are exporting the logs to. |
 | --ysql-config | Required. The pgaudit options, provided as key-value pairs.<br>Arguments:<ul><li>log_catalog=BOOLEAN</li><li>log_level=LOG_LEVEL</li><li>log_client=BOOLEAN</li><li>log_parameter=BOOLEAN</li><li>log_relation=BOOLEAN</li><li>log_statement_once=BOOLEAN</li></ul> |
