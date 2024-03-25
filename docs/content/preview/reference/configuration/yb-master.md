@@ -788,7 +788,7 @@ the same database as that of a DDL statement. It is recommended to keep the defa
 
 If you encounter any issues caused by per database catalog version mode, you can disable per database catalog version mode using the following steps:
 
-1. Shutdown the cluster.
+1. Shut down the cluster.
 
 1. Start the cluster with `--ysql_enable_db_catalog_version_mode=false`.
 
@@ -799,7 +799,7 @@ If you encounter any issues caused by per database catalog version mode, you can
     SELECT yb_fix_catalog_version_table(false);
     ```
 
-To re-enable the per database catalog version mode, using the following steps:
+To re-enable the per database catalog version mode, use the following steps:
 
 1. Execute the following YSQL statements:
 
@@ -808,7 +808,7 @@ To re-enable the per database catalog version mode, using the following steps:
     SELECT yb_fix_catalog_version_table(true);
     ```
 
-1. Shutdown the cluster.
+1. Shut down the cluster.
 1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
 
 ##### enable_heartbeat_pg_catalog_versions_cache
