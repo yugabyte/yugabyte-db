@@ -2649,17 +2649,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           .setSubTaskGroupType(subGroupType);
     }
     if (!skipCheckNodesAreSafeToTakeDown) {
-      List<String> masterIps = new ArrayList<>();
-      List<String> tserverIps = new ArrayList<>();
+      List<NodeDetails> masters = new ArrayList<>();
+      List<NodeDetails> tservers = new ArrayList<>();
       for (ServerType processType : processTypes) {
         if (processType == ServerType.TSERVER) {
-          tserverIps.add(node.cloudInfo.private_ip);
+          tservers.add(node);
         }
         if (processType == ServerType.MASTER) {
-          masterIps.add(node.cloudInfo.private_ip);
+          masters.add(node);
         }
       }
-      createCheckNodesAreSafeToTakeDownTask(masterIps, tserverIps);
+      createCheckNodesAreSafeToTakeDownTask(masters, tservers, targetSoftwareVersion);
     }
   }
 
@@ -2794,8 +2794,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void createCheckNodesAreSafeToTakeDownTask(
-      List<String> masterIps, List<String> tserverIps) {
-    if (CollectionUtils.isEmpty(masterIps) && CollectionUtils.isEmpty(tserverIps)) {
+      List<NodeDetails> masters, List<NodeDetails> tservers, String targetSoftwareVersion) {
+    if (CollectionUtils.isEmpty(masters) && CollectionUtils.isEmpty(tservers)) {
       return;
     }
     if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.useNodesAreSafeToTakeDown)) {
@@ -2803,8 +2803,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
       CheckNodesAreSafeToTakeDown.Params params = new CheckNodesAreSafeToTakeDown.Params();
       params.setUniverseUUID(taskParams().getUniverseUUID());
-      params.masterIps = new ArrayList<>(masterIps);
-      params.tserverIps = new ArrayList<>(tserverIps);
+      params.masters = new ArrayList<>(masters);
+      params.tservers = new ArrayList<>(tservers);
+      params.targetSoftwareVersion = targetSoftwareVersion;
 
       CheckNodesAreSafeToTakeDown checkNodesAreSafeToTakeDown =
           createTask(CheckNodesAreSafeToTakeDown.class);
