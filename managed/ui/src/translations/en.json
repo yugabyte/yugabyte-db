@@ -1770,7 +1770,9 @@
           "AwaitingReplicas": "Awaiting Connection to Replicas",
           "Operational": "Operational",
           "Error": "Error",
-          "Warning": "Warning"
+          "Warning": "Warning",
+          "StandbyConnected": "Standby Connected",
+          "StandbyDisconnected": "Standby Disconnected"
         },
         "instanceState": {
           "Awaiting Connection to Replicas": "Awaiting Connection to Replicas",

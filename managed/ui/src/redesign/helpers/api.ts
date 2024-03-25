@@ -253,6 +253,10 @@ export interface CreateHaConfigRequest {
  * */
 export type EditHaConfigRequest = CreateHaConfigRequest;
 
+export interface PromoteHaInstanceRequest {
+  backup_file: string;
+}
+
 class ApiService {
   private cancellers: Record<string, Canceler> = {};
 
@@ -615,11 +619,11 @@ class ApiService {
   promoteHAInstance = (
     haConfigUuid: string,
     instanceId: string,
-    backupFile: string
+    isForcePromote: boolean,
+    promoteHaInstanceRequest: PromoteHaInstanceRequest
   ): Promise<void> => {
     const requestUrl = `${ROOT_URL}/settings/ha/config/${haConfigUuid}/instance/${instanceId}/promote`;
-    const payload = { backup_file: backupFile };
-    return axios.post(requestUrl, payload);
+    return axios.post(requestUrl, promoteHaInstanceRequest, { params: { isForcePromote } });
   };
 
   getHABackups = (haConfigUuid: string): Promise<string[]> => {
