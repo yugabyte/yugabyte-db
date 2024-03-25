@@ -972,7 +972,7 @@
           "error": {
             "failedToFetchIsBootstrapRequired": {
               "title": "Table full copy verification failed.",
-              "body": "An error occured while verifying whether the selected tables require fully copying."
+              "body": "An error occured while verifying whether the selected tables require a full copy."
             },
             "validationMinimumTableUuids": {
               "title": "No tables selected.",
