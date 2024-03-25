@@ -1,7 +1,7 @@
 ---
 title: Delphix
 linkTitle: Delphix
-description: Use Delphix to back up and restore your YugabyteDB database.
+description: Use Delphix to virtualize your YugabyteDB database.
 menu:
   preview_integrations:
     identifier: Delphix
@@ -12,6 +12,14 @@ type: docs
 
 Delphix is a data operations company that enables organizations to modernize their data infrastructure by providing software solutions for data management and delivery. Some of its key features include data virtualization, data masking, data replication, and data management across on-premises, cloud, and hybrid environments.
 
-- Data Virtualization: Delphix can virtualize YugabyteDB databases by ingesting its data to the Delphix platform, and create lightweight copies of YugabyteDB using sensitive data masking techniques. The resulting virtual copies can then be used for different use cases such as dvelopment, testing, analytics, reporting, and so on.
+Delphix offers the following key capabilities as part of its integration with YugabyteDB:
 
--
+- Select Connector for continuous data (Data Virtualization) : Delphix can virtualize YugabyteDB databases by ingesting data to the Delphix platform, and create lightweight copies of YugabyteDB that can be provisioned quickly.
+
+- Select Connector for continuous compliance (Data Masking) : Delphix provides data masking capabilities for YugabyteDB to protect sensitive information in the database, and also comply with data privacy regulations.
+
+The resulting virtual copies can then be used for different use cases such as development, testing, analytics, reporting, and so on.
+
+## Deploy
+
+-- TO DO --
