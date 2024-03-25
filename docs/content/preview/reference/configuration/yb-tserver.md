@@ -1299,9 +1299,8 @@ Default: `true`
 
 {{< note title="Important" >}}
 
-Previously, after a DDL statement is executed, if the DDL statement increments the catalog
-version, then all the existing connections need to refresh catalog caches before
-they execute the next statement. When per database catalog version mode is
+In earlier releases, after a DDL statement is executed, if the DDL statement increments the catalog version, then all the existing connections need to refresh catalog caches before
+they execute the next statement. However, when per database catalog version mode is
 enabled, multiple DDL statements can be concurrently executed if each DDL only
 affects its current database and is executed in a separate database. Existing
 connections only need to refresh their catalog caches if they are connected to
