@@ -199,7 +199,7 @@
 [[main]]
   name = "Tech Advisories"
   weight = 5
-  identifier = "tech-advisories"
+  identifier = "tech-advisories-menu"
   parent = "releases"
   url = "/preview/releases/techadvisories/"
   [main.params]
