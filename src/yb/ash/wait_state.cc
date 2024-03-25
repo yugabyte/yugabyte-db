@@ -302,6 +302,107 @@ std::vector<yb::ash::WaitStateInfoPtr> WaitStateTracker::GetWaitStates() const {
   return {entries_.begin(), entries_.end()};
 }
 
+WaitStateType GetWaitStateType(WaitStateCode code) {
+  switch (code) {
+    case WaitStateCode::kUnused:
+    case WaitStateCode::kYSQLReserved:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kCatalogRead:
+    case WaitStateCode::kIndexRead:
+    case WaitStateCode::kStorageRead:
+    case WaitStateCode::kStorageFlush:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kOnCpu_Active:
+    case WaitStateCode::kOnCpu_Passive:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kIdle:
+    case WaitStateCode::kRpc_Done:
+    case WaitStateCode::kRpcs_WaitOnMutexInShutdown:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRetryableRequests_SaveToDisk:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kMVCC_WaitForSafeTime:
+    case WaitStateCode::kLockedBatchEntry_Lock:
+    case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kCreatingNewTablet:
+    case WaitStateCode::kSaveRaftGroupMetadataToDisk:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kTransactionStatusCache_DoGetCommitData:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kWriteSysCatalogSnapshotToDisk:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kConflictResolution_ResolveConficts:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRaft_WaitingForReplication:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kRaft_ApplyingEdits:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kWAL_Append:
+    case WaitStateCode::kWAL_Sync:
+    case WaitStateCode::kConsensusMeta_Flush:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kReplicaState_TakeUpdateLock:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRocksDB_ReadBlockFromFile:
+    case WaitStateCode::kRocksDB_OpenFile:
+    case WaitStateCode::kRocksDB_WriteToFile:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kRocksDB_Flush:
+    case WaitStateCode::kRocksDB_Compaction:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kRocksDB_PriorityThreadPoolTaskPaused:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRocksDB_CloseFile:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kRocksDB_RateLimiter:
+    case WaitStateCode::kRocksDB_WaitForSubcompaction:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRocksDB_NewIterator:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kYCQL_Parse:
+    case WaitStateCode::kYCQL_Read:
+    case WaitStateCode::kYCQL_Write:
+    case WaitStateCode::kYCQL_Analyze:
+    case WaitStateCode::kYCQL_Execute:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kYBClient_WaitingOnDocDB:
+    case WaitStateCode::kYBClient_LookingUpTablet:
+      return WaitStateType::kNetwork;
+  }
+  FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
+}
+
 namespace {
 
 WaitStateTracker flush_and_compaction_wait_states_tracker;
