@@ -1067,3 +1067,96 @@ ConnectionStatsItem:
     - avg_wait_time_ns
     - qps
     - tps
+PITRSchedule:
+  title: List of PITR Schedules in the cluster
+  description: Details of a Point-in-Time Recovery (PITR) schedule
+  type: object
+  properties:
+    id:
+      type: integer
+    databaseKeyspace:
+      type: string
+    interval:
+      type: string
+    retention:
+      type: string
+    earliestRecoverableTime:
+      type: string
+  required:
+    - id
+    - databaseKeyspace
+    - interval
+    - retention
+    - earliestRecoverableTime
+BackupDetails:
+  title: Get Backup Details
+  description: Details of backup enabled on databases in YugabyteDB cluster
+  type: object
+  properties:
+    ybc_task_id:
+      type: string
+    tserver_ip:
+      type: string
+    user_operation:
+      type: string
+    ybdb_api:
+      type: string
+    database_keyspace:
+      type: string
+    task_start_time:
+      type: string
+    task_status:
+      type: string
+    time_taken:
+      type: string
+    bytes_transferred:
+      type: string
+    actual_size:
+      type: string
+  required:
+    - ybc_task_id
+    - tserver_ip
+    - user_operation
+    - ybdb_api
+    - database_keyspace
+    - task_start_time
+    - task_status
+    - time_taken
+    - bytes_transferred
+    - actual_size
+RestoreDetails:
+  title: Get Restore Details
+  description: Details of databases in YugabyteDB cluster on which restore operation in run
+  type: object
+  properties:
+    ybc_task_id:
+      type: string
+    tserver_ip:
+      type: string
+    user_operation:
+      type: string
+    ybdb_api:
+      type: string
+    database_keyspace:
+      type: string
+    task_start_time:
+      type: string
+    task_status:
+      type: string
+    time_taken:
+      type: string
+    bytes_transferred:
+      type: string
+    actual_size:
+      type: string
+  required:
+    - ybc_task_id
+    - tserver_ip
+    - user_operation
+    - ybdb_api
+    - database_keyspace
+    - task_start_time
+    - task_status
+    - time_taken
+    - bytes_transferred
+    - actual_size

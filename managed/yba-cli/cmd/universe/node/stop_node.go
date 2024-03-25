@@ -20,7 +20,7 @@ var stopNodeCmd = &cobra.Command{
 	Long: "Stop a node instance in YugabyteDB Anywhere universe.\n" +
 		"Stop the server processes running on the node.",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeName, err := cmd.Flags().GetString("universe-name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}

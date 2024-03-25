@@ -52,6 +52,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_info.h"
+#include "yb/client/xcluster_client.h"
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/json_util.h"
@@ -71,35 +72,36 @@
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_test.proxy.h"
-#include "yb/master/master_defaults.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/master_util.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/encryption/encryption_util.h"
 
-#include "yb/util/debug-util.h"
 #include "yb/util/format.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/tostring.h"
 
 DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
@@ -613,9 +615,9 @@ Status ClusterAdminClient::Init() {
   if (!FLAGS_certs_dir_name.empty()) {
     LOG(INFO) << "Built secure client using certs dir " << FLAGS_certs_dir_name;
     const auto& cert_name = FLAGS_client_node_name;
-    secure_context_ = VERIFY_RESULT(server::CreateSecureContext(
-        FLAGS_certs_dir_name, server::UseClientCerts(!cert_name.empty()), cert_name));
-    server::ApplySecureContext(secure_context_.get(), &messenger_builder);
+    secure_context_ = VERIFY_RESULT(rpc::CreateSecureContext(
+        FLAGS_certs_dir_name, rpc::UseClientCerts(!cert_name.empty()), cert_name));
+    rpc::ApplySecureContext(secure_context_.get(), &messenger_builder);
   }
 
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
@@ -2350,7 +2352,7 @@ Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers,
 
 Result<const master::NamespaceIdentifierPB&> ClusterAdminClient::GetNamespaceInfo(
     YQLDatabase db_type, const std::string& namespace_name) {
-  LOG(INFO) << Format(
+  VLOG(1) << Format(
       "Resolving namespace id for '$0' of type '$1'", namespace_name, DatabasePrefix(db_type));
   for (const auto& item : VERIFY_RESULT_REF(GetNamespaceMap())) {
     const auto& namespace_info = item.second;
@@ -2866,23 +2868,26 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
   return document;
 }
 
-Result<rapidjson::Document> ClusterAdminClient::CloneFromSnapshotSchedule(
-    const SnapshotScheduleId& schedule_id, const string& target_namespace_name,
+Result<rapidjson::Document> ClusterAdminClient::CloneNamespace(
+    const TypedNamespaceName& source_namespace, const string& target_namespace_name,
     HybridTime restore_at) {
   auto deadline = CoarseMonoClock::now() + timeout_;
 
   RpcController rpc;
   rpc.set_deadline(deadline);
-  master::CloneFromSnapshotScheduleRequestPB req;
-  master::CloneFromSnapshotScheduleResponsePB resp;
-  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  master::CloneNamespaceRequestPB req;
+  master::CloneNamespaceResponsePB resp;
+  master::NamespaceIdentifierPB source_namespace_identifier;
+  source_namespace_identifier.set_name(source_namespace.name);
+  source_namespace_identifier.set_database_type(source_namespace.db_type);
+  *req.mutable_source_namespace() = source_namespace_identifier;
   req.set_target_namespace_name(target_namespace_name);
   req.set_restore_ht(restore_at.ToUint64());
 
-  Status s = master_backup_proxy_->CloneFromSnapshotSchedule(req, &resp, &rpc);
+  Status s = master_backup_proxy_->CloneNamespace(req, &resp, &rpc);
   if (!s.ok()) {
     RETURN_NOT_OK_PREPEND(
-        s, Format("Failed to clone namespace from schedule: $0", schedule_id.ToString()));
+        s, Format("Failed to clone namespace $0", source_namespace.name));
   }
 
   if (resp.has_error()) {
@@ -4539,6 +4544,59 @@ Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime(bool include
   }
 
   return document;
+}
+
+Result<std::vector<NamespaceId>> ClusterAdminClient::CheckpointXClusterReplication(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<NamespaceName> databases) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
+
+  return XClusterClient().XClusterCreateOutboundReplicationGroup(replication_group_id, databases);
+}
+
+Result<bool> ClusterAdminClient::IsXClusterBootstrapRequired(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId namespace_id) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
+
+  auto deadline = CoarseMonoClock::now() + timeout_;
+  auto promise = std::promise<Result<bool>>();
+  RETURN_NOT_OK(XClusterClient().IsXClusterBootstrapRequired(
+      deadline, replication_group_id, namespace_id,
+      [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
+  return promise.get_future().get();
+}
+
+Status ClusterAdminClient::CreateXClusterReplication(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::string& target_master_addresses) {
+  return XClusterClient().CreateXClusterReplication(replication_group_id, target_master_addresses);
+}
+
+Status ClusterAdminClient::WaitForCreateXClusterReplication(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::string& target_master_addresses) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
+
+  for (;;) {
+    auto result = XClusterClient().IsCreateXClusterReplicationDone(
+        replication_group_id, target_master_addresses);
+    if (result && result->done()) {
+      return result->status();
+    }
+
+    std::this_thread::sleep_for(100ms);
+  }
+}
+
+Status ClusterAdminClient::DeleteXClusterOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
+
+  return XClusterClient().XClusterDeleteOutboundReplicationGroup(replication_group_id);
+}
+
+client::XClusterClient ClusterAdminClient::XClusterClient() {
+  return client::XClusterClient(*yb_client_);
 }
 
 string RightPadToUuidWidth(const string &s) {

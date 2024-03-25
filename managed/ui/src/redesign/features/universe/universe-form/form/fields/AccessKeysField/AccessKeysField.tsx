@@ -29,7 +29,6 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
-  const fieldVal = useWatch({ name: ACCESS_KEY_FIELD });
 
   //all access keys
   const allAccessKeys = useSelector((state: any) => state.cloud.accessKeys);

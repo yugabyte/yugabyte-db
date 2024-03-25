@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
@@ -224,9 +225,11 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
@@ -318,6 +321,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CertsRotate);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
+  // This mapping blocks/allows actions on the UI done by a mapping defined in
+  // UNIVERSE_ACTION_TO_FROZEN_TASK_MAP in "./managed/ui/src/redesign/helpers/constants.ts".
   private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
       ImmutableSet.of(
           TaskType.CreateBackup,
@@ -331,10 +336,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DeleteXClusterConfig,
           TaskType.RestartXClusterConfig,
           TaskType.SyncXClusterConfig,
+          TaskType.CreateDrConfig,
+          TaskType.SetTablesDrConfig,
+          TaskType.RestartDrConfig,
+          TaskType.EditDrConfig,
+          TaskType.SwitchoverDrConfig,
+          TaskType.FailoverDrConfig,
+          TaskType.SyncDrConfig,
+          TaskType.DeleteDrConfig,
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse,
           TaskType.ReinstallNodeAgent,
-          TaskType.ReadOnlyClusterDelete);
+          TaskType.ReadOnlyClusterDelete,
+          TaskType.CreateSupportBundle);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(TaskType.GFlagsUpgrade, TaskType.RestartUniverse, TaskType.VMImageUpgrade);
@@ -389,14 +403,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private final AtomicReference<ExecutionContext> executionContext = new AtomicReference<>();
 
   public class ExecutionContext {
+    private final UUID universeUuid;
     private final boolean blacklistLeaders;
     private final int leaderBacklistWaitTimeMs;
+    private final Duration waitForServerReadyTimeout;
     private final boolean followerLagCheckEnabled;
     private boolean loadBalancerOff = false;
     private final Set<UUID> lockedUniversesUuid = ConcurrentHashMap.newKeySet();
+    private final AtomicReference<Set<NodeDetails>> masterNodes = new AtomicReference<>();
 
     ExecutionContext() {
-      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      this.universeUuid = taskParams().getUniverseUUID();
+      Universe universe = Universe.getOrBadRequest(this.universeUuid);
       blacklistLeaders =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaders);
 
@@ -405,6 +423,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
       followerLagCheckEnabled =
           confGetter.getConfForScope(universe, UniverseConfKeys.followerLagCheckEnabled);
+
+      waitForServerReadyTimeout =
+          confGetter.getConfForScope(universe, UniverseConfKeys.waitForServerReadyTimeout);
     }
 
     public boolean isLoadBalancerOff() {
@@ -419,6 +440,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return followerLagCheckEnabled;
     }
 
+    public Duration getWaitForServerReadyTimeout() {
+      return waitForServerReadyTimeout;
+    }
+
     public void lockUniverse(UUID universeUUID) {
       lockedUniversesUuid.add(universeUUID);
     }
@@ -429,6 +454,49 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     public void unlockUniverse(UUID universeUUID) {
       lockedUniversesUuid.remove(universeUUID);
+    }
+
+    public void setMasterNodes(Set<NodeDetails> nodes) {
+      masterNodes.set(ImmutableSet.copyOf(Objects.requireNonNull(nodes)));
+    }
+
+    // A supplier is evaluated late when the subtask is run. Initially, when a subtask is created
+    // the node may not have IP.
+    public Supplier<String> getMasterAddrsSupplier() {
+      // Take the current set of the masters when this is invoked.
+      final Set<NodeDetails> nodes = masterNodes.get();
+      if (CollectionUtils.isEmpty(nodes)) {
+        return null;
+      }
+      return () -> {
+        // Refresh the nodes from the DB to get IPs.
+        Universe universe = Universe.getOrBadRequest(universeUuid);
+        return universe.getHostPortsString(
+            universe.getNodes().stream().filter(n -> nodes.contains(n)).collect(Collectors.toSet()),
+            ServerType.MASTER,
+            PortType.RPC);
+      };
+    }
+
+    public void removeMasterNode(NodeDetails node) {
+      masterNodes.getAndUpdate(
+          v -> {
+            if (v != null) {
+              Set<NodeDetails> nodes = new HashSet<>(v);
+              nodes.remove(node);
+              return Collections.unmodifiableSet(nodes);
+            }
+            return null;
+          });
+    }
+
+    public void addMasterNode(NodeDetails node) {
+      masterNodes.getAndUpdate(
+          v -> {
+            Set<NodeDetails> nodes = v == null ? new HashSet<>() : new HashSet<>(v);
+            nodes.add(node);
+            return Collections.unmodifiableSet(nodes);
+          });
     }
   }
 
@@ -444,35 +512,42 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         universe -> {
           if (!SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(taskType)
               && confGetter.getConfForScope(universe, UniverseConfKeys.validateLocalRelease)) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            String ybSoftwareVersion =
-                universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion;
-            ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
-            if (release == null) {
-              String msg =
-                  String.format(
-                      "Universe %s does not have valid metadata.", universe.getUniverseUUID());
-              log.error(msg);
-              throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
-            }
-            if (release.hasLocalRelease()) {
-              Set<String> localFilePaths = release.getLocalReleasePathStrings();
-              localFilePaths.forEach(
-                  path -> {
-                    Path localPath = Paths.get(path);
-                    if (!Files.exists(localPath)) {
-                      String msg =
-                          String.format(
-                              "Could not find path %s on system for YB software version %s",
-                              localPath, ybSoftwareVersion);
-                      log.error(msg);
-                      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
-                    }
-                  });
+            if (!validateLocalFilepath(
+                universe,
+                releaseManager.getReleaseByVersion(
+                    universe
+                        .getUniverseDetails()
+                        .getPrimaryCluster()
+                        .userIntent
+                        .ybSoftwareVersion))) {
+              throw new PlatformServiceException(
+                  INTERNAL_SERVER_ERROR, "Error validating local release for universe.");
             }
           }
         };
     return releaseValidator;
+  }
+
+  public static boolean validateLocalFilepath(Universe universe, ReleaseContainer release) {
+    if (release == null) {
+      String msg =
+          String.format("Universe %s does not have valid metadata.", universe.getUniverseUUID());
+      log.error(msg);
+      return false;
+    }
+    Set<String> localFilePaths = release.getLocalReleasePathStrings();
+    for (String path : localFilePaths) {
+      Path localPath = Paths.get(path);
+      if (!Files.exists(localPath)) {
+        String msg =
+            String.format(
+                "Could not find path %s on system for YB software version %s",
+                localPath, release.getVersion());
+        log.error(msg);
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -615,6 +690,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected UserIntent getUserIntent() {
     return getUniverse().getUniverseDetails().getPrimaryCluster().userIntent;
+  }
+
+  protected void putDateIntoCache(String key) {
+    getTaskCache().put(key, Json.toJson(new Date()));
+  }
+
+  protected Date getDateFromCache(String key) {
+    JsonNode jsonNode = getTaskCache().get(key);
+    if (jsonNode != null) {
+      return Json.fromJson(jsonNode, Date.class);
+    }
+    return null;
   }
 
   private UniverseUpdater getLockingUniverseUpdater(UniverseUpdaterConfig updaterConfig) {
@@ -1609,7 +1696,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             com.yugabyte.yw.commissioner.Common.CloudType.onprem.name())) {
           try {
             NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
-            providerNode.clearNodeDetails();
+            providerNode.setToFailedCleanup(universe, node);
           } catch (Exception ex) {
             log.warn("On-prem node {} doesn't have a linked instance ", node.nodeName);
           }
@@ -1697,8 +1784,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected Set<NodeDetails> filterUniverseNodes(
       Universe universe, Collection<NodeDetails> nodes, Predicate<NodeDetails> predicate) {
     if (universe != null) {
+      // Node name can be null if the submission of the tasks itself fails.
+      // Any subsequent task like destroy which calls this method will fail.
       Map<String, NodeDetails> universeNodeDetailsMap =
           universe.getNodes().stream()
+              .filter(n -> StringUtils.isNotBlank(n.getNodeName()))
               .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
       return nodes.stream()
           .map(n -> universeNodeDetailsMap.get(n.getNodeName()))
@@ -1744,7 +1834,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   StringUtils.isNotBlank(providerDetails.sshUser)
                       ? providerDetails.sshUser
                       : cloudType.getSshUser();
-              params.sshPort = providerDetails.sshPort.toString();
               UniverseDefinitionTaskParams.Cluster cluster =
                   universe.getUniverseDetails().getClusterByUuid(n.placementUuid);
               UUID imageBundleUUID =
@@ -1756,7 +1845,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         imageBundleUUID,
                         n.cloudInfo.region,
                         cluster.userIntent.providerType.toString());
-                params.sshPort = toOverwriteNodeProperties.getSshPort().toString();
                 params.sshUser = toOverwriteNodeProperties.getSshUser();
               }
 
@@ -1770,9 +1858,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               params.reinstall = reinstall;
               if (StringUtils.isNotEmpty(n.sshUserOverride)) {
                 params.sshUser = n.sshUserOverride;
-              }
-              if (n.sshPortOverride != null) {
-                params.sshPort = n.sshPortOverride.toString();
               }
               InstallNodeAgent task = createTask(InstallNodeAgent.class);
               task.initialize(params);
@@ -2010,17 +2095,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param node node for which the check needs to be executed.
    * @param serverType server process type on the node to the check.
-   * @param sleepTimeMs default sleep time if server does not support check for readiness.
    * @return SubTaskGroup
    */
-  public SubTaskGroup createWaitForServerReady(
-      NodeDetails node, ServerType serverType, int sleepTimeMs) {
+  public SubTaskGroup createWaitForServerReady(NodeDetails node, ServerType serverType) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForServerReady");
     WaitForServerReady.Params params = new WaitForServerReady.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.nodeName = node.nodeName;
     params.serverType = serverType;
-    params.waitTimeMs = sleepTimeMs;
+    params.waitTimeMs = getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis();
     WaitForServerReady task = createTask(WaitForServerReady.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -2130,6 +2213,42 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               "Error when fetching listMasters rpc for node %s - %s",
               node.nodeName, e.getMessage());
       throw new RuntimeException(msg, e);
+    }
+  }
+
+  /**
+   * Gets the current masters reported by the DB for the given universe.
+   *
+   * @param universe the given universe.
+   * @return Set of master nodes.
+   */
+  protected Set<NodeDetails> getRemoteMasterNodes(Universe universe) {
+    String masterAddresses = universe.getMasterAddresses();
+    try (YBClient client =
+        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+      return client.listMasters().getMasters().stream()
+          .map(
+              serverInfo -> {
+                // Port in ServerInfo is set to 0.
+                NodeDetails node = universe.getNodeByPrivateIP(serverInfo.getHost());
+                if (node == null || !node.isMaster) {
+                  String errMsg =
+                      String.format(
+                          "Master %s on DB is not in YBA masters %s",
+                          serverInfo.getHost(), masterAddresses);
+                  log.error(errMsg);
+                  throw new IllegalStateException(errMsg);
+                }
+                return node;
+              })
+          .collect(Collectors.toSet());
+    } catch (Exception e) {
+      String msg =
+          String.format(
+              "Error while getting masters from DB. Current YBA masters %s - %s",
+              masterAddresses, e.getMessage());
+      log.error(msg, e);
+      throw new RuntimeException(msg);
     }
   }
 
@@ -2558,9 +2677,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Add or Remove Master process on the node
+   * Add or Remove Master process on the node.
    *
-   * @param node the node to add/remove master process on
+   * @param node the node to add/remove master process on.
    * @param isAdd whether Master is being added or removed.
    * @param subTask subtask type
    */
@@ -2574,7 +2693,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  public void createChangeConfigTask(
+  private void createChangeConfigTask(
       NodeDetails node, boolean isAdd, UserTaskDetails.SubTaskGroupType subTask) {
     // Create a new task list for the change config so that it happens one by one.
     String subtaskGroupName =
@@ -3874,8 +3993,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         createChangeConfigTasks(node, true /* isAdd */, subGroupType);
       }
       if (sleepTimeFunction != null) {
-        createWaitForServerReady(node, processType, sleepTimeFunction.apply(processType))
-            .setSubTaskGroupType(subGroupType);
+        createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
       }
       if (wasStopped && processType == ServerType.TSERVER) {
         removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
@@ -4130,25 +4248,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
       Collection<NodeDetails> nodes, ServerType serverType) {
-    return createSetFlagInMemoryTasks(nodes, serverType, true, (node) -> null, true);
+    return createSetFlagInMemoryTasks(
+        nodes,
+        serverType,
+        (node, params) -> {
+          params.force = true;
+          params.updateMasterAddrs = true;
+          params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
+        });
   }
 
   // Subtask to update gflags in memory.
   public SubTaskGroup createSetFlagInMemoryTasks(
       Collection<NodeDetails> nodes,
       ServerType serverType,
-      boolean force,
-      Map<String, String> gflags) {
-    return createSetFlagInMemoryTasks(nodes, serverType, force, (n) -> gflags, false);
-  }
-
-  // Subtask to update gflags in memory.
-  public SubTaskGroup createSetFlagInMemoryTasks(
-      Collection<NodeDetails> nodes,
-      ServerType serverType,
-      boolean force,
-      Function<NodeDetails, Map<String, String>> gflagsGetter,
-      boolean updateMasterAddrs) {
+      BiConsumer<NodeDetails, SetFlagInMemory.Params> paramCustomizer) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InMemoryGFlagUpdate");
     for (NodeDetails node : nodes) {
       // Create the task params.
@@ -4159,13 +4273,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.setUniverseUUID(taskParams().getUniverseUUID());
       // The server type for the flag.
       params.serverType = serverType;
-      // If the flags need to be force updated.
-      params.force = force;
-      // The flags to update.
-      params.gflags = gflagsGetter.apply(node);
-      // If only master addresses need to be updated.
-      params.updateMasterAddrs = updateMasterAddrs;
-
+      paramCustomizer.accept(node, params);
       // Create the task.
       SetFlagInMemory setFlag = createTask(SetFlagInMemory.class);
       setFlag.initialize(params);

@@ -13,7 +13,7 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { Trans, useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { find } from 'lodash';
+import { find, isEmpty } from 'lodash';
 import * as yup from 'yup';
 import { useMutation } from 'react-query';
 import { Grid, MenuItem, Typography, makeStyles } from '@material-ui/core';
@@ -77,7 +77,12 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
 
   const allProviders = useSelector((data: any) => data.cloud.providers) ?? [];
 
-  const { control, handleSubmit, setError } = useForm<UpgradeLinuxVersionModalForm>({
+  const {
+    control,
+    handleSubmit,
+    setError,
+    formState: { errors }
+  } = useForm<UpgradeLinuxVersionModalForm>({
     defaultValues: {
       sleepAfterInSeconds: 180,
       targetVersion: null
@@ -149,9 +154,11 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
       .string()
       .nullable(true)
       .required(t('requiredField', { keyPrefix: 'common' }))
-      .notOneOf([curLinuxImgBundle?.uuid], t('sameVersionErrMsg', { image_name: curLinuxImgBundle?.name }))
+      .notOneOf(
+        [curLinuxImgBundle?.uuid],
+        t('sameVersionErrMsg', { image_name: curLinuxImgBundle?.name })
+      )
   });
-
   return (
     <YBModal
       open={visible}
@@ -166,6 +173,11 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
       overrideHeight={'686px'}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       submitLabel={t('submitLabel')}
+      buttonProps={{
+        primary: {
+          disabled: !isEmpty(errors)
+        }
+      }}
       onSubmit={() => {
         handleSubmit(async (values) => {
           try {
@@ -189,10 +201,10 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
         </Grid>
         <Grid item xs={9} className={classes.versionComp}>
           {curLinuxImgBundle?.name}
-          {curLinuxImgBundle.metadata.type === ImageBundleType.YBA_ACTIVE && (
+          {curLinuxImgBundle?.metadata?.type === ImageBundleType.YBA_ACTIVE && (
             <ImageBundleYBActiveTag />
           )}
-          {curLinuxImgBundle.metadata.type === ImageBundleType.YBA_DEPRECATED && (
+          {curLinuxImgBundle?.metadata?.type === ImageBundleType.YBA_DEPRECATED && (
             <ImageBundleDefaultTag text={t('retired')} icon={<></>} tooltip={t('retiredTooltip')} />
           )}
         </Grid>
@@ -219,7 +231,11 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
             fullWidth
           >
             {currProvider.imageBundles
-              .filter((img: ImageBundle) => img.details.arch === curLinuxImgBundle.details.arch)
+              .filter(
+                (img: ImageBundle) =>
+                  img.details.arch === curLinuxImgBundle.details.arch &&
+                  img?.uuid !== curLinuxImgBundle?.uuid
+              )
               .map((img: ImageBundle) => (
                 <MenuItem key={img.uuid} value={img.uuid} className={classes.versionComp}>
                   {img.name}

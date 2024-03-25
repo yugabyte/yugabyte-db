@@ -61,12 +61,12 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 	if len(host) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize(
-				"No valid Host detected. Run `yba auth` to authenticate with YugabyteDB Anywhere.",
+				"No valid Host detected. "+
+					"Run \"yba auth\" or \"yba login\" to authenticate with YugabyteDB Anywhere.\n",
 				formatter.RedColor))
 	}
 	url, err := ParseURL(host)
 	if err != nil {
-		logrus.Error(err)
 		return nil, err
 	}
 
@@ -75,8 +75,8 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 	if len(apiToken) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize(
-				"No valid API token detected. Run `yba auth` to "+
-					"authenticate with YugabyteDB Anywhere or run the command with -a flag.",
+				"No valid API token detected. Run \"yba auth\" or \"yba login\" to "+
+					"authenticate with YugabyteDB Anywhere or run the command with -a flag.\n",
 				formatter.RedColor))
 	}
 
@@ -112,10 +112,27 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 	}, nil
 }
 
+// NewAuthAPIClientAndCustomer before every command to access YBA host
+func NewAuthAPIClientAndCustomer() *AuthAPIClient {
+	authAPI, err := NewAuthAPIClient()
+	if err != nil {
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	err = authAPI.GetCustomerUUID()
+	if err != nil {
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	return authAPI
+}
+
 // ParseURL returns a URL if string is valid, or returns error
 func ParseURL(host string) (*url.URL, error) {
 	if strings.HasPrefix(strings.ToLower(host), "http://") {
-		logrus.Warnf("You are using insecure api endpoint %s\n", host)
+		warning := formatter.Colorize(
+			fmt.Sprintf("You are using insecure api endpoint %s\n", host),
+			formatter.YellowColor,
+		)
+		logrus.Warnf(warning)
 	} else if !strings.HasPrefix(strings.ToLower(host), "https://") {
 		host = "https://" + host
 	}

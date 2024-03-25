@@ -31,6 +31,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
@@ -42,6 +43,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 
@@ -360,12 +362,12 @@ class CloneFromScheduleTest : public SnapshotScheduleTest {
   }
 
  protected:
-  Status CloneAndWait(const master::CloneFromSnapshotScheduleRequestPB& clone_req) {
+  Status CloneAndWait(const master::CloneNamespaceRequestPB& clone_req) {
     rpc::RpcController controller;
     controller.set_timeout(60s);
-    master::CloneFromSnapshotScheduleResponsePB clone_resp;
+    master::CloneNamespaceResponsePB clone_resp;
     auto backup_proxy = VERIFY_RESULT(snapshot_util_->MakeBackupServiceProxy());
-    RETURN_NOT_OK(backup_proxy.CloneFromSnapshotSchedule(clone_req, &clone_resp, &controller));
+    RETURN_NOT_OK(backup_proxy.CloneNamespace(clone_req, &clone_resp, &controller));
     if (clone_resp.has_error()) {
       return StatusFromPB(clone_resp.error().status());
     }
@@ -402,8 +404,11 @@ TEST_F(CloneFromScheduleTest, Clone) {
   auto row_count2 = CountTableRows(table_);
   auto ht2 = cluster_->mini_master()->master()->clock()->Now();
 
-  master::CloneFromSnapshotScheduleRequestPB req;
-  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  master::CloneNamespaceRequestPB req;
+  master::NamespaceIdentifierPB source_namespace;
+  source_namespace.set_name(kTableName.namespace_name());
+  source_namespace.set_database_type(YQLDatabase::YQL_DATABASE_CQL);
+  *req.mutable_source_namespace() = source_namespace;
   req.set_restore_ht(ht1.ToUint64());
   req.set_target_namespace_name("clone1" /* target_namespace_name */);
   ASSERT_OK(CloneAndWait(req));
@@ -423,6 +428,23 @@ TEST_F(CloneFromScheduleTest, Clone) {
   TableHandle clone2_handle;
   ASSERT_OK(clone2_handle.Open(clone2, client_.get()));
   ASSERT_EQ(CountTableRows(clone2_handle), row_count2);
+}
+
+TEST_F(CloneFromScheduleTest, CloneWithNoSchedule) {
+  // Write one row.
+  ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 0 /* transaction */));
+  auto ht = cluster_->mini_master()->master()->clock()->Now();
+
+  master::CloneNamespaceRequestPB req;
+  master::NamespaceIdentifierPB source_namespace;
+  source_namespace.set_name(kTableName.namespace_name());
+  source_namespace.set_database_type(YQLDatabase::YQL_DATABASE_CQL);
+  *req.mutable_source_namespace() = source_namespace;
+  req.set_restore_ht(ht.ToUint64());
+  req.set_target_namespace_name("clone1" /* target_namespace_name */);
+  auto status = CloneAndWait(req);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Could not find snapshot schedule");
 }
 
 TEST_F(SnapshotScheduleTest, RemoveNewTablets) {

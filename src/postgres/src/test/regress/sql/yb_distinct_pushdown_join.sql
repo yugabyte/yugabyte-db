@@ -1,3 +1,5 @@
+SET yb_explain_hide_non_deterministic_fields = true;
+
 -- Split at 1, ... to ensure that the value r1 = 1 is present in more than one tablet.
 -- See #18101.
 CREATE TABLE t(r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 ASC, r2 ASC, r3 ASC)) SPLIT AT VALUES ((1, 1, 500));

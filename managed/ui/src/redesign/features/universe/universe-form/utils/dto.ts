@@ -844,13 +844,13 @@ export interface ImageBundle {
     regions: {
       [key: string]: {
         ybImage: string;
-        sshUserOverride: string;
-        sshPortOverride: number;
       };
     };
+    sshUser: string;
+    sshPort: number;
   };
   useAsDefault: boolean;
-  metadata: {
+  metadata?: {
     type: ImageBundleType;
     version: string;
   };

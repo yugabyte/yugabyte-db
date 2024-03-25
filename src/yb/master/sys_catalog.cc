@@ -346,7 +346,8 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
       consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
       schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
-      partition_schema, "" /* pg_table_id */);
+      partition_schema, "" /* pg_table_id */,
+      tablet::SkipTableTombstoneCheck::kTrue);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
   fs_manager->SetTabletPathByDataPath(kSysCatalogTabletId, data_root_dir);
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
@@ -444,7 +445,7 @@ void SysCatalogTable::SysCatalogStateChanged(
   }
 
   if (context->reason == StateChangeReason::NEW_LEADER_ELECTED) {
-    auto client_future = master_->async_client_initializer().get_client_future();
+    auto client_future = master_->client_future();
 
     // Check if client was already initialized, otherwise we don't have to refresh master leader,
     // since it will be fetched as part of initialization.
@@ -551,14 +552,10 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   auto tablet_peer = std::make_shared<tablet::TabletPeer>(
-      metadata,
-      local_peer_pb_,
-      scoped_refptr<server::Clock>(master_->clock()),
+      metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()),
-      metric_registry_,
-      nullptr /* tablet_splitter */,
-      master_->async_client_initializer().get_client_future());
+      metric_registry_, nullptr /* tablet_splitter */, master_->client_future());
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
@@ -599,7 +596,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   tablet::TabletInitData tablet_init_data = {
       .metadata = metadata,
-      .client_future = master_->async_client_initializer().get_client_future(),
+      .client_future = master_->client_future(),
       .clock = scoped_refptr<server::Clock>(master_->clock()),
       .parent_mem_tracker = mem_manager_->tablets_overhead_mem_tracker(),
       .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),

@@ -6,8 +6,8 @@ description: Use YugabyteDB Anywhere to create and edit instance tags.
 menu:
   stable_yugabyte-platform:
     identifier: instance-tags
-    parent: manage-deployments
-    weight: 80
+    parent: edit-universe
+    weight: 20
 type: docs
 ---
 

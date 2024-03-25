@@ -720,9 +720,13 @@ public class UniverseSpec {
         String universeVersion =
             this.universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
         if (releaseManager.getReleaseByVersion(universeVersion) == null) {
-          releaseManager.addReleaseWithMetadata(universeVersion, ybReleaseMetadata.getMetadata());
+          if (ybReleaseMetadata.isLegacy()) {
+            releaseManager.addReleaseWithMetadata(universeVersion, ybReleaseMetadata.getMetadata());
+          }
         } else {
-          releaseManager.updateReleaseMetadata(universeVersion, ybReleaseMetadata.getMetadata());
+          if (ybReleaseMetadata.isLegacy()) {
+            releaseManager.updateReleaseMetadata(universeVersion, ybReleaseMetadata.getMetadata());
+          }
         }
       }
 

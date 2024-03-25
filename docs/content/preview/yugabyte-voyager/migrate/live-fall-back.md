@@ -70,6 +70,35 @@ Create a new database user, and assign the necessary user permissions.
   <div id="standalone-oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="standalone-oracle-tab">
   {{% includeMarkdown "./standalone-oracle.md" %}}
 
+1. Create `ybvoyager_metadata` schema or user, and tables for voyager to use during migration as follows:
+
+   ```sql
+   CREATE USER ybvoyager_metadata IDENTIFIED BY "password";
+   GRANT CONNECT, RESOURCE TO ybvoyager_metadata;
+   ALTER USER ybvoyager_metadata QUOTA UNLIMITED ON USERS;
+
+   CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_event_channels_metainfo (
+                migration_uuid VARCHAR2(36),
+                channel_no INT,
+                last_applied_vsn NUMBER(19),
+                num_inserts NUMBER(19),
+                num_updates NUMBER(19),
+                num_deletes NUMBER(19),
+                PRIMARY KEY (migration_uuid, channel_no)
+          );
+
+   CREATE TABLE ybvoyager_metadata.ybvoyager_imported_event_count_by_table (
+                migration_uuid VARCHAR2(36),
+                table_name VARCHAR2(250),
+                channel_no INT,
+                total_events NUMBER(19),
+                num_inserts NUMBER(19),
+                num_updates NUMBER(19),
+                num_deletes NUMBER(19),
+                PRIMARY KEY (migration_uuid, table_name, channel_no)
+          );
+   ```
+
 1. Create a writer role for the source schema for Voyager to be able to write the changes from the target YugabyteDB database to the source database (in case of a fall-back):
 
    ```sql
@@ -105,6 +134,35 @@ Create a new database user, and assign the necessary user permissions.
   </div>
     <div id="rds-oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="rds-oracle-tab">
   {{% includeMarkdown "./rds-oracle.md" %}}
+
+1. Create `ybvoyager_metadata` schema or user, and tables for voyager to use during migration as follows:
+
+   ```sql
+   CREATE USER ybvoyager_metadata IDENTIFIED BY "password";
+   GRANT CONNECT, RESOURCE TO ybvoyager_metadata;
+   ALTER USER ybvoyager_metadata QUOTA UNLIMITED ON USERS;
+
+   CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_event_channels_metainfo (
+                migration_uuid VARCHAR2(36),
+                channel_no INT,
+                last_applied_vsn NUMBER(19),
+                num_inserts NUMBER(19),
+                num_updates NUMBER(19),
+                num_deletes NUMBER(19),
+                PRIMARY KEY (migration_uuid, channel_no)
+          );
+
+   CREATE TABLE ybvoyager_metadata.ybvoyager_imported_event_count_by_table (
+                migration_uuid VARCHAR2(36),
+                table_name VARCHAR2(250),
+                channel_no INT,
+                total_events NUMBER(19),
+                num_inserts NUMBER(19),
+                num_updates NUMBER(19),
+                num_deletes NUMBER(19),
+                PRIMARY KEY (migration_uuid, table_name, channel_no)
+          );
+   ```
 
 1. Create a writer role for the source schema for Voyager to be able to write the changes from the target YugabyteDB database to the source database (in case of a fall-back):
 
@@ -154,6 +212,25 @@ You can use only one of the following arguments to connect to your Oracle instan
 ## Prepare the target database
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
+
+{{<note title="Important">}}
+
+Add the following flags to the cluster before starting migration, and revert them after the migration is complete.
+
+For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0`, set the following flag:
+
+```sh
+ysql_pg_conf_csv = yb_max_query_layer_retries=0
+```
+
+For all the other target YugabyteDB versions, set the following flags:
+
+```sh
+ysql_max_read_restart_attempts = 0
+ysql_max_write_restart_attempts = 0
+```
+
+{{</note>}}
 
 ### Create the target database
 

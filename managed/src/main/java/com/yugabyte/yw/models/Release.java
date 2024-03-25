@@ -19,6 +19,7 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
@@ -55,6 +56,7 @@ public class Release extends Model {
   public enum ReleaseState {
     ACTIVE,
     DISABLED,
+    INCOMPLETE,
     DELETED
   }
 
@@ -74,7 +76,7 @@ public class Release extends Model {
     release.version = version;
     release.releaseType = releaseType;
     release.yb_type = YbType.YBDB;
-    release.state = ReleaseState.ACTIVE;
+    release.state = ReleaseState.INCOMPLETE;
     release.save();
     return release;
   }
@@ -104,7 +106,7 @@ public class Release extends Model {
       }
     }
     release.releaseNotes = reqRelease.release_notes;
-    release.state = ReleaseState.ACTIVE;
+    release.state = ReleaseState.INCOMPLETE;
 
     release.save();
     return release;
@@ -116,6 +118,15 @@ public class Release extends Model {
 
   public static List<Release> getAll() {
     return find.all();
+  }
+
+  public static List<Release> getAllWithArtifactType(
+      ReleaseArtifact.Platform plat, Architecture arch) {
+    List<ReleaseArtifact> artifacts = ReleaseArtifact.getAllPlatformArchitecture(plat, arch);
+    return find.query()
+        .where()
+        .idIn(artifacts.stream().map(a -> a.getReleaseUUID()).toArray())
+        .findList();
   }
 
   public static Release getOrBadRequest(UUID releaseUUID) {
@@ -133,7 +144,24 @@ public class Release extends Model {
   }
 
   public void addArtifact(ReleaseArtifact artifact) {
+    if (ReleaseArtifact.getForReleaseMatchingType(
+            releaseUUID, artifact.getPlatform(), artifact.getArchitecture())
+        != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "artifact matching platform %s and architecture %s already exists",
+              artifact.getPlatform(), artifact.getArchitecture()));
+    }
     artifact.setReleaseUUID(releaseUUID);
+
+    // Move the state from incomplete to active when adding a Linux type. Kubernetes artifacts
+    // are not sufficient to make a release move into the "active" state.
+    if (artifact.getPlatform() == ReleaseArtifact.Platform.LINUX
+        && this.state == ReleaseState.INCOMPLETE) {
+      state = ReleaseState.ACTIVE;
+      save();
+    }
   }
 
   public List<ReleaseArtifact> getArtifacts() {
@@ -142,6 +170,10 @@ public class Release extends Model {
 
   public ReleaseArtifact getArtifactForArchitecture(Architecture arch) {
     return ReleaseArtifact.getForReleaseArchitecture(releaseUUID, arch);
+  }
+
+  public ReleaseArtifact getKubernetesArtifact() {
+    return ReleaseArtifact.getForReleaseKubernetesArtifact(releaseUUID);
   }
 
   public void setReleaseTag(String tag) {
@@ -168,6 +200,12 @@ public class Release extends Model {
   public boolean delete() {
     try (Transaction transaction = DB.beginTransaction()) {
       for (ReleaseArtifact artifact : getArtifacts()) {
+        if (artifact.getPackageFileID() != null) {
+          ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
+          if (!rlf.delete()) {
+            return false;
+          }
+        }
         log.debug("cascading delete to artifact {}", artifact.getArtifactUUID());
         if (!artifact.delete()) {
           return false;
@@ -179,5 +217,10 @@ public class Release extends Model {
       transaction.commit();
     }
     return true;
+  }
+
+  public Set<Universe> getUniverses() {
+    String formattedVersion = this.version;
+    return Universe.universeDetailsIfReleaseExists(formattedVersion);
   }
 }

@@ -511,7 +511,8 @@ public class NodeManagerTest extends FakeDBApplication {
     testData.addAll(getTestData(customer, Common.CloudType.gcp));
     testData.addAll(getTestData(customer, Common.CloudType.onprem));
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
-    ReleaseContainer release = new ReleaseContainer(releaseMetadata, mockCloudUtilFactory);
+    ReleaseContainer release =
+        new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig);
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
     when(mockConfig.getString(NodeManager.BOOT_SCRIPT_PATH)).thenReturn("");
@@ -565,6 +566,8 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.devopsCommandTimeout)))
         .thenReturn(Duration.ofHours(1));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.destroyServerCommandTimeout)))
+        .thenReturn(Duration.ofMinutes(10));
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.acceptableClockSkewWaitEnabled)))
         .thenReturn(true);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew)))

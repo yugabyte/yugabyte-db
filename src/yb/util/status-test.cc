@@ -307,4 +307,31 @@ TEST(StatusTest, StringVectorError) {
   }
 }
 
+#define CAPTURE_STATUS(expr) \
+  []() -> Status { \
+    expr; \
+    return Status::OK(); \
+  }()
+
+TEST(StatusTest, StatusFormat) {
+  auto status = CAPTURE_STATUS(SCHECK_FORMAT(true, NotFound, "TEST $0", 42));
+  ASSERT_OK(status);
+
+  status = CAPTURE_STATUS(SCHECK_FORMAT(false, IllegalState, "TEST $0", 42));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Illegal state");
+  ASSERT_STR_CONTAINS(status.ToString(), "TEST 42");
+
+  status =
+      CAPTURE_STATUS(SCHECK_EC_FORMAT(true || false, NotFound, Errno(ENOTDIR), "ENOTDIR $0", 42));
+  ASSERT_OK(status);
+
+  status = CAPTURE_STATUS(
+      SCHECK_EC_FORMAT(false, NotFound, Errno(ENOTDIR), "ENOTDIR $0 $1 $0", 37, "foo"));
+  ASSERT_NOK(status);
+  ASSERT_EQ(ENOTDIR, Errno(status));
+  ASSERT_STR_CONTAINS(status.ToString(), "Not found");
+  ASSERT_STR_CONTAINS(status.ToString(), "ENOTDIR 37 foo 37");
+}
+
 }  // namespace yb

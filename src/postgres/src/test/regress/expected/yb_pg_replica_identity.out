@@ -1,0 +1,89 @@
+-- YB note: deferable unique constraints and OIDs are not supported for user tables
+CREATE TABLE test_replica_identity (
+       id serial primary key,
+       keya text not null,
+       keyb text not null,
+       nonkey text,
+    --    CONSTRAINT test_replica_identity_unique_defer UNIQUE (keya, keyb) DEFERRABLE,
+       CONSTRAINT test_replica_identity_unique_nondefer UNIQUE (keya, keyb)
+);-- WITH OIDS;
+CREATE INDEX test_replica_identity_keyab ON test_replica_identity (keya, keyb);
+-- default is 'c' (CHANGE) for user created tables
+SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
+ relreplident
+--------------
+ c
+(1 row)
+
+-- but 'none' for system tables
+SELECT relreplident FROM pg_class WHERE oid = 'pg_class'::regclass;
+ relreplident
+--------------
+ n
+(1 row)
+
+SELECT relreplident FROM pg_class WHERE oid = 'pg_constraint'::regclass;
+ relreplident
+--------------
+ n
+(1 row)
+
+-- YB Note: REPLICA IDENTITY mode INDEX is not supported yet, we will assert the failure message
+-- here. Other queries for testing INDEX mode should be ported whenever the support is added.
+ALTER TABLE test_replica_identity REPLICA IDENTITY USING INDEX test_replica_identity_keyab;
+ERROR:  ALTER TABLE REPLICA IDENTITY USING INDEX not supported yet
+LINE 1: ...LTER TABLE test_replica_identity REPLICA IDENTITY USING INDE...
+                                                             ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+-- YB Note: Since REPLICA IDENTITY mode INDEX is not supported yet, this will be 'c' (CHANGE)
+SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
+ relreplident
+--------------
+ c
+(1 row)
+
+----
+-- Make sure non index cases work
+----
+ALTER TABLE test_replica_identity REPLICA IDENTITY DEFAULT;
+SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
+ relreplident
+--------------
+ d
+(1 row)
+
+SELECT count(*) FROM pg_index WHERE indrelid = 'test_replica_identity'::regclass AND indisreplident;
+ count
+-------
+     0
+(1 row)
+
+ALTER TABLE test_replica_identity REPLICA IDENTITY FULL;
+SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
+ relreplident
+--------------
+ f
+(1 row)
+
+\d+ test_replica_identity
+                                                Table "public.test_replica_identity"
+ Column |  Type   | Collation | Nullable |                      Default                      | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------------------------------------------------+----------+--------------+-------------
+ id     | integer |           | not null | nextval('test_replica_identity_id_seq'::regclass) | plain    |              |
+ keya   | text    |           | not null |                                                   | extended |              |
+ keyb   | text    |           | not null |                                                   | extended |              |
+ nonkey | text    |           |          |                                                   | extended |              |
+Indexes:
+    "test_replica_identity_pkey" PRIMARY KEY, lsm (id HASH)
+    "test_replica_identity_unique_nondefer" UNIQUE CONSTRAINT, lsm (keya HASH, keyb ASC)
+    "test_replica_identity_keyab" lsm (keya HASH, keyb ASC)
+Replica Identity: FULL
+
+ALTER TABLE test_replica_identity REPLICA IDENTITY NOTHING;
+SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
+ relreplident
+--------------
+ n
+(1 row)
+
+DROP TABLE test_replica_identity;

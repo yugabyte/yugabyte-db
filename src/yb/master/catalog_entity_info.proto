@@ -528,6 +528,10 @@ message SysCDCStreamEntryPB {
   optional string cdcsdk_ysql_replication_slot_name = 6;
   optional CDCSDKStreamEntryPB cdcsdk_stream_metadata = 7;
   optional uint64 stream_creation_time = 8;
+
+  // This map stores the replica identity for each table in the stream at the time of stream
+  // creation. The key for this map is table_id and the value is replica identity for that table.
+  map<string, PgReplicaIdentity> replica_identity_map = 9;
 }
 
 
@@ -577,10 +581,19 @@ message SysSnapshotEntryPB {
 
 message SysCloneStatePB {
   // State for clone operation.
+  // Initial state:
+  // - For YSQL: CLONE_SCHEMA_STARTED: async task to create PG schema is started.
+  // - For YCQL: CREATING: CLONE_OP for every tablet is issued.
+  // Transitions:
+  // CLONE_SCHEMA_STARTED --> CREATING: After successful response from create pg schema async task.
+  // CREATING --> RESTORING: All tablets in clone namespace are created and in a running
+  // stated. Restore snapshot is issued.
+  // RESTORING --> RESTORED: Restore snapshot completed
   enum State {
-    CREATING = 1;
-    RESTORING = 2;
-    RESTORED = 3;
+    CLONE_SCHEMA_STARTED = 1;
+    CREATING = 2;
+    RESTORING = 3;
+    RESTORED = 4;
   }
 
   message TabletData {
@@ -596,7 +609,7 @@ message SysCloneStatePB {
   optional fixed64 restore_time = 6;
 
   // Aggregate state of the clone operation. Valid transitions:
-  // CREATING --> RESTORING --> RESTORED
+  // CLONE_SCHEMA_STARTED --> CREATING --> RESTORING --> RESTORED
   optional State aggregate_state = 7;
 }
 

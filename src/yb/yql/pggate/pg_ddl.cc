@@ -178,7 +178,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& tablespace_oid,
                              bool is_matview,
                              const PgObjectId& pg_table_oid,
-                             const PgObjectId& old_relfilenode_oid)
+                             const PgObjectId& old_relfilenode_oid,
+                             bool is_truncate)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
   req_.set_database_name(database_name);
@@ -198,6 +199,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_is_matview(is_matview);
   pg_table_oid.ToPB(req_.mutable_pg_table_oid());
   old_relfilenode_oid.ToPB(req_.mutable_old_relfilenode_oid());
+  req_.set_is_truncate(is_truncate);
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   if (add_primary_key) {
@@ -377,6 +379,22 @@ Status PgAlterTable::RenameColumn(const char *oldname, const char *newname) {
 
 Status PgAlterTable::DropColumn(const char *name) {
   req_.mutable_drop_columns()->Add(name);
+  return Status::OK();
+}
+
+Status PgAlterTable::SetReplicaIdentity(const char identity_type) {
+  auto replica_identity_pb = std::make_unique<tserver::PgReplicaIdentityPB>();
+  tserver::PgReplicaIdentityType replica_identity_type;
+  switch (identity_type) {
+    case 'd': replica_identity_type = tserver::DEFAULT; break;
+    case 'n': replica_identity_type = tserver::NOTHING; break;
+    case 'f': replica_identity_type = tserver::FULL; break;
+    case 'c': replica_identity_type = tserver::CHANGE; break;
+    default:
+      RSTATUS_DCHECK(false, InvalidArgument, "Invalid Replica Identity Type");
+  }
+  replica_identity_pb->set_replica_identity(replica_identity_type);
+  req_.set_allocated_replica_identity(replica_identity_pb.release());
   return Status::OK();
 }
 

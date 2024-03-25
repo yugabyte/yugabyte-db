@@ -5,7 +5,6 @@
 package releases
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -23,11 +22,8 @@ var listReleasesCmd = &cobra.Command{
 	Short: "List YugabyteDB version releases",
 	Long:  "List YugabyteDB version releases",
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		releasesListRequest := authAPI.GetListOfReleases(true)
 
 		r, response, err := releasesListRequest.Execute()
@@ -42,7 +38,11 @@ var listReleasesCmd = &cobra.Command{
 			Format: releases.NewReleasesFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			fmt.Println("No releases found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No releases found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 

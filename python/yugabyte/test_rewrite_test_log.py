@@ -10,11 +10,15 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-import pathlib
+import logging
 import os
+import pathlib
+import shutil
 import subprocess
 
 from yugabyte.rewrite_test_log import LogRewriterConf, LogRewriter
+
+ENV_VAR_TO_UPDATE_EXPECTED_OUTPUT = 'YB_TEST_REWRITE_TEST_LOG_UPDATE_EXPECTED_OUTPUT'
 
 
 def test_java_test_log_rewrite(tmp_path: pathlib.Path) -> None:
@@ -37,10 +41,23 @@ def test_java_test_log_rewrite(tmp_path: pathlib.Path) -> None:
         test_tmpdir=test_tmpdir,
         replace_original=False,
         output_log_path=str(output_path),
+        home_dir='/home/some_user_name'
     )
     rewriter = LogRewriter(conf)
     rewriter.run()
-    subprocess.check_call([
-        'diff',
-        expected_output_path,
-        output_path])
+    try:
+        subprocess.check_call([
+            'diff',
+            '--ignore-space-change',
+            expected_output_path,
+            output_path])
+    except Exception as ex:
+        if os.getenv(ENV_VAR_TO_UPDATE_EXPECTED_OUTPUT) == '1':
+            logging.info(f"{ENV_VAR_TO_UPDATE_EXPECTED_OUTPUT} is set to 1, copying "
+                         f"{output_path} to {expected_output_path}")
+            shutil.copyfile(output_path, expected_output_path)
+        else:
+            logging.info(
+                f"To update the expected output file, set the {ENV_VAR_TO_UPDATE_EXPECTED_OUTPUT} "
+                f"environment variable to 1")
+        raise ex

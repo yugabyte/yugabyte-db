@@ -275,7 +275,9 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			info->amcanparallel = amroutine->amcanparallel;
 			info->amhasgettuple = (amroutine->amgettuple != NULL);
 			info->amhasgetbitmap = (amroutine->amgetbitmap != NULL);
+			info->yb_amhasgetbitmap = (amroutine->yb_amgetbitmap != NULL);
 			info->amcostestimate = amroutine->amcostestimate;
+			info->yb_cached_ybctid_size = 0;
 			Assert(info->amcostestimate != NULL);
 
 			/*

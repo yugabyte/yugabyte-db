@@ -7,7 +7,6 @@ export interface Releases {
   artifacts: ReleaseArtifacts[];
   release_type: ReleaseType | string,
   release_date: string;
-  in_use: boolean;
   release_notes: string;
   state: ReleaseState;
   universes: ReleaseUniverses[];

@@ -43,6 +43,12 @@
     if (PREDICT_FALSE(!(expr))) return STATUS_FORMAT(status_type, (msg), __VA_ARGS__); \
   } while (0)
 
+#define SCHECK_EC_FORMAT(expr, status_type, error_code, msg, ...) \
+  do { \
+    if (PREDICT_FALSE(!(expr))) \
+      return STATUS_EC_FORMAT(status_type, error_code, (msg), __VA_ARGS__); \
+  } while (0)
+
 #define SCHECK_OP(var1, op, var2, status_type, msg) \
   do { \
     const auto& v1_tmp = (var1); \

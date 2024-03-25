@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
 public class PgOutputMessageDecoder {
   private static final Logger LOG = LoggerFactory.getLogger(PgOutputMessageDecoder.class);
 
-  public enum PgOutputMessageType { RELATION, TYPE, BEGIN, COMMIT, INSERT };
+  public enum PgOutputMessageType { RELATION, TYPE, BEGIN, COMMIT, INSERT, DELETE };
 
   public interface PgOutputMessage {
     PgOutputMessageType messageType();
@@ -478,6 +478,50 @@ public class PgOutputMessageDecoder {
   }
 
   /*
+   * DELETE message
+   */
+  protected static class PgOutputDeleteMessage implements PgOutputMessage {
+    final int oid;
+    final boolean hasKey;
+    final PgOutputMessageTuple oldTuple;
+
+    public PgOutputDeleteMessage(int oid, boolean hasKey, PgOutputMessageTuple oldTuple) {
+      this.oid = oid;
+      this.hasKey = hasKey;
+      this.oldTuple = oldTuple;
+    }
+
+    public static PgOutputDeleteMessage CreateForComparison(
+        boolean hasKey, PgOutputMessageTuple oldTuple) {
+      return new PgOutputDeleteMessage(0, hasKey, oldTuple);
+    }
+
+    @Override
+    public PgOutputMessageType messageType() {
+      return PgOutputMessageType.DELETE;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other)
+        return true;
+
+      if (other == null || this.getClass() != other.getClass())
+        return false;
+
+      PgOutputDeleteMessage otherMessage = (PgOutputDeleteMessage) other;
+      return this.oldTuple.equals(otherMessage.oldTuple);
+    }
+
+    @Override
+    public String toString() {
+      String oldTupleString = oldTuple.toString();
+      return String.format(
+          "DELETE: (oldTuple = %s, hasKey = %b, oid = %s)", oldTupleString, hasKey, oid);
+    }
+  }
+
+  /*
    * Decode the data passed as bytes into a PgOutputMessage.
    */
   public static PgOutputMessage DecodeBytes(ByteBuffer buf) throws Exception {
@@ -529,6 +573,15 @@ public class PgOutputMessageDecoder {
         PgOutputMessageTuple tuple = decodePgOutputMessageTuple(buffer);
         PgOutputInsertMessage insertMessage = new PgOutputInsertMessage(oid, tuple);
         return insertMessage;
+
+      case 'D': // DELETE
+        oid = buffer.getInt();
+        char tupleType = (char) buffer.get();
+        PgOutputMessageTuple old_tuple = decodePgOutputMessageTuple(buffer);
+        // 'K' represents key while 'O' represents complete old tuple.
+        PgOutputDeleteMessage updateMessage =
+            new PgOutputDeleteMessage(oid, tupleType == 'K', old_tuple);
+        return updateMessage;
 
       case 'Y': // TYPE
         oid = buffer.getInt();

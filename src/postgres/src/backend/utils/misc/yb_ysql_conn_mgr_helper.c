@@ -52,7 +52,11 @@
 #define SHMEM_MAX_STRING_LEN NAMEDATALEN
 
 /* Max number of session parameters that can be stored in shared memory */
-#define DEFAULT_SHMEM_ARR_LEN 10
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
+#define DEFAULT_SHMEM_ARR_LEN 2
+#else
+#define DEFAULT_SHMEM_ARR_LEN 0
+#endif
 
 /*
  * 0666 sets the access permissions of the memory segment (rwx).
@@ -209,6 +213,7 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 	yb_changed_session_parameters = temp_list;
 }
 
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 static int
 change_array_len_in_shmem(const key_t shmem_id, const uint32_t new_array_size)
 {
@@ -440,6 +445,7 @@ update_session_parameters(struct shmem_session_parameter *shmem_parameter_list,
 		}
 	}
 }
+#endif
 
 /*
  *						YbUpdateSharedMemory
@@ -450,6 +456,7 @@ update_session_parameters(struct shmem_session_parameter *shmem_parameter_list,
 void
 YbUpdateSharedMemory()
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	if (yb_logical_client_shmem_key == -1)
 	{
 		/* yb_changed_session_parameters can only be present if
@@ -480,6 +487,7 @@ YbUpdateSharedMemory()
 		shmem_header.session_parameter_array_len);
 
 	detach_shmem(shmem_id, shmem_ptr);
+#endif
 }
 
 int
@@ -529,6 +537,7 @@ yb_shmem_get(const Oid user, const char *user_name, bool is_superuser,
 void
 SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	yb_logical_client_shmem_key = client_shmem_key;
 
 	char *shared_memory_ptr;
@@ -572,6 +581,7 @@ SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 
 	/* Detach the shared memory */
 	detach_shmem(client_shmem_key, shared_memory_ptr);
+#endif
 }
 
 void
@@ -676,6 +686,24 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	return 0;
 }
 
+static inline void
+send_oid_info(const char oid_type, const int oid)
+{
+	/* Note:: oid can be 0 here: it is handled by odyssey */
+	Assert(YbIsClientYsqlConnMgr());
+
+	StringInfoData buf;
+	CHECK_FOR_INTERRUPTS();
+
+	pq_beginmessage(&buf, 'O');
+	pq_sendint8(&buf, oid_type);
+	pq_sendint32(&buf, oid);
+	pq_endmessage(&buf);
+
+	pq_flush();
+	CHECK_FOR_INTERRUPTS();
+}
+
 void
 YbCreateClientId(void)
 {
@@ -690,6 +718,9 @@ YbCreateClientId(void)
 		return;
 
 	database = get_database_oid(MyProcPort->database_name, true);
+
+	/* Send back the database oid */
+	send_oid_info('d', database);
 	if (database == InvalidOid)
 	{
 		YbSendFatalForLogicalConnectionPacket();
@@ -748,6 +779,15 @@ yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 						"if the authentication method was yb-tserver-key")));
 
 	return true;
+}
+
+void
+yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
+{
+	yb_is_client_ysqlconnmgr = newval;
+
+	if (yb_is_client_ysqlconnmgr == true)
+		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
 }
 
 /*

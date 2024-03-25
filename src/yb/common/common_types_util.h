@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/common/common_types.pb.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 
@@ -27,5 +28,7 @@ const char* DatabaseTypeName(YQLDatabase db);
 
 // Returns the db type from its string name.
 YQLDatabase DatabaseTypeByName(const std::string& db_type_name);
+
+YB_STRONGLY_TYPED_UUID_DECL(UniverseUuid);
 
 } // namespace yb

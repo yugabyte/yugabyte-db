@@ -13,7 +13,38 @@
 
 #include "yb/integration-tests/postgres-minicluster.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
+
+DECLARE_int32(pgsql_proxy_webserver_port);
+
 namespace yb {
+
+Status PostgresMiniCluster::InitPostgres() {
+  auto pg_ts = RandomElement(mini_cluster_->mini_tablet_servers());
+  auto port = mini_cluster_->AllocateFreePort();
+  pgwrapper::PgProcessConf pg_process_conf =
+      VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
+          AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
+          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
+          pg_ts->server()->GetSharedMemoryFd()));
+  pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
+  pg_process_conf.force_disable_log_file = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = mini_cluster_->AllocateFreePort();
+
+  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
+            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
+            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
+  pg_supervisor_ =
+      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
+  RETURN_NOT_OK(pg_supervisor_->Start());
+
+  pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+  return Status::OK();
+}
 
 Result<pgwrapper::PGConn> PostgresMiniCluster::Connect() {
   return ConnectToDB(std::string() /* dbname */);

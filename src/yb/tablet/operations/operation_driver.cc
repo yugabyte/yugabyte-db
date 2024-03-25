@@ -485,10 +485,6 @@ int64_t OperationDriver::SpaceUsed() {
   if (!operation_) {
     return 0;
   }
-  auto consensus_round = operation_->consensus_round();
-  if (consensus_round) {
-    return consensus_round->replicate_msg()->SpaceUsedLong();
-  }
   return operation()->request()->SpaceUsedLong();
 }
 

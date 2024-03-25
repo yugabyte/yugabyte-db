@@ -3041,72 +3041,54 @@ TEST_F_EX(CppCassandraDriverTest, TestInsertLocality, CppCassandraDriverTestNoPa
 class CppCassandraDriverLowSoftLimitTest : public CppCassandraDriverTest {
  public:
   std::vector<std::string> ExtraTServerFlags() override {
-    return {"--memory_limit_soft_percentage=0"s,
-            "--throttle_cql_calls_on_soft_memory_limit=false"s};
+    return {"--TEST_write_rejection_percentage=90"s,
+            "--rpc_slow_query_threshold_ms=999999999"s,
+            Format("--client_read_write_timeout_ms=$0", 2000 * kTimeMultiplier)};
   }
 };
 
 TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
           CppCassandraDriverLowSoftLimitTest) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_mini_cluster_max_log_bytes) = 512_MB;
+  constexpr int kBatchSize = 20;
+  constexpr int kNumWrites = 100;
 
-  constexpr int kBatchSize = 500;
-  constexpr int kWriters = 4;
-  constexpr int kNumMetrics = 5;
-
-  typedef TestTable<std::string, int64_t, std::string> MyTable;
-  typedef MyTable::ColumnsTuple ColumnsType;
+  using MyTable = TestTable<int64_t, std::string>;
+  using ColumnsType = MyTable::ColumnsTuple;
   MyTable table;
   ASSERT_OK(table.CreateTable(
-      &session_, "test.batch_ts_metrics_raw", {"metric_id", "ts", "value"},
-      {"(metric_id, ts)"}));
+      &session_, "test.batch_ts_metrics_raw", {"ts", "value"}, {"(ts)"}));
 
   TestThreadHolder thread_holder;
-  std::array<std::atomic<int>, kNumMetrics> metric_ts;
-  std::atomic<int> total_writes(0);
-  for (int i = 0; i != kNumMetrics; ++i) {
-    metric_ts[i].store(0);
+
+  auto session = ASSERT_RESULT(EstablishSession());
+  std::vector<CassandraFuture> futures;
+  futures.reserve(kNumWrites);
+  auto prepared = ASSERT_RESULT(table.PrepareInsert(&session));
+  int ts = 0;
+  while (futures.size() < kNumWrites) {
+    CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
+    for (int i = 0; i != kBatchSize; ++i) {
+      ColumnsType tuple(ts, "value_" + std::to_string(ts));
+      auto statement = prepared.Bind();
+      table.BindInsert(&statement, tuple);
+      batch.Add(&statement);
+      ++ts;
+    }
+    futures.push_back(session.SubmitBatch(batch));
+  }
+  std::this_thread::sleep_for(1s * kTimeMultiplier);
+  int total_writes = 0;
+  for (auto& future : futures) {
+    if (!future.Ready()) {
+      continue;
+    }
+    auto status = future.Wait();
+    if (status.ok()) {
+      ++total_writes;
+    }
   }
 
-  for (int i = 0; i != kWriters; ++i) {
-    thread_holder.AddThreadFunctor(
-        [this, &stop = thread_holder.stop_flag(), &table, &metric_ts, &total_writes] {
-      SetFlagOnExit set_flag_on_exit(&stop);
-      auto session = ASSERT_RESULT(EstablishSession());
-      std::vector<CassandraFuture> futures;
-      while (!stop.load()) {
-        CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
-        auto prepared = table.PrepareInsert(&session);
-        if (!prepared.ok()) {
-          // Prepare could be failed because cluster has heavy load.
-          // It is ok to just retry in this case, because we expect total number of writes.
-          continue;
-        }
-        int metric_idx = RandomUniformInt(1, kNumMetrics);
-        auto metric = "metric_" + std::to_string(metric_idx);
-        int ts = metric_ts[metric_idx - 1].fetch_add(kBatchSize);
-        for (int i = 0; i != kBatchSize; ++i) {
-          ColumnsType tuple(metric, ts, "value_" + std::to_string(ts));
-          auto statement = prepared->Bind();
-          table.BindInsert(&statement, tuple);
-          batch.Add(&statement);
-          ++ts;
-        }
-        futures.push_back(session.SubmitBatch(batch));
-        ++total_writes;
-      }
-    });
-  }
-
-  thread_holder.WaitAndStop(30s);
-  auto total_writes_value = total_writes.load();
-  LOG(INFO) << "Total writes: " << total_writes_value;
-#ifndef NDEBUG
-  auto min_total_writes = RegularBuildVsDebugVsSanitizers(750, 500, 50);
-#else
-  auto min_total_writes = 1500;
-#endif
-  ASSERT_GE(total_writes_value, min_total_writes);
+  ASSERT_GE(total_writes, 2);
 }
 
 class CppCassandraDriverBackpressureTest : public CppCassandraDriverTest {

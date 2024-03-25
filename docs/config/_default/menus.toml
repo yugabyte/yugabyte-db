@@ -201,7 +201,7 @@
   weight = 1
   identifier = "yugabytedb-releases"
   parent = "releases"
-  url = "/preview/releases/release-notes/"
+  url = "/preview/releases/ybdb-releases/"
   [main.params]
     excludeVersion = true
     imageUrl = "/icons/database.svg"
@@ -711,14 +711,14 @@
 [[preview_releases]]
   name = "YugabyteDB"
   weight = 4
-  identifier = "release-notes"
-  url = "/preview/releases/release-notes/"
+  identifier = "ybdb-releases"
+  url = "/preview/releases/ybdb-releases/"
   [preview_releases.params]
     showSection = true
 
 [[preview_releases]]
   name = "End of life and older previews"
-  parent = "release-notes"
+  parent = "ybdb-releases"
   weight = 9999
   identifier = "end-of-life"
   [preview_releases.params]

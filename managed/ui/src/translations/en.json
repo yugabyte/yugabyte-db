@@ -413,7 +413,8 @@
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
-        "showRetired": "Show retired recommendations"
+        "showRetired": "Show retired recommendations",
+        "cooldownHours": "Disk can be resized after a cooldown period of 6 hours"
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -631,8 +632,8 @@
           "viewTaskDetails": "View Details",
           "actionMenu": {
             "label": "Actions",
-            "deleteConfig": "Remove disaster recovery",
-            "editDrConfig": "Edit DR configuration",
+            "deleteConfig": "Remove Disaster Recovery",
+            "editDrConfig": "Edit DR Configuration",
             "editDrConfigTarget": "Change DR Replica Universe",
             "editTables": "Select Database and Tables",
             "switchover": "Switchover",
@@ -1033,8 +1034,8 @@
         },
         "syncDbModal": {
           "title": "Reconcile Config with Database",
-          "syncXClusterConfirmation": "If out-of-band changes to an xCluster configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
-          "syncDrConfirmation": "If out-of-band changes to a disaster recovery configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
+          "syncXClusterConfirmation": "If changes have been made to your xCluster configuration outside of YugabyteDB Anywhere (for example, using yb-admin), reconciling the xCluster configuration with the database updates the configuration in YugabyteDB Anywhere to match the changes.",
+          "syncDrConfirmation": "If changes have been made to your disaster recovery configuration outside of YugabyteDB Anywhere (for example, using yb-admin), reconciling the DR configuration with the database updates the configuration in YugabyteDB Anywhere to match the changes.",
           "submitButton": "Reconcile Config with Database",
           "error": {
             "requestFailureLabel": "Reconcile config with database request failed.",
@@ -1575,6 +1576,7 @@
       "linuxVersionCatalog": "Linux Version Catalog",
       "linuxVersions": "Linux versions",
       "infoContent": "You can use the Linux versions that you add to this catalog to deploy universes using this provider",
+      "sshOverrideMsg": "You should configure or override the SSH user and port inside the Linux versions",
       "emptyCard": {
         "info": "Add Linux versions that you want to use to deploy universes using this provider"
       },
@@ -1592,9 +1594,9 @@
         "amiId": "AMI ID",
         "portDetails": "Provide SSH user and SSH port details",
         "sshUser": "SSH User",
-        "sshUserPlaceholder": "e.g. centos",
+        "sshUserPlaceholder": "ec2-user",
         "sshPort": "SSH Port",
-        "sshPortPlaceholder": "e.g. 22",
+        "sshPortPlaceholder": "22",
         "menuActions": {
           "edit": "Edit",
           "delete": "Delete",
@@ -1608,7 +1610,9 @@
           "globalYBImagenameRequired": "Machine Image ID is required",
           "amiRequired": "Ami ID is Required",
           "linuxVersionAlreadyExists": "Image bundle with same name exists",
-          "cannotModfiyYBABundles": "You cannot modify YBA Managed bundles"
+          "cannotModfiyYBABundles": "You cannot modify YBA Managed bundles",
+          "sshUserRequired": "SSH User is required",
+          "sshPortRequired": "SSH Port is required"
         }
       },
       "upgradeModal": {
@@ -1721,6 +1725,23 @@
       "editKubernetesModal": {
         "modalTitle": "Edit Kubernetes",
         "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
+      }
+    },
+    "ha": {
+      "config": {
+        "globalState": {
+          "Unknown": "Unknown",
+          "NoReplicas": "No Replicas",
+          "AwaitingReplicas": "Awaiting Connection to Replicas",
+          "Operational": "Operational",
+          "Error": "Error",
+          "Warning": "Warning"
+        },
+        "instanceState": {
+          "Awaiting Connection to Replicas": "Awaiting Connection to Replicas",
+          "Connected": "Connected",
+          "Disconnected": "Disconnected"
+        }
       }
     }
   }

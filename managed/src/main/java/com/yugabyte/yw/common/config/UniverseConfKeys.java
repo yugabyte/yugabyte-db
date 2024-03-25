@@ -646,6 +646,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Promotes Auto flags while upgrading YB-DB",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> autoFlagUpdateSleepTimeInMilliSeconds =
+      new ConfKeyInfo<>(
+          "yb.upgrade.auto_flag_update_sleep_time_ms",
+          ScopeType.UNIVERSE,
+          "Sleep time after auto flags are updated.",
+          "Controls the amount of time(ms) to wait after auto flags are updated",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowUpgradeOnTransitUniverse =
       new ConfKeyInfo<>(
           "yb.upgrade.allow_upgrade_on_transit_universe",
@@ -1038,6 +1046,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the max time out when performing the CheckLeaderlessTablets subtask",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> clockSyncCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Clock Sync check",
+          "Enable Clock Sync check",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcForUniverse =
       new ConfKeyInfo<>(
           "ybc.universe.enabled",
@@ -1046,4 +1062,54 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable YBC for universes during software upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useNodesAreSafeToTakeDown =
+      new ConfKeyInfo<>(
+          "yb.checks.nodes_safe_to_take_down.enabled",
+          ScopeType.UNIVERSE,
+          "Check if nodes are safe to take down before running upgrades",
+          "Check if nodes are safe to take down before running upgrades",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Duration> nodesAreSafeToTakeDownCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.nodes_safe_to_take_down.timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for checking if nodes are safe to take down before running upgrades",
+          "Timeout for checking if nodes are safe to take down before running upgrades",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> targetNodeDiskUsagePercentage =
+      new ConfKeyInfo<>(
+          "yb.checks.node_disk_size.target_usage_percentage",
+          ScopeType.UNIVERSE,
+          "Target Node Disk Usage Percentage",
+          "Percentage of current disk usage that may consume on the target nodes",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableAutomatedMasterFailoverForUniverse =
+      new ConfKeyInfo<>(
+          "yb.automated_master_failover.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Automated Master Failover",
+          "Enable Automated Master Failover for universes in background process",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> automatedMasterFailoverMaxMasterFollowerLag =
+      new ConfKeyInfo<>(
+          "yb.automated_master_failover.max_master_follower_lag",
+          ScopeType.UNIVERSE,
+          "Max Master Follower Lag for Automated Master Failover",
+          "Max lag allowed for a master follower, after which the master is considered for"
+              + " failover",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> automatedMasterFailoverMaxMasterHeartbeatDelay =
+      new ConfKeyInfo<>(
+          "yb.automated_master_failover.max_master_heartbeat_delay",
+          ScopeType.UNIVERSE,
+          "Max master heartbeat delay",
+          "Maximum value of heartbeat delay allowed before master is considered to have failed",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

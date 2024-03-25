@@ -68,6 +68,8 @@
 namespace yb {
 namespace tablet {
 
+using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
+
 extern const int64 kNoDurableMemStore;
 extern const std::string kIntentsSubdir;
 extern const std::string kIntentsDBSuffix;
@@ -78,6 +80,7 @@ const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 YB_STRONGLY_TYPED_BOOL(Primary);
 YB_STRONGLY_TYPED_BOOL(OnlyIfDirty);
 YB_STRONGLY_TYPED_BOOL(LazySuperblockFlushEnabled);
+YB_STRONGLY_TYPED_BOOL(SkipTableTombstoneCheck);
 
 struct TableInfo {
  private:
@@ -108,6 +111,10 @@ struct TableInfo {
   // (as the table's TableId no longer matches).
   TableId pg_table_id;
 
+  // Whether we can skip table tombstone check for this table
+  // (only applies to colocated tables).
+  SkipTableTombstoneCheck skip_table_tombstone_check;
+
   // A vector of column IDs that have been deleted, so that the compaction filter can free the
   // associated memory. As of 01/2019, deleted column IDs are persisted forever, even if all the
   // associated data has been discarded. In the future, we can garbage collect such column IDs to
@@ -118,7 +125,10 @@ struct TableInfo {
   uint32_t wal_retention_secs = 0;
 
   // Public ctor with private argument to allow std::make_shared, but prevent public usage.
-  TableInfo(const std::string& log_prefix, TableType table_type, PrivateTag);
+  TableInfo(const std::string& log_prefix,
+            TableType table_type,
+            SkipTableTombstoneCheck skip_table_tombstone_check,
+            PrivateTag);
   TableInfo(const std::string& tablet_log_prefix,
             Primary primary,
             std::string table_id,
@@ -130,7 +140,8 @@ struct TableInfo {
             const boost::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
             dockv::PartitionSchema partition_schema,
-            TableId pg_table_id);
+            TableId pg_table_id,
+            SkipTableTombstoneCheck skip_table_tombstone_check);
   TableInfo(const TableInfo& other,
             const Schema& schema,
             const qlexpr::IndexMap& index_map,
@@ -244,7 +255,7 @@ struct KvStoreInfo {
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
-  std::unordered_map<TableId, TableInfoPtr> tables;
+  TableInfoMap tables;
 
   // Mapping form colocation id to table info.
   std::unordered_map<ColocationId, TableInfoPtr> colocation_to_table;
@@ -272,6 +283,9 @@ struct RaftGroupMetadataData {
 class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                           public docdb::SchemaPackingProvider {
  public:
+  using TableIdToSchemaVersionMap =
+      ::google::protobuf::Map<::std::string, ::google::protobuf::uint32>;
+
   // Create metadata for a new Raft group. This assumes that the given superblock
   // has not been written before, and writes out the initial superblock with
   // the provided parameters.
@@ -496,15 +510,21 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                 const boost::optional<qlexpr::IndexInfo>& index_info,
                 const SchemaVersion schema_version,
                 const OpId& op_id,
-                const TableId& pg_table_id) EXCLUDES(data_mutex_);
+                const TableId& pg_table_id,
+                const SkipTableTombstoneCheck skip_table_tombstone_check) EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
 
   // Returns a list of all tables colocated on this tablet.
   std::vector<TableId> GetAllColocatedTables() const;
 
+  std::vector<TableId> GetAllColocatedTablesUnlocked() const REQUIRES(data_mutex_);
+
   // Returns the number of tables colocated on this tablet, returns 1 for non-colocated case.
   size_t GetColocatedTablesCount() const EXCLUDES(data_mutex_);
+
+  void GetTableIdToSchemaVersionMap(
+      TableIdToSchemaVersionMap* table_to_version) const;
 
   // Iterates through all the tables colocated on this tablet. In case of non-colocated tables,
   // iterates exactly one time. Use light-weight callback as it's triggered under the locked mutex;
@@ -730,6 +750,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void OnChangeMetadataOperationAppliedUnlocked(const OpId& applied_op_id) REQUIRES(data_mutex_);
 
   Status OnBackfillDoneUnlocked(const TableId& table_id) REQUIRES(data_mutex_);
+
+  Status SetTableInfoUnlocked(const TableInfoMap::iterator& it,
+                              const TableInfoPtr& new_table_info) REQUIRES(data_mutex_);
 
   enum State {
     kNotLoadedYet,

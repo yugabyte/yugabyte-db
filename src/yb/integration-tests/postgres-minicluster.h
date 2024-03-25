@@ -33,5 +33,8 @@ class PostgresMiniCluster {
   Result<pgwrapper::PGConn> ConnectToDB(
       const std::string& dbname, bool simple_query_protocol = false);
   Result<pgwrapper::PGConn> ConnectToDBWithReplication(const std::string& dbname);
+
+ private:
+  Status InitPostgres();
 };
 }  // namespace yb

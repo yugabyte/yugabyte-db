@@ -517,3 +517,45 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+'/pitr':
+  get:
+    summary: Get PITR Schedules
+    description: Retrieve the list of PITR schedules in the YugabyteDB cluster.
+    operationId: getPITRSchedules
+    tags:
+      - pitr-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/PITRScheduleListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/backup':
+  get:
+    summary: Get Backup Details
+    description: Retrieve the list of databases on which backup is enabled.
+    operationId: getBackupDetails
+    tags:
+      - backup-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/BackupDetailsListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/restore':
+  get:
+    summary: Get Restore Details
+    description: Retrieve the list of databases on which restore is run in the YugabyteDB cluster.
+    operationId: getRestoreDetails
+    tags:
+      - restore-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/RestoreDetailsListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'

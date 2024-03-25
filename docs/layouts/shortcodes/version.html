@@ -1,0 +1,5 @@
+{{/* get the page path to determine version */}}
+{{- $path := split $.Page.File.Dir "/" -}}
+{{/* version is the first path of the path. eg: preview/stable/v2.12 ...*/}}
+{{- $version := index $path 0 -}}
+{{- print $version -}}

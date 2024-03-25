@@ -226,7 +226,7 @@ public class AWSCloudImpl implements CloudAPI {
   }
 
   @Override
-  public boolean isValidCreds(Provider provider, String region) {
+  public boolean isValidCreds(Provider provider) {
     // TODO: Remove this function once the validators are added for all cloud provider.
     return true;
   }
@@ -510,12 +510,6 @@ public class AWSCloudImpl implements CloudAPI {
       String message = "Error executing task {manageNodeGroup()}, error='{}'";
       throw new RuntimeException(message, e);
     }
-  }
-
-  @Override
-  public void validateInstanceTemplate(Provider provider, String instanceTemplate) {
-    throw new PlatformServiceException(
-        BAD_REQUEST, "Instance templates are currently not supported for AWS");
   }
 
   /**

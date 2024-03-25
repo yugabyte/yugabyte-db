@@ -835,15 +835,9 @@ TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithAlterUniverse) {
   // Mark one stream as deleted.
   ASSERT_OK(RunAdminToolCommandOnProducer("delete_cdc_stream", stream_id, "force_delete"));
 
-  // Remove table should fail as its stream is marked as deleting on producer.
-  ASSERT_NOK(RunAdminToolCommand(
-      "alter_universe_replication", kProducerClusterId, "remove_table", producer_table->id()));
+  // Remove table should succeed.
   ASSERT_OK(RunAdminToolCommand(
-      "alter_universe_replication",
-      kProducerClusterId,
-      "remove_table",
-      producer_table->id(),
-      "ignore-errors"));
+      "alter_universe_replication", kProducerClusterId, "remove_table", producer_table->id()));
 }
 
 TEST_F(XClusterAdminCliTest, TestWaitForReplicationDrain) {

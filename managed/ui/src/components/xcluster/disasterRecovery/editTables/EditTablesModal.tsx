@@ -104,29 +104,12 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     () => api.fetchUniverseNamespaces(xClusterConfig.sourceUniverseUUID)
   );
 
-  const sourceUniverseIndexTableUuids =
-    sourceUniverseTablesQuery.data
-      ?.filter((table) => table.isIndexTable)
-      .map((table) => getTableUuid(table)) ?? [];
-
   const editTableMutation = useMutation(
     (formValues: EditTablesFormValues) => {
-      const filteredBootstrapRequiredTableUuids =
-        props.xClusterConfig.type === XClusterConfigType.TXN
-          ? bootstrapRequiredTableUUIDs.filter(
-              (tableUuid) => !sourceUniverseIndexTableUuids.includes(tableUuid)
-            )
-          : bootstrapRequiredTableUUIDs;
-      const filteredTableUuids =
-        props.xClusterConfig.type === XClusterConfigType.TXN
-          ? formValues.tableUuids.filter(
-              (tableUuid) => !sourceUniverseIndexTableUuids.includes(tableUuid)
-            )
-          : formValues.tableUuids;
       const bootstrapParams =
-        filteredBootstrapRequiredTableUuids.length > 0
+        bootstrapRequiredTableUUIDs.length > 0
           ? {
-              tables: filteredBootstrapRequiredTableUuids,
+              tables: bootstrapRequiredTableUUIDs,
               backupRequestParams: {
                 storageConfigUUID: formValues.storageConfig?.value.uuid
               }
@@ -134,7 +117,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           : undefined;
       return props.isDrInterface
         ? api.updateTablesInDr(props.drConfigUuid, {
-            tables: filteredTableUuids
+            tables: formValues.tableUuids
           })
         : editXClusterConfigTables(xClusterConfig.uuid, formValues.tableUuids, bootstrapParams);
     },
@@ -291,9 +274,12 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           let bootstrapTableUuids: string[] | null = null;
           const hasSelectionError = false;
 
+          const tableUuidsToAdd = formValues.tableUuids.filter(
+            (tableUuid) => !props.xClusterConfig.tables.includes(tableUuid)
+          );
           try {
             bootstrapTableUuids = await getTablesForBootstrapping(
-              formValues.tableUuids,
+              tableUuidsToAdd,
               sourceUniverseUuid,
               targetUniverseUuid,
               sourceUniverseTables,
@@ -509,12 +495,8 @@ const getDefaultSelectedTableUuids = (
   xClusterConfig.tables.forEach((tableUuid) => {
     const sourceUniverseTable = tableUuidToTable[tableUuid];
     if (sourceUniverseTable) {
-      // The xCluster config table exists in the source universe.
-      // We add this table and include any associcated index tables it has.
+      // The xCluster config table still exists in the source universe.
       defaultSelectedTableUuids.add(tableUuid);
-      sourceUniverseTable.indexTableIDs?.forEach((indexTableId) =>
-        defaultSelectedTableUuids.add(indexTableId)
-      );
     }
   });
   return Array.from(defaultSelectedTableUuids);

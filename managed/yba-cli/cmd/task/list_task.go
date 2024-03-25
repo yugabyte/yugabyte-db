@@ -5,7 +5,6 @@
 package task
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -24,11 +23,8 @@ var listTaskCmd = &cobra.Command{
 	Short: "List YugabyteDB Anywhere tasks",
 	Long:  "List YugabyteDB Anywhere tasks",
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		r, response, err := authAPI.TasksList().Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Task", "List")
@@ -56,7 +52,11 @@ var listTaskCmd = &cobra.Command{
 			Format: task.NewTaskFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			fmt.Println("No tasks found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No tasks found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 		task.Write(taskCtx, r)

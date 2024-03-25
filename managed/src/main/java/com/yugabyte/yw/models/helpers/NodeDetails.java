@@ -161,7 +161,9 @@ public class NodeDetails {
     // Set when the node is being rebooted.
     Rebooting(REBOOT),
     // Set when the node is being stopped + started.
-    HardRebooting(HARD_REBOOT);
+    HardRebooting(HARD_REBOOT),
+    // Set when upgrading vm image for node.
+    VMImageUpgrade();
 
     private final NodeActionType[] allowedActions;
 
@@ -258,7 +260,7 @@ public class NodeDetails {
   public int nodeExporterPort = 9300;
 
   @ApiModelProperty(value = "Otel collector metrics port")
-  public int otelCollectorMetricsPort = 8888;
+  public int otelCollectorMetricsPort = 8889;
 
   // True if cronjobs were properly configured for this node.
   @ApiModelProperty(value = "True if cron jobs were properly configured for this node")
@@ -300,6 +302,8 @@ public class NodeDetails {
     clone.nodeUuid = this.nodeUuid;
     clone.placementUuid = this.placementUuid;
     clone.machineImage = this.machineImage;
+    clone.sshUserOverride = this.sshUserOverride;
+    clone.sshPortOverride = this.sshPortOverride;
     clone.ybPrebuiltAmi = this.ybPrebuiltAmi;
     clone.disksAreMountedByUUID = this.disksAreMountedByUUID;
     clone.dedicatedTo = this.dedicatedTo;

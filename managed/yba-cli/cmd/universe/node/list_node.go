@@ -5,7 +5,6 @@
 package node
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -23,7 +22,7 @@ var listNodeCmd = &cobra.Command{
 	Short: "List YugabyteDB Anywhere universe nodes",
 	Long:  "List YugabyteDB Anywhere universe nodes",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeName, err := cmd.Flags().GetString("universe-name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -35,14 +34,11 @@ var listNodeCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		universeListRequest := authAPI.ListUniverses()
 
-		universeName, err := cmd.Flags().GetString("universe-name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -59,8 +55,7 @@ var listNodeCmd = &cobra.Command{
 		}
 
 		if len(r) < 1 {
-			fmt.Println("No universe found")
-			return
+			logrus.Fatalf("No universes with name: %s found\n", universeName)
 		}
 		selectedUniverse := r[0]
 		details := selectedUniverse.GetUniverseDetails()
@@ -71,7 +66,11 @@ var listNodeCmd = &cobra.Command{
 			Format: universe.NewNodesFormat(viper.GetString("output")),
 		}
 		if len(nodes) < 1 {
-			fmt.Println("No universe node instances found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No universe node instances found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 		universe.NodeWrite(NodeCtx, nodes)

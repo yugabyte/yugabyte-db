@@ -47,6 +47,7 @@
 | "Monitored mount roots" | "yb.provider.monitored_mount_roots" | "PROVIDER" | "Mount roots, which we show on the merics dashboard and which we're alerting on." | "String" |
 | "Enable Geo-partitioning" | "yb.universe.geo_partitioning_enabled" | "PROVIDER" | "Enables geo-partitioning for universes created with this provider." | "Boolean" |
 | "Enable YBC" | "ybc.provider.enabled" | "PROVIDER" | "Enable YBC for universes created with this provider" | "Boolean" |
+| "Configure OpenTelemetry metrics port" | "yb.universe.otel_collector_metrics_port" | "PROVIDER" | "OpenTelemetry metrics port" | "Integer" |
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
@@ -103,6 +104,7 @@
 | "Prometheus external URL" | "yb.metrics.external.url" | "GLOBAL" | "URL used to generate Prometheus metrics on YBA UI and to set up HA metrics federation." | "String" |
 | "Prometheus link use browser FQDN" | "yb.metrics.link.use_browser_fqdn" | "GLOBAL" | "If Prometheus link in browser should point to current FQDN in browser or use value from backend." | "Boolean" |
 | "Devops command timeout" | "yb.devops.command_timeout" | "GLOBAL" | "Devops command timeout" | "Duration" |
+| "Node destroy command timeout" | "yb.node_ops.destroy_server_timeout" | "GLOBAL" | "Timeout for node destroy command before failing." | "Duration" |
 | "YBC Compatible DB Version" | "ybc.compatible_db_version" | "GLOBAL" | "Minimum YBDB version which supports YBC" | "String" |
 | "Prometheus auth enabled" | "yb.metrics.auth" | "GLOBAL" | "Enables basic authentication for Prometheus web UI/APIs access" | "Boolean" |
 | "Prometheus auth username" | "yb.metrics.auth_username" | "GLOBAL" | "Username, used for request authentication against embedded Prometheus" | "String" |
@@ -119,6 +121,7 @@
 | "XCluster isBootstrapRequired rpc max parallel threads" | "yb.xcluster.is_bootstrap_required_rpc_pool.max_threads" | "GLOBAL" | "Sets the maximum allowed number of threads to be run concurrently for xcluster isBootstrapRequired rpc" | "Integer" |
 | "YBC poll upgrade result tries" | "ybc.upgrade.poll_result_tries" | "GLOBAL" | "YBC poll upgrade result tries count." | "Integer" |
 | "YBC poll upgrade result Sleep time" | "ybc.upgrade.poll_result_sleep_ms" | "GLOBAL" | "YBC poll upgrade result sleep time." | "Long" |
+| "HA Shutdown Level" | "yb.ha.shutdown_level" | "GLOBAL" | "When to shutdown - 0 for never, 1 for promotion, 2 for promotion and demotion" | "Integer" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -182,6 +185,7 @@
 | "Helm Timeout in Seconds" | "yb.helm.timeout_secs" | "UNIVERSE" | "Timeout used for internal universe-level helm operations like install/upgrade in secs" | "Long" |
 | "Enable Perf Advisor to view recommendations" | "yb.ui.feature_flags.perf_advisor" | "UNIVERSE" | "Builds recommendations to help tune our applications accordingly" | "Boolean" |
 | "Promote AutoFlags" | "yb.upgrade.promote_auto_flag" | "UNIVERSE" | "Promotes Auto flags while upgrading YB-DB" | "Boolean" |
+| "Sleep time after auto flags are updated." | "yb.upgrade.auto_flag_update_sleep_time_ms" | "UNIVERSE" | "Controls the amount of time(ms) to wait after auto flags are updated" | "Duration" |
 | "Allow upgrade on transit universe" | "yb.upgrade.allow_upgrade_on_transit_universe" | "UNIVERSE" | "Allow universe upgrade when nodes are in transit mode" | "Boolean" |
 | "Promote AutoFlags Forcefully" | "yb.upgrade.promote_flags_forcefully" | "UNIVERSE" | "Promote AutoFlags Forcefully during software upgrade" | "Boolean" |
 | "Minimum Incremental backup schedule frequency" | "yb.backup.minIncrementalScheduleFrequencyInSecs" | "UNIVERSE" | "Minimum Incremental backup schedule frequency in seconds" | "Long" |
@@ -215,4 +219,6 @@
 | "Wait time for xcluster/DR replication setup and edit RPCs." | "yb.xcluster.operation_timeout" | "UNIVERSE" | "Wait time for xcluster/DR replication setup and edit RPCs." | "Duration" |
 | "Leaderless tablets check enabled" | "yb.checks.leaderless_tablets.enabled" | "UNIVERSE" | " Whether to run CheckLeaderlessTablets subtask before running universe tasks" | "Boolean" |
 | "Leaderless tablets check timeout" | "yb.checks.leaderless_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the CheckLeaderlessTablets subtask" | "Duration" |
+| "Enable Clock Sync check" | "yb.wait_for_clock_sync.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Enable YBC" | "ybc.universe.enabled" | "UNIVERSE" | "Enable YBC for universes during software upgrade" | "Boolean" |
+| "Target Node Disk Usage Percentage" | "yb.checks.node_disk_size.target_usage_percentage" | "UNIVERSE" | "Percentage of current disk usage that may consume on the target nodes" | "Integer" |

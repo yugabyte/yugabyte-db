@@ -62,7 +62,8 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid colocationId,
 						   Oid tablespaceId,
 						   Oid pgTableId,
-						   Oid oldRelfileNodeId);
+						   Oid oldRelfileNodeId,
+						   bool isTruncate);
 
 extern void YBCDropTable(Relation rel);
 
@@ -131,3 +132,8 @@ extern void YBCDestroyVirtualWalForCDC();
 
 extern void YBCGetCDCConsistentChanges(const char *stream_id,
 									   YBCPgChangeRecordBatch **record_batch);
+
+extern void YBCUpdateAndPersistLSN(const char *stream_id,
+								   XLogRecPtr restart_lsn_hint,
+								   XLogRecPtr confirmed_flush,
+								   YBCPgXLogRecPtr *restart_lsn);
