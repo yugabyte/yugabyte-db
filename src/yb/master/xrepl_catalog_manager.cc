@@ -1547,10 +1547,15 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
     if (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE) {
       for (const auto& unprocessed_table_id : *unprocessed_tables) {
         auto table = tables_->FindTableOrNull(unprocessed_table_id);
+        if (!table) {
+          LOG_WITH_FUNC(WARNING) << "Table " << unprocessed_table_id
+                                 << " deleted before it could be processed";
+          continue;
+        }
         Schema schema;
         auto status = table->GetSchema(&schema);
         if (!status.ok()) {
-          LOG(WARNING) << "Error while getting schema for table: " << table->name();
+          LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table->name();
           continue;
         }
         bool has_pk = true;
