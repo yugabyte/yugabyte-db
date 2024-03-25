@@ -310,6 +310,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
+  Status ClearUniverseUuid();
+
   XClusterConsumerIf* GetXClusterConsumer() const;
 
   // Mark the CDC service as enabled via heartbeat.
@@ -335,10 +337,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return catalog_versions_fingerprint_.load(std::memory_order_acquire);
   }
 
-  std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
+  std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const override { return cdc_service_; }
 
   key_t GetYsqlConnMgrStatsShmemKey() { return ysql_conn_mgr_stats_shmem_key_; }
   void SetYsqlConnMgrStatsShmemKey(key_t shmem_key) { ysql_conn_mgr_stats_shmem_key_ = shmem_key; }
+
+  void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
+
+  void ClearAllMetaCachesOnServer() override;
 
  protected:
   virtual Status RegisterServices();

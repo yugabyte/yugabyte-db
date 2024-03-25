@@ -25,6 +25,7 @@ import play.mvc.Http.Status;
 public class ReleaseContainer {
   private static final String DOWNLOAD_HELM_CHART_HTTP_TIMEOUT_PATH =
       "yb.releases.download_helm_chart_http_timeout";
+  private static final String YB_RELEASES_PATH = "yb.releases.path";
 
   private ReleaseManager.ReleaseMetadata metadata;
   private Release release;
@@ -110,7 +111,7 @@ public class ReleaseContainer {
     if (isLegacy()) {
       return this.metadata.http.paths.getX86_64_checksum();
     } else {
-      return this.artifact.getSha256();
+      return this.artifact.getFormattedSha256();
     }
   }
 
@@ -166,28 +167,28 @@ public class ReleaseContainer {
         return new FileInputStream(this.metadata.filePath);
       }
     } else {
-      for (ReleaseArtifact artifact : this.release.getArtifacts()) {
-        if (artifact.getPlatform().equals(ReleaseArtifact.Platform.KUBERNETES)) {
+      for (ReleaseArtifact releaseArtifact : this.release.getArtifacts()) {
+        if (releaseArtifact.getPlatform().equals(ReleaseArtifact.Platform.KUBERNETES)) {
           log.trace("Skipping kubernetes artifact");
           continue;
         }
-        if (this.artifact.getS3File() != null) {
+        if (releaseArtifact.getS3File() != null) {
           CustomerConfigStorageS3Data configData = new CustomerConfigStorageS3Data();
-          configData.awsAccessKeyId = this.artifact.getS3File().accessKeyId;
-          configData.awsSecretAccessKey = this.artifact.getS3File().secretAccessKey;
+          configData.awsAccessKeyId = releaseArtifact.getS3File().accessKeyId;
+          configData.awsSecretAccessKey = releaseArtifact.getS3File().secretAccessKey;
           return cloudUtilFactory
               .getCloudUtil(Util.S3)
-              .getCloudFileInputStream(configData, this.artifact.getS3File().path);
-        } else if (this.artifact.getGcsFile() != null) {
+              .getCloudFileInputStream(configData, releaseArtifact.getS3File().path);
+        } else if (releaseArtifact.getGcsFile() != null) {
           CustomerConfigStorageGCSData configData = new CustomerConfigStorageGCSData();
-          configData.gcsCredentialsJson = this.artifact.getGcsFile().credentialsJson;
+          configData.gcsCredentialsJson = releaseArtifact.getGcsFile().credentialsJson;
           return cloudUtilFactory
               .getCloudUtil(Util.GCS)
-              .getCloudFileInputStream(configData, this.artifact.getGcsFile().path);
-        } else if (this.artifact.getPackageURL() != null) {
-          return new URL(this.artifact.getPackageURL()).openStream();
-        } else if (this.artifact.getPackageFileID() != null) {
-          ReleaseLocalFile rlf = ReleaseLocalFile.get(this.artifact.getPackageFileID());
+              .getCloudFileInputStream(configData, releaseArtifact.getGcsFile().path);
+        } else if (releaseArtifact.getPackageURL() != null) {
+          return new URL(releaseArtifact.getPackageURL()).openStream();
+        } else if (releaseArtifact.getPackageFileID() != null) {
+          ReleaseLocalFile rlf = ReleaseLocalFile.get(releaseArtifact.getPackageFileID());
           if (!Files.exists(Paths.get(rlf.getLocalFilePath()))) {
             throw new RuntimeException(
                 "Cannot add gFlags metadata for version: "
@@ -207,22 +208,24 @@ public class ReleaseContainer {
     if (isLegacy()) {
       return this.metadata.chartPath;
     } else {
-      for (ReleaseArtifact artifact : this.release.getArtifacts()) {
-        if (artifact.getPlatform().equals(ReleaseArtifact.Platform.KUBERNETES)) {
-          if (artifact.getPackageFileID() != null) {
-            ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
-            if (rlf == null) {
-              throw new RuntimeException("No artifact found for" + artifact.getPackageFileID());
-            }
-            return rlf.getLocalFilePath();
-          }
-        } else {
-          throw new RuntimeException("Invalid kubernetes artifact, expected file to be local");
-        }
+      ReleaseArtifact artifact = this.release.getKubernetesArtifact();
+      if (artifact == null) {
+        throw new RuntimeException("no kubernetes artifacts found for release " + getVersion());
       }
-      throw new RuntimeException(
-          "No kubernetes artifact found for release " + this.release.getVersion());
+      if (artifact.getPackageFileID() == null) {
+        downloadYbHelmChart(this.release.getVersion(), appConfig.getString(YB_RELEASES_PATH));
+        artifact = this.release.getKubernetesArtifact(); // Refetch the artifact.
+      }
+      if (artifact.getPackageFileID() != null) {
+        ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
+        if (rlf == null) {
+          throw new RuntimeException("No artifact found for" + artifact.getPackageFileID());
+        }
+        return rlf.getLocalFilePath();
+      }
     }
+    throw new RuntimeException(
+        "No kubernetes artifact found for release " + this.release.getVersion());
   }
 
   public void downloadYbHelmChart(String version, String ybReleasesPath) {
@@ -232,6 +235,8 @@ public class ReleaseContainer {
     String checksum = null;
     String configType = null;
     String urlPath = null;
+
+    ReleaseArtifact artifact = null;
     // Helm chart can be downloaded only from one path.
     if (isLegacy()) {
       if (metadata.s3 != null && metadata.s3.paths.helmChart != null) {
@@ -247,17 +252,17 @@ public class ReleaseContainer {
         urlPath = metadata.http.paths.helmChart;
         checksum = metadata.http.paths.helmChartChecksum;
       } else {
-        log.warn("cannot download helmchart for %s. no url found", version);
+        log.warn("cannot download helmchart for {}. no url found", version);
         return;
       }
     } else {
-      ReleaseArtifact artifact = release.getKubernetesArtifact();
+      artifact = release.getKubernetesArtifact();
       if (artifact == null) {
         log.warn(
             "cannot download helmchart for %s. No kubernetes artifact found", release.getVersion());
         return;
       }
-      checksum = artifact.getSha256();
+      checksum = artifact.getFormattedSha256();
       if (artifact.getS3File() != null) {
         configType = Util.S3;
         urlPath = artifact.getS3File().path;
@@ -268,7 +273,7 @@ public class ReleaseContainer {
         configType = Util.HTTP;
         urlPath = artifact.getPackageURL();
       } else {
-        log.warn("cannot download helmchart for %s. no url found", version);
+        log.warn("cannot download helmchart for {}. no url found", version);
         return;
       }
     }
@@ -323,6 +328,9 @@ public class ReleaseContainer {
       }
       if (isLegacy()) {
         this.metadata.chartPath = chartPath.toString();
+      } else {
+        ReleaseLocalFile rlf = ReleaseLocalFile.create(chartPath.toString());
+        artifact.setPackageFileID(rlf.getFileUUID());
       }
     } catch (Exception e) {
       log.error("failed to download helmchart from " + urlPath, e);
@@ -438,5 +446,13 @@ public class ReleaseContainer {
       }
     }
     throw new RuntimeException("Unable to find matching artifact for package " + ybPackage);
+  }
+
+  public boolean isActive() {
+    if (isLegacy()) {
+      return this.metadata.state == ReleaseManager.ReleaseState.ACTIVE;
+    } else {
+      return this.release.getState() == Release.ReleaseState.ACTIVE;
+    }
   }
 }

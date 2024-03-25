@@ -7,7 +7,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -19,10 +18,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -137,27 +134,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     }
 
     log.info("Finished {} task.", getName());
-  }
-
-  public void createTserverUpgradePrecheckTasks(
-      Universe universe, @Nullable String softwareVersion, UpgradeOption upgradeOption) {
-    boolean underReplicatedTabletsCheckEnabled =
-        confGetter.getConfForScope(
-            getUniverse(), UniverseConfKeys.underReplicatedTabletsCheckEnabled);
-    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
-      List<NodeDetails> tservers =
-          universe.getTServers().parallelStream()
-              .filter(nD -> nD.placementUuid.equals(cluster.uuid))
-              .toList();
-      if (underReplicatedTabletsCheckEnabled
-          && upgradeOption.equals(UpgradeOption.ROLLING_UPGRADE)) {
-        tservers.stream()
-            .forEach(
-                ts ->
-                    createCheckUnderReplicatedTabletsTask(ts, softwareVersion)
-                        .setSubTaskGroupType(getTaskSubGroupType()));
-      }
-    }
   }
 
   public void createUpgradeTask(
@@ -278,16 +254,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           /*isReadOnlyCluster*/ false,
           commandType,
           enableYbc,
-          ybcSoftwareVersion);
-
-      // Create post upgrade subtasks
-      createPostUpgradeChecks(
-          ServerType.MASTER,
-          universe.getServerTypeNodesInCluster(ServerType.MASTER, primaryCluster.uuid));
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
     }
-
-    // Tserver upgrade prechecks
-    createTserverUpgradePrecheckTasks(universe, softwareVersion, taskParams().upgradeOption);
 
     if (isTServerChanged) {
       if (!isBlacklistLeaders()) {
@@ -310,12 +279,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           /*isReadOnlyCluster*/ false,
           commandType,
           enableYbc,
-          ybcSoftwareVersion);
-
-      // Create post upgrade subtasks
-      createPostUpgradeChecks(
-          ServerType.TSERVER,
-          universe.getServerTypeNodesInCluster(ServerType.TSERVER, primaryCluster.uuid));
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -358,12 +323,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             /*isReadOnlyCluster*/ true,
             commandType,
             enableYbc,
-            ybcSoftwareVersion);
-
-        // Create post upgrade subtasks
-        createPostUpgradeChecks(
-            ServerType.TSERVER,
-            universe.getServerTypeNodesInCluster(ServerType.TSERVER, asyncCluster.uuid));
+            ybcSoftwareVersion,
+            /* addDelayAfterStartup */ true);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -398,12 +359,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           /*isReadOnlyCluster*/ false,
           commandType,
           enableYbc,
-          ybcSoftwareVersion);
-
-      // Create post upgrade subtasks
-      createPostUpgradeChecks(
-          ServerType.MASTER,
-          universe.getServerTypeNodesInCluster(ServerType.MASTER, primaryCluster.uuid));
+          ybcSoftwareVersion,
+          true);
     }
   }
 
@@ -522,16 +479,5 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
   protected void createSoftwareUpgradePrecheckTasks(String ybSoftwareVersion) {
     createCheckUpgradeTask(ybSoftwareVersion).setSubTaskGroupType(getTaskSubGroupType());
-  }
-
-  protected void createPostUpgradeChecks(
-      ServerType serverType, Collection<NodeDetails> nodeDetailsCollection) {
-    if (isFollowerLagCheckEnabled()) {
-      nodeDetailsCollection.stream()
-          .forEach(
-              nD ->
-                  createCheckFollowerLagTask(nD, serverType)
-                      .setSubTaskGroupType(getTaskSubGroupType()));
-    }
   }
 }

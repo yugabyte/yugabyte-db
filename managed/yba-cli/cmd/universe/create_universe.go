@@ -22,15 +22,15 @@ import (
 
 // createUniverseCmd represents the universe command
 var createUniverseCmd = &cobra.Command{
-	Use:   "create [universe-name]",
-	Short: "Create an YugabyteDB Anywhere universe",
+	Use:   "create",
+	Short: "Create YugabyteDB Anywhere universe",
 	Long:  "Create an universe in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeNameFlag, err := cmd.Flags().GetString("name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if !(len(args) > 0 || len(universeNameFlag) > 0) {
+		if len(universeName) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to create\n", formatter.RedColor))
@@ -45,17 +45,11 @@ var createUniverseCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		var response *http.Response
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
-		universeNameFlag, _ := cmd.Flags().GetString("name")
-		var universeName string
-		if len(args) > 0 {
-			universeName = args[0]
-		} else if len(universeNameFlag) > 0 {
-			universeName = universeNameFlag
 		}
 
 		allowed, version, err := authAPI.UniverseYBAVersionCheck()
@@ -64,9 +58,10 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		if !allowed {
-			logrus.Fatalf(fmt.Sprintf("Creating universes below version %s (or on restricted"+
-				" versions) is not supported, currently on %s", util.YBAAllowUniverseMinVersion,
-				version))
+			logrus.Fatalf(formatter.Colorize(
+				fmt.Sprintf("Creating universes below version %s (or on restricted"+
+					" versions) is not supported, currently on %s\n", util.YBAAllowUniverseMinVersion,
+					version), formatter.RedColor))
 		}
 
 		enableYbc := true
@@ -82,11 +77,16 @@ var createUniverseCmd = &cobra.Command{
 		}
 		// find the root certficate UUID from the name
 		if len(clientRootCA) != 0 {
-			certUUID, response, err = authAPI.GetCertificate(clientRootCA).Execute()
+			certs, response, err := authAPI.GetListOfCertificates().Execute()
 			if err != nil {
 				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Universe", "Create - Fetch Certificates")
+					"Universe", "Create - List Certificates")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+			for _, c := range certs {
+				if strings.Compare(c.GetLabel(), clientRootCA) == 0 {
+					certUUID = c.GetUuid()
+				}
 			}
 		}
 
@@ -155,8 +155,8 @@ var createUniverseCmd = &cobra.Command{
 
 		var universeData []ybaclient.UniverseResp
 
-		msg := fmt.Sprintf("The universe %s is being created",
-			formatter.Colorize(universeName, formatter.GreenColor))
+		msg := fmt.Sprintf("The universe %s (%s) is being created",
+			formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
@@ -167,7 +167,7 @@ var createUniverseCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			fmt.Printf("The universe %s (%s) has been created\n",
+			logrus.Infof("The universe %s (%s) has been created\n",
 				formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 
 			universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
@@ -185,7 +185,7 @@ var createUniverseCmd = &cobra.Command{
 			universe.Write(universesCtx, universeData)
 
 		} else {
-			fmt.Println(msg)
+			logrus.Infoln(msg + "\n")
 		}
 
 	},
@@ -196,7 +196,8 @@ func init() {
 	createUniverseCmd.Flags().SortFlags = false
 
 	createUniverseCmd.Flags().StringP("name", "n", "",
-		"[Optional] The name of the universe to be created.")
+		"[Required] The name of the universe to be created.")
+	createUniverseCmd.MarkFlagRequired("name")
 
 	createUniverseCmd.Flags().String("provider-code", "",
 		"[Required] Provider code. Allowed values: aws, gcp, azu, onprem, kubernetes.")

@@ -110,9 +110,15 @@ public class PlatformInstance extends Model {
     return false;
   }
 
-  public void updateLastBackup(Date lastBackup) {
-    this.lastBackup = lastBackup;
-    this.update();
+  public boolean updateLastBackup(Date lastBackup) {
+    try {
+      this.lastBackup = lastBackup;
+      this.update();
+      return true;
+    } catch (Exception e) {
+      LOG.warn("DB error saving last backup time", e);
+    }
+    return false;
   }
 
   @JsonGetter("is_leader")
@@ -219,8 +225,9 @@ public class PlatformInstance extends Model {
   }
 
   public static boolean isBackupOutdated(Duration replicationFrequency, Date lastBackupTime) {
+    // Means awaiting connection
     if (lastBackupTime == null) {
-      return true;
+      return false;
     }
     long backupAgeMillis = System.currentTimeMillis() - lastBackupTime.getTime();
     return backupAgeMillis

@@ -17,6 +17,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
@@ -130,6 +131,13 @@ Status PgMiniTestBase::RestartCluster() {
   pg_supervisor_ = std::make_unique<PgSupervisor>(
       VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port())), nullptr /* tserver */);
   return pg_supervisor_->Start();
+}
+
+Status PgMiniTestBase::RestartMaster() {
+  LOG(INFO) << "Restarting Master";
+  auto mini_master_ = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+  RETURN_NOT_OK(mini_master_->Restart());
+  return mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
 }
 
 void PgMiniTestBase::OverrideMiniClusterOptions(MiniClusterOptions* options) {}

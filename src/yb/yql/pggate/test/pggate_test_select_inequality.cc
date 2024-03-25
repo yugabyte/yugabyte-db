@@ -51,6 +51,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
+                                       false /* is_truncate */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "h", ++col_count,
                                                DataType::STRING, true, false));

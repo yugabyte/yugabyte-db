@@ -24,7 +24,7 @@ var preflightNodesCmd = &cobra.Command{
 	Short: "Preflight check a node of a YugabyteDB Anywhere on-premises provider",
 	Long:  "Preflight check a node of a YugabyteDB Anywhere on-premises provider",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -46,12 +46,9 @@ var preflightNodesCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
-		providerName, err := cmd.Flags().GetString("provider-name")
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -64,11 +61,14 @@ var preflightNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			fmt.Println("No providers found\n")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
-		if r[0].GetCode() != "onprem" {
+		if r[0].GetCode() != util.OnpremProviderType {
 			errMessage := "Operation only supported for On-premises providers."
 			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}
@@ -125,7 +125,7 @@ var preflightNodesCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			fmt.Printf("The node %s (%s) has been checked\n",
+			logrus.Infof("The node %s (%s) has been checked\n",
 				formatter.Colorize(ip, formatter.GreenColor), nodeUUID)
 
 			nodesCtx := formatter.Context{
@@ -160,7 +160,7 @@ var preflightNodesCmd = &cobra.Command{
 			onprem.Write(nodesCtx, nodeInstanceList)
 
 		} else {
-			fmt.Println(msg)
+			logrus.Infoln(msg + "\n")
 		}
 	},
 }

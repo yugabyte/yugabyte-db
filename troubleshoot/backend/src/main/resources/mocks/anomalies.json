@@ -224,14 +224,14 @@
     },
     "rcaGuidelines": [
       {
-        "possibleCause": "Uneven data distribution",
-        "possibleCauseDescription": "Particular DB node or set of nodes have significantly more data then the other nodes",
+        "possibleCause": "DB node(s) are processing more queries",
+        "possibleCauseDescription": "Particular DB node or set of nodes are processing significantly more requests, that the other nodes",
         "troubleshootingRecommendations": [
           {
-            "recommendation": "Check Disk Usage graph across DB nodes",
+            "recommendation": "Check YSQL RPC distribution across DB nodes",
             "supportingGraphs": [
               {
-                "name": "disk_usage",
+                "name": "ysql_server_rpc_per_second",
                 "filters": {
                   "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
                 }
@@ -252,25 +252,17 @@
         ]
       },
       {
-        "possibleCause": "Uneven query distribution",
-        "possibleCauseDescription": "Particular DB node or set of nodes process more SQL queries than the other nodes",
+        "possibleCause": "DB internal tasks",
+        "possibleCauseDescription": "Some DB background activities are consuming CPU unevenly",
         "troubleshootingRecommendations": [
           {
-            "recommendation": "Check YSQL RPC distribution across DB nodes",
-            "supportingGraphs": [
-              {
-                "name": "ysql_server_rpc_per_second",
-                "filters": {
-                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
-                }
-              }
-            ]
+            "recommendation": "Check TServer/Master logs for evidence of background activities"
           }
         ]
       },
       {
         "possibleCause": "3rd party processes",
-        "possibleCauseDescription": "Some process is running on the DB nodes which consumes CPU",
+        "possibleCauseDescription": "Some process(es) are running on the DB nodes which consumes CPU",
         "troubleshootingRecommendations": [
           {
             "recommendation": "Check top command output on the affected DB nodes"

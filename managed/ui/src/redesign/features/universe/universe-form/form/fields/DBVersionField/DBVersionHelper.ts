@@ -26,3 +26,4 @@ export const getActiveDBVersions = (releasesMetadata: Record<string, YBSoftwareM
         value: r[0]
       }));
 };
+

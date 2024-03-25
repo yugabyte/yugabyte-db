@@ -116,21 +116,10 @@ using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
 
-DEFINE_UNKNOWN_int32(master_tserver_svc_num_threads, 10,
-             "Number of RPC worker threads to run for the master tserver service");
-TAG_FLAG(master_tserver_svc_num_threads, advanced);
-
-DEFINE_UNKNOWN_int32(master_svc_num_threads, 10,
-             "Number of RPC worker threads to run for the master service");
-TAG_FLAG(master_svc_num_threads, advanced);
-
-DEFINE_UNKNOWN_int32(master_consensus_svc_num_threads, 10,
-             "Number of RPC threads for the master consensus service");
-TAG_FLAG(master_consensus_svc_num_threads, advanced);
-
-DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_num_threads, 10,
-             "Number of RPC threads for the master remote bootstrap service");
-TAG_FLAG(master_remote_bootstrap_svc_num_threads, advanced);
+DEPRECATE_FLAG(int32, master_tserver_svc_num_threads, "02_2024");
+DEPRECATE_FLAG(int32, master_svc_num_threads, "02_2024");
+DEPRECATE_FLAG(int32, master_consensus_svc_num_threads, "02_2024");
+DEPRECATE_FLAG(int32, master_remote_bootstrap_svc_num_threads, "02_2024");
 
 DEFINE_UNKNOWN_int32(master_tserver_svc_queue_length, 1000,
              "RPC queue length for master tserver service");
@@ -334,7 +323,6 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
   DisplayIconTile(output, "fa-clock-o", "TServer Clocks", "/tablet-server-clocks");
   DisplayIconTile(output, "fa-tasks", "Load Balancer", "/load-distribution");
-  DisplayIconTile(output, "fa-list-alt", "XCluster Config", "/xcluster-config");
 }
 
 Status Master::StartAsync() {
@@ -712,6 +700,12 @@ std::string Master::GetCertificateDetails() {
   if(!secure_context_) return "";
 
   return secure_context_.get()->GetCertificateDetails();
+}
+
+void Master::WriteServerMetaCacheAsJson(JsonWriter *writer) {
+  writer->StartObject();
+  tserver::DbServerBase::WriteMainMetaCacheAsJson(writer);
+  writer->EndObject();
 }
 
 } // namespace master

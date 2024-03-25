@@ -29,6 +29,7 @@ using namespace std::chrono_literals;
 using namespace std::literals;
 
 DECLARE_int32(TEST_partitioning_version);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 namespace {
 
@@ -1214,6 +1215,57 @@ TEST_F_EX(
   ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 3);
 }
 
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestReplicaIdentityAfterRestore),
+    YBBackupTestOneTablet) {
+  ASSERT_OK(
+      cluster_->SetFlagOnTServers("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_enable_replica_identity", "true"));
+
+  ASSERT_OK(
+      cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_yb_enable_replica_identity", "true"));
+
+  const string table_name = "mytbl";
+
+  // Create table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", table_name)));
+
+  ASSERT_RESULT(RunPsqlCommand("ALTER TABLE mytbl REPLICA IDENTITY FULL"));
+  ASSERT_NO_FATALS(RunPsqlCommand("SELECT relreplident FROM pg_class WHERE oid = 'mytbl'::regclass",
+  R"#(
+    relreplident
+   --------------
+    f
+   (1 row)
+  )#"));
+
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  std::string db_name = "yugabyte_new";
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", db_name), "restore"}));
+
+  // Sanity check the tablet count.
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(db_name, table_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+  SetDbName(db_name);
+
+  ASSERT_NO_FATALS(RunPsqlCommand("SELECT relreplident FROM pg_class WHERE oid = 'mytbl'::regclass",
+  R"#(
+    relreplident
+   --------------
+    f
+   (1 row)
+  )#"));
+}
+
 class YBLegacyColocatedDBBackupTest : public YBBackupTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
@@ -1485,6 +1537,62 @@ INSTANTIATE_TEST_CASE_P(
         std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kFalse),
         std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kTrue)));
 
+TEST_P(
+    YBBackupTestWithPackedRowsAndColocation,
+    YB_DISABLE_TEST_IN_SANITIZERS(RestoreBackupAfterOldSchemaGC)) {
+  const std::string table_name = "test1";
+  // Create a table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0(a INT)", table_name)));
+
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO $0 VALUES (1), (2), (3)", table_name), 3));
+
+  // Perform a series of Alters.
+  ASSERT_NO_FATALS(
+      RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN b INT", table_name), "ALTER TABLE"));
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO $0 VALUES (4,4), (5,5), (6,6)", table_name), 3));
+
+  ASSERT_NO_FATALS(
+      RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN c INT", table_name), "ALTER TABLE"));
+  ASSERT_NO_FATALS(
+      InsertRows(Format("INSERT INTO $0 VALUES (7,7,7), (8,8,8), (9,9,9)", table_name), 3));
+
+  ASSERT_NO_FATALS(
+      RunPsqlCommand(Format("ALTER TABLE $0 RENAME COLUMN b TO d", table_name), "ALTER TABLE"));
+  ASSERT_NO_FATALS(
+      InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));
+
+  const string backup_dir = GetTempDir("backup");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
+       "create"}));
+
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
+       "restore"}));
+
+  SetDbName(backup_db_name);
+
+  ASSERT_NO_FATALS(
+      InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));
+
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 class YBAddColumnDefaultBackupTest : public YBBackupTestWithPackedRowsAndColocation {};
 
 TEST_P(YBAddColumnDefaultBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDefaultMissingValues)) {
@@ -1532,8 +1640,8 @@ class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDd
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     LibPqTestBase::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+        "--allowed_preview_flags_csv=ysql_yb_ddl_rollback_enabled");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
     options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=true");
   }
 
@@ -1672,34 +1780,35 @@ class YBBackupTestWithTableRewrite : public YBBackupTestWithPackedRowsAndColocat
 
   void SetUpTestData(const bool failedRewrite) {
     constexpr auto kRowCount = 5;
-    // Create table.
-    ASSERT_NO_FATALS(CreateTable(
-        Format("CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC))", kTable)));
-    // Insert some data.
-    ASSERT_NO_FATALS(InsertRows(
-        Format("INSERT INTO $0 (a, b) VALUES (generate_series(1, $1), generate_series(1, $1))",
-            kTable, kRowCount),
-        kRowCount));
-    // Create index.
-    ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX $0 ON $1 (b DESC)", kIndex, kTable)));
+    for (auto table_name : {kTable, kTable2}) {
+      // Create the table.
+      ASSERT_NO_FATALS(CreateTable(
+        Format("CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC))", table_name)));
+      // Insert some data.
+      ASSERT_NO_FATALS(InsertRows(Format(
+          "INSERT INTO $0 (a, b) VALUES (generate_series(1, $1), generate_series(1, $1))",
+          table_name, kRowCount), kRowCount));
+      // Create an index.
+      ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX $0 ON $1 (b DESC)",
+          table_name == kTable ? kIndex : "idx2", kTable)));
+    }
     // Create materialized view.
     ASSERT_NO_FATALS(RunPsqlCommand(
         Format("CREATE MATERIALIZED VIEW $0 AS SELECT * FROM $1", kMaterializedView, kTable),
         "SELECT 5"));
-    // Insert some more data.
+    // Insert some more data on the materialized view's base table.
     ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO $0 (a, b) VALUES (6, 6)", kTable)));
-    // Perform a rewrite operation on the table.
-    if (failedRewrite) {
-      ASSERT_NO_FATALS(RunPsqlCommand(
-          "SET yb_test_fail_table_rewrite_after_creation=true", "SET"));
-    }
-
     const auto setFailRewriteGuc = "SET yb_test_fail_table_rewrite_after_creation=true;";
 
+    // Perform a rewrite operations on a table.
     ASSERT_NO_FATALS(RunPsqlCommand(Format(
         "$0 ALTER TABLE $1 ADD COLUMN c SERIAL", failedRewrite ? setFailRewriteGuc : "", kTable),
         failedRewrite ? "SET" : "ALTER TABLE"));
-    // Perform a reindex operation on the index.
+    // Perform a truncate operation.
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format("$0 TRUNCATE TABLE $1", failedRewrite ? setFailRewriteGuc : "", kTable2),
+        failedRewrite ? "SET" : "TRUNCATE TABLE"));
+    // Perform a reindex operation on an index.
     ASSERT_NO_FATALS(RunPsqlCommand(
         Format("UPDATE pg_index SET indisvalid='f' WHERE indexrelid = '$0'::regclass", kIndex),
         "UPDATE 1"));
@@ -1724,9 +1833,10 @@ class YBBackupTestWithTableRewrite : public YBBackupTestWithPackedRowsAndColocat
     SetDbName(restore_db_name); // Connecting to the second DB.
   }
 
-  const std::string kTable = "test_table";
-  const std::string kIndex = "test_idx";
-  const std::string kMaterializedView = "test_mv";
+  const std::string kTable = "t1";
+  const std::string kTable2 = "t2";
+  const std::string kIndex = "idx1";
+  const std::string kMaterializedView = "mv";
 };
 
 INSTANTIATE_TEST_CASE_P(
@@ -1781,6 +1891,24 @@ TEST_P(YBBackupTestWithTableRewrite,
         (6 rows)
       )#"
   ));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0", kTable2),
+      R"#(
+         a | b
+        ---+---
+        (0 rows)
+      )#"
+  ));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 WHERE b = 2", kTable2),
+      R"#(
+         a | b
+        ---+---
+        (0 rows)
+      )#"
+  ));
 }
 
 // Test that backup and restore succeed after unsuccessful rewrite operations are executed
@@ -1788,16 +1916,14 @@ TEST_P(YBBackupTestWithTableRewrite,
 TEST_P(YBBackupTestWithTableRewrite,
     YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupAndRestoreAfterFailedRewrite)) {
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_transactional_ddl_gc", "false"));
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_ddl_rollback_enabled", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_ddl_rollback_enabled", "false"));
   SetUpTestData(true /* failedRewrite */);
 
   // Verify that the orphaned DocDB tables created still exist.
-  vector<client::YBTableName> tables = ASSERT_RESULT(client_->ListTables(kTable));
-  ASSERT_EQ(tables.size(), 2);
-  tables = ASSERT_RESULT(client_->ListTables(kIndex));
-  ASSERT_EQ(tables.size(), 2);
-  tables = ASSERT_RESULT(client_->ListTables(kMaterializedView));
-  ASSERT_EQ(tables.size(), 2);
+  vector<client::YBTableName> tables;
+  for (auto table_name : {kTable, kTable2, kIndex, kMaterializedView}) {
+    ASSERT_EQ(ASSERT_RESULT(client_->ListTables(table_name)).size(), 2);
+  }
 
   BackupAndRestore();
   // Verify that we restored everything correctly.
@@ -1837,6 +1963,30 @@ TEST_P(YBBackupTestWithTableRewrite,
          4 | 4
          5 | 5
         (5 rows)
+      )#"
+  ));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0", kTable2),
+      R"#(
+         a | b
+        ---+---
+         1 | 1
+         2 | 2
+         3 | 3
+         4 | 4
+         5 | 5
+        (5 rows)
+      )#"
+  ));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 WHERE b = 2", kTable2),
+      R"#(
+         a | b
+        ---+---
+         2 | 2
+        (1 row)
       )#"
   ));
 }

@@ -31,8 +31,24 @@ import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.INodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeAccessTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.Params;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
+import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -54,8 +70,18 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -119,6 +145,13 @@ public class NodeManager extends DevopsBase {
   public static final long PRECHECK_NODE_DETACHED_DEFAULT_TIMEOUT_SECS = 300;
 
   public static final String YUGABYTE_USER = "yugabyte";
+
+  static final String ANSIBLE_STRATEGY = "yb.ansible.strategy";
+  static final String ANSIBLE_TIMEOUT = "yb.ansible.conn_timeout_secs";
+  static final String ANSIBLE_VERBOSITY = "yb.ansible.verbosity";
+  static final String ANSIBLE_DEBUG = "yb.ansible.debug";
+  static final String ANSIBLE_DIFF_ALWAYS = "yb.ansible.diff_always";
+  static final String ANSIBLE_LOCAL_TEMP = "yb.ansible.local_temp";
 
   @Inject Config appConfig;
 
@@ -288,9 +321,7 @@ public class NodeManager extends DevopsBase {
       String sshUser = null;
       // Currently we only need this for provision node operation.
       // All others use yugabyte user.
-      if (type == NodeCommandType.Provision
-          || type == NodeCommandType.Create
-          || type == NodeCommandType.Wait_For_Connection) {
+      if (useSudoUser(type) || type == NodeCommandType.Wait_For_Connection) {
         // in case of sshUserOverride in ImageBundle.
         if (StringUtils.isNotBlank(params.sshUserOverride)) {
           sshUser = params.sshUserOverride;
@@ -369,18 +400,27 @@ public class NodeManager extends DevopsBase {
     }
     Provider provider = params.getProvider();
     ProviderDetails providerDetails = provider.getDetails();
-    if (params instanceof AnsibleDestroyServer.Params
-        && providerType.equals(Common.CloudType.onprem)) {
+
+    if (type == NodeCommandType.Destroy && providerType.equals(Common.CloudType.onprem)) {
       subCommand.add("--clean_node_exporter");
       if (!providerDetails.skipProvisioning) {
         subCommand.add("--provisioning_cleanup");
       }
-      AnsibleDestroyServer.Params destroyParams = (AnsibleDestroyServer.Params) params;
-      if (destroyParams.otelCollectorInstalled) {
-        subCommand.add("--clean_otel_collector");
+      if (params instanceof AnsibleDestroyServer.Params) {
+        AnsibleDestroyServer.Params destroyParams = (AnsibleDestroyServer.Params) params;
+        if (destroyParams.otelCollectorInstalled) {
+          subCommand.add("--clean_otel_collector");
+        }
+      } else if (params instanceof DetachedNodeTaskParams) {
+        DetachedNodeTaskParams detachedNodeTaskParams = (DetachedNodeTaskParams) params;
+        NodeInstance nodeInstance =
+            NodeInstance.getOrBadRequest(detachedNodeTaskParams.getNodeUuid());
+        if (nodeInstance.getUniverseMetadata() != null
+            && nodeInstance.getUniverseMetadata().isOtelCollectorEnabled()) {
+          subCommand.add("--clean_otel_collector");
+        }
       }
     }
-
     if (sshPort == null) {
       sshPort = providerDetails.getSshPort();
     }
@@ -388,15 +428,7 @@ public class NodeManager extends DevopsBase {
     subCommand.add(sshPort.toString());
     // TODO make this global and remove this conditional check
     // to avoid bugs.
-    if ((type == NodeCommandType.Provision
-            || type == NodeCommandType.Destroy
-            || type == NodeCommandType.Create
-            || type == NodeCommandType.Disk_Update
-            || type == NodeCommandType.Update_Mounted_Disks
-            || type == NodeCommandType.Reboot
-            || type == NodeCommandType.Change_Instance_Type
-            || type == NodeCommandType.Create_Root_Volumes
-            || type == NodeCommandType.RunHooks)
+    if (useSudoUser(type)
         && (StringUtils.isNotBlank(providerDetails.sshUser) || StringUtils.isNotBlank(sshUser))) {
       subCommand.add("--ssh_user");
       if (StringUtils.isNotBlank(sshUser)) {
@@ -818,10 +850,14 @@ public class NodeManager extends DevopsBase {
     UserIntent userIntent = getUserIntentFromParams(universe, taskParam);
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> subcommand = new ArrayList<>();
-    String masterAddresses = universe.getMasterAddresses();
+    String masterAddresses = taskParam.getMasterAddrsOverride();
+    if (StringUtils.isBlank(masterAddresses)) {
+      masterAddresses = universe.getMasterAddresses();
+    }
     if (StringUtils.isBlank(masterAddresses)) {
       log.warn("No valid masters found during configure for {}.", taskParam.getUniverseUUID());
     }
+
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
     Integer num_cores_to_keep =
@@ -1463,7 +1499,7 @@ public class NodeManager extends DevopsBase {
   public ShellResponse detachedNodeCommand(
       NodeCommandType type, DetachedNodeTaskParams nodeTaskParam) {
     List<String> commandArgs = new ArrayList<>();
-    if (type != NodeCommandType.Precheck) {
+    if (type != NodeCommandType.Precheck && type != NodeCommandType.Destroy) {
       throw new UnsupportedOperationException("Not supported " + type);
     }
     Provider provider = nodeTaskParam.getProvider();
@@ -1483,15 +1519,56 @@ public class NodeManager extends DevopsBase {
             accessKey.getKeyCode(),
             null,
             null));
-    commandArgs.addAll(
-        getCommunicationPortsParams(
-            new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
-
     InstanceType instanceType =
         InstanceType.get(provider.getUuid(), nodeTaskParam.getInstanceType());
     commandArgs.add("--mount_points");
     commandArgs.add(instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).mountPath);
+    commandArgs.add("--volume_size");
+    commandArgs.add(
+        Integer.toString(
+            instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeSizeGB));
+
     NodeInstance nodeInstance = NodeInstance.getOrBadRequest(nodeTaskParam.getNodeUuid());
+
+    Map<String, String> ansibleEnvVars = new HashMap<>();
+    long customTimeout = PRECHECK_NODE_DETACHED_DEFAULT_TIMEOUT_SECS;
+    switch (type) {
+      case Destroy:
+        commandArgs.add("--node_ip");
+        commandArgs.add(nodeInstance.getDetails().ip);
+
+        commandArgs.add("--node_uuid");
+        commandArgs.add(nodeInstance.getNodeUuid().toString());
+
+        addInstanceTypeArgs(
+            commandArgs, provider.getUuid(), instanceType.getInstanceTypeCode(), false);
+
+        NodeInstance.UniverseMetadata metadata = nodeInstance.getUniverseMetadata();
+        if (metadata != null) {
+          if (metadata.isUseSystemd()) {
+            commandArgs.add("--systemd_services");
+          }
+          if (metadata.isAssignStaticPublicIp()) {
+            commandArgs.add("--delete_static_public_ip");
+          }
+        } else {
+          // Assume node is using systemd if universe metadata does not exist.
+          commandArgs.add("--systemd_services");
+        }
+        addDefaultAnsibleEnvVars(ansibleEnvVars);
+        customTimeout =
+            confGetter.getGlobalConf(GlobalConfKeys.destroyServerCommandTimeout).getSeconds();
+        break;
+      case Precheck:
+        commandArgs.addAll(
+            getCommunicationPortsParams(
+                new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
+        break;
+    }
+
+    Map<String, String> envVars =
+        ImmutableMap.<String, String>builder().putAll(ansibleEnvVars).build();
+
     NodeInstanceData instanceData = nodeInstance.getDetails();
     if (StringUtils.isNotBlank(instanceData.ip)) {
       getNodeAgentClient()
@@ -1521,9 +1598,27 @@ public class NodeManager extends DevopsBase {
             .command(type.toString().toLowerCase())
             .commandArgs(commandArgs)
             .cloudArgs(cloudArgs)
+            .envVars(envVars)
             .redactedVals(redactedVals)
-            .timeoutSecs(PRECHECK_NODE_DETACHED_DEFAULT_TIMEOUT_SECS)
+            .timeoutSecs(customTimeout)
             .build());
+  }
+
+  private void addDefaultAnsibleEnvVars(Map<String, String> ansibleEnvVars) {
+    ansibleEnvVars.put("ANSIBLE_STRATEGY", confGetter.getStaticConf().getString(ANSIBLE_STRATEGY));
+    ansibleEnvVars.put(
+        "ANSIBLE_TIMEOUT", Integer.toString(confGetter.getStaticConf().getInt(ANSIBLE_TIMEOUT)));
+    ansibleEnvVars.put(
+        "ANSIBLE_VERBOSITY",
+        Integer.toString(confGetter.getStaticConf().getInt(ANSIBLE_VERBOSITY)));
+    if (confGetter.getStaticConf().getBoolean(ANSIBLE_DEBUG)) {
+      ansibleEnvVars.put("ANSIBLE_DEBUG", "True");
+    }
+    if (confGetter.getStaticConf().getBoolean(ANSIBLE_DIFF_ALWAYS)) {
+      ansibleEnvVars.put("ANSIBLE_DIFF_ALWAYS", "True");
+    }
+    ansibleEnvVars.put(
+        "ANSIBLE_LOCAL_TEMP", confGetter.getStaticConf().getString(ANSIBLE_LOCAL_TEMP));
   }
 
   private Path addBootscript(
@@ -1669,21 +1764,26 @@ public class NodeManager extends DevopsBase {
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
-    if (nodeTaskParam.sshPortOverride == null) {
-      UUID imageBundleUUID =
-          Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
-      if (imageBundleUUID != null) {
-        Region region = nodeTaskParam.getRegion();
-        ImageBundle.NodeProperties toOverwriteNodeProperties =
-            imageBundleUtil.getNodePropertiesOrFail(
-                imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+    ImageBundle.NodeProperties toOverwriteNodeProperties = null;
+    UUID imageBundleUUID =
+        Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
+    if (imageBundleUUID != null) {
+      Region region = nodeTaskParam.getRegion();
+      toOverwriteNodeProperties =
+          imageBundleUtil.getNodePropertiesOrFail(
+              imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+      if (nodeTaskParam.sshPortOverride == null) {
         nodeTaskParam.sshPortOverride = toOverwriteNodeProperties.getSshPort();
+      }
+      if (nodeTaskParam.sshUserOverride == null) {
+        nodeTaskParam.sshUserOverride = toOverwriteNodeProperties.getSshUser();
       }
     }
     Path bootScriptFile = null;
     String bootScript = confGetter.getConfForScope(provider, ProviderConfKeys.universeBootScript);
     Map<String, String> redactedVals = new HashMap<>();
     Map<String, String> sensitiveData = new HashMap<>();
+    long customDevopsTimeoutSecs = -1;
     switch (type) {
       case Replace_Root_Volume:
         if (!(nodeTaskParam instanceof ReplaceRootVolume.Params)) {
@@ -1826,14 +1926,8 @@ public class NodeManager extends DevopsBase {
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
             String imageBundleDefaultImage = "";
-            UUID imageBundleUUID =
-                Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
-            if (imageBundleUUID != null && StringUtils.isBlank(taskParam.getMachineImage())) {
-              Region region = taskParam.getRegion();
-              ImageBundle.NodeProperties toOverwriteNodeProperties =
-                  imageBundleUtil.getNodePropertiesOrFail(
-                      imageBundleUUID, region.getCode(), userIntent.providerType.toString());
-              taskParam.sshUserOverride = toOverwriteNodeProperties.getSshUser();
+            if (toOverwriteNodeProperties != null
+                && StringUtils.isBlank(taskParam.getMachineImage())) {
               imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
             } else {
               // Backward compatiblity.
@@ -1923,14 +2017,7 @@ public class NodeManager extends DevopsBase {
               userIntent);
 
           String imageBundleDefaultImage = "";
-          UUID imageBundleUUID =
-              Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
-          if (imageBundleUUID != null && StringUtils.isBlank(taskParam.machineImage)) {
-            Region region = taskParam.getRegion();
-            ImageBundle.NodeProperties toOverwriteNodeProperties =
-                imageBundleUtil.getNodePropertiesOrFail(
-                    imageBundleUUID, region.getCode(), userIntent.providerType.toString());
-            taskParam.sshUserOverride = toOverwriteNodeProperties.getSshUser();
+          if (toOverwriteNodeProperties != null && StringUtils.isBlank(taskParam.machineImage)) {
             imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
           } else {
             imageBundleDefaultImage = taskParam.getRegion().getYbImage();
@@ -2087,6 +2174,8 @@ public class NodeManager extends DevopsBase {
           if (userIntent.assignStaticPublicIP) {
             commandArgs.add("--delete_static_public_ip");
           }
+          customDevopsTimeoutSecs =
+              confGetter.getGlobalConf(GlobalConfKeys.destroyServerCommandTimeout).getSeconds();
           break;
         }
       case Pause:
@@ -2194,6 +2283,13 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
+          if (toOverwriteNodeProperties != null) {
+            String ybImage = toOverwriteNodeProperties.getMachineImage();
+            if (StringUtils.isNotBlank(ybImage)) {
+              commandArgs.add("--machine_image");
+              commandArgs.add(ybImage);
+            }
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           if (taskParam.deviceInfo != null) {
@@ -2210,6 +2306,13 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
           }
           UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
+          if (toOverwriteNodeProperties != null) {
+            String ybImage = toOverwriteNodeProperties.getMachineImage();
+            if (StringUtils.isNotBlank(ybImage)) {
+              commandArgs.add("--machine_image");
+              commandArgs.add(ybImage);
+            }
+          }
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.add("--volume_type");
@@ -2469,6 +2572,7 @@ public class NodeManager extends DevopsBase {
               .regionUUID(nodeTaskParam.getRegion().getUuid())
               .command(type.toString().toLowerCase())
               .commandArgs(commandArgs)
+              .timeoutSecs(customDevopsTimeoutSecs)
               .cloudArgs(getCloudArgs(type, nodeTaskParam))
               .envVars(envVars)
               .redactedVals(redactedVals)
@@ -2802,5 +2906,17 @@ public class NodeManager extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     return nodeDetails.otelCollectorMetricsPort;
+  }
+
+  private boolean useSudoUser(NodeCommandType type) {
+    return type == NodeCommandType.Provision
+        || type == NodeCommandType.Destroy
+        || type == NodeCommandType.Create
+        || type == NodeCommandType.Disk_Update
+        || type == NodeCommandType.Update_Mounted_Disks
+        || type == NodeCommandType.Reboot
+        || type == NodeCommandType.Change_Instance_Type
+        || type == NodeCommandType.Create_Root_Volumes
+        || type == NodeCommandType.RunHooks;
   }
 }

@@ -624,16 +624,6 @@ public class Universe extends Model {
   }
 
   /**
-   * Return the list of node in given cluster for this universe.
-   *
-   * @return a list of Nodes
-   */
-  public List<NodeDetails> getServerTypeNodesInCluster(ServerType serverType, UUID placementUuid) {
-    List<NodeDetails> servers = getServers(serverType);
-    return servers.parallelStream().filter(nD -> nD.placementUuid.equals(placementUuid)).toList();
-  }
-
-  /**
    * Return the list of live TServers in the primary cluster. TODO: junit tests for this
    * functionality (UniverseTest.java)
    *
@@ -877,14 +867,17 @@ public class Universe extends Model {
     return port;
   }
 
-  private String getHostPortsString(
-      List<NodeDetails> serverNodes, ServerType type, PortType portType) {
+  public String getHostPortsString(
+      Collection<NodeDetails> serverNodes, ServerType type, PortType portType) {
     return getHostPortsString(serverNodes, type, portType, false);
   }
 
   // Helper API to create the based on the server type.
   private String getHostPortsString(
-      List<NodeDetails> serverNodes, ServerType type, PortType portType, boolean getSecondary) {
+      Collection<NodeDetails> serverNodes,
+      ServerType type,
+      PortType portType,
+      boolean getSecondary) {
     StringBuilder servers = new StringBuilder();
     for (NodeDetails node : serverNodes) {
       // Only get secondary if dual net legacy is false.

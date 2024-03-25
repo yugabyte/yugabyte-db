@@ -45,11 +45,13 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/util/yb_guc.h"
 #include "yb/util/flags.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
+DECLARE_uint32(ddl_verification_timeout_multiplier);
 
 DEFINE_UNKNOWN_uint64(pg_client_heartbeat_interval_ms, 10000,
     "Pg client heartbeat interval in ms.");
@@ -472,13 +474,32 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_commit(commit);
+    bool has_docdb_schema_changes = false;
     if (ddl_mode) {
       ddl_mode->ToPB(req.mutable_ddl_mode());
+      has_docdb_schema_changes = ddl_mode->has_docdb_schema_changes;
     }
-
     tserver::PgFinishTransactionResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->FinishTransaction(req, &resp, PrepareController()));
+    if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+      LOG_WITH_PREFIX(INFO) << Format("$0$1 transaction",
+                                      (commit ? "Committing" : "Aborting"),
+                                      (ddl_mode ? " DDL" : ""));
+    }
+
+    // If docdb schema changes are present, then this transaction had DDL changes that changed the
+    // DocDB schema. In this case FinishTransaction has to wait for any post-processing for these
+    // DDLs to complete. Some examples of such post-processing is rolling back any DocDB schema
+    // changes in case this transaction was aborted (or) dropping a column/table marked for deletion
+    // after commit. Increase the deadline in that case for this operation. FinishTransaction waits
+    // for FLAGS_ddl_verification_timeout_multiplier times the normal timeout for this operation,
+    // so we have to wait longer than that here.
+    auto deadline = !has_docdb_schema_changes ? CoarseTimePoint() :
+        CoarseMonoClock::Now() +
+            MonoDelta::FromSeconds((FLAGS_ddl_verification_timeout_multiplier + 1) *
+                                   FLAGS_yb_client_admin_operation_timeout_sec);
+    RETURN_NOT_OK(proxy_->FinishTransaction(req, &resp, PrepareController(deadline)));
+
     return ResponseStatus(resp);
   }
 
@@ -1142,6 +1163,21 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
+    const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush) {
+    cdc::UpdateAndPersistLSNRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_stream_id(stream_id);
+    req.set_restart_lsn(restart_lsn);
+    req.set_confirmed_flush_lsn(confirmed_flush);
+
+    cdc::UpdateAndPersistLSNResponsePB resp;
+    RETURN_NOT_OK(
+        local_cdc_service_proxy_->UpdateAndPersistLSN(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -1441,6 +1477,11 @@ Result<cdc::DestroyVirtualWALForCDCResponsePB> PgClient::DestroyVirtualWALForCDC
 Result<cdc::GetConsistentChangesResponsePB> PgClient::GetConsistentChangesForCDC(
     const std::string& stream_id) {
   return impl_->GetConsistentChangesForCDC(stream_id);
+}
+
+Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
+    const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush) {
+  return impl_->UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
 }
 
 void PerformExchangeFuture::wait() const {

@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.DeleteBackupParams;
 import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.models.Customer;
@@ -22,7 +23,6 @@ import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -75,15 +75,6 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
     resourceClient.inNamespace(namespace).resource(backup).replaceStatus();
   }
 
-  public UUID getUniverseUUIDFromName(Long customerId, String universeName) {
-    Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, universeName);
-    UUID universeUUID;
-    if (universe.isPresent()) {
-      return universe.get().getUniverseUUID();
-    }
-    return null;
-  }
-
   public UUID getStorageConfigUUIDFromName(String scName) {
 
     Lister<StorageConfig> scLister = new Lister<>(this.scInformer.getIndexer());
@@ -97,7 +88,7 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
     return null;
   }
 
-  public BackupRequestParams getBackupTaskParamsFromCr(Backup backup) {
+  public BackupRequestParams getBackupTaskParamsFromCr(Backup backup) throws Exception {
     // Convert the Java object to JsonNode
     ObjectMapper objectMapper = new ObjectMapper();
     JsonNode crJsonNode = objectMapper.valueToTree(backup.getSpec());
@@ -111,11 +102,23 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
 
     log.info("CRSPECJSON {}", crJsonNode);
 
-    UUID universeUUID = getUniverseUUIDFromName(cust.getId(), backup.getSpec().getUniverse());
+    Universe universe =
+        operatorUtils.getUniverseFromNameAndNamespace(
+            cust.getId(), backup.getSpec().getUniverse(), backup.getMetadata().getNamespace());
+    if (universe == null) {
+      throw new Exception("No universe found with name " + backup.getSpec().getUniverse());
+    }
+    UUID universeUUID = universe.getUniverseUUID();
     UUID storageConfigUUID = getStorageConfigUUIDFromName(backup.getSpec().getStorageConfig());
+
+    KeyspaceTable kT = new KeyspaceTable();
+    kT.keyspace = backup.getSpec().getKeyspace();
+    ((ObjectNode) crJsonNode).remove("keyspace");
+    ((ObjectNode) crJsonNode).set("keyspaceTableList", Json.toJson(kT));
 
     ((ObjectNode) crJsonNode).put("universeUUID", universeUUID.toString());
     ((ObjectNode) crJsonNode).put("storageConfigUUID", storageConfigUUID.toString());
+    ((ObjectNode) crJsonNode).put("expiryTimeUnit", "MILLISECONDS");
 
     return formFactory.getFormDataOrBadRequest(crJsonNode, BackupRequestParams.class);
   }
@@ -130,6 +133,7 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
           KubernetesResourceDetails.fromResource(backup));
     } catch (Exception e) {
       log.error("Got Exception in converting to backup params {}", e);
+      return;
     }
 
     Customer cust;

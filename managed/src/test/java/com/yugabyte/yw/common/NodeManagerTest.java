@@ -566,6 +566,8 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.devopsCommandTimeout)))
         .thenReturn(Duration.ofHours(1));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.destroyServerCommandTimeout)))
+        .thenReturn(Duration.ofMinutes(10));
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.acceptableClockSkewWaitEnabled)))
         .thenReturn(true);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew)))

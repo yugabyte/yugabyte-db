@@ -87,7 +87,16 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Executor;
@@ -390,6 +399,13 @@ public class AsyncYBClient implements AutoCloseable {
     rpc.attempt++;
     client.sendRpc(rpc);
     return d;
+  }
+
+  public Deferred<GetMasterHeartbeatDelaysResponse> getMasterHeartbeatDelays() {
+    checkIsClosed();
+    GetMasterHeartbeatDelaysRequest request = new GetMasterHeartbeatDelaysRequest(this.masterTable);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
   }
 
   /**
@@ -1792,6 +1808,20 @@ public class AsyncYBClient implements AutoCloseable {
         return Deferred.fromResult(true);
       }
     });
+  }
+
+  public Deferred<AreNodesSafeToTakeDownResponse> areNodesSafeToTakeDown(
+      Collection<String> masters,
+      Collection<String> tservers,
+      long followerLagBoundMs
+  ) {
+    checkIsClosed();
+    AreNodesSafeToTakeDownRequest rpc = new AreNodesSafeToTakeDownRequest(this.masterTable,
+        masters,
+        tservers,
+        followerLagBoundMs);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
   }
 
   /**

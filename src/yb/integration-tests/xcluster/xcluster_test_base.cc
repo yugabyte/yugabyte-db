@@ -221,6 +221,11 @@ Status XClusterTestBase::CreateDatabase(
       "CREATE DATABASE $0$1", namespace_name, colocated ? " colocated = true" : "");
 }
 
+Status XClusterTestBase::DropDatabase(Cluster& cluster, const std::string& namespace_name) {
+  auto conn = VERIFY_RESULT(cluster.Connect());
+  return conn.ExecuteFormat("DROP DATABASE $0", namespace_name);
+}
+
 Result<YBTableName> XClusterTestBase::CreateTable(
     YBClient* client, const std::string& namespace_name, const std::string& table_name,
     uint32_t num_tablets, const client::YBSchema* schema) {
@@ -495,6 +500,22 @@ Status XClusterTestBase::ChangeXClusterRole(const cdc::XClusterRole role, Cluste
     return StatusFromPB(resp.error().status());
   }
   return Status::OK();
+}
+
+Result<master::GetUniverseReplicationResponsePB> XClusterTestBase::GetUniverseReplicationInfo(
+    Cluster& cluster, const xcluster::ReplicationGroupId& replication_group_id) {
+  master::GetUniverseReplicationRequestPB req;
+  master::GetUniverseReplicationResponsePB resp;
+  req.set_replication_group_id(replication_group_id.ToString());
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &cluster.client_->proxy_cache(),
+      VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+  RETURN_NOT_OK(master_proxy->GetUniverseReplication(req, &resp, &rpc));
+  return resp;
 }
 
 Status XClusterTestBase::VerifyUniverseReplicationDeleted(

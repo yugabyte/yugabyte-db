@@ -43,6 +43,7 @@
 #include "optimizer/subselect.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
+#include "optimizer/ybcplan.h"
 #include "parser/parse_clause.h"
 #include "parser/parsetree.h"
 #include "partitioning/partprune.h"
@@ -138,17 +139,13 @@ static Scan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
 static BitmapHeapScan *create_bitmap_scan_plan(PlannerInfo *root,
 						BitmapHeapPath *best_path,
 						List *tlist, List *scan_clauses);
+static YbBitmapTableScan *create_yb_bitmap_scan_plan(PlannerInfo *root,
+						YbBitmapTablePath *best_path,
+						List *tlist, List *scan_clauses);
 static Plan *create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 					  List **qual, List **indexqual, List **indexECs);
 static void bitmap_subplan_mark_shared(Plan *plan);
 static List *flatten_partitioned_rels(List *partitioned_rels);
-static void extract_pushdown_clauses(List *restrictinfo_list,
-						 IndexOptInfo *indexinfo,
-						 List **local_quals,
-						 List **rel_remote_quals,
-						 List **rel_colrefs,
-						 List **idx_remote_quals,
-						 List **idx_colrefs);
 static TidScan *create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 					List *tlist, List *scan_clauses);
 static SubqueryScan *create_subqueryscan_plan(PlannerInfo *root,
@@ -217,6 +214,11 @@ static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
 					  List *indexqual,
 					  List *indexqualorig);
 static BitmapHeapScan *make_bitmap_heapscan(List *qptlist,
+					 List *qpqual,
+					 Plan *lefttree,
+					 List *bitmapqualorig,
+					 Index scanrelid);
+static YbBitmapTableScan *make_yb_bitmap_tablescan(List *qptlist,
 					 List *qpqual,
 					 Plan *lefttree,
 					 List *bitmapqualorig,
@@ -416,6 +418,7 @@ create_plan_recurse(PlannerInfo *root, Path *best_path, int flags)
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:
+		case T_YbBitmapTableScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
@@ -689,6 +692,13 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 													(BitmapHeapPath *) best_path,
 													tlist,
 													scan_clauses);
+			break;
+
+		case T_YbBitmapTableScan:
+			plan = (Plan *) create_yb_bitmap_scan_plan(root,
+													   (YbBitmapTablePath *) best_path,
+													   tlist,
+													   scan_clauses);
 			break;
 
 		case T_TidScan:
@@ -1029,6 +1039,12 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 	 */
 	if (rel->is_yb_relation)
 		return false;
+
+	/*
+	 * YbBitmapTablePath should only be selected for YB relations, which are
+	 * handled above
+	 */
+	Assert(!IsA(path, YbBitmapTablePath));
 
 	/*
 	 * Also, don't do it to a CustomPath; the premise that we're extracting
@@ -4000,6 +4016,118 @@ create_bitmap_scan_plan(PlannerInfo *root,
 }
 
 /*
+ * create_yb_bitmap_scan_plan
+ *	  Returns a bitmap scan plan for the base relation scanned by 'best_path'
+ *	  with restriction clauses 'scan_clauses' and targetlist 'tlist'.
+ */
+static YbBitmapTableScan *
+create_yb_bitmap_scan_plan(PlannerInfo *root,
+						YbBitmapTablePath *best_path,
+						List *tlist,
+						List *scan_clauses)
+{
+	Index		baserelid = best_path->path.parent->relid;
+	Plan	   *bitmapqualplan;
+	List	   *bitmapqualorig;
+	List	   *indexquals;
+	List	   *indexECs;
+	List	   *qpqual;
+	ListCell   *l;
+	YbBitmapTableScan *scan_plan;
+
+	/* it should be a base rel... */
+	Assert(baserelid > 0);
+	Assert(best_path->path.parent->rtekind == RTE_RELATION);
+
+	/* Process the bitmapqual tree into a Plan tree and qual lists */
+	bitmapqualplan = create_bitmap_subplan(root, best_path->bitmapqual,
+										   &bitmapqualorig, &indexquals,
+										   &indexECs);
+
+	/*
+	 * The qpqual list must contain all restrictions not automatically handled
+	 * by the index, other than pseudoconstant clauses which will be handled
+	 * by a separate gating plan node.  All the predicates in the indexquals
+	 * will be checked (either by the index itself, or by
+	 * nodeYbBitmapTablescan.c), but if there are any "special" operators
+	 * involved then they must be added to qpqual.  The upshot is that qpqual
+	 * must contain scan_clauses minus whatever appears in indexquals.
+	 *
+	 * This loop is similar to the comparable code in create_indexscan_plan(),
+	 * but with some differences because it has to compare the scan clauses to
+	 * stripped (no RestrictInfos) indexquals.  See comments there for more
+	 * info.
+	 *
+	 * In normal cases simple equal() checks will be enough to spot duplicate
+	 * clauses, so we try that first.  We next see if the scan clause is
+	 * redundant with any top-level indexqual by virtue of being generated
+	 * from the same EC.  After that, try predicate_implied_by().
+	 *
+	 * Unlike create_indexscan_plan(), the predicate_implied_by() test here is
+	 * useful for getting rid of qpquals that are implied by index predicates,
+	 * because the predicate conditions are included in the "indexquals"
+	 * returned by create_bitmap_subplan().  Bitmap scans have to do it that
+	 * way because predicate conditions need to be rechecked if the scan
+	 * becomes lossy, so they have to be included in bitmapqualorig.
+	 */
+	qpqual = NIL;
+	foreach(l, scan_clauses)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+		Node	   *clause = (Node *) rinfo->clause;
+
+		if (rinfo->pseudoconstant)
+			continue;			/* we may drop pseudoconstants here */
+		if (list_member(indexquals, clause))
+			continue;			/* simple duplicate */
+		if (rinfo->parent_ec && list_member_ptr(indexECs, rinfo->parent_ec))
+			continue;			/* derived from same EquivalenceClass */
+		if (!contain_mutable_functions(clause) &&
+			predicate_implied_by(list_make1(clause), indexquals, false))
+			continue;			/* provably implied by indexquals */
+		qpqual = lappend(qpqual, rinfo);
+	}
+
+	/* Sort clauses into best execution order */
+	qpqual = order_qual_clauses(root, qpqual);
+
+	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
+	qpqual = extract_actual_clauses(qpqual, false); // TODO(#21141): pushdown
+
+	/*
+	 * When dealing with special operators, we will at this point have
+	 * duplicate clauses in qpqual and bitmapqualorig.  We may as well drop
+	 * 'em from bitmapqualorig, since there's no point in making the tests
+	 * twice.
+	 */
+	bitmapqualorig = list_difference_ptr(bitmapqualorig, qpqual);
+
+	/*
+	 * We have to replace any outer-relation variables with nestloop params in
+	 * the qpqual and bitmapqualorig expressions.  (This was already done for
+	 * expressions attached to plan nodes in the bitmapqualplan tree.)
+	 */
+	if (best_path->path.param_info)
+	{
+		qpqual = (List *)
+			replace_nestloop_params(root, (Node *) qpqual);
+		bitmapqualorig = (List *)
+			replace_nestloop_params(root, (Node *) bitmapqualorig);
+	}
+
+	/* Finally ready to build the plan node */
+	scan_plan = make_yb_bitmap_tablescan(tlist,
+										 qpqual,
+										 bitmapqualplan,
+										 bitmapqualorig,
+										 baserelid);
+
+	copy_generic_path_info(&scan_plan->scan.plan, &best_path->path);
+
+	return scan_plan;
+}
+
+/*
  * Given a bitmapqual tree, generate the Plan tree that implements it
  *
  * As byproducts, we also return in *qual and *indexqual the qual lists
@@ -6310,115 +6438,6 @@ flatten_partitioned_rels(List *partitioned_rels)
 	return newlist;
 }
 
-/*
- * is_index_only_refs
- *		Check if all column references from the list are available from the
- *		index described by the indexinfo.
- */
-static bool
-is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo)
-{
-	ListCell *lc;
-	foreach (lc, colrefs)
-	{
-		bool found = false;
-		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, lfirst(lc));
-		for (int i = 0; i < indexinfo->ncolumns; i++)
-		{
-			if (colref->attno == indexinfo->indexkeys[i])
-			{
-				/*
-				 * If index key can not return, it does not have actual value
-				 * to evaluate the expression.
-				 */
-				if (indexinfo->canreturn[i])
-				{
-					found = true;
-					break;
-				}
-				else
-					return false;
-			}
-		}
-		if (!found)
-			return false;
-	}
-	return true;
-}
-
-/*
- * extract_pushdown_clauses
- *	  Extract actual clauses from RestrictInfo list and distribute them
- * 	  between three groups:
- *	  - local_quals - conditions not eligible for pushdown. They are evaluated
- *	  on the Postgres side on the rows fetched from DocDB;
- *	  - rel_remote_quals - conditions to pushdown with the request to the main
- *	  scanned relation. In the case of sequential scan or index only scan
- *	  the DocDB table or DocDB index respectively is the main (and only)
- *	  scanned relation, so the function returns only two groups;
- *	  - idx_remote_quals - conditions to pushdown with the request to the
- *	  secondary (index) relation. Used with the index scan on a secondary
- *	  index, and caller must provide IndexOptInfo record for the index.
- *	  - rel_colrefs, idx_colrefs are columns referenced by respective
- *	  rel_remote_quals or idx_remote_quals.
- *	  The output parameters local_quals, rel_remote_quals, rel_colrefs must
- *	  point to valid lists. The output parameters idx_remote_quals and
- *	  idx_colrefs may be NULL if the indexinfo is NULL.
- */
-static void
-extract_pushdown_clauses(List *restrictinfo_list,
-						 IndexOptInfo *indexinfo,
-						 List **local_quals,
-						 List **rel_remote_quals,
-						 List **rel_colrefs,
-						 List **idx_remote_quals,
-						 List **idx_colrefs)
-{
-	ListCell *lc;
-	foreach(lc, restrictinfo_list)
-	{
-		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
-		/* ignore pseudoconstants */
-		if (ri->pseudoconstant)
-			continue;
-
-		if (ri->yb_pushable)
-		{
-			List *colrefs = NIL;
-			bool pushable PG_USED_FOR_ASSERTS_ONLY;
-
-			/*
-			 * Find column references. It has already been determined that
-			 * the expression is pushable.
-			 */
-			pushable = YbCanPushdownExpr(ri->clause, &colrefs);
-			Assert(pushable);
-
-			/*
-			 * If there are both main and secondary (index) relations,
-			 * determine one to pushdown the condition. It is more efficient
-			 * to apply filter earlier, so prefer index, if it has all the
-			 * necessary columns.
-			 */
-			if (indexinfo == NULL ||
-				!is_index_only_refs(colrefs, indexinfo))
-			{
-				*rel_colrefs = list_concat(*rel_colrefs, colrefs);
-				*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
-			}
-			else
-			{
-				*idx_colrefs = list_concat(*idx_colrefs, colrefs);
-				*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
-			}
-		}
-		else
-		{
-			*local_quals = lappend(*local_quals, ri->clause);
-		}
-	}
-}
-
 /*****************************************************************************
  *
  *	PLAN NODE BUILDING ROUTINES
@@ -6611,6 +6630,26 @@ make_bitmap_heapscan(List *qptlist,
 					 Index scanrelid)
 {
 	BitmapHeapScan *node = makeNode(BitmapHeapScan);
+	Plan	   *plan = &node->scan.plan;
+
+	plan->targetlist = qptlist;
+	plan->qual = qpqual;
+	plan->lefttree = lefttree;
+	plan->righttree = NULL;
+	node->scan.scanrelid = scanrelid;
+	node->bitmapqualorig = bitmapqualorig;
+
+	return node;
+}
+
+static YbBitmapTableScan *
+make_yb_bitmap_tablescan(List *qptlist,
+						 List *qpqual,
+						 Plan *lefttree,
+						 List *bitmapqualorig,
+						 Index scanrelid)
+{
+	YbBitmapTableScan *node = makeNode(YbBitmapTableScan);
 	Plan	   *plan = &node->scan.plan;
 
 	plan->targetlist = qptlist;

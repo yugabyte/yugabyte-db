@@ -369,3 +369,14 @@ message CheckTserverTabletHealthResponsePB {
   optional TabletServerErrorPB error = 1;
   repeated TabletHealthPB tablet_healths = 2;
 }
+
+message ClearAllMetaCachesOnServerRequestPB {}
+
+message ClearAllMetaCachesOnServerResponsePB {}
+
+message ClearUniverseUuidRequestPB {
+}
+
+message ClearUniverseUuidResponsePB {
+  optional TabletServerErrorPB error = 1;
+}

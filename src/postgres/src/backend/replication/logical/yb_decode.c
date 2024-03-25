@@ -120,8 +120,9 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	HeapTuple					tuple;
 	ReorderBufferTupleBuf		*tuple_buf;
 
+	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
+
 	change->action = REORDER_BUFFER_CHANGE_INSERT;
-	change->lsn = yb_record->lsn;
 	/*
 	 * We do not send the replication origin information. So any dummy value is
 	 * sufficient here.
@@ -155,8 +156,9 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	HeapTuple					tuple;
 	ReorderBufferTupleBuf		*tuple_buf;
 
+	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
+
 	change->action = REORDER_BUFFER_CHANGE_DELETE;
-	change->lsn = yb_record->lsn;
 	/*
 	 * We do not send the replication origin information. So any dummy value is
 	 * sufficient here.
@@ -198,6 +200,11 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
 						yb_record->commit_time, origin_id, origin_lsn);
+
+	elog(DEBUG1,
+		 "Successfully streamed transaction: %d with commit_lsn: %lu and "
+		 "end_lsn: %lu",
+		 yb_record->xid, commit_lsn, end_lsn);
 }
 
 static HeapTuple

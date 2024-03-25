@@ -14,6 +14,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <iterator>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -48,6 +50,7 @@
 #include "yb/util/signal_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 #include "yb/util/yb_partition.h"
 
@@ -74,7 +77,7 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
 DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
@@ -112,8 +115,7 @@ DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
-DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
-    " of the method tserver is running");
+DECLARE_bool(TEST_ash_debug_aux);
 
 namespace {
 
@@ -187,10 +189,7 @@ YBCStatus ProcessYbctid(const YBCPgYBTupleIdDescriptor& source, const Processor&
 }
 
 Slice YbctidAsSlice(uint64_t ybctid) {
-  char* value = NULL;
-  int64_t bytes = 0;
-  pgapi->FindTypeEntity(kByteArrayOid)->datum_to_yb(ybctid, &value, &bytes);
-  return Slice(value, bytes);
+  return pgapi->GetYbctidAsSlice(ybctid);
 }
 
 inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
@@ -321,6 +320,19 @@ uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) 
   return (component << YB_ASH_COMPONENT_POSITION) | code;
 }
 
+void AshCopyAuxInfo(
+    const WaitStateInfoPB& tserver_sample, uint32_t component, YBCAshSample* cb_sample) {
+  // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
+  // This expects compilation with -Wno-format-truncation.
+  const auto& tserver_aux_info = tserver_sample.aux_info();
+  snprintf(
+      cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
+      FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
+                               : (component == to_underlying(ash::Component::kYCQL)
+                                      ? tserver_aux_info.table_id().c_str()
+                                      : tserver_aux_info.tablet_id().c_str()));
+}
+
 void AshCopyTServerSample(
     YBCAshSample* cb_sample, uint32_t component, const WaitStateInfoPB& tserver_sample,
     uint64_t sample_time) {
@@ -344,12 +356,7 @@ void AshCopyTServerSample(
               tserver_metadata.yql_endpoint_tserver_uuid().data(),
               sizeof(cb_sample->yql_endpoint_tserver_uuid));
 
-  // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
-  // This expects compilation with -Wno-format-truncation.
-  const auto& tserver_aux_info = tserver_sample.aux_info();
-  snprintf(cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
-      FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
-                               : tserver_aux_info.tablet_id().c_str());
+  AshCopyAuxInfo(tserver_sample, component, cb_sample);
 
   cb_metadata->addr_family = AshGetTServerClientAddress(
       tserver_metadata.client_host_port().host(), cb_metadata->client_addr);
@@ -568,6 +575,129 @@ YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
 }
 
 //--------------------------------------------------------------------------------------------------
+// YB Bitmap Scan Operations
+//--------------------------------------------------------------------------------------------------
+
+typedef std::unordered_set<Slice, Slice::Hash> UnorderedSliceSet;
+
+static void FreeSlice(Slice slice) {
+  delete[] slice.data(), slice.size();
+}
+
+SliceSet YBCBitmapCreateSet() {
+  UnorderedSliceSet *set = new UnorderedSliceSet();
+  return set;
+}
+
+size_t YBCBitmapUnionSet(SliceSet sa, ConstSliceSet sb) {
+  UnorderedSliceSet *a = reinterpret_cast<UnorderedSliceSet *>(sa);
+  const UnorderedSliceSet *b = reinterpret_cast<const UnorderedSliceSet *>(sb);
+  size_t new_bytes = 0;
+
+  // std::set_union would be appropriate here (and likely a more efficient implementation), but it's
+  // important that we do not leak the allocations that we do not include in the result set.
+
+  for (auto slice : *b) {
+    if (a->insert(slice).second == false)
+      FreeSlice(slice);
+    else
+      new_bytes += slice.size();
+  }
+  delete b;
+
+  return new_bytes;
+}
+
+SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb) {
+  UnorderedSliceSet *a = reinterpret_cast<UnorderedSliceSet *>(sa);
+  UnorderedSliceSet *b = reinterpret_cast<UnorderedSliceSet *>(sb);
+
+  // we want to iterate over the smaller set to save some time
+  if (b->size() < a->size()) {
+    std::swap(a, b);
+  }
+
+  // for each elem in a, if it's not also in b, delete a's copy
+  auto iterb = b->begin();
+  for (auto itera = a->begin(); itera != a->end();) {
+    if ((iterb = b->find(*itera)) == b->end()) {
+      FreeSlice(*itera);
+      itera = a->erase(itera);
+    } else {
+      ++itera;
+    }
+  }
+
+  // then delete everything from b (a copy already exists in a)
+  YBCBitmapDeepDeleteSet(b);
+
+  return a;
+}
+
+size_t YBCBitmapInsertYbctidsIntoSet(SliceSet set, ConstSliceVector vec) {
+  const std::vector<Slice> *v = reinterpret_cast<const std::vector<Slice> *>(vec);
+
+  size_t bytes = 0;
+  UnorderedSliceSet *s = reinterpret_cast<UnorderedSliceSet *>(set);
+
+  for (auto ybctid : *v) {
+    if (s->insert(ybctid).second) // successfully inserted
+      bytes += ybctid.size();
+    else
+      FreeSlice(ybctid);
+  }
+
+  return bytes;
+}
+
+ConstSliceVector YBCBitmapCopySetToVector(ConstSliceSet set, size_t *size) {
+  const UnorderedSliceSet *s = reinterpret_cast<const UnorderedSliceSet *>(set);
+  if (size)
+    *size = s->size();
+  return new std::vector<Slice>(s->begin(), s->end());
+}
+
+ConstSliceVector YBCBitmapGetVectorRange(ConstSliceVector vec, size_t start, size_t length) {
+  const std::vector<Slice> *v = reinterpret_cast<const std::vector<Slice> *>(vec);
+
+  const size_t end_index = std::min(start + length, v->size());
+
+  if (end_index <= start)
+    return NULL;
+
+  return new std::vector<Slice>(v->begin() + start, v->begin() + end_index);
+}
+
+void YBCBitmapShallowDeleteVector(ConstSliceVector vec) {
+  delete reinterpret_cast<const std::vector<Slice> *>(vec);
+}
+
+void YBCBitmapShallowDeleteSet(ConstSliceVector set) {
+  delete reinterpret_cast<const UnorderedSliceSet *>(set);
+}
+
+void YBCBitmapDeepDeleteSet(ConstSliceSet set) {
+  const UnorderedSliceSet *s = reinterpret_cast<const UnorderedSliceSet *>(set);
+  for (auto &slice : *s)
+    FreeSlice(slice);
+  delete s;
+}
+
+size_t YBCBitmapGetSetSize(ConstSliceSet set) {
+  if (!set)
+    return 0;
+  const UnorderedSliceSet *s = reinterpret_cast<const UnorderedSliceSet *>(set);
+  return s->size();
+}
+
+size_t YBCBitmapGetVectorSize(ConstSliceVector vec) {
+  if (!vec)
+    return 0;
+  const std::vector<Slice> *v = reinterpret_cast<const std::vector<Slice> *>(vec);
+  return v->size();
+}
+
+//--------------------------------------------------------------------------------------------------
 // DDL Statements.
 //--------------------------------------------------------------------------------------------------
 // Database Operations -----------------------------------------------------------------------------
@@ -774,6 +904,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_matview,
                               YBCPgOid pg_table_oid,
                               YBCPgOid old_relfilenode_oid,
+                              bool is_truncate,
                               YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
@@ -784,7 +915,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
       if_not_exist, add_primary_key, is_colocated_via_database, tablegroup_id, colocation_id,
-      tablespace_id, is_matview, pg_table_id, old_relfilenode_id, handle));
+      tablespace_id, is_matview, pg_table_id, old_relfilenode_id, is_truncate, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -825,6 +956,10 @@ YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname
 
 YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name) {
   return ToYBCStatus(pgapi->AlterTableDropColumn(handle, name));
+}
+
+YBCStatus YBCPgAlterTableSetReplicaIdentity(YBCPgStatement handle, const char identity_type) {
+  return ToYBCStatus(pgapi->AlterTableSetReplicaIdentity(handle, identity_type));
 }
 
 YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
@@ -1308,6 +1443,18 @@ YBCStatus YBCPgSetHashBounds(YBCPgStatement handle, uint16_t low_bound, uint16_t
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params) {
   return ToYBCStatus(pgapi->ExecSelect(handle, exec_params));
+}
+
+YBCStatus YBCPgRetrieveYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
+                                   int natts, SliceVector *ybctids, size_t *count,
+                                   bool *exceeded_work_mem) {
+  return ToYBCStatus(pgapi->RetrieveYbctids(handle, exec_params, natts, ybctids, count,
+                                            exceeded_work_mem));
+}
+
+YBCStatus YBCPgFetchRequestedYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
+                                     ConstSliceVector ybctids) {
+  return ToYBCStatus(pgapi->FetchRequestedYbctids(handle, exec_params, ybctids));
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1886,10 +2033,6 @@ YBCStatus YBCGetTableKeyRanges(
   }
 
   auto& encoded_table_range_slices = res->encoded_range_end_keys;
-  if (!is_forward) {
-    return ToYBCStatus(
-        STATUS(NotSupported, "YBCGetTableKeyRanges is not supported yet for reverse order"));
-  }
 
   if (current_tserver_ht) {
     *current_tserver_ht = res->current_ht.ToUint64();
@@ -2080,6 +2223,12 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   VLOG(4) << "The GetConsistentChangesForCDC response: " << resp.DebugString();
   auto row_count = resp.cdc_sdk_proto_records_size();
 
+  // Used for logging a summary of the response received from the CDC service.
+  YBCPgXLogRecPtr min_resp_lsn = 0xFFFFFFFF;
+  YBCPgXLogRecPtr max_resp_lsn = 0;
+  uint32_t min_txn_id = 0xFFFF;
+  uint32_t max_txn_id = 0;
+
   auto resp_rows_pb = resp.cdc_sdk_proto_records();
   auto resp_rows = static_cast<YBCPgRowMessage *>(YBCPAlloc(sizeof(YBCPgRowMessage) * row_count));
   size_t row_idx = 0;
@@ -2183,6 +2332,12 @@ YBCStatus YBCPgGetCDCConsistentChanges(
         .lsn = row_message_pb.pg_lsn(),
         .xid = row_message_pb.pg_transaction_id()
     };
+
+    min_resp_lsn = std::min(min_resp_lsn, row_message_pb.pg_lsn());
+    max_resp_lsn = std::max(max_resp_lsn, row_message_pb.pg_lsn());
+    min_txn_id = std::min(min_txn_id, row_message_pb.pg_transaction_id());
+    max_txn_id = std::max(max_txn_id, row_message_pb.pg_transaction_id());
+
     row_idx++;
   }
 
@@ -2192,6 +2347,23 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       .rows = resp_rows,
   };
 
+  VLOG(1) << "Summary of the GetConsistentChangesResponsePB response\n"
+          << "min_txn_id: " << min_txn_id << ", max_txn_id: " << max_txn_id
+          << "min_lsn: " << min_resp_lsn << ", max_lsn: " << max_resp_lsn;
+
+  return YBCStatusOK();
+}
+
+YBCStatus YBCPgUpdateAndPersistLSN(
+    const char* stream_id, YBCPgXLogRecPtr restart_lsn_hint, YBCPgXLogRecPtr confirmed_flush,
+    YBCPgXLogRecPtr* restart_lsn) {
+  const auto result =
+      pgapi->UpdateAndPersistLSN(std::string(stream_id), restart_lsn_hint, confirmed_flush);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  *DCHECK_NOTNULL(restart_lsn) = result->restart_lsn();
   return YBCStatusOK();
 }
 

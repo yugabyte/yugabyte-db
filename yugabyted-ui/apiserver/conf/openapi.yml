@@ -27,6 +27,8 @@ tags:
     description: APIs for cluster CRUD
   - name: cluster-info
     description: APIs for getting information about an existing cluster
+  - name: pitr-info
+    description: APIs for getting Point-in-Time Recovery (PITR) schedules
   - name: voyager-info
     description: APIs for getting information about Voyager migrations
   - name: voyager-metrics
@@ -551,6 +553,20 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/NodeAddressResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /pitr:
+    get:
+      summary: Get PITR Schedules
+      description: Retrieve the list of PITR schedules in the YugabyteDB cluster.
+      operationId: getPITRSchedules
+      tags:
+        - pitr-info
+      responses:
+        '200':
+          $ref: '#/components/responses/PITRScheduleListResponse'
         '400':
           $ref: '#/components/responses/ApiError'
         '500':
@@ -1617,6 +1633,27 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/ConnectionsStatsData'
+    PITRSchedule:
+      title: List of PITR Schedules in the cluster
+      description: Details of a Point-in-Time Recovery (PITR) schedule
+      type: object
+      properties:
+        id:
+          type: integer
+        databaseKeyspace:
+          type: string
+        interval:
+          type: string
+        retention:
+          type: string
+        earliestRecoverableTime:
+          type: string
+      required:
+        - id
+        - databaseKeyspace
+        - interval
+        - retention
+        - earliestRecoverableTime
   requestBodies:
     ClusterSpec:
       description: DB Cluster to be updated
@@ -1819,6 +1856,20 @@ components:
         text/plain:
           schema:
             type: string
+    PITRScheduleListResponse:
+      description: List of PITR Schedules in the cluster
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              schedules:
+                type: array
+                uniqueItems: true
+                items:
+                  $ref: '#/components/schemas/PITRSchedule'
+            required:
+              - schedules
   securitySchemes:
     BearerAuthToken:
       type: http

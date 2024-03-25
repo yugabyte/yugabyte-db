@@ -1067,3 +1067,24 @@ ConnectionStatsItem:
     - avg_wait_time_ns
     - qps
     - tps
+PITRSchedule:
+  title: List of PITR Schedules in the cluster
+  description: Details of a Point-in-Time Recovery (PITR) schedule
+  type: object
+  properties:
+    id:
+      type: integer
+    databaseKeyspace:
+      type: string
+    interval:
+      type: string
+    retention:
+      type: string
+    earliestRecoverableTime:
+      type: string
+  required:
+    - id
+    - databaseKeyspace
+    - interval
+    - retention
+    - earliestRecoverableTime

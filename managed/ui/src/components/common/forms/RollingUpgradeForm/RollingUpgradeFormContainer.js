@@ -19,6 +19,11 @@ import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse
 } from '../../../../actions/universe';
+import {
+  DEFAULT_RUNTIME_GLOBAL_SCOPE,
+  fetchRunTimeConfigs,
+  fetchRunTimeConfigsResponse,
+} from '../../../../actions/customers';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
@@ -68,7 +73,13 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
         dispatch(fetchUniverseInfoResponse(response.payload));
       });
-    }
+    },
+
+    fetchRuntimeConfigs: () => {
+      dispatch(fetchRunTimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)).then((response) =>
+        dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
+    },
   };
 };
 
@@ -149,7 +160,8 @@ function mapStateToProps(state, ownProps) {
     certificates,
     formValues,
     enableNewEncryptionInTransitModal:
-      test.enableNewEncryptionInTransitModal || released.enableNewEncryptionInTransitModal
+      test.enableNewEncryptionInTransitModal || released.enableNewEncryptionInTransitModal,
+    runtimeConfigs: state.customer.runtimeConfigs
   };
 }
 

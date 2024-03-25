@@ -18,6 +18,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"gopkg.in/yaml.v2"
 )
@@ -136,18 +137,18 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entityName,
 	operation string) error {
 	errorTag := fmt.Errorf("%s, Operation: %s - %w", entityName, operation, apiError)
 	if resp == nil {
-		logrus.Errorf("%s", errorTag.Error())
 		return errorTag
 	}
 	response := *resp
 	errorBlock := YbaStructuredError{}
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("%w: %s", errorTag, "Error reading HTTP Response body")
+		logrus.Debug("There was an error reading the response from the API\n")
+		return errorTag
 	}
 	if err = json.Unmarshal(body, &errorBlock); err != nil {
-		return fmt.Errorf("%w: %s %s", errorTag,
-			"Failed unmarshalling HTTP Response body", err.Error())
+		logrus.Debugf("There was an error unmarshalling the response from the API\n")
+		return errorTag
 	}
 	errorString := ErrorFromResponseBody(errorBlock)
 	return fmt.Errorf("%w: %s", errorTag, errorString)
@@ -328,4 +329,9 @@ func YAMLtoString(filePath string) string {
 	}
 	return string(contentBytes)
 
+}
+
+// IsOutputType check if the output type is t
+func IsOutputType(t string) bool {
+	return viper.GetString("output") == t
 }

@@ -69,16 +69,6 @@ class GcpCloud(AbstractCloud):
         return subnet['ipCidrRange']
 
     def create_instance(self, args, server_type, can_ip_forward, machine_image, ssh_keys):
-        # If we are configuring second NIC, ensure that this only happens for a
-        # centOS AMI right now.
-        if args.cloud_subnet_secondary:
-            # GCP machine image for centos is of the form:
-            # https://www.googleapis.com/compute/beta/projects/centos-cloud/global/images/*
-            supported_os = ['centos', 'almalinux']
-            if not any(os_type in machine_image for os_type in supported_os):
-                raise YBOpsRuntimeError(
-                    "Second NIC can only be configured for CentOS/Alma right now")
-
         self.get_admin().create_instance(
             args.region, args.zone, args.cloud_subnet, args.search_pattern, args.instance_type,
             server_type, args.use_spot_instance, can_ip_forward, machine_image, args.num_volumes,

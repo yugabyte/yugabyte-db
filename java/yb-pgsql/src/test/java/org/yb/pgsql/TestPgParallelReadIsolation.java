@@ -8,6 +8,7 @@ import static org.yb.pgsql.IsolationLevel.REPEATABLE_READ;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Map;
 
 import org.junit.After;
 import org.junit.Before;
@@ -26,6 +27,13 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
   private static final String COLOCATED_DB = "codb";
   private static final String MAIN_TABLE = "foo";
   private static final int NUM_ROWS = 100000;
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("yb_enable_read_committed_isolation", "true");
+    return flagMap;
+  }
 
   @Before
   public void setUp() throws Exception {
@@ -52,6 +60,8 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
   @After
   public void cleanup() throws Exception {
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.executeUpdate(String.format("DROP DATABASE %s", COLOCATED_DB));
     }
     connection.close();
@@ -183,6 +193,9 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
          Connection otherconn = getConnectionBuilder().withDatabase(COLOCATED_DB).connect();
          Statement otherstmt = otherconn.createStatement();) {
       checkRegularRowCount(stmt, MAIN_TABLE, NUM_ROWS);
+      // Wait for a second so other transaction's write time differs.
+      // Having a statement already committed current transaction won't be able to retry.
+      Thread.sleep(1000);
       otherstmt.execute(String.format(
           "INSERT INTO %s VALUES (%d, %d)", MAIN_TABLE, NUM_ROWS + 1, NUM_ROWS + 1));
       // Expect concurrent changes not to be visible
@@ -209,6 +222,9 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
          Statement otherstmt = otherconn.createStatement();) {
       forceParallel(stmt);
       checkParallelRowCount(stmt, MAIN_TABLE, NUM_ROWS);
+      // Wait for a second so other transaction's write time differs.
+      // Having a statement already committed current transaction won't be able to retry.
+      Thread.sleep(1000);
       otherstmt.execute(String.format(
           "INSERT INTO %s VALUES (%d, %d)", MAIN_TABLE, NUM_ROWS + 1, NUM_ROWS + 1));
       // Expect concurrent changes not to be visible

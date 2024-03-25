@@ -7,7 +7,6 @@ import { Typography } from '@material-ui/core';
 
 import { closeDialog, openDialog } from '../../actions/modal';
 import { YBButton } from '../common/forms/fields';
-import { ConfigureReplicationLagAlertModal } from './ConfigureMaxLagTimeModal';
 import { CreateConfigModal } from './createConfig/CreateConfigModal';
 import { XClusterConfigList } from './XClusterConfigList';
 import { api, xClusterQueryKey } from '../../redesign/helpers/api';
@@ -70,12 +69,10 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
   const showAddClusterReplicationModal = () => {
     dispatch(openDialog('addClusterReplicationModal'));
   };
-  const showConfigureMaxLagTimeModal = () => {
-    dispatch(openDialog('configureMaxLagTimeModal'));
-  };
 
   const hideModal = () => dispatch(closeDialog());
 
+  const allowedTasks = universeQuery.data?.allowedTasks;
   const universeHasTxnXCluster = xClusterConfigQueries.some(
     (xClusterConfigQuery) => xClusterConfigQuery.data?.type === XClusterConfigType.TXN
   );
@@ -91,17 +88,6 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
         <Col lg={6}>
           <Row className={styles.configActionsContainer}>
             <Row>
-              <RbacValidator
-                accessRequiredOn={ApiPermissionMap.CREATE_ALERT_CONFIGURATIONS}
-                isControl
-              >
-                <YBButton
-                  btnText={t('actionButton.configureReplicationLagAlert')}
-                  btnClass={clsx('btn', styles.setMaxAcceptableLagBtn)}
-                  btnIcon="fa fa-bell-o"
-                  onClick={showConfigureMaxLagTimeModal}
-                />
-              </RbacValidator>
               <RbacValidator
                 accessRequiredOn={{
                   ...ApiPermissionMap.CREATE_XCLUSTER_REPLICATION,
@@ -135,6 +121,7 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
         <Col lg={12}>
           <XClusterConfigList currentUniverseUUID={currentUniverseUUID} />
           <CreateConfigModal
+            allowedTasks={allowedTasks}
             sourceUniverseUUID={currentUniverseUUID}
             onHide={hideModal}
             visible={showModal && visibleModal === 'addClusterReplicationModal'}
