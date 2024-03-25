@@ -797,6 +797,7 @@ If you encounter any issues caused by per database catalog version mode, you can
     ```sql
     SET yb_non_ddl_txn_for_sys_tables_allowed=true;
     SELECT yb_fix_catalog_version_table(false);
+    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
     ```
 
 To re-enable the per database catalog version mode, use the following steps:
@@ -806,6 +807,7 @@ To re-enable the per database catalog version mode, use the following steps:
     ```sql
     SET yb_non_ddl_txn_for_sys_tables_allowed=true;
     SELECT yb_fix_catalog_version_table(true);
+    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
     ```
 
 1. Shut down the cluster.
