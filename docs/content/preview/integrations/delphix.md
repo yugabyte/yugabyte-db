@@ -22,4 +22,6 @@ The resulting virtual copies can then be used for different use cases such as de
 
 ## Deploy
 
--- TO DO --
+You can use Delphix with YugabyteDB as follows:
+
+- Create a [backup of your YugabyteDB universe](../../yugabyte-platform/back-up-restore-universes/configure-backup-storage/#network-file-system) to NFS storage.
