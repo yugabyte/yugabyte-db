@@ -1317,8 +1317,22 @@ If you encounter any issues caused by per-database catalog version mode, you can
 1. Execute the following YSQL statements:
 
     ```sql
-    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-    SELECT yb_fix_catalog_version_table(false);
+    CREATE OR REPLACE FUNCTION
+      yb_fix_catalog_version_table(per_database_mode boolean)
+    RETURNS VOID
+    AS
+    $$
+      INSERT INTO pg_catalog.pg_yb_catalog_version
+        SELECT oid, 1, 1 FROM pg_catalog.pg_database
+          WHERE per_database_mode AND
+                (oid NOT IN (SELECT db_oid FROM pg_catalog.pg_yb_catalog_version));
+      DELETE FROM pg_catalog.pg_yb_catalog_version
+        WHERE (NOT per_database_mode AND db_oid != 1) OR
+               (per_database_mode AND
+                db_oid NOT IN (SELECT oid FROM pg_catalog.pg_database));
+    $$
+    LANGUAGE SQL STRICT;
+    REVOKE EXECUTE ON FUNCTION yb_fix_catalog_version_table(boolean) FROM public;
     ```
 
 To re-enable the per database catalog version mode using the following steps:
@@ -1326,8 +1340,22 @@ To re-enable the per database catalog version mode using the following steps:
 1. Execute the following YSQL statements:
 
     ```sql
-    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-    SELECT yb_fix_catalog_version_table(true);
+    CREATE OR REPLACE FUNCTION
+      yb_fix_catalog_version_table(per_database_mode boolean)
+    RETURNS VOID
+    AS
+    $$
+      INSERT INTO pg_catalog.pg_yb_catalog_version
+        SELECT oid, 1, 1 FROM pg_catalog.pg_database
+          WHERE per_database_mode AND
+                (oid NOT IN (SELECT db_oid FROM pg_catalog.pg_yb_catalog_version));
+      DELETE FROM pg_catalog.pg_yb_catalog_version
+        WHERE (NOT per_database_mode AND db_oid != 1) OR
+               (per_database_mode AND
+                db_oid NOT IN (SELECT oid FROM pg_catalog.pg_database));
+    $$
+    LANGUAGE SQL STRICT;
+    REVOKE EXECUTE ON FUNCTION yb_fix_catalog_version_table(boolean) FROM public;
     ```
 
 1. Shut down the cluster.
