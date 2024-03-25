@@ -56,24 +56,25 @@ export const PitrList: FC = () => {
 
   const data = [
     {
-      database: "yugabyted",
-      apiType: "YSQL",
-      progress: "50%",
-      createdOn: "2021-10-20T05:33:21.000Z",
+      id: 1,
+      databaseKeyspace: "yugabyte",
+      interval: "24 hours",
+      retention: "7 days",
+      earliestRecoverableTime: "2024-03-21 03:45:22 PM",
     },
   ];
 
   const filteredData = useMemo(
     () =>
       data.filter((item) => {
-        return item.database.toLowerCase().includes(backupSearch.toLowerCase());
+        return item.databaseKeyspace.toLowerCase().includes(backupSearch.toLowerCase());
       }),
     [backupSearch, data]
   );
 
   const columns = [
     {
-      name: "database",
+      name: "databaseKeyspace",
       label: t("clusterDetail.databases.pitr.database"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
@@ -81,30 +82,30 @@ export const PitrList: FC = () => {
       },
     },
     {
-      name: "apiType",
-      label: t("clusterDetail.databases.pitr.apiType"),
+      name: "interval",
+      label: t("clusterDetail.databases.pitr.interval"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "progress",
-      label: t("clusterDetail.databases.pitr.progress"),
+      name: "retention",
+      label: t("clusterDetail.databases.pitr.retention"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "createdOn",
-      label: t("clusterDetail.databases.pitr.createdOn"),
+      name: "earliestRecoverableTime",
+      label: t("clusterDetail.databases.pitr.recoverableTime"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
-    {
+    /* {
       name: "",
       label: "",
       options: {
@@ -113,7 +114,7 @@ export const PitrList: FC = () => {
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
         customBodyRender: ArrowComponent(classes),
       },
-    },
+    }, */
   ];
 
   const onRefetch = () => {};
@@ -155,7 +156,6 @@ export const PitrList: FC = () => {
           columns={columns}
           options={{
             pagination: false,
-            rowHover: true,
           }}
           touchBorder={false}
         />

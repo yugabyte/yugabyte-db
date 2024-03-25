@@ -56,32 +56,30 @@ export const BackupList: FC = () => {
 
   const data = [
     {
-      database: "yugabyted",
-      apiType: "YSQL",
-      size: "213 MB",
-      progress: "100%",
-      startedAt: "2021-09-01T00:00:00.000Z",
-    },
-    {
-      database: "customer",
-      apiType: "YCQL",
-      size: "75 MB",
-      progress: "70%",
-      startedAt: "2021-10-01T00:00:00.000Z",
+      ybc_task_id: "036fd4fb-c84b-4b39-94da-8417e7dafe1f",
+      tserver_ip: "127.0.0.1",
+      user_operation: "backup",
+      ybdb_api: "ysql",
+      database_keyspace: "yugabyte",
+      task_start_time: "March 21 2024 - 14:00:30",
+      task_status: "OK",
+      time_taken: "37977 ms",
+      bytes_transferred: "0.04 MB",
+      actual_size: "0.04 MB",
     },
   ];
 
   const filteredData = useMemo(
     () =>
       data.filter((item) => {
-        return item.database.toLowerCase().includes(backupSearch.toLowerCase());
+        return item.database_keyspace.toLowerCase().includes(backupSearch.toLowerCase());
       }),
     [backupSearch, data]
   );
 
   const columns = [
     {
-      name: "database",
+      name: "database_keyspace",
       label: t("clusterDetail.databases.backups.database"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
@@ -89,38 +87,54 @@ export const BackupList: FC = () => {
       },
     },
     {
-      name: "apiType",
-      label: t("clusterDetail.databases.backups.apiType"),
+      name: "tserver_ip",
+      label: t("clusterDetail.databases.backups.tserverIP"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "size",
-      label: t("clusterDetail.databases.backups.size"),
+      name: "bytes_transferred",
+      label: t("clusterDetail.databases.backups.bytesTransferred"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "progress",
-      label: t("clusterDetail.databases.backups.progress"),
+      name: "actual_size",
+      label: t("clusterDetail.databases.backups.actualSize"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "startedAt",
-      label: t("clusterDetail.databases.backups.backupStarted"),
+      name: "task_status",
+      label: t("clusterDetail.databases.backups.taskStatus"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
+      name: "time_taken",
+      label: t("clusterDetail.databases.backups.timeTaken"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "task_start_time",
+      label: t("clusterDetail.databases.backups.taskStartTime"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    /* {
       name: "",
       label: "",
       options: {
@@ -129,7 +143,7 @@ export const BackupList: FC = () => {
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
         customBodyRender: ArrowComponent(classes),
       },
-    },
+    }, */
   ];
 
   const onRefetch = () => {};
@@ -172,7 +186,6 @@ export const BackupList: FC = () => {
           columns={columns}
           options={{
             pagination: false,
-            rowHover: true,
           }}
           touchBorder={false}
         />

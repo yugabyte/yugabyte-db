@@ -808,34 +808,38 @@
         "backups": {
           "backups": "Backups",
           "database": "Database",
-          "apiType": "API type",
-          "size": "Size",
-          "progress": "Progress",
-          "backupStarted": "Backup started on",
+          "tserverIP": "Tserver IP",
+          "bytesTransferred": "Bytes transferred",
+          "actualSize": "Actual size",
+          "taskStatus": "Task status",
+          "timeTaken": "Time taken",
+          "taskStartTime": "Task start time",
           "refresh": "Refresh",
           "noBackups": "No backups available",
-          "searchBackups": "Search database backups"
+          "searchBackups": "Search database"
         },
         "pitr": {
           "pitr": "Point-in-time Recovery",
           "database": "Database",
-          "apiType": "API type",
-          "progress": "Progress",
-          "createdOn": "Created on",
+          "interval": "Interval",
+          "retention": "Retention",
+          "recoverableTime": "Recoverable time",
           "refresh": "Refresh",
           "noPitr": "No Point-in-time Recovery available",
-          "searchPitr": "Search PITR"
+          "searchPitr": "Search database"
         },
         "restore": {
           "restores": "Restores",
           "database": "Database",
-          "apiType": "API type",
-          "size": "Size",
-          "progress": "Progress",
-          "restoredOn": "Restored on",
+          "tserverIP": "Tserver IP",
+          "bytesTransferred": "Bytes transferred",
+          "actualSize": "Actual size",
+          "taskStatus": "Task status",
+          "timeTaken": "Time taken",
+          "taskStartTime": "Task start time",
           "refresh": "Refresh",
           "noRestores": "No restores available",
-          "searchRestores": "Search restores"
+          "searchRestores": "Search database"
         }
       },
       "voyager": {

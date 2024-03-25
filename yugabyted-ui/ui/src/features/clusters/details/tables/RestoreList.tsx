@@ -56,25 +56,30 @@ export const RestoreList: FC = () => {
 
   const data = [
     {
-      database: "customer",
-      apiType: "YCQL",
-      size: "75 MB",
-      progress: "80%",
-      startedAt: "2021-10-01T00:00:00.000Z",
+      ybc_task_id: "8931692c-eacc-436f-9bf2-7db33af74730",
+      tserver_ip: "127.0.0.2",
+      user_operation: "restore",
+      ybdb_api: "ysql",
+      database_keyspace: "yb_demo_northwind",
+      task_start_time: "March 21 2024 - 15:54:10",
+      task_status: "OK",
+      time_taken: "11350 ms",
+      bytes_transferred: "1.47 MB",
+      actual_size: "1.47 MB",
     },
   ];
 
   const filteredData = useMemo(
     () =>
       data.filter((item) => {
-        return item.database.toLowerCase().includes(backupSearch.toLowerCase());
+        return item.database_keyspace.toLowerCase().includes(backupSearch.toLowerCase());
       }),
     [backupSearch, data]
   );
 
   const columns = [
     {
-      name: "database",
+      name: "database_keyspace",
       label: t("clusterDetail.databases.restore.database"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
@@ -82,38 +87,54 @@ export const RestoreList: FC = () => {
       },
     },
     {
-      name: "apiType",
-      label: t("clusterDetail.databases.restore.apiType"),
+      name: "tserver_ip",
+      label: t("clusterDetail.databases.restore.tserverIP"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "size",
-      label: t("clusterDetail.databases.backups.size"),
+      name: "bytes_transferred",
+      label: t("clusterDetail.databases.restore.bytesTransferred"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "progress",
-      label: t("clusterDetail.databases.restore.progress"),
+      name: "actual_size",
+      label: t("clusterDetail.databases.restore.actualSize"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "startedAt",
-      label: t("clusterDetail.databases.restore.restoredOn"),
+      name: "task_status",
+      label: t("clusterDetail.databases.restore.taskStatus"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
+      name: "time_taken",
+      label: t("clusterDetail.databases.restore.timeTaken"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "task_start_time",
+      label: t("clusterDetail.databases.restore.taskStartTime"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    /* {
       name: "",
       label: "",
       options: {
@@ -122,7 +143,7 @@ export const RestoreList: FC = () => {
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
         customBodyRender: ArrowComponent(classes),
       },
-    },
+    }, */
   ];
 
   const onRefetch = () => {};
@@ -164,7 +185,6 @@ export const RestoreList: FC = () => {
           columns={columns}
           options={{
             pagination: false,
-            rowHover: true,
           }}
           touchBorder={false}
         />
