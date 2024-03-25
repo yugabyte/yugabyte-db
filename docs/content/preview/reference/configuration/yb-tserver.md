@@ -1368,7 +1368,7 @@ If [ysql_catalog_preload_additional_tables](#ysql-catalog-preload-additional-tab
 
 ##### ysql_catalog_preload_additional_tables
 
-When enabled, PG backend processes preloads the catalog tables: `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace`. This flag reduces latency of first query execution of a particular statement on a connection.
+When enabled, the postgres backend processes preload the `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` catalog tables. This flag reduces latency of first query execution of a particular statement on a connection.
 
 Default: `false`
 
@@ -1382,7 +1382,7 @@ Default: `true`
 
 ##### ysql_use_relcache_file
 
-Controls whether to utilize the PostgreSQL relcache init file, which caches critical system catalog entries. If enabled, each PostgreSQL connection loads only this minimal set of cached entries (except if the relcache init file needs to be re-built, for example, after a DDL invalidates the cache). If disabled, each PostgreSQL connection preloads the catalog cache, which consumes more memory but reduces first query latency.
+Controls whether to use the PostgreSQL relcache init file, which caches critical system catalog entries. If enabled, each PostgreSQL connection loads only this minimal set of cached entries (except if the relcache init file needs to be re-built, for example, after a DDL invalidates the cache). If disabled, each PostgreSQL connection preloads the catalog cache, which consumes more memory but reduces first query latency.
 
 Default: `true`
 
@@ -1408,7 +1408,7 @@ the same database as that of a DDL statement. It is recommended to keep the defa
 
 If you encounter any issues caused by per-database catalog version mode, you can disable per database catalog version mode using the following steps:
 
-1. Shutdown the cluster.
+1. Shut down the cluster.
 
 1. Start the cluster with `--ysql_enable_db_catalog_version_mode=false`.
 
@@ -1428,7 +1428,7 @@ To re-enable the per database catalog version mode using the following steps:
     SELECT yb_fix_catalog_version_table(true);
     ```
 
-1. Shutdown the cluster.
+1. Shut down the cluster.
 1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
 
 ##### enable_heartbeat_pg_catalog_versions_cache
