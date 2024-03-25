@@ -351,8 +351,6 @@ BsonUpdateDocumentCore(pgbson *sourceDocument, pgbson *updateSpec,
 			 *       taking all the stages of the aggregation-pipelined update.
 			 *       To do that, we might want to use a single update-spec tree
 			 *       across all the stages in ProcessAggregationPipelineUpdate().
-			 *
-			 *       See https://msdata.visualstudio.com/CosmosDB/_workitems/edit/1963348.
 			 */
 			if (PgbsonEquals(sourceDocument, document) && !isUpsert)
 			{

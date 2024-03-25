@@ -258,8 +258,6 @@ GetAggregationPipelineUpdateState(pgbson *updateSpec)
  *
  *       So that we can return NULL here for no-op updates and then we can drop
  *       PgbsonEquals() check from the callsite.
- *
- *       See https://msdata.visualstudio.com/CosmosDB/_workitems/edit/1963348.
  */
 pgbson *
 ProcessAggregationPipelineUpdate(pgbson *sourceDoc,

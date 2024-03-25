@@ -323,7 +323,6 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 	 *  Check if we have a non volatile sort key (aka order by random()).
 	 *  Cursor is not supported for non-volatile sort key.
 	 *  Currently streaming cursor is also not supported for Table sample.
-	 *  https://msdata.visualstudio.com/CosmosDB/_backlogs/backlog/Mongo/Epics/?workitem=1800201
 	 */
 	bool hasNonVolatileSortKey = root->sort_pathkeys != NIL;
 	bool isTableSample = false;

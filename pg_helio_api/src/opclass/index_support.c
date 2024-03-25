@@ -281,7 +281,6 @@ HandleSupportRequestCondition(SupportRequestIndexCondition *req)
 
 	/*
 	 *  TODO : Push down to index if operand is not a constant
-	 *  https://msdata.visualstudio.com/CosmosDB/_workitems/edit/1769068
 	 */
 	Node *operand = lsecond(args);
 	if (!IsA(operand, Const))

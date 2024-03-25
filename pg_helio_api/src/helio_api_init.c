@@ -87,7 +87,7 @@ int NextCollectionId = DEFAULT_NEXT_COLLECTION_ID;
 int NextCollectionIndexId = DEFAULT_NEXT_COLLECTION_INDEX_ID;
 
 /* TODO: Raise this back to 100,000 once we can optimize sub-transaction */
-/* handling with multi-node clusters. Bug: https://msdata.visualstudio.com/CosmosDB/_workitems/edit/2355443 */
+/* handling with multi-node clusters. */
 #define DEFAULT_MAX_WRITE_BATCH_SIZE 25000
 int MaxWriteBatchSize = DEFAULT_MAX_WRITE_BATCH_SIZE;
 

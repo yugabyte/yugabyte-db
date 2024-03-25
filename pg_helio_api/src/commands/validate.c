@@ -9,7 +9,7 @@
  */
 
 /*
- * Currently this https://msdata.visualstudio.com/CosmosDB/_workitems/edit/2203250 will only support validating the indexes. It'll only check
+ * Currently this will only support validating the indexes. It'll only check
  * if the index is valid (checking the 'indisvalid' column in pg_index)
  */
 
