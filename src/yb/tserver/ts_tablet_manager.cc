@@ -1253,6 +1253,8 @@ Status TSTabletManager::ApplyCloneTablet(
   const auto target_namespace_name = request->target_namespace_name().ToBuffer();
   const auto clone_request_seq_no = request->clone_request_seq_no();
   const auto target_pg_table_id = request->target_pg_table_id().ToBuffer();
+  const auto target_skip_table_tombstone_check =
+      request->target_skip_table_tombstone_check();
   const boost::optional<qlexpr::IndexInfo> target_table_index_info =
       request->has_target_index_info() ?
       boost::optional<qlexpr::IndexInfo>(request->target_index_info().ToGoogleProtobuf()) :
@@ -1340,7 +1342,8 @@ Status TSTabletManager::ApplyCloneTablet(
         std::move(target_table_index_info),
         source_table->schema_version, /* fixed by restore */
         target_partition_schema,
-        target_pg_table_id);
+        target_pg_table_id,
+        tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));
 
     // Setup raft group metadata. If we crash between here and when we set the tablet data state to
     // TABLET_DATA_READY, the tablet will be deleted on the next bootstrap.
@@ -2549,13 +2552,8 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
   }
   reported_tablet->set_schema_version(tablet_peer->tablet_metadata()->schema_version());
 
-  auto& id_to_version = *reported_tablet->mutable_table_to_version();
-  // Attach schema versions of all tables including the colocated ones.
-  for (const auto& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
-    if (id_to_version.find(table_id) == id_to_version.end()) {
-      id_to_version[table_id] = tablet_peer->tablet_metadata()->schema_version(table_id);
-    }
-  }
+  tablet_peer->tablet_metadata()->GetTableIdToSchemaVersionMap(
+      reported_tablet->mutable_table_to_version());
 
   {
     auto tablet_ptr = tablet_peer->shared_tablet();

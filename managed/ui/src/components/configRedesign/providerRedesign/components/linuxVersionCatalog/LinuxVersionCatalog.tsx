@@ -90,13 +90,17 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
     }
   );
 
+  const [editImgBundleDetails, setEditImgBundleDetails] = useState<ImageBundle[]>([]);
+
+  const isEditMode = viewMode === 'EDIT';
+
   const filterNonYBImages = (images: ImageBundle[]) => {
     return images.filter((i) => i.metadata?.type === ImageBundleType.CUSTOM);
   };
 
   const updateDefaultLinuxVersions = useCallback(
     (ybImageOptions: YbImageOptions, fields: ImageBundle[]) => {
-      if (!ybImageOptions.useYBImages) {
+      if (!isEditMode && !ybImageOptions.useYBImages) {
         replace(filterNonYBImages(fields));
         return;
       }
@@ -104,9 +108,12 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
       const images = [...filterNonYBImages(fields)];
 
       if (ybImageOptions.useX86) {
-        if (viewMode === 'EDIT' && editYBImageOptions.useX86) {
-          const usedImg = getYBManagedImgBundleByArch(fields, ArchitectureType.X86_64);
-          images.push(usedImg!);
+        if (isEditMode && editYBImageOptions.useX86) {
+          const usedImg = getYBManagedImgBundleByArch(
+            editImgBundleDetails,
+            ArchitectureType.X86_64
+          );
+          usedImg && images.push(usedImg!);
         } else {
           images.push({
             ...(sampleX86Image as any),
@@ -122,9 +129,9 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
         }
       }
       if (ybImageOptions.useArm && providerType === ProviderCode.AWS) {
-        if (viewMode === 'EDIT' && editYBImageOptions.useArm) {
-          const usedImg = getYBManagedImgBundleByArch(fields, ArchitectureType.ARM64);
-          images.push(usedImg!);
+        if (isEditMode && editYBImageOptions.useArm) {
+          const usedImg = getYBManagedImgBundleByArch(editImgBundleDetails, ArchitectureType.ARM64);
+          usedImg && images.push(usedImg!);
         } else {
           images.push({
             ...(sampleAarchImage as any),
@@ -142,7 +149,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
 
       replace(images as any);
     },
-    [replace, editYBImageOptions]
+    [replace, editYBImageOptions, editImgBundleDetails]
   );
 
   useMount(() => {
@@ -160,6 +167,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
       useArm: isYBAArmUsed,
       useX86: isYBAX86Used
     });
+    setEditImgBundleDetails(imageBundles);
   });
 
   const osPatchingEnabled = IsOsPatchingEnabled();
@@ -199,43 +207,41 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             onChange={(e) => {
               const opts: YbImageOptions = {
                 ...ybImageOptions,
-                useArm: e.target.checked,
-                useX86: e.target.checked,
+                useArm: isEditMode ? editYBImageOptions.useArm : e.target.checked,
+                useX86: isEditMode ? editYBImageOptions.useX86 : e.target.checked,
                 useYBImages: e.target.checked
               };
               setUseYBImages(opts);
               updateDefaultLinuxVersions(opts, imageBundles);
             }}
-            disabled={viewMode !== 'CREATE'}
+            disabled={
+              isEditMode && providerType === ProviderCode.AWS
+                ? editYBImageOptions.useArm && editYBImageOptions.useX86
+                : editYBImageOptions.useX86
+            }
             checked={ybImageOptions.useYBImages}
           />
+          <YBCheckbox
+            label={t('x86_64', { keyPrefix: 'universeForm.instanceConfig' })}
+            onChange={(e) => {
+              const opts: YbImageOptions = { ...ybImageOptions, useX86: e.target.checked };
+              setUseYBImages(opts);
+              updateDefaultLinuxVersions(opts, imageBundles);
+            }}
+            disabled={!ybImageOptions.useYBImages || (isEditMode && editYBImageOptions.useX86)}
+            checked={ybImageOptions.useX86}
+          />
           {providerType === ProviderCode.AWS && (
-            <>
-              <YBCheckbox
-                label={t('x86_64', { keyPrefix: 'universeForm.instanceConfig' })}
-                onChange={(e) => {
-                  const opts: YbImageOptions = { ...ybImageOptions, useX86: e.target.checked };
-                  setUseYBImages(opts);
-                  updateDefaultLinuxVersions(opts, imageBundles);
-                }}
-                disabled={
-                  !ybImageOptions.useYBImages || (viewMode === 'EDIT' && editYBImageOptions.useX86)
-                }
-                checked={ybImageOptions.useX86 && ybImageOptions.useYBImages}
-              />
-              <YBCheckbox
-                label={t('aarch64', { keyPrefix: 'universeForm.instanceConfig' })}
-                onChange={(e) => {
-                  const opts: YbImageOptions = { ...ybImageOptions, useArm: e.target.checked };
-                  setUseYBImages(opts);
-                  updateDefaultLinuxVersions(opts, imageBundles);
-                }}
-                disabled={
-                  !ybImageOptions.useYBImages || (viewMode === 'EDIT' && editYBImageOptions.useArm)
-                }
-                checked={ybImageOptions.useArm && ybImageOptions.useYBImages}
-              />
-            </>
+            <YBCheckbox
+              label={t('aarch64', { keyPrefix: 'universeForm.instanceConfig' })}
+              onChange={(e) => {
+                const opts: YbImageOptions = { ...ybImageOptions, useArm: e.target.checked };
+                setUseYBImages(opts);
+                updateDefaultLinuxVersions(opts, imageBundles);
+              }}
+              disabled={!ybImageOptions.useYBImages || (isEditMode && editYBImageOptions.useArm)}
+              checked={ybImageOptions.useArm}
+            />
           )}
         </div>
         {imageBundles.length === 0 ? (

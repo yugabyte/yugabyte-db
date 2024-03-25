@@ -33,17 +33,15 @@
 
 #include <memory>
 
-#include "yb/gutil/casts.h"
-
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/tablet_split_manager.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
@@ -314,6 +312,8 @@ void CatalogManagerBgTasks::Run() {
 
       // Run background tasks related to XCluster & CDC Schema.
       catalog_manager_->RunXReplBgTasks(l.epoch());
+
+      catalog_manager_->GetXClusterManager()->RunBgTasks(l.epoch());
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
       catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();

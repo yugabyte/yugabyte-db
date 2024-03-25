@@ -1108,4 +1108,7 @@ extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_t
 extern void YbGetRedactedQueryString(const char* query, int query_len,
 									 const char** redacted_query, int* redacted_query_len);
 
+extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
+										bool yb_copy_split_options,
+										bool is_truncate);
 #endif /* PG_YB_UTILS_H */

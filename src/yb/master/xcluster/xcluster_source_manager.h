@@ -32,6 +32,7 @@ class JsonWriter;
 
 namespace cdc {
 class CDCStateTable;
+struct CDCStateTableKey;
 }  // namespace cdc
 
 namespace master {
@@ -46,15 +47,21 @@ class XClusterSourceManager {
  public:
   void RecordOutboundStream(const CDCStreamInfoPtr& stream, const TableId& table_id);
 
-  void CleanUpXReplStream(const CDCStreamInfo& stream);
+  void CleanupStreamFromMaps(const CDCStreamInfo& stream);
 
   std::optional<uint32> GetDefaultWalRetentionSec(const NamespaceId& namespace_id) const;
 
-  bool IsTableReplicated(const TableId& table_id) const;
-  bool DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const;
+  bool IsTableReplicated(const TableId& table_id) const EXCLUDES(tables_to_stream_map_mutex_);
+  bool DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const
+      EXCLUDES(tables_to_stream_map_mutex_);
 
   void PopulateTabletDeleteRetainerInfoForTabletDrop(
-      const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const;
+      const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const
+      EXCLUDES(tables_to_stream_map_mutex_);
+
+  void PopulateTabletDeleteRetainerInfoForTableDrop(
+      const TableInfo& table_info, TabletDeleteRetainerInfo& delete_retainer) const
+      EXCLUDES(tables_to_stream_map_mutex_);
 
   void RecordHiddenTablets(
       const TabletInfos& hidden_tablets, const TabletDeleteRetainerInfo& delete_retainer)
@@ -126,8 +133,17 @@ class XClusterSourceManager {
 
   Status PopulateXClusterStatusJson(JsonWriter& jw) const;
 
+  Status RemoveStreamsFromSysCatalog(
+      const std::vector<CDCStreamInfo*>& streams, const LeaderEpoch& epoch);
+
  private:
   friend class XClusterOutboundReplicationGroup;
+
+  struct HiddenTabletInfo {
+    TableId table_id;
+    TabletId parent_tablet_id;
+    std::array<TabletId, kNumSplitParts> split_tablets;
+  };
 
   // Get all the outbound replication groups. Shared pointer are guaranteed not to be null.
   std::vector<std::shared_ptr<XClusterOutboundReplicationGroup>> GetAllOutboundGroups() const
@@ -174,9 +190,19 @@ class XClusterSourceManager {
       const LeaderEpoch& epoch, bool check_if_bootstrap_required,
       std::function<void(Result<bool>)> user_callback);
 
-  std::vector<CDCStreamInfoPtr> GetStreamsForTable(const TableId& table_id) const;
+  std::vector<CDCStreamInfoPtr> GetStreamsForTable(
+      const TableId& table_id, bool include_dropped = false) const
+      EXCLUDES(tables_to_stream_map_mutex_);
 
   std::unordered_map<TableId, std::vector<CDCStreamInfoPtr>> GetAllStreams() const;
+
+  // Populate entries_to_delete, and return true if cdc state table entries across all streams for
+  // the tablet have already been deleted, or recorded in entries_to_delete. Entry is eligible for
+  // delete once the child tablets start getting polled.
+  Result<bool> ProcessSplitChildStreams(
+      const TabletId& tablet_id, const HiddenTabletInfo& hidden_tablet,
+      const std::vector<CDCStreamInfoPtr>& outbound_streams,
+      std::vector<cdc::CDCStateTableKey>& entries_to_delete);
 
   Master& master_;
   CatalogManager& catalog_manager_;
@@ -198,11 +224,6 @@ class XClusterSourceManager {
   std::unordered_map<TableId, std::vector<CDCStreamInfoPtr>> tables_to_stream_map_
       GUARDED_BY(tables_to_stream_map_mutex_);
 
-  struct HiddenTabletInfo {
-    TableId table_id;
-    TabletId parent_tablet_id;
-    std::array<TabletId, kNumSplitParts> split_tablets;
-  };
   mutable std::shared_mutex retained_hidden_tablets_mutex_;
   // Split parent tablets are retained until their child tablets start getting polled by the target
   // universe.

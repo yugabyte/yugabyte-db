@@ -84,6 +84,7 @@
 #include "libpq/hba.h"
 #include "libpq/libpq.h"
 #include "libpq/libpq-be.h"
+#include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
 #include "parser/parse_utilcmd.h"
 #include "tcop/utility.h"
@@ -1709,13 +1710,26 @@ YbDdlModeOptional YbGetDdlMode(
 		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
 		case T_CommentStmt: // COMMENT (create new comment)
 		case T_RuleStmt: // CREATE RULE
-		case T_TruncateStmt: // TRUNCATE changes system catalog in case of non-YB (i.e. TEMP) tables
 		case T_YbCreateProfileStmt:
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
 			is_version_increment = false;
+			is_breaking_change = false;
+			break;
+
+		case T_TruncateStmt:
+			/*
+			 * TRUNCATE (on YB relations) using the old approach does not
+			 * make any system catalog changes, so it doesn't require a
+			 * version increment.
+			 * TRUNCATE using the new rewrite approach changes the
+			 * relfilenode field in pg_class, so it requires a version
+			 * increment.
+			 */
+			if (!yb_enable_alter_table_rewrite)
+				is_version_increment = false;
 			is_breaking_change = false;
 			break;
 
@@ -2124,20 +2138,17 @@ YBTxnDdlProcessUtility(
 				/*
 				 * In order to support concurrent non-global-impact DDLs
 				 * across different databases, call YbInitPinnedCacheIfNeeded
-				 * now which triggers a scan of pg_shdepend and pg_depend.
-				 * This ensure that the scan is done without using a read time
-				 * of the DDL transaction so that yb-master can retry read
-				 * restarts automatically. Otherwise, a read restart error is
+				 * now which triggers a scan of pg_shdepend. This ensure that
+				 * the scan is done without using a read time of the DDL
+				 * transaction so that yb-master can retry read restarts
+				 * automatically. Otherwise, a read restart error is
 				 * returned to the PG backend the DDL statement will fail
 				 * because DDLs cannot be restarted.
 				 *
 				 * YB NOTE: this implies a performance hit for DDL statements
 				 * that do not need to call YbInitPinnedCacheIfNeeded.
-				 *
-				 * TODO(myang): we can optimize to only read pg_shdepend here
-				 * to reduce its performance penalty.
 				 */
-				YbInitPinnedCacheIfNeeded();
+				YbInitPinnedCacheIfNeeded(true /* shared_only */);
 
 			YBIncrementDdlNestingLevel(ddl_mode.value);
 		}
@@ -4541,4 +4552,47 @@ YbGetRedactedQueryString(const char* query, int query_len,
 	*redacted_query = pnstrdup(query, query_len);
 	*redacted_query = RedactPasswordIfExists(*redacted_query);
 	*redacted_query_len = strlen(*redacted_query);
+}
+
+/*
+ * In YB, a "relfilenode" corresponds to a DocDB table.
+ * This function creates a new DocDB table for the given table,
+ * with UUID corresponding to the given relfileNodeId.
+ */
+void
+YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
+							bool yb_copy_split_options, bool is_truncate)
+{
+	CreateStmt *dummyStmt	 = makeNode(CreateStmt);
+	dummyStmt->relation		 =
+		makeRangeVar(NULL, RelationGetRelationName(rel), -1);
+	Relation pg_constraint = heap_open(ConstraintRelationId,
+										RowExclusiveLock);
+	YbATCopyPrimaryKeyToCreateStmt(rel, pg_constraint, dummyStmt);
+	heap_close(pg_constraint, RowExclusiveLock);
+	if (yb_copy_split_options)
+	{
+		YbGetTableProperties(rel);
+		dummyStmt->split_options = YbGetSplitOptions(rel);
+	}
+	bool is_null;
+	HeapTuple tuple = SearchSysCache1(RELOID,
+		ObjectIdGetDatum(RelationGetRelid(rel)));
+	Datum datum = SysCacheGetAttr(RELOID,
+		tuple, Anum_pg_class_reloptions, &is_null);
+	if (!is_null)
+		dummyStmt->options = untransformRelOptions(datum);
+	ReleaseSysCache(tuple);
+	YBCCreateTable(dummyStmt, RelationGetRelationName(rel),
+					rel->rd_rel->relkind, RelationGetDescr(rel),
+					newRelfileNodeId,
+					RelationGetNamespace(rel),
+					YbGetTableProperties(rel)->tablegroup_oid,
+					InvalidOid, rel->rd_rel->reltablespace,
+					RelationGetRelid(rel),
+					rel->rd_rel->relfilenode,
+					is_truncate);
+
+	if (yb_test_fail_table_rewrite_after_creation)
+		elog(ERROR, "Injecting error.");
 }

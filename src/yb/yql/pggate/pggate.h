@@ -313,6 +313,7 @@ class PgApiImpl {
                         bool is_matview,
                         const PgObjectId& pg_table_oid,
                         const PgObjectId& old_relfilenode_oid,
+                        bool is_truncate,
                         PgStatement **handle);
 
   Status CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
