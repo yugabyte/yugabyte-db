@@ -47,6 +47,7 @@ typedef enum InstrumentOption
  */
 typedef struct YbPgRpcStats {
 	double  count;			/* # of RPCs */
+	double  rows_scanned;	/* # of rows scanned by RPCs */
 	double	wait_time;		/* RPC wait time (ns) */
 } YbPgRpcStats;
 

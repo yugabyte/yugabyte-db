@@ -29,6 +29,10 @@ inline void IncWrite(YBCPgExecReadWriteStats* stat) {
   ++stat->writes;
 }
 
+inline void IncRowsScanned(YBCPgExecReadWriteStats* stat, uint64_t count) {
+  stat->rows_scanned += count;
+}
+
 YBCPgExecReadWriteStats& GetStat(YBCPgExecStatsState* state, TableType relation) {
   switch (relation) {
     case TableType::SYSTEM:
@@ -120,6 +124,10 @@ void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) 
   if (has_change) {
     ++state_.stats.storage_metrics_version;
   }
+}
+
+void PgDocMetrics::RecordStorageRowsRead(TableType relation, uint64_t rows) {
+  IncRowsScanned(&GetStat(&state_, relation), rows);
 }
 
 }  // namespace yb::pggate
