@@ -131,6 +131,7 @@
 | "Fail task on leader blacklist timeout" | "yb.node_ops.leader_blacklist.fail_on_timeout" | "UNIVERSE" | "Determines (boolean) whether we fail the task after waiting for leader blacklist timeout is reached" | "Boolean" |
 | "YB Upgrade Max Follower Lag Threshold " | "yb.upgrade.max_follower_lag_threshold_ms" | "UNIVERSE" | "The maximum time (in milliseconds) that we allow a tserver to be behind its peers" | "Integer" |
 | "YB Upgrade Use Single Connection Param" | "yb.upgrade.single_connection_ysql_upgrade" | "UNIVERSE" | "The flag, which controls, if YSQL catalog upgrade will be performed in single or multi connection mode.Single connection mode makes it work even on tiny DB nodes." | "Boolean" |
+| "YB edit sleep time in ms before blacklist clear in ms" | "yb.edit.wait_before_blacklist_clear" | "UNIVERSE" | "Sleep time before clearing nodes from blacklist in ms" | "Duration" |
 | "Default Releases Count" | "yb.releases.num_releases_to_keep_default" | "UNIVERSE" | "Number of Releases to Keep" | "Integer" |
 | "Cloud Releases Count" | "yb.releases.num_releases_to_keep_cloud" | "UNIVERSE" | "Number Of Cloud Releases To Keep" | "Integer" |
 | "DB Available Mem Limit" | "yb.dbmem.checks.mem_available_limit_kb" | "UNIVERSE" | "Minimum available memory required on DB nodes for software upgrade." | "Long" |
