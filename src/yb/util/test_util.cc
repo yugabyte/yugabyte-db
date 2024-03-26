@@ -316,6 +316,17 @@ bool UseYbController() {
   return false;
 }
 
+bool DisableMiniClusterBackupTests() {
+  const char* env = getenv("YB_DISABLE_MINICLUSTER_BACKUP_TESTS");
+  if (env) {
+    auto s = string(env);
+    if (s == "1" || s == "true") {
+      return true;
+    }
+  }
+  return false;
+}
+
 string GetCertsDir() {
   const auto sub_dir = "test_certs";
   return JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
