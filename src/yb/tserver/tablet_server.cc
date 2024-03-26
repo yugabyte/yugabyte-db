@@ -85,6 +85,7 @@
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/backup_service.h"
 
@@ -307,7 +308,8 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-      master_config_index_(0) {
+      master_config_index_(0),
+      xcluster_context_(new TserverXClusterContext()) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -600,10 +602,8 @@ Status TabletServer::RegisterServices() {
       FLAGS_ts_remote_bootstrap_svc_queue_length, std::move(remote_bootstrap_service)));
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
-      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
-      messenger(), permanent_uuid(), &options(),
-      XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
-      &pg_node_level_mutation_counter_);
+      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
+      permanent_uuid(), &options(), xcluster_context_.get(), &pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
   RETURN_NOT_OK(RegisterService(FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
@@ -1070,16 +1070,8 @@ void TabletServer::SetPublisher(rpc::Publisher service) {
   publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
 }
 
-const XClusterSafeTimeMap& TabletServer::GetXClusterSafeTimeMap() const {
-  return xcluster_safe_time_map_;
-}
-
 PgMutationCounter& TabletServer::GetPgNodeLevelMutationCounter() {
   return pg_node_level_mutation_counter_;
-}
-
-void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
-  xcluster_safe_time_map_.Update(safe_time_map);
 }
 
 Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {
@@ -1209,6 +1201,8 @@ Status TabletServer::CreateXClusterConsumer() {
 
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     const master::TSHeartbeatResponsePB& resp) {
+  xcluster_context_->UpdateSafeTime(resp.xcluster_namespace_to_safe_time());
+
   auto* xcluster_consumer = GetXClusterConsumer();
 
   // Only create a xcluster consumer if consumer_registry is not null.
@@ -1221,7 +1215,7 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
       xcluster_consumer = GetXClusterConsumer();
     }
 
-    SetXClusterDDLOnlyMode(consumer_registry->role() != cdc::XClusterRole::ACTIVE);
+    xcluster_context_->SetDDLOnlyMode(consumer_registry->role() != cdc::XClusterRole::ACTIVE);
   }
 
   if (xcluster_consumer) {
@@ -1351,8 +1345,8 @@ Status TabletServer::SetCDCServiceEnabled() {
   return Status::OK();
 }
 
-void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
-  xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
+const TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
+  return *xcluster_context_;
 }
 
 void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server) {
