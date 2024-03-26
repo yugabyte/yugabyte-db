@@ -401,14 +401,10 @@ class PgClientServiceImpl::Impl {
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock,
-      TransactionPoolProvider transaction_pool_provider,
-      rpc::Messenger* messenger,
-      const std::optional<XClusterContext>& xcluster_context,
-      PgMutationCounter* pg_node_level_mutation_counter,
-      MetricEntity* metric_entity,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker,
-      const std::string& permanent_uuid,
+      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+      rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
+      PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker, const std::string& permanent_uuid,
       const server::ServerBaseOptions* tablet_server_opts)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
@@ -1792,7 +1788,7 @@ class PgClientServiceImpl::Impl {
   std::unique_ptr<yb::client::AsyncClientInitializer> cdc_state_client_init_;
   std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;
 
-  const std::optional<XClusterContext> xcluster_context_;
+  const TserverXClusterContextIf* xcluster_context_;
 
   PgMutationCounter* pg_node_level_mutation_counter_;
 
@@ -1818,14 +1814,11 @@ class PgClientServiceImpl::Impl {
 PgClientServiceImpl::PgClientServiceImpl(
     std::reference_wrapper<const TabletServerIf> tablet_server,
     const std::shared_future<client::YBClient*>& client_future,
-    const scoped_refptr<ClockBase>& clock,
-    TransactionPoolProvider transaction_pool_provider,
+    const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
-    const scoped_refptr<MetricEntity>& entity,
-    rpc::Messenger* messenger,
-    const std::string& permanent_uuid,
-    const server::ServerBaseOptions* tablet_server_opts,
-    const std::optional<XClusterContext>& xcluster_context,
+    const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
+    const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+    const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(
