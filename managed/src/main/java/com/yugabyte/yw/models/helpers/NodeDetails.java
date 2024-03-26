@@ -161,7 +161,9 @@ public class NodeDetails {
     // Set when the node is being rebooted.
     Rebooting(REBOOT),
     // Set when the node is being stopped + started.
-    HardRebooting(HARD_REBOOT);
+    HardRebooting(HARD_REBOOT),
+    // Set when upgrading vm image for node.
+    VMImageUpgrade();
 
     private final NodeActionType[] allowedActions;
 
@@ -300,6 +302,8 @@ public class NodeDetails {
     clone.nodeUuid = this.nodeUuid;
     clone.placementUuid = this.placementUuid;
     clone.machineImage = this.machineImage;
+    clone.sshUserOverride = this.sshUserOverride;
+    clone.sshPortOverride = this.sshPortOverride;
     clone.ybPrebuiltAmi = this.ybPrebuiltAmi;
     clone.disksAreMountedByUUID = this.disksAreMountedByUUID;
     clone.dedicatedTo = this.dedicatedTo;

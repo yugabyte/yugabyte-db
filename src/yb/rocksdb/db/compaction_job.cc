@@ -264,8 +264,9 @@ CompactionJob::CompactionJob(
       paranoid_file_checks_(paranoid_file_checks),
       measure_io_stats_(measure_io_stats) {
   if (wait_state_) {
-    wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForCompaction));
-    wait_state_->set_rpc_request_id(job_id_);
+    wait_state_->UpdateMetadata(
+        {.query_id = yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForCompaction),
+         .rpc_request_id = job_id_});
     wait_state_->UpdateAuxInfo({.tablet_id = db_options_.tablet_id, .method = "Compaction"});
     SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
     yb::ash::FlushAndCompactionWaitStatesTracker().Track(wait_state_);

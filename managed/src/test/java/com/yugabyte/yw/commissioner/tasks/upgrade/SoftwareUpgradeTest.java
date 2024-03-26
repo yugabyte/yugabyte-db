@@ -94,7 +94,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.CheckFollowerLag,
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER_WITH_YBC_INSTALL =
       ImmutableList.of(
@@ -110,7 +111,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.CheckFollowerLag,
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
       ImmutableList.of(
@@ -129,7 +131,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER_WITH_YBC_INSTALL =
       ImmutableList.of(
@@ -149,7 +152,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE =
       ImmutableList.of(
@@ -158,7 +162,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleConfigureServers,
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE_WITH_YBC_INSTALL =
       ImmutableList.of(
@@ -168,7 +173,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleSetupServer,
           TaskType.AnsibleConfigureServers,
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE_ACTIVE_ROLE =
       ImmutableList.of(
@@ -476,7 +482,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(141, position);
+    assertEquals(151, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -528,7 +534,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true, true);
-    assertEquals(151, position);
+    assertEquals(161, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -682,7 +688,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(189, position);
+    assertEquals(202, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

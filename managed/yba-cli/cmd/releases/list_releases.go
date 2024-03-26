@@ -5,7 +5,6 @@
 package releases
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -39,7 +38,11 @@ var listReleasesCmd = &cobra.Command{
 			Format: releases.NewReleasesFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			fmt.Println("No releases found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No releases found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 

@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB;
@@ -389,8 +390,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             // Add stopped master to the quorum.
             createChangeConfigTasks(node, true /* isAdd */, subGroupType);
           }
-          createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-              .setSubTaskGroupType(subGroupType);
+          createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
           // If there are no universe keys on the universe, it will have no effect.
           if (processType == ServerType.MASTER
               && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
@@ -423,6 +423,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       // Run post node upgrade hooks
       createHookTriggerTasks(singletonNodeList, false, true);
       createSetNodeStateTask(node, NodeState.Live).setSubTaskGroupType(subGroupType);
+
+      createSleepAfterStartupTask(
+          taskParams().getUniverseUUID(),
+          processTypes,
+          SetNodeState.getStartKey(node.getNodeName(), nodeState));
     }
 
     if (!isLoadBalancerOn) {
@@ -930,7 +935,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   @Value
   @Builder
-  protected static class UpgradeContext {
+  public static class UpgradeContext {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;

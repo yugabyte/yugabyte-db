@@ -66,7 +66,8 @@ public class RebootUniverseTest extends UpgradeTaskTest {
           TaskType.CheckFollowerLag, // master
           TaskType.CheckFollowerLag, // tserver
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   @Override
   @Before
@@ -130,7 +131,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-    assertEquals(70, position);
+    assertEquals(73, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

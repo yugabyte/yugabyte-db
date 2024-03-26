@@ -59,7 +59,7 @@ class AddTableToXClusterTargetTask : public PostTabletCreateTaskBase {
 
   // Returns nullopt if the namespace is no longer part of xCluster replication, otherwise returns a
   // valid safe time.
-  Result<std::optional<HybridTime>> GetXClusterSafeTimeWithoutDdlQueue(const LeaderEpoch& epoch);
+  Result<std::optional<HybridTime>> GetXClusterSafeTimeWithoutDdlQueue();
 
   HybridTime bootstrap_time_ = HybridTime::kInvalid;
   HybridTime initial_xcluster_safe_time_ = HybridTime::kInvalid;

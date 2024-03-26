@@ -53,8 +53,11 @@ var addInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			fmt.Println("No providers found\n")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		if r[0].GetCode() != util.OnpremProviderType {
@@ -95,7 +98,7 @@ var addInstanceTypesCmd = &cobra.Command{
 				ProviderUuid:     providerUUID,
 			},
 			InstanceTypeDetails: &ybaclient.InstanceTypeDetails{
-				Tenancy:           tenancy,
+				Tenancy:           util.GetStringPointer(tenancy),
 				VolumeDetailsList: buildVolumeDetails(volume),
 			},
 			MemSizeGB: util.GetFloat64Pointer(memSize),
@@ -114,7 +117,7 @@ var addInstanceTypesCmd = &cobra.Command{
 			Format: instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
 		}
 
-		fmt.Printf("The instance type %s has been added to provider %s (%s)\n",
+		logrus.Infof("The instance type %s has been added to provider %s (%s)\n",
 			formatter.Colorize(instanceTypeName, formatter.GreenColor),
 			providerName,
 			providerUUID)
@@ -153,21 +156,20 @@ func init() {
 
 }
 
-func buildVolumeDetails(volumeStrings []string) (
-	res []ybaclient.VolumeDetails,
-) {
+func buildVolumeDetails(volumeStrings []string) *[]ybaclient.VolumeDetails {
 	if len(volumeStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one volume is required per instance type.",
+			formatter.Colorize("Atleast one volume is required per instance type.\n",
 				formatter.RedColor))
 	}
+	res := make([]ybaclient.VolumeDetails, 0)
 	for _, volumeString := range volumeStrings {
 		volume := map[string]string{}
 		for _, volumeInfo := range strings.Split(volumeString, ",") {
 			kvp := strings.Split(volumeInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in volume description.",
+					formatter.Colorize("Incorrect format in volume description.\n",
 						formatter.RedColor))
 			}
 			key := kvp[0]
@@ -189,7 +191,7 @@ func buildVolumeDetails(volumeStrings []string) (
 		}
 		if _, ok := volume["mount-points"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Mount points not specified in volume.",
+				formatter.Colorize("Mount points not specified in volume.\n",
 					formatter.RedColor))
 		}
 		if _, ok := volume["size"]; !ok {
@@ -209,5 +211,5 @@ func buildVolumeDetails(volumeStrings []string) (
 		}
 		res = append(res, r)
 	}
-	return res
+	return &res
 }

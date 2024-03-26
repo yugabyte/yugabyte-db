@@ -62,6 +62,7 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1652,6 +1653,12 @@ public class PlacementInfoUtil {
           && existingNode.machineImage != null) {
         nodeDetails.machineImage = existingNode.machineImage;
         nodeDetails.ybPrebuiltAmi = existingNode.ybPrebuiltAmi;
+        if (existingNode.sshPortOverride != null) {
+          nodeDetails.sshPortOverride = existingNode.sshPortOverride;
+        }
+        if (StringUtils.isNotBlank(existingNode.sshUserOverride)) {
+          nodeDetails.sshUserOverride = existingNode.sshUserOverride;
+        }
         break;
       }
     }
@@ -1705,6 +1712,12 @@ public class PlacementInfoUtil {
     NodeDetails newNode = new NodeDetails();
     newNode.cloudInfo = new CloudSpecificInfo();
     newNode.machineImage = templateNode.machineImage;
+    if (templateNode.sshPortOverride != null) {
+      newNode.sshPortOverride = templateNode.sshPortOverride;
+    }
+    if (StringUtils.isNotBlank(templateNode.sshUserOverride)) {
+      newNode.sshUserOverride = templateNode.sshUserOverride;
+    }
     newNode.ybPrebuiltAmi = templateNode.ybPrebuiltAmi;
     newNode.placementUuid = templateNode.placementUuid;
     newNode.azUuid = templateNode.azUuid;

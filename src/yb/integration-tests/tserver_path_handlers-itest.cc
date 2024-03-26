@@ -73,6 +73,7 @@ TEST_F(TServerPathHandlersItest, TestMasterPathHandlers) {
   ASSERT_OK(FetchURL("/transactions"));
   ASSERT_OK(FetchURL("/rocksdb"));
   ASSERT_OK(FetchURL("/waitqueue"));
+  ASSERT_OK(FetchURL("/api/v1/meta-cache"));
 #ifndef NDEBUG
   ASSERT_OK(FetchURL("/intentsdb"));
 #endif
@@ -144,6 +145,32 @@ TEST_F(TServerPathHandlersItest, TestVarzAutoFlag) {
 
   ASSERT_NE(it_unexpected_json_flag, flags.End());
   ASSERT_EQ((*it_unexpected_json_flag)["type"], "Default");
+}
+
+void VerifyMetaCacheObjectIsValid(
+    const rapidjson::Value* json_object, const JsonReader& json_reader) {
+  EXPECT_TRUE(json_object->HasMember("MainMetaCache"));
+
+  const rapidjson::Value* main_metacache = nullptr;
+  EXPECT_OK(json_reader.ExtractObject(json_object, "MainMetaCache", &main_metacache));
+  EXPECT_TRUE(main_metacache->HasMember("tablets"));
+
+  std::vector<const rapidjson::Value*> remote_tablets;
+  ASSERT_OK(json_reader.ExtractObjectArray(main_metacache, "tablets", &remote_tablets));
+  for (auto remote_tablet : remote_tablets) {
+    EXPECT_TRUE(remote_tablet->HasMember("tablet_id"));
+    EXPECT_TRUE(remote_tablet->HasMember("replicas"));
+  }
+}
+
+TEST_F(TServerPathHandlersItest, TestListMetaCache) {
+  auto result = ASSERT_RESULT(FetchURL("/api/v1/meta-cache"));
+  JsonReader r(result);
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_object = nullptr;
+  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_object));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_object)->GetType());
+  VerifyMetaCacheObjectIsValid(json_object, r);
 }
 
 }  // namespace yb

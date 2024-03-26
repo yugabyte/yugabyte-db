@@ -24,7 +24,6 @@ import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
   XClusterConfigAction,
-  XClusterConfigType,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import {
@@ -104,29 +103,12 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     () => api.fetchUniverseNamespaces(xClusterConfig.sourceUniverseUUID)
   );
 
-  const sourceUniverseIndexTableUuids =
-    sourceUniverseTablesQuery.data
-      ?.filter((table) => table.isIndexTable)
-      .map((table) => getTableUuid(table)) ?? [];
-
   const editTableMutation = useMutation(
     (formValues: EditTablesFormValues) => {
-      const filteredBootstrapRequiredTableUuids =
-        props.xClusterConfig.type === XClusterConfigType.TXN
-          ? bootstrapRequiredTableUUIDs.filter(
-              (tableUuid) => !sourceUniverseIndexTableUuids.includes(tableUuid)
-            )
-          : bootstrapRequiredTableUUIDs;
-      const filteredTableUuids =
-        props.xClusterConfig.type === XClusterConfigType.TXN
-          ? formValues.tableUuids.filter(
-              (tableUuid) => !sourceUniverseIndexTableUuids.includes(tableUuid)
-            )
-          : formValues.tableUuids;
       const bootstrapParams =
-        filteredBootstrapRequiredTableUuids.length > 0
+        bootstrapRequiredTableUUIDs.length > 0
           ? {
-              tables: filteredBootstrapRequiredTableUuids,
+              tables: bootstrapRequiredTableUUIDs,
               backupRequestParams: {
                 storageConfigUUID: formValues.storageConfig?.value.uuid
               }
@@ -134,7 +116,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           : undefined;
       return props.isDrInterface
         ? api.updateTablesInDr(props.drConfigUuid, {
-            tables: filteredTableUuids
+            tables: formValues.tableUuids
           })
         : editXClusterConfigTables(xClusterConfig.uuid, formValues.tableUuids, bootstrapParams);
     },
@@ -291,43 +273,48 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           let bootstrapTableUuids: string[] | null = null;
           const hasSelectionError = false;
 
-          try {
-            bootstrapTableUuids = await getTablesForBootstrapping(
-              formValues.tableUuids,
-              sourceUniverseUuid,
-              targetUniverseUuid,
-              sourceUniverseTables,
-              xClusterConfig.type
-            );
-          } catch (error: any) {
-            toast.error(
-              <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
-                <div className={toastStyles.toastMessage}>
-                  <i className="fa fa-exclamation-circle" />
-                  <Typography variant="body2" component="span">
-                    {t('error.failedToFetchIsBootstrapRequired.title', {
+          const tableUuidsToAdd = formValues.tableUuids.filter(
+            (tableUuid) => !props.xClusterConfig.tables.includes(tableUuid)
+          );
+          if (tableUuidsToAdd.length) {
+            try {
+              bootstrapTableUuids = await getTablesForBootstrapping(
+                tableUuidsToAdd,
+                sourceUniverseUuid,
+                targetUniverseUuid,
+                sourceUniverseTables,
+                xClusterConfig.type
+              );
+            } catch (error: any) {
+              toast.error(
+                <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+                  <div className={toastStyles.toastMessage}>
+                    <i className="fa fa-exclamation-circle" />
+                    <Typography variant="body2" component="span">
+                      {t('error.failedToFetchIsBootstrapRequired.title', {
+                        keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                      })}
+                    </Typography>
+                  </div>
+                  <Typography variant="body2" component="div">
+                    {t('error.failedToFetchIsBootstrapRequired.body', {
                       keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
                     })}
                   </Typography>
-                </div>
-                <Typography variant="body2" component="div">
-                  {t('error.failedToFetchIsBootstrapRequired.body', {
-                    keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
-                  })}
-                </Typography>
-                <Typography variant="body2" component="div">
-                  {error.message}
-                </Typography>
-              </Box>
-            );
-            setSelectionWarning({
-              title: t('error.failedToFetchIsBootstrapRequired.title', {
-                keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
-              }),
-              body: t('error.failedToFetchIsBootstrapRequired.body', {
-                keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
-              })
-            });
+                  <Typography variant="body2" component="div">
+                    {error.message}
+                  </Typography>
+                </Box>
+              );
+              setSelectionWarning({
+                title: t('error.failedToFetchIsBootstrapRequired.title', {
+                  keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                }),
+                body: t('error.failedToFetchIsBootstrapRequired.body', {
+                  keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                })
+              });
+            }
           }
 
           if (bootstrapTableUuids?.length && bootstrapTableUuids?.length > 0) {
@@ -509,12 +496,8 @@ const getDefaultSelectedTableUuids = (
   xClusterConfig.tables.forEach((tableUuid) => {
     const sourceUniverseTable = tableUuidToTable[tableUuid];
     if (sourceUniverseTable) {
-      // The xCluster config table exists in the source universe.
-      // We add this table and include any associcated index tables it has.
+      // The xCluster config table still exists in the source universe.
       defaultSelectedTableUuids.add(tableUuid);
-      sourceUniverseTable.indexTableIDs?.forEach((indexTableId) =>
-        defaultSelectedTableUuids.add(indexTableId)
-      );
     }
   });
   return Array.from(defaultSelectedTableUuids);

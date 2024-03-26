@@ -918,7 +918,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_bitmapscan,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 	{
@@ -2295,13 +2295,14 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"yb_enable_optimizer_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables use postgres selectivity model."),
+			gettext_noop("Enables use of the PostgreSQL selectivity estimation which utilizes "
+			"table statistics collected with ANALYZE. When disabled, a simpler heuristics based "
+			"selectivity estimation is used."),
 			NULL
 		},
 		&yb_enable_optimizer_statistics,
 		false,
 		NULL, NULL, NULL
-
 	},
 	{
 		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -2442,7 +2443,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_is_client_ysqlconnmgr,
 		false,
-		yb_is_client_ysqlconnmgr_check_hook, NULL, NULL
+		yb_is_client_ysqlconnmgr_check_hook, yb_is_client_ysqlconnmgr_assign_hook, NULL
 	},
 
 	{
@@ -2468,14 +2469,26 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"ddl_rollback_enabled", PGC_SUSET, DEVELOPER_OPTIONS,
+		{"yb_ddl_rollback_enabled", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("If set, any DDL that involves DocDB schema changes will have those "
 						 "changes rolled back upon failure."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&ddl_rollback_enabled,
+		&yb_ddl_rollback_enabled,
 		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_ddl_atomicity_infra", PGC_SUSET, DEVELOPER_OPTIONS,
+			NULL,
+			gettext_noop("Used along side with yb_ddl_rollback_enabled to control "
+						 "whether DDL atomicity is enabled."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_ddl_atomicity_infra,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -2694,6 +2707,34 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_locks_max_transactions,
 		16, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_walsender_poll_sleep_duration_nonempty_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which Walsender waits before"
+						 " fetching the next batch of changes from the CDC"
+						 " service in case the last received response was"
+						 " non-empty."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_walsender_poll_sleep_duration_nonempty_ms,
+		1, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_walsender_poll_sleep_duration_empty_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which Walsender waits before"
+						 " fetching the next batch of changes from the CDC"
+						 " service in case the last received response was"
+						 " empty."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_walsender_poll_sleep_duration_empty_ms,
+		1 * 1000, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -4017,7 +4058,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_ash_sampling_interval", PGC_SIGHUP, STATS_MONITORING,
+		{"yb_ash_sampling_interval_ms", PGC_SIGHUP, STATS_MONITORING,
 			gettext_noop("Time (in milliseconds) between two consecutive sampling events"),
 			NULL,
 			GUC_UNIT_MS

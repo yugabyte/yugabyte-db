@@ -43,6 +43,12 @@ Here are some examples of reference docs in our documentation:
 
 We also have design docs [in GitHub](https://github.com/yugabyte/yugabyte-db/tree/master/architecture/design). These design docs should be referenced from the Reference section in the docs.
 
+## Legend for illustrations
+
+Many of the illustrations in the docs use the following legend to represent tablet leaders and followers, cloud regions and zones, and applications.
+
+![Legend for illustrations](/images/develop/global-apps/global-database-legend.png)
+
 ## Next steps
 
 Now that you know where your page should go, [build the docs](../docs-build/) locally and [start editing](../docs-edit/).

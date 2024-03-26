@@ -22,6 +22,7 @@
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/server/async_client_initializer.h"
@@ -65,6 +66,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
@@ -84,7 +86,7 @@ using namespace std::literals;
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, false,
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::IsDebug(),
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
@@ -1376,19 +1378,15 @@ class PgClientServiceImpl::Impl {
             << " wait-states: " << yb::ToString(resp->wait_states());
   }
 
-  void AddRaftAppenderThreadWaitStates(tserver::WaitStatesPB* resp) {
+  void AddWaitStatesToResponse(const ash::WaitStateTracker& tracker, tserver::WaitStatesPB* resp) {
+    Result<Uuid> local_uuid = Uuid::FromHexString(instance_id_);
+    DCHECK_OK(local_uuid);
     resp->set_component(yb::to_underlying(ash::Component::kTServer));
-    for (auto& wait_state_ptr : ash::RaftLogAppenderWaitStatesTracker().GetWaitStates()) {
+    for (auto& wait_state_ptr : tracker.GetWaitStates()) {
       if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
-        wait_state_ptr->ToPB(resp->add_wait_states());
-      }
-    }
-  }
-
-  void AddPriorityThreadPoolWaitStates(tserver::WaitStatesPB* resp) {
-    resp->set_component(yb::to_underlying(ash::Component::kTServer));
-    for (auto& wait_state_ptr : ash::FlushAndCompactionWaitStatesTracker().GetWaitStates()) {
-      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
+        if (local_uuid) {
+          wait_state_ptr->set_yql_endpoint_tserver_uuid(*local_uuid);
+        }
         wait_state_ptr->ToPB(resp->add_wait_states());
       }
     }
@@ -1401,10 +1399,13 @@ class PgClientServiceImpl::Impl {
       GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
     }
     if (req.fetch_flush_and_compaction_states()) {
-      AddPriorityThreadPoolWaitStates(resp->mutable_flush_and_compaction_wait_states());
+      AddWaitStatesToResponse(
+          ash::FlushAndCompactionWaitStatesTracker(),
+          resp->mutable_flush_and_compaction_wait_states());
     }
     if (req.fetch_raft_log_appender_states()) {
-      AddRaftAppenderThreadWaitStates(resp->mutable_raft_log_appender_wait_states());
+      AddWaitStatesToResponse(
+          ash::RaftLogAppenderWaitStatesTracker(), resp->mutable_raft_log_appender_wait_states());
     }
     if (req.fetch_cql_states()) {
       GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states());
@@ -1669,6 +1670,7 @@ class PgClientServiceImpl::Impl {
 
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
+    std::vector<uint64_t> expired_sessions;
     std::lock_guard lock(mutex_);
     while (!session_expiration_queue_.empty()) {
       auto& top = session_expiration_queue_.top();
@@ -1683,9 +1685,15 @@ class PgClientServiceImpl::Impl {
         if (current_expiration > now) {
           session_expiration_queue_.push({current_expiration, id});
         } else {
+          expired_sessions.push_back(id);
           sessions_.erase(it);
         }
       }
+    }
+    auto cdc_service = tablet_server_.GetCDCService();
+    // We only want to call this on tablet servers. On master, cdc_service will be null.
+    if (cdc_service) {
+      cdc_service->DestroyVirtualWALBatchForCDC(expired_sessions);
     }
     ScheduleCheckExpiredSessions(now);
   }
@@ -1762,15 +1770,6 @@ class PgClientServiceImpl::Impl {
   };
   std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
 
-  boost::multi_index_container<
-      SessionInfoPtr,
-      boost::multi_index::indexed_by<
-          boost::multi_index::hashed_unique<
-              boost::multi_index::const_mem_fun<SessionInfo, uint64_t, &SessionInfo::id>
-          >
-      >
-  > sessions_ GUARDED_BY(mutex_);
-
   using ExpirationEntry = std::pair<CoarseTimePoint, uint64_t>;
 
   struct CompareExpiration {
@@ -1805,6 +1804,15 @@ class PgClientServiceImpl::Impl {
 
   std::array<rw_spinlock, 8> txns_assignment_mutexes_;
   TransactionBuilder transaction_builder_;
+
+  boost::multi_index_container<
+      SessionInfoPtr,
+      boost::multi_index::indexed_by<
+          boost::multi_index::hashed_unique<
+              boost::multi_index::const_mem_fun<SessionInfo, uint64_t, &SessionInfo::id>
+          >
+      >
+  > sessions_ GUARDED_BY(mutex_);
 };
 
 PgClientServiceImpl::PgClientServiceImpl(

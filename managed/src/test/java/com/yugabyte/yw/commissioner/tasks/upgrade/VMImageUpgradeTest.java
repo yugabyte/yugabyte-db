@@ -77,6 +77,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.SetNodeState,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -90,13 +91,16 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
           TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.UpdateNodeDetails);
+          TaskType.UpdateNodeDetails,
+          TaskType.SetNodeState);
 
   private static final List<TaskType> NODE_VALIDATION_TASKS =
       ImmutableList.of(TaskType.CheckLocale, TaskType.CheckGlibc);

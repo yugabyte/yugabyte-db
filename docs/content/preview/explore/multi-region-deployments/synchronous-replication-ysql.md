@@ -140,7 +140,7 @@ If you are running the application locally, set the value to the cloud location 
 java -jar \
     -Dnode=127.0.0.1 \
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-west-2.us-west-2a \
-    ./yb-workload-sim-0.0.4.jar
+    ./yb-workload-sim-0.0.8.jar
 ```
 
 After the connection has been established, [start a workload](../../#start-a-read-and-write-workload).

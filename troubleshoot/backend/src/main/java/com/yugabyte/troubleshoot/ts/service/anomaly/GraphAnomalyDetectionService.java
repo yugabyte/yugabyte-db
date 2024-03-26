@@ -160,9 +160,8 @@ public class GraphAnomalyDetectionService {
       Double value = graphPoint.getY();
       Double baseline = beselineGraph.getPoints().get(i).getY();
       if (value.isNaN() || value.isInfinite()) {
-        // For simplicity, we assume this value as 0 -
-        // as that's how we show that on the graph typically;
-        value = 0.0;
+        // NaN mens we don't know the value - so we just ignore this data point and move on.
+        continue;
       }
       Long timestamp = graphPoint.getX();
       if (currentWindow.isEmpty()) {
@@ -277,6 +276,15 @@ public class GraphAnomalyDetectionService {
     Map<String, String> additionalLabels = new HashMap<>();
     if (graphData.getInstanceName() != null) {
       additionalLabels.put(GraphFilter.instanceName.name(), graphData.getInstanceName());
+    }
+    if (graphData.getNamespaceName() != null) {
+      additionalLabels.put(GraphFilter.dbName.name(), graphData.getNamespaceName());
+    }
+    if (graphData.getTableName() != null) {
+      additionalLabels.put(GraphFilter.tableName.name(), graphData.getTableName());
+    }
+    if (graphData.getTableId() != null) {
+      additionalLabels.put(GraphFilter.tableId.name(), graphData.getTableId());
     }
     if (graphData.getName() != null) {
       additionalLabels.put(LINE_NAME, graphData.getName());

@@ -33,6 +33,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPo
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -696,6 +697,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                       (n.dedicatedTo == null || n.dedicatedTo != ServerType.TSERVER)
                           && Objects.equals(n.placementUuid, currentNode.placementUuid)
                           && !n.getNodeName().equals(currentNode.getNodeName())
+                          && n.getRegion().equals(currentNode.getRegion())
                           && n.getZone().equals(currentNode.getZone()))
               .collect(Collectors.toList());
       // This takes care of picking up the node that was previously selected.
@@ -1185,6 +1187,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.assignPublicIP = cloudInfo.assignPublicIP;
     params.assignStaticPublicIP = userIntent.assignStaticPublicIP;
     params.setMachineImage(node.machineImage);
+    params.sshUserOverride = node.sshUserOverride;
+    params.sshPortOverride = node.sshPortOverride;
     params.setCmkArn(taskParams().getCmkArn());
     params.ipArnString = userIntent.awsArnString;
     params.useSpotInstance = userIntent.useSpotInstance;
@@ -2809,5 +2813,35 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       subTaskGroup.addSubTask(checkNodesAreSafeToTakeDown);
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+  }
+
+  protected SubTaskGroup createSleepAfterStartupTask(
+      UUID universeUUID, Collection<ServerType> processTypes, String dateKey) {
+    int sleepTime =
+        processTypes.stream()
+            .filter(p -> p != ServerType.CONTROLLER)
+            .mapToInt(this::getSleepTimeForProcess)
+            .max()
+            .orElse(-1);
+    return createSleepAfterStartupTask(universeUUID, processTypes, dateKey, sleepTime);
+  }
+
+  protected SubTaskGroup createSleepAfterStartupTask(
+      UUID universeUUID, Collection<ServerType> processTypes, String dateKey, long sleepTime) {
+    if (sleepTime <= 0) {
+      log.debug("Skipping wait for processes {}", processTypes);
+      return null;
+    }
+    SubTaskGroup subTaskGroup = createSubTaskGroup("WaitUntilTime");
+    WaitStartingFromTime.Params params = new WaitStartingFromTime.Params();
+    params.setUniverseUUID(universeUUID);
+    params.sleepTime = sleepTime;
+    params.dateKey = dateKey;
+
+    WaitStartingFromTime task = createTask(WaitStartingFromTime.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 }

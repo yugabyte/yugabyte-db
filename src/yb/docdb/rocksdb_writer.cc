@@ -57,6 +57,8 @@ using dockv::ValueEntryTypeAsChar;
 
 namespace {
 
+constexpr char kPostApplyMetadataMarker = 0;
+
 // Slice parts with the number of slices fixed at compile time.
 template <int N>
 struct FixedSliceParts {
@@ -218,6 +220,8 @@ TransactionalWriter::TransactionalWriter(
 //   TxnId -> status tablet id + isolation level
 // Reverse index by txn id
 //   TxnId + HybridTime -> Main intent data key
+// Post-apply transaction metadata
+//   TxnId + kPostApplyMetadataMarker -> apply op id
 //
 // Where prefix is just a single byte prefix. TxnId, IntentType, HybridTime all prefixed with
 // appropriate value type.
@@ -398,6 +402,31 @@ Status TransactionalWriter::AddWeakIntent(
   return Status::OK();
 }
 
+PostApplyMetadataWriter::PostApplyMetadataWriter(
+    std::span<const PostApplyTransactionMetadata> metadatas)
+    : metadatas_{metadatas} {
+}
+
+Status PostApplyMetadataWriter::Apply(rocksdb::DirectWriteHandler* handler) {
+  ThreadSafeArena arena;
+  for (const auto& metadata : metadatas_) {
+    std::array<Slice, 3> metadata_key = {{
+        Slice(&KeyEntryTypeAsChar::kTransactionId, 1),
+        metadata.transaction_id.AsSlice(),
+        Slice(&kPostApplyMetadataMarker, 1),
+    }};
+
+    LWPostApplyTransactionMetadataPB data(&arena);
+    metadata.ToPB(&data);
+
+    auto value = data.SerializeAsString();
+    Slice value_slice{value};
+    handler->Put(metadata_key, SliceParts(&value_slice, 1));
+  }
+
+  return Status::OK();
+}
+
 DocHybridTimeBuffer::DocHybridTimeBuffer() {
   buffer_[0] = KeyEntryTypeAsChar::kHybridTime;
 }
@@ -439,7 +468,10 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
     auto reverse_index_value = reverse_index_iter_.value();
 
-    bool metadata = key_slice.size() == 1 + TransactionId::StaticSize();
+    // Check if they key is transaction metadata (1 byte prefix + transaction id) or
+    // post-apply transaction metadata (1 byte prefix + transaction id + 1 byte suffix).
+    bool metadata = key_slice.size() == 1 + TransactionId::StaticSize() ||
+                    key_slice.size() == 2 + TransactionId::StaticSize();
     // At this point, txn_reverse_index_prefix is a prefix of key_slice. If key_slice is equal to
     // txn_reverse_index_prefix in size, then they are identical, and we are seeked to transaction
     // metadata. Otherwise, we're seeked to an intent entry in the index which we may process.

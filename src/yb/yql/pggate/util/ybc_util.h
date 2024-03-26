@@ -166,6 +166,19 @@ extern bool yb_is_read_time_ht;
 extern int yb_fetch_row_limit;
 extern int yb_fetch_size_limit;
 
+/*
+ * GUC flag: Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was non-empty.
+ */
+extern int yb_walsender_poll_sleep_duration_nonempty_ms;
+
+/*
+ * GUC flag:  Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was empty. The response can be
+ * empty in case there are no DMLs happening in the system.
+ */
+extern int yb_walsender_poll_sleep_duration_empty_ms;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
 bool YBCStatusIsNotFound(YBCStatus s);

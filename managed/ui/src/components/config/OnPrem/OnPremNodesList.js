@@ -5,20 +5,21 @@ import { Row, Col, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FieldArray, SubmissionError } from 'redux-form';
 import { Link, withRouter } from 'react-router';
+import { DropdownButton, MenuItem } from 'react-bootstrap';
 
+import { YBConfirmModal } from '../../modals';
+import { YBCodeBlock, YBCopyButton } from '../../common/descriptors/index';
+import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
-import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
 import { YBBreadcrumb } from '../../common/descriptors';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
-import { YBCodeBlock, YBCopyButton } from '../../common/descriptors/index';
-import { YBConfirmModal } from '../../modals';
-import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
-import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { getLatestAccessKey } from '../../configRedesign/providerRedesign/utils';
+import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import { NodeAgentStatus } from '../../../redesign/features/NodeAgent/NodeAgentStatus';
+import { OnPremNodeState } from '../../../redesign/helpers/dtos';
 
 const TIMEOUT_BEFORE_REFRESH = 2500;
 
@@ -35,7 +36,12 @@ const PRECHECK_STATUS_ORDER = [
 class OnPremNodesList extends Component {
   constructor(props) {
     super(props);
-    this.state = { nodeToBeDeleted: {}, nodeToBePrechecked: {}, tasksPolling: false };
+    this.state = {
+      nodeToBeDeleted: {},
+      nodeToBePrechecked: {},
+      tasksPolling: false,
+      nodeToBeRecommissioned: {}
+    };
   }
 
   addNodeToList = () => {
@@ -67,6 +73,16 @@ class OnPremNodesList extends Component {
     this.props.hideDialog();
   };
 
+  showConfirmRecommissionNodeModal(row) {
+    this.setState({ nodeToBeRecommissioned: row });
+    this.props.showConfirmRecommissionNodeModal();
+  }
+
+  hideRecommissionNodeModal = () => {
+    this.setState({ nodeToBeRecommissioned: {} });
+    this.props.hideDialog();
+  };
+
   precheckInstance = () => {
     const row = this.state.nodeToBePrechecked;
     if (!row.inUse) {
@@ -87,6 +103,15 @@ class OnPremNodesList extends Component {
       this.props.deleteInstance(onPremProvider.uuid, row.ip);
     }
     this.hideDeleteNodeModal();
+  };
+
+  recommissionInstance = () => {
+    const onPremProvider = this.findProvider();
+    const node = this.state.nodeToBeRecommissioned;
+    if (!node.inUse) {
+      this.props.recommissionInstance(onPremProvider.uuid, node.ip);
+    }
+    this.hideRecommissionNodeModal();
   };
 
   findProvider = () => {
@@ -192,11 +217,12 @@ class OnPremNodesList extends Component {
     this.props.reset();
   };
 
-  handleCheckNodesUsage = (inUse, row) => {
+  handleCheckNodesUsage = (cell, row) => {
     let result = 'n/a';
     const { universeList } = this.props;
+    const isNodeInUse = row.state === OnPremNodeState.USED;
 
-    if (inUse) {
+    if (isNodeInUse) {
       if (getPromiseState(universeList).isLoading() || getPromiseState(universeList).isInit()) {
         result = 'Loading...';
       } else if (getPromiseState(universeList).isSuccess()) {
@@ -292,6 +318,7 @@ class OnPremNodesList extends Component {
           zone: item.details.zone,
           zoneUuid: item.zoneUuid,
           instanceName: item.instanceName,
+          state: item.state,
           precheckTask: lastTasks.get(item.nodeUuid),
           precheckStatus: taskStatusOrder(lastTasks.get(item.nodeUuid))
         };
@@ -351,6 +378,8 @@ class OnPremNodesList extends Component {
 
     const actionsList = (cell, row) => {
       const precheckDisabled = row.inUse || isActive(row.precheckTask);
+      const isNodeDecommissioned = row.state === OnPremNodeState.DECOMMISSIONED;
+      const isNodeInUse = row.state === OnPremNodeState.USED;
       return (
         <>
           <DropdownButton
@@ -361,18 +390,26 @@ class OnPremNodesList extends Component {
           >
             <MenuItem
               onClick={!precheckDisabled ? self.showConfirmPrecheckModal.bind(self, row) : null}
-              disabled={precheckDisabled}
+              disabled={precheckDisabled || isNodeDecommissioned}
             >
               <i className="fa fa-play-circle-o" />
               Perform check
             </MenuItem>
             <MenuItem
-              onClick={!row.inUse ? self.showConfirmDeleteModal.bind(self, row) : null}
-              disabled={row.inUse}
+              onClick={
+                !row.inUse || !isNodeInUse ? self.showConfirmDeleteModal.bind(self, row) : null
+              }
+              disabled={row.inUse || isNodeInUse}
             >
               <i className={`fa fa-trash`} />
               Delete node
             </MenuItem>
+            {row.state === OnPremNodeState.DECOMMISSIONED && (
+              <MenuItem onClick={self.showConfirmRecommissionNodeModal.bind(self, row)}>
+                <i className={`fa fa-plus`} />
+                Recommission Node
+              </MenuItem>
+            )}
           </DropdownButton>
         </>
       );
@@ -486,6 +523,11 @@ class OnPremNodesList extends Component {
         ? ' ' + this.state.nodeToBeDeleted.nodeName
         : ''
     }?`;
+    const recommisionNodeConfirmationText = `Are you sure you want to recommission node${
+      isNonEmptyObject(this.state.nodeToBeRecommissioned) && this.state.nodeToBeRecommissioned.ip
+        ? ' ' + this.state.nodeToBeRecommissioned.ip
+        : ''
+    }?`;
     const precheckConfirmationText = `Are you sure you want to run precheck on node${
       isNonEmptyObject(this.state.nodeToBePrechecked) ? ' ' + this.state.nodeToBePrechecked.ip : ''
     }?`;
@@ -530,6 +572,9 @@ class OnPremNodesList extends Component {
               </TableHeaderColumn>
               <TableHeaderColumn dataField="inUse" dataFormat={this.handleCheckNodesUsage} dataSort>
                 Universe Name
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="state" dataSort>
+                State
               </TableHeaderColumn>
               <TableHeaderColumn dataField="region" dataSort>
                 Region
@@ -594,6 +639,18 @@ class OnPremNodesList extends Component {
           cancelLabel="Cancel"
         >
           {precheckConfirmationText}
+        </YBConfirmModal>
+        <YBConfirmModal
+          name={'confirmRecommissionNodeInstance'}
+          title={'Recommission Node'}
+          hideConfirmModal={this.hideRecommissionNodeModal}
+          currentModal={'confirmRecommissionNodeInstance'}
+          visibleModal={visibleModal}
+          onConfirm={this.recommissionInstance}
+          confirmLabel="Apply"
+          cancelLabel="Cancel"
+        >
+          {recommisionNodeConfirmationText}
         </YBConfirmModal>
       </div>
     );

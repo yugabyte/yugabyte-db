@@ -123,6 +123,8 @@ public class TestYsqlPartitionedBackup extends BasePgSQLTest {
 
   private void partitionedTestCleanupHelper() throws Exception {
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }

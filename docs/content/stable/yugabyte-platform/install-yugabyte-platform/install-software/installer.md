@@ -56,24 +56,15 @@ You can also use YBA Installer to migrate an existing YBA software installed via
 
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
-## Prerequisites
+## Before you begin
 
-- Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
-- For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](#non-sudo-installation).)
-
-  If your sudo permissions are limited, add the following to the allowed list for root in the sudoers file:
-
-  ```sh
-  /bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
-  ```
-
-  Additionally, add the commands from the [sudo_whitelist](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/sudo_whitelist.txt) to the sudoers file.
+Make sure your machine satisfies the [minimum prerequisites](../../prerequisites/installer/).
 
 ## Quick start
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
 
-1. Obtain your license from Yugabyte Support.
+1. Obtain your license from {{% support-platform %}}.
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
@@ -226,7 +217,7 @@ The `install` command runs all [preflight checks](#run-preflight-checks) first, 
 
 {{< note >}}
 
-Migrating from Replicated using YBA Installer is [Early Access](/preview/releases/versioning/#feature-availability).
+Migrating from Replicated using YBA Installer is in [Early Access](/preview/releases/versioning/#feature-availability).
 
 {{</note >}}
 
@@ -238,7 +229,7 @@ YugabyteDB Anywhere will end support for Replicated installation at the end of 2
 
 If your YBA installation uses Replicated, you can use YBA Installer to migrate from Replicated.
 
-Review the [prerequisites](#prerequisites). YBA Installer performs the migration in place. Make sure you have enough disk space on your current machine.
+Review the [prerequisites](../../prerequisites/installer/). YBA Installer performs the migration in place. Make sure you have enough disk space on your current machine.
 
 If you have high availability configured, you need to migrate your instances in a specific order. See [Migration and high availability](#migration-and-high-availability).
 
@@ -256,7 +247,11 @@ To migrate your installation from Replicated, do the following:
     $ sudo ./yba-ctl replicated-migrate config
     ```
 
-    This generates a configuration file `/opt/yba-ctl/yba-ctl.yml` with the settings for your current installation, which are used for the migration. You can edit the file to customize the install further. For a list of options, refer to [Configuration options](#configuration-options).
+    This generates a configuration file `/opt/yba-ctl/yba-ctl.yml` with the settings for your current installation, which are used for the migration. You can edit the file to customize the install further.
+
+    Note that the `installRoot` (by default `/opt/ybanywhere`) in `yba-ctl.yml` needs to be different from the Replicated Storage Path (by default `/opt/yugabyte`). If they are set to the same value, the migration will fail. You can delete `yba-ctl.yml` and try again.
+
+    For a list of options, refer to [Configuration options](#configuration-options).
 
 1. Start the migration, passing in your license file:
 
