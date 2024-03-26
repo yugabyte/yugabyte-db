@@ -255,6 +255,7 @@ ExecReScanYbBitmapTableScan(YbBitmapTableScanState *node)
 		/* For rescan, end the previous scan. */
 		ybc_free_ybscan(ybScan);
 		node->ss.ss_currentScanDesc->ybscan = NULL;
+		pfree(node->ss.ss_currentScanDesc);
 	}
 
 	node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(
