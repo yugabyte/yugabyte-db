@@ -23,7 +23,7 @@
       "initialRelease": "2023-11-13",
       "endOfMaintenance": "2025-11-13",
       "endOfLife": "2026-05-13",
-      "PreviewBehindStable": true
+      "PreviewBehindStable": false
     },
     {
       "series": "v2.18",

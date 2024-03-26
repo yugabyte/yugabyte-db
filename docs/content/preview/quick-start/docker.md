@@ -77,7 +77,7 @@ Before installing YugabyteDB, ensure that you have the Docker runtime installed 
 Pull the YugabyteDB container by executing the following command:
 
 ```sh
-docker pull yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}}
+docker pull yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}}
 ```
 
 ## Create a local cluster
@@ -88,7 +88,7 @@ To create a 1-node cluster with a replication factor (RF) of 1, run the followin
 
 ```sh
 docker run -d --name yugabyte -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
- yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} bin/yugabyted start \
+ yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
  --background=false
 ```
 
