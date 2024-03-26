@@ -321,8 +321,8 @@ Status Master::RegisterServices() {
       FLAGS_master_svc_queue_length,
       std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
-          std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(),
-          messenger(), fs_manager_->uuid(), &options(), std::nullopt /* xcluster_context */)));
+          std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
+          fs_manager_->uuid(), &options(), nullptr /* xcluster_context */)));
 
   return Status::OK();
 }

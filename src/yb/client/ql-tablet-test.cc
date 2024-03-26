@@ -70,6 +70,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
@@ -1395,7 +1396,7 @@ TEST_F(QLTabletTest, HistoryCutoff) {
         std::this_thread::sleep_for(100ms);
         continue;
       }
-      if (!tserver->GetXClusterSafeTimeMap()
+      if (!tserver->GetXClusterContext()
                .GetSafeTime(peers[0]->tablet()->metadata()->namespace_id())
                .ok()) {
         std::this_thread::sleep_for(100ms);
