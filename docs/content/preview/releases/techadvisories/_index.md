@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB Technical Advisories
-headerTitle: Technical Advisories
-linkTitle: Technical Advisories
+headerTitle: Technical advisories
+linkTitle: Technical advisories
 description: List of technical advisories
 image: /icons/triangle-exclamation-thin.svg
 type: indexpage
@@ -10,19 +10,13 @@ cascade:
   unversioned: true
 ---
 
-Technical Advisories include important notifications and updates regarding product issues, security vulnerabilities, and other technical matters that may impact Yugabyte products and services. We understand that keeping your systems secure and running smoothly is of utmost importance. 
-This page serves as a central resource to ensure you have access to the latest technical advisories issued by Yugabyte.
+Review the following important information that may impact stability or security of production deployments.
 
-It is strongly recommended that you regularly review this page and take appropriate measures outlined in the advisories to mitigate potential risks and disruptions. Yugabyte continuously monitors for emerging threats and technical concerns.
+It is strongly recommended that you take appropriate measures as outlined in the advisories to mitigate potential risks and disruptions.
 
 ## List of advisories
 
-| Advisory&nbsp;Number |    Synopsis     | Product  | Affected Versions | Publish&nbsp;Date |
-| :------- | :-------------- | :------- | :---------------- | :----------- |
-| {{<ta 21297>}}| Missing writes during Batch Execution in a transaction | [YSQL](../../api/ysql/) | [All](../ybdb-releases/)            | Mar-25-2024  |
+| Advisory&nbsp;&nbsp;&nbsp;&nbsp; |    Synopsis     | Product  | Versions | Date         |
+| :------- | :-------------- | :------- | :------- | :----------- |
+| {{<ta 21297>}}| Missing writes during Batch Execution in a transaction | [YSQL](../../api/ysql/) | [All](../ybdb-releases/)  | 25 Mar 2024  |
 {.sno-1 .sno-last}
-
-## Learn More
-
-- [YBDB Releases](../ybdb-releases/)
-- [YBA Releases](../yba-releases/)
