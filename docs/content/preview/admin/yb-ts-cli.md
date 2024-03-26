@@ -273,7 +273,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
 
 * *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
 
-##### Clear the current metacache on a tablet server or master server
+##### clear_server_metacache
 **Syntax**
 ```sh
 yb-ts-cli [ --server_address=<host>:<port> ] clear_server_metacache
