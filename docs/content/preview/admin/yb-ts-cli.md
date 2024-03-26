@@ -274,6 +274,13 @@ yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
 * *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
 
 ##### clear_server_metacache
+
+Clear all metacaches that are stored on a specified server. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
+
+Metacache is a YBClient cache on a Tablet/Master server to find out which Tablet Server hosts which tablet. This cache can be stale in some cases, this 
+
+command is introduced for users to clear the metacache on a particular YB-TServer or YB-Master.
+
 **Syntax**
 ```sh
 yb-ts-cli [ --server_address=<host>:<port> ] clear_server_metacache
