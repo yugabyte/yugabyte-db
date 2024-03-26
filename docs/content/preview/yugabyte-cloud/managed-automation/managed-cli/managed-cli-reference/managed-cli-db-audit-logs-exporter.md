@@ -27,7 +27,7 @@ Assign a configuration to a cluster:
 ```sh
 ybm db-audit-logs-exporter assign \
     --cluster-name my_cluster \
-    --integration-id 3c03c101-e1b1-12b3-ac45-123e4b5677e8
+    --integration-name datadog1 \
     --statement_classes=READ,WRITE \
     --ysql-config==log_catalog=true,log_client=false,log_level=INFO,log_parameter=true
 ```
@@ -70,6 +70,6 @@ Update a database audit log export configuration.
 | :--- | :--- |
 | --cluster-name | Required. Name of the cluster. |
 | --export-config-id | Required. The ID of the DB audit export configuration. |
-| --integration-id | Required. The ID of the integration configuration you are using to export the logs. |
+| --integration-name | Required. The name of the integration configuration you are using to export the logs. |
 | --statement-classes | Required. The YSQL statements to log, provided as key-value pairs. <br>Arguments:<ul><li>statement_classes=READ, WRITE, or MISC</li></ul> |
 | --ysql-config | Required. The pgaudit options, provided as key-value pairs.<br>Arguments:<ul><li>log_catalog=BOOLEAN</li><li>log_level=LOG_LEVEL</li><li>log_client=BOOLEAN</li><li>log_parameter=BOOLEAN</li><li>log_relation=BOOLEAN</li><li>log_statement_once=BOOLEAN</li></ul> |

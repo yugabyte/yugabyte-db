@@ -35,11 +35,20 @@ Assign the configuration to a cluster:
 
 ```sh
 ybm integration assign \
-    --config-name datadog1 \
-    --cluster-name my_cluster
+    --cluster-name my_cluster \
+    --config-name datadog1
 ```
 
 ## Commands
+
+### assign
+
+Assign an integration configuration to the specified cluster.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Required. Name of the cluster. |
+| --config-name | Required. Name of the integration configuration. |
 
 ### create
 
@@ -59,11 +68,19 @@ Delete a specified integration configuration. You can't delete configurations th
 
 | Flag | Description |
 | :--- | :--- |
-| --config-name | Required. Name of the export configuration. |
+| --config-name | Required. Name of the integration configuration. |
 
 ### list
 
 List the integration configurations.
+
+### unassign
+
+Remove the integration configuration from the specified cluster.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Required. Name of the cluster. |
 
 ### update
 
