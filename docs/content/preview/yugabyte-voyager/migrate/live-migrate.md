@@ -33,7 +33,7 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 | :--- | :---|
 | [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
 | [Prepare source](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
-| [Prepare target](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
+| [Prepare target](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with necessary privileges. |
 | [Export schema](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
 | [Analyze schema](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
 | [Modify schema](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
