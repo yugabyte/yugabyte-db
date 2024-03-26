@@ -38,7 +38,7 @@ Deploying your cluster in a VPC has the following advantages:
 
 - Lower network latency. Traffic uses only internal addresses, which provides lower latency than connectivity that uses external addresses.
 - Better security. Your services are never exposed to the public Internet.
-- Lower data transfer costs. By staying in the provider's network, you won't have any Internet data transfer traffic. (Same region and cross region overages may still apply. Refer to [Data transfer costs](../../../cloud-admin/cloud-billing-costs/#data-transfer-costs).)
+- Lower data transfer costs. By staying in the provider's network, you won't have any Internet data transfer traffic. (Same region and cross region costs may still apply. Refer to [Data transfer costs](../../../cloud-admin/cloud-billing-costs/#data-transfer-costs).)
 
 ## Pricing
 

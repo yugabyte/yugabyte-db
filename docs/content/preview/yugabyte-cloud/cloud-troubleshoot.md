@@ -158,7 +158,7 @@ YugabyteDB uses [role-based access control](../../secure/authorization/) (RBAC) 
 
 ### You are editing your cluster infrastructure and are unable to reduce disk size per node
 
-50GB of disk space per vCPU is included in the base price for Dedicated clusters. If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{% support-cloud %}}.
+If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{% support-cloud %}}.
 
 ### You edited your cluster infrastructure and status is stuck at 'Editing cluster'
 

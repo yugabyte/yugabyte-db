@@ -135,7 +135,7 @@ Yes, you can control what YugabyteDB Anywhere is spinning up. For example:
 
 - You can choose if YugabyteDB Anywhere should spawn a new VPC with peering to the VPC on which application servers are running (to isolate the database machines into a separate VPC) AWS, or ask it to reuse an existing VPC.
 
-- You can choose dedicated IOPs EBS drives on AWS and specify the number of dedicated IOPS you need.
+- You can choose dedicated IOPS EBS drives on AWS and specify the number of dedicated IOPS you need.
 
 YugabyteDB Anywhere also allows creating these machines out of band and importing them as an on-premises install.
 

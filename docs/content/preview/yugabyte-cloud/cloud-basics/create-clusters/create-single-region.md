@@ -33,7 +33,6 @@ Single-region dedicated clusters include the following features:
 ## Prerequisites
 
 - If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering, and AWC and Azure for private linking. Single-region clusters on Azure must be deployed in a VPC. Refer to [VPC network](../../cloud-vpcs/).
-- A billing profile and a payment method. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a single-region cluster
 
@@ -83,7 +82,7 @@ You can't change the Fault tolerance of a cluster after it's created.
 
 Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
-Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+Monthly costs for the cluster are estimated automatically.
 
 #### Configure VPC
 

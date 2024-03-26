@@ -49,7 +49,6 @@ Partition-by-region clusters include the following features:
 
 - Partition-by-region clusters must be deployed in a VPC. Create a VPC for each region where you want to deploy the nodes in the cluster. Refer to [VPC network overview](../../cloud-vpcs/cloud-vpc-intro/).
 - By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses. Unless you enable [Public Access](../../../cloud-secure-clusters/add-connections/), you can only connect from resources inside the VPC network. Refer to [VPC network overview](../../cloud-vpcs/).
-- A billing profile and payment method. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a partition-by-region cluster
 
@@ -101,7 +100,7 @@ To add additional regions to the cluster, click **Add Region**.
 
 Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
-Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+Monthly costs for the cluster are estimated automatically.
 
 {{% includeMarkdown "network-access.md" %}}
 
