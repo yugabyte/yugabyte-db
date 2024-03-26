@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -64,6 +66,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -412,8 +415,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       Optional<TaskInfo> oTaskInfo =
           pMTaskUUID != null ? TaskInfo.maybeGet(pMTaskUUID) : Optional.empty();
       if (oTaskInfo.isPresent()) {
-        log.debug("Previous {} Universe task failed, retrying", ybaUniverseName);
-        retryLastTask(cust.getUuid(), ybUniverse, oTaskInfo.get());
+        retryOrRerunLastTask(cust.getUuid(), ybUniverse, oTaskInfo.get());
         return;
       }
       State createTaskState = universeCreateTaskState(cust.getUuid(), u.getUniverseUUID());
@@ -454,8 +456,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         pMTaskUUID != null ? TaskInfo.maybeGet(pMTaskUUID) : Optional.empty();
     if (oTaskInfo.isPresent()) {
       // If previous task failed, retry
-      log.debug("Update Action: Previous {} Universe task failed, retrying", ybaUniverseName);
-      retryLastTask(cust.getUuid(), ybUniverse, oTaskInfo.get());
+      retryOrRerunLastTask(cust.getUuid(), ybUniverse, oTaskInfo.get());
       return;
     }
 
@@ -592,17 +593,39 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     return (provider != null) && (customer.getUniversesForProvider(provider.getUuid()).size() == 0);
   }
 
-  private void retryLastTask(UUID customerUUID, YBUniverse ybUniverse, TaskInfo taskInfo) {
+  private void retryOrRerunLastTask(UUID customerUUID, YBUniverse ybUniverse, TaskInfo taskInfo) {
+    String ybaUniverseName = OperatorUtils.getYbaUniverseName(ybUniverse);
+    Customer cust = Customer.getOrBadRequest(customerUUID);
     UniverseState state =
         taskInfo.getTaskType().equals(TaskType.CreateKubernetesUniverse)
             ? UniverseState.CREATING
             : UniverseState.EDITING;
     kubernetesStatusUpdater.updateUniverseState(
         KubernetesResourceDetails.fromResource(ybUniverse), state);
+
+    UniverseDefinitionTaskParams prevTaskParams =
+        Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
+    Universe u = Universe.getOrBadRequest(prevTaskParams.getUniverseUUID());
+    TaskType prevTaskType = taskInfo.getTaskType();
     try {
-      CustomerTask cTask =
-          customerTaskManager.retryCustomerTask(customerUUID, taskInfo.getTaskUUID());
-      universeTaskMap.put(getWorkQueueKey(ybUniverse), cTask.getTaskUUID());
+      UUID taskUUID = null;
+      AllowedTasks allowedRerunTasks = UniverseTaskBase.getAllowedTasksOnFailure(taskInfo);
+      boolean rerunAllowedForTask = allowedRerunTasks.getTaskTypes().contains(prevTaskType);
+      boolean shouldRerun =
+          rerunAllowedForTask
+              && operatorUtils.universeAndSpecMismatch(cust, u, ybUniverse, taskInfo);
+      if (shouldRerun) {
+        log.debug(
+            "Previous {} Universe task failed, rerunning {} with latest params",
+            ybaUniverseName,
+            taskInfo.getTaskType());
+        editUniverse(cust, u, ybUniverse, prevTaskType);
+      } else {
+        log.debug("Previous {} Universe task failed, retrying", ybaUniverseName);
+        CustomerTask cTask =
+            customerTaskManager.retryCustomerTask(customerUUID, taskInfo.getTaskUUID());
+        universeTaskMap.put(getWorkQueueKey(ybUniverse), cTask.getTaskUUID());
+      }
     } catch (Exception e) {
       state =
           taskInfo.getTaskType().equals(TaskType.CreateKubernetesUniverse)
@@ -651,6 +674,15 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
   @VisibleForTesting
   protected void editUniverse(Customer cust, Universe universe, YBUniverse ybUniverse) {
+    editUniverse(cust, universe, ybUniverse, null /* specificTaskTypeToRerun */);
+  }
+
+  @VisibleForTesting
+  protected void editUniverse(
+      Customer cust,
+      Universe universe,
+      YBUniverse ybUniverse,
+      @Nullable TaskType specificTaskTypeToRerun) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (universeDetails == null || universeDetails.getPrimaryCluster() == null) {
       throw new RuntimeException(
@@ -669,57 +701,106 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     UUID taskUUID = null;
 
     try {
-      if (!StringUtils.equals(
-          incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
-        log.info("Updating Kubernetes Overrides");
-        kubernetesStatusUpdater.createYBUniverseEventStatus(
-            universe, k8ResourceDetails, TaskType.KubernetesOverridesUpgrade.name());
-        if (checkAndHandleUniverseLock(
-            ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
-          return;
+      if (specificTaskTypeToRerun != null) {
+        // For cases when we want to do a re-run of same task type
+        universeDetails.skipMatchWithUserIntent = true;
+        switch (specificTaskTypeToRerun) {
+          case EditKubernetesUniverse:
+            if (checkAndHandleUniverseLock(
+                ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+              return;
+            }
+            log.info("Re-running Edit Universe with new params");
+            kubernetesStatusUpdater.createYBUniverseEventStatus(
+                universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
+            currentUserIntent.numNodes = incomingIntent.numNodes;
+            currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
+            taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
+            break;
+          case KubernetesOverridesUpgrade:
+            if (checkAndHandleUniverseLock(
+                ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+              return;
+            }
+            log.info("Re-running Kubernetes Overrides with new params");
+            kubernetesStatusUpdater.createYBUniverseEventStatus(
+                universe, k8ResourceDetails, TaskType.KubernetesOverridesUpgrade.name());
+            taskUUID =
+                updateOverridesYbUniverse(
+                    universeDetails, cust, ybUniverse, incomingIntent.universeOverrides);
+            break;
+          case GFlagsKubernetesUpgrade:
+            if (checkAndHandleUniverseLock(
+                ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+              return;
+            }
+            log.info("Re-running Gflags with new params");
+            kubernetesStatusUpdater.createYBUniverseEventStatus(
+                universe, k8ResourceDetails, TaskType.GFlagsKubernetesUpgrade.name());
+            taskUUID =
+                updateGflagsYbUniverse(
+                    universeDetails, cust, ybUniverse, incomingIntent.specificGFlags);
+            break;
+          default:
+            log.error("Unexpected task, this should not happen!");
+            throw new RuntimeException("Unexpected task tried for re-run");
         }
-        kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
-        taskUUID =
-            updateOverridesYbUniverse(
-                universeDetails, cust, ybUniverse, incomingIntent.universeOverrides);
-      } else if (operatorUtils.checkIfGFlagsChanged(universe, incomingIntent.specificGFlags)) {
-        log.info("Updating Gflags");
-        kubernetesStatusUpdater.createYBUniverseEventStatus(
-            universe, k8ResourceDetails, TaskType.GFlagsKubernetesUpgrade.name());
-        if (checkAndHandleUniverseLock(
-            ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
-          return;
-        }
-        kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
-        taskUUID =
-            updateGflagsYbUniverse(
-                universeDetails, cust, ybUniverse, incomingIntent.specificGFlags);
-      } else if (!currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion)) {
-        log.info("Upgrading software");
-        kubernetesStatusUpdater.createYBUniverseEventStatus(
-            universe, k8ResourceDetails, TaskType.UpgradeKubernetesUniverse.name());
-        if (checkAndHandleUniverseLock(
-            ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
-          return;
-        }
-        kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
-        taskUUID =
-            upgradeYBUniverse(universeDetails, cust, ybUniverse, incomingIntent.ybSoftwareVersion);
-      } else if (operatorUtils.shouldUpdateYbUniverse(
-          currentUserIntent, incomingIntent.numNodes, incomingIntent.deviceInfo)) {
-        log.info("Calling Edit Universe");
-        currentUserIntent.numNodes = incomingIntent.numNodes;
-        currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
-        kubernetesStatusUpdater.createYBUniverseEventStatus(
-            universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
-        if (checkAndHandleUniverseLock(
-            ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
-          return;
-        }
-        kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
-        taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
       } else {
-        log.info("No update made");
+        // Case with new edits
+        if (!StringUtils.equals(
+            incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
+          log.info("Updating Kubernetes Overrides");
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.KubernetesOverridesUpgrade.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID =
+              updateOverridesYbUniverse(
+                  universeDetails, cust, ybUniverse, incomingIntent.universeOverrides);
+        } else if (operatorUtils.checkIfGFlagsChanged(
+            universe, currentUserIntent.specificGFlags, incomingIntent.specificGFlags)) {
+          log.info("Updating Gflags");
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.GFlagsKubernetesUpgrade.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID =
+              updateGflagsYbUniverse(
+                  universeDetails, cust, ybUniverse, incomingIntent.specificGFlags);
+        } else if (!currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion)) {
+          log.info("Upgrading software");
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.UpgradeKubernetesUniverse.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID =
+              upgradeYBUniverse(
+                  universeDetails, cust, ybUniverse, incomingIntent.ybSoftwareVersion);
+        } else if (operatorUtils.shouldUpdateYbUniverse(
+            currentUserIntent, incomingIntent.numNodes, incomingIntent.deviceInfo)) {
+          log.info("Calling Edit Universe");
+          currentUserIntent.numNodes = incomingIntent.numNodes;
+          currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
+        } else {
+          log.info("No update made");
+        }
       }
       if (taskUUID != null) {
         universeTaskMap.put(getWorkQueueKey(ybUniverse), taskUUID);
@@ -775,7 +856,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       requestParams =
           mapper.readValue(
               mapper.writeValueAsString(taskParams), KubernetesGFlagsUpgradeParams.class);
-      requestParams.clusters.get(0).userIntent.specificGFlags = newGFlags;
+      requestParams.getPrimaryCluster().userIntent.specificGFlags = newGFlags;
     } catch (Exception e) {
       log.error("Failed at creating upgrade software params", e);
     }

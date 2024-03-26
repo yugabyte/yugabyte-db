@@ -248,7 +248,9 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
     Universe universe = Universe.create(taskParams, defaultCustomer.getId());
-    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+    universe = ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+    taskParams = universe.getUniverseDetails();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
     TaskInfo taskInfo = new TaskInfo(TaskType.CreateKubernetesUniverse, null);
     taskInfo.setTaskParams(Json.toJson(taskParams));
     taskInfo.setOwner("localhost");
@@ -273,8 +275,10 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
     Universe universe = Universe.create(taskParams, defaultCustomer.getId());
-    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+    universe = ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
     TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareKubernetesUpgrade, null);
+    taskParams = universe.getUniverseDetails();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskInfo.setTaskParams(Json.toJson(taskParams));
     taskInfo.setOwner("localhost");
     taskInfo.save();
