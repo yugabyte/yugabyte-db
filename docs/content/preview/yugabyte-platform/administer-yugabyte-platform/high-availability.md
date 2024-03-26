@@ -72,7 +72,7 @@ You can configure the active instance as follows:
 
     - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/replicated/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
 
-1. Add the active instance CA certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) of the standby instance.
+1. Add the active instance CA certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) of the active instance.
 
     This allows a standby to connect to the active instance if the standby is promoted to active status.
 
