@@ -208,11 +208,14 @@ export const NewReleaseList = () => {
   const formatVersion = (cell: any, row: any) => {
     return (
       <Box className={clsx(helperClasses.flexRow, helperClasses.alignText)}>
-        <span className={helperClasses.versionText}>{row.version}</span>
+        <span data-testid={'ReleaseList-VersionText'} className={helperClasses.versionText}>
+          {row.version}
+        </span>
         {isNonEmptyString(row.release_tag) && (
           <>
             <Box className={helperClasses.releaseTagBox}>
               <span
+                data-testid={'ReleaseList-ReleaseTag'}
                 className={clsx(helperClasses.releaseTagText, helperClasses.smallerReleaseText)}
               >
                 {row.release_tag.length > MAX_RELEASE_TAG_CHAR
@@ -273,11 +276,13 @@ export const NewReleaseList = () => {
         {row.artifacts.length < 3 && (
           <YBButton
             className={helperClasses.overrideMuiStartIcon}
-            onClick={() => {
+            onClick={(e: any) => {
               setSelectedReleaseDetails(row);
               onNewReleaseButtonClick();
               onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
+              e.stopPropagation();
             }}
+            data-testid="ReleaseList-AddArchitectureButton"
             startIcon={<Add />}
             variant="secondary"
           ></YBButton>
@@ -347,6 +352,7 @@ export const NewReleaseList = () => {
               onActionClick(value, row);
               e.stopPropagation();
             }}
+            data-testid={`ReleaseList-Action${value}`}
           >
             {value}
           </MenuItem>
@@ -367,6 +373,7 @@ export const NewReleaseList = () => {
             onActionClick(action, row);
             e.stopPropagation();
           }}
+          data-testid={`ReleaseList-Action${action}`}
         >
           {action}
         </MenuItem>
@@ -393,6 +400,7 @@ export const NewReleaseList = () => {
             onActionClick(value, row);
             e.stopPropagation();
           }}
+          data-testid={`ReleaseList-Action${value}`}
         >
           {value}
         </MenuItem>
@@ -516,6 +524,7 @@ export const NewReleaseList = () => {
           <Box mt={2}>
             <Box className={clsx(helperClasses.floatBoxLeft, helperClasses.flexRow)} mt={2}>
               <YBSearchInput
+                data-testid="ReleaseList-SearchReleaseVersion"
                 className={helperClasses.searchInput}
                 defaultValue={searchText}
                 onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -570,6 +579,7 @@ export const NewReleaseList = () => {
                     helperClasses.refreshButton,
                     helperClasses.overrideMuiRefreshIcon
                   )}
+                  data-testid="ReleaseList-RefreshReleasesButton"
                   size="large"
                   startIcon={<Refresh />}
                   variant="secondary"
@@ -580,6 +590,7 @@ export const NewReleaseList = () => {
                 <YBButton
                   size="large"
                   variant={'primary'}
+                  data-testid="ReleaseList-AddReleaseButton"
                   startIcon={<Add />}
                   onClick={onNewReleaseButtonClick}
                 >

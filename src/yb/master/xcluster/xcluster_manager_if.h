@@ -50,6 +50,8 @@ class XClusterManagerIf {
   virtual Result<XClusterStatus> GetXClusterStatus() const = 0;
   virtual Status PopulateXClusterStatusJson(JsonWriter& jw) const = 0;
 
+  virtual void RunBgTasks(const LeaderEpoch& epoch) = 0;
+
  protected:
   virtual ~XClusterManagerIf() = default;
 };

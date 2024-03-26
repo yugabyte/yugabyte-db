@@ -3,6 +3,7 @@ package com.yugabyte.yw.models;
 import static org.junit.Assert.assertEquals;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
 import java.util.List;
@@ -31,7 +32,8 @@ public class ReleasesTest extends FakeDBApplication {
   public void testAddArtifact() {
     Release release = Release.create(UUID.randomUUID(), "1.2.3", "LTS");
     ReleaseArtifact artifact =
-        ReleaseArtifact.create("sha256", ReleaseArtifact.Platform.KUBERNETES, null, "file_url");
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "file_url");
     release.addArtifact(artifact);
     assertEquals(artifact.getReleaseUUID(), release.getReleaseUUID());
     ReleaseArtifact newArtifact = ReleaseArtifact.get(artifact.getArtifactUUID());
@@ -42,7 +44,8 @@ public class ReleasesTest extends FakeDBApplication {
   public void testGetArtifacts() {
     Release release = Release.create(UUID.randomUUID(), "1.2.3", "LTS");
     ReleaseArtifact art1 =
-        ReleaseArtifact.create("sha256", ReleaseArtifact.Platform.KUBERNETES, null, "file_url");
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.aarch64, "file_url");
     ReleaseArtifact art2 =
         ReleaseArtifact.create(
             "sha257",
@@ -78,5 +81,20 @@ public class ReleasesTest extends FakeDBApplication {
     assertEquals(release1.getReleaseUUID(), result1.get(0).getReleaseUUID());
     assertEquals(1, result2.size());
     assertEquals(release2.getReleaseUUID(), result2.get(0).getReleaseUUID());
+  }
+
+  @Test
+  public void testAddingK8S() {
+    Release release = Release.create(UUID.randomUUID(), "1.2.3", "LTS");
+    ReleaseArtifact artifact =
+        ReleaseArtifact.create("sha256", ReleaseArtifact.Platform.KUBERNETES, null, "file_url");
+
+    release.addArtifact(artifact);
+    assertEquals(Release.ReleaseState.INCOMPLETE, release.getState());
+    ReleaseArtifact art1 =
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.aarch64, "file_url");
+    release.addArtifact(art1);
+    assertEquals(Release.ReleaseState.ACTIVE, release.getState());
   }
 }

@@ -43,7 +43,8 @@ public class ReleasesUtils {
 
   public final String YB_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
-  public final String YB_HELM_PACKAGE_REGEX = "(.*)yugabyte-(?:ee-)?(.*)-(helm)(.*).tar.gz";
+  // We can see helm packages as either yugabyte-<version>.tgz or yugabyte-version-helm.tgz
+  public final String YB_HELM_PACKAGE_REGEX = "yugabyte-(?:ee-)?(.*?)(?:-helm)?.tar.gz";
   // Match release form 2.16.1.2 and return 2.16 or 2024.1.0.0 and return 2024
   public final String YB_VERSION_TYPE_REGEX = "(2\\.\\d+|\\d\\d\\d\\d)";
 
@@ -81,9 +82,6 @@ public class ReleasesUtils {
     String sha256 = null;
     try {
       sha256 = Util.computeFileChecksum(releaseFilePath, "SHA256");
-      if (!sha256.toLowerCase().startsWith("sha256:")) {
-        sha256 = String.format("sha256:%s", sha256);
-      }
     } catch (Exception e) {
       log.error("could not compute sha256", e);
     }
@@ -254,7 +252,7 @@ public class ReleasesUtils {
       }
     } else if (helmPackage.find()) {
       em.platform = ReleaseArtifact.Platform.KUBERNETES;
-      em.version = helmPackage.group(2);
+      em.version = helmPackage.group(1);
       em.architecture = null;
     } else {
       throw new RuntimeException("failed to parse package " + fileName);
@@ -299,10 +297,10 @@ public class ReleasesUtils {
     s3Location.paths = new ReleaseMetadata.PackagePaths();
     if (artifact.isKubernetes()) {
       s3Location.paths.helmChart = s3File.path;
-      s3Location.paths.helmChartChecksum = artifact.getSha256();
+      s3Location.paths.helmChartChecksum = artifact.getFormattedSha256();
     } else {
       s3Location.paths.x86_64 = s3File.path;
-      s3Location.paths.x86_64_checksum = artifact.getSha256();
+      s3Location.paths.x86_64_checksum = artifact.getFormattedSha256();
     }
     return s3Location;
   }
@@ -314,10 +312,10 @@ public class ReleasesUtils {
     gcsLocation.paths = new ReleaseMetadata.PackagePaths();
     if (artifact.isKubernetes()) {
       gcsLocation.paths.helmChart = gcsFile.path;
-      gcsLocation.paths.helmChartChecksum = artifact.getSha256();
+      gcsLocation.paths.helmChartChecksum = artifact.getFormattedSha256();
     } else {
       gcsLocation.paths.x86_64 = gcsFile.path;
-      gcsLocation.paths.x86_64_checksum = artifact.getSha256();
+      gcsLocation.paths.x86_64_checksum = artifact.getFormattedSha256();
     }
     return gcsLocation;
   }
@@ -327,10 +325,10 @@ public class ReleasesUtils {
     httpLocation.paths = new ReleaseMetadata.PackagePaths();
     if (artifact.isKubernetes()) {
       httpLocation.paths.helmChart = artifact.getPackageURL();
-      httpLocation.paths.helmChartChecksum = artifact.getSha256();
+      httpLocation.paths.helmChartChecksum = artifact.getFormattedSha256();
     } else {
       httpLocation.paths.x86_64 = artifact.getPackageURL();
-      httpLocation.paths.x86_64_checksum = artifact.getSha256();
+      httpLocation.paths.x86_64_checksum = artifact.getFormattedSha256();
     }
     return httpLocation;
   }

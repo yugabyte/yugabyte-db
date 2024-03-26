@@ -17,20 +17,20 @@ When DDL changes are made to databases in replication for xCluster disaster reco
 - performed at the SQL level on both the DR primary and replica, and then
 - updated at the YBA level in the DR configuration.
 
-You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth.
+You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
 
 | DB Change&nbsp;on&nbsp;DR&nbsp;primary | On DR replica | In YBA |
 | :----------- | :----------- | :--- |
 | 1. CREATE TABLE | 2. CREATE TABLE | 3. Add the table to replication |
 | 2. DROP TABLE   | 3. DROP TABLE   | 1. Remove the table from replication. |
 | 1. CREATE INDEX | 2. CREATE INDEX | 3. [Resynchronize](#resynchronize-yba) |
-| 1. DROP INDEX   | 2. DROP INDEX   | 3. [Resynchronize](#resynchronize-yba) |
+| 2. DROP INDEX   | 1. DROP INDEX   | 3. [Resynchronize](#resynchronize-yba) |
 | 1. CREATE TABLE foo PARTITION OF bar | 2. CREATE TABLE foo PARTITION OF bar | 3. Add the table to replication |
+| 2. ALTER TABLE or INDEX | 1. ALTER TABLE or INDEX | No changes needed |
 
 In addition, keep in mind the following:
 
 - If you are using Colocated tables, you CREATE TABLE on DR primary, then CREATE TABLE on DR replica making sure that you force the Colocation ID to be identical to that on DR primary.
-- If you're using ALTER TABLE to add or drop columns, make sure you also do these operations on the DR Replica, and in the identical order.
 - If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
 
 Use the following guidance when managing tables and indexes in universes with DR configured.

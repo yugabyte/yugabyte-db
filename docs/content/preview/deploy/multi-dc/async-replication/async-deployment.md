@@ -128,7 +128,7 @@ Replication lag is computed at the tablet level as follows:
 
 *hybrid_clock_time* is the hybrid clock timestamp on the source's tablet server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the source.
 
-To obtain information about the overall maximum lag, you should check `/metrics` or `/prometheus-metrics` for `async_replication_sent_lag_micros` or `async_replication_committed_lag_micros` and take the maximum of these values across each source's YB-TServer. For information on how to set up the node exporter and Prometheus manually, see [Prometheus integration](../../../../explore/observability/prometheus-integration/macos/).
+To obtain information about the overall maximum lag, you should check `/metrics` or `/prometheus-metrics` for `async_replication_sent_lag_micros` or `async_replication_committed_lag_micros` and take the maximum of these values across each source's YB-TServer. For information on how to set up the Node Exporter and Prometheus manually, see [Prometheus integration](../../../../explore/observability/prometheus-integration/macos/).
 
 ### Replication status
 

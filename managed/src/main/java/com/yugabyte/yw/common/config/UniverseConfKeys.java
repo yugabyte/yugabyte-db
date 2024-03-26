@@ -108,6 +108,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "Single connection mode makes it work even on tiny DB nodes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> ybEditWaitDurationBeforeBlacklistClear =
+      new ConfKeyInfo<>(
+          "yb.edit.wait_before_blacklist_clear",
+          ScopeType.UNIVERSE,
+          "YB edit sleep time in ms before blacklist clear in ms",
+          "Sleep time before clearing nodes from blacklist in ms",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> ybEditWaitForLeadersOnPreferred =
       new ConfKeyInfo<>(
           "yb.edit.wait_for_leaders_on_preferred",
@@ -1087,4 +1095,29 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Percentage of current disk usage that may consume on the target nodes",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableAutomatedMasterFailoverForUniverse =
+      new ConfKeyInfo<>(
+          "yb.automated_master_failover.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Automated Master Failover",
+          "Enable Automated Master Failover for universes in background process",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> automatedMasterFailoverMaxMasterFollowerLag =
+      new ConfKeyInfo<>(
+          "yb.automated_master_failover.max_master_follower_lag",
+          ScopeType.UNIVERSE,
+          "Max Master Follower Lag for Automated Master Failover",
+          "Max lag allowed for a master follower, after which the master is considered for"
+              + " failover",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> automatedMasterFailoverMaxMasterHeartbeatDelay =
+      new ConfKeyInfo<>(
+          "yb.automated_master_failover.max_master_heartbeat_delay",
+          ScopeType.UNIVERSE,
+          "Max master heartbeat delay",
+          "Maximum value of heartbeat delay allowed before master is considered to have failed",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

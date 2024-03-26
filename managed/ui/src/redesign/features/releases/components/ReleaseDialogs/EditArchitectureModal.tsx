@@ -170,10 +170,7 @@ export const EditArchitectureModal = ({
   const [errorHelperText, setErrorHelperText] = useState<string>('');
   const [reviewReleaseDetails, setReviewReleaseDetails] = useState<boolean>(false);
   const [releaseMetadatFetchError, setReleaseMetadatFetchError] = useState<boolean>(false);
-  const [releaseBasePart, setReleaseBasePart] = useState<string>('');
-  const [releaseFirstPart, setReleaseFirstPart] = useState<string>('');
-  const [releaseSecondPart, setReleaseSecondPart] = useState<string>('');
-  const [releaseThirdPart, setReleaseThirdPart] = useState<string>('');
+  const [releaseVersion, setReleaseVersion] = useState<string>('');
   const [deploymentType, setDeploymentType] = useState<any>(artifact?.platform);
   const [architecture, setArchitecure] = useState<any>(artifact?.architecture);
 
@@ -429,24 +426,9 @@ export const EditArchitectureModal = ({
       });
   });
 
-  const handleReleaseFirstPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseFirstPart(event.target.value);
-  };
-
-  const handleReleaseBasePart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseBasePart(event.target.value);
-  };
-
-  const handleReleaseSecondPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseSecondPart(event.target.value);
-  };
-
-  const handleReleaseThirdPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseThirdPart(event.target.value);
-    setValue(
-      'version',
-      releaseBasePart + releaseFirstPart + releaseSecondPart + event.target.value
-    );
+  const handleReleaseVersionPart = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setValue('version', event.target.value);
+    setReleaseVersion(event.target.value);
   };
 
   const handlePlatformSelect = (val: ReleasePlatformButtonProps) => {
@@ -726,14 +708,8 @@ export const EditArchitectureModal = ({
                   releaseMetadatFetchError={releaseMetadatFetchError}
                   deploymentType={deploymentType}
                   architecture={architecture}
-                  releaseBasePart={releaseBasePart}
-                  releaseFirstPart={releaseFirstPart}
-                  releaseSecondPart={releaseSecondPart}
-                  releaseThirdPart={releaseThirdPart}
-                  handleReleaseBasePart={handleReleaseBasePart}
-                  handleReleaseSecondPart={handleReleaseSecondPart}
-                  handleReleaseThirdPart={handleReleaseThirdPart}
-                  handleReleaseFirstPart={handleReleaseFirstPart}
+                  releaseVersion={releaseVersion}
+                  handleReleaseVersionPart={handleReleaseVersionPart}
                   handlePlatformSelect={handlePlatformSelect}
                   handleArchitectureSelect={handleArchitectureSelect}
                 />

@@ -8,10 +8,9 @@ import { getAlertConfigurations } from '../../../actions/universe';
 import { queryLagMetricsForUniverse } from '../../../actions/xClusterReplication';
 import { api } from '../../../redesign/helpers/api';
 import { getStrictestReplicationLagAlertThreshold } from '../ReplicationUtils';
+import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import './LagGraph.scss';
-
-const ALERT_NAME = 'Replication Lag';
 
 const METRIC_NAME = 'tserver_async_replication_lag_micros';
 
@@ -40,7 +39,7 @@ export const LagGraph: FC<LagGraphProps> = ({ replicationUUID, sourceUniverseUUI
   );
 
   const configurationFilter = {
-    name: ALERT_NAME,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: sourceUniverseUUID
   };
 

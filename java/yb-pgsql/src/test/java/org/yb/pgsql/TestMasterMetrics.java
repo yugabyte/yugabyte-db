@@ -39,9 +39,6 @@ public class TestMasterMetrics extends BasePgSQLTest {
   protected static final String CREATE_TASK_METRIC = "Create_Tablet_Task";
   protected static final String ALTER_ATTEMPT_METRIC = "Alter_Table_Attempt";
   protected static final String ALTER_TASK_METRIC = "Alter_Table_Task";
-  protected static final String TRUNCATE_ATTEMPT_METRIC = "Truncate_Tablet_Attempt";
-  protected static final String TRUNCATE_TASK_METRIC = "Truncate_Tablet_Task";
-
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
@@ -100,16 +97,16 @@ public class TestMasterMetrics extends BasePgSQLTest {
     assertTrue(miniCluster.getNumTServers() <=
       getMetricsCount(ALTER_ATTEMPT_METRIC) - alterAttempt);
 
-
-    long truncateTask = getMetricsCount(TRUNCATE_TASK_METRIC);
-    long truncateAttempt = getMetricsCount(TRUNCATE_ATTEMPT_METRIC);
+    // Truncates use table rewrites, so they should also be counted as create tasks.
+    long truncateTask = getMetricsCount(CREATE_TASK_METRIC);
+    long truncateAttempt = getMetricsCount(CREATE_ATTEMPT_METRIC);
     try (Statement statement = connection.createStatement()) {
       statement.execute("TRUNCATE TABLE test");
     }
     assertTrue(miniCluster.getNumTServers() <=
-      getMetricsCount(TRUNCATE_TASK_METRIC) - truncateTask);
+      getMetricsCount(CREATE_TASK_METRIC) - truncateTask);
     assertTrue(miniCluster.getNumTServers() <=
-      getMetricsCount(TRUNCATE_ATTEMPT_METRIC) - truncateAttempt);
+      getMetricsCount(CREATE_ATTEMPT_METRIC) - truncateAttempt);
 
   }
 }

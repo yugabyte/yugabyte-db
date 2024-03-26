@@ -213,6 +213,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_add_column_missing_default, kExterna
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_alter_table_rewrite, kLocalPersisted, false, true,
                             "Enable ALTER TABLE rewrite operations");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
+    "Enables use of the PostgreSQL selectivity estimation which utilizes table statistics "
+    "collected with ANALYZE. When disabled, a simpler heuristics based selectivity estimation is "
+    "used.");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 

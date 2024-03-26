@@ -1070,6 +1070,14 @@ Default: `false`
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
+##### --yb_enable_cdc_consistent_snapshot_streams
+
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+
+Enable support for creating streams for transactional CDC.
+
+Default: `false`
+
 ##### --cdc_state_checkpoint_update_interval_ms
 
 The rate at which CDC state's checkpoint is updated.

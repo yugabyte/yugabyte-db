@@ -246,6 +246,7 @@ public class TestPgSavepoints extends BasePgSQLTest {
         assertEquals(OptionalInt.empty(), getSingleValue(conn, 3));
         assertEquals(OptionalInt.empty(), getSingleValue(conn, 5));
         assertEquals(OptionalInt.empty(), getSingleValue(conn, 7));
+        conn.commit();
         statement.execute("truncate t");
         conn.commit();
       }
@@ -272,6 +273,7 @@ public class TestPgSavepoints extends BasePgSQLTest {
         assertEquals(getSingleValue(conn, 1), OptionalInt.of(2));
         assertEquals(getSingleValue(conn, 3), OptionalInt.empty());
         assertEquals(getSingleValue(conn, 5), OptionalInt.of(6));
+        conn.commit();
         statement.execute("truncate t");
         conn.commit();
       }
@@ -314,6 +316,7 @@ public class TestPgSavepoints extends BasePgSQLTest {
             }
           }
         }
+        conn.commit();
         statement.execute("truncate t");
         conn.commit();
       }

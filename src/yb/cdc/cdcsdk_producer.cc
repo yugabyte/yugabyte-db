@@ -1942,8 +1942,21 @@ void SortConsistentWALRecords(
          const std::shared_ptr<yb::consensus::LWReplicateMsg>& rhs) -> bool {
         const auto& lhs_commit_time = GetTransactionCommitTime(lhs);
         const auto& rhs_commit_time = GetTransactionCommitTime(rhs);
-        return lhs_commit_time == rhs_commit_time ? lhs->id().index() < rhs->id().index()
-                                                  : lhs_commit_time < rhs_commit_time;
+        if (lhs_commit_time == rhs_commit_time) {
+          if (IsUpdateTransactionOp(lhs) && IsUpdateTransactionOp(rhs)) {
+            // If both records are UPDATE_TRANSACTION_OP, record with lower txn_id will be given
+            // priority.
+            return lhs->transaction_state().transaction_id() <
+                   rhs->transaction_state().transaction_id();
+          } else if (IsUpdateTransactionOp(lhs) || IsUpdateTransactionOp(rhs)) {
+            // If any one of the records is not an UPDATE_TRANSACTION_OP, it will be given
+            // priority.
+            return !IsUpdateTransactionOp(lhs);
+          } else {
+            return lhs->id().index() < rhs->id().index();
+          }
+        }
+        return lhs_commit_time < rhs_commit_time;
       });
 }
 
