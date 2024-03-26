@@ -1,7 +1,7 @@
 ---
 title: DocDB storage layer
 headerTitle: DocDB storage layer
-linkTitle: DocDB storage layer
+linkTitle: Storage
 description: Learn about the persistent storage layer of DocDB.
 image: /images/section_icons/architecture/concepts.png
 aliases:
