@@ -11,8 +11,10 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -608,5 +610,62 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.EditKubernetesUniverse,
         taskParams);
+  }
+
+  @Test
+  public void testCheckEditKubernetesRerunDisallowedVolumeSizeChange() throws IOException {
+    setupUniverseSingleAZ(true /*set masters */);
+    ObjectMapper mapper = new ObjectMapper();
+    UniverseDefinitionTaskParams taskParams =
+        mapper.readValue(
+            defaultUniverse.getUniverseDetailsJson(), UniverseDefinitionTaskParams.class);
+    taskParams.clusters.get(0).userIntent.deviceInfo.volumeSize =
+        150; /* Changed volume size 100 -> 150 */
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
+    taskInfo.setDetails(Json.toJson(taskParams));
+    boolean canRerun = EditKubernetesUniverse.checkEditKubernetesRerunAllowed(taskInfo);
+    assertFalse(canRerun);
+  }
+
+  @Test
+  public void testCheckEditKubernetesRerunDisallowedNumNodesChange() throws IOException {
+    setupUniverseSingleAZ(true /*set masters */);
+    ObjectMapper mapper = new ObjectMapper();
+    UniverseDefinitionTaskParams taskParams =
+        mapper.readValue(
+            defaultUniverse.getUniverseDetailsJson(), UniverseDefinitionTaskParams.class);
+    taskParams
+            .clusters
+            .get(0)
+            .placementInfo
+            .cloudList
+            .get(0)
+            .regionList
+            .get(0)
+            .azList
+            .get(0)
+            .numNodesInAZ +=
+        1; /* Changed num nodes */
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
+    taskInfo.setDetails(Json.toJson(taskParams));
+    boolean canRerun = EditKubernetesUniverse.checkEditKubernetesRerunAllowed(taskInfo);
+    assertFalse(canRerun);
+  }
+
+  @Test
+  public void testCheckEditKubernetesRerunAllowedResourceSpecChange() throws IOException {
+    setupUniverseSingleAZ(true /*set masters */);
+    ObjectMapper mapper = new ObjectMapper();
+    UniverseDefinitionTaskParams taskParams =
+        mapper.readValue(
+            defaultUniverse.getUniverseDetailsJson(), UniverseDefinitionTaskParams.class);
+    taskParams.clusters.get(0).userIntent.masterK8SNodeResourceSpec.memoryGib += 1.0;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
+    taskInfo.setDetails(Json.toJson(taskParams));
+    boolean canRerun = EditKubernetesUniverse.checkEditKubernetesRerunAllowed(taskInfo);
+    assertTrue(canRerun);
   }
 }

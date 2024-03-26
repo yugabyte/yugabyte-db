@@ -69,6 +69,11 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
       }
     }
 
+    // Sync intent and helm override values despite no changes.
+    if (skipMatchWithUserIntent) {
+      return;
+    }
+
     // If we reach this point, none of the overrides changed. RFC: If upgrade fails, next upgrade
     // might fail if user applies same overrides.
     // This is the case with any edit/upgrade functionality in k8s universes.
