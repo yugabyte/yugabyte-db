@@ -705,13 +705,9 @@ For automated and assisted manual provisioning, node agents are installed onto i
 
 Use the following procedure to install node agent for fully manual provisioning.
 
-{{< note title="Re-provisioning a node" >}}
-
-If you are re-provisioning a node (that is, node agent has previously been installed on the node), you need to unregister the node agent before installing node agent again. Refer to [Unregister node agent](#unregister-node-agent).
-
-{{< /note >}}
-
 To install the YugabyteDB node agent manually, as the `yugabyte` user, do the following:
+
+1. If you are re-provisioning the node (that is, node agent has previously been installed on the node), you need to unregister the node agent before installing node agent again. Refer to [Unregister node agent](#unregister-node-agent).
 
 1. Download the installer from YugabyteDB Anywhere using the [API token](../../../anywhere-automation/#authentication) of the Super Admin, as follows:
 
