@@ -23,6 +23,16 @@ YugabyteDB Managed clusters include the following security features:
 | **Encryption at rest** | Data at rest, including clusters and backups, is AES-256 encrypted using native cloud provider technologies: S3 and EBS volume encryption for AWS, Azure disk encryption, and server-side and persistent disk encryption for GCP. For additional security, you can [encrypt your clusters](managed-ear/) using keys that you manage yourself. |
 | **Auditing** | YugabyteDB Managed provides detailed [auditing of activity](cloud-activity/) on your account, including cluster creation, changes to clusters, changes to IP allow lists, backup activity, billing, access history, and more. |
 
+### Security profile
+
+YugabyteDB Managed clusters all feature essential security features, such as encryption at rest, encryption in transit, RBAC, and auditing.
+
+You can also create clusters using the **Advanced** security profile, which additionally enforces the following security features:
+
+- The cluster must be deployed in a VPC.
+- Public access can't be enabled; clusters can only be accessed from private addresses inside the VPC network.
+- Scheduled backups are required. (Scheduled backups are turned on by default, but for clusters with the Advanced security profile, they can't be turned off.)
+
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
