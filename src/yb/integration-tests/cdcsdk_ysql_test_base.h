@@ -632,7 +632,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckRecordCount(GetAllPendingChangesResponse resp, int expected_dml_records);
 
-  void CheckRecordsConsistencyWithWriteId(const std::vector<CDCSDKProtoRecordPB>& records);
+  void CheckRecordsConsistencyFromVWAL(const std::vector<CDCSDKProtoRecordPB>& records);
 
   void GetRecordsAndSplitCount(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,
