@@ -40,7 +40,6 @@ import {
   getXClusterConfigTableType,
   getStrictestReplicationLagAlertThreshold
 } from '../ReplicationUtils';
-import { EditConfigModal } from './EditConfigModal';
 import { LagGraph } from './LagGraph';
 import { ReplicationTables } from './ReplicationTables';
 import { ReplicationOverview } from './ReplicationOverview';
@@ -393,7 +392,6 @@ export function ReplicationDetails({
     tableReplicationLagQuery.isSuccess &&
     numTablesAboveLagThreshold > 0 &&
     xClusterConfigTables.length > 0;
-  const isEditConfigModalVisible = showModal && visibleModal === XClusterModalName.EDIT_CONFIG;
   const isEditTableModalVisible = showModal && visibleModal === XClusterModalName.EDIT_TABLES;
   const isRestartConfigModalVisible =
     showModal && visibleModal === XClusterModalName.RESTART_CONFIG;
@@ -481,39 +479,6 @@ export function ReplicationDetails({
                             isControl
                           >
                             <MenuItem
-                              onClick={() => {
-                                if (_.includes(enabledConfigActions, XClusterConfigAction.EDIT)) {
-                                  dispatch(openDialog(XClusterModalName.EDIT_CONFIG));
-                                }
-                              }}
-                              disabled={
-                                !_.includes(enabledConfigActions, XClusterConfigAction.EDIT)
-                              }
-                            >
-                              <YBLabelWithIcon
-                                className="xCluster-dropdown-button"
-                                icon="fa fa-pencil"
-                              >
-                                Edit Replication Name
-                              </YBLabelWithIcon>
-                            </MenuItem>
-                          </RbacValidator>
-                          <RbacValidator
-                            customValidateFunction={() => {
-                              return (
-                                hasNecessaryPerm({
-                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
-                                  onResource: xClusterConfig.sourceUniverseUUID
-                                }) &&
-                                hasNecessaryPerm({
-                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
-                                  onResource: xClusterConfig.targetUniverseUUID
-                                })
-                              );
-                            }}
-                            isControl
-                          >
-                            <MenuItem
                               onSelect={() => dispatch(openDialog(XClusterModalName.EDIT_TABLES))}
                               disabled={
                                 !_.includes(enabledConfigActions, XClusterConfigAction.MANAGE_TABLE)
@@ -527,7 +492,6 @@ export function ReplicationDetails({
                               </YBLabelWithIcon>
                             </MenuItem>
                           </RbacValidator>
-
                           <RbacValidator
                             customValidateFunction={() => {
                               return (
@@ -761,14 +725,6 @@ export function ReplicationDetails({
             </Col>
           </Row>
         </div>
-        {isEditConfigModalVisible && (
-          <EditConfigModal
-            allowedTasks={allowedTasks!}
-            xClusterConfig={xClusterConfig}
-            visible={isEditConfigModalVisible}
-            onHide={hideModal}
-          />
-        )}
         {isEditTableModalVisible && (
           <EditTablesModal
             xClusterConfig={xClusterConfig}
