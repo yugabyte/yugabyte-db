@@ -257,13 +257,17 @@ public class ReleasesUtils {
     } else {
       throw new RuntimeException("failed to parse package " + fileName);
     }
+    em.release_type = releaseTypeFromVersion(em.version);
+    return em;
+  }
+
+  public String releaseTypeFromVersion(String version) {
     Pattern versionPattern = Pattern.compile(YB_VERSION_TYPE_REGEX);
-    Matcher versionMatcher = versionPattern.matcher(em.version);
+    Matcher versionMatcher = versionPattern.matcher(version);
     if (!versionMatcher.find()) {
       throw new RuntimeException("Could not parse version");
     }
-    em.release_type = releaseTypeMap.getOrDefault(versionMatcher.group(), "PREVIEW");
-    return em;
+    return releaseTypeMap.getOrDefault(versionMatcher.group(), "PREVIEW");
   }
 
   public ReleaseMetadata releaseToReleaseMetadata(Release release) {
