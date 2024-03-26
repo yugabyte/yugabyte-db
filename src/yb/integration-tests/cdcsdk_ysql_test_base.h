@@ -568,6 +568,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void ValidateColumnCounts(const GetChangesResponsePB& resp, uint32_t excepted_column_counts);
 
+  void ValidateColumnCounts(
+      const GetAllPendingChangesResponse& resp, uint32_t excepted_column_counts);
+
   void ValidateInsertCounts(const GetChangesResponsePB& resp, uint32_t excepted_insert_counts);
 
   void WaitUntilSplitIsSuccesful(
@@ -630,7 +633,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckRecordsConsistency(const std::vector<CDCSDKProtoRecordPB>& records);
 
-  void CheckRecordCount(GetAllPendingChangesResponse resp, int expected_dml_records);
+  void CheckRecordCount(
+      GetAllPendingChangesResponse resp, int expected_dml_records, int expected_ddl_records = 0,
+      int expected_min_txn_id = 2 /* VWAL's min_txn_id */);
 
   void CheckRecordsConsistencyFromVWAL(const std::vector<CDCSDKProtoRecordPB>& records);
 
