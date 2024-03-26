@@ -1214,4 +1214,42 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     conn3.close();
   }
 
+  @Test
+  public void testWalsenderGracefulShutdownWithCDCServiceError() throws Exception {
+    markClusterNeedsRecreation();
+    Map<String, String> tserverFlags = super.getTServerFlags();
+    tserverFlags.put("TEST_cdc_force_destroy_virtual_wal_failure", "true");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn =
+        getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    String slotName = "test_repl_slot_graceful_shutdown";
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test VALUES(1, 'xyz')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+    // BEGIN, RELATION, INSERT, COMMIT.
+    receiveMessage(stream, 4);
+
+    // This should trigger shutdown which will trigger Walsender to destroy the virtual wal where we
+    // have forced a failure.
+    stream.close();
+  }
 }
