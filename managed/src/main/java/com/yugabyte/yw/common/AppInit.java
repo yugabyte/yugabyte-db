@@ -50,6 +50,8 @@ import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.DB;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.HashMap;
 import java.util.List;
@@ -64,6 +66,10 @@ import play.Environment;
 public class AppInit {
 
   private static final long MAX_APP_INITIALIZATION_TIME = 30;
+
+  public static final Gauge INIT_TIME =
+      Gauge.build("yba_init_time_seconds", "Last YBA startup time in seconds.")
+          .register(CollectorRegistry.defaultRegistry);
 
   @Inject
   public AppInit(
@@ -340,6 +346,7 @@ public class AppInit {
 
         long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
         String elapsedStr = String.valueOf(elapsed);
+        INIT_TIME.set(elapsed);
         if (elapsed > MAX_APP_INITIALIZATION_TIME) {
           log.warn("Completed initialization in " + elapsedStr + " seconds.");
         } else {

@@ -421,7 +421,7 @@ public class ReleaseManager {
   }
 
   public List<String> getLocalReleaseVersions() {
-    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       return new ArrayList<String>(getLocalReleases().keySet());
     } else {
       // Get the version of every release that has at least 1 "ReleaseLocalFile" artifact

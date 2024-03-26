@@ -82,7 +82,8 @@ class CDCSDKVirtualWAL {
   // Custom comparator to sort records in the TabletRecordPriorityQueue by comparing their unique
   // record IDs.
   struct CompareCDCSDKProtoRecords {
-    bool operator()(const TabletRecordInfoPair& lhs, const TabletRecordInfoPair& rhs) const;
+    bool operator()(
+        const TabletRecordInfoPair& new_record, const TabletRecordInfoPair& old_record) const;
   };
 
   struct GetConsistentChangesRespMetadata {
@@ -121,16 +122,22 @@ class CDCSDKVirtualWAL {
   Status AddRecordToVirtualWalPriorityQueue(
       const TabletId& tablet_id, TabletRecordPriorityQueue* sorted_records);
 
-  Result<RecordInfo> FindConsistentRecord(
+  Result<TabletRecordInfoPair> GetNextRecordToBeShipped(
+      const xrepl::StreamId& stream_id, TabletRecordPriorityQueue* sorted_records,
+      std::vector<TabletId>* empty_tablet_queues, const HostPort hostport,
+      const CoarseTimePoint deadline);
+
+  Result<TabletRecordInfoPair> FindConsistentRecord(
       const xrepl::StreamId& stream_id, TabletRecordPriorityQueue* sorted_records,
       std::vector<TabletId>* empty_tablet_queues, const HostPort hostport,
       const CoarseTimePoint deadline);
 
   Status InitLSNAndTxnIDGenerators(const xrepl::StreamId& stream_id);
 
-  Result<uint64_t> GetRecordLSN(const std::shared_ptr<CDCSDKUniqueRecordID>& record_id);
+  Result<uint64_t> GetRecordLSN(const std::shared_ptr<CDCSDKUniqueRecordID>& curr_unique_record_id);
 
-  Result<uint32_t> GetRecordTxnID(const std::shared_ptr<CDCSDKUniqueRecordID>& record_id);
+  Result<uint32_t> GetRecordTxnID(
+      const std::shared_ptr<CDCSDKUniqueRecordID>& curr_unique_record_id);
 
   Status AddEntryForBeginRecord(const RecordInfo& record_id_to_record);
 
@@ -139,6 +146,8 @@ class CDCSDKVirtualWAL {
   Status UpdateSlotEntryInCDCState(
       const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
       const CommitRecordMetadata& record_metadata);
+
+  void ResetCommitDecisionVariables();
 
   CDCServiceImpl* cdc_service_;
 
@@ -154,10 +163,22 @@ class CDCSDKVirtualWAL {
   uint64_t last_seen_lsn_;
   uint32_t last_seen_txn_id_;
   std::shared_ptr<CDCSDKUniqueRecordID> last_seen_unique_record_id_;
+  TabletId last_shipped_record_tablet_id = "";
 
   // This will hold the restart_lsn value received in the UpdateAndPersistLSN RPC call. It will
   // initialised by the restart_lsn stores in the cdc_state's entry for slot.
   uint64_t last_received_restart_lsn;
+
+  // Set to true when a BEGIN record is shipped. Reset to false after we ship the commit record for
+  // the pg_txn.
+  bool is_txn_in_progress = false;
+
+  // Set to true when we are able to generate an LSN for the commit record held by
+  // curr_active_txn_commit_record. Reset to false after we ship the commit record.
+  bool should_ship_commit = false;
+
+  // Holds the 1st commit record of a pg_txn. Reset to false after shipping the held commit record.
+  std::shared_ptr<TabletRecordInfoPair> curr_active_txn_commit_record = nullptr;
 
   // This map stores all information for the next GetChanges call on a per tablet basis except for
   // the explicit checkpoint. The key is the tablet id. The value is a struct used to populate the

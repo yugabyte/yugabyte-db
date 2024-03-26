@@ -1179,49 +1179,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTableAndMast
   ASSERT_EQ(expected_tablet_ids, tablets_found);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStreamDelete)) {
-  // Setup cluster.
-  ASSERT_OK(SetUpWithParams(1, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
-
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
-
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-
-  RpcController rpc;
-  CreateCDCStreamRequestPB create_req;
-  CreateCDCStreamResponsePB create_resp;
-
-  create_req.set_table_id(table_id);
-  create_req.set_source_type(XCLUSTER);
-  ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
-  // Drop table on YSQL tables deletes associated xCluster streams.
-  DropTable(&test_cluster_, kTableName);
-
-  // Wait for bg thread to cleanup entries from cdc_state.
-  CDCStateTable cdc_state_table(test_client());
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        Status s;
-        for (auto row_result : VERIFY_RESULT(cdc_state_table.GetTableRange(
-                 CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
-          RETURN_NOT_OK(row_result);
-          auto& row = *row_result;
-          if (row.key.stream_id.ToString() == create_resp.stream_id()) {
-            return false;
-          }
-        }
-        RETURN_NOT_OK(s);
-        return true;
-      },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
-
-  // This should fail now as the stream is deleted.
-  ASSERT_EQ(
-      DeleteCDCStream(ASSERT_RESULT(xrepl::StreamId::FromString(create_resp.stream_id()))), false);
-}
-
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRestart)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;

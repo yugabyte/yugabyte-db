@@ -144,10 +144,7 @@ export const AddReleaseModal = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [reviewReleaseDetails, setReviewReleaseDetails] = useState<boolean>(false);
   const [releaseMetadatFetchError, setReleaseMetadatFetchError] = useState<boolean>(false);
-  const [releaseBasePart, setReleaseBasePart] = useState<string>('');
-  const [releaseFirstPart, setReleaseFirstPart] = useState<string>('');
-  const [releaseSecondPart, setReleaseSecondPart] = useState<string>('');
-  const [releaseThirdPart, setReleaseThirdPart] = useState<string>('');
+  const [releaseVersion, setReleaseVersion] = useState<string>('');
   const [deploymentType, setDeploymentType] = useState<ReleasePlatform | null>(null);
   const [architecture, setArchitecure] = useState<ReleasePlatformArchitecture | null>(null);
   const [installationPackageFile, setInstallationPackageFile] = useState<File | undefined>(
@@ -294,7 +291,7 @@ export const AddReleaseModal = ({
   // When adding new release make a POST API call
   const addRelease = useMutation((payload: any) => ReleasesAPI.createRelease(payload), {
     onSuccess: (data) => {
-      toast.success('Add release successfully');
+      toast.success('Added release successfully');
       onActionPerformed();
       onClose();
     },
@@ -342,13 +339,12 @@ export const AddReleaseModal = ({
     setValue('platform', response.platform);
     setValue('sha256', response.sha256);
 
-    if (isAddRelease) {
-      setValue('version', response.version);
-      setValue('ybType', response.yb_type);
-      setValue('releaseType', response.release_type);
-      setValue('releaseDate', response.release_date);
-      setValue('releaseNotes', response.release_notes);
-    }
+    setValue('version', response.version);
+    setValue('ybType', response.yb_type);
+    setValue('releaseType', response.release_type);
+    setValue('releaseDate', response.release_date);
+    setValue('releaseNotes', response.release_notes);
+
     setUrlMetadata({
       version: response.version,
       releaseType: response.release_type,
@@ -480,24 +476,9 @@ export const AddReleaseModal = ({
     setIsSubmitting(false);
   };
 
-  const handleReleaseFirstPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseFirstPart(event.target.value);
-  };
-
-  const handleReleaseBasePart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseBasePart(event.target.value);
-  };
-
-  const handleReleaseSecondPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseSecondPart(event.target.value);
-  };
-
-  const handleReleaseThirdPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setValue(
-      'version',
-      `${releaseBasePart}.${releaseFirstPart}.${releaseSecondPart}.${event.target.value}`
-    );
-    setReleaseThirdPart(event.target.value);
+  const handleReleaseVersionPart = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setValue('version', event.target.value);
+    setReleaseVersion(event.target.value);
   };
 
   const handlePlatformSelect = (val: ReleasePlatformButtonProps) => {
@@ -592,7 +573,7 @@ export const AddReleaseModal = ({
       }}
     >
       <FormProvider {...formMethods}>
-        <Box>
+        <Box data-testid="AddRelease-Container">
           <Box className={helperClasses.bannerBox}>
             {isMetadataLoading && <YBBanner message={t('releases.bannerFileUploadMessage')} />}
           </Box>
@@ -692,14 +673,8 @@ export const AddReleaseModal = ({
                   releaseMetadatFetchError={releaseMetadatFetchError}
                   deploymentType={deploymentType}
                   architecture={architecture}
-                  releaseBasePart={releaseBasePart}
-                  releaseFirstPart={releaseFirstPart}
-                  releaseSecondPart={releaseSecondPart}
-                  releaseThirdPart={releaseThirdPart}
-                  handleReleaseBasePart={handleReleaseBasePart}
-                  handleReleaseSecondPart={handleReleaseSecondPart}
-                  handleReleaseThirdPart={handleReleaseThirdPart}
-                  handleReleaseFirstPart={handleReleaseFirstPart}
+                  releaseVersion={releaseVersion}
+                  handleReleaseVersionPart={handleReleaseVersionPart}
                   handlePlatformSelect={handlePlatformSelect}
                   handleArchitectureSelect={handleArchitectureSelect}
                 />
@@ -708,8 +683,9 @@ export const AddReleaseModal = ({
                     mt={4}
                     className={helperClasses.reviewReleaseMetadataRow}
                     style={{ cursor: 'pointer' }}
+                    onClick={handleViewTag}
                   >
-                    <img src={viewTag ? PathDown : Path} alt="path" onClick={handleViewTag} />
+                    <img src={viewTag ? PathDown : Path} alt="path" />
                     <span className={clsx(helperClasses.largerMetaData, helperClasses.marginLeft)}>
                       {t('releases.addReleaseModal.addReleaseTag')}
                     </span>
