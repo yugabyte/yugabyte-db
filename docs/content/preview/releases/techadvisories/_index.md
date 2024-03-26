@@ -18,7 +18,7 @@ We strongly recommend regularly reviewing this page and taking appropriate measu
 
 | Advisory&nbsp;Number |    Synopsis     | Product  | Affected Versions | Publish&nbsp;Date |
 | :------- | :-------------- | :------- | :---------------- | :----------- |
-| {{<ta 21297>}}| Missing writes during Batch Execution in a transaction | [YSQL](./) | [All](/preview/releases/ybdb-releases/)            | Mar-25-2024  |
+| {{<ta 21297>}}| Missing writes during Batch Execution in a transaction | [YSQL](../../api/ysql/) | [All](../ybdb-releases/)            | Mar-25-2024  |
 {.sno-1 .sno-last}
 
 ## Learn More
