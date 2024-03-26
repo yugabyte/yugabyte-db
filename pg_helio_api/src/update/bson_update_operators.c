@@ -662,14 +662,8 @@ HandleUpdateDollarCurrentDate(const bson_value_t *existingValue,
 	clock_gettime(CLOCK_REALTIME, &spec);
 
 	time_t epochSeconds = spec.tv_sec;
-	long millisecondsInSecond = round(spec.tv_nsec / 1.0e6);
-	if (millisecondsInSecond > 999)
-	{
-		epochSeconds++;
-		millisecondsInSecond = 0;
-	}
-
-	long epochMilliseconds = epochSeconds * 1000 + millisecondsInSecond;
+	uint32_t millisecondsInSecond = spec.tv_nsec / 1000000;
+	uint64_t epochMilliseconds = (epochSeconds * 1000UL) + millisecondsInSecond;
 
 	bson_value_t timestampBsonValue;
 	timestampBsonValue.value_type = BSON_TYPE_TIMESTAMP;
