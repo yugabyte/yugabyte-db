@@ -258,7 +258,7 @@ Status MiniCluster::StartAsync(
     }
   }
 
-  if (UseYbController()) {
+  if (!DisableMiniClusterBackupTests() && UseYbController()) {
     // We need 1 yb controller server for each tserver.
     // YB Controller uses the same IP as corresponding tserver.
     yb_controllers_.reserve(options_.num_tablet_servers);
