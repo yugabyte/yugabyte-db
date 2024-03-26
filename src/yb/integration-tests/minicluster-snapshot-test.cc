@@ -53,6 +53,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
@@ -83,7 +84,7 @@ DECLARE_string(TEST_mini_cluster_pg_host_port);
 namespace yb {
 namespace master {
 
-constexpr auto kInterval = 6s;
+constexpr auto kInterval = 20s;
 constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(10min, 18min, 10min);
 
 YB_DEFINE_ENUM(YsqlColocationConfig, (kNotColocated)(kDBColocated));
@@ -396,7 +397,41 @@ class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase,
   }
 };
 
-class MasterExportSnapshotTest : public PostgresMiniClusterTest {};
+class MasterExportSnapshotTest : public PostgresMiniClusterTest {
+ public:
+  void SetUp() override {
+    PostgresMiniClusterTest::SetUp();
+    messenger = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
+    auto proxy_cache = rpc::ProxyCache(messenger.get());
+    bakup_proxy = std::make_unique<master::MasterBackupProxy>(
+        &proxy_cache, mini_cluster()->mini_master()->bound_rpc_addr());
+    admin_proxy = std::make_unique<master::MasterAdminProxy>(
+        &proxy_cache, mini_cluster()->mini_master()->bound_rpc_addr());
+    client_ =
+        ASSERT_RESULT(client::YBClientBuilder()
+                          .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
+                          .Build());
+  }
+
+  Status CreateDatabaseWithSnapshotSchedule(
+      master::YsqlColocationConfig colocated = master::YsqlColocationConfig::kNotColocated) {
+    RETURN_NOT_OK(CreateDatabase(kNamespaceName, colocated));
+    LOG(INFO) << "Database created.";
+    schedule_id = VERIFY_RESULT(CreateSnapshotSchedule(
+        bakup_proxy.get(), YQL_DATABASE_PGSQL, kNamespaceName, kInterval, kRetention, timeout));
+    RETURN_NOT_OK(WaitScheduleSnapshot(bakup_proxy.get(), schedule_id, timeout));
+    return Status::OK();
+  }
+
+ protected:
+  const std::string kNamespaceName = "testdb";
+  const MonoDelta timeout = MonoDelta::FromSeconds(30);
+  SnapshotScheduleId schedule_id = SnapshotScheduleId::Nil();
+  std::unique_ptr<rpc::Messenger> messenger;
+  std::unique_ptr<master::MasterBackupProxy> bakup_proxy;
+  std::unique_ptr<master::MasterAdminProxy> admin_proxy;
+  std::unique_ptr<client::YBClient> client_;
+};
 
 INSTANTIATE_TEST_CASE_P(
     Colocation, MasterExportSnapshotTest,
@@ -412,18 +447,7 @@ INSTANTIATE_TEST_CASE_P(
 // 5. Generate snapshotInfo from schedule using the time t.
 // 6. Assert the output of 5 and 3 are the same.
 TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
-  const auto kNamespaceName = "testdb";
-  ASSERT_OK(CreateDatabase(kNamespaceName, GetParam()));
-  LOG(INFO) << "Database created.";
-  auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
-  auto proxy_cache = rpc::ProxyCache(messenger.get());
-  auto proxy =
-      master::MasterBackupProxy(&proxy_cache, mini_cluster()->mini_master()->bound_rpc_addr());
-
-  const auto timeout = MonoDelta::FromSeconds(30);
-  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
-      &proxy, YQL_DATABASE_PGSQL, kNamespaceName, kInterval, kRetention, timeout));
-  ASSERT_OK(WaitScheduleSnapshot(&proxy, schedule_id, timeout));
+  ASSERT_OK(CreateDatabaseWithSnapshotSchedule(GetParam()));
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
   // 1.
   LOG(INFO) << Format("Create tables t1,t2");
@@ -434,9 +458,10 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
   LOG(INFO) << Format("current timestamp is: {$0}", time);
 
   // 3.
-  auto decoded_snapshot_id = ASSERT_RESULT(WaitNewSnapshot(&proxy, schedule_id));
-  ASSERT_OK(WaitForSnapshotComplete(&proxy, decoded_snapshot_id));
-  master::SnapshotInfoPB ground_truth = ASSERT_RESULT(ExportSnapshot(&proxy, decoded_snapshot_id));
+  auto decoded_snapshot_id = ASSERT_RESULT(WaitNewSnapshot(bakup_proxy.get(), schedule_id));
+  ASSERT_OK(WaitForSnapshotComplete(bakup_proxy.get(), decoded_snapshot_id));
+  master::SnapshotInfoPB ground_truth =
+      ASSERT_RESULT(ExportSnapshot(bakup_proxy.get(), decoded_snapshot_id));
   // 4.
   ASSERT_OK(conn.Execute("CREATE TABLE t3 (key INT PRIMARY KEY, c1 INT, c2 TEXT, c3 TEXT)"));
   ASSERT_OK(conn.Execute("ALTER TABLE t2 ADD COLUMN new_col TEXT"));
@@ -448,6 +473,45 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
       mini_cluster()->mini_master()->catalog_manager_impl().GenerateSnapshotInfoFromSchedule(
           schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
   // 6.
+  LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
+  LOG(INFO) << Format(
+      "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
+  ASSERT_TRUE(pb_util::ArePBsEqual(
+      std::move(ground_truth), std::move(snapshot_info_as_of_time), /* diff_str */ nullptr));
+  messenger->Shutdown();
+}
+
+// Test that export_snapshot_from_schedule as of time doesn't include hidden tables in
+// SnapshotInfoPB.
+TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
+  ASSERT_OK(CreateDatabaseWithSnapshotSchedule(GetParam()));
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  // 1. Create table t1, then delete it to mark it as hidden and then recreate table t1.
+  LOG(INFO) << Format("Create tables t1");
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(conn.Execute("DROP TABLE t1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
+
+  // 2. Mark time t and wait for a new snapshot to be created as part of the snapshot schedule.
+  Timestamp time = ASSERT_RESULT(GetCurrentTime());
+  LOG(INFO) << Format("current timestamp is: {$0}", time);
+
+  // 3. export_snapshot to generate the SnapshotInfoPB as of current time. It is the traditional
+  // export_snapshot command (not the new command) to serve as ground truth.
+  auto decoded_snapshot_id = ASSERT_RESULT(WaitNewSnapshot(bakup_proxy.get(), schedule_id));
+  ASSERT_OK(WaitForSnapshotComplete(bakup_proxy.get(), decoded_snapshot_id));
+  master::SnapshotInfoPB ground_truth =
+      ASSERT_RESULT(ExportSnapshot(bakup_proxy.get(), decoded_snapshot_id));
+  // 4. Create another table that shouldn't be included in generate snapshot as of time
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (key INT PRIMARY KEY, c1 TEXT, c2 TEXT)"));
+  // 5. Generate snapshotInfo from schedule using the time t.
+  LOG(INFO) << Format(
+      "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
+  auto deadline = CoarseMonoClock::Now() + timeout;
+  master::SnapshotInfoPB snapshot_info_as_of_time = ASSERT_RESULT(
+      mini_cluster()->mini_master()->catalog_manager_impl().GenerateSnapshotInfoFromSchedule(
+          schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
+  // 6. Assert the output of 5 and 3 are the same.
   LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
   LOG(INFO) << Format(
       "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
