@@ -12,7 +12,7 @@ cascade:
 
 Here you will find important notifications and updates regarding product issues, security vulnerabilities, and other technical matters that may impact our products and services. We understand that keeping your systems secure and running smoothly is of utmost importance. This page serves as a central resource to ensure you have access to the latest technical advisories issued by our team.
 
-We strongly recommend regularly reviewing this page and taking appropriate measures outlined in the advisories to mitigate potential risks and disruptions. Our team continuously monitors for emerging threats and technical concerns. New advisories will be posted here as soon as they become available.
+It is strongly recommended that you regularly review this page and take appropriate measures outlined in the advisories to mitigate potential risks and disruptions. Yugabyte continuously monitors for emerging threats and technical concerns.
 
 ## List of advisories
 
