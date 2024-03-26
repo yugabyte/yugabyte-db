@@ -34,6 +34,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -50,6 +51,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Slf4j
 @Abortable
@@ -858,5 +860,41 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  public static boolean checkEditKubernetesRerunAllowed(TaskInfo placementModificationTaskInfo) {
+    UniverseDefinitionTaskParams placementTaskParams =
+        Json.fromJson(
+            placementModificationTaskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
+    Universe universe = Universe.getOrBadRequest(placementTaskParams.getUniverseUUID());
+    UniverseDefinitionTaskParams currentUniverseParams = universe.getUniverseDetails();
+    for (Cluster newCluster : placementTaskParams.clusters) {
+      Cluster currCluster = currentUniverseParams.getClusterByUuid(newCluster.uuid);
+
+      UserIntent newIntent = newCluster.userIntent, currIntent = currCluster.userIntent;
+      PlacementInfo newPI = newCluster.placementInfo, curPI = currCluster.placementInfo;
+
+      // Not allowing re-run if disk size change was attempted
+      if (newIntent.deviceInfo.volumeSize != currIntent.deviceInfo.volumeSize) {
+        return false;
+      }
+
+      // Not allowing re-run if any kind of Cluster configuration change was attempted
+      boolean isReadOnlyCluster = newCluster.clusterType.equals(ClusterType.ASYNC);
+      if (!isReadOnlyCluster) {
+        int numTotalMasters = newIntent.replicationFactor;
+        PlacementInfoUtil.selectNumMastersAZ(newPI, numTotalMasters);
+      }
+      KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster),
+          curPlacement = new KubernetesPlacement(curPI, isReadOnlyCluster);
+
+      boolean mastersChanged = !curPlacement.masters.equals(newPlacement.masters);
+      boolean tserversChanged = !curPlacement.tservers.equals(newPlacement.tservers);
+
+      if (mastersChanged || tserversChanged) {
+        return false;
+      }
+    }
+    return true;
   }
 }

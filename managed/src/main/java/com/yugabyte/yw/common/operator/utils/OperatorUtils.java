@@ -12,14 +12,18 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
+import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -30,8 +34,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Slf4j
 public class OperatorUtils {
@@ -134,25 +140,23 @@ public class OperatorUtils {
     return null;
   }
 
-  public boolean checkIfGFlagsChanged(Universe universe, SpecificGFlags newGFlags) {
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    Cluster primaryCluster = universeDetails.getPrimaryCluster();
+  public boolean checkIfGFlagsChanged(
+      Universe universe, SpecificGFlags oldGFlags, SpecificGFlags newGFlags) {
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     return universe.getNodesByCluster(primaryCluster.uuid).stream()
         .filter(
             nD -> {
               // New gflags for servers
-              Map<String, String> oldTserverGFlags =
+              Map<String, String> newTserverGFlags =
                   newGFlags.getGFlags(nD.getAzUuid(), ServerType.TSERVER);
-              Map<String, String> oldMasterGFlags =
+              Map<String, String> newMasterGFlags =
                   newGFlags.getGFlags(nD.getAzUuid(), ServerType.MASTER);
 
               // Old gflags for servers
-              Map<String, String> newTserverGFlags =
-                  primaryCluster.userIntent.specificGFlags.getGFlags(
-                      nD.getAzUuid(), ServerType.TSERVER);
-              Map<String, String> newMasterGFlags =
-                  primaryCluster.userIntent.specificGFlags.getGFlags(
-                      nD.getAzUuid(), ServerType.MASTER);
+              Map<String, String> oldTserverGFlags =
+                  oldGFlags.getGFlags(nD.getAzUuid(), ServerType.TSERVER);
+              Map<String, String> oldMasterGFlags =
+                  oldGFlags.getGFlags(nD.getAzUuid(), ServerType.MASTER);
               return !(oldTserverGFlags.equals(newTserverGFlags)
                   && oldMasterGFlags.equals(newMasterGFlags));
             })
@@ -216,6 +220,11 @@ public class OperatorUtils {
   }
 
   public boolean universeAndSpecMismatch(Customer cust, Universe u, YBUniverse ybUniverse) {
+    return universeAndSpecMismatch(cust, u, ybUniverse, null);
+  }
+
+  public boolean universeAndSpecMismatch(
+      Customer cust, Universe u, YBUniverse ybUniverse, @Nullable TaskInfo prevTaskToRerun) {
     UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
     if (universeDetails == null || universeDetails.getPrimaryCluster() == null) {
       throw new RuntimeException(
@@ -234,8 +243,39 @@ public class OperatorUtils {
     DeviceInfo incomingDeviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
     int incomingNumNodes = (int) ybUniverse.getSpec().getNumNodes().longValue();
 
+    if (prevTaskToRerun != null) {
+      TaskType specificTaskTypeToRerun = prevTaskToRerun.getTaskType();
+      switch (specificTaskTypeToRerun) {
+        case EditKubernetesUniverse:
+          UniverseDefinitionTaskParams prevTaskParams =
+              Json.fromJson(prevTaskToRerun.getTaskParams(), UniverseDefinitionTaskParams.class);
+          return shouldUpdateYbUniverse(
+              prevTaskParams.getPrimaryCluster().userIntent, incomingNumNodes, incomingDeviceInfo);
+        case KubernetesOverridesUpgrade:
+          KubernetesOverridesUpgradeParams overridesUpgradeTaskParams =
+              Json.fromJson(
+                  prevTaskToRerun.getTaskParams(), KubernetesOverridesUpgradeParams.class);
+          return !StringUtils.equals(
+              incomingOverrides, overridesUpgradeTaskParams.universeOverrides);
+        case GFlagsKubernetesUpgrade:
+          KubernetesGFlagsUpgradeParams gflagParams =
+              Json.fromJson(prevTaskToRerun.getTaskParams(), KubernetesGFlagsUpgradeParams.class);
+          return checkIfGFlagsChanged(
+              u, gflagParams.getPrimaryCluster().userIntent.specificGFlags, specGFlags);
+        default:
+          // Return false for re-run cases.
+          return false;
+      }
+    }
+
     return (!StringUtils.equals(incomingOverrides, currentUserIntent.universeOverrides))
-        || checkIfGFlagsChanged(u, specGFlags)
+        || checkIfGFlagsChanged(
+            u,
+            u.getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .specificGFlags /*Current gflags */,
+            specGFlags)
         || shouldUpdateYbUniverse(currentUserIntent, incomingNumNodes, incomingDeviceInfo)
         || !StringUtils.equals(currentUserIntent.ybSoftwareVersion, incomingYbSoftwareVersion);
   }
