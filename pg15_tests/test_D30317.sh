@@ -8,5 +8,5 @@ EOT
 diff <(build/latest/bin/yb-admin --master_addresses=$PGHOST:7100 list_tables include_table_id \
   | grep -E "^(yugabyte.t|template1.pg_class) " | sort) - <<EOT
 template1.pg_class 000000010000300080010000000004eb
-yugabyte.t 00003491000030008000000000004000
+yugabyte.t 00003495000030008000000000004000
 EOT
