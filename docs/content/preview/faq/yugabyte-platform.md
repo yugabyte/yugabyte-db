@@ -146,7 +146,6 @@ YugabyteDB Anywhere also allows creating these machines out of band and importin
 Node agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. It includes the following functions:
 
 - Invoke shell commands directly on the remote host, similar to running commands over SSH. Like SSH, the agent also does shell-login such that any previous command modifying the environment in the resource files (for example, `~/.bashrc`) gets reflected in the subsequent command.
-- Invoke procedures or methods on the node agent.
 - Additionally, for on-premises (manually provisioned nodes) deployments, node agent also functions as a utility to run preflight checks, and add node instances.
 
 ### How is node agent installed on a YugabyteDB node?
@@ -210,11 +209,11 @@ A node agent does the following when the preflight-check command is run:
 1. Collects the output and converts it to a well-formatted JSON payload.
 1. Sends the payload to YBA for validation. YBA has preflight check threshold values defined in the [runtime configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) of the provider. The prefix path for the configuration key name is `yb.node_agent.preflight_checks`. The values can be changed if needed.
 
-### How do I disable a node agent?
+### How do I disable node agent for a provider and its universes?
 
-You can disable node agents of a provider any time by setting the `yb.node_agent.client.enabled` [Provider Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) for the provider to false.
+You can disable node agents of a provider's universes any time by setting the `yb.node_agent.client.enabled` [Provider Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) for the provider to false.
 
-This disables all node agents for the provider, which falls back to SSH, using credentials provided during provider creation.
+This disables all node agents for universes created using the provider, and YBA falls back to using SSH to communicate with universe nodes, using credentials provided during provider creation.
 
 ### How do I change the node agent default port of 9070?
 
