@@ -3695,11 +3695,14 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_EQ(commit_records, last_txn_id);
   }
 
-  void CDCSDKYsqlTest::CheckRecordsConsistencyWithWriteId(
+  void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
       const std::vector<CDCSDKProtoRecordPB>& records) {
     uint64_t prev_commit_time = 0;
+    std::string prev_docdb_txn_id = "";
     uint64_t prev_record_time = 0;
     uint32_t prev_write_id = 0;
+    TableId prev_table_id = "";
+    std::string prev_primary_key = "";
     uint64_t prev_lsn = 0;
     uint64_t prev_txn_id = 0;
     bool in_transaction = false;
@@ -3713,6 +3716,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         ASSERT_GT(record.row_message().commit_time(), prev_commit_time);
         ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
         ASSERT_GT(record.row_message().pg_transaction_id(), prev_txn_id);
+        ASSERT_FALSE(record.row_message().has_table_id());
+        ASSERT_FALSE(record.row_message().has_primary_key());
         prev_commit_time = record.row_message().commit_time();
         prev_lsn = record.row_message().pg_lsn();
         prev_txn_id = record.row_message().pg_transaction_id();
@@ -3725,6 +3730,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
         // PG txn_id should be same as the BEGIN record of the current txn.
         ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
+        ASSERT_FALSE(record.row_message().has_table_id());
+        ASSERT_FALSE(record.row_message().has_primary_key());
         prev_commit_time = record.row_message().commit_time();
         prev_lsn = record.row_message().pg_lsn();
       }
@@ -3733,23 +3740,57 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           record.row_message().op() == RowMessage::UPDATE ||
           record.row_message().op() == RowMessage::DELETE) {
         ASSERT_TRUE(in_transaction);
+        ASSERT_TRUE(record.row_message().has_table_id());
+        ASSERT_TRUE(record.row_message().has_primary_key());
         ASSERT_EQ(record.row_message().commit_time(), prev_commit_time);
         ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
         // PG txn_id should be same as the BEGIN record of the current txn.
         ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
-        prev_commit_time = record.row_message().commit_time();
         prev_lsn = record.row_message().pg_lsn();
+        bool has_tie_broken = false;
 
         if (!first_record_in_transaction) {
-          ASSERT_GE(record.row_message().record_time(), prev_record_time);
-          if (record.row_message().record_time() == prev_record_time) {
-            ASSERT_GE(record.cdc_sdk_op_id().write_id(), prev_write_id);
+          if (record.row_message().has_transaction_id()) {
+            if (record.row_message().transaction_id() != prev_docdb_txn_id) {
+              ASSERT_GT(record.row_message().transaction_id(), prev_docdb_txn_id);
+              has_tie_broken = true;
+              break;
+            }
+          }
+
+          if (record.row_message().record_time() != prev_record_time) {
+            ASSERT_GT(record.row_message().record_time(), prev_record_time);
+            has_tie_broken = true;
+            break;
+          }
+          if (record.cdc_sdk_op_id().write_id() != prev_write_id) {
+            ASSERT_GT(record.cdc_sdk_op_id().write_id(), prev_write_id);
+            has_tie_broken = true;
+            break;
+          }
+          if (record.row_message().table_id() != prev_table_id) {
+            ASSERT_GT(record.row_message().table_id(), prev_table_id);
+            has_tie_broken = true;
+            break;
+          }
+          if (record.row_message().primary_key() != prev_primary_key) {
+            ASSERT_GT(record.row_message().primary_key(), prev_primary_key);
+            has_tie_broken = true;
           }
         }
 
+        if(!first_record_in_transaction) {
+          ASSERT_TRUE(has_tie_broken);
+        }
+
+
         first_record_in_transaction = false;
+        prev_docdb_txn_id =
+            record.row_message().has_transaction_id() ? record.row_message().transaction_id() : "";
         prev_record_time = record.row_message().record_time();
         prev_write_id = record.cdc_sdk_op_id().write_id();
+        prev_table_id = record.row_message().table_id();
+        prev_primary_key = record.row_message().primary_key();
       }
     }
   }
