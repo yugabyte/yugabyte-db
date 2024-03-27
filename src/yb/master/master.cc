@@ -331,7 +331,7 @@ Status Master::RegisterServices() {
       std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
           std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(),
-          &messenger()->scheduler(), std::nullopt /* xcluster_context */)));
+          &messenger()->scheduler(), nullptr /* xcluster_context */)));
 
   return Status::OK();
 }

@@ -40,7 +40,6 @@
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/txn_cache.h"
-#include "yb/tserver/xcluster_context.h"
 
 #include "yb/util/coding_consts.h"
 #include "yb/util/locks.h"
@@ -54,6 +53,7 @@ class ConsistentReadPoint;
 namespace tserver {
 
 class PgMutationCounter;
+class TserverXClusterContextIf;
 
 #define PG_CLIENT_SESSION_METHODS \
     (AlterDatabase) \
@@ -100,7 +100,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   PgClientSession(
       uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
       std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-      PgTableCache* table_cache, const std::optional<XClusterContext>& xcluster_context,
+      PgTableCache* table_cache, const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
       PgSequenceCache* sequence_cache, TransactionCache* txn_cache_);
 
@@ -213,7 +213,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   scoped_refptr<ClockBase> clock_;
   const TransactionPoolProvider& transaction_pool_provider_;
   PgTableCache& table_cache_;
-  const std::optional<XClusterContext> xcluster_context_;
+  const TserverXClusterContextIf* xcluster_context_;
   PgMutationCounter* pg_node_level_mutation_counter_;
   PgResponseCache& response_cache_;
   PgSequenceCache& sequence_cache_;

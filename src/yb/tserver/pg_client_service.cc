@@ -263,7 +263,7 @@ class PgClientServiceImpl::Impl {
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
       rpc::Scheduler* scheduler,
-      const std::optional<XClusterContext>& xcluster_context,
+      const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter,
       MetricEntity* metric_entity,
       const std::shared_ptr<MemTracker>& parent_mem_tracker)
@@ -1278,7 +1278,7 @@ class PgClientServiceImpl::Impl {
 
   rpc::ScheduledTaskTracker check_expired_sessions_;
 
-  const std::optional<XClusterContext> xcluster_context_;
+  const TserverXClusterContextIf* xcluster_context_;
 
   PgMutationCounter* pg_node_level_mutation_counter_;
 
@@ -1294,12 +1294,11 @@ class PgClientServiceImpl::Impl {
 PgClientServiceImpl::PgClientServiceImpl(
     std::reference_wrapper<const TabletServerIf> tablet_server,
     const std::shared_future<client::YBClient*>& client_future,
-    const scoped_refptr<ClockBase>& clock,
-    TransactionPoolProvider transaction_pool_provider,
+    const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const scoped_refptr<MetricEntity>& entity,
     rpc::Scheduler* scheduler,
-    const std::optional<XClusterContext>& xcluster_context,
+    const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(

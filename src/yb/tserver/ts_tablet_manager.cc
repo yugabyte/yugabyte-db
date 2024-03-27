@@ -100,6 +100,7 @@
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug-util.h"
@@ -2935,7 +2936,7 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
   }
 
   auto xcluster_safe_time_result =
-      server_->GetXClusterSafeTimeMap().GetSafeTime(metadata->namespace_id());
+      server_->GetXClusterContext().GetSafeTime(metadata->namespace_id());
   if (!xcluster_safe_time_result) {
     VLOG(1) << "XCluster GetSafeTime call failed with " << xcluster_safe_time_result.status()
             << " for namespace: " << metadata->namespace_id();

@@ -55,7 +55,7 @@ static const uint32_t kRangePartitionInterval = 500;
 
 template <typename TabletServer>
 auto GetSafeTime(const TabletServer* tserver, const NamespaceId& namespace_id) {
-  return tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+  return tserver->GetXClusterContext().GetSafeTime(namespace_id);
 }
 
 class XClusterTestBase : public YBTest {
