@@ -1233,6 +1233,26 @@ type and help information regardless of the setting of this flag.
 
 Default: `true`
 
+## Advanced flags
+
+##### backfill_index_client_rpc_timeout_ms
+
+Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
+
+Default: 1 day
+
+##### backfill_index_timeout_grace_margin_ms
+
+The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
+
+Default: -1, where the system automatically calculates the value to be approximately 1 second.
+
+##### backfill_index_write_batch_size
+
+The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
+
+Default: 128
+
 ## PostgreSQL server options
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
@@ -1329,26 +1349,6 @@ Specifies the default isolation level of each new transaction. Every transaction
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
 Default: `read committed`
-
-## Advanced flags
-
-##### backfill_index_client_rpc_timeout_ms
-
-Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
-
-Default: 1 day
-
-##### backfill_index_timeout_grace_margin_ms
-
-The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
-
-Default: -1, where the system automatically calculates the value to be approximately 1 second.
-
-##### backfill_index_write_batch_size
-
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
-
-Default: 128
 
 ## Admin UI
 

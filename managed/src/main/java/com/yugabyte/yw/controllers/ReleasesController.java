@@ -322,26 +322,26 @@ public class ReleasesController extends AuthenticatedController {
               }
               break;
             }
-            if (!found) {
-              log.info("creating new artifact");
-              if (reqArtifact.package_file_id != null) {
-                ReleaseArtifact newArtifact =
-                    ReleaseArtifact.create(
-                        reqArtifact.sha256,
-                        reqArtifact.platform,
-                        reqArtifact.architecture,
-                        reqArtifact.package_file_id);
-                release.addArtifact(newArtifact);
-              }
-              if (reqArtifact.package_url != null) {
-                ReleaseArtifact newArtifact =
-                    ReleaseArtifact.create(
-                        reqArtifact.sha256,
-                        reqArtifact.platform,
-                        reqArtifact.architecture,
-                        reqArtifact.package_url);
-                release.addArtifact(newArtifact);
-              }
+          }
+          if (!found) {
+            log.info("creating new artifact");
+            if (reqArtifact.package_file_id != null) {
+              ReleaseArtifact newArtifact =
+                  ReleaseArtifact.create(
+                      reqArtifact.sha256,
+                      reqArtifact.platform,
+                      reqArtifact.architecture,
+                      reqArtifact.package_file_id);
+              release.addArtifact(newArtifact);
+            }
+            if (reqArtifact.package_url != null) {
+              ReleaseArtifact newArtifact =
+                  ReleaseArtifact.create(
+                      reqArtifact.sha256,
+                      reqArtifact.platform,
+                      reqArtifact.architecture,
+                      reqArtifact.package_url);
+              release.addArtifact(newArtifact);
             }
           }
         }
