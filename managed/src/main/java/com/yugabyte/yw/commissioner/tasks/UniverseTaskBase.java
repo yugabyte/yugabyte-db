@@ -2230,7 +2230,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .map(
               serverInfo -> {
                 // Port in ServerInfo is set to 0.
-                NodeDetails node = universe.getNodeByPrivateIP(serverInfo.getHost());
+                NodeDetails node = universe.getNodeByAnyIP(serverInfo.getHost());
                 if (node == null || !node.isMaster) {
                   String errMsg =
                       String.format(

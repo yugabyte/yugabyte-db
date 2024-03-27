@@ -852,7 +852,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             new RetryTaskUntilCondition<>(
                 () -> {
                   try {
-                    return CheckClusterConsistency.checkCurrentServers(client, universe, true);
+                    return CheckClusterConsistency.checkCurrentServers(
+                        client, universe, true, false);
                   } catch (Exception e) {
                     return Collections.singletonList("Got error: " + e.getMessage());
                   }
