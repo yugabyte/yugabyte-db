@@ -406,7 +406,7 @@ public class ShellProcessHandler {
     // of logging, it is ok to log partial lines.
     while ((line = br.readLine()) != null) {
       line = line.trim();
-      if (line.startsWith("[app]")) {
+      if (line.contains("[app]")) {
         log.info(line);
       }
       count++;
