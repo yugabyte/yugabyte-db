@@ -2388,6 +2388,10 @@ Status PgApiImpl::ExecDropReplicationSlot(PgStatement *handle) {
   return pg_stmt->Exec();
 }
 
+Result<tserver::PgYCQLStatementStatsResponsePB> PgApiImpl::YCQLStatementStats() {
+  return pg_session_->YCQLStatementStats();
+}
+
 Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistory() {
   return pg_session_->ActiveSessionHistory();
 }

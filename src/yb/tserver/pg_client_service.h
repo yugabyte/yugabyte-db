@@ -87,6 +87,7 @@ class TserverXClusterContextIf;
     (UpdateSequenceTuple) \
     (ValidatePlacement) \
     (WaitForBackendsCatalogVersion) \
+    (YCQLStatementStats) \
     /**/
 
 // Forwards call to corresponding PgClientSession async method (see

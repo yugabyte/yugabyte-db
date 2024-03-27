@@ -1590,6 +1590,13 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status YCQLStatementStats(const PgYCQLStatementStatsRequestPB& req,
+      PgYCQLStatementStatsResponsePB* resp,
+      rpc::RpcContext* context) {
+    RETURN_NOT_OK(tablet_server_.YCQLStatementStats(req, resp));
+    return Status::OK();
+  }
+
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \

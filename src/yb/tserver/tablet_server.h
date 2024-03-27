@@ -256,7 +256,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   rpc::Messenger* GetMessenger(ash::Component component) const override;
 
-  void SetCQLServer(yb::server::RpcAndWebServerBase* server) override;
+  void SetCQLServer(yb::server::RpcAndWebServerBase* server,
+      server::YCQLStatementStatsProvider* stmt_provider) override;
 
   virtual Env* GetEnv();
 
@@ -337,6 +338,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   key_t GetYsqlConnMgrStatsShmemKey() { return ysql_conn_mgr_stats_shmem_key_; }
   void SetYsqlConnMgrStatsShmemKey(key_t shmem_key) { ysql_conn_mgr_stats_shmem_key_ = shmem_key; }
+  Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+      tserver::PgYCQLStatementStatsResponsePB* resp) const override;
 
   void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
 
@@ -473,6 +476,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
 
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
+  std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

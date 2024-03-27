@@ -781,6 +781,7 @@ class PgApiImpl {
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
 
+  Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
  private:
