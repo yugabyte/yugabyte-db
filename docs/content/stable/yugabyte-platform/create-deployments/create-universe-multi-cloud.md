@@ -114,7 +114,11 @@ You can create a multi-region universe as follows:
 
 1. Add the following flag to Master and T-Server:
 
-    * `leader_failure_max_missed_heartbeat_periods=10` - As the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
+    ```sh
+    leader_failure_max_missed_heartbeat_periods=10
+    ```
+
+    As the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
 
 1. Click **Create**.
 

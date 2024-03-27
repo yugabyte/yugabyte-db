@@ -29,6 +29,8 @@ After you have configured a cloud provider, such as, for example [Google Cloud P
 
 - Use the **Regions** field to enter **Oregon** and **South Carolina**.
 
+- Choose the **Linux version** to be provisioned on the nodes of the universe.
+
 - In the **Instance Type** field, select **n1-standard-8**.
 
   ![Create multi-region universe1 on GCP](/images/yp/create-deployments/create-multi-region-uni1.png)
