@@ -84,3 +84,18 @@ If you have a Replicated installation that uses HTTP and you [migrate to YBA Ins
 Affected releases: All
 
 Workaround: Refer to [Migration and high availability](../../../install-yugabyte-platform/install-software/installer/#migration-and-high-availability).
+
+## High disk utilization issue
+
+If you encounter high disk utilization issues during installation with YBA installer, it maybe due to the Prometheus directory occupying majority of the disk space.
+
+Workaround: You can reduce the Prometheus directory size by changing the metrics retention time configuration. Perform the following steps:
+
+1. Reduce the `retentionTime` Prometheus parameter in the `/opt/yba-ctl/yba-ctl.yml` file.
+1. Run `yba-ctl reconfigure` to regenerate the configuration for the installer.
+1. Verify the decrease in the Prometheus directory size using the following commands:
+
+    ```sh
+    $ cd /opt/yugabyte/data/prometheus/storage && ll
+    $ du -sh
+    ```
