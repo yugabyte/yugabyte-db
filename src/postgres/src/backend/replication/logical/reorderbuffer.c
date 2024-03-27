@@ -446,6 +446,9 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 	tuple->alloc_tuple_size = alloc_len;
 	tuple->tuple.t_data = ReorderBufferTupleBufData(tuple);
 
+	if (IsYugaByteEnabled())
+		tuple->yb_is_omitted = NULL;
+
 	return tuple;
 }
 
@@ -455,6 +458,9 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 void
 ReorderBufferReturnTupleBuf(ReorderBuffer *rb, ReorderBufferTupleBuf *tuple)
 {
+	if (IsYugaByteEnabled() && tuple->yb_is_omitted)
+		pfree(tuple->yb_is_omitted);
+
 	pfree(tuple);
 }
 
@@ -3566,4 +3572,11 @@ restart:
 	if (cmax)
 		*cmax = ent->cmax;
 	return true;
+}
+
+bool *
+YBAllocateIsOmittedArray(ReorderBuffer *rb, int nattrs)
+{
+	return (bool *) MemoryContextAlloc(rb->tup_context,
+									   MAXIMUM_ALIGNOF + sizeof(bool) * nattrs);
 }

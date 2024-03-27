@@ -1132,9 +1132,35 @@ class PgClientServiceImpl::Impl {
   Status GetReplicationSlot(
       const PgGetReplicationSlotRequestPB& req, PgGetReplicationSlotResponsePB* resp,
       rpc::RpcContext* context) {
-    auto stream =
-        VERIFY_RESULT(client().GetCDCStream(ReplicationSlotName(req.replication_slot_name())));
+    std::unordered_map<uint32_t, PgReplicaIdentity> replica_identities;
+    auto stream = VERIFY_RESULT(client().GetCDCStream(
+        ReplicationSlotName(req.replication_slot_name()), &replica_identities));
     stream.ToPB(resp->mutable_replication_slot_info());
+
+    auto m = resp->mutable_replication_slot_info()->mutable_replica_identity_map();
+    for (const auto& replica_identity : replica_identities) {
+      PgReplicaIdentityType replica_identity_value;
+      switch (replica_identity.second) {
+        case PgReplicaIdentity::DEFAULT:
+          replica_identity_value = PgReplicaIdentityType::DEFAULT;
+          break;
+        case PgReplicaIdentity::FULL:
+          replica_identity_value = PgReplicaIdentityType::FULL;
+          break;
+        case PgReplicaIdentity::NOTHING:
+          replica_identity_value = PgReplicaIdentityType::NOTHING;
+          break;
+        case PgReplicaIdentity::CHANGE:
+          replica_identity_value = PgReplicaIdentityType::CHANGE;
+          break;
+        default:
+          RSTATUS_DCHECK(false, InternalError, "Invalid Replica Identity Type");
+      }
+
+      PgReplicaIdentityPB replica_identity_pb;
+      replica_identity_pb.set_replica_identity(replica_identity_value);
+      m->insert({replica_identity.first, std::move(replica_identity_pb)});
+    }
 
     auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
     bool is_slot_active;
@@ -1164,8 +1190,8 @@ class PgClientServiceImpl::Impl {
       const PgGetReplicationSlotStatusRequestPB& req, PgGetReplicationSlotStatusResponsePB* resp,
       rpc::RpcContext* context) {
     // Get the stream_id for the replication slot.
-    auto stream =
-        VERIFY_RESULT(client().GetCDCStream(ReplicationSlotName(req.replication_slot_name())));
+    auto stream = VERIFY_RESULT(client().GetCDCStream(
+        ReplicationSlotName(req.replication_slot_name()), /* replica_identities */ nullptr));
     auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
 
     bool is_slot_active;
