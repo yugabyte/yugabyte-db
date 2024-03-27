@@ -2929,11 +2929,11 @@ AddSimpleNGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 
 	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) accumulatorText,
 														parseState, identifiers,
-														query, BsonTypeId(),
+														query, TEXTOID,
 														NULL));
 	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) accumFunc,
 														parseState, identifiers,
-														query, TEXTOID, NULL));
+														query, BsonTypeId(), NULL));
 	return repathArgs;
 }
 
