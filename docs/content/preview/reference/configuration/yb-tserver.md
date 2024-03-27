@@ -1369,6 +1369,7 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes
 
 Default: `1GB`
 
+<!-- TODO 2024.1 >
 ##### enable_bitmapscan
 
 Enables or disables the query planner's use of bitmap-scan plan types.
@@ -1380,6 +1381,7 @@ Bitmap scans follow the same work_mem behavior as PostgreSQL: each individual bi
 Bitmap scans are only supported for LSM indexes.
 
 Default: false
+-->
 
 ##### yb_bnl_batch_size
 
