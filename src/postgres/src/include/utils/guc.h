@@ -266,6 +266,8 @@ extern bool  yb_bnl_enable_hashing;
 
 extern bool yb_lock_pk_single_rpc;
 
+extern int yb_toast_catcache_threshold;
+
 extern int	temp_file_limit;
 
 extern int	num_temp_buffers;
