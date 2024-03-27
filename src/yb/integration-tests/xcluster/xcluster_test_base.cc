@@ -37,6 +37,7 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -691,16 +692,14 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
   for (auto& tserver : cluster->mini_cluster_->mini_tablet_servers()) {
     RETURN_NOT_OK(Wait(
         [&]() -> Result<bool> {
-          auto safe_time_result =
-              tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+          auto safe_time_result = tserver->server()->GetXClusterContext().GetSafeTime(namespace_id);
           if (!safe_time_result || !*safe_time_result) {
             return false;
           }
           CHECK(safe_time_result.get()->is_valid());
           return true;
         },
-        *deadline,
-        description));
+        *deadline, description));
   }
 
   return Status::OK();
@@ -905,8 +904,7 @@ Status XClusterTestBase::WaitForSafeTime(
     }
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_result =
-              tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+          auto safe_time_result = tserver->server()->GetXClusterContext().GetSafeTime(namespace_id);
           if (!safe_time_result) {
             CHECK(safe_time_result.status().IsTryAgain());
 

@@ -248,6 +248,14 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       continue;
     }
 
+    // Skip generating LSN & txnID for a DDL record and directly add it to the response.
+    if(record->row_message().op() == RowMessage_Op_DDL) {
+      auto records = resp->add_cdc_sdk_proto_records();
+      records->CopyFrom(*record);
+      metadata.ddl_records++;
+      continue;
+    }
+
     // We want to ship all the txns having same commit_time as a single txn. Therefore, when we
     // encounter the first commit_record for a txn in progress, dont ship it right away since
     // there can be more txns at the same commit_time that are not yet popped from PQ. We'll ship
@@ -336,13 +344,17 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   } else {
     VLOG(1) << "Sending non-empty GetConsistentChanges response for stream_id: " << stream_id
             << " with total_records: " << resp->cdc_sdk_proto_records_size()
-            << ", total_txns: " << metadata.txn_ids.size()
-            << ", min_txn_id: " << metadata.min_txn_id << ", max_txn_id: " << metadata.max_txn_id
-            << ", min_lsn: " << metadata.min_lsn << ", max_lsn: " << metadata.max_lsn
+            << ", total_txns: " << metadata.txn_ids.size() << ", min_txn_id: "
+            << ((metadata.min_txn_id == std::numeric_limits<uint32_t>::max()) ? 0
+                                                                              : metadata.min_txn_id)
+            << ", max_txn_id: " << metadata.max_txn_id << ", min_lsn: "
+            << (metadata.min_lsn == std::numeric_limits<uint64_t>::max() ? 0 : metadata.min_lsn)
+            << ", max_lsn: " << metadata.max_lsn
             << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
             << ", begin_records: " << metadata.begin_records
             << ", commit_records: " << metadata.commit_records
-            << ", dml_records: " << metadata.dml_records;
+            << ", dml_records: " << metadata.dml_records
+            << ", ddl_records: " << metadata.ddl_records;
   }
 
   return Status::OK();
@@ -464,7 +476,15 @@ Status CDCSDKVirtualWAL::AddRecordsToTabletQueue(
   std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>& tablet_queue = tablet_queues_[tablet_id];
   if (resp->cdc_sdk_proto_records_size() > 0) {
     for (const auto& record : resp->cdc_sdk_proto_records()) {
-      tablet_queue.push(std::make_shared<CDCSDKProtoRecordPB>(record));
+      // cdc_service sends artificially generated DDL records whenever it has a cache miss while
+      // checking for table schema. These DDL records do not have a commit_time value as they does
+      // not correspond to an actual WAL entry. Hence, it is safe to skip them from adding into the
+      // tablet queue.
+      if (record.row_message().has_commit_time()) {
+        tablet_queue.push(std::make_shared<CDCSDKProtoRecordPB>(record));
+      } else {
+        DCHECK_EQ(record.row_message().op(), RowMessage_Op_DDL);
+      }
     }
   }
 
@@ -505,11 +525,6 @@ Status CDCSDKVirtualWAL::AddRecordToVirtualWalPriorityQueue(
           InternalError, Format("Tablet queue is empty for tablet_id: $0", tablet_id));
     }
     auto record = tablet_queue->front();
-    // TODO: Remove this check once we add support for streaming DDL records.
-    if (record->row_message().op() == RowMessage_Op_DDL) {
-      tablet_queue->pop();
-      continue;
-    }
     bool result = CDCSDKUniqueRecordID::CanFormUniqueRecordId(record);
     if (result) {
       auto unique_id = std::make_shared<CDCSDKUniqueRecordID>(CDCSDKUniqueRecordID(record));

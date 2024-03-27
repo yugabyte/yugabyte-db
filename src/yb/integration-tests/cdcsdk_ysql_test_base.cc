@@ -2592,6 +2592,17 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     }
   }
 
+  void CDCSDKYsqlTest::ValidateColumnCounts(
+      const GetAllPendingChangesResponse& resp, uint32_t excepted_column_counts) {
+    size_t record_size = resp.records.size();
+    for (uint32_t idx = 0; idx < record_size; idx++) {
+      const CDCSDKProtoRecordPB record = resp.records[idx];
+      if (record.row_message().op() == RowMessage::INSERT) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), excepted_column_counts);
+      }
+    }
+  }
+
   void CDCSDKYsqlTest::ValidateInsertCounts(const GetChangesResponsePB& resp,
     uint32_t excepted_insert_counts) {
     uint32_t record_size = resp.cdc_sdk_proto_records_size();
@@ -3676,27 +3687,40 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   }
 
   void CDCSDKYsqlTest::CheckRecordCount(
-      GetAllPendingChangesResponse resp, int expected_dml_records) {
+      GetAllPendingChangesResponse resp, int expected_dml_records, int expected_ddl_records,
+      int expected_min_txn_id) {
     // The record count array in GetAllPendingChangesResponse stores counts of DDL, INSERT, UPDATE,
     // DELETE, READ, TRUNCATE, BEGIN, COMMIT in that order.
     int dml_records =
         resp.record_count[1] + resp.record_count[2] + resp.record_count[3] + resp.record_count[5];
     ASSERT_EQ(dml_records, expected_dml_records);
 
-    // last record received should be a COMMIT.
-    ASSERT_EQ(resp.records.back().row_message().op(), RowMessage::COMMIT);
+    if (expected_ddl_records > 0) {
+      int ddl_records = resp.record_count[0];
+      ASSERT_EQ(ddl_records, expected_ddl_records);
+    }
 
-    // Number of BEGIN & COMMIT should be equal to the txn_id of last received record (i.e COMMIT)
-    // - 1 since transaction generator starts from 2, so first record will have txn_id as 2.
-    auto last_txn_id = resp.records.back().row_message().pg_transaction_id() - 1;
+    size_t idx = resp.records.size() - 1;
+    // Find the last COMMIT record in the response.
+    while(resp.records[idx].row_message().op() != RowMessage_Op_COMMIT) {
+      idx--;
+    }
+    ASSERT_EQ(resp.records[idx].row_message().op(), RowMessage::COMMIT);
+    auto max_txn_id = resp.records[idx].row_message().pg_transaction_id();
+
+    // Number of BEGIN & COMMIT should be equal to the txn_id of last received COMMIT record
+    // - expected_min_txn_id + 1, since transaction generator starts from 2, so first record will
+    // have txn_id as 2.
+    int expected_boundary_records = max_txn_id - expected_min_txn_id + 1;
     int begin_records = resp.record_count[6];
     int commit_records = resp.record_count[7];
-    ASSERT_EQ(begin_records, last_txn_id);
-    ASSERT_EQ(commit_records, last_txn_id);
+    ASSERT_EQ(begin_records, expected_boundary_records);
+    ASSERT_EQ(commit_records, expected_boundary_records);
   }
 
   void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
       const std::vector<CDCSDKProtoRecordPB>& records) {
+    RowMessage_Op prev_op;
     uint64_t prev_commit_time = 0;
     std::string prev_docdb_txn_id = "";
     uint64_t prev_record_time = 0;
@@ -3792,6 +3816,21 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         prev_table_id = record.row_message().table_id();
         prev_primary_key = record.row_message().primary_key();
       }
+
+      if (record.row_message().op() == RowMessage::DDL) {
+        if (prev_op == RowMessage::DDL) {
+          // There can be two DDLs received back to back with the same commit_time.
+          ASSERT_GE(record.row_message().commit_time(), prev_commit_time);
+        } else {
+          // Since DDL are not part of txn, they should have a strictly greater commit_time.
+          ASSERT_GT(record.row_message().commit_time(), prev_commit_time);
+        }
+        ASSERT_FALSE(record.row_message().has_pg_lsn());
+        ASSERT_FALSE(record.row_message().has_pg_transaction_id());
+      }
+
+      prev_op = record.row_message().op();
+
     }
   }
 

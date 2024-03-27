@@ -623,6 +623,18 @@ typedef struct AshMetadata {
   uint8_t addr_family;
 } YBCAshMetadata;
 
+typedef struct PgYCQLStatementStats {
+  int64_t queryid;
+  const char* query;
+  bool is_prepared;
+  int64_t calls;
+  double total_time;
+  double min_time;
+  double max_time;
+  double mean_time;
+  double stddev_time;
+} YCQLStatementStats;
+
 // Struct to store ASH samples in the circular buffer.
 typedef struct AshSample {
   // Metadata of the sample.

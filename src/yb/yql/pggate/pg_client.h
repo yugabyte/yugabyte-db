@@ -260,6 +260,8 @@ class PgClient {
 
   Status CancelTransaction(const unsigned char* transaction_id);
 
+  Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

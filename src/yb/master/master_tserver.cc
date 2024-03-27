@@ -29,6 +29,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/metric_entity.h"
@@ -189,6 +190,12 @@ rpc::Messenger* MasterTabletServer::GetMessenger(ash::Component component) const
 
 void MasterTabletServer::ClearAllMetaCachesOnServer() {
   client()->ClearAllMetaCachesOnServer();
+}
+
+Status MasterTabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+    tserver::PgYCQLStatementStatsResponsePB* resp) const {
+  LOG(FATAL) << "Unexpected call of YCQLStatementStats()";
+  return Status::OK();
 }
 
 } // namespace master

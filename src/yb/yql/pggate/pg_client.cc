@@ -1124,6 +1124,13 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats() {
+    tserver::PgYCQLStatementStatsRequestPB req;
+    tserver::PgYCQLStatementStatsResponsePB resp;
+    RETURN_NOT_OK(proxy_->YCQLStatementStats(req, &resp, PrepareController()));
+    return resp;
+  }
+
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
     cdc::InitVirtualWALForCDCRequestPB req;
@@ -1463,6 +1470,10 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgClient::GetReplicationSlot(
 
 Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory() {
   return impl_->ActiveSessionHistory();
+}
+
+Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
+  return impl_->YCQLStatementStats();
 }
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(

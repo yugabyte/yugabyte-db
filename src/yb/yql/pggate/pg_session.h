@@ -369,6 +369,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
 
+  Result<yb::tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<yb::tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
  private:

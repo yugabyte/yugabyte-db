@@ -27,7 +27,7 @@ To use `pg_hint_plan` effectively, you need thorough knowledge of how your appli
 
 ## Configure pg_hint_plan
 
-pg_hint_plan is pre-configured, and enabled by default. The following YSQL parameters control pg_hint_plan:
+pg_hint_plan is pre-configured, and enabled by default. The following YSQL configuration parameters control pg_hint_plan:
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |
@@ -46,7 +46,6 @@ yugabyte=# SET pg_hint_plan.enable_hint=ON;
 {{<note title="Enable pg_hint_plan for all sessions">}}
 You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-server-options).
 {{</note>}}
-
 
 ### Turn on debug output
 
@@ -158,6 +157,7 @@ Scan method hints enforce the scanning method on tables when specified along wit
 | NoIndexOnlyScan(table) | Do not enable IndexOnlyScan on the table. |
 | IndexScanRegexp(table regex) | Enable index scan on the table whose indices match with the regular expression defined by `regex`. |
 | IndexOnlyScanRegexp(table regex) | Do not enable index scan on the table whose indices match with the regular expression defined by `regex`. |
+<!-- TODO 2024.1 | BitmapScan(table) | Enable BitmapScan on the table. | -->
 
 In the following example, the hint `/*+SeqScan(t2)*/` allows table `t2` to be scanned using `SeqScan`.
 
@@ -331,6 +331,7 @@ Join method hints enforce the join methods for SQL statements. Using pg_hint_pla
 | NoHashJoin(t1 t2 t3 ...) | Do not join t1, t2, and t3 using HashJoin.|
 | NestLoop(t1 t2 t3 ...) | Join t1, t2, and t3 using NestLoop join. |
 | NoNestLoop(t1 t2 t3 ...) | Do not join t1, t2, and t3 using NestLoop join.|
+| [YbBatchedNL](../../ysql-language-features/join-strategies/#batched-nested-loop-join-bnl)(t1 t2) | Join t1 and t2 using YbBatchedNL join.|
 
 ```sql
 /*+HashJoin(t1 t2)*/
@@ -484,6 +485,7 @@ error hint:
 
 Planner method configuration parameters provide a crude method of influencing the query plans chosen by the query optimizer. If the default plan chosen by the optimizer for a particular query is not optimal, a temporary solution is to use one of these configuration parameters to force the optimizer to choose a different plan. YugabyteDB supports the following configuration parameters:
 
+<!-- TODO 2024.1 - enable_bitmapscan -->
 - enable_hashagg
 - enable_hashjoin
 - enable_indexscan

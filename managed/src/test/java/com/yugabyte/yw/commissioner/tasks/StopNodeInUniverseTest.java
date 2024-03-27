@@ -79,6 +79,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.provider = defaultProvider.getUuid().toString();
+    userIntent.ybSoftwareVersion = "2.21.1.1-b1";
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
