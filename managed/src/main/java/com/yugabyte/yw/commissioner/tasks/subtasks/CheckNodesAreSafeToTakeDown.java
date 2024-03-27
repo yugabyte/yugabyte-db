@@ -4,9 +4,12 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -87,10 +90,14 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
             .getConfForScope(universe, UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout)
             .toMillis();
 
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+
     try (YBClient ybClient = getClient()) {
       AtomicInteger errorCnt = new AtomicInteger();
       List<String> lastErrors = new ArrayList<>();
-      List<Pair<Collection<String>, Collection<String>>> ipsList = splitIps();
+      List<Pair<Collection<String>, Collection<String>>> ipsList = splitIps(universe, cloudEnabled);
       boolean result =
           doWithExponentialTimeout(
               INITIAL_DELAY_MS,
@@ -154,26 +161,40 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
     }
   }
 
-  private List<Pair<Collection<String>, Collection<String>>> splitIps() {
+  private List<Pair<Collection<String>, Collection<String>>> splitIps(
+      Universe universe, boolean cloudEnabled) {
     List<Pair<Collection<String>, Collection<String>>> result = new ArrayList<>();
     if (!taskParams().isRolling) {
-      result.add(new Pair<>(extractIps(taskParams().masters), extractIps(taskParams().tservers)));
+      result.add(
+          new Pair<>(
+              extractIps(universe, taskParams().masters, cloudEnabled),
+              extractIps(universe, taskParams().tservers, cloudEnabled)));
     } else {
       for (NodeDetails master : taskParams().masters) {
-        result.add(new Pair<>(Collections.singletonList(getIp(master)), Collections.emptyList()));
+        result.add(
+            new Pair<>(
+                Collections.singletonList(getIp(universe, master, cloudEnabled)),
+                Collections.emptyList()));
       }
       for (NodeDetails tserver : taskParams().tservers) {
-        result.add(new Pair<>(Collections.emptyList(), Collections.singletonList(getIp(tserver))));
+        result.add(
+            new Pair<>(
+                Collections.emptyList(),
+                Collections.singletonList(getIp(universe, tserver, cloudEnabled))));
       }
     }
     return result;
   }
 
-  private Collection<String> extractIps(Collection<NodeDetails> nodes) {
-    return nodes.stream().map(this::getIp).collect(Collectors.toList());
+  private Collection<String> extractIps(
+      Universe universe, Collection<NodeDetails> nodes, boolean cloudEnabled) {
+    return nodes.stream().map(n -> getIp(universe, n, cloudEnabled)).collect(Collectors.toList());
   }
 
-  private String getIp(NodeDetails nodeDetails) {
+  private String getIp(Universe universe, NodeDetails nodeDetails, boolean cloudEnabled) {
+    if (GFlagsUtil.isUseSecondaryIP(universe, nodeDetails, cloudEnabled)) {
+      return nodeDetails.cloudInfo.secondary_private_ip;
+    }
     return nodeDetails.cloudInfo.private_ip;
   }
 
