@@ -148,6 +148,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     OpId op_id = OpId::Max();
     int64_t cdc_sdk_latest_active_time = 0;
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
+    uint64_t confirmed_flush_lsn = 0;
+    uint64_t restart_lsn = 0;
+    uint32_t xmin = 0;
+    uint64_t record_id_commit_time = 0;
   };
 
   struct GetAllPendingChangesResponse {
@@ -401,6 +405,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
       const bool& validate_third_column = false, const int32_t& value2 = 0);
 
+  void AssertKeyValue(const CDCSDKProtoRecordPB& record1, const CDCSDKProtoRecordPB& record2);
+
+  void AssertCDCSDKProtoRecords(
+      const CDCSDKProtoRecordPB& record1, const CDCSDKProtoRecordPB& record2);
+
   void AssertBeforeImageKeyValue(
       const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
       const bool& validate_third_column = false, const int32_t& value2 = 0);
@@ -564,6 +573,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void ValidateColumnCounts(const GetChangesResponsePB& resp, uint32_t excepted_column_counts);
 
+  void ValidateColumnCounts(
+      const GetAllPendingChangesResponse& resp, uint32_t excepted_column_counts);
+
   void ValidateInsertCounts(const GetChangesResponsePB& resp, uint32_t excepted_insert_counts);
 
   void WaitUntilSplitIsSuccesful(
@@ -626,9 +638,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckRecordsConsistency(const std::vector<CDCSDKProtoRecordPB>& records);
 
-  void CheckRecordCount(GetAllPendingChangesResponse resp, int expected_dml_records);
+  void CheckRecordCount(
+      GetAllPendingChangesResponse resp, int expected_dml_records, int expected_ddl_records = 0,
+      int expected_min_txn_id = 2 /* VWAL's min_txn_id */);
 
-  void CheckRecordsConsistencyWithWriteId(const std::vector<CDCSDKProtoRecordPB>& records);
+  void CheckRecordsConsistencyFromVWAL(const std::vector<CDCSDKProtoRecordPB>& records);
 
   void GetRecordsAndSplitCount(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,
