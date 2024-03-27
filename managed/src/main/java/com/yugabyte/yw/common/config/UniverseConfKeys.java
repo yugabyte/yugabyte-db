@@ -108,6 +108,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "Single connection mode makes it work even on tiny DB nodes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> ybEditWaitDurationBeforeBlacklistClear =
+      new ConfKeyInfo<>(
+          "yb.edit.wait_before_blacklist_clear",
+          ScopeType.UNIVERSE,
+          "YB edit sleep time in ms before blacklist clear in ms",
+          "Sleep time before clearing nodes from blacklist in ms",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> ybEditWaitForLeadersOnPreferred =
       new ConfKeyInfo<>(
           "yb.edit.wait_for_leaders_on_preferred",

@@ -688,6 +688,32 @@ For details on the expected behaviour when used with the sequence cache clause, 
 
 Default: `100`
 
+##### --ysql_yb_fetch_size_limit
+
+Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
+
+You can also specify the value as a string. For example, you can set it to `'10MB'`.
+
+You should have at least one of row limit or size limit set.
+
+If both `--ysql_yb_fetch_row_limit` and `--ysql_yb_fetch_size_limit` are greater than zero, then limit is taken as the lower bound of the two values.
+
+See also the [yb_fetch_size_limit](#yb-fetch-size-limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 0
+
+##### --ysql_yb_fetch_row_limit
+
+Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+
+You should have at least one of row limit or size limit set.
+
+If both `--ysql_yb_fetch_row_limit` and `--ysql_yb_fetch_size_limit` are greater than zero, then limit is taken as the lower bound of the two values.
+
+See also the [yb_fetch_row_limit](#yb-fetch-row-limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 1024
+
 ##### --ysql_log_statement
 
 Specifies the types of YSQL statements that should be logged.
@@ -1233,9 +1259,31 @@ type and help information regardless of the setting of this flag.
 
 Default: `true`
 
+## Advanced flags
+
+##### backfill_index_client_rpc_timeout_ms
+
+Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
+
+Default: 1 day
+
+##### backfill_index_timeout_grace_margin_ms
+
+The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
+
+Default: -1, where the system automatically calculates the value to be approximately 1 second.
+
+##### backfill_index_write_batch_size
+
+The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
+
+Default: 128
+
 ## PostgreSQL server options
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
+
+### Modify configuration parameters
 
 You can modify these parameters in the following ways:
 
@@ -1289,6 +1337,8 @@ You can modify these parameters in the following ways:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
+### YSQL configuration parameters
+
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
 
 ##### log_line_prefix
@@ -1322,6 +1372,36 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes
 
 Default: `1GB`
 
+##### yb_bnl_batch_size
+
+Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+Default: 1024
+
+##### yb_enable_batchednl
+
+Enable or disable the query planner's use of Batched Nested Loop Join.
+
+Default: true
+
+##### yb_fetch_size_limit
+
+Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+
+If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
+
+See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If the flag is set, this parameter takes precedence.
+
+Default: 0
+
+##### yb_fetch_row_limit
+
+Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+
+See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
+
+Default: 1024
+
 ##### default_transaction_isolation
 
 Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
@@ -1329,26 +1409,6 @@ Specifies the default isolation level of each new transaction. Every transaction
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
 Default: `read committed`
-
-## Advanced flags
-
-##### backfill_index_client_rpc_timeout_ms
-
-Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
-
-Default: 1 day
-
-##### backfill_index_timeout_grace_margin_ms
-
-The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
-
-Default: -1, where the system automatically calculates the value to be approximately 1 second.
-
-##### backfill_index_write_batch_size
-
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
-
-Default: 128
 
 ## Admin UI
 

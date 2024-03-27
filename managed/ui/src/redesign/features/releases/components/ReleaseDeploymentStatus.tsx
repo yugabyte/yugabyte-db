@@ -59,6 +59,7 @@ export const DeploymentStatus = ({ data }: ReleaseDeploymentStatusProps) => {
       })}
     >
       <span
+        data-testid={`DeploymentStatus-${deploymentStatus}`}
         className={clsx({
           [helperClasses.smallerReleaseText]: true,
           [helperClasses.deploymentGreenTag]: data.state === ReleaseState.ACTIVE,

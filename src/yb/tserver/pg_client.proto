@@ -108,6 +108,9 @@ service PgClientService {
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
   };
+
+  rpc YCQLStatementStats(PgYCQLStatementStatsRequestPB)
+      returns (PgYCQLStatementStatsResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -904,4 +907,24 @@ message PgFetchDataRequestPB {
 message PgFetchDataResponsePB {
   AppStatusPB status = 1;
   uint32 sidecar = 2;
+}
+
+message PgYCQLStatementStatsRequestPB {}
+
+message PgYCQLStatementStatsResponsePB {
+  AppStatusPB status = 1;
+  repeated YCQLStatementStatsPB statements = 2;
+}
+
+message YCQLStatementStatsPB {
+  int64 queryid = 1;
+  string query = 2;
+  bool is_prepared = 3;
+  int64 calls = 4;
+  // Time in ms
+  double total_time = 5;
+  double min_time = 6;
+  double max_time = 7;
+  double mean_time = 8;
+  double stddev_time = 9;
 }
