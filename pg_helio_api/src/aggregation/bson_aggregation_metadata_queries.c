@@ -50,12 +50,14 @@
 #include "utils/version_utils.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
+#include "api_hooks.h"
 
 static Query * GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
+												bool addDistributedMetadata,
 												AggregationPipelineBuildContext *context);
 static Query * HandleListCollectionsProjector(Query *query,
 											  AggregationPipelineBuildContext *context,
-											  bool nameOnly);
+											  bool nameOnly, bool addDistributedMetadata);
 static Query * GenerateBaseListIndexesQuery(Datum databaseDatum, const
 											StringView *collectionName,
 											AggregationPipelineBuildContext *context);
@@ -114,6 +116,7 @@ GenerateListCollectionsQuery(Datum databaseDatum, pgbson *listCollectionsSpec,
 
 	bson_value_t filter = { 0 };
 	bool nameOnly = false;
+	bool distributedMetadata = false;
 
 	while (bson_iter_next(&listCollectionsIter))
 	{
@@ -141,6 +144,10 @@ GenerateListCollectionsQuery(Datum databaseDatum, pgbson *listCollectionsSpec,
 		{
 			nameOnly = BsonValueAsBool(value);
 		}
+		else if (StringViewEqualsCString(&keyView, "addDistributedMetadata"))
+		{
+			distributedMetadata = BsonValueAsBool(value);
+		}
 		else if (StringViewEqualsCString(&keyView, "authorizedCollections"))
 		{
 			/* TODO: Handle this */
@@ -155,10 +162,12 @@ GenerateListCollectionsQuery(Datum databaseDatum, pgbson *listCollectionsSpec,
 		}
 	}
 
-	Query *query = GenerateBaseListCollectionsQuery(databaseDatum, nameOnly, &context);
+	Query *query = GenerateBaseListCollectionsQuery(databaseDatum, nameOnly,
+													distributedMetadata, &context);
 	queryData->namespaceName = context.namespaceName;
 
-	query = HandleListCollectionsProjector(query, &context, nameOnly);
+	query = HandleListCollectionsProjector(query, &context, nameOnly,
+										   distributedMetadata);
 
 	/* apply match */
 	if (filter.value_type != BSON_TYPE_EOD)
@@ -455,6 +464,7 @@ GenerateBaseListIndexesQuery(Datum databaseDatum, const StringView *collectionNa
  */
 static Query *
 GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
+								 bool addDistributedMetadata,
 								 AggregationPipelineBuildContext *context)
 {
 	Query *query = makeNode(Query);
@@ -515,6 +525,11 @@ GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
 	TargetEntry *baseTargetEntry = makeTargetEntry((Expr *) funcExpr, 1, "document",
 												   false);
 	query->targetList = list_make1(baseTargetEntry);
+
+	if (addDistributedMetadata)
+	{
+		query = MutateListCollectionsQueryForDistribution(query);
+	}
 
 	return query;
 }
@@ -688,7 +703,7 @@ WriteConditionWithIfViewsNull(pgbson_writer *writer,
  */
 static Query *
 HandleListCollectionsProjector(Query *query, AggregationPipelineBuildContext *context,
-							   bool nameOnly)
+							   bool nameOnly, bool addDistributedMetadata)
 {
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
@@ -770,6 +785,12 @@ HandleListCollectionsProjector(Query *query, AggregationPipelineBuildContext *co
 
 		WriteConditionWithIfViewsNull(&writer, "idIndex", 7, &viewValue,
 									  &collectionValue);
+	}
+
+	if (addDistributedMetadata)
+	{
+		PgbsonWriterAppendInt32(&writer, "shardCount", 10, 1);
+		PgbsonWriterAppendInt32(&writer, "colocationId", 12, 1);
 	}
 
 	pgbson *bson = PgbsonWriterGetPgbson(&writer);

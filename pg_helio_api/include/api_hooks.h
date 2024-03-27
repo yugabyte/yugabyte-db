@@ -12,6 +12,7 @@
 #define EXTENSION_API_HOOKS_H
 
 #include "api_hooks_common.h"
+#include "metadata/collection.h"
 
 /* Section: General Extension points */
 
@@ -68,7 +69,7 @@ bool IsShardTableForMongoTable(const char *relName, const char *numEndPointer);
  * Optionally supports colocating the distributed table with another distributed table.
  */
 void DistributePostgresTable(const char *postgresTable, const char *distributionColumn,
-							 const char *colocateWith);
+							 const char *colocateWith, bool isUnsharded);
 
 /*
  * Given a current table schema built up to create a postgres table, adds a hook to
@@ -101,5 +102,18 @@ void PostProcessCollectionDrop(uint64_t collectionId, text *databaseName,
  * For a base RTE (table)
  */
 List * ModifyTableColumnNames(List *tableColumns);
+
+/*
+ * Hook for handling colocation of tables
+ */
+void HandleColocation(MongoCollection *collection, const bson_value_t *colocationOptions);
+
+
+/*
+ * Mutate's listCollections query generation for distribution data.
+ * This is an optional hook and can manage listCollection to update shardCount
+ * and colocation information as required. Noops for single node.
+ */
+Query * MutateListCollectionsQueryForDistribution(Query *cosmosMetadataQuery);
 
 #endif

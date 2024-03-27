@@ -13,11 +13,11 @@
 #include <utils/builtins.h>
 #include <utils/snapmgr.h>
 
-#include "api_hooks.h"
 #include "commands/parse_error.h"
 #include "commands/commands_common.h"
 #include "utils/mongo_errors.h"
 #include "metadata/collection.h"
+#include "api_hooks.h"
 #include "metadata/index.h"
 #include "metadata/metadata_cache.h"
 #include "utils/guc_utils.h"
@@ -45,9 +45,14 @@ typedef struct
  */
 typedef struct
 {
+	/* Index update options */
 	CollModIndexOptions index;
 
+	/* A view definition it is a view */
 	ViewDefinition viewDefinition;
+
+	/* The name of the collection to colocate this collection with */
+	bson_value_t colocationOptions;
 
 	/* TODO: Add more options when they are supported e.g.: Validators etc */
 } CollModOptions;
@@ -66,7 +71,9 @@ typedef enum CollModSpecFlags
 	/* Views update */
 	HAS_VIEW_OPTION = 1 << 5,
 
-	/* TODO: More OPTIONS to follow */
+	HAS_COLOCATION = 1 << 6
+
+	                 /* TODO: More OPTIONS to follow */
 } CollModSpecFlags;
 
 
@@ -163,6 +170,7 @@ command_coll_mod(PG_FUNCTION_ARGS)
 
 	if (specFlags & HAS_VIEW_OPTION)
 	{
+		ReportFeatureUsage(FEATURE_COMMAND_COLLMOD_VIEW);
 		ModifyViewDefinition(databaseDatum, collection, &collModOptions.viewDefinition,
 							 &writer);
 	}
@@ -179,6 +187,18 @@ command_coll_mod(PG_FUNCTION_ARGS)
 		/* Index related modification requested */
 		ModifyIndexSpecsInCollection(collection, &collModOptions.index,
 									 &specFlags, &writer);
+	}
+
+	if (specFlags & HAS_COLOCATION)
+	{
+		ReportFeatureUsage(FEATURE_COMMAND_COLLMOD_COLOCATION);
+		if (collection->viewDefinition != NULL)
+		{
+			ereport(ERROR, (errcode(MongoInvalidOptions),
+							errmsg("Cannot specify colocation on a view")));
+		}
+
+		HandleColocation(collection, &collModOptions.colocationOptions);
 	}
 
 	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
@@ -226,6 +246,12 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 		{
 			EnsureTopLevelFieldType("collMod.pipeline", &iter, BSON_TYPE_ARRAY);
 			collModOptions->viewDefinition.pipeline = *value;
+		}
+		else if (strcmp(key, "colocation") == 0)
+		{
+			EnsureTopLevelFieldType("collMod.colocation", &iter, BSON_TYPE_DOCUMENT);
+			collModOptions->colocationOptions = *value;
+			specFlags |= HAS_COLOCATION;
 		}
 		else if (IsCommonSpecIgnoredField(key))
 		{

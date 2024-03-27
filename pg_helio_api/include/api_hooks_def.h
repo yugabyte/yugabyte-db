@@ -15,6 +15,8 @@
 
 #include "api_hooks_common.h"
 
+#include <nodes/parsenodes.h>
+
 /* Section: General Extension points */
 
 /*
@@ -57,7 +59,8 @@ extern RunQueryWithCommutativeWrites_HookType run_query_with_commutative_writes_
  */
 typedef void (*DistributePostgresTable_HookType)(const char *postgresTable, const
 												 char *distributionColumn,
-												 const char *colocateWith);
+												 const char *colocateWith,
+												 bool isUnsharded);
 extern DistributePostgresTable_HookType distribute_postgres_table_hook;
 
 /*
@@ -120,6 +123,14 @@ typedef bool (*IsShardTableForMongoTable_HookType)(const char *relName, const
 
 extern IsShardTableForMongoTable_HookType is_shard_table_for_mongo_table_hook;
 
+typedef void (*HandleColocation_HookType)(MongoCollection *collection,
+										  const bson_value_t *colocationOptions);
+
+extern HandleColocation_HookType handle_colocation_hook;
+
+typedef Query *(*RewriteListCollectionsQueryForDistribution_HookType)(Query *query);
+extern RewriteListCollectionsQueryForDistribution_HookType
+	rewrite_list_collections_query_hook;
 
 /*
  * Hook for creating an update tracker if tracking is enabled.

@@ -200,6 +200,9 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_COMMAND_UPDATE] = "command_update",
 	[FEATURE_COMMAND_VALIDATE_REPAIR] = "validate_repair",
 
+	[FEATURE_COMMAND_COLLMOD_VIEW] = "collMod_view",
+	[FEATURE_COMMAND_COLLMOD_COLOCATION] = "collMod_colocation",
+
 	/* Feature Mapping region - Create index types */
 	[FEATURE_CREATE_INDEX_2D] = "create_index_2d",
 	[FEATURE_CREATE_INDEX_2DSPHERE] = "create_index_2dsphere",

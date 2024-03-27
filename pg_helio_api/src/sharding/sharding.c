@@ -172,7 +172,9 @@ command_shard_collection(PG_FUNCTION_ARGS)
 	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
 
 	const char *colocateWith = NULL;
-	DistributePostgresTable(tmpDataTableName, "shard_key_value", colocateWith);
+	bool isUnsharded = false;
+	DistributePostgresTable(tmpDataTableName, "shard_key_value", colocateWith,
+							isUnsharded);
 	PostProcessShardCollection(tmpDataTableName,
 							   collection->collectionId,
 							   DatumGetTextP(databaseDatum),

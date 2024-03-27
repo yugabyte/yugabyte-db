@@ -116,7 +116,9 @@ DistributeCrudFunctions()
 	sprintf(changesRelation, "%s.changes", ApiDataSchemaName);
 	const char *distributionColumn = "shard_key_value";
 	const char *colocateWith = "none";
-	DistributePostgresTable(changesRelation, distributionColumn, colocateWith);
+	bool isUnsharded = false;
+	DistributePostgresTable(changesRelation, distributionColumn, colocateWith,
+							isUnsharded);
 
 	StringInfo relationName = makeStringInfo();
 

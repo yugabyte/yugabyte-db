@@ -435,13 +435,6 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 					 errmsg("argument %d must be a text", i)));
 		}
 
-		if (types[i + 1] != BsonTypeId())
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("argument %d must be a bson", i + 1)));
-		}
-
 		text *pathText = DatumGetTextP(args[i]);
 		char *path = (char *) VARDATA_ANY(pathText);
 		int len = VARSIZE_ANY_EXHDR(pathText);
@@ -466,11 +459,26 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		{
 			PgbsonWriterAppendNull(&writer, path, len);
 		}
-		else
+		else if (types[i + 1] == BsonTypeId())
 		{
 			pgbsonelement elem;
-			PgbsonToSinglePgbsonElement(DatumGetPgBson(args[i + 1]), &elem);
-			PgbsonWriterAppendValue(&writer, path, len, &elem.bsonValue);
+			if (TryGetSinglePgbsonElementFromPgbson(DatumGetPgBson(args[i + 1]), &elem))
+			{
+				PgbsonWriterAppendValue(&writer, path, len, &elem.bsonValue);
+			}
+			else
+			{
+				ereport(ERROR, (errcode(MongoBadValue), (errmsg(
+															 "Expecting a single element value"))));
+			}
+		}
+		else
+		{
+			pgbson_element_writer elementWriter;
+			bool isNull = false;
+			PgbsonInitObjectElementWriter(&writer, &elementWriter, path, len);
+			PgbsonElementWriterWriteSQLValue(&elementWriter, isNull, args[i + 1],
+											 types[i + 1]);
 		}
 	}
 

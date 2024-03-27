@@ -11,6 +11,7 @@
 #include <utils/guc.h>
 #include <limits.h>
 
+#include "metadata/collection.h"
 #include "io/helio_bson_core.h"
 #include "lib/stringinfo.h"
 #include "api_hooks.h"
@@ -30,6 +31,9 @@ PostProcessCollectionDrop_HookType post_process_drop_collection_hook = NULL;
 ModifyTableColumnNames_HookType modify_table_column_names_hook = NULL;
 RunQueryWithNestedDistribution_HookType run_query_with_nested_distribution_hook = NULL;
 IsShardTableForMongoTable_HookType is_shard_table_for_mongo_table_hook = NULL;
+HandleColocation_HookType handle_colocation_hook = NULL;
+RewriteListCollectionsQueryForDistribution_HookType rewrite_list_collections_query_hook =
+	NULL;
 
 
 /*
@@ -136,12 +140,13 @@ IsShardTableForMongoTable(const char *relName, const char *numEndPointer)
  */
 void
 DistributePostgresTable(const char *postgresTable, const char *distributionColumn,
-						const char *colocateWith)
+						const char *colocateWith, bool isUnsharded)
 {
 	/* Noop for single node scenarios: Don't do anything unless overriden */
 	if (distribute_postgres_table_hook != NULL)
 	{
-		distribute_postgres_table_hook(postgresTable, distributionColumn, colocateWith);
+		distribute_postgres_table_hook(postgresTable, distributionColumn, colocateWith,
+									   isUnsharded);
 	}
 }
 
@@ -229,4 +234,27 @@ ModifyTableColumnNames(List *inputColumnNames)
 	}
 
 	return inputColumnNames;
+}
+
+
+void
+HandleColocation(MongoCollection *collection, const bson_value_t *colocationOptions)
+{
+	/* By default single node collections are always colocated */
+	if (handle_colocation_hook != NULL)
+	{
+		handle_colocation_hook(collection, colocationOptions);
+	}
+}
+
+
+Query *
+MutateListCollectionsQueryForDistribution(Query *cosmosMetadataQuery)
+{
+	if (rewrite_list_collections_query_hook != NULL)
+	{
+		return rewrite_list_collections_query_hook(cosmosMetadataQuery);
+	}
+
+	return NULL;
 }

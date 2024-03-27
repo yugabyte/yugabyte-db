@@ -173,6 +173,7 @@ CreatePostgresDataTable(uint64_t collectionId)
 
 	bool readOnly = false;
 	bool isNull = false;
+	bool isUnsharded = true;
 
 	/* Assuming it didn't throw, it's a success */
 	ExtensionExecuteQueryViaSPI(createTableStringInfo->data, readOnly, SPI_OK_UTILITY,
@@ -196,7 +197,8 @@ CreatePostgresDataTable(uint64_t collectionId)
 								&isNull);
 
 	const char *colocateWith = NULL;
-	DistributePostgresTable(dataTableNameInfo->data, "shard_key_value", colocateWith);
+	DistributePostgresTable(dataTableNameInfo->data, "shard_key_value", colocateWith,
+							isUnsharded);
 
 	resetStringInfo(createTableStringInfo);
 	appendStringInfo(createTableStringInfo,
@@ -252,7 +254,8 @@ CreatePostgresDataTable(uint64_t collectionId)
 								&isNull);
 
 	colocateWith = dataTableNameInfo->data;
-	DistributePostgresTable(retryTableNameInfo->data, "shard_key_value", colocateWith);
+	DistributePostgresTable(retryTableNameInfo->data, "shard_key_value", colocateWith,
+							isUnsharded);
 	return dataTableNameInfo->data;
 }
 
