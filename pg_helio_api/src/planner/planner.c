@@ -256,16 +256,16 @@ TrimPrimaryKeyQuals(List *restrictInfo, IndexPath *primaryKeyPath)
 		}
 	}
 
-	if (objectIdColumnFilter.value_type == BSON_TYPE_EOD)
-	{
-		return;
-	}
-
 	/* Deterministically pick the primary key for $in/$eq similar to the path below */
 	if (opNo == BsonEqualOperatorId() || IsA(objectIdFilter->clause, ScalarArrayOpExpr))
 	{
 		primaryKeyPath->path.startup_cost = 0;
 		primaryKeyPath->path.total_cost = 0;
+	}
+
+	if (objectIdColumnFilter.value_type == BSON_TYPE_EOD)
+	{
+		return;
 	}
 
 	foreach(cell, restrictInfo)
