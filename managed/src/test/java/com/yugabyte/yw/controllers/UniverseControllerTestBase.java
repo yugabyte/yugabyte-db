@@ -39,6 +39,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
@@ -120,6 +121,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected ReleaseManager.ReleaseMetadata mockYbcReleaseMetadata;
   protected KubernetesManagerFactory kubernetesManagerFactory;
   protected CloudUtilFactory mockCloudUtilFactory;
+  protected ReleasesUtils mockReleasesUtils;
 
   protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
     return applicationBuilder;
@@ -146,6 +148,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     mockQueryHelper = mock(QueryHelper.class);
     kubernetesManagerFactory = mock(KubernetesManagerFactory.class);
     mockCloudUtilFactory = mock(CloudUtilFactory.class);
+    mockReleasesUtils = mock(ReleasesUtils.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
@@ -258,7 +261,9 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
 
     mockReleaseContainer =
-        spy(new ReleaseContainer(mockReleaseMetadata, mockCloudUtilFactory, mockRuntimeConfig));
+        spy(
+            new ReleaseContainer(
+                mockReleaseMetadata, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
     when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(mockReleaseContainer);
     doReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz")
         .when(mockReleaseContainer)
