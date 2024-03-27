@@ -1360,33 +1360,12 @@ void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server,
   cql_stmt_provider_.store(stmt_provider);
 }
 
-rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {
-  switch (component) {
-    case ash::Component::kYSQL:
-    case ash::Component::kMaster:
-      return nullptr;
-    case ash::Component::kTServer:
-      return messenger();
-    case ash::Component::kYCQL:
-      auto* cql_server = cql_server_.load();
-      return (cql_server ? cql_server->messenger() : nullptr);
-  }
-  FATAL_INVALID_ENUM_VALUE(ash::Component, component);
-}
-
 Status TabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const {
     auto* cql_stmt_provider = cql_stmt_provider_.load();
     SCHECK_NOTNULL(cql_stmt_provider);
     RETURN_NOT_OK(cql_stmt_provider->YCQLStatementStats(req, resp));
     return Status::OK();
-}
-
-void TabletServer::ClearAllMetaCachesOnServer() {
-  if (auto xcluster_consumer = GetXClusterConsumer()) {
-    xcluster_consumer->ClearAllClientMetaCaches();
-  }
-  client()->ClearAllMetaCachesOnServer();
 }
 
 rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {

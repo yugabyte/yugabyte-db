@@ -345,10 +345,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void ClearAllMetaCachesOnServer() override;
 
-  void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
-
-  void ClearAllMetaCachesOnServer() override;
-
  protected:
   virtual Status RegisterServices();
 
