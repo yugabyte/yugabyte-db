@@ -85,11 +85,42 @@ var createGCPProviderCmd = &cobra.Command{
 		if len(ybFirewallTags) > 0 {
 			gcpCloudInfo.SetYbFirewallTags(ybFirewallTags)
 		}
-		useHostVpc, err := cmd.Flags().GetBool("use-host-vpc")
+
+		network, err := cmd.Flags().GetString("network")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		gcpCloudInfo.SetUseHostVPC(useHostVpc)
+
+		createVpc, err := cmd.Flags().GetBool("create-vpc")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if createVpc {
+			gcpCloudInfo.SetUseHostVPC(false)
+			if len(network) > 0 {
+				gcpCloudInfo.SetDestVpcId(network)
+			} else {
+				errMessage := "Network required if create-vpc is set\n"
+				logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
+			}
+		} else {
+			useHostVpc, err := cmd.Flags().GetBool("use-host-vpc")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			// useHostVPC is true when we specify existing VPC and Use VPC from YBA
+			// Difference is providing the network value
+			// https://github.com/yugabyte/yugabyte-db/blob/bbfd0affe1f2e668dec9f1fe8cdbdea02baf8d6c/managed/src/main/java/com/yugabyte/yw/commissioner/tasks/CloudBootstrap.java#L102
+			gcpCloudInfo.SetUseHostVPC(true)
+			if !useHostVpc {
+				if len(network) > 0 {
+					gcpCloudInfo.SetDestVpcId(network)
+				} else {
+					errMessage := "Network required if use-host-vpc is not set\n"
+					logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
+				}
+			}
+		}
 
 		projectID, err := cmd.Flags().GetString("project-id")
 		if err != nil {
@@ -103,15 +134,8 @@ var createGCPProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(projectID) > 0 {
+		if len(hostProjectID) > 0 {
 			gcpCloudInfo.SetSharedVPCProject(hostProjectID)
-		}
-		network, err := cmd.Flags().GetString("network")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if len(network) > 0 {
-			gcpCloudInfo.SetDestVpcId(network)
 		}
 
 		airgapInstall, err := cmd.Flags().GetBool("airgap-install")
@@ -208,15 +232,21 @@ func init() {
 				formatter.GreenColor),
 			util.GCPCredentialsEnv))
 	createGCPProviderCmd.Flags().Bool("use-host-credentials", false,
-		"[Optional] Enabling YugabyteDB Anywhere Host credentials in GCP, defaults to false.")
+		"[Optional] Enabling YugabyteDB Anywhere Host credentials in GCP. (default false)")
 
 	createGCPProviderCmd.Flags().String("network", "",
-		"[Required] Custom GCE network name.")
-	createGCPProviderCmd.MarkFlagRequired("network")
+		fmt.Sprintf("[Optional] Custom GCE network name. %s",
+			formatter.Colorize("Required if create-vpc is true or use-host-vpc is false.",
+				formatter.GreenColor)))
 	createGCPProviderCmd.Flags().String("yb-firewall-tags", "",
 		"[Optional] Tags for firewall rules in GCP.")
-	createGCPProviderCmd.Flags().Bool("use-host-vpc", true,
-		"[Optional] Enabling YugabyteDB Anywhere Host VPC in GCP.")
+	createGCPProviderCmd.Flags().Bool("create-vpc", false,
+		"[Optional] Creating a new VPC network in GCP (Beta Feature). "+
+			"Specify VPC name using --network. (default false)")
+	createGCPProviderCmd.Flags().Bool("use-host-vpc", false,
+		"[Optional] Using VPC from YugabyteDB Anywhere Host. "+
+			"If set to false, specify an exsiting VPC using --network. "+
+			"Ignored if create-vpc is set. (default false)")
 	createGCPProviderCmd.Flags().String("project-id", "",
 		"[Optional] Project ID that hosts universe nodes in GCP.")
 	createGCPProviderCmd.Flags().String("shared-vpc-project-id", "",
@@ -229,8 +259,7 @@ func init() {
 			"instance-template=<instance-templates-for-YugabyteDB-nodes>\". "+
 			formatter.Colorize("Region name and Shared subnet are required key-value pairs.",
 				formatter.GreenColor)+
-			" YB Image (AMI) and Instance Template (accepted in YugabyteDB Anywhere versions "+
-			">= 2.18.0) are optional. "+
+			" YB Image (AMI) and Instance Template are optional. "+
 			"Each region can be added using separate --region flags. "+
 			"Example: --region region-name=us-west1,shared-subnet=<shared-subnet-id>")
 
@@ -251,8 +280,8 @@ func init() {
 
 	createGCPProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
-			" lacking access to the public internet for package downloads, "+
-			"defaults to false.")
+			" lacking access to the public internet for package downloads. "+
+			"(default false)")
 	createGCPProviderCmd.Flags().StringArray("ntp-servers", []string{},
 		"[Optional] List of NTP Servers. Can be provided as separate flags or "+
 			"as comma-separated values.")

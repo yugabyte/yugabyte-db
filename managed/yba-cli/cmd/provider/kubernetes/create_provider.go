@@ -155,7 +155,7 @@ func init() {
 			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
 			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
 			"pod-address-template=<pod-address-template>,"+
-			"overrides-file-path=<path-for-file-contanining-overries>\". "+
+			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Region name is a required key-value.",
 				formatter.GreenColor)+
 			" Config File Path, Storage Class, Cert Manager"+
@@ -172,7 +172,7 @@ func init() {
 			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
 			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
 			"pod-address-template=<pod-address-template>,"+
-			"overrides-file-path=<path-for-file-contanining-overries>\". "+
+			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Zone name and Region name are required values. ",
 				formatter.GreenColor)+
 			" Config File Path, Storage Class, Cert Manager"+
