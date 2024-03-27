@@ -14,14 +14,10 @@ Delphix is a data operations company that enables organizations to modernize the
 
 Delphix offers the following key capabilities as part of its integration with YugabyteDB:
 
-- Select Connector for continuous data (Data Virtualization) : Delphix can virtualize YugabyteDB databases by ingesting data to the Delphix platform, and create lightweight copies of YugabyteDB that can be provisioned quickly.
+- Select Connector for continuous data (Data Virtualization): Delphix can virtualize YugabyteDB databases by ingesting data to the Delphix platform, and create lightweight copies of YugabyteDB that can be provisioned quickly.
 
-- Select Connector for continuous compliance (Data Masking) : Delphix provides data masking capabilities for YugabyteDB to protect sensitive information in the database, and also comply with data privacy regulations.
+- Select Connector for continuous compliance (Data Masking): Delphix provides data masking capabilities for YugabyteDB to protect sensitive information in the database, and also comply with data privacy regulations.
 
 The resulting virtual copies can then be used for different use cases such as development, testing, analytics, reporting, and so on.
 
-## Deploy
-
-You can use Delphix with YugabyteDB as follows:
-
-- Create a [backup of your YugabyteDB universe](../../yugabyte-platform/back-up-restore-universes/configure-backup-storage/#network-file-system) to NFS storage.
+For more information, refer to [Getting Started with YugabyteDB](https://documentation.commvault.com/2024/essential/getting_started_with_yugabytedb.html) in the Delphix documentation.
