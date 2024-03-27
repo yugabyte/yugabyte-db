@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Box, makeStyles } from '@material-ui/core';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { ReleaseUniverses } from './dtos';
+import { convertToLocalTime } from '../../../../components/xcluster/ReplicationUtils';
+import { useSelector } from 'react-redux';
 
 interface InUseUniversesProps {
   inUseUniverses: ReleaseUniverses[] | undefined;
@@ -25,6 +27,7 @@ export const InUseUniverses = ({ inUseUniverses }: InUseUniversesProps) => {
   const helperClasses = useStyles();
   const { t } = useTranslation();
 
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const inUseUniverseslength = inUseUniverses?.length ?? 0;
 
   const formatName = (cell: any, row: any) => {
@@ -37,6 +40,17 @@ export const InUseUniverses = ({ inUseUniverses }: InUseUniversesProps) => {
     );
   };
 
+  const formatCreationDate = (cell: any, row: any) => {
+    const creationDate = row.creation_date;
+    const localCreationTime = convertToLocalTime(creationDate, currentUserTimezone);
+
+    return (
+      <Box>
+        <span>{localCreationTime}</span>
+      </Box>
+    );
+  };
+
   return (
     <Box>
       <span className={helperClasses.header}>{`Universes (${inUseUniverseslength})`}</span>
@@ -44,7 +58,7 @@ export const InUseUniverses = ({ inUseUniverses }: InUseUniversesProps) => {
         <BootstrapTable data={inUseUniverses!}>
           <TableHeaderColumn dataField={'uuid'} isKey={true} hidden={true} />
           <TableHeaderColumn width="50%" dataFormat={formatName} />
-          <TableHeaderColumn width="50%" dataField={'creation_date'}>
+          <TableHeaderColumn width="50%" dataFormat={formatCreationDate}>
             {t('releases.creationDate')}
           </TableHeaderColumn>
         </BootstrapTable>
@@ -58,3 +72,6 @@ export const InUseUniverses = ({ inUseUniverses }: InUseUniversesProps) => {
     </Box>
   );
 };
+
+// creation_date
+// moment.utc(healthCheckData.timestamp).local();
