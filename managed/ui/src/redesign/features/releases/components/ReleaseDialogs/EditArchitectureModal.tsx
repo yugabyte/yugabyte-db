@@ -308,12 +308,12 @@ export const EditArchitectureModal = ({
     (payload: any) => ReleasesAPI.updateReleaseMetadata(payload, payload.release_uuid!),
     {
       onSuccess: (response: any) => {
-        toast.success('Updated release artifacts successfully');
+        toast.success(t('releases.addReleaseModal.updateArtifactsSuccess'));
         onActionPerformed();
         onClose();
       },
       onError: () => {
-        toast.error('Failed to update release artifacts');
+        toast.error(t('releases.addReleaseModal.updateArtifactsFailure'));
       }
     }
   );
@@ -328,7 +328,7 @@ export const EditArchitectureModal = ({
       setValue('version', '');
       setIsMetadataLoading(false);
       setReleaseMetadatFetchError(true);
-      toast.error('Failed to extract metadata from URL');
+      toast.error(t('releases.addReleaseModal.extractMetadataUrlFailure'));
     }
   });
 
@@ -340,7 +340,7 @@ export const EditArchitectureModal = ({
         setReleaseMetadatFetchError(false);
         setIsMetadataLoading(false);
         setReleaseResponse(response);
-        toast.success('Extracted metadata from file successfully');
+        toast.success(t('releases.addReleaseModal.extractMetadataFileSuccess'));
       },
       onError: () => {
         setIsMetadataLoading(false);
@@ -350,7 +350,7 @@ export const EditArchitectureModal = ({
         setValue('platform', ReleasePlatform.LINUX);
         setValue('architecture', '');
         setValue('version', '');
-        toast.error('Failed to extract metadata from the file');
+        toast.error(t('releases.addReleaseModal.extractMetadataFileFailure'));
       }
     }
   );
@@ -368,7 +368,7 @@ export const EditArchitectureModal = ({
           setIsMetadataLoading(false);
           setReleaseResponse(response);
           setReleaseMetadatFetchError(false);
-          toast.success('Extracted metadata from URL successfully');
+          toast.success(t('releases.editArchitectureModal.extractMetadataUrlSuccess'));
         } else if (
           response.status === UrlArtifactStatus.RUNNING ||
           response.status === UrlArtifactStatus.WAITING
@@ -382,7 +382,7 @@ export const EditArchitectureModal = ({
           setValue('version', response.version);
           setValue('ybType', response.yb_type);
           setValue('sha256', response.sha256);
-          toast.error('Failed to extract metadata from URL');
+          toast.error(t('releases.addReleaseModal.extractMetadataUrlFailure'));
         }
       },
       onError: () => {
@@ -417,12 +417,12 @@ export const EditArchitectureModal = ({
         setIsFileUploaded(true);
         setPackageFileId(response.data.resourceUUID);
         setValue('version', '');
-        toast.success('Uploaded file successully');
+        toast.success(t('releases.addReleaseModal.uploadSuccess'));
       })
       .catch((error) => {
         setPackageFileId(undefined);
         setIsFileUploaded(false);
-        toast.error('Not able to upload file, please try again');
+        toast.error(t('releases.addReleaseModal.uploadFailure'));
       });
   });
 
