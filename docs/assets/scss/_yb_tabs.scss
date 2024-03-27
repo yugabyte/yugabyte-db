@@ -185,7 +185,7 @@ ul.nav.nav-tabs-yb:not(.yb-pills) {
   }
 }
 
-ul.nav.nav-tabs-yb:not(.yb-pills) ~ .nav-tabs-yb:not(.yb-pills) {
+ul.nav.nav-tabs-yb:not(.yb-pills) ~ .nav-tabs-yb:not(.yb-pills):not(.repeated-tabs) {
   li {
     font-size: 13px;
     line-height: 16px;
