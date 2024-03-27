@@ -356,9 +356,22 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				HeapTuple	oldtuple = change->data.tp.oldtuple ?
 				&change->data.tp.oldtuple->tuple : NULL;
 
+				bool		*yb_old_is_omitted = NULL;
+				bool		*yb_new_is_omitted = NULL;
+				if (IsYugaByteEnabled())
+				{
+					yb_old_is_omitted =
+						(change->data.tp.oldtuple) ?
+							change->data.tp.oldtuple->yb_is_omitted :
+							NULL;
+
+					yb_new_is_omitted = change->data.tp.newtuple->yb_is_omitted;
+				}
+
 				OutputPluginPrepareWrite(ctx, true);
 				logicalrep_write_update(ctx->out, relation, oldtuple,
-										&change->data.tp.newtuple->tuple);
+										&change->data.tp.newtuple->tuple,
+										yb_old_is_omitted, yb_new_is_omitted);
 				OutputPluginWrite(ctx, true);
 				break;
 			}

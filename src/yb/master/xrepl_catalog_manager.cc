@@ -1673,13 +1673,14 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
         "Creation of CDCSDK stream with a replication slot name is disallowed");
   }
 
+  // No need to validate the record_type if replica identity support is enabled.
+  if (FLAGS_ysql_yb_enable_replica_identity) {
+    return Status::OK();
+  }
+
   cdc::CDCRecordType record_type_pb;
   if (!cdc::CDCRecordType_Parse(record_type_option_value, &record_type_pb)) {
     return STATUS(InvalidArgument, "Invalid CDCRecordType value", record_type_option_value);
-  }
-
-  if (FLAGS_ysql_yb_enable_replica_identity) {
-    return Status::OK();
   }
 
   switch (record_type_pb) {
