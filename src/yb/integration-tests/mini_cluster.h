@@ -60,6 +60,8 @@
 #include "yb/util/port_picker.h"
 #include "yb/util/tsan_util.h"
 
+using namespace std::literals;
+
 namespace yb {
 
 namespace master {
@@ -356,7 +358,7 @@ YB_STRONGLY_TYPED_BOOL(ForceStepDown);
 
 Status StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
-    ForceStepDown force_step_down);
+    ForceStepDown force_step_down, MonoDelta timeout = 10s);
 
 // Waits until all tablet peers of the specified cluster are in the Running state.
 // And total number of those peers equals to the number of tablet servers for each known tablet.

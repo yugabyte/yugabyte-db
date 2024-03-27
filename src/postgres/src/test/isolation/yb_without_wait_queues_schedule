@@ -1,2 +1,6 @@
 test: yb-stat-activity-waitevent-statement-retry
 test: rc-ignores-txn-priority-bounds
+test: yb-fk-row-locking
+test: yb-user-managed-constraint
+test: yb-fk-relationship
+test: yb-check-constraint-locking

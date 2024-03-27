@@ -38,6 +38,7 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -807,6 +808,31 @@ public class CustomerTask extends Model {
         .eq("customerUUID", customer.getUuid())
         .le("completion_time", cutoffDate)
         .findList();
+  }
+
+  public static Optional<CustomerTask> maybeGetByTargetUUIDTaskTypeTargetType(
+      UUID customerUUID, UUID targetUUID, TaskType taskType, TargetType targetType) {
+    List<CustomerTask> cTaskList =
+        CustomerTask.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("type", taskType)
+            .eq("target_type", targetType)
+            .eq("target_uuid", targetUUID)
+            .orderBy("create_time desc")
+            .findList();
+    return CollectionUtils.isEmpty(cTaskList) ? Optional.empty() : Optional.of(cTaskList.get(0));
+  }
+
+  public static Optional<UUID> maybeGetIdenticalIncompleteTaskUUID(
+      UUID customerUUID, UUID targetUUID, TaskType taskType, TargetType targetType) {
+    Optional<CustomerTask> oCustTask =
+        maybeGetByTargetUUIDTaskTypeTargetType(customerUUID, targetUUID, taskType, targetType);
+    if (oCustTask.isPresent() && oCustTask.get().getCompletionTime() == null) {
+      return Optional.of(oCustTask.get().getTaskUUID());
+    }
+    return Optional.empty();
   }
 
   public static List<CustomerTask> findIncompleteByTargetUUID(UUID targetUUID) {

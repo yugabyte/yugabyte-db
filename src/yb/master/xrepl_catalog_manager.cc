@@ -3920,7 +3920,8 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
               consumer_info, HostPort::ToCommaSeparatedString(hp), *universe.get(),
               xcluster_rpc_tasks);
           if (!s.ok()) {
-            LOG(ERROR) << "Error registering subscriber: " << s;
+            LOG(ERROR) << "Universe replication " << replication_group_id
+                       << " failed. Error registering subscriber: " << s;
             l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
             universe->SetSetupUniverseReplicationErrorStatus(s);
           } else {

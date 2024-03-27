@@ -8,6 +8,7 @@ import (
     "net/http"
     "runtime"
     "sort"
+    "strconv"
     "time"
 
     "github.com/labstack/echo/v4"
@@ -53,6 +54,7 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         gFlagsTserverFutures := map[string]chan helpers.GFlagsFuture{}
         gFlagsMasterFutures := map[string]chan helpers.GFlagsFuture{}
         versionInfoFutures := map[string]chan helpers.VersionInfoFuture{}
+        versionInfoMasterFutures := map[string]chan helpers.VersionInfoFuture{}
         masterMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
         tserverMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
         for _, nodeHost := range nodeList {
@@ -61,12 +63,15 @@ func (c *Container) GetCluster(ctx echo.Context) error {
             go c.helper.GetGFlagsFuture(nodeHost, false, gFlagsTserverFuture)
             versionInfoFuture := make(chan helpers.VersionInfoFuture)
             versionInfoFutures[nodeHost] = versionInfoFuture
-            go c.helper.GetVersionFuture(nodeHost, versionInfoFuture)
+            go c.helper.GetVersionFuture(nodeHost, false, versionInfoFuture)
         }
         for _, nodeHost := range masterAddressesResponse.HostList {
             gFlagsMasterFuture := make(chan helpers.GFlagsFuture)
             gFlagsMasterFutures[nodeHost] = gFlagsMasterFuture
             go c.helper.GetGFlagsFuture(nodeHost, true, gFlagsMasterFuture)
+            versionInfoFuture := make(chan helpers.VersionInfoFuture)
+            versionInfoMasterFutures[nodeHost] = versionInfoFuture
+            go c.helper.GetVersionFuture(nodeHost, true, versionInfoFuture)
         }
         for _, nodeHost := range reducedNodeList {
             tserverMemTrackersFuture := make(chan helpers.MemTrackersFuture)
@@ -82,11 +87,11 @@ func (c *Container) GetCluster(ctx echo.Context) error {
     // Getting relevant data from tabletServersResponse
     regionsMap := map[string]int32{}
     zonesMap := map[string]int32{}
-    numNodes := int32(0)
+    tserverMap := map[string]bool{}
     ramUsageBytes := float64(0)
     for _, cluster := range tabletServersResponse.Tablets {
-        for _, tablet := range cluster {
-            numNodes++;
+        for host, tablet := range cluster {
+            tserverMap[host] = true
             region := tablet.Region
             regionsMap[region]++
             zone := tablet.Zone
@@ -124,10 +129,16 @@ func (c *Container) GetCluster(ctx echo.Context) error {
 
         // Getting relevant data from mastersResponse
         timestamp := time.Now().UnixMicro()
+        numMasters := int32(0)
         for _, master := range mastersResponse.Masters {
                 startTime := master.InstanceId.StartTimeUs
                 if startTime < timestamp && startTime != 0 {
                         timestamp = startTime
+                }
+                if len(master.Registration.PrivateRpcAddresses) > 0 {
+                    if _, ok := tserverMap[master.Registration.PrivateRpcAddresses[0].Host]; !ok {
+                        numMasters++
+                    }
                 }
         }
         createdOn := time.UnixMicro(timestamp).Format(time.RFC3339)
@@ -136,6 +147,7 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         // In at least 3 different zones but fewer than 3 regions -> Zone
         // At least 3 replicas but in fewer than 3 zones -> Node
         faultTolerance := models.CLUSTERFAULTTOLERANCE_NONE
+        numNodes := int32(len(tserverMap)) // + numMasters
         if numNodes >= 3 {
                 if len(regionsMap) >= 3 {
                         // regionsMap comes from parsing /tablet-servers endpoint
@@ -191,11 +203,17 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                     break
             }
         }
+        // Use this to track gflag results that have been read, to avoid reading a future twice
+        // which will hang
+        gFlagsMasterResults := map[string]helpers.GFlagsFuture{}
         // Only need to keep checking masters if it is still possible that in-transit encryption is
         // enabled.
         if isEncryptionInTransitEnabled {
             for host, gFlagsMasterFuture := range gFlagsMasterFutures {
-                masterFlags := <-gFlagsMasterFuture
+                if _, ok := gFlagsMasterResults[host]; !ok {
+                    gFlagsMasterResults[host] = <-gFlagsMasterFuture
+                }
+                masterFlags := gFlagsMasterResults[host]
                 if masterFlags.Error != nil ||
                    masterFlags.GFlags["use_node_to_node_encryption"] != "true" ||
                    masterFlags.GFlags["allow_insecure_connections"] != "false" {
@@ -211,6 +229,30 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                                 masterFlags.GFlags["allow_insecure_connections"])
                         }
                         break
+                }
+            }
+        }
+
+        // We can get clusterReplicationFactor == 0 if /cluster-config doesn't return the
+        // livereplicas structure. In this case, use the master gflag to get replication factor
+        if clusterReplicationFactor == 0 {
+            for host, gFlagsMasterFuture := range gFlagsMasterFutures {
+                if _, ok := gFlagsMasterResults[host]; !ok {
+                    gFlagsMasterResults[host] = <-gFlagsMasterFuture
+                }
+                masterFlags := gFlagsMasterResults[host]
+                if masterFlags.Error == nil {
+                    gflagReplicationFactor, err :=
+                        strconv.ParseInt(masterFlags.GFlags["replication_factor"], 10, 32)
+                    if err == nil && gflagReplicationFactor > 0 {
+                        clusterReplicationFactor = int32(gflagReplicationFactor)
+                        break
+                    }
+                    if err != nil {
+                        c.logger.Warnf("error parsing replication_factor gflag: %s", err.Error())
+                    } else {
+                        c.logger.Warnf("replication_factor gflag is 0")
+                    }
                 }
             }
         }
@@ -302,6 +344,11 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         }
         // Get software version
         smallestVersion := c.helper.GetSmallestVersion(versionInfoFutures)
+        smallestVersionMaster := c.helper.GetSmallestVersion(versionInfoMasterFutures)
+        if smallestVersion == "" ||
+            c.helper.CompareVersions(smallestVersion, smallestVersionMaster) > 0 {
+            smallestVersion = smallestVersionMaster
+        }
         numCores := int32(len(reducedNodeList)) * int32(runtime.NumCPU())
 
         // Get ram limits

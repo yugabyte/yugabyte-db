@@ -73,12 +73,12 @@ public class CreateBackup extends UniverseTaskBase {
       CustomerConfigService customerConfigService,
       YbcManager ybcManager,
       StorageUtilFactory storageUtilFactory,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
     this.customerConfigService = customerConfigService;
     this.ybcManager = ybcManager;
     this.storageUtilFactory = storageUtilFactory;
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   protected BackupRequestParams params() {

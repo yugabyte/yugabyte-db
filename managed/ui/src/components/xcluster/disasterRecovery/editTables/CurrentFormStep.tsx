@@ -1,6 +1,7 @@
-import { Typography } from '@material-ui/core';
-import { useTranslation } from 'react-i18next';
+import { makeStyles, Typography } from '@material-ui/core';
+import { Trans, useTranslation } from 'react-i18next';
 import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
+import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
 
 import { TableSelect, TableSelectProps } from '../../sharedComponents/tableSelect/TableSelect';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
@@ -14,12 +15,28 @@ interface CurrentFormStepProps {
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.editTablesModal';
 
+const useStyles = makeStyles((theme) => ({
+  stepContainer: {
+    '& ol': {
+      paddingLeft: theme.spacing(2),
+      listStylePosition: 'outside',
+      '& li::marker': {
+        fontWeight: 'bold'
+      }
+    }
+  },
+  bannerContainer: {
+    marginTop: theme.spacing(2)
+  }
+}));
+
 export const CurrentFormStep = ({
   currentFormStep,
   isFormDisabled,
   tableSelectProps
 }: CurrentFormStepProps) => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const classes = useStyles();
 
   switch (currentFormStep) {
     case FormStep.SELECT_TABLES:
@@ -27,6 +44,16 @@ export const CurrentFormStep = ({
         <>
           <Typography variant="body1">{t('instruction')}</Typography>
           <TableSelect {...tableSelectProps} />
+          <div className={classes.bannerContainer}>
+            <YBBanner variant={YBBannerVariant.INFO} showBannerIcon={false}>
+              <Typography variant="body2">
+                <Trans
+                  i18nKey={`${TRANSLATION_KEY_PREFIX}.step.selectTables.matchingTableNote`}
+                  components={{ bold: <b /> }}
+                />
+              </Typography>
+            </YBBanner>
+          </div>
         </>
       );
     case FormStep.CONFIGURE_BOOTSTRAP:

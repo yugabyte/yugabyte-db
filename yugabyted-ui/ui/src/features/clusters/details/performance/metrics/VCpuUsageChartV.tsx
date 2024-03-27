@@ -53,7 +53,7 @@ interface VCpuUsageChartProps {
 export const VCpuUsageChartV: FC<VCpuUsageChartProps> = ({ cluster }) => {
   const classes = useStyles();
   const { t } = useTranslation();
-  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const { data: nodesResponse } = useGetClusterNodesQuery({});
 
   const totalCores = cluster.spec?.cluster_info?.node_info.num_cores ?? 0;
 

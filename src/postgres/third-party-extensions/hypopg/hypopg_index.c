@@ -722,20 +722,20 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			if (IsYBRelationById(relid))
 			{
 				YbTableProperties yb_props = YbGetTablePropertiesById(relid);
+				bool is_first_key = (attn == 0);
 
 				is_colocated    = yb_props->is_colocated;
 				tablegroupId    = yb_props->tablegroup_oid;
+
+				/*
+				 * In Yugabyte, use HASH as the default for the first column of
+				 * non-colocated tables
+				 */
+				if (YbSortOrdering(attribute->ordering, is_colocated,
+								   OidIsValid(tablegroupId) /* is_tablegroup */,
+								   is_first_key) == SORTBY_HASH)
+					entry->nhashcolumns++;
 			}
-			if (attribute->ordering == SORTBY_HASH)
-				entry->nhashcolumns++;
-			/*
-			 * In Yugabyte, use HASH as the default for the first column of
-			 * non-colocated tables
-			 */
-			else if (attn == 0 &&
-				attribute->ordering == SORTBY_DEFAULT &&
-				!is_colocated && tablegroupId == InvalidOid)
-				entry->nhashcolumns++;
 
 			attn++;
 		}

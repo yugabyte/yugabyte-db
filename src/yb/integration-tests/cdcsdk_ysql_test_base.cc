@@ -1015,11 +1015,11 @@ namespace cdc {
 
   Result<GetCheckpointResponsePB> CDCSDKYsqlTest::GetCDCSnapshotCheckpoint(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id) {
-    RpcController get_checkpoint_rpc;
+
     GetCheckpointRequestPB get_checkpoint_req;
     GetCheckpointResponsePB get_checkpoint_resp;
     auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-    get_checkpoint_rpc.set_deadline(deadline);
+
     get_checkpoint_req.set_stream_id(stream_id.ToString());
 
     if (!table_id.empty()) {
@@ -1030,6 +1030,9 @@ namespace cdc {
 
     RETURN_NOT_OK(WaitFor(
           [&]() -> Result<bool> {
+            RpcController get_checkpoint_rpc;
+            get_checkpoint_rpc.set_deadline(deadline);
+
             RETURN_NOT_OK(cdc_proxy_->GetCheckpoint(
                 get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
 
@@ -1053,11 +1056,11 @@ namespace cdc {
 
   Result<CDCSDKCheckpointPB> CDCSDKYsqlTest::GetCDCSDKSnapshotCheckpoint(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id) {
-    RpcController get_checkpoint_rpc;
+
     GetCheckpointRequestPB get_checkpoint_req;
     GetCheckpointResponsePB get_checkpoint_resp;
     auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-    get_checkpoint_rpc.set_deadline(deadline);
+
     get_checkpoint_req.set_stream_id(stream_id.ToString());
 
     if (!table_id.empty()) {
@@ -1067,6 +1070,9 @@ namespace cdc {
     get_checkpoint_req.set_tablet_id(tablet_id);
     RETURN_NOT_OK(WaitFor(
           [&]() -> Result<bool> {
+            RpcController get_checkpoint_rpc;
+            get_checkpoint_rpc.set_deadline(deadline);
+
             RETURN_NOT_OK(cdc_proxy_->GetCheckpoint(
                 get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
 

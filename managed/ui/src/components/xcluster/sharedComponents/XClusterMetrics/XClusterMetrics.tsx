@@ -44,6 +44,7 @@ import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 import { YBMetricGraphTitle } from '../../../../redesign/components/YBMetricGraphTitle/YBMetricGraphTitle';
 import { getAlertConfigurations } from '../../../../actions/universe';
 import { MetricsFilter } from './MetricsFilter';
+import { YBTooltip } from '../../../../redesign/components';
 
 import { MetricTimeRangeOption } from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
@@ -54,7 +55,6 @@ import {
   MetricTrace
 } from '../../../../redesign/helpers/dtos';
 import { NodeAggregation, SplitMode, SplitType } from '../../../metrics/dtos';
-import { YBTooltip } from '../../../../redesign/components';
 
 interface ConfigReplicationLagGraphProps {
   xClusterConfig: XClusterConfig;
@@ -84,7 +84,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   const [replicationLagMetricsSplitMode, setReplicationLagMetricsSplitMode] = useState<SplitMode>(
     SplitMode.NONE
   );
-  const [replicationLagMetricsSplitCount, setReplicationLagMetricsSplitCount] = useState<number>(1);
+  const [replicationLagMetricsSplitCount, setReplicationLagMetricsSplitCount] = useState<number>(5);
 
   const [
     consumerSafeTimeLagMetricsNodeAggregation,
@@ -277,7 +277,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
     return (
       <YBErrorIndicator
         customErrorMessage={t('failedToFetchSourceUniverse', {
-          keyPrefix: 'queryError.error',
+          keyPrefix: 'queryError',
           universeUuid: xClusterConfig.sourceUniverseUUID
         })}
       />
@@ -287,7 +287,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
     return (
       <YBErrorIndicator
         customErrorMessage={t('failedToFetchTargetUniverse', {
-          keyPrefix: 'queryError.error',
+          keyPrefix: 'queryError',
           universeUuid: xClusterConfig.sourceUniverseUUID
         })}
       />
@@ -343,6 +343,52 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
 
   const handleToggleShowAlertThresholdReferenceLine = () =>
     setShowAlertThresholdReferenceLIne(!showAlertThresholdReferenceLine);
+
+  const getUniqueTraceName = (
+    metricSettings: MetricSettings,
+    trace: MetricTrace,
+    namespaceUuidToNamespace: { [namespaceUuid: string]: string | undefined }
+  ): string => {
+    const traceName = t(trace.name, { keyPrefix: 'prometheusMetricTrace' });
+    if (
+      metricSettings.splitMode !== SplitMode.NONE &&
+      !(
+        trace.instanceName ||
+        trace.namespaceId ||
+        trace.namespaceName ||
+        trace.tableId ||
+        trace.tableName
+      )
+    ) {
+      // If the we're showing top/bottom k and there is a trace with no extra metadata, then
+      // we assume this is the average trace.
+      return `${traceName} (Average)`;
+    }
+    switch (metricSettings.splitType) {
+      case undefined:
+      case SplitType.NONE:
+        return traceName;
+      case SplitType.NODE:
+        return `${traceName} (${trace.instanceName})`;
+      case SplitType.NAMESPACE: {
+        const namespaceName =
+          trace.namespaceName ??
+          namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '')];
+        return namespaceName ? `${traceName} (${namespaceName})` : traceName;
+      }
+      case SplitType.TABLE: {
+        const namespaceName =
+          trace.namespaceName ??
+          namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '<unknown>')];
+        const tableIdentifier = trace.tableName
+          ? `${namespaceName}/${trace.tableName}`
+          : namespaceName;
+        return `${traceName} (${tableIdentifier})`;
+      }
+      default:
+        return assertUnreachableCase(metricSettings.splitType);
+    }
+  };
 
   const namespaceUuidToNamespace = targetUniverseNamespaceQuery.data
     ? Object.fromEntries(
@@ -472,7 +518,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
                 labelFormatter={(value) => formatDatetime(value)}
                 isAnimationActive={false}
               />
-              <Legend />
+              <Legend iconType="plainline" />
               {configReplicationLagMetrics.metricTraces.map((trace, index) => {
                 const timeSeriesKey = getUniqueTraceId(trace);
                 const timeSeriesName = getUniqueTraceName(
@@ -492,13 +538,21 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
                 );
               })}
               {maxAcceptableLag !== undefined && showAlertThresholdReferenceLine && (
-                <ReferenceLine
-                  y={maxAcceptableLag}
-                  stroke="#EF5824"
-                  label={{ value: t('lowestReplicationLagAlertThresholdLabel'), position: 'top' }}
-                  ifOverflow="extendDomain"
-                  strokeDasharray="4 4"
-                />
+                <>
+                  {/* Line component with no dataKey used to add the reference line in the legend.
+                      Recharts doesn't provide an option to add reference lines to the legend directly. */}
+                  <Line
+                    name={t('lowestReplicationLagAlertThresholdLabel')}
+                    stroke="#EF5824"
+                    strokeDasharray="4 4"
+                  />
+                  <ReferenceLine
+                    y={maxAcceptableLag}
+                    stroke="#EF5824"
+                    ifOverflow="extendDomain"
+                    strokeDasharray="4 4"
+                  />
+                </>
               )}
             </LineChart>
           </ResponsiveContainer>
@@ -552,7 +606,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
                 labelFormatter={(value) => formatDatetime(value)}
                 isAnimationActive={false}
               />
-              <Legend />
+              <Legend iconType="plainline" />
               {consumerSafeTimeLagMetrics.metricTraces.map((trace, index) => {
                 const timeSeriesKey = getUniqueTraceId(trace);
                 const timeSeriesName = getUniqueTraceName(
@@ -623,7 +677,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
                 labelFormatter={(value) => formatDatetime(value)}
                 isAnimationActive={false}
               />
-              <Legend />
+              <Legend iconType="plainline" />
               {consumerSafeTimeSkewMetrics.metricTraces.map((trace, index) => {
                 const timeSeriesKey = getUniqueTraceId(trace);
                 const timeSeriesName = getUniqueTraceName(
@@ -654,46 +708,3 @@ const getUniqueTraceId = (trace: MetricTrace): string =>
   `${trace.name}.${trace.instanceName}.${trace.namespaceId ?? trace.namespaceName}.${
     trace.tableId ?? trace.tableName
   }`;
-
-const getUniqueTraceName = (
-  metricSettings: MetricSettings,
-  trace: MetricTrace,
-  namespaceUuidToNamespace: { [namespaceUuid: string]: string | undefined }
-): string => {
-  if (
-    metricSettings.splitMode !== SplitMode.NONE &&
-    !(
-      trace.instanceName ||
-      trace.namespaceId ||
-      trace.namespaceName ||
-      trace.tableId ||
-      trace.tableName
-    )
-  ) {
-    return `${trace.name} (Average)`;
-  }
-  switch (metricSettings.splitType) {
-    case undefined:
-    case SplitType.NONE:
-      return `${trace.name}`;
-    case SplitType.NODE:
-      return `${trace.name} (${trace.instanceName})`;
-    case SplitType.NAMESPACE: {
-      const namespaceName =
-        trace.namespaceName ??
-        namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '')];
-      return namespaceName ? `${trace.name} (${namespaceName})` : trace.name;
-    }
-    case SplitType.TABLE: {
-      const namespaceName =
-        trace.namespaceName ??
-        namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '<unknown>')];
-      const tableIdentifier = trace.tableName
-        ? `${namespaceName}/${trace.tableName}`
-        : namespaceName;
-      return `${trace.name} (${tableIdentifier})`;
-    }
-    default:
-      return assertUnreachableCase(metricSettings.splitType);
-  }
-};

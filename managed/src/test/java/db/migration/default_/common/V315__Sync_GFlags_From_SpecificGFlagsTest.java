@@ -16,6 +16,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -70,6 +71,8 @@ public class V315__Sync_GFlags_From_SpecificGFlagsTest extends FakeDBApplication
 
     Universe empty = createWithGFlags(null, null, null);
 
+    Universe empty2 = createWithGFlags(new SpecificGFlags(), null, null);
+
     Universe emptyWithInheritedRR =
         createWithGFlags(null, null, null, SpecificGFlags.constructInherited(), null, null);
 
@@ -114,6 +117,14 @@ public class V315__Sync_GFlags_From_SpecificGFlagsTest extends FakeDBApplication
             masterGFlagsRR,
             tserverGFlagsRR);
 
+    SpecificGFlags emptySpecificGFlagsWithAZ = new SpecificGFlags();
+    emptySpecificGFlagsWithAZ.setPerAZ(
+        Map.of(
+            UUID.randomUUID(),
+            SpecificGFlags.construct(Map.of("1", "2"), Map.of("3", "4")).getPerProcessFlags()));
+
+    Universe ybmEmptyWithAZ = createWithGFlags(emptySpecificGFlagsWithAZ, null, null);
+
     Transaction transaction = DB.beginTransaction();
     try {
       V315__Sync_GFlags_From_SpecificGFlags.migrate(transaction.connection());
@@ -137,6 +148,13 @@ public class V315__Sync_GFlags_From_SpecificGFlagsTest extends FakeDBApplication
         masterGFlagsRR,
         tserverGFlagsRR);
 
+    empty2 = Universe.getOrBadRequest(empty2.getUniverseUUID());
+    verify(
+        empty2.getUniverseDetails().getPrimaryCluster(),
+        new SpecificGFlags(),
+        new HashMap<>(),
+        new HashMap<>());
+
     // YBM Like
     ybmNoRR = Universe.getOrBadRequest(ybmNoRR.getUniverseUUID());
     verify(
@@ -156,6 +174,13 @@ public class V315__Sync_GFlags_From_SpecificGFlagsTest extends FakeDBApplication
         specificGFlagsWithAZRR,
         masterGFlagsRR,
         tserverGFlagsRR);
+
+    ybmEmptyWithAZ = Universe.getOrBadRequest(ybmEmptyWithAZ.getUniverseUUID());
+    verify(
+        ybmEmptyWithAZ.getUniverseDetails().getPrimaryCluster(),
+        emptySpecificGFlagsWithAZ,
+        new HashMap<>(),
+        new HashMap<>());
   }
 
   private void verifyUniverses(List<Universe> universes) {

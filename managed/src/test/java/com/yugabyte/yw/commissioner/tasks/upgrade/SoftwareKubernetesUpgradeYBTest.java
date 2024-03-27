@@ -39,7 +39,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.IsInitDbDoneResponse;
@@ -51,7 +50,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @InjectMocks private SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
+  private SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
 
   private YBClient mockClient;
 
@@ -106,6 +105,10 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
+    this.softwareKubernetesUpgrade =
+        new SoftwareKubernetesUpgrade(
+            mockBaseTaskDependencies, null, mockOperatorStatusUpdaterFactory);
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams taskParams) {

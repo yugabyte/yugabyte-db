@@ -117,11 +117,13 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       }
       hasClustersToResize = true;
     }
-    if (!hasClustersToResize && !forceResizeNode) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "No changes!");
-    }
+    boolean hasGFlagsChanges = false;
     if (flagsProvided(universe)) {
-      verifyGFlags(universe, isFirstTry);
+      hasGFlagsChanges = verifyGFlagsHasChanges(universe);
+    }
+    boolean hasChanges = hasClustersToResize || hasGFlagsChanges;
+    if (!hasChanges && !forceResizeNode && isFirstTry) {
+      throw new PlatformServiceException(Status.BAD_REQUEST, "No changes!");
     }
   }
 
