@@ -13,7 +13,9 @@ import java.util.List;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Entity
 @Getter
 @Setter
@@ -66,8 +68,9 @@ public class ReleaseLocalFile extends Model {
 
   public boolean delete() {
     File file = new File(this.localFilePath);
+    // Best effort delete the file
     if (!file.delete()) {
-      return false;
+      log.error("Failed to delete file {}", file);
     }
     return super.delete();
   }
