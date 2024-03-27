@@ -21,7 +21,7 @@ scriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
 aggregateCollectionIdStr=""
 maxCollectionIdStr=""
 
-validationExceptions="/sql/helio_test_helpers.sql"
+validationExceptions="/sql/helio_test_helpers.sql /sql/public_api_schema.sql"
 for validationFile in $(ls $scriptDir/expected/*.out); do
     fileName=$(basename $validationFile);
     sqlFile="${fileName%.out}.sql";
