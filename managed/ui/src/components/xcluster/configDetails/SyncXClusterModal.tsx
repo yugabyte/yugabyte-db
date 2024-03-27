@@ -124,7 +124,7 @@ export const SyncXClusterConfigModal = (props: SyncXClusterConfigModalProps) => 
       size="sm"
       {...modalProps}
     >
-      {t('syncConfirmation')}
+      {props.isDrInterface ? t('syncDrConfirmation') : t('syncXClusterConfirmation')}
     </YBModal>
   );
 };

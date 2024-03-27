@@ -22,6 +22,7 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import {
   api,
   drConfigQueryKey,
+  metricQueryKey,
   universeQueryKey,
   xClusterQueryKey
 } from '../../../redesign/helpers/api';
@@ -180,7 +181,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   }, PollingIntervalMs.UNIVERSE_STATE_TRANSITIONS);
   // Polling for metrics and config updates.
   useInterval(() => {
-    queryClient.invalidateQueries('xcluster-metric'); // TODO: Add a dedicated key for 'latest xCluster metrics'.
+    queryClient.invalidateQueries(metricQueryKey.ALL); // TODO: Add a dedicated key for 'latest xCluster metrics'.
   }, PollingIntervalMs.XCLUSTER_METRICS);
   useInterval(() => {
     const xClusterConfigStatus = drConfigQuery.data?.status;
@@ -210,6 +211,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   }
   if (
     currentUniverseQuery.isLoading ||
+    currentUniverseQuery.isIdle ||
     drConfigQuery.isLoading ||
     participantUniverseQuery.isLoading
   ) {
@@ -506,6 +508,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isDeleteConfigModalOpen && (
           <DeleteConfigModal
             drConfig={drConfig}
+            currentUniverseName={currentUniverseQuery.data.name}
             modalProps={{ open: isDeleteConfigModalOpen, onClose: closeDeleteConfigModal }}
           />
         )}

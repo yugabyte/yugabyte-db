@@ -41,9 +41,9 @@
     {
       "series": "v2.16",
       "display": "v2.16 (STS)",
-      "version": "2.16.8.0",
-      "versionShort": "2.16.8",
-      "appVersion": "2.16.8.0-b16",
+      "version": "2.16.9.0",
+      "versionShort": "2.16.9",
+      "appVersion": "2.16.9.0-b67",
       "isStable": true,
       "isLTS": false,
       "isSTS": true,

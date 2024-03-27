@@ -59,6 +59,14 @@ export const MetricsFilter = ({
         setMetricsSplitMode(SplitMode.NONE);
         setMetricsSplitType(metricsSplitType);
         return;
+      case SplitType.TABLE:
+        // SplitMode.NONE is not enabled for table splits to avoid showing thousands of
+        // metric lines on the graph at once.
+        if (metricsSplitMode === SplitMode.NONE) {
+          setMetricsSplitMode(SplitMode.TOP);
+        }
+        setMetricsSplitType(metricsSplitType);
+        return;
       default:
         setMetricsSplitType(metricsSplitType);
     }
@@ -110,7 +118,9 @@ export const MetricsFilter = ({
             exclusive
             onChange={handleMetricsSplitModeChange}
           >
-            <ToggleButton value={SplitMode.NONE}>{t('splitMode.all')}</ToggleButton>
+            {metricsSplitType !== SplitType.TABLE && (
+              <ToggleButton value={SplitMode.NONE}>{t('splitMode.all')}</ToggleButton>
+            )}
             <ToggleButton value={SplitMode.TOP}>{t('splitMode.top')}</ToggleButton>
             <ToggleButton value={SplitMode.BOTTOM}>{t('splitMode.bottom')}</ToggleButton>
           </ToggleButtonGroup>

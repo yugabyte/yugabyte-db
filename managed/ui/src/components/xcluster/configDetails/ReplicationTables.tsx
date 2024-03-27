@@ -155,10 +155,10 @@ export function ReplicationTables({
     showModal && visibleModal === XClusterModalName.ADD_TABLE_TO_CONFIG;
   return (
     <div className={styles.rootContainer}>
-      <div className={styles.headerSection}>
-        <span className={styles.infoText}>Tables selected for Replication</span>
-        <div className={styles.actionBar}>
-          {!isDrInterface && (
+      {!isDrInterface && (
+        <div className={styles.headerSection}>
+          <span className={styles.infoText}>Tables selected for Replication</span>
+          <div className={styles.actionBar}>
             <RbacValidator
               customValidateFunction={(userPerm) => {
                 return (
@@ -182,9 +182,9 @@ export function ReplicationTables({
                 btnText="Add Tables"
               />
             </RbacValidator>
-          )}
+          </div>
         </div>
-      </div>
+      )}
       <div className={styles.replicationTable}>
         <BootstrapTable
           data={tablesInConfig}

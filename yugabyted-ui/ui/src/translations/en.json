@@ -1169,6 +1169,7 @@
         "memoryProvisioned": "Memory Provisioned",
         "nodeHealth": "Node Health",
         "totalNodes": "Total Nodes",
+        "totalTserverNodes": "Total Tserver Nodes",
         "bootstrapping": "Bootstrapping",
         "refresh": "Refresh",
         "editColumns": "Edit Columns",

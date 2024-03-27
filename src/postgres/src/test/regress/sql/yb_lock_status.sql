@@ -264,5 +264,3 @@ ABORT;
 -- Should not see any values
 SELECT * FROM validate_and_return_lock_status(null, null);
 
--- TODO: Add support for colocated tables
-

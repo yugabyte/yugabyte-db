@@ -256,6 +256,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected static final Set<TaskType> PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
           TaskType.CreateUniverse,
+          TaskType.CreateKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.EditUniverse,
           TaskType.AddNodeToUniverse,

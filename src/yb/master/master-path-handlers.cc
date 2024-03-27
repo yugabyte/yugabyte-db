@@ -2099,16 +2099,25 @@ vector<string> GetTabletUnderReplicatedPlacements(
     VLOG_WITH_FUNC(1) << "Processing tablet replica on TS " << ts_desc->permanent_uuid();
     for (auto* placement : placements) {
       if (placement->placement_uuid() == ts_desc->placement_uuid()) {
-        VLOG_WITH_FUNC(1) << "TS matches placement " << placement->placement_uuid();
+        VLOG_WITH_FUNC(1) << "TS matches placement id " << placement->placement_uuid();
         placement->set_num_replicas(placement->num_replicas() - 1);
 
-        // Decrement the unique placement block within this placement.
+        // Decrement a matching placement block which has a positive min_num_replicas.
+        // There will only be one matching placement string (we cannot have c.r.z1 and c.r.*), but
+        // replication_info may contain multiple copies of that string, in which case the
+        // min_num_replicas are effectively added across the copies.
+        // I.e., {c.r.z1: min_num_replicas = 1, c.r.z1: min_num_replicas = 1} is equivalent to
+        //       {c.r.z1: min_num_replicas = 2}
         for (int i = 0; i < placement->placement_blocks_size(); ++i) {
-          if (ts_desc->MatchesCloudInfo(placement->placement_blocks(i).cloud_info())) {
-            VLOG_WITH_FUNC(1) << "TS matches placement "
-                              << placement->placement_blocks(i).ShortDebugString();
+          const auto& placement_block = placement->placement_blocks(i);
+          if (placement_block.min_num_replicas() <= 0) {
+            continue;
+          }
+          if (ts_desc->MatchesCloudInfo(placement_block.cloud_info())) {
+            VLOG_WITH_FUNC(1) << "TS matches placement block "
+                              << placement_block.ShortDebugString();
             placement->mutable_placement_blocks(i)->set_min_num_replicas(
-                placement->placement_blocks(i).min_num_replicas() - 1);
+                placement_block.min_num_replicas() - 1);
             break;
           }
         }

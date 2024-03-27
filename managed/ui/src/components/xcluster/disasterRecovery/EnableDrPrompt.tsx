@@ -6,6 +6,7 @@ import { YBButton, YBTooltip } from '../../../redesign/components';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { ReactComponent as BackupIcon } from '../../../redesign/assets/fileBackup.svg';
+import { DOCS_URL_ACTIVE_ACTIVE_SINGLE_MASTER } from './constants';
 
 interface EnableDrPromptProps {
   isDisabled: boolean;
@@ -27,12 +28,14 @@ const useStyles = makeStyles((theme) => ({
     border: `1px dashed ${theme.palette.ybacolors.ybBorderGrayDark}`,
     borderRadius: '8px',
     background: theme.palette.ybacolors.backgroundGrayRegular
+  },
+  promptPrimaryText: {
+    maxWidth: '550px',
+    textAlign: 'center'
   }
 }));
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.enableDrPrompt';
-const DOCS_URL_ACTIVE_ACTIVE_SINGLE_MASTER =
-  'https://docs.yugabyte.com/preview/develop/build-global-apps/active-active-single-master/';
 export const EnableDrPrompt = ({
   className,
   isDisabled,
@@ -46,7 +49,7 @@ export const EnableDrPrompt = ({
   return (
     <div className={clsx(classes.promptContainer, className)}>
       <BackupIcon />
-      <Typography variant="body2">
+      <Typography className={classes.promptPrimaryText} variant="body2">
         <Trans
           i18nKey={`${TRANSLATION_KEY_PREFIX}.featureDescription`}
           components={{ bold: <b /> }}

@@ -216,7 +216,7 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
   const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
   return (
     <YBModal
-      title={t('title', { drReplicaName: targetUniverseName })}
+      title={t('title')}
       submitLabel={t('submitButton')}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       onSubmit={onSubmit}
@@ -241,7 +241,18 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
           </div>
         </div>
       </div>
-      <Box marginTop={4}>
+      <Box marginTop={2}>
+        <Typography variant="body2">
+          <Trans
+            i18nKey={`${TRANSLATION_KEY_PREFIX}.failoverConfirmation`}
+            values={{ drReplicaName: targetUniverseName }}
+            components={{
+              bold: <b />
+            }}
+          />
+        </Typography>
+      </Box>
+      <Box marginTop={3}>
         <Typography variant="body2" className={classes.fieldLabel}>
           {t('confirmationInstructions')}
         </Typography>

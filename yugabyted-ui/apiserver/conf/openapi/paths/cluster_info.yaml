@@ -37,6 +37,15 @@
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
 '/nodes':
+  parameters:
+    - name: get_all_masters
+      in: query
+      description: Whether to get master-only nodes that have no tserver
+      required: false
+      style: form
+      schema:
+        type: boolean
+      allowEmptyValue: true
   get:
     summary: Get the nodes for a cluster
     description: Get nodes for a Yugabyte cluster

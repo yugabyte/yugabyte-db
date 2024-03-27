@@ -38,6 +38,7 @@ import { DrConfig } from '../dtos';
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
 
 interface RepairDrConfigModalProps {
   drConfig: DrConfig;
@@ -479,7 +480,7 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
           {formMethods.formState.errors.repairType.message}
         </FormHelperText>
       )}
-      <Box marginTop={3} maxWidth="400px">
+      <Box marginTop={3}>
         <div className={classes.fieldLabel}>
           <Typography variant="body2">
             {t('option.useExistingTargetUniverse.backupStorageConfig.label')}
@@ -502,6 +503,8 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
           name="storageConfig"
           rules={{ required: t('error.fieldRequired') }}
           isDisabled={isFormDisabled}
+          autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
+          maxWidth="100%"
         />
       </Box>
     </YBModal>

@@ -5,19 +5,21 @@ import (
 )
 
 var (
-    HOST          string
-    YsqlPort      int
-    YcqlPort      int
-    Secure        bool
-    DbName        string
-    DbYsqlUser    string
-    DbYcqlUser    string
-    DbPassword    string
-    SslMode       string
-    SslRootCert   string
-    MasterUIPort  string
-    TserverUIPort string
-    Warnings      string
+    HOST           string
+    YsqlPort       int
+    YcqlPort       int
+    BindAddr       string
+    Secure         bool
+    DbName         string
+    DbYsqlUser     string
+    DbYcqlUser     string
+    DbYsqlPassword string
+    DbYcqlPassword string
+    SslMode        string
+    SslRootCert    string
+    MasterUIPort   string
+    TserverUIPort  string
+    Warnings       string
 )
 
 func init() {
@@ -25,14 +27,18 @@ func init() {
         "Advertise address of the local YugabyteDB node.")
     flag.IntVar(&YsqlPort, "ysql_port", 5433, "YSQL port.")
     flag.IntVar(&YcqlPort, "ycql_port", 9042, "YCQL port.")
+    flag.StringVar(&BindAddr, "bind_address", "",
+        "Bind address for the yugabyted UI. If not set, defaults to the value of database_host.")
     flag.BoolVar(&Secure, "secure", false, "API server use secure or insecure mode.")
     flag.StringVar(&DbName, "database_name", "yugabyte", "database for retrieving metrics.")
     flag.StringVar(&DbYsqlUser, "ysql_username", "yugabyte",
         "username for connecting to ysql.")
     flag.StringVar(&DbYcqlUser, "ycql_username", "cassandra",
         "username for connecting to ycql.")
-    flag.StringVar(&DbPassword, "database_password", "yugabyte",
-        "password for connecting to the database.")
+    flag.StringVar(&DbYsqlPassword, "ysql_password", "yugabyte",
+        "password for connecting to the ysql database.")
+    flag.StringVar(&DbYcqlPassword, "ycql_password", "yugabyte",
+        "password for connecting to the ycql database.")
     flag.StringVar(&SslMode, "ssl_mode", "require",
         "ssl mode for connecting to the database.")
     flag.StringVar(&SslRootCert, "ssl_root certificate", "",

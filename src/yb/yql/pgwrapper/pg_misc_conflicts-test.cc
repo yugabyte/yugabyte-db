@@ -193,4 +193,17 @@ TEST_P(PgRowLockTest, SerializableTxnUpdate) {
   DoSerializableTxnUpdate();
 }
 
+TEST_F(PgMiscConflictsTest, DifferentColumnsConcurrentUpdate) {
+  auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+  auto aux_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 1, 1)"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(aux_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE t SET v2 = 20 WHERE k = 1"));
+  ASSERT_TRUE(IsSerializeAccessError(aux_conn.Execute("UPDATE t SET v1 = 10 WHERE k = 1")));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(aux_conn.RollbackTransaction());
+}
+
 } // namespace yb::pgwrapper

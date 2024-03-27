@@ -443,7 +443,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		if (ybscan->quit_scan)
 			return false;
 
-		scan->xs_recheck = YbNeedsRecheck(ybscan);
+		scan->xs_recheck = YbNeedsPgRecheck(ybscan);
 		/*
 		 * In the case of parallel scan we need to obtain boundaries from the
 		 * pscan before the scan is executed. Also empty row from parallel range

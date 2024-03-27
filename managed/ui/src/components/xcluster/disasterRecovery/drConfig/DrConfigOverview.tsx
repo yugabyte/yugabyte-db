@@ -87,7 +87,7 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
         flexWrap="wrap"
         alignItems="center"
         gridGap={theme.spacing(5)}
-        marginTop={3}
+        marginTop={4}
       >
         <div className={classes.drParticipantContainer}>
           <Typography variant="subtitle1">{t('participant.drPrimary')}</Typography>

@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.junit.Before;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
@@ -67,6 +68,12 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
   protected static final String YB_SOFTWARE_VERSION_OLD = "2.15.0.0-b1";
   protected static final String YB_SOFTWARE_VERSION_NEW = "2.17.0.0-b1";
   protected Map<String, String> config = new HashMap<>();
+
+  @Before
+  public void setUp() {
+    super.setUp();
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
+  }
 
   protected void setupUniverse(
       boolean setMasters,
