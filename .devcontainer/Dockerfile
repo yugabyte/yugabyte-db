@@ -29,7 +29,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive \
     postgresql-16 \
     postgresql-server-dev-16 \
     libpq-dev \
-    postgresql-16-pgcron \
+    postgresql-16-cron \
     postgresql-16-pgvector \
     postgresql-16-postgis-3 \
     postgresql-16-rum \
@@ -51,7 +51,7 @@ RUN rm -rf /var/lib/apt/lists/* \
 
 ENV LANG en_US.utf8
 # declare installed PG version
-ENV PG_VERSION=15
+ENV PG_VERSION=16
 
 RUN useradd -ms /bin/bash heliodb -G sudo
 RUN echo "%sudo ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers.d/no-pass-ask

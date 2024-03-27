@@ -33,13 +33,13 @@ function GetPostgresPath()
 
 function GetPGCTL()
 {
-  local pgVersion=${PG_VERSION:-15}
+  local pgVersion=${PG_VERSION:-16}
   echo ${pgctlPath:-$(GetPostgresPath $pgVersion)/pg_ctl}
 }
 
 function GetInitDB()
 {
-  local pgVersion=${PG_VERSION:-15}
+  local pgVersion=${PG_VERSION:-16}
   echo $(GetPostgresPath $pgVersion)/initdb
 }
 
