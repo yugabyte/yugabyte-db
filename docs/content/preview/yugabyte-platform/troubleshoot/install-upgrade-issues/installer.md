@@ -89,6 +89,8 @@ Workaround: Refer to [Migration and high availability](../../../install-yugabyte
 
 If you encounter high disk utilization issues during installation with YBA installer, it maybe due to the Prometheus directory occupying majority of the disk space.
 
+Affected releases: All
+
 Workaround: You can reduce the Prometheus directory size by changing the metrics retention time configuration. Perform the following steps:
 
 1. Reduce the `retentionTime` Prometheus parameter in the `/opt/yba-ctl/yba-ctl.yml` file.
