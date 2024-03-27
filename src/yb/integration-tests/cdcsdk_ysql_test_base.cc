@@ -1200,6 +1200,32 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     }
   }
 
+  void CDCSDKYsqlTest::AssertKeyValue(
+      const CDCSDKProtoRecordPB& record1, const CDCSDKProtoRecordPB& record2) {
+    for (int index = 0; index < record1.row_message().new_tuple_size(); ++index) {
+      ASSERT_EQ(
+          record1.row_message().new_tuple(index).pg_ql_value().int32_value(),
+          record2.row_message().new_tuple(index).pg_ql_value().int32_value());
+    }
+  }
+
+  void CDCSDKYsqlTest::AssertCDCSDKProtoRecords(
+      const CDCSDKProtoRecordPB& record1, const CDCSDKProtoRecordPB& record2) {
+    ASSERT_EQ(record1.row_message().op(), record2.row_message().op());
+    ASSERT_EQ(record1.row_message().pg_lsn(), record2.row_message().pg_lsn());
+    ASSERT_EQ(record1.row_message().pg_transaction_id(), record2.row_message().pg_transaction_id());
+    if (IsDMLRecord(record1) && IsDMLRecord(record2)) {
+      ASSERT_EQ(record1.row_message().table_id(), record2.row_message().table_id());
+      ASSERT_EQ(record1.row_message().primary_key(), record2.row_message().primary_key());
+      AssertKeyValue(record1, record2);
+    }
+
+    ASSERT_EQ(record1.cdc_sdk_op_id().term(), record2.cdc_sdk_op_id().term());
+    ASSERT_EQ(record1.cdc_sdk_op_id().index(), record2.cdc_sdk_op_id().index());
+    ASSERT_EQ(record1.cdc_sdk_op_id().write_id(), record2.cdc_sdk_op_id().write_id());
+    ASSERT_EQ(record1.cdc_sdk_op_id().write_id_key(), record2.cdc_sdk_op_id().write_id_key());
+  }
+
   void CDCSDKYsqlTest::AssertBeforeImageKeyValue(
       const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
       const bool& validate_third_column, const int32_t& value2) {
@@ -1466,7 +1492,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
           if (status.ok() && init_resp.has_error()) {
             status = StatusFromPB(init_resp.error().status());
-            if (status.IsAlreadyPresent() || status.IsInvalidArgument()) {
+            if (status.IsAlreadyPresent() || status.IsInvalidArgument()|| status.IsNotFound()) {
               RETURN_NOT_OK(status);
             }
           }
@@ -3587,6 +3613,10 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
       HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
       int64_t last_active_time_cdc_state_table = 0;
+      uint64_t confirmed_flush_lsn = 0;
+      uint64_t restart_lsn = 0;
+      uint64_t record_id_commit_time = 0;
+      uint32_t xmin = 0;
 
       if (row.cdc_sdk_safe_time) {
         cdc_sdk_safe_time = HybridTime(*row.cdc_sdk_safe_time);
@@ -3594,6 +3624,22 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
       if (row.active_time) {
         last_active_time_cdc_state_table = *row.active_time;
+      }
+
+      if(row.confirmed_flush_lsn) {
+        confirmed_flush_lsn = *row.confirmed_flush_lsn;
+      }
+
+      if(row.restart_lsn) {
+        restart_lsn = *row.restart_lsn;
+      }
+
+      if(row.record_id_commit_time) {
+        record_id_commit_time = *row.record_id_commit_time;
+      }
+
+      if(row.xmin) {
+        xmin = *row.xmin;
       }
 
       if (row.key.tablet_id == tablet_id && row.key.stream_id == stream_id) {
@@ -3604,6 +3650,10 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         expected_row.op_id = *row.checkpoint;
         expected_row.cdc_sdk_safe_time = cdc_sdk_safe_time;
         expected_row.cdc_sdk_latest_active_time = last_active_time_cdc_state_table;
+        expected_row.confirmed_flush_lsn = confirmed_flush_lsn;
+        expected_row.restart_lsn = restart_lsn;
+        expected_row.record_id_commit_time = record_id_commit_time;
+        expected_row.xmin = xmin;
       }
     }
     RETURN_NOT_OK(s);

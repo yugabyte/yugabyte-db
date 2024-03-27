@@ -148,6 +148,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     OpId op_id = OpId::Max();
     int64_t cdc_sdk_latest_active_time = 0;
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
+    uint64_t confirmed_flush_lsn = 0;
+    uint64_t restart_lsn = 0;
+    uint32_t xmin = 0;
+    uint64_t record_id_commit_time = 0;
   };
 
   struct GetAllPendingChangesResponse {
@@ -400,6 +404,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void AssertKeyValue(
       const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
       const bool& validate_third_column = false, const int32_t& value2 = 0);
+
+  void AssertKeyValue(const CDCSDKProtoRecordPB& record1, const CDCSDKProtoRecordPB& record2);
+
+  void AssertCDCSDKProtoRecords(
+      const CDCSDKProtoRecordPB& record1, const CDCSDKProtoRecordPB& record2);
 
   void AssertBeforeImageKeyValue(
       const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
