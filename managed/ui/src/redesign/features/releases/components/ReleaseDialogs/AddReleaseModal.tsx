@@ -294,7 +294,7 @@ export const AddReleaseModal = ({
   // When adding new release make a POST API call
   const addRelease = useMutation((payload: any) => ReleasesAPI.createRelease(payload), {
     onSuccess: (data) => {
-      toast.success('Add release successfully');
+      toast.success('Added release successfully');
       onActionPerformed();
       onClose();
     },
@@ -342,13 +342,12 @@ export const AddReleaseModal = ({
     setValue('platform', response.platform);
     setValue('sha256', response.sha256);
 
-    if (isAddRelease) {
-      setValue('version', response.version);
-      setValue('ybType', response.yb_type);
-      setValue('releaseType', response.release_type);
-      setValue('releaseDate', response.release_date);
-      setValue('releaseNotes', response.release_notes);
-    }
+    setValue('version', response.version);
+    setValue('ybType', response.yb_type);
+    setValue('releaseType', response.release_type);
+    setValue('releaseDate', response.release_date);
+    setValue('releaseNotes', response.release_notes);
+
     setUrlMetadata({
       version: response.version,
       releaseType: response.release_type,
@@ -592,7 +591,7 @@ export const AddReleaseModal = ({
       }}
     >
       <FormProvider {...formMethods}>
-        <Box>
+        <Box data-testid="AddRelease-Container">
           <Box className={helperClasses.bannerBox}>
             {isMetadataLoading && <YBBanner message={t('releases.bannerFileUploadMessage')} />}
           </Box>
