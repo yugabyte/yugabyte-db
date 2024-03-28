@@ -868,8 +868,10 @@ Universal / mappings ++= {
     ybLog("Error generating YBA CLI binary.")
     Seq.empty
   }
+}
 
-  // Copying 'support/thirdparty-dependencies.txt' into the YBA tarball at 'conf/thirdparty-dependencies.txt'.
+// Copying 'support/thirdparty-dependencies.txt' into the YBA tarball at 'conf/thirdparty-dependencies.txt'.
+Universal / mappings ++= {
   val tpdSourceFile = baseDirectory.value / "support" / "thirdparty-dependencies.txt"
   Seq((tpdSourceFile, "conf/thirdparty-dependencies.txt"))
 }
