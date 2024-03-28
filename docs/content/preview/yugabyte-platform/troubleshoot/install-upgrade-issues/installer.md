@@ -85,16 +85,18 @@ Affected releases: All
 
 Workaround: Refer to [Migration and high availability](../../../install-yugabyte-platform/install-software/installer/#migration-and-high-availability).
 
-## High disk utilization issue
+## Running low on free disk space
 
-If you encounter high disk utilization issues during installation with YBA installer, it maybe due to the Prometheus directory occupying majority of the disk space.
+If you are running out of disk space on your YugabyteDB Anywhere node, check the size of the Prometheus directory. If the Prometheus directory is taking up a lot of space, you can reduce its size by changing the retention time and the scrape interval for database metrics.
 
 Affected releases: All
 
-Workaround: You can reduce the Prometheus directory size by changing the metrics retention time configuration. Perform the following steps:
+Workaround: Reduce the Prometheus directory size by changing the metrics retention time and scrape interval [configuration options](../../install-yugabyte-platform/install-software/installer/#prometheus-configuration-options).
 
-1. Reduce the `retentionTime` Prometheus parameter in the `/opt/yba-ctl/yba-ctl.yml` file.
-1. Run `yba-ctl reconfigure` to regenerate the configuration for the installer.
+Perform the following steps:
+
+1. Reduce the `retentionTime` and increase the `scrapeInterval` configuration options in the `/opt/yba-ctl/yba-ctl.yml` file.
+1. Run `yba-ctl reconfigure` to reconfigure your YugabyteDB Anywhere instance with the new settings.
 1. Verify the decrease in the Prometheus directory size using the following commands:
 
     ```sh
