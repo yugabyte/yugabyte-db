@@ -21,8 +21,6 @@
  */
 ExtensionVersion CurrentVersion = { 0 };
 
-extern char *ApiExtensionName;
-
 char *VersionRefreshQuery =
 	"SELECT regexp_split_to_array(extversion, '[-\\.]')::int4[] FROM pg_extension WHERE extname = 'pg_helio_api'";
 
@@ -51,6 +49,33 @@ IsClusterVersionAtleastThis(int major, int minor, int patch)
 
 	/* Major and Minor are the expected ones, we should compare the patch version. */
 	return CurrentVersion.Patch >= patch;
+}
+
+
+/*
+ * Returns true if the given Extension Version is >= given major.minor.patch version
+ */
+bool
+IsExtensionVersionAtleastThis(ExtensionVersion extVersion, int major, int minor, int
+							  patch)
+{
+	if (extVersion.Major < major)
+	{
+		return false;
+	}
+	else if (extVersion.Minor < minor)
+	{
+		return false;
+	}
+	else if (extVersion.Major != major || extVersion.Minor != minor)
+	{
+		/* if extVersion.Major or extVersion.Minor are greater than the expected version */
+		/* parts we are on a later version, no need to compare the patch. */
+		return true;
+	}
+
+	/* Major and Minor are the expected ones, we should compare the patch version. */
+	return extVersion.Patch >= patch;
 }
 
 

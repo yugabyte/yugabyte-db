@@ -34,4 +34,6 @@ extern ExtensionVersion CurrentVersion;
 
 void RefreshCurrentVersion(void);
 
+bool IsExtensionVersionAtleastThis(ExtensionVersion extVersion, int major, int minor, int
+								   patch);
 #endif
