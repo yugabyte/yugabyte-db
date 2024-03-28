@@ -3,8 +3,8 @@ title: Architecture
 headerTitle: Architecture
 linkTitle: Architecture
 description: Learn about the YugabyteDB architecture, including query, transactions, sharding, replication, and storage layers.
-image: fa-sharp fa-thin fa-sitemap
-headcontent: YugabyteDB architecture including the query, transactions, sharding, replication, and storage layers.
+image: fa-sharp fa-thin fa-puzzle
+headcontent: Internals of query, transactions, sharding, replication, and storage layers.
 menu:
   preview:
     identifier: architecture
@@ -16,6 +16,10 @@ type: indexpage
 YugabyteDB is a distributed database that seamlessly combines the principles of distributed systems, where multiple machines collaborate, with the familiar concepts of traditional databases, where data is organized in tables with standard interfaces for reading and writing data.
 
 Unlike traditional centralized databases, YugabyteDB is designed to manage and process data across multiple nodes or servers, ensuring consistency, high availability, scalability, fault tolerance and other [design goals](design-goals/).
+
+{{<tip>}}
+We have listed out our [key concepts](./key-concepts) for your quick reference
+{{</tip>}}
 
 ## Layered architecture
 
@@ -69,4 +73,20 @@ When YugabyteDB is deployed, it first creates an Universe. And then you can crea
 
 {{<tip>}}
 To understand how these core functionalities are implemented in YugabyteDB, see [Core functionality](./core-functions)
+{{</tip>}}
+
+## Master server
+
+The master service acts a catalog manager, cluster orchestrator and manages many background tasks.
+
+{{<tip>}}
+To understand its significance and functionalites, see [YB-Master](./yb-master)
+{{</tip>}}
+
+## Tserver
+
+YugabyteDB splits table data in to tablets. These tablets are maintained and managed on each node by the TServer.
+
+{{<tip>}}
+To understand its significance and functionalites, see [YB-TServer](./yb-tserver)
 {{</tip>}}

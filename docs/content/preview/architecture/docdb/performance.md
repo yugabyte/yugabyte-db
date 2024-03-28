@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-DocDB is built on a customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM)-based key-value store. Tremendous amount of optimizations have been done to make RocksDB work as a critical component of a scalable distributed database. Let us go over some of the significant changes done.
+DocDB is built on a customized version of [RocksDB](http://rocksdb.org/), a [log-structured merge tree (LSM)](./lsm-sst)-based key-value store. Tremendous amount of optimizations have been done to make RocksDB work as a critical component of a scalable distributed database. Let us go over some of the significant changes done.
 
 ## Efficient modelling of documents
 

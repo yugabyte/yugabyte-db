@@ -2,7 +2,9 @@
 title: Design goals
 headerTitle: Design goals
 linkTitle: Design goals
-description: Learn the design goals that drive the building of YugabyteDB.
+description: Learn the design goals that drive the building of YugabyteDB
+headcontent: Goals and ideas considered during designing YugabyteDB
+image: fa-sharp fa-thin fa-lightbulb-exclamation-on
 aliases:
   - /preview/architecture/design-goals/
 menu:
@@ -12,9 +14,6 @@ menu:
     weight: 100
 type: docs
 ---
-
-
-When designing YugabyteDB, several design goals were considered to ensure its efficiency, reliability, and scalability. Here are some of them:
 
 ## Scalability
 

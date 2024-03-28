@@ -3,7 +3,7 @@ title: DocDB storage layer
 headerTitle: DocDB storage layer
 linkTitle: DocDB - Storage layer
 description: Learn about the persistent storage layer of DocDB.
-image: /images/section_icons/architecture/concepts.png
+image: fa-thin fa-database
 aliases:
   - /architecture/concepts/docdb/
 headcontent: The document store responsible for transactions, sharding, replication, and persistence.
@@ -15,7 +15,7 @@ menu:
 type: indexpage
 ---
 
-DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized verison of [RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM)-based key-value store. Several enhancements and customizations have been done on top of the vanilla RocksDB to make DocDB highly performant and scalable. DocDB in essence manages multiple RocksDB instances which are created one per tablet.
+DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized verison of [RocksDB](http://rocksdb.org/), a [log-structured merge tree (LSM)](./lsm-sst)-based key-value store. Several enhancements and customizations have been done on top of the vanilla RocksDB to make DocDB highly performant and scalable. DocDB in essence manages multiple RocksDB instances which are created one per tablet.
 
 ![DocDB Document Storage Layer](/images/architecture/docdb-rocksdb.png)
 

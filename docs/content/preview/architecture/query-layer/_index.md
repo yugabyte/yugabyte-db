@@ -3,7 +3,7 @@ title: YugabyteDB query layer (YQL)
 headerTitle: Query layer
 linkTitle: YQL - Query layer
 description: Understand how a query is processed
-image: /images/section_icons/index/api.png
+image: fa-sharp fa-thin fa-language
 aliases:
   - /architecture/query-layer/
 menu:
@@ -11,21 +11,18 @@ menu:
     identifier: architecture-query-layer
     parent: architecture
     weight: 500
-type: docs
+type: indexpage
 ---
 
 
-The YugabyteDB Query Layer (YQL) is the primary layer that provides interfaces for applications to interact with using client drivers. This layer deals with the API-specific aspects such as query and command compilation, as well as the runtime functions such as data type representations, built-in operations, and so on. Although YQL is designed with extensibility in mind, allowing for new APIs to be added, it currently supports two types of distributed SQL APIs: [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/). From the application perspective, YQL is stateless and the clients can connect to one or more YB-TServers on the appropriate port to perform operations against a YugabyteDB cluster.
+The YugabyteDB Query Layer (YQL) is the primary layer that provides interfaces for applications to interact with using client drivers. This layer deals with the API-specific aspects such as query and command compilation, as well as the runtime functions such as data type representations, built-in operations, and so on. From the application perspective, YQL is stateless and the clients can connect to one or more YB-TServers on the appropriate port to perform operations against a YugabyteDB cluster.
 
-![cluster_overview](/images/architecture/query_layer.png)
+![Query layer](/images/architecture/query_layer.png)
 
-## YSQL
+Although YQL is designed with extensibility in mind, allowing for new APIs to be added, it currently supports two types of distributed SQL APIs: [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/).
 
-[YSQL](../../../api/ysql/) is a distributed SQL API that is built by reusing the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL. The default port for YSQL is `5433`.
-
-## YCQL
-
-[YCQL](../../../api/ycql/) is a semi-relational language that has its roots in Cassandra Query Language. It is a SQL-like language built specifically to be aware of the clustering of data across nodes. The default port for YCQL is `9042`.
+- [YSQL](../../../api/ysql/) is a distributed SQL API that is built by reusing the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL. The default port for YSQL is `5433`.
+- [YCQL](../../../api/ycql/) is a semi-relational language that has its roots in Cassandra Query Language. It is a SQL-like language built specifically to be aware of the clustering of data across nodes. The default port for YCQL is `9042`.
 
 ## Query processing
 
