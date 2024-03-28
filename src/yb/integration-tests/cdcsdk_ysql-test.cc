@@ -2155,8 +2155,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumMultipleStreams)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
+  // TODO(#21686): Remove this after fixing the test to work with the replica identity support.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
@@ -2640,9 +2639,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 10;
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
@@ -2849,8 +2845,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
+  // TODO(#21686): Remove this after fixing the test to work with the replica identity support.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
 
   const uint32_t num_tablets = 3;
@@ -4237,8 +4232,7 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
+  // TODO(#21686): Remove this after fixing the test to work with the replica identity support.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
@@ -4580,9 +4574,6 @@ TEST_F(
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActiveStream)) {
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 3;
@@ -4626,9 +4617,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActive
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAdd100TableToNamespaceWithActiveStream)) {
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ASSERT_OK(SetUpWithParams(1, 1, true));
 
   const uint32_t num_tablets = 1;
@@ -4660,9 +4648,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAdd100TableToNamespaceWithAct
 
 TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActiveStreamMasterRestart)) {
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 60 * 1000;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
@@ -4726,9 +4711,6 @@ TEST_F(
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddColocatedTableToNamespaceWithActiveStream)) {
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -4788,9 +4770,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddColocatedTableToNamespaceW
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultipleActiveStreams)) {
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 3;
@@ -4852,9 +4831,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultip
 
 TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableWithMultipleActiveStreamsMasterRestart)) {
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 60 * 1000;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
@@ -4927,9 +4903,6 @@ TEST_F(
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWithActiveStream)) {
-  // TODO(#21686): We do not yet support handling replica identity of tables that were added after
-  // the creation of the slot/stream. So we disable replica identity and use the old flow here.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   // We set the limit of newly added tables per iteration to 1.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_table_processing_limit_per_run) = 1;
   ASSERT_OK(SetUpWithParams(1, 1, false));
