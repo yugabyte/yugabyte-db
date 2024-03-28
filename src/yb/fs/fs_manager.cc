@@ -795,6 +795,11 @@ bool IsValidTabletId(const std::string& fname) {
     return false;
   }
 
+  if (HasSuffixString(fname, "_pak")) {
+    VLOG(1) << "Ignoring ‘_pak’ suffix file in tablet metadata dir: " << fname;
+    return false;
+  }
+
   return true;
 }
 } // anonymous namespace

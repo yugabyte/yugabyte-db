@@ -214,6 +214,8 @@ TEST_F(FsManagerTestBase, TestListTablets) {
   ASSERT_OK(env_->NewWritableFile(
       JoinPathSegments(path, ".hidden"), &writer));
   ASSERT_OK(env_->NewWritableFile(
+      JoinPathSegments(path, "a_tablet_sort_of_pak"), &writer));
+  ASSERT_OK(env_->NewWritableFile(
       JoinPathSegments(path, "a_tablet_sort_of"), &writer));
 
   tablet_ids = ASSERT_RESULT(fs_manager()->ListTabletIds());
