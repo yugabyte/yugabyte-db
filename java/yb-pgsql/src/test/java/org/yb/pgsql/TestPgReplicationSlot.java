@@ -862,9 +862,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     // 1 Relation, begin, insert and commit record.
     result.addAll(receiveMessage(stream, 4));
 
-    // TODO(#20726): Add comments on the choice of LSN values once we have integrated with
-    // GetConsistentChanges RPC. This requires the implementation of the LSN generator to be
-    // completed.
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
@@ -1431,6 +1428,181 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     // This should trigger shutdown which will trigger Walsender to destroy the virtual wal where we
     // have forced a failure.
+    stream.close();
+  }
+
+  @Test
+  public void testWithDDLs() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test");
+      stmt.execute("CREATE TABLE test (a int primary key, b text)");
+      stmt.execute("CREATE TABLE test_2 (a int primary key, b bool)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName = "test_with_ddls";
+    Connection conn =
+        getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
+      stmt.execute("INSERT INTO test VALUES(2, 'defg')");
+      stmt.execute("INSERT INTO test_2 VALUES(1, 't')");
+      stmt.execute("COMMIT");
+
+      stmt.execute("ALTER TABLE test DROP COLUMN b");
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO test VALUES(4)");
+      stmt.execute("INSERT INTO test_2 VALUES(100, 'f')");
+      stmt.execute("COMMIT");
+
+      stmt.execute("ALTER TABLE test_2 DROP COLUMN b");
+      stmt.execute("INSERT INTO test_2 VALUES(2)");
+
+      stmt.execute("ALTER TABLE test ADD COLUMN b int");
+      stmt.execute("INSERT INTO test VALUES(5, 5)");
+      stmt.execute("INSERT INTO test VALUES(6, 6)");
+
+      stmt.execute("ALTER TABLE test ADD COLUMN c int");
+      stmt.execute("ALTER TABLE test ADD COLUMN d int");
+      stmt.execute("ALTER TABLE test_2 ADD COLUMN c int");
+
+      stmt.execute("INSERT INTO test_2 VALUES(3, 3)");
+      stmt.execute("INSERT INTO test VALUES(7, 7, 7, 7)");
+      stmt.execute("INSERT INTO test VALUES(8, 8, 8, 8)");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+
+    result.addAll(receiveMessage(stream, 34));
+
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        // In the first transaction that gets streamed, we got RELATION messages for both since they
+        // are being streamed for the first time.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/6"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("abcd")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("defg")))));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 16))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("t")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/6"), LogSequenceNumber.valueOf("0/7")));
+
+        // We get the RELATION for test because a DDL happened on it. We don't get it for test_2
+        // because of no DDL.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 3));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 1,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("4")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("100"),
+                new PgOutputMessageTupleColumnValue("f")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+
+        // We get a relation message of test_2 due to the DDL (DROP COLUMN b)
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/D"), 4));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 1,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/E")));
+
+        // We get a relation message of test due to the DDL (ADD COLUMN b int)
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 5));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'c',
+            Arrays.asList(
+                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("5"),
+                new PgOutputMessageTupleColumnValue("5")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+
+        // No DDLs done, so no relation messages expected.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 6));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("6"),
+                new PgOutputMessageTupleColumnValue("6")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+
+        // We did two DDLs on test and one DDL on test_2. We get the RELATION message of test_2 here
+        // since the transaction only touches test_2.
+        // The RELATION message for test will be sent with the first DML on it which is the next
+        // transaction.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/16"), 7));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_2", 'c',
+            Arrays.asList(
+                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("c", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("3")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/16"), LogSequenceNumber.valueOf("0/17")));
+
+        // Transaction that has the first DML after the two DDL operations on table 'test'.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/19"), 8));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'c',
+            Arrays.asList(
+                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("c", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("d", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 4,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("7"),
+                new PgOutputMessageTupleColumnValue("7"),
+                new PgOutputMessageTupleColumnValue("7"),
+                new PgOutputMessageTupleColumnValue("7")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/19"), LogSequenceNumber.valueOf("0/1A")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1C"), 9));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 4,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("8"),
+                new PgOutputMessageTupleColumnValue("8"),
+                new PgOutputMessageTupleColumnValue("8"),
+                new PgOutputMessageTupleColumnValue("8")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/1C"), LogSequenceNumber.valueOf("0/1D")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
     stream.close();
   }
 }

@@ -568,6 +568,7 @@ typedef struct PgReplicationSlotDescriptor {
   uint64_t confirmed_flush;
   uint64_t restart_lsn;
   uint32_t xmin;
+  uint64_t record_id_commit_time_ht;
   YBCPgReplicaIdentityDescriptor *replica_identities;
   int replica_identities_count;
 } YBCReplicationSlotDescriptor;
@@ -594,6 +595,7 @@ typedef enum PgRowMessageAction {
   YB_PG_ROW_MESSAGE_ACTION_INSERT = 3,
   YB_PG_ROW_MESSAGE_ACTION_UPDATE = 4,
   YB_PG_ROW_MESSAGE_ACTION_DELETE = 5,
+  YB_PG_ROW_MESSAGE_ACTION_DDL = 6,
 } YBCPgRowMessageAction;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in

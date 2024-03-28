@@ -391,6 +391,9 @@ retry:
 		slot->data.catalog_xmin = yb_replication_slot->xmin;
 		slot->data.restart_lsn = yb_replication_slot->restart_lsn;
 
+		slot->data.yb_initial_record_commit_time_ht =
+			yb_replication_slot->record_id_commit_time_ht;
+
 		MyReplicationSlot = slot;
 
 		/* Setup the per-table replica identity table. */
