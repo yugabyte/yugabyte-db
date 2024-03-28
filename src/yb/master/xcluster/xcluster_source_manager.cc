@@ -1054,4 +1054,39 @@ Status XClusterSourceManager::RemoveStreamsFromSysCatalog(
   return Status::OK();
 }
 
+Status XClusterSourceManager::MarkIndexBackfillCompleted(
+    const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) {
+  // Checkpoint xCluster streams of indexes after the backfill completes. The backfilled data is not
+  // replicated, and the target cluster performs its own backfill, so we can skip streaming changes
+  // before the backfill completion.
+
+  std::vector<std::pair<TableId, xrepl::StreamId>> table_streams;
+  {
+    SharedLock l(tables_to_stream_map_mutex_);
+    for (const auto& index_id : index_ids) {
+      if (tables_to_stream_map_.contains(index_id)) {
+        for (const auto& stream : tables_to_stream_map_.at(index_id)) {
+          LOG(INFO) << "Checkpointing xCluster stream " << stream->StreamId() << " of index "
+                    << index_id << " to its end of WAL";
+          table_streams.push_back({index_id, stream->StreamId()});
+        }
+      }
+    }
+  }
+  if (table_streams.empty()) {
+    return Status::OK();
+  }
+
+  std::promise<Result<bool>> promise;
+
+  RETURN_NOT_OK(CheckpointStreamsToEndOfWAL(
+      table_streams, epoch, /*check_if_bootstrap_required=*/false,
+      [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
+  auto bootstrap_required = VERIFY_RESULT(promise.get_future().get());
+
+  LOG_IF(DFATAL, bootstrap_required)
+      << "Unexpectedly found bootstrap required when check_if_bootstrap_required was set to false";
+
+  return Status::OK();
+}
 }  // namespace yb::master
