@@ -7,7 +7,7 @@ import { YBModal } from '../../../../components';
 import { ReleaseState, Releases } from '../dtos';
 import { ReleasesAPI } from '../../api';
 
-interface DisableReleaseModalProps {
+interface ModifyReleaseStateModalProps {
   data: Releases;
   open: boolean;
   onClose: () => void;
@@ -23,12 +23,12 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const DisableReleaseModal = ({
+export const ModifyReleaseStateModal = ({
   data,
   open,
   onClose,
   onActionPerformed
-}: DisableReleaseModalProps) => {
+}: ModifyReleaseStateModalProps) => {
   const { t } = useTranslation();
   const helperClasses = useStyles();
   const releaseUuid = data.release_uuid;
@@ -41,12 +41,20 @@ export const DisableReleaseModal = ({
     (payload: any) => ReleasesAPI.updateReleaseMetadata(payload, releaseUuid!),
     {
       onSuccess: (response: any) => {
-        toast.success('Disabled release successfully');
+        const releaseStatus =
+          data.state === ReleaseState.ACTIVE
+            ? t('releases.disableReleaseModal.disabled')
+            : t('releases.disableReleaseModal.enabled');
+        toast.success(
+          t('releases.disableReleaseModal.releaseStateSuccess', { release_status: releaseStatus })
+        );
         onActionPerformed();
         onClose();
       },
       onError: () => {
-        toast.error('Failed to disable release');
+        toast.error(
+          t('releases.disableReleaseModal.releaseStateFailure', { release_status: data?.state })
+        );
       }
     }
   );
@@ -75,7 +83,7 @@ export const DisableReleaseModal = ({
       }
       onSubmit={handleSubmit}
       cancelLabel={t('common.cancel')}
-      submitLabel={t('common.disable')}
+      submitLabel={data?.state === ReleaseState.ACTIVE ? t('common.disable') : t('common.enable')}
       overrideHeight="250px"
       size="sm"
       titleSeparator
@@ -89,7 +97,13 @@ export const DisableReleaseModal = ({
     >
       <Box mt={2}>
         <Typography variant="body2">
-          {t('releases.disableReleaseModal.disableMessage', { release_version: data?.version })}
+          {t('releases.disableReleaseModal.disableMessage', {
+            release_status:
+              data?.state === ReleaseState.ACTIVE
+                ? t('releases.disableReleaseModal.disable')
+                : t('releases.disableReleaseModal.enable'),
+            release_version: data?.version
+          })}
         </Typography>
       </Box>
     </YBModal>
