@@ -3,10 +3,9 @@ title: YugabyteDB Technical Advisories
 headerTitle: Technical advisories
 linkTitle: Technical advisories
 description: List of technical advisories
-imagefa: fa-sharp fa-thin fa-triangle-exclamation
-image: /icons/triangle-exclamation-thin.svg
+image: fa-sharp fa-thin fa-triangle-exclamation
 type: indexpage
-showRightNav: true
+showRightNav: false
 cascade:
   unversioned: true
 ---
