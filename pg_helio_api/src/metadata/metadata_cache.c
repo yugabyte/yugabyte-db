@@ -507,6 +507,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_dollar_add_fields function */
 	Oid ApiCatalogBsonDollarAddFieldsFunctionOid;
 
+	/* OID of the bson_dollar_add_fields function */
+	Oid ApiCatalogBsonDollarInverseMatchFunctionOid;
+
 	/* OID of the bson_dollar_project function */
 	Oid ApiCatalogBsonDollarProjectFunctionOid;
 
@@ -2322,6 +2325,37 @@ BsonDollarProjectFunctionOid(void)
 {
 	return GetBinaryOperatorFunctionId(&Cache.ApiCatalogBsonDollarProjectFunctionOid,
 									   "bson_dollar_project", BsonTypeId(), BsonTypeId());
+}
+
+
+/*
+ * Returns the OID of the helio_core.bson_dollar_inverse_match function.
+ */
+Oid
+BsonDollarInverseMatchFunctionId()
+{
+	int nargs = 2;
+	Oid argTypes[2] = { HelioCoreBsonTypeId(), HelioCoreBsonTypeId() };
+	bool missingOk = true;
+
+	Oid result = GetSchemaFunctionIdWithNargs(
+		&Cache.ApiCatalogBsonDollarInverseMatchFunctionOid,
+		"helio_api_internal",
+		"bson_dollar_inverse_match", nargs, argTypes,
+		missingOk);
+
+	if (result == InvalidOid)
+	{
+		/* we don't have the function in helio_api_internal yet, check helio_api_catalog */
+		missingOk = false;
+		result = GetSchemaFunctionIdWithNargs(
+			&Cache.ApiCatalogBsonDollarInverseMatchFunctionOid,
+			"helio_api_catalog",
+			"bson_dollar_inverse_match", nargs, argTypes,
+			missingOk);
+	}
+
+	return result;
 }
 
 

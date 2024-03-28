@@ -23,6 +23,8 @@ ExprEvalState * GetExpressionEvalState(const bson_value_t *expression,
 ExprEvalState * GetExpressionEvalStateFromFuncExpr(const FuncExpr *expression,
 												   MemoryContext memoryContext);
 
+void FreeExprEvalState(ExprEvalState *exprEvalState, MemoryContext memoryContext);
+
 bool EvalBooleanExpressionAgainstArray(ExprEvalState *evalState,
 									   const bson_value_t *queryValue);
 

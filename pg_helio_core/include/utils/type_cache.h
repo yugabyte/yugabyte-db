@@ -16,5 +16,6 @@ extern PGDLLIMPORT char *CoreSchemaName;
 /* types */
 PGDLLEXPORT Oid BsonTypeId(void);
 PGDLLEXPORT Oid BsonQueryTypeId(void);
+PGDLLEXPORT Oid HelioCoreBsonTypeId(void);
 
 #endif

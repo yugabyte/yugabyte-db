@@ -69,7 +69,6 @@
  helio_api_catalog | bson_dollar_gte                              | boolean               | helio_core.bson, helio_core.bson                                                                                    | func
  helio_api_catalog | bson_dollar_gte                              | boolean               | helio_core.bson, helio_core.bsonquery                                                                               | func
  helio_api_catalog | bson_dollar_in                               | boolean               | helio_core.bson, helio_core.bson                                                                                    | func
- helio_api_catalog | bson_dollar_inverse_match                    | boolean               | document helio_core.bson, spec helio_core.bson                                                                      | func
  helio_api_catalog | bson_dollar_json_schema                      | boolean               | helio_core.bson, helio_core.bson                                                                                    | func
  helio_api_catalog | bson_dollar_lookup_extract_filter_expression | SETOF helio_core.bson | helio_core.bson, helio_core.bson                                                                                    | func
  helio_api_catalog | bson_dollar_lt                               | boolean               | helio_core.bson, helio_core.bson                                                                                    | func
@@ -150,7 +149,7 @@
  helio_api_catalog | gin_bson_wildcard_project_extract_value      | internal              | helio_core.bson, internal                                                                                           | func
  helio_api_catalog | gin_bson_wildcard_project_options            | void                  | internal                                                                                                            | func
  helio_api_catalog | query_match_support                          | internal              | internal                                                                                                            | func
-(113 rows)
+(112 rows)
 
 \df helio_data.*
                        List of functions

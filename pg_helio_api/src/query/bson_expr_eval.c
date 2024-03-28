@@ -340,6 +340,42 @@ GetExpressionEvalState(const bson_value_t *expression, MemoryContext memoryConte
 }
 
 
+/* Frees the resources of a ExprEvalState heap object.
+ * This should only be used on an ExprEvalState created on the same memory context using the
+ * GetExpressionEvalState* functions. */
+void
+FreeExprEvalState(ExprEvalState *exprEvalState, MemoryContext memoryContext)
+{
+	if (exprEvalState != NULL)
+	{
+		MemoryContext originalMemoryContext = MemoryContextSwitchTo(memoryContext);
+
+		if (exprEvalState->estate != NULL)
+		{
+			/* this will destroy the executor state memory context which holds exprState and exprContext. */
+			FreeExecutorState(exprEvalState->estate);
+			exprEvalState->estate = NULL;
+		}
+
+		if (exprEvalState->datums != NULL)
+		{
+			pfree(exprEvalState->datums);
+			exprEvalState->datums = NULL;
+		}
+
+		if (exprEvalState->tupleSlot != NULL)
+		{
+			ExecDropSingleTupleTableSlot(exprEvalState->tupleSlot);
+			exprEvalState->tupleSlot = NULL;
+		}
+
+		pfree(exprEvalState);
+
+		MemoryContextSwitchTo(originalMemoryContext);
+	}
+}
+
+
 /* --------------------------------------------------------- */
 /* Private helper methods */
 /* --------------------------------------------------------- */

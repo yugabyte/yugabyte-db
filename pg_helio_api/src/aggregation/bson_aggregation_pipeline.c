@@ -48,6 +48,7 @@
 #include "commands/commands_common.h"
 #include "commands/defrem.h"
 #include "utils/feature_counter.h"
+#include "utils/version_utils.h"
 #include "customscan/helio_custom_scan.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
@@ -122,6 +123,8 @@ static Query * HandleAddFields(const bson_value_t *existingValue, Query *query,
 							   AggregationPipelineBuildContext *context);
 static Query * HandleCount(const bson_value_t *existingValue, Query *query,
 						   AggregationPipelineBuildContext *context);
+static Query * HandleInverseMatch(const bson_value_t *existingValue, Query *query,
+								  AggregationPipelineBuildContext *context);
 static Query * HandleLimit(const bson_value_t *existingValue, Query *query,
 						   AggregationPipelineBuildContext *context);
 static Query * HandleProject(const bson_value_t *existingValue, Query *query,
@@ -331,6 +334,19 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+	},
+	{
+		.stage = "$inverseMatch",
+		.mutateFunc = &HandleInverseMatch,
+		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
+
+		/* can always be inlined since it doesn't change the projector */
+		.canInlineLookupStageFunc = &CanInlineLookupStageTrue,
+
+		/* inverse match does not change the output format */
+		.preservesStableSortOrder = true,
+		.canHandleAgnosticQueries = false,
+		.isProjectTransform = true,
 	},
 	{
 		.stage = "$limit",
@@ -2429,6 +2445,72 @@ HandleCount(const bson_value_t *existingValue, Query *query,
 
 	/* Having count means the next stage must be a new outer query */
 	context->requiresSubQuery = true;
+	return query;
+}
+
+
+/* Handles the $inverseMatch stage.
+ * It generates a query like:
+ * SELECT document FROM collection WHERE
+ * bson_dollar_inverse_match(document, '{"path": <path>, "input": <input>}')
+ */
+static Query *
+HandleInverseMatch(const bson_value_t *existingValue, Query *query,
+				   AggregationPipelineBuildContext *context)
+{
+	/* we need bson_dollar_inverse_match UDF which is in 1.14 */
+	if (!IsClusterVersionAtleastThis(1, 14, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("Stage $inverseMatch is not supported yet.")));
+	}
+
+	ReportFeatureUsage(FEATURE_STAGE_INVERSEMATCH);
+
+	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg(
+							"$inverseMatch requires a document as an input instead got: %s",
+							BsonTypeName(
+								existingValue->value_type)),
+						errhint(
+							"$inverseMatch requires a document as an input instead got: %s",
+							BsonTypeName(
+								existingValue->value_type))));
+	}
+
+	if (query->limitOffset != NULL || query->limitCount != NULL)
+	{
+		query = MigrateQueryToSubQuery(query, context);
+	}
+
+	/* The first projector is the document */
+	TargetEntry *firstEntry = linitial(query->targetList);
+
+	Expr *currentProjection = firstEntry->expr;
+
+	/* TODO: add support for a from collection in the spec and a pipeline to match documents from that collection
+	 * and have the result of that pipeline be what we pass down as "input" into the inverse match spec. */
+
+	/* add WHERE helio_api.bson_dollar_inverse_match func expr */
+	pgbson *specBson = PgbsonInitFromBuffer(
+		(char *) existingValue->value.v_doc.data,
+		existingValue->value.v_doc.data_len);
+
+	FuncExpr *inverseMatchFuncExpr = makeFuncExpr(
+		BsonDollarInverseMatchFunctionId(), BOOLOID,
+		list_make2(currentProjection, MakeBsonConst(specBson)),
+		InvalidOid, InvalidOid,
+		COERCE_EXPLICIT_CALL);
+
+	List *quals = list_make1(inverseMatchFuncExpr);
+	if (query->jointree->quals != NULL)
+	{
+		quals = lappend(quals, query->jointree->quals);
+	}
+
+	query->jointree->quals = (Node *) make_ands_explicit(quals);
 	return query;
 }
 

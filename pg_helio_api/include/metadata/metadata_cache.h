@@ -228,6 +228,7 @@ Oid ApiCatalogAggregationFindFunctionId(void);
 Oid ApiCatalogAggregationCountFunctionId(void);
 Oid ApiCatalogAggregationDistinctFunctionId(void);
 Oid BsonDollarAddFieldsFunctionOid(void);
+Oid BsonDollarInverseMatchFunctionId(void);
 Oid BsonDollarProjectFunctionOid(void);
 Oid BsonDollarProjectFindFunctionOid(void);
 Oid BsonDollarUnwindFunctionOid(void);
