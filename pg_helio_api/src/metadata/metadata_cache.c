@@ -91,6 +91,12 @@ PGDLLEXPORT char *ApiExtensionName = "pg_helio_api";
 PGDLLEXPORT char *ApiCatalogSchemaName = "helio_api_catalog";
 PGDLLEXPORT char *ApiGucPrefix = "helio_api";
 
+/* Schema functions migrated from a public API to an internal API schema
+ * (e.g. from helio_api -> helio_api_internal)
+ * TODO: These should be transition and removed in subsequent releases.
+ */
+PGDLLEXPORT char *ApiToApiInternalSchemaName = "helio_api_internal";
+
 typedef struct HelioApiOidCacheData
 {
 	/* OID of the <bigint> OPERATOR(pg_catalog.=) <bigint> operator */
@@ -2087,7 +2093,7 @@ ApiCursorStateFunctionId(void)
 
 	if (Cache.CursorStateFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiSchemaName),
+		List *functionNameList = list_make2(makeString(ApiToApiInternalSchemaName),
 											makeString("cursor_state"));
 		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
 		bool missingOK = false;
@@ -2110,7 +2116,7 @@ ApiCurrentCursorStateFunctionId(void)
 
 	if (Cache.CurrentCursorStateFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiSchemaName),
+		List *functionNameList = list_make2(makeString(ApiToApiInternalSchemaName),
 											makeString("current_cursor_state"));
 		Oid paramOids[1] = { BsonTypeId() };
 		bool missingOK = false;
@@ -2133,7 +2139,7 @@ BsonEmptyDataTableFunctionId(void)
 
 	if (Cache.BsonEmptyDataTableFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiSchemaName),
+		List *functionNameList = list_make2(makeString(ApiToApiInternalSchemaName),
 											makeString("empty_data_table"));
 		Oid paramOids[0] = { };
 		bool missingOK = false;

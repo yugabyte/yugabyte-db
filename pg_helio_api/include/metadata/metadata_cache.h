@@ -21,6 +21,7 @@ extern PGDLLIMPORT char *ExtensionObjectPrefix;
 extern PGDLLIMPORT char *CoreSchemaName;
 extern PGDLLIMPORT char *FullBsonTypeName;
 extern PGDLLIMPORT char *ApiCatalogSchemaName;
+extern PGDLLIMPORT char *ApiToApiInternalSchemaName;
 
 extern MemoryContext HelioApiMetadataCacheContext;
 
