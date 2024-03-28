@@ -1310,9 +1310,23 @@ Status CatalogManager::SetXReplWalRetentionForTable(
   auto& table_id = table->id();
   VLOG_WITH_FUNC(4) << "Setting WAL retention for table: " << table_id;
 
+  SCHECK(
+      !table->IsPreparing(), IllegalState,
+      "Cannot set WAL retention of a table that has not yet been fully created");
+
+  const auto min_wal_retention_secs = FLAGS_cdc_wal_retention_time_secs;
+  const auto table_wal_retention_secs = table->LockForRead()->pb.wal_retention_secs();
+  if (table_wal_retention_secs >= min_wal_retention_secs) {
+    VLOG_WITH_FUNC(1) << "Table " << table_id << " already has WAL retention set to "
+                      << table_wal_retention_secs
+                      << ", which is equal or higher than cdc_wal_retention_time_secs: "
+                      << min_wal_retention_secs;
+    return Status::OK();
+  }
+
   AlterTableRequestPB alter_table_req;
   alter_table_req.mutable_table()->set_table_id(table_id);
-  alter_table_req.set_wal_retention_secs(GetAtomicFlag(&FLAGS_cdc_wal_retention_time_secs));
+  alter_table_req.set_wal_retention_secs(min_wal_retention_secs);
 
   AlterTableResponsePB alter_table_resp;
   RETURN_NOT_OK_PREPEND(

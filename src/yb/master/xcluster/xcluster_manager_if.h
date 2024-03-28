@@ -46,6 +46,8 @@ class XClusterManagerIf {
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace(
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,
       const XClusterSafeTimeFilter& filter) = 0;
+  virtual Status MarkIndexBackfillCompleted(
+      const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) = 0;
 
   virtual Result<XClusterStatus> GetXClusterStatus() const = 0;
   virtual Status PopulateXClusterStatusJson(JsonWriter& jw) const = 0;

@@ -441,7 +441,7 @@ Status XClusterProducerBootstrap::UpdateCdcStateTableWithCheckpoints() {
     entry.checkpoint = op_id;
     entries_to_insert.emplace_back(std::move(entry));
   }
-  RETURN_NOT_OK(cdc_state_table_->InsertEntries(entries_to_insert));
+  RETURN_NOT_OK(cdc_state_table_->UpsertEntries(entries_to_insert));
   return Status::OK();
 }
 

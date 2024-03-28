@@ -378,4 +378,10 @@ std::vector<std::shared_ptr<PostTabletCreateTaskBase>> XClusterManager::GetPostT
 
   return result;
 }
+
+Status XClusterManager::MarkIndexBackfillCompleted(
+    const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) {
+  return XClusterSourceManager::MarkIndexBackfillCompleted(index_ids, epoch);
+}
+
 }  // namespace yb::master
