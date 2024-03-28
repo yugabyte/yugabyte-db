@@ -436,7 +436,8 @@ class CDCServiceImpl : public CDCServiceIf {
       std::unordered_set<TabletId>* tablet_ids_with_max_checkpoint);
 
   Result<bool> CheckBeforeImageActive(
-      const TabletId& tablet_id, const StreamMetadata& stream_metadata);
+      const TabletId& tablet_id, const StreamMetadata& stream_metadata,
+      const tablet::TabletPeerPtr& tablet_peer);
 
   Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id = "",
