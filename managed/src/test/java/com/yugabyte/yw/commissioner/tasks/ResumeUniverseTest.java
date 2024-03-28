@@ -14,6 +14,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -21,6 +22,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -45,6 +47,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -83,6 +86,8 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
                       + "    Root dispersion : 0.000101734 seconds\n"
                       + "    Update interval : 32.3 seconds\n"
                       + "    Leap status     : Normal"));
+      IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
+      when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
     } catch (Exception e) {
       fail();
     }
@@ -129,9 +134,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
           TaskType.SetNodeState,
           TaskType.ManageAlertDefinitions,
           TaskType.SwamperTargetsFileUpdate,
@@ -145,9 +152,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.SetActiveUniverseKeys,
+          TaskType.WaitForServerReady,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
           TaskType.SetNodeState,
           TaskType.ManageAlertDefinitions,
           TaskType.SwamperTargetsFileUpdate,
@@ -161,7 +170,9 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -177,7 +188,9 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

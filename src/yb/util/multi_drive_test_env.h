@@ -34,6 +34,8 @@ class MultiDriveTestEnvBase {
  public:
   void AddFailedPath(const std::string& path);
 
+  void RemoveFailedPath(const std::string& path);
+
  protected:
   Status FailureStatus(const std::string& filename) const;
 

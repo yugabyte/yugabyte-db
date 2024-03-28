@@ -30,6 +30,8 @@
 
 
 static TupleTableSlot *YbBitmapTableNext(YbBitmapTableScanState *node);
+static HeapScanDesc CreateYbBitmapTableScanDesc(Relation currentRelation,
+												EState *estate);
 
 /* ----------------------------------------------------------------
  *		YbBitmapTableNext
@@ -47,6 +49,11 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 	ExprContext *econtext;
 	MemoryContext oldcontext;
 	YbScanDesc ybScan;
+
+	if (!node->ss.ss_currentScanDesc)
+		node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(
+			node->ss.ss_currentRelation,
+			node->ss.ps.state);
 
 	/*
 	 * extract necessary information from index scan node
@@ -75,6 +82,7 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		node->work_mem_exceeded = ybtbm->work_mem_exceeded;
 		node->average_ybctid_bytes = yb_tbm_get_average_bytes(ybtbm);
 		node->recheck_required |= ybtbm->recheck;
+		node->skipped_tuples = 0;
 	}
 
 	ybScan = scandesc->ybscan;
@@ -223,6 +231,15 @@ ExecYbBitmapTableScan(PlanState *pstate)
 					(ExecScanRecheckMtd) YbBitmapTableRecheck);
 }
 
+static HeapScanDesc
+CreateYbBitmapTableScanDesc(Relation currentRelation, EState *estate)
+{
+	HeapScanDesc scandesc = heap_beginscan_bm(currentRelation,
+											  estate->es_snapshot, 0, NULL);
+	scandesc->ybscan->exec_params = &estate->yb_exec_params;
+	return scandesc;
+}
+
 /* ----------------------------------------------------------------
  *		ExecReScanYbBitmapTableScan(node)
  * ----------------------------------------------------------------
@@ -231,6 +248,18 @@ void
 ExecReScanYbBitmapTableScan(YbBitmapTableScanState *node)
 {
 	PlanState  *outerPlan = outerPlanState(node);
+
+	if (node->ss.ss_currentScanDesc)
+	{
+		YbScanDesc ybScan = (YbScanDesc) node->ss.ss_currentScanDesc->ybscan;
+		/* For rescan, end the previous scan. */
+		ybc_free_ybscan(ybScan);
+		node->ss.ss_currentScanDesc->ybscan = NULL;
+	}
+
+	node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(
+		node->ss.ss_currentRelation,
+		node->ss.ps.state);
 
 	/* rescan to release any page pin */
 	heap_rescan(node->ss.ss_currentScanDesc, NULL);
@@ -304,7 +333,8 @@ ExecEndYbBitmapTableScan(YbBitmapTableScanState *node)
 	/*
 	 * close heap scan
 	 */
-	heap_endscan(scanDesc);
+	if (scanDesc)
+		heap_endscan(scanDesc);
 
 	/*
 	 * close the heap relation.
@@ -402,17 +432,6 @@ ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 		ExecInitQual(node->bitmapqualorig, (PlanState *) scanstate);
 
 	scanstate->ss.ss_currentRelation = currentRelation;
-
-	/*
-	 * Even though we aren't going to do a conventional seqscan, it is useful
-	 * to create a HeapScanDesc --- most of the fields in it are usable.
-	 */
-	scanstate->ss.ss_currentScanDesc = heap_beginscan_bm(currentRelation,
-														 estate->es_snapshot,
-														 0,
-														 NULL);
-	scanstate->ss.ss_currentScanDesc->ybscan->exec_params =
-		&estate->yb_exec_params;
 
 	/*
 	 * all done.

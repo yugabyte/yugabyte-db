@@ -89,6 +89,13 @@ typedef struct LogicalDecodingContext
 	bool		prepared_write;
 	XLogRecPtr	write_location;
 	TransactionId write_xid;
+
+	/*
+	 * Don't replay commits from an LSN < this LSN. This is the YB equivalent of
+	 * start_decoding_at of SnapBuild struct. We have this field here because we
+	 * do not use the snapbuild mechanism.
+	 */
+	XLogRecPtr	yb_start_decoding_at;
 } LogicalDecodingContext;
 
 

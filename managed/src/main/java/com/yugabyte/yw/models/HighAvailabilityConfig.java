@@ -216,14 +216,14 @@ public class HighAvailabilityConfig extends Model {
         return GlobalState.AwaitingReplicas;
       } else if (this.getLocal().isPresent()) {
         if (this.getLocal().get().isConnected()) {
-          return GlobalState.Operational;
+          return GlobalState.StandbyConnected;
         }
         RuntimeConfGetter runtimeConfGetter =
             StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
         if (PlatformInstance.isBackupOutdated(
             runtimeConfGetter.getGlobalConf(GlobalConfKeys.replicationFrequency),
             this.getLocal().get().getLastBackup())) {
-          return GlobalState.Error;
+          return GlobalState.StandbyDisconnected;
         }
       }
     }

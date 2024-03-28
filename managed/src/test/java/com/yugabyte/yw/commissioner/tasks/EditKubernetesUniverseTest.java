@@ -78,6 +78,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    setFollowerLagMock();
+    setUnderReplicatedTabletsMock();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     this.editUniverse =
         new EditKubernetesUniverse(
@@ -209,18 +211,24 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.FreezeUniverse,
           TaskType.UpdatePlacementInfo,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.CheckFollowerLag,
           TaskType.KubernetesCommandExecutor,
           TaskType.UpdateUniverseIntent,
           TaskType.SwamperTargetsFileUpdate,
@@ -230,16 +238,22 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     return ImmutableList.of(
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
-        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
@@ -474,22 +488,22 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
     String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + "\"podIP\": \"1.2.3.0\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + "\"podIP\": \"1.2.2.0\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
+            + "\"podIP\": \"1.2.2.1\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
+            + "\"podIP\": \"1.2.2.2\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}}]}";

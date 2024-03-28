@@ -22,9 +22,10 @@ func init() {
 	UpgradeUniverseCmd.Flags().SortFlags = false
 
 	UpgradeUniverseCmd.AddCommand(upgradeSoftwareCmd)
+	UpgradeUniverseCmd.AddCommand(upgradeGflagsCmd)
 
 	UpgradeUniverseCmd.PersistentFlags().StringP("name", "n", "",
-		"[Required] The name of the universe to be created.")
+		"[Required] The name of the universe to be ugraded.")
 	UpgradeUniverseCmd.MarkPersistentFlagRequired("name")
 
 	UpgradeUniverseCmd.PersistentFlags().BoolP("force", "f", false,

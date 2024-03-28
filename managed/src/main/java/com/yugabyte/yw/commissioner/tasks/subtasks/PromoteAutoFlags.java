@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
@@ -47,9 +48,8 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
   @Override
   public void run() {
     log.info("Running {}", getName());
-
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     try (YBClient client = getClient()) {
-      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       PromoteAutoFlagsResponse resp =
           client.promoteAutoFlags(
               taskParams().maxClass,
@@ -64,6 +64,13 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
           log.error(error.toString());
           throw new PlatformServiceException(INTERNAL_SERVER_ERROR, error.toString());
         }
+      }
+      Duration sleepTime =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds);
+      log.info("waiting for {} ms after updating auto flags", sleepTime.toMillis());
+      if (sleepTime.toMillis() > 0) {
+        waitFor(sleepTime);
       }
     } catch (PlatformServiceException pe) {
       log.error("Promote auto flags task failed: ", pe);

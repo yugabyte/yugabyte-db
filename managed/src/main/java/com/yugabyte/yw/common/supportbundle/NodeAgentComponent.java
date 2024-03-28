@@ -95,7 +95,8 @@ public class NodeAgentComponent implements SupportBundleComponent {
         nodeTargetFile,
         nodeAgentHomeParent.toString(),
         relativeLogFilePaths,
-        getClass().getSimpleName());
+        getClass().getSimpleName(),
+        false);
   }
 
   @Override

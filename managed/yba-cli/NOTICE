@@ -59,6 +59,13 @@ The following subcomponents are used:
 * License: [BSD-3-Clause](https://github.com/aws/aws-sdk-go/blob/v1.45.24/internal/sync/singleflight/LICENSE)
 
 
+## github.com/briandowns/spinner
+
+* Name: github.com/briandowns/spinner
+* Version: v1.23.0
+* License: [Apache-2.0](https://github.com/briandowns/spinner/blob/v1.23.0/LICENSE)
+
+
 ## github.com/common-nighthawk/go-figure
 
 * Name: github.com/common-nighthawk/go-figure

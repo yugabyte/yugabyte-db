@@ -5,7 +5,6 @@
 package instancetypes
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -50,8 +49,7 @@ var listInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			fmt.Println("No providers found\n")
-			return
+			logrus.Fatalf("No providers with name: %s found\n", providerName)
 		}
 
 		if r[0].GetCode() != util.OnpremProviderType {
@@ -71,7 +69,11 @@ var listInstanceTypesCmd = &cobra.Command{
 			Format: instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
 		}
 		if len(rList) < 1 {
-			fmt.Println("No instance types found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No instance types found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 		instancetypes.Write(instanceTypesCtx, rList)

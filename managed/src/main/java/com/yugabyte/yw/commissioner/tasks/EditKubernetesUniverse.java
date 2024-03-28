@@ -38,6 +38,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -449,7 +450,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion());
+          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          /* addDelayAfterStartup */ false);
     }
     if (instanceTypeChanged || restartAllPods) {
       upgradePodsTask(
@@ -468,7 +470,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion());
+          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          /* addDelayAfterStartup */ false);
     }
 
     // If tservers have been removed, check if some deployments need to be completely
@@ -488,6 +491,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           newNamingStyle,
           universe.isYbcEnabled());
+      Duration sleepBeforeStart =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
+      if (sleepBeforeStart.compareTo(Duration.ZERO) > 0) {
+        createWaitForDurationSubtask(universe, sleepBeforeStart)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      }
+
       createModifyBlackListTask(
               null /* addNodes */,
               new ArrayList<>(tserversToRemove) /* removeNodes */,
@@ -518,7 +529,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   private void validateEditParams(Cluster newCluster, Cluster curCluster) {
     // TODO we should look for y(c)sql auth, gflags changes and so on.
     // Move this logic to UniverseDefinitionTaskBase.
-    if (newCluster.userIntent.replicationFactor != curCluster.userIntent.replicationFactor) {
+    boolean isPrimaryCluster =
+        (newCluster.clusterType == curCluster.clusterType)
+            && (newCluster.clusterType == ClusterType.PRIMARY);
+    if (isPrimaryCluster
+        && newCluster.userIntent.replicationFactor != curCluster.userIntent.replicationFactor) {
       String msg =
           String.format(
               "Replication factor can't be changed during the edit operation. "

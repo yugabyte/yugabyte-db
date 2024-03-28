@@ -89,6 +89,12 @@ typedef struct ReplicationSlotPersistentData
 
 	/* The CDC stream_id (32 bytes + 1 for null terminator) */
 	char yb_stream_id[33];
+
+	/*
+	 * Stores the replica identity value of the tables as they existed during
+	 * the creation of the replication slot.
+	 */
+	HTAB *yb_replica_identities;
 } ReplicationSlotPersistentData;
 
 /*

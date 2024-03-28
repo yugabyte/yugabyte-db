@@ -33,6 +33,7 @@
      "(^managed/RUNTIME-FLAGS[.]md$)",
      "(^managed/yba-cli/docs/.*)",
      "(^managed/yba-cli/.*/LICENSE$)",
+     "(^managed/yba-cli/NOTICE$)",
      "(^managed/yba-cli/internal/formatter/tabwriter/*)",
      "(^managed/yba-cli/internal/formatter/templates/*)",
      "(^[.]clang-tidy)",

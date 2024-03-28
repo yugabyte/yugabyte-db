@@ -354,6 +354,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   void MakeLastKnownPartitionListVersionAtLeast(PartitionListVersion partition_list_version);
 
+  void AddReplicasAsJson(JsonWriter* writer) const;
+
  private:
   // Same as ReplicasAsString(), except that the caller must hold mutex_.
   std::string ReplicasAsStringUnlocked() const;
@@ -584,7 +586,11 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   std::shared_ptr<RemoteTabletServer> GetRemoteTabletServer(const std::string& permanent_uuid);
 
+  void AddAllTabletInfo(JsonWriter* writer);
+
   const std::string& LogPrefix() const { return log_prefix_; }
+
+  void ClearAll();
 
  private:
   friend class LookupRpc;

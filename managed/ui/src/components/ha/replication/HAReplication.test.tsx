@@ -2,7 +2,7 @@ import userEvent from '@testing-library/user-event';
 import { HAReplication } from './HAReplication';
 import { render } from '../../../test-utils';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
-import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
+import { HaConfig, HaReplicationSchedule } from '../dtos';
 
 jest.mock('../hooks/useLoadHAConfiguration');
 
@@ -13,7 +13,7 @@ const setup = (hookResponse: HookReturnType) => {
   return render(<HAReplication />);
 };
 
-const mockConfig: HAConfig = {
+const mockConfig: HaConfig = {
   uuid: 'fake-uuid-111',
   cluster_key: 'fake-key',
   last_failover: 111,
@@ -28,7 +28,7 @@ const mockConfig: HAConfig = {
     }
   ]
 };
-const mockSchedule: HAReplicationSchedule = {
+const mockSchedule: HaReplicationSchedule = {
   frequency_milliseconds: 60000,
   is_running: true
 };

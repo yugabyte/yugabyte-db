@@ -475,6 +475,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
 
   Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
 
+  // Returns the transaction-id of the DDL transaction operating on it, Nil if no such DDL is
+  // happening.
+  Result<TransactionId> GetCurrentDdlTransactionId() const;
+
   const std::string& state_name() const {
     return SysTablesEntryPB_State_Name(pb.state());
   }
@@ -737,6 +741,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool AttachedYCQLIndexDeletionInProgress(const TableId& index_table_id) const;
 
+  void AddDdlTxnWaitingForSchemaVersion(int schema_version,
+                                        const TransactionId& txn) EXCLUDES(lock_);
+
+  std::vector<TransactionId> EraseDdlTxnsWaitingForSchemaVersion(
+      int schema_version) EXCLUDES(lock_);
+
  private:
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
@@ -787,6 +797,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // This field denotes the table is under xcluster bootstrapping. This is used to prevent create
   // table from completing. Not needed once D23712 lands.
   std::atomic_bool bootstrapping_xcluster_replication_ = false;
+
+  // Store a map of schema version->TransactionId of the DDL transaction that initiated the
+  // change. When a schema version n has propagated to all tablets, we use this map to signal all
+  // the DDL transactions waiting for schema version n and any k < n. The map is ordered by schema
+  // version to easily figure out all the entries for schema version < n.
+  std::map<int, TransactionId> ddl_txns_waiting_for_schema_version_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };
@@ -1147,7 +1163,12 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   bool IsConsistentSnapshotStream() const;
 
+  const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity> GetReplicaIdentityMap() const;
+
   std::string ToString() const override;
+
+  bool IsXClusterStream() const;
+  bool IsCDCSDKStream() const;
 
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;

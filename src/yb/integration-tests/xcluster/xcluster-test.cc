@@ -78,8 +78,10 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
@@ -3367,6 +3369,63 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = false;
   ASSERT_OK(VerifyNumRecordsOnConsumer(3 * kNumWriteRecords));
+}
+
+Status VerifyMetaCacheObjectIsValid(
+    const rapidjson::Value* object, const JsonReader& json_reader,  const char* member_name) {
+  const rapidjson::Value* meta_cache = nullptr;
+  EXPECT_OK(json_reader.ExtractObject(object, member_name, &meta_cache));
+  EXPECT_TRUE(meta_cache->HasMember("tablets"));
+  std::vector<const rapidjson::Value*> tablets;
+  return json_reader.ExtractObjectArray(meta_cache, "tablets", &tablets);
+}
+
+void VerifyMetaCacheWithXClusterConsumerSetUp(const std::string& produced_json) {
+  JsonReader json_reader(produced_json);
+  EXPECT_OK(json_reader.Init());
+  const rapidjson::Value* object = nullptr;
+  EXPECT_OK(json_reader.ExtractObject(json_reader.root(), nullptr, &object));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(object)->GetType());
+
+  EXPECT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, "MainMetaCache"));
+  bool found_xcluster_member = false;
+  for (auto it = object->MemberBegin(); it != object->MemberEnd();
+       ++it) {
+    std::string member_name = it->name.GetString();
+    if (member_name.starts_with("XClusterConsumerRemote_")) {
+      found_xcluster_member = true;
+    }
+    EXPECT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, member_name.c_str()));
+  }
+  EXPECT_TRUE(found_xcluster_member)
+      << "No member name starting with XClusterConsumerRemote_ is found";
+}
+
+TEST_F_EX(XClusterTest, ListMetaCacheAfterXClusterSetup, XClusterTestNoParam) {
+  ASSERT_OK(SetUpWithParams({1}, 3));
+  std::string table_name = "table";
+
+  auto table = ASSERT_RESULT(CreateTable(producer_client(), namespace_name, table_name, 3));
+  std::shared_ptr<client::YBTable> producer_table;
+  ASSERT_OK(producer_client()->OpenTable(table, &producer_table));
+  ASSERT_RESULT(CreateTable(consumer_client(), namespace_name, table_name, 3));
+
+  ASSERT_OK(SetupUniverseReplication({producer_table}));
+
+  // Verify that universe replication was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(&resp));
+  // wait 5 seconds for metacache to populate
+  SleepFor(5000ms);
+
+  for (const auto& tserver : consumer_cluster()->mini_tablet_servers()) {
+    auto tserver_endpoint = tserver->bound_http_addr();
+    auto query_endpoint = "http://" + AsString(tserver_endpoint) + "/api/v1/meta-cache";
+    faststring result;
+    ASSERT_OK(EasyCurl().FetchURL(query_endpoint, &result));
+    VerifyMetaCacheWithXClusterConsumerSetUp(result.ToString());
+  }
+  ASSERT_OK(DeleteUniverseReplication());
 }
 
 // Verify the xCluster Pollers shutdown immediately even if the Poll delay is very long.

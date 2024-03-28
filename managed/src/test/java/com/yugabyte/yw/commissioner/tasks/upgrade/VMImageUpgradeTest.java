@@ -77,6 +77,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
           TaskType.ReplaceRootVolume,
@@ -89,13 +91,16 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
           TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.UpdateNodeDetails);
+          TaskType.UpdateNodeDetails,
+          TaskType.SetNodeState);
 
   private static final List<TaskType> NODE_VALIDATION_TASKS =
       ImmutableList.of(TaskType.CheckLocale, TaskType.CheckGlibc);
@@ -104,7 +109,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
-
+    setCheckNodesAreSafeToTakeDown(mockClient);
     vmImageUpgrade.setUserTaskUUID(UUID.randomUUID());
     RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
     mockLocaleCheckResponse(mockNodeUniverseManager);
@@ -205,6 +210,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     List<TaskInfo> createRootVolumeTasks = subTasksByPosition.get(position++);
     assertTaskType(createRootVolumeTasks, TaskType.CreateRootVolumes);
@@ -392,6 +398,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     List<TaskInfo> createRootVolumeTasks = subTasksByPosition.get(position++);
     assertTaskType(createRootVolumeTasks, TaskType.CreateRootVolumes);

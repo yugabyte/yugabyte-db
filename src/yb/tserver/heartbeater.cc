@@ -613,8 +613,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
     server_->UpdateTransactionTablesVersion(last_hb_response_.transaction_tables_version());
   }
 
-  server_->UpdateXClusterSafeTime(last_hb_response_.xcluster_namespace_to_safe_time());
-
   std::optional<AutoFlagsConfigPB> new_config;
   if (last_hb_response_.has_auto_flags_config()) {
     new_config = last_hb_response_.auto_flags_config();

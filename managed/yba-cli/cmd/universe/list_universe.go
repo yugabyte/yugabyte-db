@@ -5,7 +5,6 @@
 package universe
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -42,7 +41,11 @@ var listUniverseCmd = &cobra.Command{
 			Format: universe.NewUniverseFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			fmt.Println("No universes found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No universes found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 		universe.Write(universeCtx, r)

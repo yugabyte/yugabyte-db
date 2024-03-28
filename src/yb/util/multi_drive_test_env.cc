@@ -26,6 +26,11 @@ void MultiDriveTestEnvBase::AddFailedPath(const std::string& path) {
   failed_set_.emplace(path);
 }
 
+void MultiDriveTestEnvBase::RemoveFailedPath(const std::string& path) {
+  std::unique_lock lock(data_mutex_);
+  failed_set_.erase(path);
+}
+
 Status MultiDriveTestEnvBase::FailureStatus(const std::string& filename) const {
   SharedLock lock(data_mutex_);
   if (failed_set_.empty()) {

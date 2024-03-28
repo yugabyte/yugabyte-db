@@ -74,8 +74,12 @@ var updateGCSStorageConfigurationCmd = &cobra.Command{
 		r = storageConfigs
 
 		if len(r) < 1 {
-			fmt.Println("No storage configurations found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No storage configurations with name: %s found\n",
+						storageName),
+					formatter.RedColor,
+				))
 		}
 
 		var storageConfig ybaclient.CustomerConfigUI
@@ -152,7 +156,7 @@ var updateGCSStorageConfigurationCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		fmt.Printf("The storage configuration %s (%s) has been updated\n",
+		logrus.Infof("The storage configuration %s (%s) has been updated\n",
 			formatter.Colorize(storageName, formatter.GreenColor), storageUUID)
 
 		storageconfigurationutil.UpdateStorageConfigurationUtil(authAPI, storageName, storageUUID)

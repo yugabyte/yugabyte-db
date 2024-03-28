@@ -19,10 +19,10 @@ import algoliasearch from 'algoliasearch';
    * Create a URL that contains query, tab, items etc.
    */
   function createSearchUrl(pager = 1) {
-    const searchText = searchInput.value.trim();
+    const searchText = encodedSearchedTerm();
     if (history.pushState) {
       let addQueryParams = '';
-      if (searchText && searchText.trim().length > 0) {
+      if (searchText.length > 0) {
         searchInput.classList.add('have-text');
         addQueryParams = `?query=${searchText.trim()}`;
       } else {
@@ -71,16 +71,29 @@ import algoliasearch from 'algoliasearch';
         document.querySelector('#search-summary').innerHTML = 'Search data related to <b>YugabyteDB</b> in our Documentation.';
         document.querySelector('#pagination-docs').style.display = 'none';
       } else {
+        document.querySelector('#search-summary').innerHTML = '';
         document.querySelector('.search-result').style.display = 'none';
       }
     }, 800);
   }
 
   /**
+   * Encode user searched term to avoid XSS.
+   *
+   * @returns string
+   */
+  function encodedSearchedTerm() {
+    const searchedValue = searchInput.value.trim();
+    const encodedValue = searchedValue.replace(/[\u00A0-\u9999<>&]/g, i => `&#${i.charCodeAt(0)};`);
+
+    return encodedValue;
+  }
+
+  /**
    * Main Docs section HTML.
    */
   function docsSection(hitIs) {
-    const searchText = searchInput.value.trim();
+    const searchText = encodedSearchedTerm();
 
     let content = '';
     hitIs.forEach(hit => {
@@ -258,7 +271,7 @@ import algoliasearch from 'algoliasearch';
    * Add queries with filters selected by user and call search algolia function.
    */
   function searchAlgolia() {
-    const searchedTerm = searchInput.value.trim();
+    const searchedTerm = encodedSearchedTerm();
 
     let searchValue = searchedTerm;
     if (searchValue.length > 0) {
@@ -345,7 +358,8 @@ import algoliasearch from 'algoliasearch';
                       bubbles: true,
                     });
 
-                    aiSearchInput.setAttribute('value', searchedTerm);
+                    // Add the original searched input.
+                    aiSearchInput.setAttribute('value', searchInput.value.trim());
 
                     document.querySelector('.mantine-TextInput-input').dispatchEvent(event);
                   }
@@ -458,9 +472,9 @@ import algoliasearch from 'algoliasearch';
 
   const inputReset = document.querySelector('.reset-input');
   inputReset.addEventListener('click', () => {
-    document.querySelector('.td-search-input').value = '';
+    searchInput.value = '';
     emptySearch();
-    document.querySelector('.td-search-input').classList.remove('have-text');
+    searchInput.classList.remove('have-text');
     if (document.querySelector('body').classList.contains('td-searchpage')) {
       window.history.pushState({}, '', '/search/');
     }

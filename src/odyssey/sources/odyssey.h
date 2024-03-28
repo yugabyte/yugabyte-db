@@ -104,6 +104,7 @@
 #include "sources/auth_query.h"
 #include "sources/hba.h"
 #include "sources/yb_auth_passthrough.h"
+#include "sources/yb_oid_entry.h"
 
 #include "sources/od_dlsym.h"
 #include "sources/daemon.h"

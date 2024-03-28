@@ -594,7 +594,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             .collect(Collectors.toList());
     universeDetails.clusters.add(primaryCluster);
 
-    return (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides))
+    return (!StringUtils.equals(
+            incomingIntent.universeOverrides, currentUserIntent.universeOverrides))
         || checkIfGFlagsChanged(u, currentUserIntent)
         || shouldUpdateYbUniverse(currentUserIntent, incomingIntent)
         || !currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion);

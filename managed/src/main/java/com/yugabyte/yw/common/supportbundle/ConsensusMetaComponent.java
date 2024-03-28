@@ -61,7 +61,8 @@ class ConsensusMetaComponent implements SupportBundleComponent {
         node,
         nodeHomeDir,
         sourceNodeFiles,
-        this.getClass().getSimpleName());
+        this.getClass().getSimpleName(),
+        false /* skipUntar */);
   }
 
   @Override

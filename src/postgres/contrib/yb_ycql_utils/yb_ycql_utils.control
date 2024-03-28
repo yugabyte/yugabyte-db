@@ -1,0 +1,5 @@
+# yb_ycql_utils extension
+comment = 'An extension for fetching YCQL data in PG side'
+default_version = '1.0'
+module_pathname = '$libdir/yb_ycql_utils'
+relocatable = true

@@ -109,7 +109,22 @@ public class GraphService {
     for (Pair<GraphQuery, Future<GraphResponse>> future : futures) {
       GraphQuery query = future.getKey();
       try {
-        responses.add(future.getValue().get());
+        GraphResponse response = future.getValue().get();
+        if (query.isReplaceNaN()) {
+          response
+              .getData()
+              .forEach(
+                  graphData ->
+                      graphData
+                          .getPoints()
+                          .forEach(
+                              point -> {
+                                if (point.getY() != null && point.getY().isNaN()) {
+                                  point.setY(0D);
+                                }
+                              }));
+        }
+        responses.add(response);
       } catch (Exception e) {
         log.warn("Failed to get graph data for query: " + query, e);
         responses.add(

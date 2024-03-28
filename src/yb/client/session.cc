@@ -147,9 +147,12 @@ void YBSession::SetDeadline(CoarseTimePoint deadline) {
 namespace {
 
 internal::BatcherPtr CreateBatcher(const YBSession::BatcherConfig& config) {
+  auto session = config.session.lock();
+  CHECK_NOTNULL(session);
+
   auto batcher = std::make_shared<internal::Batcher>(
-      config.client, config.session.lock(), config.transaction, config.read_point(),
-      config.force_consistent_read, config.leader_term);
+      config.client, session, config.transaction, config.read_point(), config.force_consistent_read,
+      config.leader_term);
   batcher->SetRejectionScoreSource(config.rejection_score_source);
   return batcher;
 }

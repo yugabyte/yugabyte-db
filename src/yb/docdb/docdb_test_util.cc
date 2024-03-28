@@ -101,7 +101,7 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  Status Cleanup(TransactionIdSet&& set) override {
+  Status Cleanup(TransactionIdApplyOpIdMap&& set) override {
     Fail();
     return STATUS(NotSupported, "Cleanup not implemented");
   }

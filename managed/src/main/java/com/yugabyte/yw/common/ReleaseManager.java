@@ -421,7 +421,7 @@ public class ReleaseManager {
   }
 
   public List<String> getLocalReleaseVersions() {
-    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       return new ArrayList<String>(getLocalReleases().keySet());
     } else {
       // Get the version of every release that has at least 1 "ReleaseLocalFile" artifact
@@ -1144,6 +1144,24 @@ public class ReleaseManager {
         return null;
       }
       return releaseContainerFactory.newReleaseContainer(metadataFromObject(metadata));
+    }
+  }
+
+  public Map<String, ReleaseContainer> getAllReleaseContainersByVersion() {
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
+      return Release.getAll().stream()
+          .collect(
+              Collectors.toMap(
+                  release -> release.getVersion(),
+                  release -> releaseContainerFactory.newReleaseContainer(release)));
+    } else {
+      return getReleaseMetadata().entrySet().stream()
+          .collect(
+              Collectors.toMap(
+                  entry -> entry.getKey(),
+                  entry ->
+                      releaseContainerFactory.newReleaseContainer(
+                          metadataFromObject(entry.getValue()))));
     }
   }
 

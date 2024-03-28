@@ -93,6 +93,11 @@ static inline od_route_t *od_route_pool_new(od_route_pool_t *pool,
 				td_new(QUANTILES_COMPRESSION);
 		}
 	}
+
+	route->yb_database_entry = yb_get_db_entry(id->yb_db_oid);
+	if (route->yb_database_entry == NULL)
+		return NULL;
+
 	od_list_append(&pool->list, &route->link);
 	pool->count++;
 	return route;
@@ -125,6 +130,10 @@ od_route_pool_match(od_route_pool_t *pool, od_route_id_t *key, od_rule_t *rule)
 	{
 		od_route_t *route;
 		route = od_container_of(i, od_route_t, link);
+
+		if (yb_is_route_invalid(route))
+			continue;
+
 		if (route->rule == rule &&
 		    od_route_id_compare(&route->id, key)) {
 			return route;
@@ -180,8 +189,7 @@ static inline void od_route_pool_stat(od_route_pool_t *pool,
 }
 
 static inline void od_route_pool_stat_database_mark(od_route_pool_t *pool,
-						    char *database,
-						    int database_len,
+						    int yb_db_oid,
 						    od_stat_t *current,
 						    od_stat_t *prev)
 {
@@ -192,9 +200,7 @@ static inline void od_route_pool_stat_database_mark(od_route_pool_t *pool,
 		route = od_container_of(i, od_route_t, link);
 		if (route->stats_mark_db)
 			continue;
-		if (route->id.database_len != database_len)
-			continue;
-		if (memcmp(route->id.database, database, database_len) != 0)
+		if (route->id.yb_db_oid != yb_db_oid)
 			continue;
 
 		od_stat_sum(current, &route->stats);
@@ -233,8 +239,10 @@ od_route_pool_stat_database(od_route_pool_t *pool,
 		od_stat_t prev;
 		od_stat_init(&current);
 		od_stat_init(&prev);
-		od_route_pool_stat_database_mark(pool, route->id.database,
-						 route->id.database_len,
+
+		char database[64];
+		strcpy(database, (char *)route->yb_database_entry->name);
+		od_route_pool_stat_database_mark(pool, route->id.yb_db_oid,
 						 &current, &prev);
 
 		/* calculate average */
@@ -243,8 +251,7 @@ od_route_pool_stat_database(od_route_pool_t *pool,
 		od_stat_average(&avg, &current, &prev, prev_time_us);
 
 		int rc;
-		rc = callback(route->id.database, route->id.database_len - 1,
-			      &current, &avg, argv);
+		rc = callback(database, strlen(database), &current, &avg, argv);
 		if (rc == -1) {
 			od_route_pool_stat_unmark_db(pool);
 			return -1;

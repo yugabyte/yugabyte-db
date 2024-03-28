@@ -5,6 +5,7 @@ import (
     "encoding/json"
     "errors"
     "fmt"
+    "os"
     "io/ioutil"
     "math/big"
     "net/http"
@@ -122,21 +123,32 @@ func (h *HelperContainer) GetBytesFromString(sizeString string) (int64, error) {
 }
 
 func (h *HelperContainer) FindBinaryLocation(binaryName string) (string, error) {
-    YUGABYTE_DIR := filepath.Join("..", "..")
+    executablePath, err := os.Executable()
+    if err != nil {
+        return "", fmt.Errorf("failed to get executable path: %s", err.Error())
+    }
+    executablePath, err = filepath.EvalSymlinks(executablePath)
+    if err != nil {
+        return "", fmt.Errorf("failed to evaluate symlink of %s: %s", executablePath, err.Error())
+    }
 
-    dirCandidates := []string{
-        // Default if tar is downloaded
-        filepath.Join(YUGABYTE_DIR, "bin"),
-        // Development environment
-        filepath.Join(YUGABYTE_DIR, "build", "latest", "bin"),
-        // Development environment for UI
-        filepath.Join(YUGABYTE_DIR, "build", "latest", "gobin"),
+    // Directory that is one level above directory containing yugabyted-ui binary
+    yugabyteDir := filepath.Dir(filepath.Dir(executablePath))
+
+    var dirCandidates []string
+    if binaryName == "yb-controller-cli" {
+        dirCandidates = []string{filepath.Join(yugabyteDir, "ybc", "bin")}
+    } else {
+        dirCandidates = []string{filepath.Join(yugabyteDir, "bin")}
     }
     for _, path := range dirCandidates {
-        binaryPath, err := exec.LookPath(filepath.Join(path, binaryName))
-        if err == nil {
-            return binaryPath, err
-        }
+       h.logger.Infof("Checking binary path %s in directory: %s",
+                                       filepath.Join(path, binaryName), yugabyteDir)
+       binaryPath, err := exec.LookPath(filepath.Join(path, binaryName))
+       if err == nil {
+           h.logger.Infof("Found binary %s at path: %s", binaryName, binaryPath)
+           return binaryPath, err
+       }
     }
     return "", fmt.Errorf("failed to find binary %s", binaryName)
 }

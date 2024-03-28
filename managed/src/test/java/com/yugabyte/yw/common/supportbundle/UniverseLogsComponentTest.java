@@ -113,7 +113,8 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
-        .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        .batchWiseDownload(
+            any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
 
     // Generate a fake shell response containing the entire list of file paths
     // Mocks the server response

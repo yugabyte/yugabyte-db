@@ -60,7 +60,12 @@ func ListStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode s
 	if len(strings.TrimSpace(storageCode)) != 0 {
 		codes = []string{strings.ToUpper(storageCode)}
 	} else if len(strings.TrimSpace(commandCall)) == 0 {
-		codes = []string{util.S3StorageConfigType, util.GCSStorageConfigType, util.AzureStorageConfigType, util.NFSStorageConfigType}
+		codes = []string{
+			util.S3StorageConfigType,
+			util.GCSStorageConfigType,
+			util.AzureStorageConfigType,
+			util.NFSStorageConfigType,
+		}
 	}
 	storageConfigsCode := make([]ybaclient.CustomerConfigUI, 0)
 	for _, c := range codes {
@@ -77,7 +82,11 @@ func ListStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode s
 		Format: storageconfiguration.NewStorageConfigFormat(viper.GetString("output")),
 	}
 	if len(storageConfigs) < 1 {
-		fmt.Println("No storage configurations found")
+		if util.IsOutputType("table") {
+			logrus.Infoln("No storage configurations found\n")
+		} else {
+			logrus.Infoln("{}\n")
+		}
 		return
 	}
 	storageconfiguration.Write(storageCtx, storageConfigs)

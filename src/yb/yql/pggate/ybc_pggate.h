@@ -284,6 +284,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_matview,
                               YBCPgOid pg_table_oid,
                               YBCPgOid old_relfilenode_oid,
+                              bool is_truncate,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -308,6 +309,8 @@ YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname
                                       const char *newname);
 
 YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name);
+
+YBCStatus YBCPgAlterTableSetReplicaIdentity(YBCPgStatement handle, const char identity_type);
 
 YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
                                      const char *newname);
@@ -855,6 +858,8 @@ YBCStatus YBCPgUpdateAndPersistLSN(
 
 // Get a new OID from the OID allocator of database db_oid.
 YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);
+
+YBCStatus YBCYcqlStatementStats(YCQLStatementStats** stats, size_t* num_stats);
 
 // Active Session History
 void YBCStoreTServerAshSamples(

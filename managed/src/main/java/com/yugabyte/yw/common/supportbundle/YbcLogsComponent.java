@@ -119,7 +119,8 @@ class YbcLogsComponent implements SupportBundleComponent {
           nodeTargetFile,
           nodeHomeDir,
           ybcLogFilePathString,
-          this.getClass().getSimpleName());
+          this.getClass().getSimpleName(),
+          false);
     } else {
       log.debug(
           "Found no matching YB-Controller logs for node: {}, source path: {}, target path: {}, "

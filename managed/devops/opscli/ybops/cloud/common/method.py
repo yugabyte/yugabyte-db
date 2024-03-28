@@ -643,6 +643,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         super(CreateInstancesMethod, self).__init__(base_command, "create")
         self.can_ssh = True
         self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
+        self.INSTANCE_LOOKUP_RETRY_LIMIT = 5
 
     def add_extra_args(self):
         """Setup the CLI options for creating instances.
@@ -684,7 +685,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         })
         self.update_ansible_vars_with_args(args)
         create_output = self.run_ansible_create(args)
-        host_info = self.cloud.get_host_info(args)
+        host_info = self.wait_for_host(args)
         normalized_state = self.cloud.normalize_instance_state(host_info.get("instance_state"))
         logging.info("Host {} is in normalized state {}({})."
                      .format(args.search_pattern, normalized_state,
@@ -695,21 +696,6 @@ class CreateInstancesMethod(AbstractInstancesMethod):
             raise YBOpsRecoverableError("Host {} is in invalid state {}."
                                         .format(args.search_pattern,
                                                 host_info.get("instance_state")))
-        # Set the host and default port.
-        self.extra_vars.update(
-            self.get_server_host_port(host_info, args.custom_ssh_port, default_port=True))
-        # Update with the open port.
-        self.update_open_ssh_port(args)
-        self.extra_vars['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
-        # Port is already open. Wait for connection to server to succeed.
-        connected = wait_for_server(self.extra_vars)
-        if not connected:
-            host_port_user = get_host_port_user(self.extra_vars)
-            raise YBOpsRecoverableError("Connection({}) to host {} by user {} failed at port {}"
-                                        .format(host_port_user["connection_type"],
-                                                host_port_user["host"],
-                                                host_port_user["user"],
-                                                host_port_user["port"]))
 
         if args.boot_script:
             logging.info(

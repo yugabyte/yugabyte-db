@@ -163,6 +163,7 @@ get_ephemeral_drives() {
   declare -g max_iterations=$((num_devices+1))
   # iterate through 1 more than num_devices to skip over root volume
   for (( i=0; i<max_iterations; ++i )); do
+    fs_opts="defaults,noatime,nofail,allocsize=4m"
     e=${ephemerals[eph_idx]}
     echo "Probing $e ..."
     # Some instance types (C5, M5 etc) have EBS volume mounted as nvme
@@ -225,6 +226,7 @@ get_ephemeral_drives() {
           echo "Creating xfs on: " $device_path
           /sbin/mkfs.xfs $device_path -f
           file_system=xfs
+          fs_opts="${fs_opts},ikeep"
         else
           echo "mkfs.xfs not found. Using the default - $file_system"
         fi
@@ -248,7 +250,7 @@ get_ephemeral_drives() {
         echo "Adding entry for $mount_path to fstab..."
         echo "#$mount_path" >> /etc/fstab
         # Mounting using UUID
-        echo "UUID=$device_uuid $mount_path $file_system defaults,noatime,nofail,allocsize=4m 0 2" \
+        echo "UUID=${device_uuid} ${mount_path} ${file_system} ${fs_opts} 0 2" \
                         >> /etc/fstab
       fi
       echo "checking actual path"

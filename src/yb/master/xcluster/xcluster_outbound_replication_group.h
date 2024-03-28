@@ -85,6 +85,9 @@ class XClusterOutboundReplicationGroup
   Status RemoveNamespace(const LeaderEpoch& epoch, const NamespaceId& namespace_id)
       EXCLUDES(mutex_);
 
+  Status RemoveStreams(const std::vector<CDCStreamInfo*>& streams, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
+
   Status Delete(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
   // Returns std::nullopt if the namespace is not yet ready.

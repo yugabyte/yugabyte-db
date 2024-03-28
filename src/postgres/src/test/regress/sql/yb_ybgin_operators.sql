@@ -5,8 +5,9 @@
 -- <https://www.postgresql.org/docs/current/functions-json.html>.
 --
 
--- Disable sequential scan so that index scan is always chosen.
+-- Always choose index scan.
 SET enable_seqscan = off;
+SET yb_test_ybgin_disable_cost_factor = 0.5;
 
 --
 -- jsonb_ops

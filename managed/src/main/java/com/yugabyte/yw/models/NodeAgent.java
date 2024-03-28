@@ -54,6 +54,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -202,6 +203,7 @@ public class NodeAgent extends Model {
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Node agent state", accessMode = READ_ONLY)
+  @Setter(AccessLevel.NONE)
   private State state;
 
   @WhenModified
@@ -252,6 +254,13 @@ public class NodeAgent extends Model {
     public SortByIF getOrderField() {
       return SortBy.uuid;
     }
+  }
+
+  public void setState(State state) {
+    if (this.state != null) {
+      this.state.validateTransition(state);
+    }
+    this.state = state;
   }
 
   public static Optional<NodeAgent> maybeGet(UUID uuid) {
@@ -382,7 +391,6 @@ public class NodeAgent extends Model {
   public void saveState(State state) {
     updateInTxn(
         n -> {
-          n.validateStateTransition(state);
           n.setState(state);
           n.save();
         });

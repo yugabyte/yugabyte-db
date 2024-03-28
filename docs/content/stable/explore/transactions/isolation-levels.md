@@ -35,11 +35,11 @@ YugabyteDB supports three isolation levels in the transactional layer:
 
 - Serializable
 - Snapshot
-- Read committed {{<badge/tp>}}
+- Read committed {{<badge/ea>}}
 
 The default isolation level for the YSQL API is effectively Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because, by default, Read committed, which is the YSQL API and PostgreSQL _syntactic_ default, maps to Snapshot isolation.
 
-To enable Read committed (currently in [Tech Preview](/preview/releases/versioning/#feature-availability)), you must set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`. By default this flag is `false` and the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
+To enable Read committed (currently in [Early Access](/preview/releases/versioning/#feature-availability)), you must set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`. By default this flag is `false` and the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
 
 {{< tip title="Tip" >}}
 
@@ -57,8 +57,8 @@ The following table shows the mapping between the PostgreSQL isolation levels in
 
 | PostgreSQL Isolation | YugabyteDB Equivalent     | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly |
 | :------------------- | :------------------------ | :--------- | :------------------ | :----------- | :-------------------- |
-| Read uncommitted | Read Committed {{<badge/tp>}} | Allowed, but not in YSQL |  Possible | Possible | Possible |
-| Read committed   | Read Committed {{<badge/tp>}} | Not possible | Possible     | Possible | Possible |
+| Read uncommitted | Read Committed {{<badge/ea>}} | Allowed, but not in YSQL |  Possible | Possible | Possible |
+| Read committed   | Read Committed {{<badge/ea>}} | Not possible | Possible     | Possible | Possible |
 | Repeatable read  | Snapshot                      | Not possible | Not possible | Allowed, but not in YSQL | Possible |
 | Serializable     | Serializable                  | Not possible | Not possible | Not possible | Not possible |
 
@@ -354,7 +354,7 @@ SELECT * FROM example;
 
 {{< note >}}
 
-Read Committed is [Tech Preview](/preview/releases/versioning/#feature-availability).
+Read Committed is [Early Access](/preview/releases/versioning/#feature-availability).
 
 {{</note >}}
 

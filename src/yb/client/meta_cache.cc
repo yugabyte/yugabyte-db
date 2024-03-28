@@ -636,6 +636,31 @@ void RemoteTablet::MakeLastKnownPartitionListVersionAtLeast(
       std::max(last_known_partition_list_version_, partition_list_version);
 }
 
+void RemoteTablet::AddReplicasAsJson(JsonWriter* writer) const {
+  writer->StartObject();
+  writer->String("tablet_id");
+  writer->String(tablet_id());
+  writer->String("replicas");
+  writer->StartArray();
+  SharedLock lock(mutex_);
+  for (const auto& replica : replicas_) {
+      writer->StartObject();
+      writer->String("permanent_uuid");
+      writer->String(replica->ts->permanent_uuid());
+      writer->String("peer_role");
+      writer->String(PeerRole_Name(replica->role));
+      writer->String("failure_status");
+      writer->String(replica->Failed() ? "FAILED" : "OK");
+      writer->String("last_failed_time");
+      writer->String(replica->last_failed_time.ToFormattedString());
+      writer->String("last_failed_time_in_ns");
+      writer->Uint64(replica->last_failed_time.ToUint64());
+      writer->EndObject();
+  }
+  writer->EndArray();
+  writer->EndObject();
+}
+
 void LookupCallbackVisitor::operator()(const LookupTabletCallback& tablet_callback) const {
   if (error_status_) {
     tablet_callback(*error_status_);
@@ -1198,6 +1223,18 @@ std::shared_ptr<RemoteTabletServer> MetaCache::GetRemoteTabletServer(
     return it->second;
   }
   return nullptr;
+}
+
+void MetaCache::AddAllTabletInfo(JsonWriter* writer) {
+  SharedLock lock(mutex_);
+  writer->StartObject();
+  writer->String("tablets");
+  writer->StartArray();
+  for (const auto& [_, tablet] : tablets_by_id_) {
+    tablet->AddReplicasAsJson(writer);
+  }
+  writer->EndArray();
+  writer->EndObject();
 }
 
 class MetaCache::CallbackNotifier {
@@ -2240,6 +2277,15 @@ std::future<Result<internal::RemoteTabletPtr>> MetaCache::LookupTabletByKeyFutur
   return MakeFuture<Result<internal::RemoteTabletPtr>>([&](auto callback) {
     this->LookupTabletByKey(table, partition_key, deadline, std::move(callback));
   });
+}
+
+void MetaCache::ClearAll() {
+  std::lock_guard lock(mutex_);
+  ts_cache_.clear();
+  tables_.clear();
+  tablets_by_id_.clear();
+  tablet_lookups_by_id_.clear();
+  deleted_tablets_.clear();
 }
 
 LookupDataGroup::~LookupDataGroup() {

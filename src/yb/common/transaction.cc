@@ -16,6 +16,7 @@
 
 #include "yb/common/common.messages.h"
 
+#include "yb/util/compare_util.h"
 #include "yb/util/result.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
@@ -138,6 +139,64 @@ bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) 
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata) {
+  return out << metadata.ToString();
+}
+
+namespace {
+
+template <class PB>
+void DoToPB(const PostApplyTransactionMetadata& source, PB* dest) {
+  source.TransactionIdToPB(dest);
+  source.apply_op_id.ToPB(dest->mutable_apply_op_id());
+  dest->set_commit_ht(source.commit_ht.ToUint64());
+  dest->set_log_ht(source.log_ht.ToUint64());
+}
+
+} // namespace
+
+template <class PB>
+Result<PostApplyTransactionMetadata> PostApplyTransactionMetadata::DoFromPB(const PB& source) {
+  PostApplyTransactionMetadata result;
+
+  result.transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(source.transaction_id()));
+  result.apply_op_id = OpId::FromPB(source.apply_op_id());
+  result.commit_ht = HybridTime(source.commit_ht());
+  result.log_ht = HybridTime(source.log_ht());
+
+  return result;
+}
+
+Result<PostApplyTransactionMetadata> PostApplyTransactionMetadata::FromPB(
+    const LWPostApplyTransactionMetadataPB& source) {
+  return DoFromPB(source);
+}
+
+Result<PostApplyTransactionMetadata> PostApplyTransactionMetadata::FromPB(
+    const PostApplyTransactionMetadataPB& source) {
+  return DoFromPB(source);
+}
+
+void PostApplyTransactionMetadata::ToPB(PostApplyTransactionMetadataPB* dest) const {
+  DoToPB(*this, dest);
+}
+
+void PostApplyTransactionMetadata::ToPB(LWPostApplyTransactionMetadataPB* dest) const {
+  DoToPB(*this, dest);
+}
+
+void PostApplyTransactionMetadata::TransactionIdToPB(PostApplyTransactionMetadataPB* dest) const {
+  dest->set_transaction_id(transaction_id.data(), transaction_id.size());
+}
+
+void PostApplyTransactionMetadata::TransactionIdToPB(LWPostApplyTransactionMetadataPB* dest) const {
+  dest->dup_transaction_id(transaction_id.AsSlice());
+}
+
+bool operator==(const PostApplyTransactionMetadata& lhs, const PostApplyTransactionMetadata& rhs) {
+  return YB_STRUCT_EQUALS(transaction_id, apply_op_id, commit_ht, log_ht);
+}
+
+std::ostream& operator<<(std::ostream& out, const PostApplyTransactionMetadata& metadata) {
   return out << metadata.ToString();
 }
 

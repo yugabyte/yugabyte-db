@@ -102,8 +102,11 @@ func init() {
 // Execute commands
 func Execute(version string) {
 	rootCmd.Version = version
+	rootCmd.SetVersionTemplate("YugabyteDB Anywhere CLI (yba) version: {{.Version}}\n")
 	if err := rootCmd.Execute(); err != nil {
-		logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+		// Set log level and formatter for this error
+		log.SetLogLevel(viper.GetString("logLevel"), viper.GetBool("debug"))
+		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 }
 
@@ -139,9 +142,7 @@ func initConfig() {
 	viper.SetEnvPrefix("yba")
 	//Read all enviromnent variable that match YBA_ENVNAME
 	viper.AutomaticEnv() // read in environment variables that match
-	//Set Logrus formatter options
-	log.SetFormatter()
-	// Set log level
+	// Set log level and formatter
 	log.SetLogLevel(viper.GetString("logLevel"), viper.GetBool("debug"))
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {

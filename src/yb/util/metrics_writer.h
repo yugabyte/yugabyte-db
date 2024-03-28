@@ -62,8 +62,14 @@ class PrometheusWriter {
 
   Status FlushAggregatedValues();
 
+  Status FlushNumberOfEntriesCutOff();
+
   PrometheusMetricFilter* TEST_GetPrometheusMetricFilter() const {
     return prometheus_metric_filter_.get();
+  }
+
+  uint32_t TEST_GetNumberOfEntriesCutOff() const {
+    return num_of_entries_cut_off_;
   }
 
  private:
@@ -103,6 +109,10 @@ class PrometheusWriter {
   ExportHelpAndType export_help_and_type_;
 
   const std::unique_ptr<PrometheusMetricFilter> prometheus_metric_filter_;
+
+  uint32_t remaining_allowed_entries_;
+
+  uint32_t num_of_entries_cut_off_ = 0;
 };
 
 // Native Metrics Storage Writer - writes prometheus metrics into system table.

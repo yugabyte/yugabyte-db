@@ -75,9 +75,13 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
     if (currentNode.isTserver) {
       createNodePrecheckTasks(
           currentNode,
-          EnumSet.of(ServerType.TSERVER),
+          currentNode.getAllProcesses(),
           SubTaskGroupType.StoppingNodeProcesses,
+          false,
           null);
+    } else {
+      createCheckNodesAreSafeToTakeDownTask(
+          Collections.singletonList(currentNode), Collections.emptyList(), null);
     }
     addBasicPrecheckTasks();
   }

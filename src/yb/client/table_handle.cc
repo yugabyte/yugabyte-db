@@ -58,6 +58,21 @@ Status TableHandle::Create(const YBTableName& table_name,
       .schema(&schema)
       .num_tablets(num_tablets);
 
+  if (schema.num_hash_key_columns() == 0) {
+    // Setup range key columns for range-sharded tables.
+    std::vector<std::string> range_column_names;
+    range_column_names.reserve(schema.num_range_key_columns());
+    auto& columns = schema.columns();
+    for (size_t i = 0; i < schema.num_key_columns(); ++i) {
+      auto& column_schema = columns[i];
+      CHECK(column_schema.is_key());
+      if (!column_schema.is_hash_key()) {
+        range_column_names.push_back(column_schema.name());
+      }
+    }
+    table_creator->set_range_partition_columns(range_column_names);
+  }
+
   // Setup Index properties.
   if (index_info) {
     table_creator->indexed_table_id(index_info->indexed_table_id())

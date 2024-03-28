@@ -47,7 +47,9 @@ interface VolumeInfoFieldProps {
   disableNumVolumes: boolean;
   isDedicatedMasterField?: boolean;
   maxVolumeCount: number;
-  isNodeResizable: boolean;
+  updateOptions: string[];
+  diffInHours: number | null;
+  AwsCoolDownPeriod: number;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -86,14 +88,21 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   disableNumVolumes,
   isDedicatedMasterField,
   maxVolumeCount,
-  isNodeResizable
+  updateOptions,
+  diffInHours,
+  AwsCoolDownPeriod
 }) => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
   const { t } = useTranslation();
   const instanceTypeChanged = useRef(false);
   const dataTag = isDedicatedMasterField ? 'Master' : 'TServer';
-  const { numVolumesDisable, volumeSizeDisable, minVolumeSize } = useVolumeControls(isEditMode);
+  const { numVolumesDisable, volumeSizeDisable, minVolumeSize } = useVolumeControls(
+    isEditMode,
+    updateOptions
+  );
+  const isAwsNodeCoolingDown = diffInHours !== null && diffInHours < AwsCoolDownPeriod;
+
   //watchers
   const fieldValue = isDedicatedMasterField
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
@@ -227,6 +236,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderVolumeInfo = () => {
     const isAWSProvider = provider?.code === CloudType.aws;
+    const isAwsNodeDisabled = isAWSProvider && isAwsNodeCoolingDown;
     const fixedVolumeSize =
       [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&
       fieldValue?.storageType === StorageType.Scratch &&
@@ -281,7 +291,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                         !smartResizePossible &&
                         isEditMode &&
                         !instanceTypeChanged.current) ||
-                      volumeSizeDisable
+                      volumeSizeDisable ||
+                      isAwsNodeDisabled
                     }
                     inputProps={{
                       min: 1,
@@ -299,7 +310,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                     ? t('universeForm.instanceConfig.k8VolumeSizeUnit')
                     : t('universeForm.instanceConfig.volumeSizeUnit')}
                 </span>
-                {isAWSProvider && !isNodeResizable && (
+                {isAwsNodeDisabled && (
                   <Box className={classes.coolDownTooltip}>
                     <Tooltip
                       title={t('universeForm.instanceConfig.cooldownHours')}

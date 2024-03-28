@@ -55,25 +55,23 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 		} else {
 			if (route->id.yb_stats_index == -1) {
 				route->id.yb_stats_index = yb_get_stats_index(
-					instance->yb_stats, route->id.database,
+					instance->yb_stats,
+					(char *)route->yb_database_entry->name,
 					route->id.user);
 			}
 
 			index = route->id.yb_stats_index;
 			strncpy(instance->yb_stats[index].database_name,
-				route->id.database, DB_NAME_MAX_LEN);
+				(char *)route->yb_database_entry->name,
+				DB_NAME_MAX_LEN);
 			strncpy(instance->yb_stats[index].user_name,
 				route->id.user, USER_NAME_MAX_LEN);
 		}
 
-		od_debug(&instance->logger, "stats", NULL, NULL,
-			 "Updating stats for db %s with index %d",
-			 route->id.database, index);
-
 		if (index == -1) {
 			od_error(&instance->logger, "stats", NULL, NULL,
 				 "Unable to find the index for db %s",
-				 route->id.database);
+				 (char *)route->yb_database_entry->name);
 			return -1;
 		}
 

@@ -51,6 +51,10 @@ export interface MainTableReplicationCandidate extends YBTable {
   indexTables?: IndexTableReplicationCandidate[];
 }
 
+export type TableReplicationCandidate =
+  | MainTableReplicationCandidate
+  | IndexTableReplicationCandidate;
+
 /**
  * Holds list of tables for a keyspace and provides extra metadata.
  */

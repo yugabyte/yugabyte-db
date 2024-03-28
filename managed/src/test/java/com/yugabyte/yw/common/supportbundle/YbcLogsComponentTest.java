@@ -107,7 +107,8 @@ public class YbcLogsComponentTest extends FakeDBApplication {
     when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
-        .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        .batchWiseDownload(
+            any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
 
     when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);
     // Generate a fake shell response containing the entire list of file paths

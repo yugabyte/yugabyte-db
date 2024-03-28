@@ -26,6 +26,8 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 Review the following information before starting an upgrade.
 {{< /warning >}}
 
+- Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
+
 - You can only upgrade to the latest minor version of every release.
 
     For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
@@ -36,7 +38,7 @@ Review the following information before starting an upgrade.
 
 - Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
 
-- Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
+- Roll back is {{<badge/ea>}} and supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
 
 ## Upgrade YugabyteDB cluster
 
@@ -210,6 +212,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 {{< warning title="Important" >}}
 
+- Roll back is {{<badge/ea>}}.
 - Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 or higher.
 - You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
 {{< /warning >}}

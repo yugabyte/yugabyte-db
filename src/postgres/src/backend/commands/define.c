@@ -42,6 +42,9 @@
 #include "parser/scansup.h"
 #include "utils/builtins.h"
 
+/* YB Includes */
+#include "pg_yb_utils.h"
+
 /*
  * Extract a string value (otherwise uninterpreted) from a DefElem.
  */
@@ -149,6 +152,30 @@ defGetBoolean(DefElem *def)
 					return true;
 				if (pg_strcasecmp(sval, "off") == 0)
 					return false;
+				/*
+				 * YB: PG function untransformRelOptions untransform text-array
+				 * format of reloptions stored in pg_class to a list of DefElem
+				 * whose arg has T_String type.
+				 * For example, reloption colocation=0 is parsed to a DefElem
+				 * whose arg 0 has T_Integer by parser.
+				 * However, text format colocation=0 stored in pg_class is
+				 * converted to a DefElem whose arg 0 has T_String type by
+				 * untransformRelOptions.
+				 * We use untransformRelOptions to support table rewrite
+				 * operations like ALTER TABLE, REFRESH MATERIALIZED VIEW, so
+				 * for YB's table boolean reloptions, we allow T_String type
+				 * "0" and "1" to be extracted as boolean false and true,
+				 * respectively.
+				 */
+				if (IsYugaByteEnabled() &&
+					(strcmp(def->defname, "colocated") == 0 ||
+					 strcmp(def->defname, "colocation") == 0))
+				{
+					if (pg_strcasecmp(sval, "1") == 0)
+						return true;
+					if (pg_strcasecmp(sval, "0") == 0)
+						return false;
+				}
 			}
 			break;
 	}

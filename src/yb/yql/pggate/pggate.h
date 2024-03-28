@@ -313,6 +313,7 @@ class PgApiImpl {
                         bool is_matview,
                         const PgObjectId& pg_table_oid,
                         const PgObjectId& old_relfilenode_oid,
+                        bool is_truncate,
                         PgStatement **handle);
 
   Status CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
@@ -336,6 +337,8 @@ class PgApiImpl {
                                 const char *newname);
 
   Status AlterTableDropColumn(PgStatement *handle, const char *name);
+
+  Status AlterTableSetReplicaIdentity(PgStatement *handle, const char identity_type);
 
   Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                const char *newname);
@@ -776,6 +779,7 @@ class PgApiImpl {
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
 
+  Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
  private:

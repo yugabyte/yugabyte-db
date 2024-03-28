@@ -12,6 +12,10 @@ menu:
 type: docs
 ---
 
+## Upgrade the operating system
+
+If your universe is running on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major release of YugabyteDB. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
+
 ## Review major changes in previous YugabyteDB releases
 
 Before starting the upgrade, review the following major changes in previous YugabyteDB releases. Depending on the upgrade you are planning, you may need to make changes to your automation.

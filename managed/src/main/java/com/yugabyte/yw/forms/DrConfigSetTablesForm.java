@@ -14,6 +14,11 @@ public class DrConfigSetTablesForm {
   @Required
   public Set<String> tables;
 
+  @ApiModelProperty(
+      value =
+          "Whether or not YBA should also include all index tables from any provided main tables.")
+  public boolean autoIncludeIndexTables;
+
   @Valid
   @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
   public XClusterConfigRestartFormData.RestartBootstrapParams bootstrapParams;

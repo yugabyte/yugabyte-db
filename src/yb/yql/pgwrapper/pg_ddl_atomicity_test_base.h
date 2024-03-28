@@ -20,6 +20,8 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/util/status.h"
 
+using namespace std::literals;
+
 namespace yb::pgwrapper {
 
 YB_STRONGLY_TYPED_BOOL(DdlErrorInjection);
@@ -179,6 +181,17 @@ class PgDdlAtomicityTestBase : public LibPqTestBase {
                                     const std::vector<std::string>& expected_column_names,
                                     const std::set<std::string>& cols_marked_for_deletion);
 
+  // Verify that the 'table_name' has the 'expected_replica_identity'
+  Status VerifyReplicaIdentityMatches(client::YBClient* client,
+                                      const std::string& database_name,
+                                      const std::string& table_name,
+                                      PgReplicaIdentity expected_replica_identity);
+
+  Result<bool> CheckIfReplicaIdentityMatches(client::YBClient* client,
+                                             const std::string& database_name,
+                                             const std::string& table_name,
+                                             PgReplicaIdentity expected_replica_identity);
+
   Status VerifyRowsAfterDdlSuccess(PGConn* conn, const int expected_rows);
 
   Status VerifyRowsAfterDdlErrorInjection(PGConn* conn, const int expected_rows);
@@ -215,7 +228,7 @@ class PgDdlAtomicityTestBase : public LibPqTestBase {
 
   const std::string kDatabase = "yugabyte";
   constexpr static std::string_view kDdlVerificationError =
-      "Table is undergoing DDL transaction verification"sv;
+      "TABLE_SCHEMA_CHANGE_IN_PROGRESS"sv;
 };
 
 } // namespace yb::pgwrapper

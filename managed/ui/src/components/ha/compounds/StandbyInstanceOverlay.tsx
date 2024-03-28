@@ -20,9 +20,9 @@ export const StandbyInstanceOverlay = withRouter<{}>(({ location }) => {
     <>
       <div className="standby-instance-overlay" />
       <div className="standby-instance-text">
-        This is a Standby instance
+        This is a Standby instance.
         <br />
-        Only the administration configuration is available
+        Only the High Availability configuration is available.
       </div>
     </>
   );

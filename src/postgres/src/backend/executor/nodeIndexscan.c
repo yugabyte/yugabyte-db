@@ -107,8 +107,8 @@ IndexNext(IndexScanState *node)
 		else if (ScanDirectionIsBackward(direction))
 			direction = ForwardScanDirection;
 	}
-	/* "Don't care about order" direction. */
-	if (IsYugaByteEnabled() &&
+	/* YB relation scans are optimized for the "Don't care about order" direction. */
+	if (IsYBRelation(node->ss.ss_currentRelation) &&
 		ScanDirectionIsNoMovement(((IndexScan *) node->ss.ps.plan)->indexorderdir))
 	{
 		direction = NoMovementScanDirection;

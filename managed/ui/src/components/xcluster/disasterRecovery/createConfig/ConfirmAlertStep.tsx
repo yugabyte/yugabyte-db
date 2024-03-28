@@ -6,10 +6,13 @@ import { Link } from 'react-router';
 import { getAlertConfigurations } from '../../../../actions/universe';
 import { alertConfigQueryKey } from '../../../../redesign/helpers/api';
 import { formatLagMetric } from '../../../../utils/Formatters';
-import { AlertName, PollingIntervalMs } from '../../constants';
-import { getStrictestReplicationLagAlertConfig } from '../../ReplicationUtils';
+import { PollingIntervalMs } from '../../constants';
+import { getStrictestReplicationLagAlertThreshold } from '../../ReplicationUtils';
 
-import { IAlertConfiguration as AlertConfiguration } from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
+import {
+  AlertTemplate,
+  IAlertConfiguration as AlertConfiguration
+} from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 import { Universe } from '../../../../redesign/helpers/dtos';
 
 interface ConfirmAlertStepProps {
@@ -49,7 +52,7 @@ export const ConfirmAlertStep = ({ sourceUniverse }: ConfirmAlertStepProps) => {
   });
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: sourceUniverse.universeUUID
   };
   const alertConfigQuery = useQuery<AlertConfiguration[]>(
@@ -61,7 +64,7 @@ export const ConfirmAlertStep = ({ sourceUniverse }: ConfirmAlertStepProps) => {
   /**
    * The existing replicaiton lag alert config with the lowest alert threshold.
    */
-  const strictestReplicationLagAlertConfig = getStrictestReplicationLagAlertConfig(
+  const strictestReplicationLagAlertConfig = getStrictestReplicationLagAlertThreshold(
     alertConfigQuery.data
   );
 
@@ -84,9 +87,7 @@ export const ConfirmAlertStep = ({ sourceUniverse }: ConfirmAlertStepProps) => {
                   />
                 </Typography>
                 <Typography variant="body2">
-                  {formatLagMetric(
-                    strictestReplicationLagAlertConfig?.thresholds?.SEVERE?.threshold
-                  )}
+                  {formatLagMetric(strictestReplicationLagAlertConfig)}
                 </Typography>
               </Box>
               <Typography variant="body2">

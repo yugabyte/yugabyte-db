@@ -29,6 +29,8 @@ YB_STRONGLY_TYPED_BOOL(IgnoreDisabledList);
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);
 
+using SplitsToScheduleMap = std::unordered_map<TabletId, std::optional<uint64_t>>;
+
 class TabletSplitManager {
  public:
   TabletSplitManager(TabletSplitCandidateFilterIf* filter,
@@ -86,8 +88,7 @@ class TabletSplitManager {
   void DisableSplittingForSmallKeyRangeTablet(const TabletId& tablet_id);
 
  private:
-  void ScheduleSplits(
-      const std::unordered_set<TabletId>& splits_to_schedule, const LeaderEpoch& epoch);
+  void ScheduleSplits(const SplitsToScheduleMap& splits_to_schedule, const LeaderEpoch& epoch);
 
   void DoSplitting(
       const std::vector<TableInfoPtr>& tables,

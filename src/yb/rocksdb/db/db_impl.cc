@@ -3998,6 +3998,12 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
                                               ColumnFamilyData* cfd,
                                               SuperVersion* super_version,
                                               Arena* arena) {
+  if (!read_options.statistics && cfd->ioptions()->statistics) {
+    ReadOptions new_read_options = read_options;
+    new_read_options.statistics = cfd->ioptions()->statistics;
+    return NewInternalIterator(new_read_options, cfd, super_version, arena);
+  }
+
   SCOPED_WAIT_STATUS(RocksDB_NewIterator);
   InternalIterator* internal_iter;
   assert(arena != nullptr);

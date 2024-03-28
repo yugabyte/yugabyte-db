@@ -127,6 +127,24 @@ const (
 	StorageCustomerConfigType = "STORAGE"
 )
 
+// Server Type values
+const (
+	// MasterServerType for master processes
+	MasterServerType = "MASTER"
+	// TserverServerType for tserver processes
+	TserverServerType = "TSERVER"
+	// ControllerServerType for YBC processes
+	ControllerServerType = "CONTROLLER"
+)
+
+// Operation Type
+const (
+	// UpgradeOperation type
+	UpgradeOperation = "Upgrade"
+	// EditOperation type
+	EditOperation = "Edit"
+)
+
 // Different resource types that are supported in CLI
 const (
 	// UniverseType resource

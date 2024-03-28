@@ -110,9 +110,12 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
     client::BootstrapProducerResult bootstrap_result) {
   const auto& replication_group_id = universe_->ReplicationGroupId();
 
-  auto [producer_table_ids, bootstrap_ids, bootstrap_time] = VERIFY_RESULT_PREPEND(
-      std::move(bootstrap_result),
-      Format("Failed to bootstrap table for xCluster replication group $0", replication_group_id));
+  SCHECK_EC_FORMAT(
+      bootstrap_result, InvalidArgument, MasterError(MasterErrorPB::INVALID_REQUEST),
+      "Failed to bootstrap table on the source universe of xCluster replication group $0: $1",
+      replication_group_id, bootstrap_result.status().ToString());
+
+  auto& [producer_table_ids, bootstrap_ids, bootstrap_time] = *bootstrap_result;
 
   CHECK_EQ(producer_table_ids.size(), 1);
   CHECK_EQ(bootstrap_ids.size(), 1);
@@ -157,7 +160,7 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
   req.set_replication_group_id(replication_group_id.ToString());
   req.add_producer_table_ids_to_add(producer_table_id);
   req.add_producer_bootstrap_ids_to_add(bootstrap_id);
-  RETURN_NOT_OK(catalog_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */));
+  RETURN_NOT_OK(catalog_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */, epoch_));
 
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -184,12 +187,12 @@ Status AddTableToXClusterTargetTask::WaitForSetupUniverseReplicationToFinish() {
   return Status::OK();
 }
 
-Result<std::optional<HybridTime>> AddTableToXClusterTargetTask::GetXClusterSafeTimeWithoutDdlQueue(
-    const LeaderEpoch& epoch) {
+Result<std::optional<HybridTime>>
+AddTableToXClusterTargetTask::GetXClusterSafeTimeWithoutDdlQueue() {
   const auto namespace_id = table_info_->namespace_id();
 
   auto safe_time_res = xcluster_manager_.GetXClusterSafeTimeForNamespace(
-      epoch, namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
+      epoch_, namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
   if (!safe_time_res) {
     if (!safe_time_res.status().IsNotFound()) {
       return safe_time_res.status();
@@ -208,9 +211,8 @@ Result<std::optional<HybridTime>> AddTableToXClusterTargetTask::GetXClusterSafeT
 Status AddTableToXClusterTargetTask::RefreshAndGetXClusterSafeTime() {
   // Force a refresh of the xCluster safe time map so that it accounts for all tables under
   // replication.
-  const auto epoch = catalog_manager_.GetLeaderEpochInternal();
-  RETURN_NOT_OK(xcluster_manager_.RefreshXClusterSafeTimeMap(epoch));
-  auto initial_safe_time = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue(epoch));
+  RETURN_NOT_OK(xcluster_manager_.RefreshXClusterSafeTimeMap(epoch_));
+  auto initial_safe_time = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue());
   if (!initial_safe_time) {
     Complete();
     return Status::OK();
@@ -226,8 +228,7 @@ Status AddTableToXClusterTargetTask::RefreshAndGetXClusterSafeTime() {
 }
 
 Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
-  auto ht =
-      VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue(catalog_manager_.GetLeaderEpochInternal()));
+  auto ht = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue());
   if (!ht) {
     Complete();
     return Status::OK();

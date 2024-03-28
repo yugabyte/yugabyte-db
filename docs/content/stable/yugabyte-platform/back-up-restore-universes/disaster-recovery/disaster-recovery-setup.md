@@ -14,6 +14,10 @@ type: docs
 
 ## Prerequisites
 
+By default, xCluster Disaster Recovery is not enabled. To enable the feature, set the **Enable disaster recovery** Global Configuration option to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
+### Create universes
+
 Create two universes, the DR primary universe which will serve reads and writes, and the DR replica.
 
 Ensure the universes have the following characteristics:

@@ -32,13 +32,6 @@ class PgNamespaceMasterRestartTest : public PgMiniTestBase {
   void SetUp() override {
     pgwrapper::PgMiniTestBase::SetUp();
   }
-
-  void RestartMaster() {
-    LOG(INFO) << "Restarting Master";
-    auto mini_master_ = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-    ASSERT_OK(mini_master_->Restart());
-    ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-  }
 };
 
 TEST_F(PgNamespaceMasterRestartTest, CreateNamespaceWithDelay) {
@@ -64,7 +57,7 @@ TEST_F(PgNamespaceMasterRestartTest, CreateNamespaceWithDelay) {
   TEST_SYNC_POINT("PgNamespaceMasterRestartTest::CreateNamespaceWithDelay:WaitForFail");
 
   // Restart master
-  RestartMaster();
+  ASSERT_OK(RestartMaster());
 
   // Stop threads
   thread_holder.JoinAll();

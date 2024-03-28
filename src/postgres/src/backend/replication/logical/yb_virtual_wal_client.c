@@ -23,6 +23,8 @@
 
 #include "postgres.h"
 
+#include <inttypes.h>
+
 #include "access/xact.h"
 #include "commands/ybccmds.h"
 #include "replication/slot.h"
@@ -30,10 +32,13 @@
 #include "utils/memutils.h"
 
 static MemoryContext virtual_wal_context = NULL;
+static MemoryContext cached_records_context = NULL;
+static MemoryContext unacked_txn_list_context = NULL;
 
 /* Cached records received from the CDC service. */
 static YBCPgChangeRecordBatch *cached_records = NULL;
 static size_t cached_records_last_sent_row_idx = 0;
+static bool last_getconsistentchanges_response_empty = false;
 
 typedef struct UnackedTransactionInfo {
 	TransactionId xid;
@@ -62,8 +67,6 @@ typedef struct UnackedTransactionInfo {
  *
  * The size of this list depends on how fast the client confirms the flush of
  * the streamed changes.
- *
- * TODO(#21399): Store this in a separate memory context for ease of tracking.
  */
 static List *unacked_transactions = NIL;
 
@@ -84,6 +87,23 @@ YBCInitVirtualWal(List *yb_publication_names)
 	virtual_wal_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 												"YB virtual WAL context",
 												ALLOCSET_DEFAULT_SIZES);
+	/*
+	 * A separate memory context for the cached record batch that we receive
+	 * from the CDC service as a child of the virtual wal context. Makes it
+	 * easier to free the batch before requesting another batch.
+	 */
+	cached_records_context = AllocSetContextCreate(virtual_wal_context,
+													 "YB cached record batch "
+													 "context",
+													 ALLOCSET_DEFAULT_SIZES);
+	/*
+	 * A separate memory context for the unacked txn list as a child of the
+	 * virtual wal context.
+	 */
+	unacked_txn_list_context = AllocSetContextCreate(virtual_wal_context,
+													 "YB unacked txn list "
+													 "context",
+													 ALLOCSET_DEFAULT_SIZES);
 	caller_context = GetCurrentMemoryContext();
 
 	/* Start a transaction to be able to read the catalog tables. */
@@ -101,12 +121,19 @@ YBCInitVirtualWal(List *yb_publication_names)
 	MemoryContextSwitchTo(caller_context);
 
 	unacked_transactions = NIL;
+	last_getconsistentchanges_response_empty = false;
 }
 
 void
 YBCDestroyVirtualWal()
 {
 	YBCDestroyVirtualWalForCDC();
+
+	if (unacked_txn_list_context)
+		MemoryContextDelete(unacked_txn_list_context);
+
+	if (cached_records_context)
+		MemoryContextDelete(cached_records_context);
 
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
@@ -116,13 +143,17 @@ static List *
 YBCGetTables(List *publication_names)
 {
 	List	*yb_publications;
+	List	*tables;
 
 	Assert(IsTransactionState());
 
 	yb_publications =
 		YBGetPublicationsByNames(publication_names, false /* missing_ok */);
 
-	return yb_pg_get_publications_tables(yb_publications);
+	tables = yb_pg_get_publications_tables(yb_publications);
+	list_free(yb_publications);
+
+	return tables;
 }
 
 static void
@@ -154,7 +185,7 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 
 	elog(DEBUG4, "YBCReadRecord");
 
-	caller_context = MemoryContextSwitchTo(virtual_wal_context);
+	caller_context = MemoryContextSwitchTo(cached_records_context);
 
 	/* reset error state */
 	*errormsg = NULL;
@@ -166,11 +197,27 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 	if (cached_records == NULL ||
 		cached_records_last_sent_row_idx >= cached_records->row_count)
 	{
+		if (last_getconsistentchanges_response_empty)
+		{
+			elog(DEBUG4,
+				 "YBCReadRecord: Sleeping for %d ms due to empty response.",
+				 yb_walsender_poll_sleep_duration_empty_ms);
+			pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
+		}
+		else
+		{
+			elog(DEBUG4,
+				 "YBCReadRecord: Sleeping for %d ms as the last "
+				 "response was non-empty.",
+				 yb_walsender_poll_sleep_duration_nonempty_ms);
+			pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
+		}
+
 		elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
 
 		/* We no longer need the earlier record batch. */
 		if (cached_records)
-			pfree(cached_records);
+			MemoryContextReset(cached_records_context);
 
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
 								   &cached_records);
@@ -185,14 +232,12 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 	 */
 	if (!cached_records || cached_records->row_count == 0)
 	{
-		/*
-		 * TODO(#20726): Sleep for a configurable amount of time here to avoid
-		 * spamming the CDC service.
-		 */
+		last_getconsistentchanges_response_empty = true;
 		MemoryContextSwitchTo(caller_context);
 		return NULL;
 	}
 
+	last_getconsistentchanges_response_empty = false;
 	record = &cached_records->rows[cached_records_last_sent_row_idx++];
 	state->ReadRecPtr = record->lsn;
 	state->yb_virtual_wal_record = record;
@@ -207,6 +252,10 @@ static void
 TrackUnackedTransaction(YBCPgVirtualWalRecord *record)
 {
 	YBUnackedTransactionInfo *transaction = NULL;
+	MemoryContext			 caller_context;
+
+	caller_context = GetCurrentMemoryContext();
+	MemoryContextSwitchTo(unacked_txn_list_context);
 
 	switch (record->action)
 	{
@@ -246,8 +295,10 @@ TrackUnackedTransaction(YBCPgVirtualWalRecord *record)
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT: switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_UPDATE: switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
-			return;
+			break;
 	}
+
+	MemoryContextSwitchTo(caller_context);
 }
 
 XLogRecPtr
@@ -283,8 +334,14 @@ YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush)
 		return restart_lsn_hint;
 	}
 
+	elog(DEBUG1, "Updating confirmed_flush to %lu and restart_lsn_hint to %lu",
+		 confirmed_flush, restart_lsn_hint);
+
 	YBCUpdateAndPersistLSN(MyReplicationSlot->data.yb_stream_id, restart_lsn_hint,
 						   confirmed_flush, &restart_lsn);
+
+	elog(DEBUG1, "The restart_lsn calculated by the virtual wal is %" PRIu64,
+		 restart_lsn);
 
 	CleanupAckedTransactions(confirmed_flush);
 	return restart_lsn;
@@ -300,6 +357,10 @@ CalculateRestartLSN(XLogRecPtr confirmed_flush)
 
 	if (numunacked == 0)
 		return InvalidXLogRecPtr;
+
+	elog(DEBUG1,
+		 "The number of unacked transactions in the virtual wal client is %d",
+		 numunacked);
 
 	foreach (lc, unacked_transactions)
 	{

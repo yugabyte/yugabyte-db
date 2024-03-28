@@ -485,11 +485,13 @@ Status CDCStateTable::WriteEntriesAsync(
   }
 
   session->Apply(std::move(ops));
-  session->FlushAsync([callback = std::move(callback)](client::FlushStatus* flush_status) {
+  session->FlushAsync([session_holder = session,
+                       callback = std::move(callback)](client::FlushStatus* flush_status) mutable {
     for (auto& error : flush_status->errors) {
       LOG_WITH_FUNC(WARNING) << "Flush of operation " << error->failed_op().ToString()
                              << " failed: " << error->status();
     }
+    session_holder = {};
     callback(std::move(flush_status->status));
   });
   return Status::OK();

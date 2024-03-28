@@ -13,11 +13,14 @@
 
 #include <optional>
 
+#include "yb/client/snapshot_test_util.h"
+
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_debug.h"
 
 #include "yb/integration-tests/packed_row_test_base.h"
 
+#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db/db_impl.h"
@@ -62,12 +65,17 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) =
         GetParam() == dockv::PackedRowVersion::kV2;
     PackedRowTestBase<PgMiniTestBase>::SetUp();
+    snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
+    snapshot_util_->SetProxy(&client_->proxy_cache());
+    snapshot_util_->SetCluster(cluster_.get());
   }
 
   void TestCompaction(size_t num_keys, const std::string& expr_suffix);
   void TestColocated(size_t num_keys, int num_expected_records);
   void TestSstDump(bool specify_metadata, std::string* output);
   void TestAppliedSchemaVersion(bool colocated);
+
+  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
 
 TEST_P(PgPackedRowTest, Simple) {
@@ -995,6 +1003,47 @@ TEST_P(PgPackedRowTest, SstDumpNoMetadata) {
 std::string PackedRowVersionToString(
     const testing::TestParamInfo<dockv::PackedRowVersion>& param_info) {
   return AsString(param_info.param);
+}
+
+TEST_P(PgPackedRowTest, RestorePITRSnapshotAfterOldSchemaGC) {
+  const auto kDbName = "test";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB("test"));
+  const auto kPrimaryTable = "t2";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a int)", kPrimaryTable));
+  const auto kTableName = "t";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2)", kPrimaryTable));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN b INT", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 3), (4, 4)", kTableName));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 3), (4, 4)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 3), (4, 4)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 3), (4, 4)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 3), (4, 4)", kTableName));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto kInterval = 2s * kTimeMultiplier;
+  const auto kRetention = kInterval * 2;
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, kDbName,
+      client::WaitSnapshot::kFalse, kInterval, kRetention));
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id, 1, HybridTime::kMin, 10s));
+  auto schedules = ASSERT_RESULT(snapshot_util_->ListSchedules(schedule_id));
+  ASSERT_EQ(schedules.size(), 1);
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+
+  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id, hybrid_time));
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->PickSuitableSnapshot(
+      schedule_id, hybrid_time));
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id, hybrid_time));
 }
 
 INSTANTIATE_TEST_SUITE_P(

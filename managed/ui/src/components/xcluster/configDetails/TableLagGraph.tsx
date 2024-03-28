@@ -14,7 +14,6 @@ import { YBErrorIndicator } from '../../common/indicators';
 import { MetricsPanelOld } from '../../metrics';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
 import {
-  AlertName,
   DEFAULT_METRIC_TIME_RANGE_OPTION,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
@@ -22,9 +21,14 @@ import {
   REPLICATION_LAG_GRAPH_EMPTY_METRIC,
   TimeRangeType
 } from '../constants';
-import { getMaxNodeLagMetric, getMetricTimeRange } from '../ReplicationUtils';
+import {
+  getMaxNodeLagMetric,
+  getMetricTimeRange,
+  getStrictestReplicationLagAlertThreshold
+} from '../ReplicationUtils';
 
 import { MetricTimeRangeOption, Metrics, XClusterTable } from '../XClusterTypes';
+import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import styles from './TableLagGraph.module.scss';
 
@@ -89,17 +93,13 @@ export const TableLagGraph: FC<Props> = ({
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: universeUUID
   };
   const alertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
-  const maxAcceptableLag = Math.min(
-    ...alertConfigQuery.data.map(
-      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-    )
-  );
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(alertConfigQuery.data);
 
   if (tableMetricsQuery.isError) {
     return <YBErrorIndicator />;
@@ -124,7 +124,7 @@ export const TableLagGraph: FC<Props> = ({
       graphMetric.tserver_async_replication_lag_micros.data = [
         trace,
         {
-          name: 'Max Acceptable Lag',
+          name: 'Lowest Replication Lag Alert Threshold',
           instanceName: trace.instanceName,
           type: 'scatter',
           line: {

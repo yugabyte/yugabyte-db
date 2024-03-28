@@ -112,6 +112,14 @@ func HasSudoAccess() bool {
 	return false
 }
 
+// SplitInput parses an input string that is either comma or space separated and returns the
+// individual elements in an array
+func SplitInput(input string) []string {
+	return strings.FieldsFunc(input, func(r rune) bool {
+			return r == ',' || r == ' '
+	})
+}
+
 // Create or truncate a file at a relative path for the non-root case. Have to make the directory
 // before inserting the file in that directory.
 func Create(p string) (*os.File, error) {

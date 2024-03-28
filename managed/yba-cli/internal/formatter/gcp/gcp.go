@@ -13,15 +13,13 @@ import (
 
 const (
 	// Provider provides header for GCP Cloud Info
-	Provider = "table {{.HostVpcID}}\t{{.DestVpcID}}\t{{.Project}}\t{{.VpcType}}" +
+	Provider = "table {{.Project}}\t{{.VpcType}}" +
 		"\t{{.FirewallTags}}"
 
 	// Region provides header for GCP Region Cloud Info
 	Region = "table {{.InstanceTemplate}}\t.{{.YbImage}}"
 
-	destVpcIDHeader        = "Destination VPC ID"
 	projectHeader          = "GCE Project"
-	hostVpcIDHeader        = "Host VPC ID"
 	vpcTypeHeader          = "VPC Type"
 	ybFirewallTagsHeader   = "YB Firewall Tags"
 	instanceTemplateHeader = "Instance Template"
@@ -68,9 +66,9 @@ func NewRegionFormat(source string) formatter.Format {
 func NewProviderContext() *ProviderContext {
 	gcpProviderCtx := ProviderContext{}
 	gcpProviderCtx.Header = formatter.SubHeaderContext{
-		"DestVpcID":    destVpcIDHeader,
-		"Project":      projectHeader,
-		"HostVpcID":    hostVpcIDHeader,
+
+		"Project": projectHeader,
+
 		"VpcType":      vpcTypeHeader,
 		"FirewallTags": ybFirewallTagsHeader,
 	}
@@ -87,19 +85,9 @@ func NewRegionContext() *RegionContext {
 	return &gcpRegionCtx
 }
 
-// DestVpcID fetches the destination VPC ID
-func (c *ProviderContext) DestVpcID() string {
-	return c.Gcp.GetDestVpcId()
-}
-
 // Project fetches the GCE project
 func (c *ProviderContext) Project() string {
 	return c.Gcp.GetGceProject()
-}
-
-// HostVpcID fetches the host VPC ID
-func (c *ProviderContext) HostVpcID() string {
-	return c.Gcp.GetHostVpcId()
 }
 
 // VpcType fetches the VPC type

@@ -239,6 +239,11 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   unique_ptr<CQLRequest> request;
   unique_ptr<CQLResponse> response;
 
+  ADOPT_TRACE(call_->trace());
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->set_rpc_request_id(call_->instance_id());
+    wait_state->UpdateAuxInfo({.method{"CQLProcessCall"}});
+  }
   // Parse the CQL request. If the parser failed, it sets the error message in response.
   parse_begin_ = MonoTime::Now();
   const auto& context = static_cast<const CQLConnectionContext&>(call_->connection()->context());
@@ -263,10 +268,6 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
     call_->trace()->set_end_to_end_traces_requested(true);
   }
   call_->SetRequest(request_, service_impl_);
-  ADOPT_TRACE(call_->trace());
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->UpdateAuxInfo({.method{"CQLProcessCall"}});
-  }
   retry_count_ = 0;
   response = ProcessRequest(*request_);
   PrepareAndSendResponse(response);

@@ -273,6 +273,13 @@ public class PlatformReplicationHelper {
     return false;
   }
 
+  public void clearMetrics(HighAvailabilityConfig config, String remoteInstanceAddr) {
+    this.remoteClientFactory
+        .getClient(
+            config.getClusterKey(), remoteInstanceAddr, config.getAcceptAnyCertificateOverrides())
+        .clearMetrics();
+  }
+
   boolean exportPlatformInstances(HighAvailabilityConfig config, String remoteInstanceAddr) {
     try {
       PlatformInstanceClient client =

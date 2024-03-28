@@ -482,15 +482,6 @@ class AwsCloud(AbstractCloud):
         return subnet.cidr_block
 
     def create_instance(self, args):
-        # If we are configuring second NIC, ensure that this only happens for a
-        # centOS AMI right now.
-        if args.cloud_subnet_secondary:
-            supported_os = ['centos', 'almalinux']
-            ec2 = boto3.resource('ec2', args.region)
-            image = ec2.Image(args.machine_image)
-            if not any(os_type in image.name.lower() for os_type in supported_os):
-                raise YBOpsRuntimeError(
-                    "Second NIC can only be configured for CentOS/Alma right now")
         create_instance(args)
 
     def delete_instance(self, region, instance_id, has_elastic_ip=False):

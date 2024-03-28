@@ -1,0 +1,105 @@
+[
+  {
+    "uuid": null,
+    "metadataUuid": "2355a3d0-c4ca-42d1-929d-4a0fbfb4ddd7",
+    "category": "NODE",
+    "type": "HOT_NODE_DATA",
+    "title": "Table data is spread unevenly across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "table_size",
+        "threshold": null,
+        "filters": {
+          "universeUuid": [
+            "59b6e66f-83ed-4fff-a3c6-b93568237fab"
+          ],
+          "dbName": [
+            "yugabyte"
+          ],
+          "tableId": [
+            "000033f500003000800000000000400c"
+          ],
+          "tableName": [
+            "topology_idx2"
+          ]
+        }
+      },
+      {
+        "name": "table_sst_size",
+        "threshold": null,
+        "filters": {
+          "universeUuid": [
+            "59b6e66f-83ed-4fff-a3c6-b93568237fab"
+          ],
+          "dbName": [
+            "yugabyte"
+          ],
+          "tableId": [
+            "000033f500003000800000000000400c"
+          ],
+          "tableName": [
+            "topology_idx2"
+          ]
+        }
+      },
+      {
+        "name": "table_wal_size",
+        "threshold": null,
+        "filters": {
+          "universeUuid": [
+            "59b6e66f-83ed-4fff-a3c6-b93568237fab"
+          ],
+          "dbName": [
+            "yugabyte"
+          ],
+          "tableId": [
+            "000033f500003000800000000000400c"
+          ],
+          "tableName": [
+            "topology_idx2"
+          ]
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "Suboptimal table partitioning logic",
+        "possibleCauseDescription": "Particular range/hash key has significantly more data, than the other",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check amount of rows for each range/hash value",
+            "supportingGraphs": null
+          }
+        ]
+      }
+    ],
+    "universeUuid": "59b6e66f-83ed-4fff-a3c6-b93568237fab",
+    "affectedNodes": [
+      {
+        "name": "yb-15-troubleshooting-test-n1",
+        "uuid": null
+      }
+    ],
+    "affectedTables": [
+      {
+        "databaseName": "yugabyte",
+        "tableName": "topology_idx2",
+        "tableId": "000033f500003000800000000000400c"
+      }
+    ],
+    "summary": "Node(s) 'yb-15-troubleshooting-test-n1' store significantly more data for table 'topology_idx2' in database 'yugabyte' than average of the other nodes.",
+    "detectionTime": null,
+    "startTime": "2024-03-14T09:03:50Z",
+    "endTime": "2024-03-14T12:03:50Z",
+    "graphStartTime": "2024-03-11T22:33:50Z",
+    "graphEndTime": "2024-01-18T19:00:00Z",
+    "graphStepSeconds": 10800
+  }
+]

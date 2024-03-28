@@ -22,6 +22,7 @@
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/server/async_client_initializer.h"
@@ -65,6 +66,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
@@ -84,7 +86,7 @@ using namespace std::literals;
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, false,
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::IsDebug(),
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
@@ -399,14 +401,10 @@ class PgClientServiceImpl::Impl {
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock,
-      TransactionPoolProvider transaction_pool_provider,
-      rpc::Messenger* messenger,
-      const std::optional<XClusterContext>& xcluster_context,
-      PgMutationCounter* pg_node_level_mutation_counter,
-      MetricEntity* metric_entity,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker,
-      const std::string& permanent_uuid,
+      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+      rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
+      PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker, const std::string& permanent_uuid,
       const server::ServerBaseOptions* tablet_server_opts)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
@@ -1134,9 +1132,35 @@ class PgClientServiceImpl::Impl {
   Status GetReplicationSlot(
       const PgGetReplicationSlotRequestPB& req, PgGetReplicationSlotResponsePB* resp,
       rpc::RpcContext* context) {
-    auto stream =
-        VERIFY_RESULT(client().GetCDCStream(ReplicationSlotName(req.replication_slot_name())));
+    std::unordered_map<uint32_t, PgReplicaIdentity> replica_identities;
+    auto stream = VERIFY_RESULT(client().GetCDCStream(
+        ReplicationSlotName(req.replication_slot_name()), &replica_identities));
     stream.ToPB(resp->mutable_replication_slot_info());
+
+    auto m = resp->mutable_replication_slot_info()->mutable_replica_identity_map();
+    for (const auto& replica_identity : replica_identities) {
+      PgReplicaIdentityType replica_identity_value;
+      switch (replica_identity.second) {
+        case PgReplicaIdentity::DEFAULT:
+          replica_identity_value = PgReplicaIdentityType::DEFAULT;
+          break;
+        case PgReplicaIdentity::FULL:
+          replica_identity_value = PgReplicaIdentityType::FULL;
+          break;
+        case PgReplicaIdentity::NOTHING:
+          replica_identity_value = PgReplicaIdentityType::NOTHING;
+          break;
+        case PgReplicaIdentity::CHANGE:
+          replica_identity_value = PgReplicaIdentityType::CHANGE;
+          break;
+        default:
+          RSTATUS_DCHECK(false, InternalError, "Invalid Replica Identity Type");
+      }
+
+      PgReplicaIdentityPB replica_identity_pb;
+      replica_identity_pb.set_replica_identity(replica_identity_value);
+      m->insert({replica_identity.first, std::move(replica_identity_pb)});
+    }
 
     auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
     bool is_slot_active;
@@ -1166,8 +1190,8 @@ class PgClientServiceImpl::Impl {
       const PgGetReplicationSlotStatusRequestPB& req, PgGetReplicationSlotStatusResponsePB* resp,
       rpc::RpcContext* context) {
     // Get the stream_id for the replication slot.
-    auto stream =
-        VERIFY_RESULT(client().GetCDCStream(ReplicationSlotName(req.replication_slot_name())));
+    auto stream = VERIFY_RESULT(client().GetCDCStream(
+        ReplicationSlotName(req.replication_slot_name()), /* replica_identities */ nullptr));
     auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
 
     bool is_slot_active;
@@ -1376,19 +1400,15 @@ class PgClientServiceImpl::Impl {
             << " wait-states: " << yb::ToString(resp->wait_states());
   }
 
-  void AddRaftAppenderThreadWaitStates(tserver::WaitStatesPB* resp) {
+  void AddWaitStatesToResponse(const ash::WaitStateTracker& tracker, tserver::WaitStatesPB* resp) {
+    Result<Uuid> local_uuid = Uuid::FromHexString(instance_id_);
+    DCHECK_OK(local_uuid);
     resp->set_component(yb::to_underlying(ash::Component::kTServer));
-    for (auto& wait_state_ptr : ash::RaftLogAppenderWaitStatesTracker().GetWaitStates()) {
+    for (auto& wait_state_ptr : tracker.GetWaitStates()) {
       if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
-        wait_state_ptr->ToPB(resp->add_wait_states());
-      }
-    }
-  }
-
-  void AddPriorityThreadPoolWaitStates(tserver::WaitStatesPB* resp) {
-    resp->set_component(yb::to_underlying(ash::Component::kTServer));
-    for (auto& wait_state_ptr : ash::FlushAndCompactionWaitStatesTracker().GetWaitStates()) {
-      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
+        if (local_uuid) {
+          wait_state_ptr->set_yql_endpoint_tserver_uuid(*local_uuid);
+        }
         wait_state_ptr->ToPB(resp->add_wait_states());
       }
     }
@@ -1401,10 +1421,13 @@ class PgClientServiceImpl::Impl {
       GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
     }
     if (req.fetch_flush_and_compaction_states()) {
-      AddPriorityThreadPoolWaitStates(resp->mutable_flush_and_compaction_wait_states());
+      AddWaitStatesToResponse(
+          ash::FlushAndCompactionWaitStatesTracker(),
+          resp->mutable_flush_and_compaction_wait_states());
     }
     if (req.fetch_raft_log_appender_states()) {
-      AddRaftAppenderThreadWaitStates(resp->mutable_raft_log_appender_wait_states());
+      AddWaitStatesToResponse(
+          ash::RaftLogAppenderWaitStatesTracker(), resp->mutable_raft_log_appender_wait_states());
     }
     if (req.fetch_cql_states()) {
       GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states());
@@ -1594,6 +1617,13 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status YCQLStatementStats(const PgYCQLStatementStatsRequestPB& req,
+      PgYCQLStatementStatsResponsePB* resp,
+      rpc::RpcContext* context) {
+    RETURN_NOT_OK(tablet_server_.YCQLStatementStats(req, resp));
+    return Status::OK();
+  }
+
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
@@ -1669,6 +1699,7 @@ class PgClientServiceImpl::Impl {
 
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
+    std::vector<uint64_t> expired_sessions;
     std::lock_guard lock(mutex_);
     while (!session_expiration_queue_.empty()) {
       auto& top = session_expiration_queue_.top();
@@ -1683,9 +1714,15 @@ class PgClientServiceImpl::Impl {
         if (current_expiration > now) {
           session_expiration_queue_.push({current_expiration, id});
         } else {
+          expired_sessions.push_back(id);
           sessions_.erase(it);
         }
       }
+    }
+    auto cdc_service = tablet_server_.GetCDCService();
+    // We only want to call this on tablet servers. On master, cdc_service will be null.
+    if (cdc_service) {
+      cdc_service->DestroyVirtualWALBatchForCDC(expired_sessions);
     }
     ScheduleCheckExpiredSessions(now);
   }
@@ -1762,15 +1799,6 @@ class PgClientServiceImpl::Impl {
   };
   std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
 
-  boost::multi_index_container<
-      SessionInfoPtr,
-      boost::multi_index::indexed_by<
-          boost::multi_index::hashed_unique<
-              boost::multi_index::const_mem_fun<SessionInfo, uint64_t, &SessionInfo::id>
-          >
-      >
-  > sessions_ GUARDED_BY(mutex_);
-
   using ExpirationEntry = std::pair<CoarseTimePoint, uint64_t>;
 
   struct CompareExpiration {
@@ -1793,7 +1821,7 @@ class PgClientServiceImpl::Impl {
   std::unique_ptr<yb::client::AsyncClientInitializer> cdc_state_client_init_;
   std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;
 
-  const std::optional<XClusterContext> xcluster_context_;
+  const TserverXClusterContextIf* xcluster_context_;
 
   PgMutationCounter* pg_node_level_mutation_counter_;
 
@@ -1805,19 +1833,25 @@ class PgClientServiceImpl::Impl {
 
   std::array<rw_spinlock, 8> txns_assignment_mutexes_;
   TransactionBuilder transaction_builder_;
+
+  boost::multi_index_container<
+      SessionInfoPtr,
+      boost::multi_index::indexed_by<
+          boost::multi_index::hashed_unique<
+              boost::multi_index::const_mem_fun<SessionInfo, uint64_t, &SessionInfo::id>
+          >
+      >
+  > sessions_ GUARDED_BY(mutex_);
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
     std::reference_wrapper<const TabletServerIf> tablet_server,
     const std::shared_future<client::YBClient*>& client_future,
-    const scoped_refptr<ClockBase>& clock,
-    TransactionPoolProvider transaction_pool_provider,
+    const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
-    const scoped_refptr<MetricEntity>& entity,
-    rpc::Messenger* messenger,
-    const std::string& permanent_uuid,
-    const server::ServerBaseOptions* tablet_server_opts,
-    const std::optional<XClusterContext>& xcluster_context,
+    const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
+    const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+    const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(

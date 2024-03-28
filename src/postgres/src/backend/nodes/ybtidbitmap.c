@@ -186,7 +186,8 @@ yb_tbm_intersect_and_free(YbTIDBitmap *a, YbTIDBitmap *b)
 	 * Update the estimate of a's consumed bytes assuming an equal proportion of
 	 * each a and b.
 	 */
-	a->bytes_consumed = total_bytes * total_length / a->nentries;
+	a->bytes_consumed = a->nentries == 0 ? 0
+		: total_bytes * total_length / a->nentries;
 }
 
 /*

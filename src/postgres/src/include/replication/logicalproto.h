@@ -89,7 +89,8 @@ extern void logicalrep_write_insert(StringInfo out, Relation rel,
 						HeapTuple newtuple);
 extern LogicalRepRelId logicalrep_read_insert(StringInfo in, LogicalRepTupleData *newtup);
 extern void logicalrep_write_update(StringInfo out, Relation rel, HeapTuple oldtuple,
-						HeapTuple newtuple);
+						HeapTuple newtuple, bool *yb_old_is_omitted,
+						bool *yb_new_is_omitted);
 extern LogicalRepRelId logicalrep_read_update(StringInfo in,
 					   bool *has_oldtuple, LogicalRepTupleData *oldtup,
 					   LogicalRepTupleData *newtup);

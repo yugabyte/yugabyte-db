@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -47,9 +48,11 @@ class CoreFilesComponent implements SupportBundleComponent {
       throws Exception {
     String nodeHomeDir = nodeUniverseManager.getYbHomeDir(node, universe);
     String coresDir = nodeHomeDir + "/cores/";
+    bundlePath = Paths.get(bundlePath.toAbsolutePath().toString(), "cores");
+    Files.createDirectories(bundlePath);
 
     // Get and filter the core files list based on the 2 params given in the request body.
-    List<Pair<Integer, String>> fileSizeNameList =
+    List<Pair<Long, String>> fileSizeNameList =
         nodeUniverseManager.getNodeFilePathsAndSize(node, universe, coresDir).stream()
             .limit(supportBundleTaskParams.bundleData.maxNumRecentCores)
             .filter(p -> p.getFirst() <= supportBundleTaskParams.bundleData.maxCoreFileSize)
@@ -57,7 +60,7 @@ class CoreFilesComponent implements SupportBundleComponent {
 
     // Filter the core files list based on the 2 params given in the request body.
     List<String> sourceNodeFiles =
-        fileSizeNameList.stream().map(p -> "cores/" + p.getSecond()).collect(Collectors.toList());
+        fileSizeNameList.stream().map(p -> p.getSecond()).collect(Collectors.toList());
 
     // Check if YBA node has enough space to store all cores files from the DB nodes.
     long YbaDiskSpaceFreeInBytes = Files.getFileStore(bundlePath).getUsableSpace();
@@ -87,9 +90,10 @@ class CoreFilesComponent implements SupportBundleComponent {
         universe,
         bundlePath,
         node,
-        nodeHomeDir,
+        coresDir,
         sourceNodeFiles,
-        this.getClass().getSimpleName());
+        this.getClass().getSimpleName(),
+        true /* skipUntar */);
   }
 
   @Override

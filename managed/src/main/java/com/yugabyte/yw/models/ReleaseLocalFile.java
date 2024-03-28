@@ -22,6 +22,11 @@ public class ReleaseLocalFile extends Model {
 
   @Column private String localFilePath;
 
+  public void setLocalFilePath(String localFilePath) {
+    this.localFilePath = localFilePath;
+    save();
+  }
+
   @Column private boolean isUpload = false;
 
   public static final Finder<UUID, ReleaseLocalFile> find = new Finder<>(ReleaseLocalFile.class);

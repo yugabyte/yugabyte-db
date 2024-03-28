@@ -111,7 +111,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -548,8 +547,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         .getGcp()
         .setInstanceTemplate(instanceTemplate);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
-    Mockito.doNothing().when(mockCloudAPI).validateInstanceTemplate(any(), any());
-    when(mockCloudAPI.isValidCreds(any(), any())).thenReturn(true);
+    when(mockCloudAPI.isValidCreds(any())).thenReturn(true);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
 
     when(mockCloudQueryHelper.getRegionCodes(provider)).thenReturn(ImmutableList.of(region));
@@ -921,6 +919,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ArrayNode regionsList = Json.newArray();
     regionsList.add(region);
     bodyJson.set("regions", regionsList);
+    ArrayNode imageBundlesList = Json.newArray();
+    ObjectNode ybImage = Json.newObject().put("ybImage", "image_id");
+    ObjectNode regions = Json.newObject().set("us-west-2", ybImage);
+    ObjectNode details = Json.newObject().put("arch", "x86_64").set("regions", regions);
+    ObjectNode imageBundle = Json.newObject().put("name", "").set("details", details);
+    imageBundlesList.add(imageBundle);
+    bodyJson.set("imageBundles", imageBundlesList);
     Image image = new Image();
     image.setArchitecture("random_arch");
     image.setRootDeviceType("random_device_type");
@@ -1413,14 +1418,15 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     p.setImageBundles(ImmutableList.of());
     result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
     assertBadRequest(result, "Image Bundle ib-1 is associated with some universes. Cannot delete!");
-
-    ib.setUseAsDefault(false);
+    ib.getDetails().setSshUser("centos");
     p.setImageBundles(ImmutableList.of(ib));
     result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
     assertBadRequest(result, "Image Bundle ib-1 is associated with some universes. Cannot modify!");
 
     result = getProvider(p.getUuid());
     Provider provider = Json.fromJson(Json.parse(contentAsString(result)), Provider.class);
+    // Default for the bundle can be changed in case it is associated to the universe.
+    provider.getImageBundles().get(0).setUseAsDefault(false);
     JsonNode providerJson = Json.toJson(provider);
     JsonNode regionJson = providerJson.get("regions");
     ObjectMapper objectMapper = new ObjectMapper();

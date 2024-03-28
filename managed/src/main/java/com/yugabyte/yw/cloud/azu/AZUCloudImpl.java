@@ -73,7 +73,7 @@ public class AZUCloudImpl implements CloudAPI {
 
   // Basic validation to make sure that the credentials work with Azure.
   @Override
-  public boolean isValidCreds(Provider provider, String region) {
+  public boolean isValidCreds(Provider provider) {
     // TODO validation for Azure crashes VM at the moment due to netty and jackson version issues.
     return true;
   }
@@ -486,12 +486,6 @@ public class AZUCloudImpl implements CloudAPI {
     // with health probes.
     loadBalancer = associateProbesWithLbRules(loadBalancer, healthCheckConfiguration);
     apiClient.updateLoadBalancer(lbName, loadBalancer);
-  }
-
-  @Override
-  public void validateInstanceTemplate(Provider provider, String instanceTemplate) {
-    throw new PlatformServiceException(
-        BAD_REQUEST, "Instance templates are currently not supported for Azure");
   }
 
   public static TokenCredential getCredsOrFallbackToDefault(

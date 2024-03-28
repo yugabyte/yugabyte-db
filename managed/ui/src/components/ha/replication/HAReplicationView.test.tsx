@@ -2,10 +2,10 @@ import _ from 'lodash';
 import userEvent from '@testing-library/user-event';
 import { render } from '../../../test-utils';
 import { HAReplicationView } from './HAReplicationView';
-import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
+import { HaConfig, HaReplicationSchedule } from '../dtos';
 import { MOCK_HA_WS_RUNTIME_CONFIG } from './mockUtils';
 
-const mockConfig: HAConfig = {
+const mockConfig: HaConfig = {
   uuid: 'config-id-1',
   cluster_key: 'fake-key',
   last_failover: 123,
@@ -36,17 +36,17 @@ const mockConfig: HAConfig = {
     }
   ]
 };
-const mockSchedule: HAReplicationSchedule = {
+const mockSchedule: HaReplicationSchedule = {
   frequency_milliseconds: 60000,
   is_running: true
 };
 
-const setup = (config?: HAConfig) => {
+const setup = (config?: HaConfig) => {
   const fetchRunTimeConfigs = jest.fn();
   const setRunTimeConfig = jest.fn();
   return render(
     <HAReplicationView
-      config={config ?? mockConfig}
+      haConfig={config ?? mockConfig}
       schedule={mockSchedule}
       editConfig={() => {}}
       runtimeConfigs={MOCK_HA_WS_RUNTIME_CONFIG}
@@ -61,7 +61,7 @@ describe('HA replication configuration overview', () => {
     const component = setup();
     expect(component.getByText(/replication frequency/i)).toBeInTheDocument();
     expect(component.getByText(/enable replication/i)).toBeInTheDocument();
-    expect(component.getByRole('button', { name: /edit configuration/i })).toBeInTheDocument();
+    expect(component.getByRole('button', { name: /actions/i })).toBeInTheDocument();
     expect(component.queryByRole('button', { name: /make active/i })).not.toBeInTheDocument();
   });
 
@@ -72,9 +72,7 @@ describe('HA replication configuration overview', () => {
 
     expect(component.queryByText(/replication frequency/i)).not.toBeInTheDocument();
     expect(component.queryByText(/enable replication/i)).not.toBeInTheDocument();
-    expect(
-      component.queryByRole('button', { name: /edit configuration/i })
-    ).not.toBeInTheDocument();
+    expect(component.queryByRole('button', { name: /actions/i })).not.toBeInTheDocument();
     expect(component.getByRole('button', { name: /make active/i })).toBeInTheDocument();
   });
 
@@ -92,11 +90,12 @@ describe('HA replication configuration overview', () => {
     ]);
   });
 
-  it('should render a modal on click at the delete config button', () => {
+  it('should render a modal on when clicking the delete configuration menu item', () => {
     const component = setup();
 
     // check if modal opens
-    userEvent.click(component.getByRole('button', { name: /delete configuration/i }));
+    userEvent.click(component.getByRole('button', { name: /actions/i }));
+    userEvent.click(component.getByRole('menuitem', { name: /delete configuration/i }));
     expect(component.getByTestId('ha-delete-confirmation-modal')).toBeInTheDocument();
 
     // check if modal closes
@@ -121,7 +120,7 @@ describe('HA replication configuration overview', () => {
   it('should show generic error message on incorrect config', () => {
     const consoleError = jest.fn();
     jest.spyOn(console, 'error').mockImplementation(consoleError);
-    const component = setup({} as HAConfig);
+    const component = setup({} as HaConfig);
 
     expect(component.getByTestId('ha-generic-error')).toBeInTheDocument();
     expect(consoleError).toBeCalled();

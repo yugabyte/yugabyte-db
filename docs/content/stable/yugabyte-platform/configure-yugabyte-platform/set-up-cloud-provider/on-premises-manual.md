@@ -42,7 +42,7 @@ For each node, perform the following:
 - [Set up time synchronization](#set-up-time-synchronization)
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
 - [Manually pre-provision the node](#pre-provision-nodes-manually)
-- [Install Prometheus node exporter](#install-prometheus-node-exporter)
+- [Install Prometheus Node Exporter](#install-prometheus-node-exporter)
 - [Install backup utilities](#install-backup-utilities)
 - [Set crontab permissions](#set-crontab-permissions)
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
@@ -71,7 +71,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | TCP | 9042 | YCQL client |
 | TCP | 9090 | Prometheus server |
 | TCP | 9100 | YB tablet server RPC |
-| TCP | 9300 | Prometheus node exporter |
+| TCP | 9300 | Prometheus Node Exporter |
 | TCP | 12000 | YCQL HTTP (for DB statistics gathering) |
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
 | TCP | 18018 | YB Controller |
@@ -213,15 +213,15 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
       sudo chmod 755 /data
       ```
 
-## Install Prometheus node exporter
+## Install Prometheus Node Exporter
 
-Download the 1.3.1 version of the Prometheus node exporter, as follows:
+Download the 1.3.1 version of the Prometheus Node Exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
 ```
 
-If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
+If you are doing an airgapped installation, download the Node Exporter using a computer connected to the internet and copy it over to the database nodes.
 
 On each node, perform the following as a user with sudo access:
 
@@ -699,19 +699,15 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 ## Install node agent
 
-The node agent is used to manage communication between YugabyteDB Anywhere and the node. YugabyteDB Anywhere uses node agents to communicate with the nodes. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+The node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/preview/faq/yugabyte-platform/#node-agent) FAQ.
 
 For automated and assisted manual provisioning, node agents are installed onto instances automatically when adding instances, or when running the pre-provisioning script using the `--install_node_agent` flag.
 
 Use the following procedure to install node agent for fully manual provisioning.
 
-{{< note title="Re-provisioning a node" >}}
-
-If you are re-provisioning a node (that is, node agent has previously been installed on the node), you need to unregister the node agent before installing node agent again. Refer to [Unregister node agent](#unregister-node-agent).
-
-{{< /note >}}
-
 To install the YugabyteDB node agent manually, as the `yugabyte` user, do the following:
+
+1. If you are re-provisioning the node (that is, node agent has previously been installed on the node), you need to unregister the node agent before installing node agent again. Refer to [Unregister node agent](#unregister-node-agent).
 
 1. Download the installer from YugabyteDB Anywhere using the [API token](../../../anywhere-automation/#authentication) of the Super Admin, as follows:
 
@@ -720,8 +716,6 @@ To install the YugabyteDB node agent manually, as the `yugabyte` user, do the fo
     ```
 
     To create an API token, navigate to your **User Profile** and click **Generate Key**.
-
-1. Verify that the installer file contains the script.
 
 1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
 
@@ -927,5 +921,3 @@ If the node agent configuration is corrupted, the command may fail. In this case
     ```sh
     curl -k -X DELETE --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents/<node_agent_id>
     ```
-
-For more information, refer to [Node agent](../../../../faq/yugabyte-platform/#node-agent) FAQ.

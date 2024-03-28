@@ -179,4 +179,5 @@ message CloneTabletRequestPB {
   optional IndexInfoPB target_index_info = 11;
   optional SchemaPB target_schema = 12;
   optional PartitionSchemaPB target_partition_schema = 13;
+  optional bool target_skip_table_tombstone_check = 14;
 }

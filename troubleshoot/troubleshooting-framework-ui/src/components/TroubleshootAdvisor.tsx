@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Box } from '@material-ui/core';
-import { YBErrorIndicator } from '@yugabytedb/ui-components';
+import { Box, makeStyles } from '@material-ui/core';
+import clsx from 'clsx';
+import { YBErrorIndicator } from '../common/YBErrorIndicator';
 import { PrimaryDashboardData } from './PrimaryDashboardData';
 import { TroubleshootAPI, QUERY_KEY } from '../api';
 import { Anomaly, AppName } from '../helpers/dtos';
+import { isNonEmptyArray } from '../helpers/objectUtils';
 
 import { ReactComponent as LoadingIcon } from '../assets/loading.svg';
 import { useHelperStyles } from './styles';
-// import LoadingIcon from '../assets/loading.svg';
 
 interface TroubleshootAdvisorProps {
   universeUuid: string;
@@ -17,19 +18,32 @@ interface TroubleshootAdvisorProps {
   onSelectedIssue?: (troubleshootUuid: string) => void;
 }
 
+const useStyles = makeStyles((theme) => ({
+  inProgressIcon: {
+    color: '#1A44A5'
+  },
+  icon: {
+    height: '14px',
+    width: '14px'
+  }
+}));
+
 export const TroubleshootAdvisor = ({
   universeUuid,
   appName,
   timezone,
   onSelectedIssue
 }: TroubleshootAdvisorProps) => {
-  const classes = useHelperStyles();
+  const helperClasses = useHelperStyles();
+  const classes = useStyles();
 
   const [anomalyList, setAnomalyList] = useState<Anomaly[] | null>(null);
+  const [startDateTime, setDateStartTime] = useState<Date | null>(null);
+  const [endDateTime, setDateEndTime] = useState<Date | null>(null);
 
   const { isLoading, isError, isIdle, refetch: anomaliesRefetch } = useQuery(
     [QUERY_KEY.fetchAnamolies, universeUuid],
-    () => TroubleshootAPI.fetchAnamolies(universeUuid),
+    () => TroubleshootAPI.fetchAnamolies(universeUuid, startDateTime, endDateTime),
     {
       enabled: anomalyList === null,
       onSuccess: (data: Anomaly[]) => {
@@ -42,16 +56,21 @@ export const TroubleshootAdvisor = ({
   );
 
   const onFilterByDate = async (startDate: any, endDate: any) => {
+    setDateEndTime(endDate);
+    setDateStartTime(startDate);
     // TODO: Pass startDate and endDate to anomlay API once backend is ready
     await anomaliesRefetch();
   };
 
   if (isLoading) {
-    // return <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />;;
+    // <Box className={helperClasses.recommendation}>
+    //   <YBErrorIndicator customErrorMessage={'Failed to fetch anomalies list, please try again.'} />
+    // </Box>;
+    return <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />;
   }
   if (isError || (isIdle && anomalyList === null)) {
     return (
-      <Box className={classes.recommendation}>
+      <Box className={helperClasses.recommendation}>
         <YBErrorIndicator
           customErrorMessage={'Failed to fetch anomalies list, please try again.'}
         />
@@ -62,14 +81,20 @@ export const TroubleshootAdvisor = ({
     <Box sx={{ width: '100%' }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Box m={2}>
-          <PrimaryDashboardData
-            anomalyData={anomalyList}
-            appName={appName}
-            timezone={timezone}
-            universeUuid={universeUuid}
-            onFilterByDate={onFilterByDate}
-            onSelectedIssue={onSelectedIssue}
-          />
+          {isNonEmptyArray(anomalyList) ? (
+            <PrimaryDashboardData
+              anomalyData={anomalyList}
+              appName={appName}
+              timezone={timezone}
+              universeUuid={universeUuid}
+              onFilterByDate={onFilterByDate}
+              onSelectedIssue={onSelectedIssue}
+            />
+          ) : (
+            <Box className={helperClasses.recommendation}>
+              <span>{'There are not issues with the current universe'}</span>
+            </Box>
+          )}
         </Box>
       </Box>
     </Box>

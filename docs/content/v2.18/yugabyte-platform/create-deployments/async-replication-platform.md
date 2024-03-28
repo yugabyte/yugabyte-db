@@ -148,6 +148,10 @@ This page allows you to do the following:
 
   - To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. If you decide to remove an index table from the replication group, it does not remove its main table from the replication group.
 
+    {{<note title="Before dropping tables">}}
+Always remove tables from replication _before_ you drop them from the database.
+    {{</note>}}
+
   - To add more tables to the replication, click **Add Tables** to open the **Add Tables to Replication** dialog which allows you to make a selection from a list of tables that have not been replicated, and then click **Validate Table Selection**.
 
     To make the add table operation faster, it is recommended to add new tables to the replication as soon as they are created. When using YSQL, if a subset of tables of a database is already in replication in a configuration, the remaining tables in that database can only be added to the same configuration. Moreover, if adding a YSQL table requires bootstrapping, the other tables in the same database which are already in replication will be removed from replication. The replication will be set up again for all the tables in that database.

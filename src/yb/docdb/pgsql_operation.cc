@@ -1639,10 +1639,19 @@ Result<size_t> PgsqlReadOperation::Execute(
     restart_read_ht->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
   }
 
-  response_.mutable_metrics()->set_scanned_table_rows(scanned_table_rows_);
-  if (scanned_index_rows_ > 0) {
-    response_.mutable_metrics()->set_scanned_index_rows(scanned_index_rows_);
+  // Versions of pggate < 2.17.1 are not capable of processing response protos that contain RPC
+  // sidecars holding data other than the rows returned by DocDB. During an upgrade, it is possible
+  // that a pggate of version < 2.17.1 may receive a response from a tserver containing the metrics
+  // sidecar, causing a crash. To prevent this, send the scanned row count only if the incoming
+  // request object contains the metrics capture field. This serves to validate that the requesting
+  // pggate has indeed upgraded to a version that is capable of unpacking the metric sidecar.
+  if (request_.has_metrics_capture()) {
+    response_.mutable_metrics()->set_scanned_table_rows(scanned_table_rows_);
+    if (scanned_index_rows_ > 0) {
+      response_.mutable_metrics()->set_scanned_index_rows(scanned_index_rows_);
+    }
   }
+
   return fetched_rows;
 }
 

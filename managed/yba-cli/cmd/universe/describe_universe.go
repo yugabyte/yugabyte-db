@@ -63,7 +63,7 @@ var describeUniverseCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(r) > 0 && viper.GetString("output") == "table" {
+		if len(r) > 0 && util.IsOutputType("table") {
 			fullUniverseContext := *universe.NewFullUniverseContext()
 			fullUniverseContext.Output = os.Stdout
 			fullUniverseContext.Format = universe.NewFullUniverseFormat(viper.GetString("output"))
@@ -73,8 +73,11 @@ var describeUniverseCmd = &cobra.Command{
 		}
 
 		if len(r) < 1 {
-			fmt.Println("No universes found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No universes with name: %s found\n", universeName),
+					formatter.RedColor,
+				))
 		}
 
 		universeCtx := formatter.Context{
@@ -89,6 +92,6 @@ var describeUniverseCmd = &cobra.Command{
 func init() {
 	describeUniverseCmd.Flags().SortFlags = false
 	describeUniverseCmd.Flags().StringP("name", "n", "",
-		"[Required] The name of the universe to be created.")
+		"[Required] The name of the universe to be described.")
 	describeUniverseCmd.MarkFlagRequired("name")
 }

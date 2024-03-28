@@ -27,7 +27,7 @@ func init() {
 	GCPProviderCmd.Flags().SortFlags = false
 
 	GCPProviderCmd.AddCommand(createGCPProviderCmd)
-	// GCPProviderCmd.AddCommand(updateGCPProviderCmd)
+	GCPProviderCmd.AddCommand(updateGCPProviderCmd)
 	GCPProviderCmd.AddCommand(listGCPProviderCmd)
 	GCPProviderCmd.AddCommand(describeGCPProviderCmd)
 	GCPProviderCmd.AddCommand(deleteGCPProviderCmd)
@@ -35,6 +35,6 @@ func init() {
 	GCPProviderCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe.",
+				"Required for create, delete, describe, update.",
 				formatter.GreenColor)))
 }

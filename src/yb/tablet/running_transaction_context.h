@@ -17,6 +17,7 @@
 
 #include <functional>
 #include <mutex>
+#include <span>
 #include <type_traits>
 
 #include "yb/util/flags.h"

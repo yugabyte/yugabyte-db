@@ -29,6 +29,8 @@ struct od_route {
 	od_error_logger_t *err_logger;
 	bool extra_logging_enabled;
 
+	yb_db_entry_t* yb_database_entry;
+
 	od_list_t link;
 };
 

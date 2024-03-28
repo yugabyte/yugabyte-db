@@ -16,6 +16,8 @@ package yb;
 
 option java_package = "org.yb";
 
+import "yb/common/opid.proto";
+
 enum IsolationLevel {
   NON_TRANSACTIONAL = 0;
   SNAPSHOT_ISOLATION = 1;
@@ -91,6 +93,14 @@ message SubTransactionMetadataPB {
   optional uint32 subtransaction_id = 1;
 
   optional SubtxnSetPB aborted = 2;
+}
+
+message PostApplyTransactionMetadataPB {
+  optional bytes transaction_id = 1; // 16 byte uuid
+
+  optional OpIdPB apply_op_id = 2;
+  optional fixed64 commit_ht = 3;
+  optional fixed64 log_ht = 4;
 }
 
 enum LockMode {

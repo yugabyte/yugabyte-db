@@ -26,71 +26,48 @@ You can use YugabyteDB to schedule and manage backups of your universe data. Thi
 - [Configurable performance parameters](back-up-universe-data/#configure-backup-performance-parameters). Tune parallelization and buffers for faster backup and restore performance. In most cases, this results in 5x or more speed improvements in backups and restores.
 - [Point-in-time recovery](pitr/). Recover universe data from a specific point in time.
 - [Flexible storage](configure-backup-storage/). Store backups in the cloud or in your data center.
+- [Disaster recovery](disaster-recovery/). Failover to an asynchronously replicated universe in case of unplanned outages.
 
 {{< note title="Note" >}}
 Configurable performance parameters and incremental backups are mediated using the yb-controller process, which is only available in YBA 2.16 or later for universes with YugabyteDB version 2.16 or later.
 {{< /note >}}
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure-backup-storage/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Configure backup storage</div>
-      </div>
-      <div class="body">
-        Configure the storage location for your backups.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Configure backup storage"
+    body="Configure the storage location for your backups."
+    href="configure-backup-storage/"
+    icon="/images/section_icons/manage/backup.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="schedule-data-backups/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Schedule universe data backups</div>
-      </div>
-      <div class="body">
-        Create backup schedules to regularly back up universe data.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Schedule universe data backups"
+    body="Create backup schedules to regularly back up universe data."
+    href="schedule-data-backups/"
+    icon="/images/section_icons/explore/high_performance.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="back-up-universe-data/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Back up universe data</div>
-      </div>
-      <div class="body">
-        Back up universes and create incremental backups.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Back up universe data"
+    body="Back up universes and create incremental backups."
+    href="back-up-universe-data/"
+    icon="/images/section_icons/manage/backup.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="restore-universe-data/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Restore universe data</div>
-      </div>
-      <div class="body">
-        Restore from full and incremental backups.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Restore universe data"
+    body="Restore from full and incremental backups."
+    href="restore-universe-data/"
+    icon="/images/section_icons/manage/backup.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="pitr/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/pitr.png" aria-hidden="true" />
-        <div class="title">Perform point-in-time recovery</div>
-      </div>
-      <div class="body">
-        Recover universe data from a specific point in time.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Perform point-in-time recovery"
+    body="Recover universe data from a specific point in time."
+    href="pitr/"
+    icon="/images/section_icons/manage/pitr.png">}}
 
-</div>
+  {{<index/item
+    title="Disaster recovery"
+    body="Fail over to a backup universe in case of unplanned outages."
+    href="disaster-recovery/"
+    icon="/images/section_icons/manage/pitr.png">}}
+
+{{</index/block>}}

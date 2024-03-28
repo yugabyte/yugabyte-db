@@ -31,7 +31,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t;
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (3 rows)
 
 SELECT DISTINCT r1 FROM t;
@@ -47,7 +47,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
 ---------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (3 rows)
 
 SELECT DISTINCT r1, r2 FROM t;
@@ -71,7 +71,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2 FROM t;
  HashAggregate (actual rows=3 loops=1)
    Group Key: r2
    ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (4 rows)
 
 SELECT DISTINCT r2 FROM t;
@@ -90,7 +90,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
  Limit (actual rows=2 loops=1)
    ->  Unique (actual rows=2 loops=1)
          ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
-               Distinct Prefix: 1
+               Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM t LIMIT 2;
@@ -109,7 +109,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM tr
 -----------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using tr_pkey on tr (actual rows=1 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (3 rows)
 
 SELECT DISTINCT r1 FROM tr;
@@ -127,7 +127,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM ts
 -----------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using ts_pkey on ts (actual rows=1 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (3 rows)
 
 SELECT DISTINCT r1 FROM ts;
@@ -170,7 +170,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (3 rows)
 
 SELECT DISTINCT r1 FROM t ORDER BY r1;
@@ -185,7 +185,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
 ------------------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan Backward using t_pkey on t (actual rows=3 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (3 rows)
 
 SELECT DISTINCT r1 FROM t ORDER BY r1 DESC;
@@ -201,7 +201,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
 ---------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (3 rows)
 
 SELECT DISTINCT r1, r2 FROM t ORDER BY r1, r2;
@@ -220,7 +220,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
 ------------------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
    ->  Distinct Index Scan Backward using t_pkey on t (actual rows=7 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (3 rows)
 
 SELECT DISTINCT r1, r2 FROM t ORDER BY r1 DESC, r2 DESC;
@@ -245,7 +245,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
    Sort Method: quicksort
    ->  Unique (actual rows=6 loops=1)
          ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: r1, r2
 (6 rows)
 
 SELECT DISTINCT r1, r2 FROM t ORDER BY r2;
@@ -271,7 +271,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
 -----------------------------------------------------------------------
  Unique (actual rows=3 loops=1)
    ->  Distinct Index Scan using tm_pkey on tm (actual rows=3 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (3 rows)
 
 SELECT DISTINCT r1, r2 FROM tm;
@@ -288,7 +288,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
 --------------------------------------------------------------------------------
  Unique (actual rows=3 loops=1)
    ->  Distinct Index Scan Backward using tm_pkey on tm (actual rows=3 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (3 rows)
 
 SELECT DISTINCT r1, r2 FROM tm ORDER BY r1, r2 DESC;

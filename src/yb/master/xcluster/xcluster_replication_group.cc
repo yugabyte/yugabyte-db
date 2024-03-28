@@ -441,4 +441,108 @@ Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
   return is_done ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
 }
 
+Status RemoveTablesFromReplicationGroup(
+    scoped_refptr<UniverseReplicationInfo> universe, const std::vector<TableId>& producer_table_ids,
+    CatalogManager& catalog_manager, const LeaderEpoch& epoch) {
+  RSTATUS_DCHECK(!producer_table_ids.empty(), InvalidArgument, "No tables to remove");
+
+  auto& replication_group_id = universe->ReplicationGroupId();
+
+  std::set<TableId> producer_table_ids_to_remove(
+      producer_table_ids.begin(), producer_table_ids.end());
+  std::set<TableId> consumer_table_ids_to_remove;
+
+  // 1. Get the corresponding stream ids and consumer table ids for the tables to remove.
+  auto l = universe->LockForWrite();
+  auto& universe_pb = l.mutable_data()->pb;
+
+  // Filter out any tables that aren't in the existing replication config.
+  std::set<TableId> existing_tables(universe_pb.tables().begin(), universe_pb.tables().end());
+  std::set<TableId> filtered_list;
+  set_intersection(
+      producer_table_ids_to_remove.begin(), producer_table_ids_to_remove.end(),
+      existing_tables.begin(), existing_tables.end(),
+      std::inserter(filtered_list, filtered_list.begin()));
+  filtered_list.swap(producer_table_ids_to_remove);
+
+  VLOG(1) << "Removing tables " << yb::ToString(producer_table_ids_to_remove)
+          << " from inbound xCluster replication group " << replication_group_id;
+  if (producer_table_ids_to_remove.empty()) {
+    return Status::OK();
+  }
+
+  std::vector<xrepl::StreamId> streams_to_remove;
+
+  auto cluster_config = catalog_manager.ClusterConfig();
+  {
+    auto cl = cluster_config->LockForRead();
+    auto& cluster_config_pb = cl->pb;
+    auto& producer_map = cluster_config_pb.consumer_registry().producer_map();
+    auto producer_entry = FindOrNull(producer_map, replication_group_id.ToString());
+    if (producer_entry) {
+      // Remove the Tables Specified (not part of the key).
+      auto& stream_map = producer_entry->stream_map();
+      for (auto& [stream_id, stream_entry] : stream_map) {
+        if (producer_table_ids_to_remove.contains(stream_entry.producer_table_id())) {
+          streams_to_remove.emplace_back(VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)));
+          // Also fetch the consumer table ids here so we can clean the in-memory maps after.
+          consumer_table_ids_to_remove.insert(stream_entry.consumer_table_id());
+        }
+      }
+
+      // If this ends with an empty Map, disallow and force user to delete.
+      LOG_IF(WARNING, streams_to_remove.size() == stream_map.size())
+          << "All tables in xCluster replication group " << replication_group_id
+          << " have been removed";
+    }
+  }
+
+  // 2. Delete xCluster streams on the Producer.
+  if (!streams_to_remove.empty()) {
+    auto rpc_task = VERIFY_RESULT(
+        universe->GetOrCreateXClusterRpcTasks(universe_pb.producer_master_addresses()));
+
+    // Atomicity cannot be guaranteed for both producer and consumer deletion. So ignore any errors
+    // due to missing streams.
+    RETURN_NOT_OK_PREPEND(
+        rpc_task->client()->DeleteCDCStream(
+            streams_to_remove, true /* force_delete */, true /* remove_table_ignore_errors */),
+        "Unable to delete xCluster streams on source. Try setting the ignore-errors option");
+  }
+
+  // 3. Update the Consumer Registry (removes from TServers) and Master Configs.
+  auto cl = cluster_config->LockForWrite();
+  auto& cluster_config_pb = cl.mutable_data()->pb;
+  auto& producer_map = *cluster_config_pb.mutable_consumer_registry()->mutable_producer_map();
+  auto producer_entry = FindOrNull(producer_map, replication_group_id.ToString());
+  if (producer_entry) {
+    // Remove the Tables Specified (not part of the key).
+    auto stream_map = producer_entry->mutable_stream_map();
+    for (auto& stream_id : streams_to_remove) {
+      stream_map->erase(stream_id.ToString());
+    }
+
+    cluster_config_pb.set_version(cluster_config_pb.version() + 1);
+  }
+
+  for (auto& table_id : producer_table_ids_to_remove) {
+    universe_pb.mutable_table_streams()->erase(table_id);
+    universe_pb.mutable_validated_tables()->erase(table_id);
+    Erase(table_id, universe_pb.mutable_tables());
+  }
+
+  RETURN_NOT_OK(catalog_manager.sys_catalog()->Upsert(epoch, universe.get(), cluster_config.get()));
+
+  // 4. Clear in-mem maps.
+  catalog_manager.SyncXClusterConsumerReplicationStatusMap(replication_group_id, producer_map);
+
+  catalog_manager.ClearXClusterConsumerTableStreams(
+      replication_group_id, consumer_table_ids_to_remove);
+
+  l.Commit();
+  cl.Commit();
+
+  return Status::OK();
+}
+
 }  // namespace yb::master

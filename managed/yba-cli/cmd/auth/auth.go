@@ -28,7 +28,7 @@ var AuthCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		force, err := cmd.Flags().GetBool("force")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		var apiToken string
 		var host string
@@ -41,7 +41,8 @@ var AuthCmd = &cobra.Command{
 			input, err := reader.ReadString('\n')
 			if err != nil {
 				logrus.Fatalln(
-					formatter.Colorize("Could not read host: "+err.Error(), formatter.RedColor))
+					formatter.Colorize("Could not read host: "+err.Error()+"\n",
+						formatter.RedColor))
 			}
 			// If the input is just a newline, use the default value
 			if input == "\n" {
@@ -50,7 +51,8 @@ var AuthCmd = &cobra.Command{
 			host = strings.TrimSpace(input)
 			if len(host) == 0 {
 				if len(strings.TrimSpace(hostConfig)) == 0 {
-					logrus.Fatalln(formatter.Colorize("Host cannot be empty.", formatter.RedColor))
+					logrus.Fatalln(formatter.Colorize("Host cannot be empty.\n",
+						formatter.RedColor))
 				} else {
 					host = hostConfig
 				}
@@ -61,14 +63,15 @@ var AuthCmd = &cobra.Command{
 			data, err = term.ReadPassword(int(os.Stdin.Fd()))
 			if err != nil {
 				logrus.Fatalln(
-					formatter.Colorize("Could not read apiToken: "+err.Error(), formatter.RedColor))
+					formatter.Colorize("Could not read apiToken: "+err.Error()+"\n",
+						formatter.RedColor))
 			}
 			apiToken = string(data)
 
 		} else {
 			hostFlag, err := cmd.Flags().GetString("host")
 			if err != nil {
-				logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			// If the host is empty
 			if strings.Compare(hostFlag, "http://localhost:9000") == 0 {
@@ -82,22 +85,23 @@ var AuthCmd = &cobra.Command{
 			}
 			apiToken, err = cmd.Flags().GetString("apiToken")
 			if err != nil {
-				logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
 		// Validate that apiToken is a valid
 		if strings.TrimSpace(apiToken) == "" {
-			logrus.Fatalln(formatter.Colorize("apiToken cannot be empty.", formatter.RedColor))
+			logrus.Fatalln(formatter.Colorize("apiToken cannot be empty.\n",
+				formatter.RedColor))
 		}
 		viper.GetViper().Set("host", &host)
 		viper.GetViper().Set("apiToken", &apiToken)
 
-		fmt.Println("\n")
+		logrus.Infoln("\n")
 
 		// Before writing the config, validate that the data is correct
 		url, err := ybaAuthClient.ParseURL(host)
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		authUtil(url, apiToken)

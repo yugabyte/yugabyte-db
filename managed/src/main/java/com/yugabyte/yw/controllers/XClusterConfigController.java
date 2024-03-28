@@ -440,6 +440,7 @@ public class XClusterConfigController extends AuthenticatedController {
               targetUniverse,
               editFormData.tables,
               editFormData.bootstrapParams,
+              editFormData.autoIncludeIndexTables,
               editFormData.dryRun);
     } else {
       // If renaming, verify xCluster replication with same name (between same source/target)
@@ -505,6 +506,7 @@ public class XClusterConfigController extends AuthenticatedController {
       Universe targetUniverse,
       Set<String> tableIds,
       @Nullable XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      boolean autoIncludeIndexTables,
       boolean dryRun) {
     Map<String, List<String>> mainTableToAddIndexTablesMap = null;
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList = null;
@@ -543,8 +545,11 @@ public class XClusterConfigController extends AuthenticatedController {
           indexTableIdSet.stream()
               .filter(tableId -> !xClusterConfig.getTableIds().contains(tableId))
               .collect(Collectors.toSet());
-      allTableIds.addAll(indexTableIdSet);
-      tableIdsToAdd.addAll(indexTableIdSetToAdd);
+      if (autoIncludeIndexTables) {
+        allTableIds.addAll(indexTableIdSet);
+        tableIdsToAdd.addAll(indexTableIdSetToAdd);
+      }
+
       if (Objects.nonNull(bootstrapParams)) {
         mainTableToAddIndexTablesMap.forEach(
             (mainTableId, indexTableIds) -> {

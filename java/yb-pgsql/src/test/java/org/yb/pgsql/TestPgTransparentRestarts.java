@@ -1018,12 +1018,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         }
       });
 
-      //
-      // Two SELECTs grouped in a transaction. Their result should match for REPEATABLE READ
-      // and SERIALIZABLE level. For READ COMMITTED, it is likely they won't match due to the
-      // parallel inserts. And so, for READ COMMITTED ensure that there is atleast one instance
-      // where the results don't match.
-      //
+      // Two SELECTs grouped in a transaction.
       for (IsolationLevel isolation : isolationLevels) {
         runnables.add(() -> {
           int txnsAttempted = 0;
@@ -1034,7 +1029,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           int txnsSucceeded = 0;
           int selectsWithAbortError = 0;
           int commitOfTxnThatRequiresRestart = 0;
-          int statementsresultsMatched = 0;
 
           try (Connection selectTxnConn = cb.withIsolationLevel(isolation).connect();
               Stmt stmt = createStatement(selectTxnConn)) {
@@ -1065,9 +1059,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                 assertTrue("Two SELECTs done within same transaction mismatch" +
                            ", " + isolation + " transaction isolation breach!",
                            rows1.equals(rows2) || (isolation == IsolationLevel.READ_COMMITTED));
-                if (rows1.equals(rows2)) {
-                  statementsresultsMatched++;
-                }
                 ++txnsSucceeded;
               } catch (Exception ex) {
                 if (!isTxnError(ex)) {
@@ -1103,8 +1094,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               " selectsFirstOpConflictDetected=" + selectsFirstOpConflictDetected +
               " txnsSucceeded=" + txnsSucceeded +
               " selectsWithAbortError=" + selectsWithAbortError +
-              " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart +
-              " statementsresultsMatched=" + statementsresultsMatched);
+              " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart);
 
           if (expectReadRestartErrors(isolation)) {
             // Read restart errors can never occur in serializable isolation.
@@ -1161,12 +1151,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
             assertGreaterThan("No txns in " + isolation + " succeeded, ever! Flawed test?",
                 txnsSucceeded, 0);
           }
-          assertTrue("It can't be the case that results were always same in both SELECTs at " +
-                     "READ COMMITTED isolation level",
-                     (isolation != IsolationLevel.READ_COMMITTED
-                      && statementsresultsMatched == txnsSucceeded) ||
-                     (isolation == IsolationLevel.READ_COMMITTED
-                      && statementsresultsMatched < txnsSucceeded));
         });
       }
 

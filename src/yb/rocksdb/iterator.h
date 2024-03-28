@@ -128,6 +128,10 @@ class Iterator : public Cleanable {
     return Entry().Valid();
   }
 
+  std::string KeyDebugHexString() const {
+    return Valid() ? key().ToDebugHexString() : "<not valid>";
+  }
+
   // Same as Valid(), but returns error if there was a read error.
   // For hot paths consider using Valid() in a loop and checking status after the loop.
   yb::Result<bool> CheckedValid() const {

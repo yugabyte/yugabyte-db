@@ -300,12 +300,18 @@ Result<TabletPeerTablet> DoLookupTabletPeer(
 Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
     const TabletId& tablet_id) {
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = tablet_id});
+  }
   return DoLookupTabletPeer(tablet_manager, tablet_id);
 }
 
 Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
     const Slice& tablet_id) {
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = tablet_id.ToBuffer()});
+  }
   return DoLookupTabletPeer(tablet_manager, tablet_id);
 }
 

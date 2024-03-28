@@ -691,8 +691,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
       // Wait for server to get ready
       createWaitForServersTasks(nodeList, processType).setSubTaskGroupType(subGroupType);
-      createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-          .setSubTaskGroupType(subGroupType);
+      createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
 
       // If there are no universe keys on the universe, it will have no effect.
       if (processType == ServerType.MASTER
@@ -828,8 +827,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               createGFlagsOverrideTasks(nodeList, processType);
               createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
               createWaitForServersTasks(new HashSet<NodeDetails>(nodeList), processType);
-              createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-                  .setSubTaskGroupType(subGroupType);
+              createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
               // If there are no universe keys on the universe, it will have no effect.
               if (processType == ServerType.MASTER
                   && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
@@ -963,8 +961,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
       createWaitForServersTasks(new HashSet<>(Collections.singletonList(node)), processType)
           .setSubTaskGroupType(subGroupType);
-      createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-          .setSubTaskGroupType(subGroupType);
+      createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
       if (processType == ServerType.MASTER
           && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
         // If there are no universe keys on the universe, it will have no effect.

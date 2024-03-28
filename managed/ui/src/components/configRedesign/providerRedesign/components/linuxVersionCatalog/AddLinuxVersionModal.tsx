@@ -46,8 +46,6 @@ interface AddLinuxVersionModalProps {
 
 interface ImageBundleExtendedProps {
   machineImageId: string;
-  sshUserOverride: string;
-  sshPortOverride: number;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -87,16 +85,6 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const getOverrides = (editDetails: ImageBundle & ImageBundleExtendedProps) => {
-  if (!isNonEmptyObject(editDetails)) return {};
-  return {
-    sshUserOverride:
-      values(editDetails?.details.regions)[0]?.sshUserOverride ?? editDetails?.sshUserOverride,
-    sshPortOverride:
-      values(editDetails?.details.regions)[0]?.sshPortOverride ?? editDetails?.sshPortOverride
-  };
-};
-
 export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
   providerType,
   control,
@@ -115,17 +103,32 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
     name: 'regions',
     control
   });
+
+  const isEditMode = isNonEmptyObject(editDetails);
+
+  const isYBAManagedBundle =
+    isNonEmptyObject(editDetails) &&
+    (editDetails as ImageBundle)?.metadata?.type === ImageBundleType.YBA_ACTIVE;
+
   const { control: formControl, handleSubmit, reset } = useForm<
     ImageBundle & ImageBundleExtendedProps
   >({
     defaultValues: {
       details: {
-        arch: ArchitectureType.X86_64
+        arch: ArchitectureType.X86_64,
+        sshPort: 22
       },
-      ...editDetails,
-      ...getOverrides(editDetails as any)
+      ...editDetails
     },
-    resolver: yupResolver(getAddLinuxVersionSchema(providerType, t, existingImageBundles as any))
+    resolver: yupResolver(
+      getAddLinuxVersionSchema(
+        providerType,
+        t,
+        existingImageBundles as any,
+        isEditMode,
+        isYBAManagedBundle
+      )
+    )
   });
 
   const CPU_ARCH_OPTIONS = [
@@ -140,12 +143,6 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
   ];
 
   if (!visible) return null;
-
-  const isEditMode = isNonEmptyObject(editDetails);
-
-  const isYBAManagedBundle =
-    isNonEmptyObject(editDetails) &&
-    (editDetails as ImageBundle)?.metadata?.type === ImageBundleType.YBA_ACTIVE;
 
   return (
     <YBModal
@@ -196,6 +193,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
               name={`details.globalYbImage`}
               className={classes.nameInput}
               placeholder={t('form.machineImageIdPlaceholder')}
+              disabled={isYBAManagedBundle}
             />
           </div>
         )}
@@ -250,7 +248,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             <Grid item xs={9}>
               <YBInputField
                 control={formControl}
-                name={'sshUserOverride'}
+                name={'details.sshUser'}
                 placeholder={t('form.sshUserPlaceholder')}
                 fullWidth
                 disabled={isYBAManagedBundle}
@@ -265,7 +263,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
               <YBInputField
                 type="number"
                 control={formControl}
-                name={'sshPortOverride'}
+                name={'details.sshPort'}
                 placeholder={t('form.sshPortPlaceholder')}
                 disabled={isYBAManagedBundle}
                 fullWidth

@@ -3,6 +3,7 @@ package com.yugabyte.troubleshoot.ts.models;
 import java.util.*;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Data
 @Accessors(chain = true)
@@ -22,6 +23,14 @@ public class GraphAnomaly {
     labels.forEach(
         (key, value) -> this.labels.computeIfAbsent(key, k -> new HashSet<>()).add(value));
     return this;
+  }
+
+  public String getLabelFirstValue(String name) {
+    Set<String> values = labels.get(name);
+    if (CollectionUtils.isEmpty(values)) {
+      return null;
+    }
+    return values.stream().findFirst().orElse(null);
   }
 
   public GraphAnomaly merge(GraphAnomaly other) {

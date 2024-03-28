@@ -47,7 +47,7 @@ var removeNodesCmd = &cobra.Command{
 			fmt.Sprintf("Are you sure you want to remove %s: %s", "node", ip),
 			viper.GetBool("force"))
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -66,8 +66,11 @@ var removeNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			fmt.Println("No providers found\n")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		if r[0].GetCode() != util.OnpremProviderType {
@@ -89,11 +92,16 @@ var removeNodesCmd = &cobra.Command{
 		}
 
 		if rDelete.GetSuccess() {
-			fmt.Printf("The node %s has been removed from provider %s (%s)\n",
+			logrus.Infof("The node %s has been removed from provider %s (%s)\n",
 				formatter.Colorize(ip, formatter.GreenColor), providerName, providerUUID)
 
 		} else {
-			fmt.Printf("An error occurred while removing node from provider")
+			logrus.Errorf(
+				formatter.Colorize(
+					fmt.Sprintf(
+						"An error occurred while removing node %s from provider %s (%s)\n",
+						ip, providerName, providerUUID),
+					formatter.RedColor))
 		}
 	},
 }

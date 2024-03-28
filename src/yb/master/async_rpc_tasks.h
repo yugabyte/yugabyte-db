@@ -1059,5 +1059,36 @@ class AsyncCloneTablet: public AsyncTabletLeaderTask {
   tserver::CloneTabletResponsePB resp_;
 };
 
+class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
+ public:
+  using ClonePgSchemaCallbackType = std::function<Status(Status)>;
+  AsyncClonePgSchema(
+      Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+      const std::string& source_db_name, const std::string& target_db_name, HybridTime restore_time,
+      ClonePgSchemaCallbackType callback, MonoTime deadline);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kClonePgSchema;
+  }
+
+  std::string type_name() const override { return "Clone PG Schema Objects"; }
+
+  std::string description() const override;
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  MonoTime ComputeDeadline() override;
+  // Not associated with a tablet.
+  TabletId tablet_id() const override { return TabletId(); }
+
+ private:
+  std::string source_db_name_;
+  std::string target_db_name;
+  HybridTime restore_ht_;
+  tserver::ClonePgSchemaResponsePB resp_;
+  ClonePgSchemaCallbackType callback_;
+};
+
 } // namespace master
 } // namespace yb

@@ -58,9 +58,10 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		if !allowed {
-			logrus.Fatalf(fmt.Sprintf("Creating universes below version %s (or on restricted"+
-				" versions) is not supported, currently on %s", util.YBAAllowUniverseMinVersion,
-				version))
+			logrus.Fatalf(formatter.Colorize(
+				fmt.Sprintf("Creating universes below version %s (or on restricted"+
+					" versions) is not supported, currently on %s\n", util.YBAAllowUniverseMinVersion,
+					version), formatter.RedColor))
 		}
 
 		enableYbc := true
@@ -76,11 +77,16 @@ var createUniverseCmd = &cobra.Command{
 		}
 		// find the root certficate UUID from the name
 		if len(clientRootCA) != 0 {
-			certUUID, response, err = authAPI.GetCertificate(clientRootCA).Execute()
+			certs, response, err := authAPI.GetListOfCertificates().Execute()
 			if err != nil {
 				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Universe", "Create - Fetch Certificates")
+					"Universe", "Create - List Certificates")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+			for _, c := range certs {
+				if strings.Compare(c.GetLabel(), clientRootCA) == 0 {
+					certUUID = c.GetUuid()
+				}
 			}
 		}
 
@@ -149,8 +155,8 @@ var createUniverseCmd = &cobra.Command{
 
 		var universeData []ybaclient.UniverseResp
 
-		msg := fmt.Sprintf("The universe %s is being created",
-			formatter.Colorize(universeName, formatter.GreenColor))
+		msg := fmt.Sprintf("The universe %s (%s) is being created",
+			formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
@@ -161,7 +167,7 @@ var createUniverseCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			fmt.Printf("The universe %s (%s) has been created\n",
+			logrus.Infof("The universe %s (%s) has been created\n",
 				formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 
 			universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
@@ -179,7 +185,7 @@ var createUniverseCmd = &cobra.Command{
 			universe.Write(universesCtx, universeData)
 
 		} else {
-			fmt.Println(msg)
+			logrus.Infoln(msg + "\n")
 		}
 
 	},

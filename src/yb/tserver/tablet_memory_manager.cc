@@ -13,6 +13,7 @@
 
 #include "yb/tserver/tablet_memory_manager.h"
 
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/raft_consensus.h"
 
@@ -355,6 +356,8 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
             tablet_to_flush->Flush(
                 tablet::FlushMode::kAsync, tablet::FlushFlags::kAllDbs, flush_tick),
             Substitute("Flush failed on $0", peer_to_flush->tablet_id()));
+        WARN_NOT_OK(peer_to_flush->log()->AsyncAllocateSegmentAndRollover(),
+            Format("Roll log failed on $0", peer_to_flush->tablet_id()));
         for (auto listener : TEST_listeners) {
           listener->StartedFlush(peer_to_flush->tablet_id());
         }

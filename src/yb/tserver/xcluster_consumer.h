@@ -108,6 +108,8 @@ class XClusterConsumer : public XClusterConsumerIf {
     return TEST_num_successful_write_rpcs_.load(std::memory_order_acquire);
   }
 
+  std::vector<std::shared_ptr<client::YBClient>> GetYbClientsList() const override;
+
   Status ReloadCertificates() override;
 
   Status PublishXClusterSafeTime();
@@ -124,6 +126,8 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   Status ReportNewAutoFlagConfigVersion(
       const xcluster::ReplicationGroupId& replication_group_id, uint32_t new_version) const;
+
+  void ClearAllClientMetaCaches() const override;
 
  private:
   // Runs a thread that periodically polls for any new threads.

@@ -97,16 +97,16 @@ void AdjustMemoryLimitsIfNeeded(bool is_master) {
 
   auto values = GetLegacyMemoryValues(is_master);
 
-  if (total_ram <= 16_GB) {
-    values.tablet_overhead_size_percentage = is_master ? 0 : 10;
-    values.db_block_cache_size_percentage = is_master ? 25 : 32;
-    if (total_ram <= 4_GB) {
-      values.default_memory_limit_to_ram_ratio = is_master ? 0.20 : 0.45;
-    } else if (total_ram <= 8_GB) {
-      values.default_memory_limit_to_ram_ratio = is_master ? 0.15 : 0.50;
-    } else {
-      values.default_memory_limit_to_ram_ratio = is_master ? 0.10 : 0.57;
-    }
+  values.tablet_overhead_size_percentage = is_master ? 0 : 10;
+  values.db_block_cache_size_percentage = is_master ? 25 : 32;
+  if (total_ram <= 4_GB) {
+    values.default_memory_limit_to_ram_ratio = is_master ? 0.20 : 0.45;
+  } else if (total_ram <= 8_GB) {
+    values.default_memory_limit_to_ram_ratio = is_master ? 0.15 : 0.48;
+  } else if (total_ram <= 16_GB) {
+    values.default_memory_limit_to_ram_ratio = is_master ? 0.10 : 0.57;
+  } else {
+    values.default_memory_limit_to_ram_ratio = is_master ? 0.10 : 0.60;
   }
 
   AdjustMemoryLimits(values);

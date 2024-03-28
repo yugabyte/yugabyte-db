@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -249,8 +248,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return config;
   }
 
+  public static String getPodCommandDateKey(String podName, CommandType commandType) {
+    return podName + "_" + commandType + "_started";
+  }
+
   @Override
   public void run() {
+    if (getTaskUUID() != null) {
+      putDateIntoCache(getPodCommandDateKey(taskParams().podName, taskParams().commandType));
+    }
     String overridesFile;
 
     Map<String, String> config;
@@ -972,7 +978,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UniverseDefinitionTaskParams.UserIntent primaryClusterIntent =
         taskUniverseDetails.getPrimaryCluster().userIntent;
 
-    if (taskUniverseDetails.rootCA != null || taskUniverseDetails.getClientRootCA() != null) {
+    // Fetch universe again for Certs
+    // For Certs rotate task, we're updating the certs in the Universe details as a subtask
+    Universe universeFromDB = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    UniverseDefinitionTaskParams universeFromDBParams = universeFromDB.getUniverseDetails();
+
+    if (universeFromDBParams.rootCA != null || universeFromDBParams.getClientRootCA() != null) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
       tlsInfo.put("nodeToNode", primaryClusterIntent.enableNodeToNodeEncrypt);
@@ -980,12 +991,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       tlsInfo.put("insecure", taskUniverseDetails.allowInsecure);
       String rootCert;
       String rootKey;
-      if (taskUniverseDetails.rootCA != null) {
-        rootCert = CertificateHelper.getCertPEM(taskUniverseDetails.rootCA);
-        rootKey = CertificateHelper.getKeyPEM(taskUniverseDetails.rootCA);
+      if (universeFromDBParams.rootCA != null) {
+        rootCert = CertificateHelper.getCertPEM(universeFromDBParams.rootCA);
+        rootKey = CertificateHelper.getKeyPEM(universeFromDBParams.rootCA);
       } else {
-        rootCert = CertificateHelper.getCertPEM(taskUniverseDetails.getClientRootCA());
-        rootKey = CertificateHelper.getKeyPEM(taskUniverseDetails.getClientRootCA());
+        rootCert = CertificateHelper.getCertPEM(universeFromDBParams.getClientRootCA());
+        rootKey = CertificateHelper.getKeyPEM(universeFromDBParams.getClientRootCA());
       }
 
       if (rootKey != null && !rootKey.isEmpty()) {
@@ -997,10 +1008,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // In case root cert key is null which will be the case with Hashicorp Vault certificates
         // Generate wildcard node cert and client cert and set them in override file
         CertificateInfo certInfo;
-        if (taskUniverseDetails.rootCA != null) {
-          certInfo = CertificateInfo.get(taskUniverseDetails.rootCA);
+        if (universeFromDBParams.rootCA != null) {
+          certInfo = CertificateInfo.get(universeFromDBParams.rootCA);
         } else {
-          certInfo = CertificateInfo.get(taskUniverseDetails.getClientRootCA());
+          certInfo = CertificateInfo.get(universeFromDBParams.getClientRootCA());
         }
 
         Map<String, Object> rootCA = new HashMap<>();

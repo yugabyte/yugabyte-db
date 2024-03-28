@@ -40,8 +40,8 @@ using BlockerData = std::vector<BlockerTransactionInfo>;
 using BlockerDataPtr = std::shared_ptr<BlockerData>;
 
 struct WaiterData {
-    HybridTime wait_start_time;
-    BlockerDataPtr blockers;
+  HybridTime wait_start_time;
+  BlockerDataPtr blockers;
 };
 
 // WaiterInfoEntry stores the wait-for dependencies of a waiter transaction received from a
@@ -126,6 +126,7 @@ class TransactionStatusController {
   virtual void RemoveInactiveTransactions(Waiters* waiters) = 0;
   virtual bool IsAnySubtxnActive(const TransactionId& transaction_id,
                                  const SubtxnSet& subtxn_set) = 0;
+  virtual std::optional<MicrosTime> GetTxnStart(const TransactionId& transaction_id) = 0;
   virtual ~TransactionStatusController() = default;
 };
 

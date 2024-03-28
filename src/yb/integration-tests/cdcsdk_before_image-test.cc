@@ -17,7 +17,12 @@ namespace cdc {
 
 class CDCSDKBeforeImageTest : public CDCSDKYsqlTest {
  public:
-  void SetUp() override { CDCSDKYsqlTest::SetUp(); }
+  void SetUp() override {
+    CDCSDKYsqlTest::SetUp();
+    // These tests work on older RECORD_TYPE support, so we disable replica identity support here so
+    // that the record_type mode is used.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
+  }
 };
 
 TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage)) {
@@ -681,7 +686,6 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
 
   uint32_t seen_dml_records = 0;
   for (const auto& record : change_resp.cdc_sdk_proto_records()) {
-    LOG(INFO) << "DRDR test record: " << record.DebugString();
     if (record.row_message().op() == RowMessage::BEGIN ||
         record.row_message().op() == RowMessage::COMMIT) {
       continue;

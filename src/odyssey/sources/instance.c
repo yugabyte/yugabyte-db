@@ -152,6 +152,7 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 	od_hba_init(&hba);
 	od_global_init(&global, instance, &system, &router, &cron, &worker_pool,
 		       &extentions, &hba);
+	yb_db_list_init(instance);
 
 	/* read config file */
 	od_error_t error;

@@ -4,7 +4,7 @@ headerTitle: Explore YugabyteDB
 linkTitle: Explore
 headcontent: Learn about YugabyteDB features, with examples
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
-image: /images/section_icons/index/explore.png
+image: fa-sharp fa-thin fa-magnifying-glass-waveform
 aliases:
   - /preview/explore/high-performance/
   - /preview/explore/planet-scale/
@@ -257,7 +257,7 @@ YB Workload Simulator requires Java 11 or later installed on your computer. {{% 
 Download the YB Workload Simulator JAR file using the following command:
 
 ```sh
-wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.4/yb-workload-sim-0.0.4.jar
+wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.8/yb-workload-sim-0.0.8.jar
 ```
 
 ## Use the application
@@ -301,7 +301,7 @@ java -Dnode=<host name> \
     -Dssl=true \
     -Dsslmode=verify-full \
     -Dsslrootcert=<path-to-cluster-certificate> \
-    -jar ./yb-workload-sim-0.0.4.jar
+    -jar ./yb-workload-sim-0.0.8.jar
 ```
 
 - `<host name>` - The host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
@@ -324,7 +324,7 @@ To start the application against a running local universe, use the following com
 ```sh
 java -jar \
     -Dnode=127.0.0.1 \
-    ./yb-workload-sim-0.0.4.jar
+    ./yb-workload-sim-0.0.8.jar
 ```
 
 The `-Dnode` flag specifies the IP address of the node to which to connect.
@@ -366,7 +366,7 @@ java -Dnode=<node_ip> \
       -Ddbuser=<dbuser> \
       -Ddbpassword=<dbpassword> \
       -Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone> \
-      -jar ./yb-workload-sim-0.0.4.jar
+      -jar ./yb-workload-sim-0.0.8.jar
 ```
 
 Replace the following:

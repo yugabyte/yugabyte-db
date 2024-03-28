@@ -52,6 +52,8 @@ struct StmtCounters{
 
   void ResetCounters();
 
+  double GetStdDevTime() const;
+
   int64 num_calls = 0;              // Number of times executed.
   double total_time_in_msec = 0.;   // Total execution time, in msec.
   double min_time_in_msec = 0.;     // Minimum execution time in msec.

@@ -37,6 +37,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.RunHooks,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -45,12 +46,14 @@ public class RestartUniverseTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.CheckFollowerLag,
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE_TSERVER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -62,13 +65,14 @@ public class RestartUniverseTest extends UpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   @Override
   @Before
   public void setUp() {
     super.setUp();
-
+    setCheckNodesAreSafeToTakeDown(mockClient);
     restartUniverse.setUserTaskUUID(UUID.randomUUID());
     attachHooks("RestartUniverse");
 
@@ -118,13 +122,14 @@ public class RestartUniverseTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PreUpgrade hooks
     position = assertSequence(subTasksByPosition, MASTER, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, TSERVER, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PostUpgrade hooks
-    assertEquals(76, position);
+    assertEquals(89, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

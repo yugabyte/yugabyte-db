@@ -70,22 +70,29 @@ class PrometheusMetricFilterTest : public YBTest {
     YBTest::SetUp();
 
     MetricEntity::AttributeMap entity_attr;
-    entity_attr["table_id"] = "table_id_1";
 
-    table_entity_ =
-        METRIC_ENTITY_table.Instantiate(&registry_, "table_entity_id", entity_attr);
+    // Initialize metric entities.
+    entity_attr["table_id"] = "table_id_1";
+    table_entity_1_ =
+        METRIC_ENTITY_table.Instantiate(&registry_, "table_entity_id_1", entity_attr);
+
+    entity_attr["table_id"] = "table_id_2";
+    table_entity_2_ =
+        METRIC_ENTITY_table.Instantiate(&registry_, "table_entity_id_2", entity_attr);
 
     entity_attr["tablet_id"] = "tablet_id_2";
-
     tablet_entity_ =
         METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id", entity_attr);
+
     server_entity_ =
         METRIC_ENTITY_server.Instantiate(&registry_, "server_entity_id");
 
-    server_metric_ = METRIC_server_metric.Instantiate(server_entity_);
-    table_metric_ = METRIC_table_metric.Instantiate(table_entity_);
-    tablet_metric_1_ = METRIC_tablet_metric_1.Instantiate(tablet_entity_);
-    tablet_metric_2_ = METRIC_tablet_metric_2.Instantiate(tablet_entity_);
+    // Make sure counter metrics will not be retired by adding references.
+    metrics_.emplace_back(METRIC_server_metric.Instantiate(server_entity_));
+    metrics_.emplace_back(METRIC_table_metric.Instantiate(table_entity_1_));
+    metrics_.emplace_back(METRIC_table_metric.Instantiate(table_entity_2_));
+    metrics_.emplace_back(METRIC_tablet_metric_1.Instantiate(tablet_entity_));
+    metrics_.emplace_back(METRIC_tablet_metric_2.Instantiate(tablet_entity_));
   }
 
  protected:
@@ -120,14 +127,12 @@ class PrometheusMetricFilterTest : public YBTest {
 
   MetricRegistry registry_;
 
-  scoped_refptr<MetricEntity> table_entity_;
+  scoped_refptr<MetricEntity> table_entity_1_;
+  scoped_refptr<MetricEntity> table_entity_2_;
   scoped_refptr<MetricEntity> tablet_entity_;
   scoped_refptr<MetricEntity> server_entity_;
 
-  scoped_refptr<Counter> server_metric_;
-  scoped_refptr<Counter> table_metric_;
-  scoped_refptr<Counter> tablet_metric_1_;
-  scoped_refptr<Counter> tablet_metric_2_;
+  std::vector<scoped_refptr<Counter>> metrics_;
 };
 
 TEST_F(PrometheusMetricFilterTest, TestV1Default) {
@@ -271,6 +276,51 @@ TEST_F(PrometheusMetricFilterTest, TestV2ServerLevel) {
   ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName2]);
   ASSERT_EQ(kTableLevel, names_to_levels[kTableMetricName]);
   ASSERT_EQ(0, names_to_levels[kServerMetricName]);
+}
+
+TEST_F(PrometheusMetricFilterTest, TestLimitMaxMetricEntries) {
+  auto TabletMetricEntryCount = [](NMSWriter::EntityMetricsMap table_metrics){
+    size_t num = 0;
+    for (auto& [_, metric_map] : table_metrics) {
+      num += metric_map.size();
+    }
+    return num;
+  };
+
+  MetricPrometheusOptions opts;
+  opts.version = kFilterVersionTwo;
+  opts.server_allowlist_string = kServerMetricName;
+  opts.table_allowlist_string = kTableMetricName;
+
+  {
+    NMSWriter::EntityMetricsMap table_metrics;
+    NMSWriter::MetricsMap server_metrics;
+    NMSWriter writer(&table_metrics, &server_metrics, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+    ASSERT_EQ(2, TabletMetricEntryCount(table_metrics));
+    ASSERT_EQ(1, server_metrics.size());
+    ASSERT_EQ(0, writer.TEST_GetNumberOfEntriesCutOff());
+  }
+  {
+    opts.max_metric_entries = 2;
+    NMSWriter::EntityMetricsMap table_metrics;
+    NMSWriter::MetricsMap server_metrics;
+    NMSWriter writer(&table_metrics, &server_metrics, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+    ASSERT_EQ(0, TabletMetricEntryCount(table_metrics));
+    ASSERT_EQ(1, server_metrics.size());
+    ASSERT_EQ(2, writer.TEST_GetNumberOfEntriesCutOff());
+  }
+  {
+    opts.max_metric_entries = 0;
+    NMSWriter::EntityMetricsMap table_metrics;
+    NMSWriter::MetricsMap server_metrics;
+    NMSWriter writer(&table_metrics, &server_metrics, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+    ASSERT_EQ(0, TabletMetricEntryCount(table_metrics));
+    ASSERT_EQ(0, server_metrics.size());
+    ASSERT_EQ(3, writer.TEST_GetNumberOfEntriesCutOff());
+  }
 }
 
 } // namespace yb

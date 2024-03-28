@@ -56,7 +56,7 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
   }
 
-  Status Cleanup(TransactionIdSet&& set) override {
+  Status Cleanup(TransactionIdApplyOpIdMap&& set) override {
     return Status::OK();
   }
 

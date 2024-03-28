@@ -27,7 +27,7 @@ func init() {
 	AWSProviderCmd.Flags().SortFlags = false
 
 	AWSProviderCmd.AddCommand(createAWSProviderCmd)
-	// AWSProviderCmd.AddCommand(updateAWSProviderCmd)
+	AWSProviderCmd.AddCommand(updateAWSProviderCmd)
 	AWSProviderCmd.AddCommand(listAWSProviderCmd)
 	AWSProviderCmd.AddCommand(describeAWSProviderCmd)
 	AWSProviderCmd.AddCommand(deleteAWSProviderCmd)
@@ -35,6 +35,6 @@ func init() {
 	AWSProviderCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe.",
+				"Required for create, delete, describe, update.",
 				formatter.GreenColor)))
 }

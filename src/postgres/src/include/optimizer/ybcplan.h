@@ -33,3 +33,13 @@ bool YBCIsSingleRowModify(PlannedStmt *pstmt);
 bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
 
 bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
+
+bool is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo);
+
+void extract_pushdown_clauses(List *restrictinfo_list,
+							  IndexOptInfo *indexinfo,
+							  List **local_quals,
+							  List **rel_remote_quals,
+							  List **rel_colrefs,
+							  List **idx_remote_quals,
+							  List **idx_colrefs);

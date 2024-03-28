@@ -12,13 +12,12 @@
 //
 
 #include "yb/client/table.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-#include "yb/master/master_replication.proxy.h"
-#include "yb/master/mini_master.h"
-#include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(TEST_enable_xcluster_api_v2);
+DECLARE_string(certs_for_cdc_dir);
 
 using namespace std::chrono_literals;
 
@@ -28,14 +27,6 @@ const MonoDelta kTimeout = 60s * kTimeMultiplier;
 
 class XClusterDBScopedTest : public XClusterYsqlTestBase {
  public:
-  struct SetupParams {
-    std::vector<uint32_t> num_consumer_tablets = {3};
-    std::vector<uint32_t> num_producer_tablets = {3};
-    uint32_t replication_factor = 3;
-    uint32_t num_masters = 1;
-    bool ranged_partitioned = false;
-  };
-
   XClusterDBScopedTest() = default;
   ~XClusterDBScopedTest() = default;
 
@@ -43,23 +34,15 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
     XClusterYsqlTestBase::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
   }
-
-  Status SetUpClusters() {
-    static const SetupParams kDefaultParams;
-    return SetUpClusters(kDefaultParams);
-  }
-
-  Status SetUpClusters(const SetupParams& params) {
-    return XClusterYsqlTestBase::SetUpWithParams(
-        params.num_consumer_tablets, params.num_producer_tablets, params.replication_factor,
-        params.num_masters, params.ranged_partitioned);
-  }
 };
 
 TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   ASSERT_OK(SetUpClusters());
 
   ASSERT_OK(CheckpointReplicationGroup());
+
+  ASSERT_NOK(CreateReplicationFromCheckpoint("bad-master-addr"));
+
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Verify that universe was setup on consumer.
@@ -80,8 +63,10 @@ TEST_F(XClusterDBScopedTest, CreateTable) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Creating a new table on target first should fail.
-  ASSERT_NOK(CreateYsqlTable(
-      /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_));
+  auto status = CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Table public.test_table_1 not found");
 
   auto new_producer_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
@@ -109,6 +94,35 @@ TEST_F(XClusterDBScopedTest, CreateTable) {
 
   // Make sure the other table remains unchanged.
   ASSERT_OK(VerifyWrittenRecords(new_producer_table, new_consumer_table));
+}
+
+TEST_F(XClusterDBScopedTest, DropTableOnProducerThenConsumer) {
+  // Setup replication with two tables
+  SetupParams params;
+  params.num_consumer_tablets = params.num_producer_tablets = {3, 3};
+  ASSERT_OK(SetUpClusters(params));
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Perform the drop on producer cluster.
+  ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table_));
+
+  // Perform the drop on consumer cluster.
+  ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_table_));
+
+  auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client()));
+  std::promise<Result<master::GetXClusterStreamsResponsePB>> promise;
+  client::XClusterClient remote_client(*producer_client());
+  auto outbound_table_info = remote_client.GetXClusterStreams(
+      CoarseMonoClock::Now() + kTimeout, kReplicationGroupId, namespace_id,
+      {producer_table_->name().table_name()}, {producer_table_->name().pgschema_name()},
+      [&promise](Result<master::GetXClusterStreamsResponsePB> result) {
+        promise.set_value(std::move(result));
+      });
+  auto result = promise.get_future().get();
+  ASSERT_NOK(result) << result->DebugString();
+  ASSERT_STR_CONTAINS(result.status().ToString(), "test_table_0 not found in namespace");
 }
 
 }  // namespace yb

@@ -53,7 +53,8 @@ SUBDIRS = \
 		unaccent	\
 		vacuumlo    \
 		yb_pg_metrics \
-		yb_test_extension
+		yb_test_extension \
+		yb_ycql_utils
 
 ifeq ($(with_openssl),yes)
 SUBDIRS += sslinfo

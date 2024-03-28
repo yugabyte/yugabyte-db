@@ -6,7 +6,6 @@ import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
 import com.yugabyte.troubleshoot.ts.service.PgStatStatementsQueryService;
 import io.ebean.Lists;
-import java.time.Duration;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -16,9 +15,6 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class QueryLatencyDetector extends AnomalyDetectorBase {
-
-  private static final long MIN_ANOMALY_SIZE_MILLIS = Duration.ofMinutes(5).toMillis();
-  private static final int QUERY_BATCH_SIZE = 10;
 
   private final PgStatStatementsQueryService pgStatStatementsQueryService;
 
@@ -40,7 +36,10 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
             .collect(Collectors.groupingBy(q -> q.getId().getDbId(), Collectors.toList()));
     queriesByDb.forEach(
         (dbId, dbQueries) -> {
-          for (List<PgStatStatementsQuery> batch : Lists.partition(dbQueries, QUERY_BATCH_SIZE)) {
+          for (List<PgStatStatementsQuery> batch :
+              Lists.partition(
+                  dbQueries,
+                  context.getConfig().getInt(RuntimeConfigKey.QUERY_LATENCY_BATCH_SIZE))) {
             result.merge(findAnomalies(context, dbId, batch));
           }
         });
@@ -66,6 +65,7 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
             .setEnd(context.getEndTime())
             .setStepSeconds(context.getStepSeconds())
             .setSettings(settings)
+            .setReplaceNaN(false)
             .setFilters(
                 ImmutableMap.of(
                     GraphFilter.universeUuid,
@@ -90,13 +90,26 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
                 Collectors.groupingBy(
                     data -> data.getLabels().get(GraphFilter.queryId.name()), Collectors.toList()));
 
+    long minAnomalyDurationMillis =
+        Math.max(
+            response.getStepSeconds() * 1000,
+            context.getConfig().getDuration(getMinAnomalyDurationKey()).toMillis());
+    double minAnomalyValue =
+        context.getConfig().getDouble(RuntimeConfigKey.QUERY_LATENCY_MIN_ANOMALY_VALUE);
+    double baselinePointsRation =
+        context.getConfig().getDouble(RuntimeConfigKey.QUERY_LATENCY_BASELINE_POINTS_RATIO);
+    double thresholdRatio =
+        context.getConfig().getDouble(RuntimeConfigKey.QUERY_LATENCY_THRESHOLD_RATIO);
     GraphAnomalyDetectionService.AnomalyDetectionSettings detectionSettings =
-        new GraphAnomalyDetectionService.AnomalyDetectionSettings();
-    long minAnomalySize = Math.max(response.getStepSeconds() * 1000, MIN_ANOMALY_SIZE_MILLIS);
+        new GraphAnomalyDetectionService.AnomalyDetectionSettings()
+            .setMinimalAnomalyDurationMillis(minAnomalyDurationMillis)
+            .setMinimalAnomalyValue(minAnomalyValue);
     detectionSettings
         .getIncreaseDetectionSettings()
-        .setWindowMinSize(minAnomalySize)
-        .setWindowMaxSize(minAnomalySize * 2);
+        .setBaselinePointsRatio(baselinePointsRation)
+        .setThresholdRatio(thresholdRatio)
+        .setWindowMinSize(minAnomalyDurationMillis)
+        .setWindowMaxSize(minAnomalyDurationMillis * 2);
 
     AnomalyDetectionContext contextWithUpdatedStep =
         context.toBuilder().stepSeconds(response.getStepSeconds()).build();
@@ -105,12 +118,7 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
         (queryId, data) -> {
           result.merge(
               findAnomalies(
-                  contextWithUpdatedStep,
-                  detectionSettings,
-                  dbId,
-                  queryId,
-                  queryMap.get(queryId),
-                  data));
+                  contextWithUpdatedStep, detectionSettings, queryMap.get(queryId), data));
         });
 
     return result;
@@ -119,8 +127,6 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
   private AnomalyDetectionResult findAnomalies(
       AnomalyDetectionContext context,
       GraphAnomalyDetectionService.AnomalyDetectionSettings detectionSettings,
-      String dbId,
-      String queryId,
       PgStatStatementsQuery query,
       List<GraphData> graphDataList) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
@@ -128,16 +134,12 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
         anomalyDetectionService.getAnomalies(
             GraphAnomaly.GraphAnomalyType.INCREASE, graphDataList, detectionSettings);
 
-    List<GraphAnomaly> mergedAnomalies = anomalyDetectionService.mergeAnomalies(anomalies);
-
     AnomalyDetectionContext updatedContext =
         context.toBuilder()
-            .dbId(dbId)
-            .queryId(queryId)
             .customContext(new QueryLatencyDetectionContext().setQuery(query))
             .build();
 
-    createAnomalies(result, mergedAnomalies, updatedContext);
+    groupAndCreateAnomalies(updatedContext, anomalies, result);
 
     return result;
   }
@@ -162,6 +164,11 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
             + customContext.getQuery().getDbName()
             + "'");
     return builder;
+  }
+
+  @Override
+  protected RuntimeConfigKey getMinAnomalyDurationKey() {
+    return RuntimeConfigKey.QUERY_LATENCY_MIN_ANOMALY_DURATION;
   }
 
   @Data

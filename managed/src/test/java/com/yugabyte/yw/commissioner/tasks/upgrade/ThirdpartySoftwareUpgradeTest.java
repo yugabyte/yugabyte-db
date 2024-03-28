@@ -48,6 +48,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -68,7 +69,8 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.CheckFollowerLag,
           TaskType.CheckFollowerLag,
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private int expectedUniverseVersion = 2;
 
@@ -80,7 +82,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
     super.setUp();
     attachHooks("ThirdpartySoftwareUpgrade");
     thirdpartySoftwareUpgrade.setUserTaskUUID(UUID.randomUUID());
-
+    setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
     setLeaderlessTabletsMock();
@@ -178,6 +180,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLeaderlessTablets);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // Assert that the first task is the pre-upgrade hooks

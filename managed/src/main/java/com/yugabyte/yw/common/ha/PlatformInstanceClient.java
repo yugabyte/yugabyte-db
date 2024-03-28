@@ -169,8 +169,10 @@ public class PlatformInstanceClient {
     }
     String localVersion =
         configHelper.getConfig(ConfigType.YugawareMetadata).getOrDefault("version", "").toString();
+    // Remove single or double quotes from remoteVersion
+    String remoteVersionStripped = remoteVersion.toString().replaceAll("^['\"]|['\"]$", "");
 
-    if (!localVersion.equals(remoteVersion.toString())) {
+    if (!localVersion.equals(remoteVersionStripped)) {
       HA_YBA_VERSION_MISMATCH_GAUGE.labels(remoteAddress).set(1);
     } else {
       HA_YBA_VERSION_MISMATCH_GAUGE.labels(remoteAddress).set(0);
@@ -190,5 +192,9 @@ public class PlatformInstanceClient {
 
     ret.add(filePart);
     return ret;
+  }
+
+  public void clearMetrics() {
+    HA_YBA_VERSION_MISMATCH_GAUGE.clear();
   }
 }

@@ -18,7 +18,7 @@ import (
 
 const (
 	defaultProviderListing = "table {{.Name}}\t{{.Code}}\t{{.UUID}}" +
-		"\t{{.Status}}\t{{.Regions}}\t{{.SSHUser}}\t{{.SSHPort}}"
+		"\t{{.Regions}}\t{{.SSHUser}}\t{{.SSHPort}}\t{{.Status}}"
 	sshPortHeader = "SSH Port"
 	sshUserHeader = "SSH User"
 

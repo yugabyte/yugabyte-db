@@ -106,32 +106,54 @@ export const compareYBSoftwareVersions = ({
       }
     }
 
-    if (
-      matchA[YBSoftwareVersion.GroupIndex.BUILD_NUMBER] &&
-      matchB[YBSoftwareVersion.GroupIndex.BUILD_NUMBER]
-    ) {
-      const buildNumberA = parseInt(matchA[YBSoftwareVersion.GroupIndex.BUILD_NUMBER]);
-      const buildNumberB = parseInt(matchB[YBSoftwareVersion.GroupIndex.BUILD_NUMBER]);
+    // Version Core is identical -------------------------------------------------------------
+    const buildNumberA = matchA[YBSoftwareVersion.GroupIndex.BUILD_NUMBER]
+      ? parseInt(matchA[YBSoftwareVersion.GroupIndex.BUILD_NUMBER])
+      : undefined;
+    const buildNumberB = matchA[YBSoftwareVersion.GroupIndex.BUILD_NUMBER]
+      ? parseInt(matchB[YBSoftwareVersion.GroupIndex.BUILD_NUMBER])
+      : undefined;
+    if (buildNumberA && buildNumberB) {
       return buildNumberA - buildNumberB;
     }
 
+    // At least one undefined build number (custom build tag or no build tag provided) -------
+
     // If the version core is identical and one of versions is a custom build (no build number),
     // then we will consider the YB software versions as equal if requireOrdering is false since we can't compare them.
-    // Sort if required for ordering the version strings
     // Ex: 2.17.3.0-b123 and 2.17.3.0-customBuildName are considered equal.
-    return requireOrdering ? (
-      sortTags(
-        matchA[YBSoftwareVersion.GroupIndex.BUILD],
-        matchA[YBSoftwareVersion.GroupIndex.BUILD_NUMBER],
-        matchB[YBSoftwareVersion.GroupIndex.BUILD],
-        matchB[YBSoftwareVersion.GroupIndex.BUILD_NUMBER])
-    ) : 0;
+
+    // Sort if required for ordering the version strings
+    if (requireOrdering) {
+      if (buildNumberA) {
+        return 1;
+      }
+      if (buildNumberB) {
+        return -1;
+      }
+
+      const buildA = matchA[YBSoftwareVersion.GroupIndex.BUILD];
+      const buildB = matchB[YBSoftwareVersion.GroupIndex.BUILD];
+      if (buildA && buildB) {
+        return buildB.localeCompare(buildA);
+      }
+
+      // Sort defined build tags ahead of undefined build tags.
+      if (buildA) {
+        return 1;
+      }
+      if (buildB) {
+        return -1;
+      }
+      return 0;
+    }
+    return 0;
   }
 
   if (suppressFormatError && !requireOrdering) {
-  // If suppressFormatError is true, requireOrdering is false
-  // and the YB version strings are unable to be parsed,
-  // we'll simply consider the versions as equal.
+    // If suppressFormatError is true, requireOrdering is false
+    // and the YB version strings are unable to be parsed,
+    // we'll simply consider the versions as equal.
     return 0;
   }
 
@@ -146,27 +168,6 @@ export const compareYBSoftwareVersions = ({
     return -1;
   }
   return 0;
-
-};
-
-/**
- * Sort the build tags for YB versions
- * If the build tag is not well-formed/ does not adhere to the regex for either versions,
- * and requireOrdering is set to true in compareYBSoftwareVersions
- * Sort b{n} tags before custom build tags like mihnea, sergei, or 9b180349b
-*/
-
-export const sortTags = (
-  buildA: string,
-  buildNumberA: string,
-  buildB: string,
-  buildNumberB: string): number => {
-  const buildNumberIntA = parseInt(buildNumberA);
-  const buildNumberIntB = parseInt(buildNumberB);
-  if (buildNumberIntA || buildNumberIntB) {
-    return (isNaN(buildNumberIntA) ? 0 : 1) - (isNaN(buildNumberIntB) ? 0 : 1);
-  }
-  return buildB.localeCompare(buildA);
 };
 
 /**
@@ -192,7 +193,7 @@ export const compareYBSoftwareVersionsWithReleaseTrack = ({
 /**
  * Check if the given release version belongs to the Stable track
  *
- * Returns `true` if the minor version is even or if the newer name format (ex: 2024.1.0.0) is followed 
+ * Returns `true` if the minor version is even or if the newer name format (ex: 2024.1.0.0) is followed
  */
 export const isVersionStable = (version: any): boolean => {
   return Number(version?.split?.('.')[1]) % 2 === 0 || version?.split?.('.')[0].length === 4;

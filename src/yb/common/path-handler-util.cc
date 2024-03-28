@@ -21,6 +21,14 @@ namespace {
 
 const char* const kSortAndFilterTableScript = R"(
 <script>
+function castIfNumber(elem) {
+ return elem.length ?
+          (elem.length > 14 || isNaN(Number(elem)) ?
+            elem.toLowerCase() :
+            Number(elem)) :
+          "~";
+}
+
 function sortTable(table_id, n) {
   var asc_symb = ' <span style="color: grey">\u25B2</span>';
   var desc_symb = ' <span style="color: grey">\u25BC</span>';
@@ -53,12 +61,8 @@ function sortTable(table_id, n) {
       var swap = false;
       var x = table.rows[i].getElementsByTagName("TD")[n];
       var y = table.rows[i + 1].getElementsByTagName("TD")[n];
-      var cmpX = x.innerHTML.length?
-        isNaN(Number(x.innerHTML))? x.innerHTML.toLowerCase():Number(x.innerHTML):
-        "~";
-      var cmpY = y.innerHTML.length?
-        isNaN(Number(y.innerHTML))?y.innerHTML.toLowerCase():Number(y.innerHTML):
-        "~";
+      var cmpX = castIfNumber(x.innerHTML);
+      var cmpY = castIfNumber(y.innerHTML);
 
       if (asc) {
         if (cmpX > cmpY) {

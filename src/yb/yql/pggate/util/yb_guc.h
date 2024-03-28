@@ -117,6 +117,11 @@ extern bool yb_enable_replication_slot_consumption;
 extern bool yb_enable_alter_table_rewrite;
 
 /*
+ * Guc variable that enables replica identity command in Alter Table Query
+ */
+extern bool yb_enable_replica_identity;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -150,6 +155,19 @@ extern int yb_locks_max_transactions;
  * GUC flag: Maximum number of locks to return per transaction per tablet in yb_lock_status().
  */
 extern int yb_locks_txn_locks_per_tablet;
+
+/*
+ * GUC flag: Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was non-empty.
+ */
+extern int yb_walsender_poll_sleep_duration_nonempty_ms;
+
+/*
+ * GUC flag:  Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was empty. The response can be
+ * empty in case there are no DMLs happening in the system.
+ */
+extern int yb_walsender_poll_sleep_duration_empty_ms;
 
 #ifdef __cplusplus
 } // extern "C"

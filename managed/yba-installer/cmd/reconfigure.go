@@ -79,6 +79,8 @@ var reconfigureCmd = &cobra.Command{
 			services[name].Start()
 		}
 
+		common.WaitForYBAReady(ybaCtl.Version())
+
 		for _, name := range serviceOrder {
 			status, err := services[name].Status()
 			if err != nil {

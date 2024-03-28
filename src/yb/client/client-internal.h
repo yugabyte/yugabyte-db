@@ -442,6 +442,13 @@ class YBClient::Data {
   Status ReportYsqlDdlTxnStatus(
       const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline);
 
+  Status IsYsqlDdlVerificationInProgress(
+    const TransactionMetadata& txn,
+    CoarseTimePoint deadline,
+    bool *ddl_verification_in_progress);
+
+  Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn, CoarseTimePoint deadline);
+
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
   Status GetXClusterStreams(
@@ -580,6 +587,8 @@ class YBClient::Data {
   TabletRequests requests_;
 
   std::array<std::atomic<int>, 2> tserver_count_cached_;
+
+  std::string client_name_;
 
  private:
   Status FlushTablesHelper(YBClient* client,

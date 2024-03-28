@@ -3192,9 +3192,12 @@ describeOneTableDetails(const char *schemaname,
 		/*
 		 * No need to display default values; we already display a REPLICA
 		 * IDENTITY marker on indexes.
+		 * YB NOTE: The default replica identity of user defined tables is "CHANGE" in YB. In all
+		 * other cases the default behaviour of PG is followed.
 		 */
 			tableinfo.relreplident != 'i' &&
-			((strcmp(schemaname, "pg_catalog") != 0 && tableinfo.relreplident != 'd') ||
+			((strcmp(schemaname, "information_schema") == 0 && tableinfo.relreplident != 'd') ||
+			 (strcmp(schemaname, "pg_catalog") != 0 && strcmp(schemaname, "information_schema") != 0 && tableinfo.relreplident != 'c') ||
 			 (strcmp(schemaname, "pg_catalog") == 0 && tableinfo.relreplident != 'n')))
 		{
 			const char *s = _("Replica Identity");
@@ -3203,6 +3206,7 @@ describeOneTableDetails(const char *schemaname,
 							  s,
 							  tableinfo.relreplident == 'f' ? "FULL" :
 							  tableinfo.relreplident == 'n' ? "NOTHING" :
+							  tableinfo.relreplident == 'd' ? "DEFAULT" :
 							  "???");
 
 			printTableAddFooter(&cont, buf.data);

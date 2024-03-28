@@ -13,3 +13,4 @@ https://files.pythonhosted.org/packages/b2/40/4e00501c204b457f10fe410da0c9753721
 https://downloads.yugabyte.com/docker/thirdparty-deps/x86_64/xxhash.tar.gz
 https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.0/otelcol-contrib_0.90.0_linux_amd64.tar.gz
 https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.0/otelcol-contrib_0.90.0_linux_arm64.tar.gz
+https://downloads.yugabyte.com/docker/thirdparty-deps/x86_64/tectia-ssh.tar.gz

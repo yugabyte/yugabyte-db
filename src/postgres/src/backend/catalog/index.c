@@ -4072,9 +4072,11 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 
 	/*
 	 * YB pk indexes share the same storage as their tables, so it is not
-	 * possible to reindex them.
+	 * possible to reindex them. However, this code-path may be internally
+	 * invoked by table rewrite, and we need to reset the index's reltuples.
 	 */
-	if (iRel->rd_index->indisprimary && IsYBRelation(iRel))
+	if (!is_yb_table_rewrite && iRel->rd_index->indisprimary &&
+		IsYBRelation(iRel))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot reindex nontemporary pk indexes"),
@@ -4412,23 +4414,27 @@ reindex_relation(Oid relid, int flags, int options, bool is_yb_table_rewrite,
 			Relation iRel = index_open(indexOid, AccessExclusiveLock);
 			if (is_pg_class)
 				RelationSetIndexList(rel, doneIndexes, InvalidOid);
-			/*
-			 * For YB relations, we can ignore the primary key index because
-			 * it is an implicit part of the DocDB table.
-			 */
-			if (!(IsYBRelation(iRel) && iRel->rd_index->indisprimary))
+			if (IsYBRelation(iRel))
 			{
-				index_close(iRel, AccessExclusiveLock);
-				reindex_index(indexOid,
-							  !(flags & REINDEX_REL_CHECK_CONSTRAINTS),
-							  persistence, options, is_yb_table_rewrite,
-							  yb_copy_split_options);
+				if (!is_yb_table_rewrite && !iRel->rd_index->indisprimary)
+					/*
+					* Drop the old DocDB table associated with this index.
+					* This is only required for secondary indexes, because a
+					* primary index in YB doesn't have a DocDB table separate
+					* from the base relation's table.
+					* If this is a table rewrite, the indexes on the table
+					* will automatically be dropped when the table is dropped.
+					* Note: The drop isn't finalized until after the txn
+					* commits/aborts.
+					*/
+					YBCDropIndex(iRel);
 			}
-			else
-			{
-				index_close(iRel, AccessExclusiveLock);
-				RemoveReindexPending(indexOid);
-			}
+			index_close(iRel, AccessExclusiveLock);
+			reindex_index(indexOid,
+							!(flags & REINDEX_REL_CHECK_CONSTRAINTS),
+							persistence, options, is_yb_table_rewrite,
+							yb_copy_split_options);
+
 			CommandCounterIncrement();
 
 			/* Index should no longer be in the pending list */

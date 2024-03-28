@@ -37,6 +37,8 @@ class XClusterSafeTimeMap {
   Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const
       EXCLUDES(xcluster_safe_time_map_mutex_);
 
+  bool HasNamespace(const NamespaceId& namespace_id) const;
+
   void Update(XClusterNamespaceToSafeTimePBMap safe_time_map)
       EXCLUDES(xcluster_safe_time_map_mutex_);
 

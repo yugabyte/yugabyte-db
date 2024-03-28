@@ -65,6 +65,7 @@ typedef enum {
 	KIWI_BE_ROW_DESCRIPTION = 'T',
 	KIWI_BE_COMPRESSION = 'z',
 	YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION = 'F',
+	YB_OID_DETAILS = 'O',
 } kiwi_be_type_t;
 
 struct kiwi_header {
@@ -165,6 +166,8 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "RowDescription";
 	case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
 		return "FatalForLogicalConnection";
+	case YB_OID_DETAILS:
+		return "OidDetails";
 	}
 	return "Unknown";
 }

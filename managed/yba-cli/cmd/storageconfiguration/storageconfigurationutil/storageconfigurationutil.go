@@ -5,7 +5,6 @@
 package storageconfigurationutil
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -22,7 +21,7 @@ import (
 func CreateStorageConfigurationUtil(
 	authAPI *ybaAuthClient.AuthAPIClient, storageName, storageUUID string,
 ) {
-	fmt.Printf("The storage configuration %s (%s) has been created\n",
+	logrus.Infof("The storage configuration %s (%s) has been created\n",
 		formatter.Colorize(storageName, formatter.GreenColor), storageUUID)
 
 	storageConfigData, response, err := authAPI.GetListOfCustomerConfig().Execute()

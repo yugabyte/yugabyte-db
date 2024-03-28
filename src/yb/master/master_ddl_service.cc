@@ -53,6 +53,7 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
     (IsDeleteNamespaceDone)
     (IsDeleteTableDone)
     (IsTruncateTableDone)
+    (IsYsqlDdlVerificationDone)
     (LaunchBackfillIndexForTable)
     (ListNamespaces)
     (ListTablegroups)

@@ -142,7 +142,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String clusterKey = createClusterKey();
     Result getResult = doRequestWithHAToken("GET", GET_CONFIG_ENDPOINT, clusterKey);
     assertEquals(FORBIDDEN, getResult.status());
-    assertEquals(contentAsString(getResult), "Unable to authenticate request");
+    assertEquals(
+        Json.parse(contentAsString(getResult)).get("error").asText(),
+        "Unable to authenticate request");
   }
 
   @Test
@@ -151,7 +153,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String incorrectClusterKey = createClusterKey();
     Result getResult = doRequestWithHAToken("GET", GET_CONFIG_ENDPOINT, incorrectClusterKey);
     assertEquals(FORBIDDEN, getResult.status());
-    assertEquals(contentAsString(getResult), "Unable to authenticate request");
+    assertEquals(
+        Json.parse(contentAsString(getResult)).get("error").asText(),
+        "Unable to authenticate request");
   }
 
   @Test

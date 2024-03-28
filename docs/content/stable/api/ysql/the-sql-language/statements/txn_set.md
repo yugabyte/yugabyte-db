@@ -51,7 +51,7 @@ Maps to Snapshot Isolation of YugabyteDB.
 
 #### READ COMMITTED
 
-Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
 
 Default in PostgreSQL and YSQL.
 

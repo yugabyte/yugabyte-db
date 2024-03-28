@@ -150,6 +150,10 @@ class CDCServiceImpl : public CDCServiceIf {
       const DestroyVirtualWALForCDCRequestPB* req, DestroyVirtualWALForCDCResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Destroy a batch of Virtual WAL instances managed by this CDC service.
+  // Intended to be called from background jobs and hence only logs warnings in case of errors.
+  void DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids);
+
   void UpdateAndPersistLSN(
       const UpdateAndPersistLSNRequestPB* req, UpdateAndPersistLSNResponsePB* resp,
       rpc::RpcContext context) override;
@@ -430,6 +434,9 @@ class CDCServiceImpl : public CDCServiceIf {
   void FilterOutTabletsToBeDeletedByAllStreams(
       TabletIdCDCCheckpointMap* tablet_checkpoint_map,
       std::unordered_set<TabletId>* tablet_ids_with_max_checkpoint);
+
+  Result<bool> CheckBeforeImageActive(
+      const TabletId& tablet_id, const StreamMetadata& stream_metadata);
 
   Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id = "",

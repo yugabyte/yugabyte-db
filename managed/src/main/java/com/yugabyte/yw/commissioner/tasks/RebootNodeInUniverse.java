@@ -138,8 +138,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
         // Start the master.
         createStartMasterProcessTasks(Collections.singleton(currentNode));
 
-        createWaitForServerReady(
-                currentNode, ServerType.MASTER, getSleepTimeForProcess(ServerType.MASTER))
+        createWaitForServerReady(currentNode, ServerType.MASTER)
             .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
       }
 
@@ -152,8 +151,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
         createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-        createWaitForServerReady(
-                currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
+        createWaitForServerReady(currentNode, ServerType.TSERVER)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       }
 

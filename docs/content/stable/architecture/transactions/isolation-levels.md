@@ -26,7 +26,7 @@ Transaction isolation level support differs between the YSQL and YCQL APIs:
 
 Similarly to PostgreSQL, you can specify Read Uncommitted for YSQL, but it behaves the same as Read Committed.
 
-<sup>$</sup> Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). This level is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default, this flag is `false`, in which case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation. The default isolation level for the YSQL API is essentially Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
+<sup>$</sup> Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability). This level is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default, this flag is `false`, in which case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation. The default isolation level for the YSQL API is essentially Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
 
 ## Internal locking in DocDB
 

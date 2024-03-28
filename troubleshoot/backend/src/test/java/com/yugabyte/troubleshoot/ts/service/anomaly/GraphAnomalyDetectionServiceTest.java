@@ -1,7 +1,6 @@
 package com.yugabyte.troubleshoot.ts.service.anomaly;
 
-import static com.yugabyte.troubleshoot.ts.models.GraphAnomaly.GraphAnomalyType.INCREASE;
-import static com.yugabyte.troubleshoot.ts.models.GraphAnomaly.GraphAnomalyType.UNEVEN_DISTRIBUTION;
+import static com.yugabyte.troubleshoot.ts.models.GraphAnomaly.GraphAnomalyType.*;
 import static com.yugabyte.troubleshoot.ts.service.anomaly.GraphAnomalyDetectionService.LINE_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,6 +28,7 @@ public class GraphAnomalyDetectionServiceTest {
         .getIncreaseDetectionSettings()
         .setWindowMinSize(Duration.ofMinutes(20).toMillis())
         .setWindowMaxSize(Duration.ofMinutes(40).toMillis());
+    settings.getThresholdExceedSettings().setThreshold(80000);
   }
 
   @Test
@@ -205,14 +205,187 @@ public class GraphAnomalyDetectionServiceTest {
   }
 
   @Test
-  public void testDecreaseInTheMiddle1Day() {
-    GraphData graphData = loadGraph("anomaly/decrease_in_the_middle_1_day.csv");
+  public void testThresholdExceedNoAnomalies2Weeks() {
+    GraphData graphData = loadGraph("anomaly/no_anomalies_2_weeks.csv");
     List<GraphAnomaly> anomalies =
-        anomalyDetectionService.getAnomalies(INCREASE, graphData, settings);
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies).isEmpty();
+  }
+
+  @Test
+  public void testThresholdExceedFluctuation2Weeks() {
+    GraphData graphData = loadGraph("anomaly/fluctuation_2_weeks.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies).isEmpty();
+  }
+
+  @Test
+  public void testThresholdExceedSpike2WeeksAnomalies() {
+    GraphData graphData = loadGraph("anomaly/2_to_5_hours_increase_2_weeks.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
     assertThat(anomalies)
         .containsExactly(
             new GraphAnomaly()
-                .setType(INCREASE)
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1707528960000L)
+                .setEndTime(1707543360000L),
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1708310160000L)
+                .setEndTime(1708310160000L),
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1708317360000L)
+                .setEndTime(1708317360000L),
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1708515360000L)
+                .setEndTime(1708529760000L));
+  }
+
+  @Test
+  public void testThresholdExceedSlowIncrease2Weeks() {
+    GraphData graphData = loadGraph("anomaly/slow_increase_2_weeks.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies)
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1707496560000L)
+                .setEndTime(1708529760000L));
+  }
+
+  @Test
+  public void testThresholdExceedSlowDecrease2Weeks() {
+    GraphData graphData = loadGraph("anomaly/slow_decrease_2_weeks.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies)
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1707320160000L)
+                .setEndTime(1708356960000L));
+  }
+
+  @Test
+  public void testThresholdExceedIncreaseInTheMiddle2Weeks() {
+    GraphData graphData = loadGraph("anomaly/increase_in_the_middle_2_weeks.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies)
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1707924960000L)
+                .setEndTime(1708529760000L));
+  }
+
+  @Test
+  public void testThresholdExceedDecreaseInTheMiddle2Weeks() {
+    GraphData graphData = loadGraph("anomaly/decrease_in_the_middle_2_weeks.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies)
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1707320160000L)
+                .setEndTime(1707921360000L));
+  }
+
+  @Test
+  public void testThresholdExceedNoAnomalies1Day() {
+    GraphData graphData = loadGraph("anomaly/no_anomalies_1_day.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies).isEmpty();
+  }
+
+  @Test
+  public void testThresholdExceedFluctuation1Day() {
+    GraphData graphData = loadGraph("anomaly/fluctuation_1_day.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies).isEmpty();
+  }
+
+  @Test
+  public void testThresholdExceedSpike1DayAnomalies() {
+    GraphData graphData = loadGraph("anomaly/20_min_to_1_hour_increase_1_day.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies)
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1708445160000L)
+                .setEndTime(1708445700000L),
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1708450500000L)
+                .setEndTime(1708451040000L),
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1708457040000L)
+                .setEndTime(1708458780000L),
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1708469160000L)
+                .setEndTime(1708472640000L));
+  }
+
+  @Test
+  public void testThresholdExceedSlowIncrease1Day() {
+    GraphData graphData = loadGraph("anomaly/slow_increase_1_day.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies)
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1708455900000L)
+                .setEndTime(1708529760000L));
+  }
+
+  @Test
+  public void testThresholdExceedSlowDecrease1Day() {
+    GraphData graphData = loadGraph("anomaly/slow_decrease_1_day.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies)
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1708443360000L)
+                .setEndTime(1708518300000L));
+  }
+
+  @Test
+  public void testThresholdExceedIncreaseInTheMiddle1Day() {
+    GraphData graphData = loadGraph("anomaly/increase_in_the_middle_1_day.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies)
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
+                .setStartTime(1708486560000L)
+                .setEndTime(1708529760000L));
+  }
+
+  @Test
+  public void testThresholdExceedDecreaseInTheMiddle1Day() {
+    GraphData graphData = loadGraph("anomaly/decrease_in_the_middle_1_day.csv");
+    List<GraphAnomaly> anomalies =
+        anomalyDetectionService.getAnomalies(EXCEED_THRESHOLD, graphData, settings);
+    assertThat(anomalies)
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(EXCEED_THRESHOLD)
                 .setStartTime(1708443360000L)
                 .setEndTime(1708486500000L));
   }

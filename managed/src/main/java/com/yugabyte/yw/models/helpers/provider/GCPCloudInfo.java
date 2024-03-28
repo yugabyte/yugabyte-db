@@ -179,10 +179,12 @@ public class GCPCloudInfo implements CloudInfoInterface {
       ObjectMapper objectMapper = Json.mapper();
       this.gceApplicationCredentialsPath =
           CommonUtils.getMaskedValue(gceApplicationCredentialsPath);
-      this.gceApplicationCredentials =
-          CommonUtils.getMaskedValue(
-                  objectMapper.readTree(gceApplicationCredentials), toMaskFieldsInCreds)
-              .toString();
+      if (gceApplicationCredentials != null) {
+        this.gceApplicationCredentials =
+            CommonUtils.getMaskedValue(
+                    objectMapper.readTree(gceApplicationCredentials), toMaskFieldsInCreds)
+                .toString();
+      }
     } catch (Exception e) {
       log.error(
           String.format("Failed to mask GCP credential information, %s", e.getLocalizedMessage()));

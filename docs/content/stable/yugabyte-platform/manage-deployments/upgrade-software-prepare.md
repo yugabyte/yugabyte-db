@@ -12,6 +12,10 @@ menu:
 type: docs
 ---
 
+## Upgrade the operating system
+
+If your universe is running on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major release of YugabyteDB. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
+
 ## Review major changes in previous YugabyteDB releases
 
 Before starting the upgrade, review the following major changes in previous YugabyteDB releases. Depending on the upgrade you are planning, you may need to make changes to your automation.
@@ -40,7 +44,7 @@ YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading from 
 
 ### Upgrading from versions earlier than v2.18.2
 
-The Node Agent was introduced for all universes in v2.18.2. Node agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YBA and the nodes in universes. Except for Day 0 tasks during initial installation, YBA no longer uses SSH and SCP to manage nodes; instead, YBA connects to the Node agent process listening on port 9070, and performs all its management via this secure connection. For more information, refer to the [Node agent FAQ](../../../faq/yugabyte-platform/#node-agent).
+The Node Agent was introduced for all universes in v2.18.2. Node agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YBA and the nodes in universes. Except for Day 0 tasks during initial installation, YBA no longer uses SSH and SCP to manage nodes; instead, YBA connects to the Node agent process listening on port 9070, and performs all its management via this secure connection. For more information, refer to the [Node agent FAQ](/preview/faq/yugabyte-platform/#node-agent).
 
 **Impacts**
 

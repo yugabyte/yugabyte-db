@@ -81,8 +81,12 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 	r = storageConfigsName
 
 	if len(r) < 1 {
-		fmt.Println("No storage configurations found")
-		return
+		logrus.Fatalf(
+			formatter.Colorize(
+				fmt.Sprintf("No storage configurations with name: %s found\n",
+					storageName),
+				formatter.RedColor,
+			))
 	}
 
 	var storageUUID string
@@ -112,9 +116,9 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
-		fmt.Printf("The storage configuration %s (%s) has been deleted\n",
+		logrus.Infof("The storage configuration %s (%s) has been deleted\n",
 			formatter.Colorize(storageName, formatter.GreenColor), storageUUID)
 		return
 	}
-	fmt.Println(msg)
+	logrus.Infoln(msg + "\n")
 }

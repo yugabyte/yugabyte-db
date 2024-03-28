@@ -81,6 +81,16 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 	if (error.hint) {
 		od_error(&instance->logger, context, server->client, server,
 			 "HINT: %s", error.hint);
+
+		if (strcmp(error.hint, "Database might have been dropped by another user") == 0)
+		{
+			/* Reset the route and close the client */
+			((od_route_t*)server->route)->yb_database_entry->status = YB_DB_DROPPED;
+
+			if (server->client != NULL &&
+				((od_client_t *)server->client)->type == OD_POOL_CLIENT_EXTERNAL)
+				od_frontend_fatal(server->client, KIWI_CONNECTION_DOES_NOT_EXIST, error.hint);
+		}
 	}
 }
 
@@ -122,10 +132,14 @@ static inline int od_backend_startup(od_server_t *server,
 {
 	od_instance_t *instance = server->global->instance;
 	od_route_t *route = server->route;
+	char db_name[64];
+	strcpy(db_name, (char *)route->yb_database_entry->name);
+	const int db_name_len = route->yb_database_entry->name_len;
+
 	kiwi_fe_arg_t argv[] = { { "user", 5 },
 				 { route->id.user, route->id.user_len },
 				 { "database", 9 },
-				 { route->id.database, route->id.database_len },
+				 { db_name, db_name_len + 1},
 				 { "yb_use_tserver_key_auth", 24 },
 				 { "1", 2 },
 				 { "yb_is_client_ysqlconnmgr", 25 },
@@ -248,6 +262,13 @@ static inline int od_backend_startup(od_server_t *server,
 					 machine_msg_size(msg));
 			server->error_connect = msg;
 			return -1;
+		case YB_OID_DETAILS:
+			rc = yb_handle_oid_pkt_server(instance, server, msg, db_name);
+			if (rc == -1)
+				return -1;
+			if (yb_is_route_invalid(route))
+				return -1;
+			break;
 		default:
 			machine_msg_free(msg);
 			od_debug(&instance->logger, "startup", NULL, server,

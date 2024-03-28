@@ -68,11 +68,8 @@ public class YsqlQueryExecutor {
           + "('pg_execute_server_program', 'pg_read_server_files', "
           + "'pg_write_server_files'));";
   private static final String DEL_PG_ROLES_CMD_2 =
-      "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
-          + "DROP ROLE IF EXISTS pg_execute_server_program, pg_read_server_files, "
-          + "pg_write_server_files; "
-          + "UPDATE pg_yb_catalog_version "
-          + "SET current_version = current_version + 1 WHERE db_oid = 1;";
+      "DROP ROLE IF EXISTS pg_execute_server_program, pg_read_server_files, "
+          + "pg_write_server_files; ";
 
   RuntimeConfigFactory runtimeConfigFactory;
   NodeUniverseManager nodeUniverseManager;

@@ -28,12 +28,10 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
 
 @Slf4j
 @Abortable
@@ -69,7 +67,13 @@ public class CertsRotate extends UpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+  }
+
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(taskParams().upgradeOption);
   }
 
   @Override
@@ -77,8 +81,8 @@ public class CertsRotate extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
-          Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-          Set<NodeDetails> allNodes = toOrderedSet(nodes);
+          MastersAndTservers nodes = getNodesToBeRestarted();
+          Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
           // For rootCA root certificate rotation, we would need to do it in three rounds
           // so that node to node communications are not disturbed during the upgrade.
           // For other cases we can do it in one round by updating respective certs.
@@ -101,8 +105,8 @@ public class CertsRotate extends UpgradeTaskBase {
             // Remove old root cert from the ca.crt.
             createCertUpdateTasks(allNodes, CertRotateAction.REMOVE_OLD_ROOT_CERT);
             // Update gflags of cert directories.
-            createUpdateCertDirsTask(nodes.getLeft(), ServerType.MASTER);
-            createUpdateCertDirsTask(nodes.getRight(), ServerType.TSERVER);
+            createUpdateCertDirsTask(nodes.mastersList, ServerType.MASTER);
+            createUpdateCertDirsTask(nodes.tserversList, ServerType.TSERVER);
 
             // Reset the old rootCA content in platform.
             createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
@@ -119,8 +123,8 @@ public class CertsRotate extends UpgradeTaskBase {
               createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
             }
             createCertUpdateTasks(
-                nodes.getLeft(),
-                nodes.getRight(),
+                nodes.mastersList,
+                nodes.tserversList,
                 getTaskSubGroupType(),
                 taskParams().rootCARotationType,
                 taskParams().clientRootCARotationType);
@@ -217,7 +221,7 @@ public class CertsRotate extends UpgradeTaskBase {
    */
   private void createActivateCertsTask(
       Universe universe,
-      Pair<List<NodeDetails>, List<NodeDetails>> nodes,
+      MastersAndTservers nodes,
       UpgradeOption upgradeOption,
       boolean ybcInstalled) {
 
@@ -268,30 +272,30 @@ public class CertsRotate extends UpgradeTaskBase {
   }
 
   protected void createCertReloadTask(
-      Pair<List<NodeDetails>, List<NodeDetails>> nodesPair, UUID universeUuid, UUID userTaskUuid) {
+      MastersAndTservers nodes, UUID universeUuid, UUID userTaskUuid) {
 
-    if (nodesPair == null) {
+    if (nodes == null) {
       return; // nothing to do if node details are missing.
     }
     log.debug("creating certReloadTaskCreator ...");
 
     CertReloadTaskCreator taskCreator =
         new CertReloadTaskCreator(
-            universeUuid, userTaskUuid, getRunnableTask(), getTaskExecutor(), nodesPair.getKey());
+            universeUuid, userTaskUuid, getRunnableTask(), getTaskExecutor(), nodes.mastersList);
 
-    createNonRestartUpgradeTaskFlow(taskCreator, nodesPair, DEFAULT_CONTEXT);
+    createNonRestartUpgradeTaskFlow(taskCreator, nodes, DEFAULT_CONTEXT);
 
     Universe universe = Universe.getOrBadRequest(universeUuid);
     if (universe.isYbcEnabled()) {
 
-      createStopYbControllerTasks(nodesPair.getRight())
+      createStopYbControllerTasks(nodes.tserversList)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
-      createStartYbcTasks(nodesPair.getRight())
+      createStartYbcTasks(nodes.tserversList)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Wait for yb-controller to be responsive on each node.
-      createWaitForYbcServerTask(nodesPair.getRight())
+      createWaitForYbcServerTask(nodes.tserversList)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }

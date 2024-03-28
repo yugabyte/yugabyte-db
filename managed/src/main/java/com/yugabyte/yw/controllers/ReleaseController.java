@@ -226,9 +226,11 @@ public class ReleaseController extends AuthenticatedController {
           releases.stream()
               .filter(r -> !r.getState().equals(Release.ReleaseState.DELETED))
               .filter(
-                  r ->
-                      r.getArtifacts().stream()
-                          .anyMatch(a -> a.getArchitecture().name().equals(arch)))
+                  r -> {
+                    if (arch == null) return true;
+                    return r.getArtifacts().stream()
+                        .anyMatch(a -> a.getArchitecture().name().equals(arch));
+                  })
               .collect(
                   Collectors.toMap(
                       entry -> entry.getVersion(),

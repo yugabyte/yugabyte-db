@@ -9,7 +9,7 @@
 
 import { find, has } from 'lodash';
 import { useTranslation } from 'react-i18next';
-import { Tooltip, Typography, makeStyles } from '@material-ui/core';
+import { FormHelperText, Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { useQuery } from 'react-query';
 import {
   CloudType,
@@ -101,7 +101,8 @@ export const sampleX86Image: Partial<ImageBundle> = {
   name: 'YBA-Managed-x86',
   details: {
     arch: ArchitectureType.X86_64,
-    regions: {}
+    regions: {},
+    sshPort: 22
   },
   metadata: {
     type: ImageBundleType.YBA_ACTIVE
@@ -112,7 +113,8 @@ export const sampleAarchImage: Partial<ImageBundle> = {
   name: 'YBA-Managed-aarch',
   details: {
     arch: ArchitectureType.ARM64,
-    regions: {}
+    regions: {},
+    sshPort: 22
   },
   metadata: {
     type: ImageBundleType.YBA_ACTIVE
@@ -139,20 +141,10 @@ export const constructImageBundlePayload = (formValues: any, isAWS = false) => {
   const imageBundles = [...formValues.imageBundles];
 
   imageBundles.forEach((img) => {
-    const sshUserOverride = (img as any).sshUserOverride;
-    const sshPortOverride = (img as any).sshPortOverride;
-
     formValues.regions.forEach((region: CloudVendorRegionField) => {
       // Only AWS supports region specific AMI
       if (isAWS && !has(img.details.regions, region.code)) {
         img.details.regions[region.code] = {};
-      }
-
-      if (isAWS && sshUserOverride) {
-        img.details.regions[region.code]['sshUserOverride'] = sshUserOverride;
-      }
-      if (isAWS && sshPortOverride) {
-        img.details.regions[region.code]['sshPortOverride'] = parseInt(sshPortOverride);
       }
     });
   });
@@ -178,3 +170,9 @@ export function IsOsPatchingEnabled() {
 
 export const isImgBundleSupportedByProvider = (provider: Provider) =>
   [CloudType.aws, CloudType.azu, CloudType.gcp].includes(provider?.code);
+
+export function ConfigureSSHDetailsMsg() {
+  const { t } = useTranslation();
+  if (!IsOsPatchingEnabled()) return null;
+  return <FormHelperText error={true}>{t('linuxVersion.sshOverrideMsg')}</FormHelperText>;
+}

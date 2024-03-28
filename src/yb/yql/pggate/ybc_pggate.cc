@@ -77,7 +77,7 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
 DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
@@ -115,8 +115,7 @@ DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
-DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
-    " of the method tserver is running");
+DECLARE_bool(TEST_ash_debug_aux);
 
 namespace {
 
@@ -321,6 +320,19 @@ uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) 
   return (component << YB_ASH_COMPONENT_POSITION) | code;
 }
 
+void AshCopyAuxInfo(
+    const WaitStateInfoPB& tserver_sample, uint32_t component, YBCAshSample* cb_sample) {
+  // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
+  // This expects compilation with -Wno-format-truncation.
+  const auto& tserver_aux_info = tserver_sample.aux_info();
+  snprintf(
+      cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
+      FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
+                               : (component == to_underlying(ash::Component::kYCQL)
+                                      ? tserver_aux_info.table_id().c_str()
+                                      : tserver_aux_info.tablet_id().c_str()));
+}
+
 void AshCopyTServerSample(
     YBCAshSample* cb_sample, uint32_t component, const WaitStateInfoPB& tserver_sample,
     uint64_t sample_time) {
@@ -344,12 +356,7 @@ void AshCopyTServerSample(
               tserver_metadata.yql_endpoint_tserver_uuid().data(),
               sizeof(cb_sample->yql_endpoint_tserver_uuid));
 
-  // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
-  // This expects compilation with -Wno-format-truncation.
-  const auto& tserver_aux_info = tserver_sample.aux_info();
-  snprintf(cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
-      FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
-                               : tserver_aux_info.tablet_id().c_str());
+  AshCopyAuxInfo(tserver_sample, component, cb_sample);
 
   cb_metadata->addr_family = AshGetTServerClientAddress(
       tserver_metadata.client_host_port().host(), cb_metadata->client_addr);
@@ -622,7 +629,7 @@ SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb) {
   }
 
   // then delete everything from b (a copy already exists in a)
-  YBCBitmapDeepDeleteSet(sb);
+  YBCBitmapDeepDeleteSet(b);
 
   return a;
 }
@@ -897,6 +904,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_matview,
                               YBCPgOid pg_table_oid,
                               YBCPgOid old_relfilenode_oid,
+                              bool is_truncate,
                               YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
@@ -907,7 +915,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
       if_not_exist, add_primary_key, is_colocated_via_database, tablegroup_id, colocation_id,
-      tablespace_id, is_matview, pg_table_id, old_relfilenode_id, handle));
+      tablespace_id, is_matview, pg_table_id, old_relfilenode_id, is_truncate, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -948,6 +956,10 @@ YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname
 
 YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name) {
   return ToYBCStatus(pgapi->AlterTableDropColumn(handle, name));
+}
+
+YBCStatus YBCPgAlterTableSetReplicaIdentity(YBCPgStatement handle, const char identity_type) {
+  return ToYBCStatus(pgapi->AlterTableSetReplicaIdentity(handle, identity_type));
 }
 
 YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
@@ -2021,10 +2033,6 @@ YBCStatus YBCGetTableKeyRanges(
   }
 
   auto& encoded_table_range_slices = res->encoded_range_end_keys;
-  if (!is_forward) {
-    return ToYBCStatus(
-        STATUS(NotSupported, "YBCGetTableKeyRanges is not supported yet for reverse order"));
-  }
 
   if (current_tserver_ht) {
     *current_tserver_ht = res->current_ht.ToUint64();
@@ -2076,6 +2084,23 @@ YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle,
   return YBCStatusOK();
 }
 
+char GetReplicaIdentity(yb::tserver::PgReplicaIdentityPB replica_identity_pb) {
+  switch (replica_identity_pb.replica_identity()) {
+    case tserver::DEFAULT:
+      return YBC_REPLICA_IDENTITY_DEFAULT;
+    case tserver::FULL:
+      return YBC_REPLICA_IDENTITY_FULL;
+    case tserver::NOTHING:
+      return YBC_REPLICA_IDENTITY_NOTHING;
+    case tserver::CHANGE:
+      return YBC_YB_REPLICA_IDENTITY_CHANGE;
+    default:
+      LOG(FATAL) << Format(
+          "Received unexpected replica identity $0", replica_identity_pb.DebugString());
+      return 'a';
+  }
+}
+
 YBCStatus YBCPgListReplicationSlots(
     YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots) {
   const auto result = pgapi->ListReplicationSlots();
@@ -2091,6 +2116,19 @@ YBCStatus YBCPgListReplicationSlots(
         YBCPAlloc(sizeof(YBCReplicationSlotDescriptor) * replication_slots_info.size()));
     YBCReplicationSlotDescriptor *dest = *replication_slots;
     for (const auto &info : replication_slots_info) {
+      int replica_identities_count = info.replica_identity_map_size();
+      YBCPgReplicaIdentityDescriptor* replica_identities =
+          static_cast<YBCPgReplicaIdentityDescriptor*>(
+              YBCPAlloc(sizeof(YBCPgReplicaIdentityDescriptor) * replica_identities_count));
+
+      int replica_identity_idx = 0;
+      for (const auto& replica_identity : info.replica_identity_map()) {
+        replica_identities[replica_identity_idx].table_oid = replica_identity.first;
+        replica_identities[replica_identity_idx].identity_type =
+            GetReplicaIdentity(replica_identity.second);
+        replica_identity_idx++;
+      }
+
       new (dest) YBCReplicationSlotDescriptor{
           .slot_name = YBCPAllocStdString(info.slot_name()),
           .stream_id = YBCPAllocStdString(info.stream_id()),
@@ -2099,6 +2137,8 @@ YBCStatus YBCPgListReplicationSlots(
           .confirmed_flush = info.confirmed_flush_lsn(),
           .restart_lsn = info.restart_lsn(),
           .xmin = info.xmin(),
+          .replica_identities = replica_identities,
+          .replica_identities_count = replica_identities_count,
       };
       ++dest;
     }
@@ -2113,10 +2153,23 @@ YBCStatus YBCPgGetReplicationSlot(
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
+  VLOG(4) << "The GetReplicationSlot response: " << result.get().DebugString();
   const auto& slot_info = result.get().replication_slot_info();
 
   *replication_slot =
       static_cast<YBCReplicationSlotDescriptor*>(YBCPAlloc(sizeof(YBCReplicationSlotDescriptor)));
+
+  int replica_identities_count = slot_info.replica_identity_map_size();
+  YBCPgReplicaIdentityDescriptor* replica_identities = static_cast<YBCPgReplicaIdentityDescriptor*>(
+      YBCPAlloc(sizeof(YBCPgReplicaIdentityDescriptor) * replica_identities_count));
+
+  int replica_identity_idx = 0;
+  for (const auto& replica_identity : slot_info.replica_identity_map()) {
+    replica_identities[replica_identity_idx].table_oid = replica_identity.first;
+    replica_identities[replica_identity_idx].identity_type =
+        GetReplicaIdentity(replica_identity.second);
+    replica_identity_idx++;
+  }
 
   new (*replication_slot) YBCReplicationSlotDescriptor{
       .slot_name = YBCPAllocStdString(slot_info.slot_name()),
@@ -2125,7 +2178,9 @@ YBCStatus YBCPgGetReplicationSlot(
       .active = slot_info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
       .confirmed_flush = slot_info.confirmed_flush_lsn(),
       .restart_lsn = slot_info.restart_lsn(),
-      .xmin = slot_info.xmin()
+      .xmin = slot_info.xmin(),
+      .replica_identities = replica_identities,
+      .replica_identities_count = replica_identities_count,
   };
 
   return YBCStatusOK();
@@ -2139,6 +2194,36 @@ YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
 
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropReplicationSlot(handle));
+}
+
+YBCStatus YBCYcqlStatementStats(YCQLStatementStats** stats, size_t* num_stats) {
+  const auto result = pgapi->YCQLStatementStats();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& statements_stat = result->statements();
+  *num_stats = statements_stat.size();
+  *stats = NULL;
+  if (!statements_stat.empty()) {
+    *stats = static_cast<YCQLStatementStats*>(
+        YBCPAlloc(sizeof(YCQLStatementStats) * statements_stat.size()));
+    YCQLStatementStats *dest = *stats;
+    for (const auto &info : statements_stat) {
+      new (dest) YCQLStatementStats {
+          .queryid = info.queryid(),
+          .query = YBCPAllocStdString(info.query()),
+          .is_prepared = info.is_prepared(),
+          .calls = info.calls(),
+          .total_time = info.total_time(),
+          .min_time = info.min_time(),
+          .max_time = info.max_time(),
+          .mean_time = info.mean_time(),
+          .stddev_time = info.stddev_time(),
+      };
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
 }
 
 void YBCStoreTServerAshSamples(
@@ -2215,6 +2300,12 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   VLOG(4) << "The GetConsistentChangesForCDC response: " << resp.DebugString();
   auto row_count = resp.cdc_sdk_proto_records_size();
 
+  // Used for logging a summary of the response received from the CDC service.
+  YBCPgXLogRecPtr min_resp_lsn = 0xFFFFFFFF;
+  YBCPgXLogRecPtr max_resp_lsn = 0;
+  uint32_t min_txn_id = 0xFFFF;
+  uint32_t max_txn_id = 0;
+
   auto resp_rows_pb = resp.cdc_sdk_proto_records();
   auto resp_rows = static_cast<YBCPgRowMessage *>(YBCPAlloc(sizeof(YBCPgRowMessage) * row_count));
   size_t row_idx = 0;
@@ -2232,7 +2323,7 @@ YBCStatus YBCPgGetCDCConsistentChanges(
     // For update: both old and new tuples will be present.
     std::unordered_map<std::string, std::pair<size_t, size_t>> col_name_idx_map;
     int new_tuple_idx = 0;
-    for (auto &new_tuple : row_message_pb.new_tuple()) {
+    for (const auto &new_tuple : row_message_pb.new_tuple()) {
       if (new_tuple.has_column_name()) {
         col_name_idx_map.emplace(
             new_tuple.column_name(), std::make_pair(OMITTED_VALUE, new_tuple_idx));
@@ -2240,7 +2331,7 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       new_tuple_idx++;
     }
     int old_tuple_idx = 0;
-    for (auto& old_tuple : row_message_pb.old_tuple()) {
+    for (const auto& old_tuple : row_message_pb.old_tuple()) {
       if (old_tuple.has_column_name()) {
         auto itr = col_name_idx_map.find(old_tuple.column_name());
         if (itr != col_name_idx_map.end()) {
@@ -2263,31 +2354,35 @@ YBCStatus YBCPgGetCDCConsistentChanges(
         YBCPgTypeAttrs type_attrs{-1 /* typmod */};
         const auto& column_name = col_idxs.first;
 
-        // Old value.
-        uint64 old_datum = 0;
-        bool old_is_null = true;
-        if (col_idxs.second.first != OMITTED_VALUE) {
+        // Before Op value aka Before Image.
+        uint64 before_op_datum = 0;
+        bool before_op_is_null = true;
+        bool before_op_is_omitted = col_idxs.second.first == OMITTED_VALUE;
+        if (!before_op_is_omitted) {
           const auto old_datum_pb =
               &row_message_pb.old_tuple(static_cast<int>(col_idxs.second.first));
           const auto *type_entity =
               pgapi->FindTypeEntity(static_cast<int>(old_datum_pb->column_type()));
           auto s = PBToDatum(
-              type_entity, type_attrs, old_datum_pb->pg_ql_value(), &old_datum, &old_is_null);
+              type_entity, type_attrs, old_datum_pb->pg_ql_value(), &before_op_datum,
+              &before_op_is_null);
           if (!s.ok()) {
             return ToYBCStatus(s);
           }
         }
 
-        // New value.
-        uint64 new_datum = 0;
-        bool new_is_null = true;
-        if (col_idxs.second.second != OMITTED_VALUE) {
+        // After Op value.
+        uint64 after_op_datum = 0;
+        bool after_op_is_null = true;
+        bool after_op_is_omitted = col_idxs.second.second == OMITTED_VALUE;
+        if (!after_op_is_omitted) {
           const auto new_datum_pb =
               &row_message_pb.new_tuple(static_cast<int>(col_idxs.second.second));
           const auto *type_entity =
               pgapi->FindTypeEntity(static_cast<int>(new_datum_pb->column_type()));
           auto s = PBToDatum(
-              type_entity, type_attrs, new_datum_pb->pg_ql_value(), &new_datum, &new_is_null);
+              type_entity, type_attrs, new_datum_pb->pg_ql_value(), &after_op_datum,
+              &after_op_is_null);
           if (!s.ok()) {
             return ToYBCStatus(s);
           }
@@ -2295,10 +2390,12 @@ YBCStatus YBCPgGetCDCConsistentChanges(
 
         auto col = &cols[tuple_idx++];
         col->column_name = YBCPAllocStdString(column_name);
-        col->after_op_datum = new_datum;
-        col->after_op_is_null = new_is_null;
-        col->before_op_datum = old_datum;
-        col->before_op_is_null = old_is_null;
+        col->after_op_datum = after_op_datum;
+        col->after_op_is_null = after_op_is_null;
+        col->after_op_is_omitted = after_op_is_omitted;
+        col->before_op_datum = before_op_datum;
+        col->before_op_is_null = before_op_is_null;
+        col->before_op_is_omitted = before_op_is_omitted;
       }
     }
 
@@ -2318,6 +2415,12 @@ YBCStatus YBCPgGetCDCConsistentChanges(
         .lsn = row_message_pb.pg_lsn(),
         .xid = row_message_pb.pg_transaction_id()
     };
+
+    min_resp_lsn = std::min(min_resp_lsn, row_message_pb.pg_lsn());
+    max_resp_lsn = std::max(max_resp_lsn, row_message_pb.pg_lsn());
+    min_txn_id = std::min(min_txn_id, row_message_pb.pg_transaction_id());
+    max_txn_id = std::max(max_txn_id, row_message_pb.pg_transaction_id());
+
     row_idx++;
   }
 
@@ -2326,6 +2429,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       .row_count = row_count,
       .rows = resp_rows,
   };
+
+  VLOG(1) << "Summary of the GetConsistentChangesResponsePB response\n"
+          << "min_txn_id: " << min_txn_id << ", max_txn_id: " << max_txn_id
+          << "min_lsn: " << min_resp_lsn << ", max_lsn: " << max_resp_lsn;
 
   return YBCStatusOK();
 }

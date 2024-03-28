@@ -225,6 +225,7 @@ TEST_F(MasterPathHandlersItest, TestMasterPathHandlers) {
   TestUrl("/cluster-config", &result);
   TestUrl("/tablet-replication", &result);
   TestUrl("/load-distribution", &result);
+  TestUrl("/api/v1/meta-cache", &result);
 }
 
 TEST_F(MasterPathHandlersItest, TestDeadTServers) {
@@ -1346,6 +1347,34 @@ TEST_F(MasterPathHandlersItest, TestVarzAutoFlag) {
 
   ASSERT_NE(it_unexpected_json_flag, flags.End());
   ASSERT_EQ((*it_unexpected_json_flag)["type"], "Default");
+}
+
+void VerifyMetaCacheObjectIsValid(
+    const rapidjson::Value* json_object, const JsonReader& json_reader) {
+  EXPECT_TRUE(json_object->HasMember("MainMetaCache"));
+
+  const rapidjson::Value* main_metacache = nullptr;
+  EXPECT_OK(json_reader.ExtractObject(json_object, "MainMetaCache", &main_metacache));
+  EXPECT_TRUE(main_metacache->HasMember("tablets"));
+
+  std::vector<const rapidjson::Value*> tablets;
+  ASSERT_OK(json_reader.ExtractObjectArray(main_metacache, "tablets", &tablets));
+  for (auto tablet : tablets) {
+    EXPECT_TRUE(tablet->HasMember("tablet_id"));
+    EXPECT_TRUE(tablet->HasMember("replicas"));
+  }
+}
+
+TEST_F(MasterPathHandlersItest, TestMetaCache) {
+  auto table = CreateTestTable();
+  faststring result;
+  TestUrl("/api/v1/meta-cache", &result);
+  JsonReader json_reader(result.ToString());
+  ASSERT_OK(json_reader.Init());
+  const rapidjson::Value* json_object = nullptr;
+  EXPECT_OK(json_reader.ExtractObject(json_reader.root(), NULL, &json_object));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_object)->GetType());
+  VerifyMetaCacheObjectIsValid(json_object, json_reader);
 }
 
 }  // namespace master

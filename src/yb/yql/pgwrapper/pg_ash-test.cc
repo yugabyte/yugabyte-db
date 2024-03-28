@@ -44,7 +44,7 @@ class PgAshTest : public LibPqTestBase {
         "--allowed_preview_flags_csv=ysql_yb_ash_enable_infra,ysql_yb_enable_ash");
     options->extra_tserver_flags.push_back("--ysql_yb_ash_enable_infra=true");
     options->extra_tserver_flags.push_back("--ysql_yb_enable_ash=true");
-    options->extra_tserver_flags.push_back("--ysql_yb_ash_sampling_interval=50");
+    options->extra_tserver_flags.push_back("--ysql_yb_ash_sampling_interval_ms=50");
   }
 
  protected:
