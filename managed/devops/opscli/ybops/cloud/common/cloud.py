@@ -27,6 +27,8 @@ from ybops.utils.remote_shell import (copy_to_tmp, wait_for_server, get_host_por
                                       RemoteShell)
 from ybops.common.exceptions import YBOpsRecoverableError
 from ybops.utils import remote_exec_command
+from cryptography import x509
+from cryptography.x509.oid import (NameOID, ExtensionOID)
 
 
 class InstanceState(str, Enum):
@@ -340,21 +342,29 @@ class AbstractCloud(AbstractCommandParser):
         logging.info("Verifying Subject for certs {}".format(node_crt_path))
 
         # Get readable text version of cert
-        cert_text = remote_shell.run_command(
-            "openssl x509 -noout -text -in {}".format(node_crt_path))
-        if "Certificate:" not in cert_text.stdout:
-            raise YBOpsRuntimeError("Unable to decode the node cert: {}.".format(node_crt_path))
-
+        cert_text = remote_shell.run_command("cat {}".format(node_crt_path)).stdout.encode('utf-8')
         # Extract commonName and subjectAltName from the cert text output
-        regex_out = re.findall(" Subject:.*CN=([\\S]*)$| (DNS|IP Address):([\\S]*?)(,|$)",
-                               cert_text.stdout, re.M)
-        # Hostname will be present in group 0 for CN and in group 1 and 2 for SAN
-        cn_entry = [x[0] for x in regex_out if x[0] != '']
-        san_entry = {(x[1], x[2]) for x in regex_out if x[0] == ''}
+        cert = x509.load_pem_x509_certificate(cert_text)
+        # Extract commonName (CN) and Subject Alternative Name (SAN) from the certificate
+        cn_entry = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+        # Extract Subject Alternative Name (SAN) from the certificate
+        san_entry = set()
+        try:
+            san = cert.extensions.get_extension_for_oid(
+                ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value
+            # Extract only DNS names, IP addresses from the SAN extension
+            san_entry_dns = san.get_values_for_type(x509.DNSName)
+            if san_entry_dns:
+                san_entry.update(("DNS", x) for x in san_entry_dns)
+            san_entry_ip = san.get_values_for_type(x509.IPAddress)
+            if san_entry_ip:
+                san_entry.update(("IP Address", str(x)) for x in san_entry_ip)
+        except x509.ExtensionNotFound:
+            pass
 
         # Create cert object following the below dictionary format
         # https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert
-        cert_cn = {'subject': ((('commonName', cn_entry[0] if len(cn_entry) > 0 else ''),),)}
+        cert_cn = {'subject': ((('commonName', cn_entry[0].value if len(cn_entry) > 0 else ''),),)}
         cert_san = {'subjectAltName': tuple(san_entry)}
 
         # Check if the provided hostname matches with either CN or SAN
