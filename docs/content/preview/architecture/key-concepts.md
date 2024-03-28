@@ -1,0 +1,101 @@
+---
+title: Key concepts
+headerTitle: Key concepts
+linkTitle: Key concepts
+description: Learn about the Key concepts in YugabyteDB
+headcontent: Glossary of key concepts
+image: fa-sharp fa-thin fa-arrows-to-circle
+aliases:
+  - /preview/architecture/concepts/universe/
+  - /preview/architecture/concepts/single-node/
+menu:
+  preview:
+    identifier: architecture-concepts-universe
+    parent: reference
+    weight: 10
+type: docs
+---
+
+## CDC - Change data capture
+
+CDC is a software design pattern used in database systems to capture and propagate data changes from one database to another in real-time or near real-time. YugabyteDB supports transactional CDC guaranteeing changes across tables are captured together. This enables use cases like real-time analytics, data warehousing, operational data replication, and event-driven architectures. {{<link "../docdb-replication/change-data-capture/">}}
+
+## Cluster
+
+A cluster is a group of [nodes](#node) on which YugabyteDB is deployed. The table data is distributed across the various [nodes](#node) in the cluster. Typically used as [*Primary cluster*](#primary-cluster) and [*Read replica cluster*](#read-replica-cluster).
+
+{{<note>}}
+Sometimes the term *cluster* is used interchangeably with the term *universe*. However, the two are not always equivalent, as described in [Universe](#universe).
+{{</note>}}
+
+## Master server
+
+The [YB-Master](../yb-master/) service is responsible for keeping system metadata, coordinating system-wide operations, such as creating, altering, and dropping tables, as well as initiating maintenance operations such as load balancing. {{<link "yb-master">}}
+
+{{<tip>}}
+The master server is also typically referred as just **master**
+{{</tip>}}
+
+## MVCC
+
+MVCC stands for Multiversion Concurrency Control. It is a concurrency control method used by YugabyteDB to provide access to data in a way that allows concurrent queries and updates without causing conflicts. {{<link "../../transactions/transactions-overview/#mvcc-using-hybrid-time">}}
+
+## Namespace
+
+A namespace refers to a logical grouping or container for related database objects, such as tables, views, indexes, and other database constructs. Namespaces help organize and separate these objects, preventing naming conflicts and providing a way to control access and permissions.
+
+A namespace in YSQL is referred to as a database and is logically identical to a namespace in other RDBMS (such as PostgreSQL) and a namespace in YCQL is referred to as a keyspace and is logically identical to a keyspace in Apache Cassandra's CQL.
+
+## Node
+
+A node is a virtual machine, physical machine, or container on which YugabyteDB is deployed.
+
+## Leader balancing
+
+YugabyteDB tries to keep the no.of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load.
+
+## Primary cluster
+
+A primary cluster can perform both writes and reads. Replication between [nodes](#node) in a primary cluster is performed synchronously.
+
+## Read replica cluster
+
+Read replica clusters can perform only reads; writes sent to read replica clusters get automatically rerouted to the primary cluster of the [universe](#universe). These clusters enable reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications.
+
+Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, [nodes](#node) in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster. {{<link "../docdb-replication/read-replicas">}}
+
+## Rebalancing
+
+Rebalancing is the process of keeping an even distribution of tablets across the [nodes](#node) in a cluster. {{<link "../../explore/linear-scalability/data-distribution/#rebalancing">}}
+
+## Sharding
+
+Sharding is the process of mapping a table row to a tablet. YugabyteDB supports 2 types of sharding, Hash and Range. {{<link "../docdb-sharding">}}
+
+## Tablet
+
+YugabyteDB splits a table into multiple small pieces called tablets for data distribution. The word "tablet" finds its origins in ancient history, when civilizations utilized flat slabs made of clay or stone as surfaces for writing and maintaining records. {{<link "../../explore/linear-scalability/data-distribution/">}}
+
+## Tablet splitting
+
+When a tablet reaches a threshold size, it splits into 2 new [tablets](#tablet). This is a very quick operation. {{<link "../docdb-sharding/tablet-splitting">}}
+
+## TServer
+
+The [YB-TServer](./yb-tserver) service is responsible for maintaining and managing table data in the form of tablets, as well as dealing with all the queries. {{<link "yb-tserver">}}
+
+## Universe
+
+A YugabyteDB universe comprises one primary cluster and zero or more read replica clusters that collectively function as a resilient and scalable distributed database.
+
+{{<note>}}
+Sometimes the terms *universe* and *cluster* are used interchangeably. However, the two are not always equivalent, as a [Universe](#universe) can contain one or more [clusters](#cluster)
+{{</note>}}
+
+## xCluster
+
+xCluster is the scheme of asynchronous replication between 2 [universes](#universe). Primary used for disaster recovery. YugabyteDB supports transactional xCluster {{<link "../docdb-replication/async-replication/">}}
+
+## Raft
+
+Raft stands for Replication for availability and fault tolerance. This is the algorithm that YugabyteDB uses for replication guaranteeing consistency. {{<link "../docdb-replication/replication/">}}
