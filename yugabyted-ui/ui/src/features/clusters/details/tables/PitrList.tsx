@@ -1,9 +1,10 @@
 import React, { FC, useMemo } from "react";
-import { makeStyles, Box, Typography } from "@material-ui/core";
+import { makeStyles, Box, Typography, LinearProgress } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBButton, YBInput, YBLoadingBox, YBTable } from "@app/components";
 import RefreshIcon from "@app/assets/refresh.svg";
 import SearchIcon from "@app/assets/search.svg";
+import { useGetPITRSchedulesQuery } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -37,24 +38,18 @@ export const PitrList: FC = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const [backupSearch, setBackupSearch] = React.useState<string>("");
+  const [search, setSearch] = React.useState<string>("");
 
-  const data = [
-    {
-      id: 1,
-      databaseKeyspace: "yugabyte",
-      interval: "24 hours",
-      retention: "7 days",
-      earliestRecoverableTime: "2024-03-21 03:45:22 PM",
-    },
-  ];
+  const { data, isFetching, refetch } = useGetPITRSchedulesQuery();
+
+  const pitrData = data?.schedules ?? [];
 
   const filteredData = useMemo(
     () =>
-      data.filter((item) => {
-        return item.databaseKeyspace.toLowerCase().includes(backupSearch.toLowerCase());
+      pitrData.filter((item) => {
+        return item.databaseKeyspace.toLowerCase().includes(search.toLowerCase());
       }),
-    [backupSearch, data]
+    [search, data]
   );
 
   const columns = [
@@ -92,7 +87,19 @@ export const PitrList: FC = () => {
     },
   ];
 
-  const onRefetch = () => {};
+  const onRefetch = () => {
+    refetch();
+  };
+
+  if (isFetching) {
+    return (
+      <Box my={4}>
+        <Box textAlign="center" mt={2.5}>
+          <LinearProgress />
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -101,7 +108,7 @@ export const PitrList: FC = () => {
           {t("clusterDetail.databases.pitr.pitr")}
         </Typography>
         <Typography variant="body2" className={classes.value}>
-          {data.length}
+          {pitrData.length}
         </Typography>
       </Box>
       <Box display="flex" alignItems="center" justifyContent="end" my={2}>
@@ -111,8 +118,8 @@ export const PitrList: FC = () => {
             startAdornment: <SearchIcon />,
           }}
           className={classes.searchBox}
-          onChange={(ev) => setBackupSearch(ev.target.value)}
-          value={backupSearch}
+          onChange={(ev) => setSearch(ev.target.value)}
+          value={search}
         />
         <YBButton
           variant="ghost"
@@ -123,7 +130,7 @@ export const PitrList: FC = () => {
           {t("clusterDetail.databases.pitr.refresh")}
         </YBButton>
       </Box>
-      {!data.length ? (
+      {!pitrData.length ? (
         <YBLoadingBox>{t("clusterDetail.databases.pitr.noPitr")}</YBLoadingBox>
       ) : (
         <YBTable

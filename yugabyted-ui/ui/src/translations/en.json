@@ -825,7 +825,7 @@
           "retention": "Retention",
           "recoverableTime": "Recoverable time",
           "refresh": "Refresh",
-          "noPitr": "No Point-in-time Recovery available",
+          "noPitr": "No Point-in-time Recoveries available",
           "searchPitr": "Search database"
         },
         "restore": {

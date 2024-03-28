@@ -1,9 +1,10 @@
 import React, { FC, useMemo } from "react";
-import { makeStyles, Box, Typography } from "@material-ui/core";
+import { makeStyles, Box, Typography, LinearProgress } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBButton, YBInput, YBLoadingBox, YBTable } from "@app/components";
 import RefreshIcon from "@app/assets/refresh.svg";
 import SearchIcon from "@app/assets/search.svg";
+import { useGetBackupDetailsQuery } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -37,29 +38,18 @@ export const BackupList: FC = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const [backupSearch, setBackupSearch] = React.useState<string>("");
+  const [search, setSearch] = React.useState<string>("");
 
-  const data = [
-    {
-      ybc_task_id: "036fd4fb-c84b-4b39-94da-8417e7dafe1f",
-      tserver_ip: "127.0.0.1",
-      user_operation: "backup",
-      ybdb_api: "ysql",
-      database_keyspace: "yugabyte",
-      task_start_time: "March 21 2024 - 14:00:30",
-      task_status: "OK",
-      time_taken: "37977 ms",
-      bytes_transferred: "0.04 MB",
-      actual_size: "0.04 MB",
-    },
-  ];
+  const { data, isFetching, refetch } = useGetBackupDetailsQuery();
+
+  const backupData = data?.schedules ?? [];
 
   const filteredData = useMemo(
     () =>
-      data.filter((item) => {
-        return item.database_keyspace.toLowerCase().includes(backupSearch.toLowerCase());
+      backupData.filter((item) => {
+        return item.database_keyspace.toLowerCase().includes(search.toLowerCase());
       }),
-    [backupSearch, data]
+    [search, data]
   );
 
   const columns = [
@@ -121,7 +111,19 @@ export const BackupList: FC = () => {
     },
   ];
 
-  const onRefetch = () => {};
+  const onRefetch = () => {
+    refetch();
+  };
+
+  if (isFetching) {
+    return (
+      <Box my={4}>
+        <Box textAlign="center" mt={2.5}>
+          <LinearProgress />
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -130,7 +132,7 @@ export const BackupList: FC = () => {
           {t("clusterDetail.databases.backups.backups")}
         </Typography>
         <Typography variant="body2" className={classes.value}>
-          {data.length}
+          {backupData.length}
         </Typography>
       </Box>
 
@@ -141,8 +143,8 @@ export const BackupList: FC = () => {
             startAdornment: <SearchIcon />,
           }}
           className={classes.searchBox}
-          onChange={(ev) => setBackupSearch(ev.target.value)}
-          value={backupSearch}
+          onChange={(ev) => setSearch(ev.target.value)}
+          value={search}
         />
         <YBButton
           variant="ghost"
@@ -153,7 +155,7 @@ export const BackupList: FC = () => {
           {t("clusterDetail.databases.backups.refresh")}
         </YBButton>
       </Box>
-      {!data.length ? (
+      {!backupData.length ? (
         <YBLoadingBox>{t("clusterDetail.databases.backups.noBackups")}</YBLoadingBox>
       ) : (
         <YBTable
