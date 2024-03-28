@@ -87,7 +87,13 @@ Workaround: Refer to [Migration and high availability](../../../install-yugabyte
 
 ## Running low on free disk space
 
-If you are running out of disk space on your YugabyteDB Anywhere node, check the size of the Prometheus directory. If the Prometheus directory is taking up a lot of space, you can reduce its size by changing the retention time and the scrape interval for database metrics.
+If you are running out of disk space on your YugabyteDB Anywhere node, check the size of the Prometheus directory (default location is `/opt/yugabyte/data/prometheus`) using the following command:
+
+```sh
+du -h -s /opt/yugabyte/data/prometheus/storage
+```
+
+If the Prometheus directory is taking up a lot of space, you can reduce its size by changing the retention time and the scrape interval for database metrics.
 
 Affected releases: All
 
