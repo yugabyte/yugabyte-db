@@ -11,7 +11,7 @@ menu:
   preview:
     identifier: architecture-acid-transactions
     parent: architecture
-    weight: 1120
+    weight: 900
 type: indexpage
 ---
 

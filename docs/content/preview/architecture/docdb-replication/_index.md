@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: architecture-docdb-replication
     parent: architecture
-    weight: 1135
+    weight: 800
 type: indexpage
 ---
 

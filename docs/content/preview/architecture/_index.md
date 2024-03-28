@@ -3,7 +3,7 @@ title: Architecture
 headerTitle: Architecture
 linkTitle: Architecture
 description: Learn about the YugabyteDB architecture, including query, transactions, sharding, replication, and storage layers.
-image: /images/section_icons/index/architecture.png
+image: fa-sharp fa-thin fa-sitemap
 headcontent: YugabyteDB architecture including the query, transactions, sharding, replication, and storage layers.
 menu:
   preview:
@@ -36,7 +36,7 @@ To understand how the query layer is designed, see [Query layer](query-layer/)
 The tablet data is optimally stored and managed by DocDB, a document store that has been built on top of RocksDB for higher performance and persistence.
 
 {{<tip>}}
-To understand how data storage works in YugabyteDB, see [DocDB](docdb-storage/)
+To understand how data storage works in YugabyteDB, see [DocDB](docdb/)
 {{</tip>}}
 
 ## Sharding
@@ -63,20 +63,10 @@ Transactions are a set of operations (CRUD) that are executed atomically with th
 To understand how transactions work in YugabyteDB, see [Transactions](transactions/)
 {{</tip>}}
 
-<div class="row">
+## Core functionality
 
+When YugabyteDB is deployed, it first creates an Universe. And then you can create namespaces and tables in the universe. After creating a table, you can read from and write to the tables.
 
-  {{<index/item
-    title="Core functions"
-    body="Universe and table creation, the I/O path reading and writing, and high availability."
-    href="core-functions/"
-    icon="/images/section_icons/architecture/core_functions.png">}}
-
-  {{<index/item
-    title="Layered architecture"
-    body="YugabyteDB architecture overview."
-    href="layered-architecture/"
-    icon="/images/section_icons/architecture/concepts.png">}}
-
-
-</div>
+{{<tip>}}
+To understand how these core functionalities are implemented in YugabyteDB, see [Core functionality](./core-functions)
+{{</tip>}}
