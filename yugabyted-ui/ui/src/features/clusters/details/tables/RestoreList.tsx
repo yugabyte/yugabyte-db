@@ -1,9 +1,10 @@
 import React, { FC, useMemo } from "react";
-import { makeStyles, Box, Typography } from "@material-ui/core";
+import { makeStyles, Box, Typography, LinearProgress } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBButton, YBInput, YBLoadingBox, YBTable } from "@app/components";
 import RefreshIcon from "@app/assets/refresh.svg";
 import SearchIcon from "@app/assets/search.svg";
+import { useGetRestoreDetailsQuery } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -37,29 +38,18 @@ export const RestoreList: FC = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const [backupSearch, setBackupSearch] = React.useState<string>("");
+  const [search, setSearch] = React.useState<string>("");
 
-  const data = [
-    {
-      ybc_task_id: "8931692c-eacc-436f-9bf2-7db33af74730",
-      tserver_ip: "127.0.0.2",
-      user_operation: "restore",
-      ybdb_api: "ysql",
-      database_keyspace: "yb_demo_northwind",
-      task_start_time: "March 21 2024 - 15:54:10",
-      task_status: "OK",
-      time_taken: "11350 ms",
-      bytes_transferred: "1.47 MB",
-      actual_size: "1.47 MB",
-    },
-  ];
+  const { data, isFetching, refetch } = useGetRestoreDetailsQuery();
+
+  const restoreData = data?.schedules ?? [];
 
   const filteredData = useMemo(
     () =>
-      data.filter((item) => {
-        return item.database_keyspace.toLowerCase().includes(backupSearch.toLowerCase());
+      restoreData.filter((item) => {
+        return item.database_keyspace.toLowerCase().includes(search.toLowerCase());
       }),
-    [backupSearch, data]
+    [search, data]
   );
 
   const columns = [
@@ -121,7 +111,19 @@ export const RestoreList: FC = () => {
     },
   ];
 
-  const onRefetch = () => {};
+  const onRefetch = () => {
+    refetch();
+  };
+
+  if (isFetching) {
+    return (
+      <Box my={4}>
+        <Box textAlign="center" mt={2.5}>
+          <LinearProgress />
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -130,7 +132,7 @@ export const RestoreList: FC = () => {
           {t("clusterDetail.databases.restore.restores")}
         </Typography>
         <Typography variant="body2" className={classes.value}>
-          {data.length}
+          {restoreData.length}
         </Typography>
       </Box>
       <Box display="flex" alignItems="center" justifyContent="end" my={2}>
@@ -140,8 +142,8 @@ export const RestoreList: FC = () => {
             startAdornment: <SearchIcon />,
           }}
           className={classes.searchBox}
-          onChange={(ev) => setBackupSearch(ev.target.value)}
-          value={backupSearch}
+          onChange={(ev) => setSearch(ev.target.value)}
+          value={search}
         />
         <YBButton
           variant="ghost"
@@ -152,7 +154,7 @@ export const RestoreList: FC = () => {
           {t("clusterDetail.databases.restore.refresh")}
         </YBButton>
       </Box>
-      {!data.length ? (
+      {!restoreData.length ? (
         <YBLoadingBox>{t("clusterDetail.databases.restore.noRestores")}</YBLoadingBox>
       ) : (
         <YBTable
