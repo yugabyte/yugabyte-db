@@ -2,7 +2,7 @@
 source "${BASH_SOURCE[0]%/*}"/common.sh
 
 yb_ctl_destroy_create
-bin/ysqlsh -X -v "ON_ERROR_STOP=1" <<EOT
+ysqlsh <<EOT
 CREATE TABLE t (a int);
 EOT
 # Test that the catalog table yugabyte.pg_class has the version field 01 (PG15), and the user table
