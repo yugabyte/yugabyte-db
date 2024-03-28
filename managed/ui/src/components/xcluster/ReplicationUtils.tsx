@@ -522,6 +522,9 @@ export const isTableToggleable = (
   (xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE &&
     table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG);
 
+export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig) =>
+  xClusterConfig.type === XClusterConfigType.TXN || xClusterConfig.tableType !== 'YSQL';
+
 /**
  * Returns array of XClusterTable by augmenting YBTable with XClusterTableDetails
  */
@@ -587,11 +590,8 @@ export const getTablesForBootstrapping = async (
     const ysqlKeyspaceToTableUUIDs = new Map<string, Set<string>>();
     const ysqlTableUUIDToKeyspace = new Map<string, string>();
     sourceUniverseTables.forEach((table) => {
-      if (
-        table.tableType !== TableType.PGSQL_TABLE_TYPE ||
-        table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
-      ) {
-        // Ignore all index tables and non-YSQL tables.
+      if (table.tableType !== TableType.PGSQL_TABLE_TYPE) {
+        // Ignore non-YSQL tables.
         return;
       }
       // If a single YSQL table requires bootstrapping, then we must submit all table UUIDs
