@@ -17,7 +17,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 
 ## List of advisories
 
-| Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Versions | Date |
-| :------------------------------------- | :------- | :------ | :------- | :--- |
-| {{<ta 21297>}}| Missing writes during Batch Execution in a transaction | [YSQL](../../api/ysql/) | [All](../ybdb-releases/)  | {{<nobreak "25 Mar 2024">}}  |
-{.sno-1 .sno-last}
+| Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
+| :------------------------------------- | :------- | :------ | :---------------- | :--- |
+| {{<ta 21297>}}| Missing writes during Batch Execution in a transaction | [YSQL](../../api/ysql/) | {{<release "All">}}  | {{<nobreak "25 Mar 2024">}}  |
+{.sno-1}
