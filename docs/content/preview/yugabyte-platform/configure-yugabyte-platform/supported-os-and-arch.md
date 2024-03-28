@@ -24,7 +24,9 @@ YBA supports deploying YugabyteDB on a variety of [operating systems](../../../r
 
 ### Requirements for all OSes
 
-Python v3.6 or later is required. If you're using YBA to provision nodes in public clouds, be sure the custom AMI you plan to use has Python v3.6 or later installed.
+Python v3.5-3.8 is required; v3.6 is recommended.
+
+If you're using YBA to provision nodes in public clouds, be sure the custom AMI you plan to use has Python installed.
 
 For more information on requirements for nodes for use in on-premises provider configurations, refer to [Prepare nodes for on-premises deployment](../../install-yugabyte-platform/prepare-on-prem-nodes/).
 
