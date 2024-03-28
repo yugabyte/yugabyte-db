@@ -957,7 +957,9 @@ Status CatalogManager::CreateNewCdcsdkStream(
       has_replica_identity_full |= (replica_identity == PgReplicaIdentity::FULL);
 
       metadata->mutable_replica_identity_map()->insert({table_id, replica_identity});
-      VLOG(1) << "Replica identity for table " << table_id << " is " << replica_identity;
+      VLOG(1) << "Storing replica identity: " << replica_identity
+              << " for table: " << table_id
+              << " for stream_id: " << stream_id;
     }
   }
 
@@ -1761,6 +1763,7 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
  *   1) Enabling the WAL retention for the tablets of the table
  *   2) INSERTING records for the tablets of this table and each stream for which
  *      this table is relevant into the cdc_state table
+ *   3) Storing the replica identity of the table in the stream metadata
  */
 Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
     const TableStreamIdsMap& table_to_unprocessed_streams_map,
@@ -1839,7 +1842,7 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
 
       if (!status.ok()) {
         LOG(WARNING) << "Encoutered error while trying to add tablets of table: " << table_id
-                     << ", to cdc_state table for stream" << stream->id() << ": " << status;
+                     << ", to cdc_state table for stream: " << stream->id() << ": " << status;
         stream_pending = true;
         continue;
       }
@@ -1849,6 +1852,21 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
         continue;
       }
       stream_lock.mutable_data()->pb.add_table_id(table_id);
+
+      // Store the replica identity information of the table in the stream metadata.
+      if (FLAGS_ysql_yb_enable_replica_identity) {
+        auto table = VERIFY_RESULT(FindTableById(table_id));
+        Schema schema;
+        RETURN_NOT_OK(table->GetSchema(&schema));
+        PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();
+
+        stream_lock.mutable_data()->pb.mutable_replica_identity_map()->insert(
+            {table_id, replica_identity});
+        VLOG(1) << "Storing replica identity: " << replica_identity
+                << " for table: " << table_id
+                << " for stream_id: " << stream->StreamId();
+      }
+
       // Also need to persist changes in sys catalog.
       status = sys_catalog_->Upsert(leader_ready_term(), stream);
       if (!status.ok()) {
