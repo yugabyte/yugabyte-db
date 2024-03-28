@@ -104,7 +104,7 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    `yugabyte_home` is the path to the Yugabyte home directory. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
+    `yugabyte_home` is the path to the Yugabyte home directory. By default, this is `/home/yugabyte`. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
@@ -113,6 +113,8 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
     ```bash
     chcon -R -t ssh_home_t <yugabyte_home>
     ```
+
+    The rest of this document assumes a home of `/home/yugabyte`. If you set a custom path for home, change the path in the examples as appropriate.
 
 1. Copy the SSH public key to each DB node. This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
 
@@ -295,7 +297,7 @@ On each node, perform the following as a user with sudo access:
 
 ## Enable yugabyte user processes to run after logout
 
-To enable services to run even when the `yugabyte` user is not logged in, run the following commands:
+To enable services to run even when the `yugabyte` user is not logged in, run the following commands as the yugabyte user:
 
 ```sh
 loginctl enable-linger yugabyte
@@ -303,29 +305,15 @@ vi ~/.bashrc
 export XDG_RUNTIME_DIR=/run/user/$(id -u yugabyte)
 ```
 
-{{< note title="Ulimits on RHEL 8" >}}
-
-On RHEL 8 systems, additionally, enter the following commands:
-
-```sh
-vi /etc/systemd/system.conf 
-DefaultLimitNOFILE=1048576 
-
-vi /etc/systemd/user.conf
-DefaultLimitNOFILE=1048576 
-```
-
-You must reboot the system for these two settings to take effect.
-
-{{< /note >}}
-
 ## Install systemd-related database service unit files
 
-You can install systemd-specific database service unit files, as follows.
+You can install systemd-specific database service unit files, as follows:
 
-1. Create the following directory:
+1. Create the directory `.config/systemd/user` in the yugabyte home directory. For example:
 
-    `{{ yb_home_dir }}/.config/systemd/user`
+    ```sh
+    mkdir /home/yugabyte/.config/systemd/user
+    ```
 
 1. Add the following service and timer files to the `/.config/systemd/user` directory you created:
 
@@ -568,6 +556,20 @@ You can install systemd-specific database service unit files, as follows.
     [Install]
     WantedBy=default.target
     ```
+
+### Ulimits on Red Hat Enterprise Linux 8
+
+On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle Enterprise Linux 8.x, Amazon Linux 2), additionally, enter the following commands:
+
+```sh
+vi /etc/systemd/system.conf 
+DefaultLimitNOFILE=1048576 
+
+vi /etc/systemd/user.conf
+DefaultLimitNOFILE=1048576 
+```
+
+You must reboot the system for these two settings to take effect.
 
 ## Install node agent
 

@@ -93,19 +93,23 @@ Disabling Crontab creates alerts after the universe is created, but they can be 
 
 - Verify that Python 3.5-3.8 is installed. v3.6 is recommended.
 
-    If you are using Python later than v3.6, install the selinux python package as follows:
-
-    ```sh
-    python3.11 -m pip install selinux
-    ```
-
-    In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one as follows:
+    In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
 
     ```sh
     sudo alternatives --set python3 /usr/bin/python3.9
     sudo alternatives --display python3
     python3 -V
     ```
+
+    If you are using Python later than v3.6, install the [selinux](https://pypi.org/project/selinux/) package corresponding to your version of python. For example, using [pip](https://pip.pypa.io/en/stable/installation/), you can install as follows:
+
+    ```sh
+    python3 -m pip install selinux
+    ```
+
+    Refer to [Ansible playbook fails with libselinux-python aren't installed on RHEL8](https://access.redhat.com/solutions/5674911) for more information.
+
+    If you are using Python later than v3.7, set the **Max Python Version (exclusive)** Global Configuration option to the python version. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 - Enable core dumps and set ulimits, as follows:
 
