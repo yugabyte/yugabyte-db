@@ -748,6 +748,12 @@ WAL retention time, in seconds, to be used for tables for which a CDC stream was
 
 Default: `14400` (4 hours)
 
+##### --enable_truncate_cdcsdk_table
+
+By default, TRUNCATE commands on tables on which CDCSDK stream is active will fail. Changing the value of this flag from `false` to `true` will enable truncating the tables part of the CDCSDK stream.
+
+Default: `false`
+
 ## Metric export flags
 
 ##### --export_help_and_type_in_prometheus_metrics

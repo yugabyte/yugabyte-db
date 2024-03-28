@@ -39,6 +39,24 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 {{< /tip >}}
 
+## Connector compatibility
+
+| YugabyteDB | Connector |
+| :--- | :--- |
+| 2.14 (EA) | 1.9.5.y.3 |
+| 2.16 | 1.9.5.y.24 |
+| 2.18.2 | 1.9.5.y.33.2 |
+| 2.20 | 1.9.5.y.220 |
+
+{{< note title="Note" >}}
+
+Starting 2.20, the release naming convention has changed and we follow a scheme *major.y.minor* where
+* *major*: Release of Debezium the connector is based on
+* *minor*: YB version the connector would work with
+  * The connector would be backward compatible with the previous YugabyteDB releases unless stated otherwise.
+
+{{< /note >}}
+
 ## How the connector works
 
 To optimally configure and run a Debezium YugabyteDB connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
@@ -1190,7 +1208,16 @@ This can happen in the following 2 scenarios:
 
 When the connector is running, the YugabyteDB server that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and stops. When the server is available again, restart the connector.
 
-The YugabyteDB connector externally stores the last processed offset in the form of a checkpoint. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact. Never drop a replication slot on the primary server or you will lose data.
+The YugabyteDB connector externally stores the last processed offset in the form of a checkpoint. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the stream ID remains intact. Never delete a stream ID without deleting all the associated connectors with it otherwise you will lose data.
+
+## Dropping a table part of the replication
+
+While the connector is running with a set of tables configured to capture the changes, if one of the tables in the set is dropped, the connector will fail with an appropriate error message indicating that the object is not found.
+
+To avoid a connector failure or to resolve the failure, the recommended way is to follow these steps:
+1. Delete the connector which contains the dropped or the table to be dropped.
+2. Edit the configuration and remove the given table from `table.include.list`.
+3. Deploy a new connector with the updated configuration.
 
 ### Kafka Connect process stops gracefully
 
