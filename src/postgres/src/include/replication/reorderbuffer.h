@@ -331,6 +331,10 @@ typedef void (*ReorderBufferMessageCB) (
 										const char *prefix, Size sz,
 										const char *message);
 
+typedef void (*YBReorderBufferSchemaChangeCB) (
+											   ReorderBuffer *rb,
+											   Oid relid);
+
 struct ReorderBuffer
 {
 	/*
@@ -368,6 +372,8 @@ struct ReorderBuffer
 	ReorderBufferApplyTruncateCB apply_truncate;
 	ReorderBufferCommitCB commit;
 	ReorderBufferMessageCB message;
+
+	YBReorderBufferSchemaChangeCB yb_schema_change;
 
 	/*
 	 * Pointer that will be passed untouched to the callbacks.
@@ -451,6 +457,8 @@ void		StartupReorderBuffer(void);
  * Return a palloc'd array of bool allocated in the reorderbuffer's memory
  * context to be used for storing yb_is_omitted values for each attribute.
  */
-bool *YBAllocateIsOmittedArray(ReorderBuffer *rb, int nattrs);
+bool		*YBAllocateIsOmittedArray(ReorderBuffer *rb, int nattrs);
+
+void		YBReorderBufferSchemaChange(ReorderBuffer *, Oid relid);
 
 #endif

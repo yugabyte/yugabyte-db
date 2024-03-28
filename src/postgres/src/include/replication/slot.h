@@ -95,6 +95,14 @@ typedef struct ReplicationSlotPersistentData
 	 * the creation of the replication slot.
 	 */
 	HTAB *yb_replica_identities;
+
+	/*
+	 * The record_commit_time of the replication slot as received at the time
+	 * this information was fetched from the CDC state table. This information
+	 * is not kept up to date, it should only be used at the start of streaming
+	 * right after fetching the replication slot information.
+	 */
+	uint64_t yb_initial_record_commit_time_ht;
 } ReplicationSlotPersistentData;
 
 /*
