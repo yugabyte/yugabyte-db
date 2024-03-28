@@ -882,11 +882,11 @@ DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is par
 alter table idxpart add primary key (a, b);	-- this works
 \d idxpart
               Table "public.idxpart"
- Column |  Type   | Collation | Nullable | Default 
+ Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           | not null | 
- c      | text    |           |          | 
+ a      | integer |           | not null |
+ b      | integer |           | not null |
+ c      | text    |           |          |
 Partition key: RANGE (a, b)
 Indexes:
     "idxpart_pkey" PRIMARY KEY, lsm (a HASH, b ASC)
@@ -895,11 +895,11 @@ Number of partitions: 0
 create table idxpart1 partition of idxpart for values from (0, 0) to (1000, 1000);
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
+ Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           | not null | 
- c      | text    |           |          | 
+ a      | integer |           | not null |
+ b      | integer |           | not null |
+ c      | text    |           |          |
 Partition of: idxpart FOR VALUES FROM (0, 0) TO (1000, 1000)
 Indexes:
     "idxpart1_pkey" PRIMARY KEY, lsm (a HASH, b ASC)
@@ -1009,7 +1009,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+---------------+--------------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey | idxpart_pkey | t          | idxpart0_pkey | f          |           1 | t            | t
  idxpart1 | idxpart1_pkey | idxpart_pkey | t          | idxpart1_pkey | f          |           1 | f            | t
@@ -1017,8 +1017,8 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
 (3 rows)
 
 drop index idxpart0_pkey;								-- fail
-ERROR:  cannot drop index idxpart0_pkey because index idxpart_pkey requires it
-HINT:  You can drop index idxpart_pkey instead.
+ERROR:  cannot drop index idxpart0_pkey because constraint idxpart0_pkey on table idxpart0 requires it
+HINT:  You can drop constraint idxpart0_pkey on table idxpart0 instead.
 drop index idxpart1_pkey;								-- fail
 ERROR:  cannot drop index idxpart1_pkey because index idxpart_pkey requires it
 HINT:  You can drop index idxpart_pkey instead.
@@ -1039,7 +1039,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid | indexrelid | inhparent | indisvalid | conname | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid | indexrelid | inhparent | indisvalid | conname | conislocal | coninhcount | connoinherit | convalidated
 ----------+------------+-----------+------------+---------+------------+-------------+--------------+--------------
 (0 rows)
 
@@ -1082,7 +1082,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   | inhparent | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |  indexrelid   | inhparent | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+---------------+-----------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey |           | t          | idxpart0_pkey | t          |           0 | t            | t
  idxpart  | idxpart_pkey  |           | f          | idxpart_pkey  | t          |           0 | t            | t
@@ -1095,7 +1095,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+---------------+--------------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey | idxpart_pkey | t          | idxpart0_pkey | f          |           1 | t            | t
  idxpart  | idxpart_pkey  |              | t          | idxpart_pkey  | t          |           0 | t            | t
@@ -1115,9 +1115,9 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |   indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |   indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+----------------+--------------+------------+---------------+------------+-------------+--------------+--------------
- idxpart1 | idxpart1_a_idx |              | t          |               |            |             |              | 
+ idxpart1 | idxpart1_a_idx |              | t          |               |            |             |              |
  idxpart1 | idxpart1_pkey  | idxpart_pkey | t          | idxpart1_pkey | f          |           1 | f            | t
  idxpart  | idxpart_pkey   |              | t          | idxpart_pkey  | t          |           0 | t            | t
 (3 rows)
