@@ -96,7 +96,7 @@ Workaround: Reduce the Prometheus directory size by changing the metrics retenti
 Perform the following steps:
 
 1. Reduce the `retentionTime` and increase the `scrapeInterval` configuration options in the `/opt/yba-ctl/yba-ctl.yml` file.
-1. Run `yba-ctl reconfigure` to reconfigure your YugabyteDB Anywhere instance with the new settings.
+1. Run `yba-ctl reconfigure` to [reconfigure](../../../install-yugabyte-platform/install-software/installer/#reconfigure) your YugabyteDB Anywhere instance with the new settings.
 1. Verify the decrease in the Prometheus directory size using the following commands:
 
     ```sh
