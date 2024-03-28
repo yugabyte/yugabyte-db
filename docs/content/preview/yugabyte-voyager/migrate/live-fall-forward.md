@@ -587,6 +587,7 @@ For all the other target YugabyteDB versions, set the following flags:
 ysql_max_read_restart_attempts = 0
 ysql_max_write_restart_attempts = 0
 ```
+Turn off the [read-committed](../../../explore/transactions/isolation-levels//#read-committed-isolation) isolation level on the target cluster during the migration.
 
 {{</note>}}
 
