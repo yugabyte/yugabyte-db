@@ -1330,6 +1330,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 		case AT_DisableTrigUser:
 		case AT_ChangeOwner:
 		case AT_ColumnDefault:
+		case AT_CookedColumnDefault:
 		case AT_DropNotNull:
 		case AT_SetNotNull:
 		case AT_AddIdentity:
