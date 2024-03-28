@@ -43,13 +43,15 @@ export enum ReleaseType {
   ALL = 'All',
   STS = 'STS',
   LTS = 'LTS',
-  PREVIEW = 'PREVIEW (DEFAULT)'
+  PREVIEW_DEFAULT = 'PREVIEW (DEFAULT)',
+  PREVIEW = 'PREVIEW'
 }
 
 export enum ReleaseState {
   ACTIVE =  'ACTIVE',
   DISABLED = 'DISABLED',
-  DELETED = 'DELETED'
+  DELETED = 'DELETED',
+  INCOMPLETE = 'INCOMPLETE'
 }
 
 export enum UrlArtifactStatus {

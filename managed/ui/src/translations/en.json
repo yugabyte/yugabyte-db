@@ -1655,12 +1655,14 @@
       },
       "state": {
         "active": "Active",
-        "disabled": "Disabled"
+        "disabled": "Disabled",
+        "Incomplete": "Incomplete"
       },
       "type": {
         "STS": "STS",
         "LTS": "LTS",
-        "PREVIEW (DEFAULT)": "PREVIEW"
+        "PREVIEW (DEFAULT)": "PREVIEW",
+        "PREVIEW": "PREVIEW"
       },
       "fetchMetadata": "Fetch Metadata",
       "bannerFileUploadMessage": "Fetching artifacts may take some time. please wait for it to finish and then add the release",
@@ -1694,6 +1696,7 @@
         "importMethod": "Import Method",
         "location": "Location"
       },
+      "inCompleteTooltipMessage": "Kubernetes artifacts require a YugabyteDB build before the release can be used",
       "allowedReleases": "Show only allowed releases",
       "releaseType": "Release Type:",
       "searchVersions": "Search Versions",

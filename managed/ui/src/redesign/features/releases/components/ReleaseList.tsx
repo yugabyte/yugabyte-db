@@ -413,6 +413,7 @@ export const NewReleaseList = () => {
   const formatActionButtons = (cell: any, row: any) => {
     return (
       <DropdownButton
+        key={`release-list-actions-${row.release_uuid}`}
         title="Actions"
         id="release-list-actions"
         pullRight={false}
