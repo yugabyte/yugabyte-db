@@ -897,7 +897,7 @@ YbOnTruncateUpdateCatalog(Relation rel)
 	if (rel->rd_rel->relkind != RELKIND_SEQUENCE)
 	{
 		classform->relpages = 0;
-		classform->reltuples = 0;
+		classform->reltuples = -1;
 		classform->relallvisible = 0;
 	}
 
