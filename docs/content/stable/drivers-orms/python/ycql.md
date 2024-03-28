@@ -33,6 +33,14 @@ type: docs
   </li>
 </ul>
 
+[Yugabyte Python Driver for YCQL](https://github.com/yugabyte/cassandra-python-driver) is based on [DataStax Python Driver](https://github.com/datastax/python-driver) with additional [smart driver](../../smart-drivers-ycql/) features.
+
+{{< note title="YugabyteDB Managed" >}}
+
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream Cassandra driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+
+{{< /note >}}
+
 ## Install the Yugabyte Python Driver for YCQL
 
 To install the [Yugabyte Python Driver for YCQL](https://github.com/yugabyte/cassandra-python-driver), run the following command:

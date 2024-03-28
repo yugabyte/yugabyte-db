@@ -11,6 +11,11 @@ menu:
 type: docs
 ---
 
+{{<tabs>}}
+{{<tabitem href="../smart-drivers/" text="YSQL" icon="postgres" active="true">}}
+{{<tabitem href="../smart-drivers-ycql/" text="YCQL" icon="cassandra" >}}
+{{</tabs>}}
+
 In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports smart drivers, which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
 Yugabyte has developed the following smart drivers for YSQL, available as open source software under the Apache 2.0 license.

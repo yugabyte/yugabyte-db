@@ -33,6 +33,14 @@ type: docs
   </li>
 </ul>
 
+[Yugabyte Node.js Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) is based on [DataStax Node.js Driver](https://github.com/datastax/nodejs-driver) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+
+{{< note title="YugabyteDB Managed" >}}
+
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream Cassandra driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+
+{{< /note >}}
+
 ## Install the Yugabyte Node.js Driver for YCQL
 
 To install the [YugabyteDB Node.js driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver), run the following command:
