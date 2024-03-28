@@ -792,6 +792,9 @@ class PostgresBuilder(YbBuildToolBase):
             os.path.join(self.pg_build_root, 'contrib/tablefunc'),
             os.path.join(self.pg_build_root, 'contrib/spi'),
             os.path.join(self.pg_build_root, 'contrib/sslinfo'),
+            os.path.join(self.pg_build_root, 'contrib/auto_explain'),
+            os.path.join(self.pg_build_root, 'contrib/hstore'),
+            os.path.join(self.pg_build_root, 'contrib/pg_trgm'),
             # YB_TODO: end
             third_party_extensions_dir,
         ]

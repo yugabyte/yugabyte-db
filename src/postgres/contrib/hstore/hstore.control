@@ -1,7 +1,6 @@
 # hstore extension
 comment = 'data type for storing sets of (key, value) pairs'
-# Pg13 use '1.8'
-default_version = '1.5-yb-1.0'
+default_version = '1.8-yb-1.0'
 module_pathname = '$libdir/hstore'
 relocatable = true
 trusted = true

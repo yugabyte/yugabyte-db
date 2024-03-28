@@ -1227,11 +1227,108 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 9.
 select count(*) from test_trgm where t ~ '[qwerty]{2}-?[qwerty]{2}';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 252.
+-- check handling of indexquals that generate no searchable conditions
+explain (costs off)
+select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Aggregate
+   ->  Index Scan using trgm_idx on test_trgm
+         Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
+(3 rows)
+
+select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one scan key: got 2.
+HINT:  Consider rewriting the query with INTERSECT and UNION.
+explain (costs off)
+select count(*) from test_trgm where t like '%99%' and t like '%qw%';
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Aggregate
+   ->  Index Scan using trgm_idx on test_trgm
+         Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
+(3 rows)
+
+select count(*) from test_trgm where t like '%99%' and t like '%qw%';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one scan key: got 2.
+HINT:  Consider rewriting the query with INTERSECT and UNION.
+-- ensure that pending-list items are handled correctly, too
+create temp table t_test_trgm(t text COLLATE "C");
+create index t_trgm_idx on t_test_trgm using gin (t gin_trgm_ops);
+insert into t_test_trgm values ('qwerty99'), ('qwerty01');
+explain (costs off)
+select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on t_test_trgm
+         Recheck Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
+         ->  Bitmap Index Scan on t_trgm_idx
+               Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
+(5 rows)
+
+select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
+ count
+-------
+     1
+(1 row)
+
+explain (costs off)
+select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on t_test_trgm
+         Recheck Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
+         ->  Bitmap Index Scan on t_trgm_idx
+               Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
+(5 rows)
+
+select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
+ count
+-------
+     1
+(1 row)
+
+-- run the same queries with sequential scan to check the results
+set enable_bitmapscan=off;
+set enable_seqscan=on;
+select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one scan key: got 2.
+HINT:  Consider rewriting the query with INTERSECT and UNION.
+select count(*) from test_trgm where t like '%99%' and t like '%qw%';
+ count
+-------
+    19
+(1 row)
+
+select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
+ count
+-------
+     1
+(1 row)
+
+select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
+ count
+-------
+     1
+(1 row)
+
+reset enable_bitmapscan;
 create table test2(t text COLLATE "C");
 insert into test2 values ('abcdef');
 insert into test2 values ('quark');
 insert into test2 values ('  z foo bar');
 insert into test2 values ('/123/-45/');
+insert into test2 values ('line 1');
+insert into test2 values ('%line 2');
+insert into test2 values ('line 3%');
+insert into test2 values ('%line 4%');
+insert into test2 values ('%li%ne 5%');
+insert into test2 values ('li_e 6');
 create index test2_idx_gin on test2 using gin (t gin_trgm_ops);
 set enable_seqscan=off;
 explain (costs off)
@@ -1390,6 +1487,89 @@ select * from test2 where t ~ 'qua(?!foo)';
 select * from test2 where t ~ '/\d+/-\d';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 10.
+-- test = operator
+explain (costs off)
+  select * from test2 where t = 'abcdef';
+               QUERY PLAN
+-----------------------------------------
+ Index Scan using test2_idx_gin on test2
+   Index Cond: (t = 'abcdef'::text)
+(2 rows)
+
+select * from test2 where t = 'abcdef';
+   t
+--------
+ abcdef
+(1 row)
+
+explain (costs off)
+  select * from test2 where t = '%line%';
+               QUERY PLAN
+-----------------------------------------
+ Index Scan using test2_idx_gin on test2
+   Index Cond: (t = '%line%'::text)
+(2 rows)
+
+select * from test2 where t = '%line%';
+ t
+---
+(0 rows)
+
+select * from test2 where t = 'li_e 1';
+ t
+---
+(0 rows)
+
+select * from test2 where t = '%line 2';
+    t
+---------
+ %line 2
+(1 row)
+
+select * from test2 where t = 'line 3%';
+    t
+---------
+ line 3%
+(1 row)
+
+select * from test2 where t = '%line 3%';
+ t
+---
+(0 rows)
+
+select * from test2 where t = '%line 4%';
+    t
+----------
+ %line 4%
+(1 row)
+
+select * from test2 where t = '%line 5%';
+ t
+---
+(0 rows)
+
+select * from test2 where t = '%li_ne 5%';
+ t
+---
+(0 rows)
+
+select * from test2 where t = '%li%ne 5%';
+     t
+-----------
+ %li%ne 5%
+(1 row)
+
+select * from test2 where t = 'line 6';
+ t
+---
+(0 rows)
+
+select * from test2 where t = 'li_e 6';
+   t
+--------
+ li_e 6
+(1 row)
+
 drop index test2_idx_gin;
 create index test2_idx_gist on test2 using gist (t gist_trgm_ops);
 ERROR:  index method "gist" not supported yet
@@ -1410,16 +1590,15 @@ SELECT similarity('Szczecin', 'Warsaw');
 EXPLAIN (COSTS OFF)
 SELECT DISTINCT city, similarity(city, 'Warsaw'), show_limit()
   FROM restaurants WHERE city % 'Warsaw';
-                         QUERY PLAN
--------------------------------------------------------------
- Unique
-   ->  Sort
-         Sort Key: city, (similarity(city, 'Warsaw'::text))
-         ->  Bitmap Heap Scan on restaurants
-               Recheck Cond: (city % 'Warsaw'::text)
-               ->  Bitmap Index Scan on restaurants_city_idx
-                     Index Cond: (city % 'Warsaw'::text)
-(7 rows)
+                            QUERY PLAN
+-------------------------------------------------------------------
+ HashAggregate
+   Group Key: city, similarity(city, 'Warsaw'::text), show_limit()
+   ->  Bitmap Heap Scan on restaurants
+         Recheck Cond: (city % 'Warsaw'::text)
+         ->  Bitmap Index Scan on restaurants_city_idx
+               Index Cond: (city % 'Warsaw'::text)
+(6 rows)
 
 SELECT set_limit(0.3);
  set_limit

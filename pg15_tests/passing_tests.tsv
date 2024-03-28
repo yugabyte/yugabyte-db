@@ -16,6 +16,7 @@ JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTableWithRangeKey
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTempTables
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testUniqueConstraints
 JAVA	org.yb.pgsql.TestPgAuthorization
+JAVA	org.yb.pgsql.TestPgAutoExplain
 JAVA	org.yb.pgsql.TestPgBackendMemoryContext
 JAVA	org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
 JAVA	org.yb.pgsql.TestPgConnection
@@ -38,8 +39,10 @@ JAVA	org.yb.pgsql.TestPgRegressBufferingWithSQLErrors
 JAVA	org.yb.pgsql.TestPgRegressColocation
 JAVA	org.yb.pgsql.TestPgRegressContribFileFdw
 JAVA	org.yb.pgsql.TestPgRegressContribFuzzystrmatch
+JAVA	org.yb.pgsql.TestPgRegressContribHstore
 JAVA	org.yb.pgsql.TestPgRegressContribPasswordCheck
 JAVA	org.yb.pgsql.TestPgRegressContribPgCrypto
+JAVA	org.yb.pgsql.TestPgRegressContribPgTrgm
 JAVA	org.yb.pgsql.TestPgRegressContribSpi
 JAVA	org.yb.pgsql.TestPgRegressContribTablefunc
 JAVA	org.yb.pgsql.TestPgRegressContribUuidOssp

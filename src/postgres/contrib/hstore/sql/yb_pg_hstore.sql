@@ -323,6 +323,10 @@ set enable_sort = true;
 -- btree
 drop index hidx;
 create index hidx on testhstore using btree (h);
+set enable_seqscan=off;
+
+select count(*) from testhstore where h #># 'p=>1';
+select count(*) from testhstore where h = 'pos=>98, line=>371, node=>CBA, indexed=>t';
 
 -- json and jsonb
 select hstore_to_json('"a key" =>1, b => t, c => null, d=> 12345, e => 012345, f=> 1.234, g=> 2.345e+4');
@@ -333,8 +337,30 @@ select hstore_to_jsonb('"a key" =>1, b => t, c => null, d=> 12345, e => 012345, 
 select cast( hstore  '"a key" =>1, b => t, c => null, d=> 12345, e => 012345, f=> 1.234, g=> 2.345e+4' as jsonb);
 select hstore_to_jsonb_loose('"a key" =>1, b => t, c => null, d=> 12345, e => 012345, f=> 1.234, g=> 2.345e+4, h=> "2016-01-01"');
 
-create table test_json_agg (f1 text, f2 hstore);
+-- YB note: add ordering.
+create table test_json_agg (f1 text, f2 hstore, ybsort serial, PRIMARY KEY (ybsort ASC));
 insert into test_json_agg values ('rec1','"a key" =>1, b => t, c => null, d=> 12345, e => 012345, f=> 1.234, g=> 2.345e+4'),
        ('rec2','"a key" =>2, b => f, c => "null", d=> -12345, e => 012345.6, f=> -1.234, g=> 0.345e-4');
-select json_agg(q ORDER BY f1) from test_json_agg q;
-select json_agg(q ORDER BY f1) from (select f1, hstore_to_json_loose(f2) as f2 from test_json_agg) q;
+select json_agg(q) from test_json_agg q;
+select json_agg(q) from (select f1, hstore_to_json_loose(f2) as f2 from test_json_agg) q;
+
+-- Test subscripting
+insert into test_json_agg default values;
+select f2['d'], f2['x'] is null as x_isnull from test_json_agg;
+select f2['d']['e'] from test_json_agg;  -- error
+select f2['d':'e'] from test_json_agg;  -- error
+update test_json_agg set f2['d'] = f2['e'], f2['x'] = 'xyzzy';
+select f2 from test_json_agg;
+
+-- Test subscripting in plpgsql
+do $$ declare h hstore;
+begin h['a'] := 'b'; raise notice 'h = %, h[a] = %', h, h['a']; end $$;
+
+-- Check the hstore_hash() and hstore_hash_extended() function explicitly.
+SELECT v as value, hstore_hash(v)::bit(32) as standard,
+       hstore_hash_extended(v, 0)::bit(32) as extended0,
+       hstore_hash_extended(v, 1)::bit(32) as extended1
+FROM   (VALUES (NULL::hstore), (''), ('"a key" =>1'), ('c => null'),
+       ('e => 012345'), ('g => 2.345e+4')) x(v)
+WHERE  hstore_hash(v)::bit(32) != hstore_hash_extended(v, 0)::bit(32)
+       OR hstore_hash(v)::bit(32) = hstore_hash_extended(v, 1)::bit(32);

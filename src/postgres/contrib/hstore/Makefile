@@ -11,11 +11,9 @@ OBJS = \
 	hstore_subs.o
 
 EXTENSION = hstore
-DATA = hstore--1.5--1.5-yb-1.0.sql \
+DATA = hstore--1.5-yb-1.0--1.8-yb-1.0.sql \
+	hstore--1.5--1.5-yb-1.0.sql \
 	hstore--1.4.sql \
-	hstore--1.7--1.8.sql \
-	hstore--1.6--1.7.sql \
-	hstore--1.5--1.6.sql \
 	hstore--1.4--1.5.sql \
 	hstore--1.3--1.4.sql hstore--1.2--1.3.sql \
 	hstore--1.1--1.2.sql
