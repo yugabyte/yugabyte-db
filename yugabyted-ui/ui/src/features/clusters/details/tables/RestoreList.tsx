@@ -1,7 +1,6 @@
 import React, { FC, useMemo } from "react";
 import { makeStyles, Box, Typography } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import { YBButton, YBInput, YBLoadingBox, YBTable } from "@app/components";
 import RefreshIcon from "@app/assets/refresh.svg";
 import SearchIcon from "@app/assets/search.svg";
@@ -21,12 +20,6 @@ const useStyles = makeStyles((theme) => ({
     fontSize: "18px",
     textAlign: "start",
   },
-  arrowComponent: {
-    textAlign: "end",
-    "& svg": {
-      marginTop: theme.spacing(0.25),
-    },
-  },
   statContainer: {
     marginTop: theme.spacing(4),
   },
@@ -39,14 +32,6 @@ const useStyles = makeStyles((theme) => ({
     marginRight: "auto",
   },
 }));
-
-const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
-  return (
-    <Box className={classes.arrowComponent}>
-      <ArrowRightIcon />
-    </Box>
-  );
-};
 
 export const RestoreList: FC = () => {
   const classes = useStyles();
@@ -134,16 +119,6 @@ export const RestoreList: FC = () => {
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
-    /* {
-      name: "",
-      label: "",
-      options: {
-        sort: false,
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-        customBodyRender: ArrowComponent(classes),
-      },
-    }, */
   ];
 
   const onRefetch = () => {};
