@@ -776,6 +776,9 @@
       "databases": {
         "tabYsql": "YSQL",
         "tabYcql": "YCQL",
+        "tabBackups": "Backups",
+        "tabPitr": "Point-in-time Recovery",
+        "tabRestore": "Restore History",
         "ysqlDatabases": "YSQL Databases",
         "ycqlKeyspaces": "YCQL Keyspaces",
         "noDatabases": "There are no databases available",
@@ -801,7 +804,43 @@
         "keyspace": "Keyspace",
         "table": "Table",
         "partition": "Partition",
-        "size": "Size"
+        "size": "Size",
+        "backups": {
+          "backups": "Backups",
+          "database": "Database",
+          "tserverIP": "Tserver IP",
+          "bytesTransferred": "Bytes transferred",
+          "actualSize": "Actual size",
+          "taskStatus": "Task status",
+          "timeTaken": "Time taken",
+          "taskStartTime": "Task start time",
+          "refresh": "Refresh",
+          "noBackups": "No backups available",
+          "searchBackups": "Search database"
+        },
+        "pitr": {
+          "pitr": "Point-in-time Recovery",
+          "database": "Database",
+          "interval": "Interval",
+          "retention": "Retention",
+          "recoverableTime": "Recoverable time",
+          "refresh": "Refresh",
+          "noPitr": "No Point-in-time Recoveries available",
+          "searchPitr": "Search database"
+        },
+        "restore": {
+          "restores": "Restores",
+          "database": "Database",
+          "tserverIP": "Tserver IP",
+          "bytesTransferred": "Bytes transferred",
+          "actualSize": "Actual size",
+          "taskStatus": "Task status",
+          "timeTaken": "Time taken",
+          "taskStartTime": "Task start time",
+          "refresh": "Refresh",
+          "noRestores": "No restores available",
+          "searchRestores": "Search database"
+        }
       },
       "voyager": {
         "migrationOverview": "Migration Overview",
