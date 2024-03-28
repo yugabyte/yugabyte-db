@@ -97,7 +97,6 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/capabilities.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
@@ -137,9 +136,6 @@ DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
-
-DEFINE_CAPABILITY(ClientTest, 0x1523c5ae);
-DECLARE_CAPABILITY(TabletReportLimit);
 
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
@@ -2386,27 +2382,6 @@ TEST_F(ClientTest, TestReadFromFollower) {
       ASSERT_EQ(StringPrintf("hello %d", key), row.column(2).string_value());
       ASSERT_EQ(key * 3, row.column(3).int32_value());
     }
-  }
-}
-
-TEST_F(ClientTest, Capability) {
-  constexpr CapabilityId kFakeCapability = 0x9c40e9a7;
-
-  auto rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), client_table_.table()).get());
-  ASSERT_TRUE(rt.get() != nullptr);
-  auto tservers = rt->GetRemoteTabletServers();
-  ASSERT_EQ(tservers.size(), 3);
-  for (const auto& replica : tservers) {
-    // Capability is related to executable, so it should be present since we run mini cluster for
-    // this test.
-    ASSERT_TRUE(replica->HasCapability(CAPABILITY_ClientTest));
-
-    // Check that fake capability is not reported.
-    ASSERT_FALSE(replica->HasCapability(kFakeCapability));
-
-    // This capability is defined on the TServer, passed to the Master on registration,
-    // then propagated to the YBClient.  Ensure that this runtime pipeline holds.
-    ASSERT_TRUE(replica->HasCapability(CAPABILITY_TabletReportLimit));
   }
 }
 

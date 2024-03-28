@@ -69,7 +69,6 @@
 #include "yb/util/callsite_profiling.h"
 
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/capabilities.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
 #include "yb/util/enums.h"
