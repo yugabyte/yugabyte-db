@@ -6,12 +6,16 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -34,10 +38,11 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
   }
 
   public static class Params extends ServerSubTaskParams {
-    public Collection<String> masterIps;
-    public Collection<String> tserverIps;
+    public Collection<NodeDetails> masters;
+    public Collection<NodeDetails> tservers;
     // whether we need to check nodes one-by-one or all the nodes simultaneously
     public boolean isRolling = true;
+    public String targetSoftwareVersion;
   }
 
   @Override
@@ -55,6 +60,22 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor == 1) {
       log.debug("Skipping check nodes are safe to take down for RF1");
       return;
+    }
+    if (taskParams().targetSoftwareVersion != null
+        && !isApiSupported(taskParams().targetSoftwareVersion)) {
+      log.debug("API is not supported for target version {}", taskParams().targetSoftwareVersion);
+      return;
+    }
+
+    Set<NodeDetails> allNodes = new HashSet<>(taskParams().masters);
+    allNodes.addAll(taskParams().tservers);
+    for (NodeDetails node : allNodes) {
+      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+      if (!isApiSupported(cluster.userIntent.ybSoftwareVersion)) {
+        log.debug(
+            "API is not supported for current version {}", cluster.userIntent.ybSoftwareVersion);
+        return;
+      }
     }
 
     // Max threshold for follower lag.
@@ -136,15 +157,28 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
   private List<Pair<Collection<String>, Collection<String>>> splitIps() {
     List<Pair<Collection<String>, Collection<String>>> result = new ArrayList<>();
     if (!taskParams().isRolling) {
-      result.add(new Pair<>(taskParams().masterIps, taskParams().tserverIps));
+      result.add(new Pair<>(extractIps(taskParams().masters), extractIps(taskParams().tservers)));
     } else {
-      for (String masterIp : taskParams().masterIps) {
-        result.add(new Pair<>(Collections.singletonList(masterIp), Collections.emptyList()));
+      for (NodeDetails master : taskParams().masters) {
+        result.add(new Pair<>(Collections.singletonList(getIp(master)), Collections.emptyList()));
       }
-      for (String tserverIp : taskParams().tserverIps) {
-        result.add(new Pair<>(Collections.emptyList(), Collections.singletonList(tserverIp)));
+      for (NodeDetails tserver : taskParams().tservers) {
+        result.add(new Pair<>(Collections.emptyList(), Collections.singletonList(getIp(tserver))));
       }
     }
     return result;
+  }
+
+  private Collection<String> extractIps(Collection<NodeDetails> nodes) {
+    return nodes.stream().map(this::getIp).collect(Collectors.toList());
+  }
+
+  private String getIp(NodeDetails nodeDetails) {
+    return nodeDetails.cloudInfo.private_ip;
+  }
+
+  public static boolean isApiSupported(String dbVersion) {
+    return CommonUtils.isReleaseBetween("2.20.3.0-b8", "2.21.0.0-b0", dbVersion)
+        || CommonUtils.isReleaseEqualOrAfter("2.21.0.0-b190", dbVersion);
   }
 }

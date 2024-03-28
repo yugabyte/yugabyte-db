@@ -178,6 +178,10 @@ DEFINE_RUNTIME_uint32(cdcsdk_tablet_not_of_interest_timeout_secs, 4 * 60 * 60,
                       "Timeout after which it can be inferred that tablet is not of interest "
                       "for the stream");
 
+DEFINE_test_flag(bool, cdc_force_destroy_virtual_wal_failure, false,
+                 "For testing only. When set to true, DestroyVirtualWal RPC will return RPC "
+                 "failure response.");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -4433,6 +4437,17 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
   }
 
   LOG(INFO) << "Received DestroyVirtualWALForCDC request: " << req->DebugString();
+
+  if (FLAGS_TEST_cdc_force_destroy_virtual_wal_failure) {
+    LOG(WARNING)
+        << "Returning error response since FLAGS_TEST_cdc_force_destroy_virtual_wal_failure. "
+           "This should only happen in TEST environment.";
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(Aborted, "Test flag FLAGS_TEST_cdc_force_destroy_virtual_wal_failure is true"),
+        CDCErrorPB::NOT_RUNNING, &context);
+    return;
+  }
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),

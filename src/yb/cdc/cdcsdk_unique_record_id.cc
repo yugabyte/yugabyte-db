@@ -42,7 +42,12 @@ CDCSDKUniqueRecordID::CDCSDKUniqueRecordID(const std::shared_ptr<CDCSDKProtoReco
     this->docdb_txn_id_ = "";
   }
   switch (this->op_) {
-    case RowMessage_Op_DDL: FALLTHROUGH_INTENDED;
+    case RowMessage_Op_DDL:
+      this->record_time_ = 0;
+      this->write_id_ = 0;
+      this->table_id_ = record->row_message().table_id();
+      this->primary_key_ = "";
+      break;
     case RowMessage_Op_BEGIN:
       this->record_time_ = 0;
       this->write_id_ = 0;
@@ -145,11 +150,37 @@ bool IsBeginOrCommitRecordType(const VWALRecordType vwal_record_type) {
   return vwal_record_type == VWALRecordType::BEGIN || vwal_record_type == VWALRecordType::COMMIT;
 }
 
+bool IsDDLRecordType(const VWALRecordType vwal_record_type) {
+  return vwal_record_type == VWALRecordType::DDL;
+}
+
+bool CDCSDKUniqueRecordID::CompareDDLOrder(
+    const std::shared_ptr<CDCSDKUniqueRecordID>& other_unique_record_id) {
+  DCHECK(
+      IsDDLRecordType(this->vwal_record_type_) ||
+      IsDDLRecordType(other_unique_record_id->vwal_record_type_));
+
+  // If both the records are DDL records, then we go for comparing table_ids.
+  if (IsDDLRecordType(this->vwal_record_type_) &&
+      IsDDLRecordType(other_unique_record_id->vwal_record_type_)) {
+    return this->table_id_ < other_unique_record_id->table_id_;
+  }
+
+  // Whichever of the two is a DDL record, should get the highest priority.
+  return IsDDLRecordType(this->vwal_record_type_);
+}
+
 // Return true iff, other_unique_record_id > this.unique_record_id
 bool CDCSDKUniqueRecordID::HasHigherPriorityThan(
     const std::shared_ptr<CDCSDKUniqueRecordID>& other_unique_record_id) {
   if (this->commit_time_ != other_unique_record_id->commit_time_) {
     return this->commit_time_ < other_unique_record_id->commit_time_;
+  }
+
+  // DDL records should get the highest priority.
+  if (IsDDLRecordType(this->vwal_record_type_) ||
+      IsDDLRecordType(other_unique_record_id->vwal_record_type_)) {
+    return CompareDDLOrder(other_unique_record_id);
   }
 
   // Safepoint record should always get the lowest priority in PQ.

@@ -756,8 +756,15 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testSoftwareUpgradeRetries() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.ybSoftwareVersion = OLD_VERSION;
+          univ.setUniverseDetails(details);
+        });
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.16.0.0-b1";
+    taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.expectedUniverseVersion = -1;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());

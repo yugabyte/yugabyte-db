@@ -48,6 +48,14 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
   @Override
   protected MastersAndTservers calculateNodesToBeRestarted() {
     Universe universe = getUniverse();
+
+    MastersAndTservers nodes = fetchNodes(taskParams().upgradeOption);
+    return filterOutAlreadyProcessedNodes(universe, nodes, getTargetSoftwareVersion());
+  }
+
+  @Override
+  protected String getTargetSoftwareVersion() {
+    Universe universe = getUniverse();
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig =
         universe.getUniverseDetails().prevYBSoftwareConfig;
     String newVersion =
@@ -56,8 +64,7 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
         && !newVersion.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
       newVersion = prevYBSoftwareConfig.getSoftwareVersion();
     }
-    MastersAndTservers nodes = fetchNodes(taskParams().upgradeOption);
-    return filterOutAlreadyProcessedNodes(universe, nodes, newVersion);
+    return newVersion;
   }
 
   @Override

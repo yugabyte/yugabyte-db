@@ -90,10 +90,11 @@ class CDCSDKVirtualWAL {
     int begin_records = 0;
     int commit_records = 0;
     int dml_records = 0;
+    int ddl_records = 0;
     std::unordered_set<uint32_t> txn_ids;
     uint32_t min_txn_id = std::numeric_limits<uint32_t>::max();
     uint32_t max_txn_id = 0;
-    uint64_t min_lsn = std::numeric_limits<uint64_t>::max();;
+    uint64_t min_lsn = std::numeric_limits<uint64_t>::max();
     uint64_t max_lsn = 0;
     bool is_last_txn_fully_sent = false;
   };
