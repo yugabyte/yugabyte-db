@@ -496,7 +496,7 @@ class ApiService {
   updateTablesInDr = (drConfigUuid: string, updateTablesInDrRequest: UpdateTablesInDrRequest) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/set_tables`;
     updateTablesInDrRequest.autoIncludeIndexTables =
-      updateTablesInDrRequest.autoIncludeIndexTables ?? false;
+      updateTablesInDrRequest.autoIncludeIndexTables ?? true;
     return axios
       .post<YBPTask>(requestUrl, updateTablesInDrRequest)
       .then((response) => response.data);
