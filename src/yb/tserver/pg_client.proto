@@ -515,6 +515,10 @@ message PgReplicationSlotInfoPB {
   uint64 confirmed_flush_lsn = 5;
   uint64 restart_lsn = 6;
   uint32 xmin = 7;
+  // This map stores the replica identity for each table in the stream at the time of stream
+  // creation. The key for this map is table_oid and the value is replica identity for that table.
+  map<uint32, PgReplicaIdentityPB> replica_identity_map = 8;
+  uint64 record_id_commit_time_ht = 9;
 }
 
 message PgListReplicationSlotsResponsePB {
