@@ -52,6 +52,7 @@ YugabyteDB is a distributed, fault tolerant, and highly available database with 
 
 The smart driver can retry certain operations if they fail the first time, and this is governed by a retry-policy (the default number of retries being one for a failed operation for certain cases depending on the language driver). The retry may happen on the same node or the next available node as per the query's plan.
 
+Refer to [Retries](https://docs.datastax.com/en/developer/java-driver/4.15/manual/core/retries/#retries) in Datastax documention for informationm on built-in retry polices.
 <!-- Some of the drivers allow you to provide a custom retry policy. See the respective language driver’s documentation for more information. -->
 
 ### Multiple contact points
