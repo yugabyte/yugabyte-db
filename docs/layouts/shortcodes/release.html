@@ -1,0 +1,17 @@
+{{- $version := .Get 0 -}}
+{{- $orig := $version -}}
+{{- $product := default "ybdb" (.Get 1) -}}
+{{- $parts := split $version "-" -}}
+{{- $build := "" -}}
+{{- if gt (len $parts) 1 -}} {{- $build = index $parts 1 -}} {{ $version = index $parts 0 -}}{{- end -}}
+{{- $base := split $version "." -}}
+{{- $base = printf "%s.%s" (index $base 0) (index $base 1) -}}
+{{- if or (eq $product "ybdb") (eq $product "yba") -}}
+    {{- if eq "all" (lower $version) -}}
+    <a href="{{printf "/preview/releases/%s-releases/" $product}}">{{- printf "%s" $orig -}}</a>
+    {{- else if eq $base $version -}}
+    <a href="{{printf "/preview/releases/%s-releases/v%s" $product $base}}">{{- printf "v%s" $orig -}}</a>
+    {{- else -}}
+    <a href="{{printf "/preview/releases/%s-releases/v%s/#v%s" $product $base $version}}">{{- printf "v%s" $orig -}}</a>
+    {{- end -}}
+{{- end -}}
