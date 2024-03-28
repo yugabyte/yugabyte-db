@@ -870,6 +870,12 @@ Universal / mappings ++= {
   }
 }
 
+// Copying 'support/thirdparty-dependencies.txt' into the YBA tarball at 'conf/thirdparty-dependencies.txt'.
+Universal / mappings ++= {
+  val tpdSourceFile = baseDirectory.value / "support" / "thirdparty-dependencies.txt"
+  Seq((tpdSourceFile, "conf/thirdparty-dependencies.txt"))
+}
+
 
 javaAgents += "io.kamon" % "kanela-agent" % "1.0.18"
 
