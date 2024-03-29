@@ -51,7 +51,9 @@ import {
   generateLowerCaseAlphanumericId,
   getIsFieldDisabled,
   getIsFormDisabled,
-  readFileAsText
+  readFileAsText,
+  handleFormSubmitServerError,
+  AZURE_FORM_MAPPERS
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
@@ -64,7 +66,8 @@ import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
-
+import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
+import { QUERY_KEY } from '../../../../../redesign/features/universe/universe-form/utils/api';
 import {
   AZUAvailabilityZone,
   AZUAvailabilityZoneMutation,
@@ -78,7 +81,11 @@ import {
   hasNecessaryPerm,
   RbacValidator
 } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
@@ -195,6 +202,9 @@ export const AZUProviderEditForm = ({
   });
 
   const customerUUID = localStorage.getItem('customerId') ?? '';
+  const globalRuntimeConfigQuery = useQuery(QUERY_KEY.fetchGlobalRunTimeConfigs, () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  );
   const customerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
@@ -211,14 +221,18 @@ export const AZUProviderEditForm = ({
       />
     );
   }
-  if (customerRuntimeConfigQuery.isError) {
+  if (customerRuntimeConfigQuery.isError || globalRuntimeConfigQuery.isError) {
     return (
       <YBErrorIndicator
         customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
       />
     );
   }
-  if (hostInfoQuery.isLoading || customerRuntimeConfigQuery.isLoading) {
+  if (
+    hostInfoQuery.isLoading ||
+    customerRuntimeConfigQuery.isLoading ||
+    globalRuntimeConfigQuery.isLoading
+  ) {
     return <YBLoading />;
   }
 
@@ -240,6 +254,10 @@ export const AZUProviderEditForm = ({
   const hideRegionFormModal = () => {
     setIsRegionFormModalOpen(false);
   };
+  const isValidationAllowed =
+    globalRuntimeConfigQuery?.data?.configEntries?.find(
+      (c: any) => c.key === 'yb.provider.azure_provider_validation'
+    )?.value === 'true';
 
   const onFormReset = () => {
     formMethods.reset(defaultValues);
@@ -256,7 +274,19 @@ export const AZUProviderEditForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
-        await editProvider(providerPayload);
+        await editProvider(providerPayload, {
+          shouldValidate: isValidationAllowed,
+          ignoreValidationErrors: false,
+          mutateOptions: {
+            onError: (err) => {
+              handleFormSubmitServerError(
+                (err as any)?.response?.data,
+                formMethods,
+                AZURE_FORM_MAPPERS
+              );
+            }
+          }
+        });
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
@@ -305,6 +335,7 @@ export const AZUProviderEditForm = ({
       config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
       config.value === 'true'
   );
+
   const isProviderInUse = linkedUniverses.length > 0;
   const isFormDisabled =
     (!isEditInUseProviderEnabled && isProviderInUse) ||
@@ -557,12 +588,14 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AZU,
-                    'sshUser',
-                    isFormDisabled,
-                    isProviderInUse
-                  ) || isOsPatchingEnabled}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.AZU,
+                      'sshUser',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
@@ -573,12 +606,14 @@ export const AZUProviderEditForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AZU,
-                    'sshPort',
-                    isFormDisabled,
-                    isProviderInUse
-                  ) || isOsPatchingEnabled}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.AZU,
+                      'sshPort',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
