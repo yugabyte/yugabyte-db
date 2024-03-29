@@ -221,7 +221,7 @@ public class Commissioner {
         if (currentLatch == null || currentLatch != latch) {
           break;
         }
-        Thread.sleep(100);
+        Thread.sleep(10);
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
