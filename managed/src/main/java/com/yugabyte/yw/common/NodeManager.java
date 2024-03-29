@@ -202,9 +202,12 @@ public class NodeManager extends DevopsBase {
   }
 
   private boolean imdsv2required(Architecture arch, UserIntent userIntent, Provider provider) {
+    if (!userIntent.providerType.equals(CloudType.aws)) {
+      return false;
+    }
     UUID imageBundleUUID = Util.retreiveImageBundleUUID(arch, userIntent, provider);
     ImageBundle imageBundle = ImageBundle.get(imageBundleUUID);
-    return (userIntent.providerType.equals(CloudType.aws) && imageBundle.getDetails().useIMDSv2);
+    return imageBundle.getDetails().useIMDSv2;
   }
 
   private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
