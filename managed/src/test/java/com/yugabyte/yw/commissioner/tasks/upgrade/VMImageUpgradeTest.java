@@ -538,6 +538,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     taskParams.machineImages.put(secondRegion.getUuid(), "test-vm-image-2");
     taskParams.creatingUser = defaultUser;
     taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     Map<UUID, List<String>> createVolumeOutput =
         Stream.of(az1, az2, az3)
             .collect(
