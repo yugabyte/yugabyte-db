@@ -586,7 +586,7 @@ Prepare your target YugabyteDB database cluster by creating a database, and a us
 
 Add the following flags to the cluster before starting migration, and revert them after the migration is complete.
 
-For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0` , set the following flag:
+For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0` (or later  minor versions), set the following flag:
 
 ```sh
 ysql_pg_conf_csv = yb_max_query_layer_retries=0
