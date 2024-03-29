@@ -222,10 +222,9 @@ public class TestPgFollowerReads extends BasePgSQLTest {
       // Sleep for the updates to be visible during follower reads.
       Thread.sleep(kFollowerReadStalenessMs);
 
-      assertOneRow(statement,
-                   "/*+ Set(transaction_read_only on) */ "
-                       + "SELECT * FROM consistentprefix where v = 1",
-                   1, 1);
+      statement.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      assertOneRow(statement, "SELECT * FROM consistentprefix where v = 1", 1, 1);
+      statement.execute("COMMIT");
       // The read will first read the ybctid from the index table, then use it to do a lookup
       // on the indexed table.
       long count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
@@ -310,27 +309,20 @@ public class TestPgFollowerReads extends BasePgSQLTest {
   public void doSelect(boolean use_ordered_by, boolean get_count, Statement statement,
                        boolean enable_follower_read, List<Row> rows_list,
                        long expected_num_tablet_requests) throws Exception {
-    String follower_read_setting = (enable_follower_read ? "on" : "off");
     int row_count = rows_list.size();
-    LOG.info("Reading rows with follower reads " + follower_read_setting);
+    LOG.info("Reading rows with enable_follower_read=" + enable_follower_read);
     long old_count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
     long old_count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
+    statement.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ " +
+        (enable_follower_read ? "READ ONLY" : ""));
     if (get_count) {
-      assertOneRow(statement,
-                   "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
-                       + "SELECT count(*) FROM consistentprefix",
-                   row_count);
+      assertOneRow(statement, "SELECT count(*) FROM consistentprefix", row_count);
     } else if (use_ordered_by) {
-      assertRowList(statement,
-                    "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
-                        + "SELECT * FROM consistentprefix ORDER BY k",
-                    rows_list);
+      assertRowList(statement, "SELECT * FROM consistentprefix ORDER BY k", rows_list);
     } else {
-      assertRowSet(statement,
-                   "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
-                       + "SELECT * FROM consistentprefix k",
-                   new HashSet(rows_list));
+      assertRowSet(statement, "SELECT * FROM consistentprefix k", new HashSet(rows_list));
     }
+    statement.execute("COMMIT");
     long count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
     assertEquals(count_reqs - old_count_reqs,
                  !enable_follower_read ? 0 : expected_num_tablet_requests);
@@ -348,7 +340,6 @@ public class TestPgFollowerReads extends BasePgSQLTest {
       statement.execute("CREATE TABLE consistentprefix(k int primary key)");
 
       final int kNumRowsDeleted = 10;
-      final int kNumRowsUnchanged = kNumRows - kNumRowsDeleted;
       ArrayList<Row> all_rows = new ArrayList<Row>();
       ArrayList<Row> unchanged_rows = new ArrayList<Row>();
       LOG.info("Start writing");
@@ -363,8 +354,6 @@ public class TestPgFollowerReads extends BasePgSQLTest {
       LOG.info("Done writing");
       long doneWriteMs = System.currentTimeMillis();
 
-      Set<Row> expected_rows_set = new HashSet<Row>(all_rows);
-      Set<Row> expected_rows_unchanged_set = new HashSet<Row>(unchanged_rows);
       final int kNumTablets = 3;
       final int kNumRowsPerTablet = (int)Math.ceil(kNumRows / (1.0 * kNumTablets));
       final int kNumTabletRequests = kNumTablets * (int)Math.ceil(kNumRowsPerTablet / 1024.0);
