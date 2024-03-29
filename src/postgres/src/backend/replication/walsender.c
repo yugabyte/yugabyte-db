@@ -846,12 +846,14 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 static void
 CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 {
-	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+	if (IsYugaByteEnabled() &&
+		(!yb_enable_replication_commands || !yb_enable_replica_identity))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("CreateReplicationSlot is unavailable"),
-				 errdetail("yb_enable_replication_commands is false or a "
-						   "system upgrade is in progress")));
+				 errdetail("Creation of replication slot is only allowed with "
+				 		   "ysql_yb_enable_replication_commands and "
+						   "ysql_yb_enable_replica_identity set to true.")));
 
 	const char *snapshot_name = NULL;
 	char		xloc[MAXFNAMELEN];
@@ -1176,6 +1178,16 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 	StringInfoData buf;
 
 	elog(DEBUG1, "StartLogicalReplication");
+
+	if (IsYugaByteEnabled() && (!yb_enable_replication_slot_consumption ||
+								!yb_enable_replica_identity))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("StartReplication is unavailable"),
+				 errdetail("StartReplication can only be called with "
+						   "ysql_TEST_enable_replication_slot_consumption "
+						   "and ysql_yb_enable_replica_identity set to "
+						   "true.")));
 
 	/* make sure that our requirements are still fulfilled */
 	CheckLogicalDecodingRequirements();
@@ -1694,14 +1706,6 @@ exec_replication_command(const char *cmd_string)
 
 		case T_StartReplicationCmd:
 			{
-				if (IsYugaByteEnabled()
-					&& !yb_enable_replication_slot_consumption)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("StartReplication is unavailable"),
-							 errdetail("yb_enable_replication_slot_consumption "
-									   "is false.")));
-
 				StartReplicationCmd *cmd = (StartReplicationCmd *) cmd_node;
 
 				PreventInTransactionBlock(true, "START_REPLICATION");
