@@ -60,6 +60,10 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
     boolean cloudEnabled =
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    if (cloudEnabled) {
+      log.debug("Skipping check for ybm");
+      return;
+    }
     try (YBClient ybClient = ybService.getClient(masterAddresses, certificate)) {
       errors = doCheckServers(ybClient, universe, cloudEnabled);
     } catch (Exception e) {

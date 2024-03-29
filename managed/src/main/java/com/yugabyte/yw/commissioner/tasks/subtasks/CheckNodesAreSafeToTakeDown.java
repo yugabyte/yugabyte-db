@@ -94,6 +94,11 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
 
+    if (cloudEnabled) {
+      log.debug("Skipping check for ybm");
+      return;
+    }
+
     try (YBClient ybClient = getClient()) {
       AtomicInteger errorCnt = new AtomicInteger();
       List<String> lastErrors = new ArrayList<>();
