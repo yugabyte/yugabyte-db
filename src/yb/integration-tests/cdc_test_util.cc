@@ -33,17 +33,51 @@
 #include "yb/util/test_macros.h"
 
 #include "yb/cdc/cdc_service.h"
+#include "yb/dockv/doc_key.h"
 
 namespace yb {
 namespace cdc {
 
 using yb::MiniCluster;
 
-void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& key,
-                  int32_t value) {
+Result<QLValuePB> ExtractKey(
+    const Schema& schema, const cdc::KeyValuePairPB& key, std::string expected_col_name,
+    size_t col_id, bool range_col) {
+  Slice key_slice(key.value().binary_value());
+  dockv::SubDocKey decoded_key;
+  RETURN_NOT_OK(decoded_key.DecodeFrom(&key_slice, dockv::HybridTimeRequired::kFalse));
+
+  size_t column_schema_id = col_id;
+  if (range_col) {
+    column_schema_id += decoded_key.doc_key().hashed_group().size();
+  }
+
+  const ColumnSchema& col = schema.column(column_schema_id);
+  SCHECK_EQ(col.name(), expected_col_name, IllegalState, "Unexpected column name");
+
+  QLValuePB value;
+  if (range_col) {
+    SCHECK_GT(
+        decoded_key.doc_key().range_group().size(), col_id, IllegalState, "Unexpected range group");
+
+    decoded_key.doc_key().range_group()[col_id].ToQLValuePB(col.type(), &value);
+  } else {
+    SCHECK_GT(
+        decoded_key.doc_key().hashed_group().size(), col_id, IllegalState,
+        "Unexpected hashed group");
+
+    decoded_key.doc_key().hashed_group()[col_id].ToQLValuePB(col.type(), &value);
+  }
+
+  return value;
+}
+
+void AssertIntKey(
+    const Schema& schema, const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& key,
+    int32_t value) {
   ASSERT_EQ(key.size(), 1);
-  ASSERT_EQ(key[0].key(), "key");
-  ASSERT_EQ(key[0].value().int32_value(), value);
+  auto int_val = ASSERT_RESULT(ExtractKey(schema, key[0], "key"));
+  ASSERT_EQ(int_val.int32_value(), value);
 }
 
 Result<xrepl::StreamId> CreateCDCStream(
@@ -55,6 +89,7 @@ Result<xrepl::StreamId> CreateCDCStream(
   req.set_table_id(table_id);
   req.set_source_type(source_type);
   req.set_checkpoint_type(IMPLICIT);
+  req.set_record_format(CDCRecordFormat::WAL);
 
   rpc::RpcController rpc;
   RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
