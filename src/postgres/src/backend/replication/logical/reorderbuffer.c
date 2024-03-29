@@ -1569,13 +1569,27 @@ ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 							 relpathperm(change->data.tp.relnode,
 										 MAIN_FORKNUM));
 
-					relation = RelationIdGetRelation(reloid);
+					if (IsYugaByteEnabled())
+					{
+						/*
+						 * In YB, the replica identity used for streaming is the
+						 * one that existed at the time of slot (stream)
+						 * creation. So we overwrite the replica identity of the
+						 * relation to what it existed at that time.
+						 */
+						relation = YbGetRelationWithOverwrittenReplicaIdentity(
+							reloid, YBCGetReplicaIdentityForRelation(reloid));
+					}
+					else
+					{
+						relation = RelationIdGetRelation(reloid);
 
-					if (relation == NULL)
-						elog(ERROR, "could not open relation with OID %u (for filenode \"%s\")",
-							 reloid,
-							 relpathperm(change->data.tp.relnode,
-										 MAIN_FORKNUM));
+						if (relation == NULL)
+							elog(ERROR, "could not open relation with OID %u (for filenode \"%s\")",
+								 reloid,
+								 relpathperm(change->data.tp.relnode,
+											 MAIN_FORKNUM));
+					}
 
 					/*
 					 * YB note: We disable this check here since:

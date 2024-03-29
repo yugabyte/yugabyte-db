@@ -1717,3 +1717,19 @@ RestoreSlotFromDisk(const char *name)
 				(errmsg("too many replication slots active before shutdown"),
 				 errhint("Increase max_replication_slots and try again.")));
 }
+
+char
+YBCGetReplicaIdentityForRelation(Oid relid)
+{
+	Assert(MyReplicationSlot);
+	Assert(MyReplicationSlot->data.yb_replica_identities);
+
+	bool found;
+
+	YBCPgReplicaIdentityDescriptor *value =
+		hash_search(MyReplicationSlot->data.yb_replica_identities, &relid,
+					HASH_FIND, &found);
+
+	Assert(found);
+	return value->identity_type;
+}
