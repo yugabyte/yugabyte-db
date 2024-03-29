@@ -114,6 +114,9 @@ DEFINE_test_flag(bool, exit_unfinished_deleting, false,
 DEFINE_test_flag(bool, exit_unfinished_merging, false,
     "Whether to exit part way through the merging universe process.");
 
+DEFINE_test_flag(bool, fail_universe_replication_merge, false, "Causes MergeUniverseReplication to "
+    "fail with an error.");
+
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 
@@ -3153,6 +3156,12 @@ void CatalogManager::MergeUniverseReplication(
   // Merge back into primary command now that setup is a success.
   LOG(INFO) << "Merging CDC universe: " << universe->id() << " into " << original_id;
 
+  if (FLAGS_TEST_fail_universe_replication_merge) {
+    MarkUniverseReplicationFailed(
+        universe, STATUS(IllegalState, "TEST_fail_universe_replication_merge"));
+    return;
+  }
+
   scoped_refptr<UniverseReplicationInfo> original_universe;
   {
     SharedLock lock(mutex_);
@@ -5946,7 +5955,8 @@ Result<HybridTime> CatalogManager::BootstrapAndAddIndexToXClusterReplication(
     return StatusFromPB(alter_universe_resp.error().status());
   }
 
-  RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(universe_id, CoarseTimePoint::max()));
+  RETURN_NOT_OK(
+      WaitForSetupUniverseReplicationToFinish(universe_id + ".ALTER", CoarseTimePoint::max()));
 
   return bootstrap_time;
 }

@@ -28,6 +28,7 @@ DECLARE_string(vmodule);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_xcluster_fail_table_create_during_bootstrap);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
+DECLARE_bool(TEST_fail_universe_replication_merge);
 
 using std::string;
 using namespace std::chrono_literals;
@@ -273,6 +274,15 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
   FLAGS_TEST_xcluster_fail_table_create_during_bootstrap = true;
   ASSERT_NOK(consumer_conn_->Execute(kCreateIndexStmt));
   FLAGS_TEST_xcluster_fail_table_create_during_bootstrap = false;
+
+  // Failure when adding table to the replication group
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_universe_replication_merge) = true;
+  ASSERT_NOK(consumer_conn_->Execute(kCreateIndexStmt));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_universe_replication_merge) = false;
+
+  for (int i = 0; i < 20; row_count_++, i++) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(kInsertStmtFormat, row_count_));
+  }
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(ValidateRows());
