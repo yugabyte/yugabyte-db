@@ -613,6 +613,18 @@ BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType operator,
 					errhint("$geoWithin not supported with provided geometry.")));
 	}
 
+	if (operator == QUERY_OPERATOR_GEOWITHIN &&
+		parseState.numOfRingsInPolygon > 1)
+	{
+		/* TODO: Fix polygon with holes geowithin comparision, for now we throw unsupported error because of
+		 * Postgis matching difference for these cases
+		 */
+		ereport(ERROR, (
+					errcode(MongoCommandNotSupported),
+					errmsg("$geoWithin currently doesn't support polygons with holes")
+					));
+	}
+
 	if (parseState.crs != NULL && strcmp(parseState.crs, GEOJSON_CRS_BIGPOLYGON) == 0)
 	{
 		if (parseState.type != GeoJsonType_POLYGON)
@@ -638,7 +650,7 @@ BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType operator,
 
 	/* Reset the buffer */
 	pfree(wkbBytea);
-	pfree(parseState.buffer);
+	DeepFreeWKB(parseState.buffer);
 
 	return result;
 }

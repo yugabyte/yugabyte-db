@@ -14,8 +14,9 @@
 #include "postgres.h"
 #include "utils/builtins.h"
 
-#include "utils/mongo_errors.h"
+#include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
+#include "utils/mongo_errors.h"
 
 
 /*
@@ -204,6 +205,11 @@ typedef struct GeoJsonParseState
 	/* The CRS name given in the GeoJSON */
 	const char *crs;
 
+	/* Number of rings in a Polygon, for now this is used to error out $geoWithin for polygon with holes
+	 * so this contains a max number of rings if geoJSON is a multipolygon.
+	 */
+	int32 numOfRingsInPolygon;
+
 	/*================ INOUT Variables =================*/
 
 	/*
@@ -284,6 +290,19 @@ GetGeographyFromWKB(const bytea *wkbBuffer)
 
 
 /*
+ * Returns if the GeoJSON type is a collection or Multi type
+ */
+static inline bool
+IsWKBCollectionType(WKBGeometryType type)
+{
+	return type == WKBGeometryType_GeometryCollection ||
+		   type == WKBGeometryType_MultiPolygon ||
+		   type == WKBGeometryType_MultiPoint ||
+		   type == WKBGeometryType_MultiLineString;
+}
+
+
+/*
  * Appends the buffer with 4 bytes, setting values to 0 at the new space and
  * returns the starting position of the 4 bytes space which can be filled later
  * with the actual value.
@@ -319,7 +338,7 @@ WKBBufferAppend4EmptyBytesForNums(StringInfo buffer)
  *
  */
 static inline void
-WriteHeaderToWKBBuffer(StringInfo buffer, WKBGeometryType type)
+WriteHeaderToWKBBuffer(StringInfo buffer, const WKBGeometryType type)
 {
 	char endianess = (char) WKB_BYTE_ORDER;
 	appendBinaryStringInfoNT(buffer, (char *) &endianess, WKB_BYTE_SIZE_ORDER);
@@ -362,6 +381,17 @@ WriteStringInfoBufferToWKBBuffer(StringInfo wkbBuffer, StringInfo bufferToAppend
 
 
 /*
+ * Appends the buffer with length to the WKB buffer
+ */
+static inline void
+WriteBufferWithLengthToWKBBuffer(StringInfo wkbBuffer, const char *bufferStart, int32
+								 length)
+{
+	appendBinaryStringInfoNT(wkbBuffer, bufferStart, length);
+}
+
+
+/*
  * Appends the StringInfo buffer from the offset to the WKB buffer
  */
 static inline void
@@ -370,6 +400,21 @@ WriteStringInfoBufferToWKBBufferWithOffset(StringInfo wkbBuffer, StringInfo
 {
 	appendBinaryStringInfoNT(wkbBuffer, (char *) bufferToAppend->data + offset,
 							 bufferToAppend->len - offset);
+}
+
+
+/*
+ * Deep frees a WKB buffer stored as StringInfo, resetStringInfo() only reset the data
+ * pointer to null and doesn't clean the palloc'd memory
+ */
+static inline void
+DeepFreeWKB(StringInfo wkbBuffer)
+{
+	if (wkbBuffer->data != NULL)
+	{
+		pfree(wkbBuffer->data);
+	}
+	pfree(wkbBuffer);
 }
 
 
@@ -440,7 +485,7 @@ WKBBufferGetCollectionByteaWithSRID(StringInfo wkbBuffer, WKBGeometryType collec
 	uint8 *wkbData = (uint8 *) VARDATA_ANY(result);
 
 	/* First write the endianess */
-	memcpy(wkbData, wkbBuffer->data, WKB_BYTE_ORDER);
+	memcpy(wkbData, wkbBuffer->data, WKB_BYTE_SIZE_ORDER);
 
 	/* Stuff the SRID flag in type */
 	int32 type = collectType | POSTGIS_EWKB_SRID_FLAG;

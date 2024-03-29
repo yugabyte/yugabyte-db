@@ -66,13 +66,34 @@ static bool CompareGeoDatumsWithFmgrInfo(const ProcessCommonGeospatialState *sta
 										 StringInfo buffer);
 static bool CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *state,
 											StringInfo buffer);
-static bool SetQueryMatcherResultForCenterSphereHelper(WKBBufferIterator *bufferIterator,
-													   const ProcessCommonGeospatialState
-													   *state,
-													   StringInfo pointBuffer);
-static bool PointMatchedForCenterSphere(WKBBufferIterator *bufferIterator,
-										StringInfo pointBuffer,
-										const ProcessCommonGeospatialState *state);
+static bool CompareForGeoWithinDatum(const ProcessCommonGeospatialState *state,
+									 StringInfo wkbBuffer);
+
+/*================= Operator Execution functions =======================*/
+static bool ContinueIfMatched(void *state);
+static void VisitSingleGeometryForGeoWithin(const WKBGeometryConst *geometryConst,
+											void *state);
+static void VisitEachPointForCenterSphere(const WKBGeometryConst *geometryConst,
+										  void *state);
+
+
+/*
+ * Execution function for $geoWithin
+ */
+static const WKBVisitorFunctions GeoWithinMultiGeometryVisitorFuncs = {
+	.ContinueTraversal = ContinueIfMatched,
+	.VisitEachPoint = NULL,
+	.VisitGeometry = NULL,
+	.VisitSingleGeometry = VisitSingleGeometryForGeoWithin
+};
+
+
+static const WKBVisitorFunctions GeoWithinCenterSphereVisitorFuncs = {
+	.ContinueTraversal = ContinueIfMatched,
+	.VisitEachPoint = VisitEachPointForCenterSphere,
+	.VisitGeometry = NULL,
+	.VisitSingleGeometry = NULL
+};
 
 
 /*
@@ -160,6 +181,7 @@ PopulateBsonDollarGeoWithinQueryState(RuntimeBsonGeospatialState *runtimeState,
 	runtimeState->opInfo = palloc0(sizeof(ShapeOperatorInfo));
 	runtimeState->opInfo->op = shapeOperator->op;
 	runtimeState->opInfo->queryStage = QueryStage_RUNTIME;
+	runtimeState->opInfo->queryOperatorType = QUERY_OPERATOR_GEOWITHIN;
 	runtimeState->state.isSpherical = shapeOperator->isSpherical;
 	runtimeState->state.geoSpatialDatum = shapeOperator->getShapeDatum(&shapePointsValue,
 																	   QUERY_OPERATOR_GEOWITHIN,
@@ -206,6 +228,10 @@ PopulateBsonDollarGeoIntersectQueryState(RuntimeBsonGeospatialState *runtimeStat
 
 	/* We already validated the shape operator to be only $geometry during planning, here just assert we are processing $geometry */
 	Assert(shapeOperator->op == GeospatialShapeOperator_GEOMETRY);
+	runtimeState->opInfo = palloc0(sizeof(ShapeOperatorInfo));
+	runtimeState->opInfo->op = shapeOperator->op;
+	runtimeState->opInfo->queryStage = QueryStage_RUNTIME;
+	runtimeState->opInfo->queryOperatorType = QUERY_OPERATOR_GEOINTERSECTS;
 	runtimeState->state.isSpherical = shapeOperator->isSpherical;
 	runtimeState->state.geoSpatialDatum = shapeOperator->getShapeDatum(&shapePointsValue,
 																	   QUERY_OPERATOR_GEOINTERSECTS,
@@ -237,6 +263,7 @@ CompareGeoWithinState(const pgbson *document, const char *path,
 
 	/* Fill the runtime matching information */
 	withinState.runtimeMatcher.isMatched = false;
+	withinState.runtimeMatcher.matcherFunc = &CompareForGeoWithinDatum;
 	withinState.runtimeMatcher.queryGeoDatum = runtimeState->state.geoSpatialDatum;
 	withinState.runtimeMatcher.flInfo = runtimeState->postgisFuncFmgrInfo;
 	withinState.opInfo = runtimeState->opInfo;
@@ -245,10 +272,6 @@ CompareGeoWithinState(const pgbson *document, const char *path,
 		runtimeState->opInfo->op == GeospatialShapeOperator_CENTER)
 	{
 		withinState.runtimeMatcher.matcherFunc = &CompareGeoDatumsForDollarCenter;
-	}
-	else
-	{
-		withinState.runtimeMatcher.matcherFunc = &CompareGeoDatumsWithFmgrInfo;
 	}
 
 	bson_iter_t documentIterator;
@@ -266,7 +289,7 @@ CompareGeoWithinState(const pgbson *document, const char *path,
 	}
 
 	/* Free the buffer */
-	pfree(withinState.WKBBuffer);
+	DeepFreeWKB(withinState.WKBBuffer);
 
 	/* If there are no valid points return false match */
 	if (withinState.isEmpty)
@@ -310,7 +333,7 @@ CompareGeoIntersectsState(const pgbson *document, const char *path,
 	}
 
 	/* Free the buffer */
-	pfree(geoIntersectState.WKBBuffer);
+	DeepFreeWKB(geoIntersectState.WKBBuffer);
 
 	return geoIntersectState.runtimeMatcher.isMatched;
 }
@@ -359,22 +382,10 @@ CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *state,
 				return true;
 			}
 
-			/* buffer to store each extracted point. Do not modify pointBuffer->data explicitly. */
-			StringInfo pointBuffer = makeStringInfo();
-			WriteHeaderToWKBBuffer(pointBuffer, WKBGeometryType_Point);
-			pointBuffer->len += WKB_BYTE_SIZE_POINT;
+			/* Traverse and extract each point and check for distance from the center point */
+			TraverseWKBBuffer(buffer, &GeoWithinCenterSphereVisitorFuncs, (void *) state);
 
-			/* iterator for geography buffer from doc */
-			WKBBufferIterator bufferIterator;
-			InitIteratorFromWKBBuffer(&bufferIterator, buffer);
-
-			bool isMatched = SetQueryMatcherResultForCenterSphereHelper(&bufferIterator,
-																		state,
-																		pointBuffer);
-
-			pfree(pointBuffer->data);
-
-			return isMatched;
+			return state->runtimeMatcher.isMatched;
 		}
 		else if (state->opInfo->op == GeospatialShapeOperator_CENTER)
 		{
@@ -408,137 +419,105 @@ CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *state,
 
 
 /*
- * Extract individual points from document geography WKB and compare with query doc for matches.
- * Refer geospatial.md for WKB format for each GeoJson type to make sense of this parsing.
- * We haven't stuffed the SRID into the buffer yet so not expecting SRID bytes. SRID gets stuffed
- * when we extract bytea from WKB buffer using WKBBufferGetByteaWithSRID/WKBBufferGetCollectionByteaWithSRID.
+ * CompareForGeoWithinDatum compares the geospatial datum for $geoWithin operator.
+ * There are few cases which are different from how Mongo protocol behaves:
+ *
+ * Scenario 1: For a multi polygon geowithin queries, mongodb protocol returns "true" when all the region components of
+ * the document is covered either by single or multiple components of query, but postgis assumes that only a single region of query
+ * should contain all the region of document to be a match.
+ *    e.g. Region A (Query) with 3 components A1, A2, A3
+ *         Region B (Document) with 3 components B1, B2, B3
+ *         Here let's assume A1, covers B1, A2 covers B2 and B3 and A3 doesn't cover any of the components of B
+ *         MongoDB => This is a match because overall the document is covered fully by all the components of query,
+ *                    it doesn't matter if all components of B are covered by a single component of A.
+ *         Postgis => This is not a match because B and all its component should be covered by a single component of A, which
+ *                    is not the case here
+ *
+ *    To support this mongo behavior, we read individual components of documents and pass it to postgis, if all individual components are covered by query then we can
+ *    consider this a mongo match
+ *
+ * Scenario 2: When polygons with holes are part of the comparision for geowithin, postgis has slightly different behavior then mongo db protocol where
+ *       a) In postgis a polygon with hole doesn't cover itself
+ *       b) Any polygon (with or without holes) doesn't consider other polygons which have holes in the covering region of first polygon.
+ *
+ *    This is hard to fix without handling the geometries ourselves, so we error out for now if polygons with holes are part of the match
+ *    TODO: fix polygons with holes behavior with our own handling.
  */
 static bool
-SetQueryMatcherResultForCenterSphereHelper(WKBBufferIterator *bufferIterator,
-										   const ProcessCommonGeospatialState *state,
-										   StringInfo pointBuffer)
+CompareForGeoWithinDatum(const ProcessCommonGeospatialState *state, StringInfo wkbBuffer)
 {
-	/* skip endianness bytes */
-	IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_ORDER);
-
-	/* Extract GeoJson type */
-	uint32 type = *(uint32 *) (bufferIterator->currptr);
-	WKBGeometryType geoType = (WKBGeometryType) type;
-	IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_TYPE);
-
-	bool isMatched = false;
-
-	switch (geoType)
+	GeospatialType type = state->geospatialType;
+	WKBGeometryType wkbType = *(int32 *) (wkbBuffer->data + WKB_BYTE_SIZE_ORDER);
+	if (!IsWKBCollectionType(wkbType) || type == GeospatialType_Geometry)
 	{
-		case WKBGeometryType_Point:
-		{
-			isMatched = PointMatchedForCenterSphere(bufferIterator, pointBuffer, state);
-			break;
-		}
-
-		case WKBGeometryType_LineString:
-		{
-			int32 numPoints = *(int32 *) (bufferIterator->currptr);
-			IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_NUM);
-
-			for (int i = 0; i < numPoints; i++)
-			{
-				isMatched = PointMatchedForCenterSphere(bufferIterator, pointBuffer,
-														state);
-
-				if (!isMatched)
-				{
-					return false;
-				}
-			}
-
-			break;
-		}
-
-		case WKBGeometryType_Polygon:
-		{
-			int32 numRings = *(int32 *) (bufferIterator->currptr);
-			IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_NUM);
-
-			for (int i = 0; i < numRings; i++)
-			{
-				int32 numPoints = *(int32 *) (bufferIterator->currptr);
-				IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_NUM);
-
-				for (int j = 0; j < numPoints; j++)
-				{
-					isMatched = PointMatchedForCenterSphere(bufferIterator, pointBuffer,
-															state);
-
-					if (!isMatched)
-					{
-						return false;
-					}
-				}
-			}
-
-			break;
-		}
-
-		case WKBGeometryType_MultiPoint:
-		case WKBGeometryType_MultiLineString:
-		case WKBGeometryType_MultiPolygon:
-		case WKBGeometryType_GeometryCollection:
-		{
-			int32 numShapes = *(int32 *) (bufferIterator->currptr);
-			IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_NUM);
-
-			for (int i = 0; i < numShapes; i++)
-			{
-				isMatched = SetQueryMatcherResultForCenterSphereHelper(bufferIterator,
-																	   state,
-																	   pointBuffer);
-
-				if (!isMatched)
-				{
-					return false;
-				}
-			}
-
-			break;
-		}
-
-		default:
-		{
-			ereport(ERROR, (
-						errcode(MongoInternalError),
-						errmsg(
-							"%d unexpected WKB found for multi component $centerSphere opearator",
-							geoType),
-						errhint(
-							"%d unexpected WKB found for multi component $centerSphere opearator",
-							geoType)));
-		}
+		/* Simple Shape case or 2d can be directly delegated to postgis */
+		return CompareGeoDatumsWithFmgrInfo(state, wkbBuffer);
 	}
 
-	return isMatched;
+	/* Get the type and if type is multi* / collection check each individual geometry */
+	TraverseWKBBuffer(wkbBuffer, &GeoWithinMultiGeometryVisitorFuncs, (void *) state);
+
+	return state->runtimeMatcher.isMatched;
 }
 
 
 /*
- * Checks if extracted point is a match for given query.
- * arg bufferIterator corresponds to the wkb buffer with bufferIterator->currptr at the current point being processed
- * arg pointBuffer is an aux space to store the current point and get its datum from bytea.
+ * Continue traversing a buffer if the runtime matcher indicates match
  */
 static bool
-PointMatchedForCenterSphere(WKBBufferIterator *bufferIterator,
-							StringInfo pointBuffer,
-							const ProcessCommonGeospatialState *state)
+ContinueIfMatched(void *state)
 {
+	ProcessCommonGeospatialState *geoState = (ProcessCommonGeospatialState *) state;
+	return geoState->runtimeMatcher.isMatched;
+}
+
+
+/*
+ * Compare each individual geometry in the multi geometry collection with the query geometry
+ * to be within the query geometry
+ */
+static void
+VisitSingleGeometryForGeoWithin(const WKBGeometryConst *geometryConst, void *state)
+{
+	if (geometryConst->geometryType == WKBGeometryType_Polygon &&
+		geometryConst->numberOfRings > 1)
+	{
+		/* TODO: Fix polygon with holes geowithin comparision, for now we throw unsupported error because of
+		 * Postgis matching difference for these cases
+		 */
+		ereport(ERROR, (
+					errcode(MongoCommandNotSupported),
+					errmsg("$geoWithin currently doesn't support polygons with holes")
+					));
+	}
+
+	/* Make a copy of individual geometry in the multi geometry collection */
+	StringInfo singleGeometryBuffer = makeStringInfo();
+	WriteBufferWithLengthToWKBBuffer(singleGeometryBuffer, geometryConst->geometryStart,
+									 geometryConst->length);
+
+	ProcessCommonGeospatialState *geoState = (ProcessCommonGeospatialState *) state;
+	geoState->runtimeMatcher.isMatched = CompareGeoDatumsWithFmgrInfo(geoState,
+																	  singleGeometryBuffer);
+
+	DeepFreeWKB(singleGeometryBuffer);
+}
+
+
+/*
+ * Checks if extracted point is a match for given query $centerSphere query.
+ * Each point extracted needs to be checked for distance from the center point.
+ */
+static void
+VisitEachPointForCenterSphere(const WKBGeometryConst *pointConst, void *state)
+{
+	ProcessCommonGeospatialState *geoState = (ProcessCommonGeospatialState *) state;
+
 	/* extract point and write to point buffer */
-	float8 *xy = (float8 *) (bufferIterator->currptr);
-
-	Assert(pointBuffer->len >= 21);
-	char *pointData = pointBuffer->data;
-	pointData += WKB_BYTE_SIZE_ORDER + WKB_BYTE_SIZE_TYPE;
-	memcpy(pointData, (char *) xy, WKB_BYTE_SIZE_POINT);
-
-	IncrementWKBBufferIteratorByNBytes(bufferIterator, WKB_BYTE_SIZE_POINT);
+	StringInfo pointBuffer = makeStringInfo();
+	WriteHeaderToWKBBuffer(pointBuffer, WKBGeometryType_Point);
+	WriteBufferWithLengthToWKBBuffer(pointBuffer, pointConst->geometryStart,
+									 pointConst->length);
 
 	bytea *wkbBytea = WKBBufferGetByteaWithSRID(pointBuffer);
 	Datum queryPoint = GetGeographyFromWKB(wkbBytea);
@@ -546,13 +525,16 @@ PointMatchedForCenterSphere(WKBBufferIterator *bufferIterator,
 	pfree(wkbBytea);
 
 	DollarCenterOperatorState *centerState =
-		(DollarCenterOperatorState *) state->opInfo->opState;
+		(DollarCenterOperatorState *) geoState->opInfo->opState;
 
 	Datum radiusArg = Float8GetDatum(centerState->radius);
 
-	/* return result from ST_DWITHIN */
-	return DatumGetBool(FunctionCall3(state->runtimeMatcher.flInfo,
-									  state->runtimeMatcher.queryGeoDatum,
-									  queryPoint,
-									  radiusArg));
+	/* result from ST_DWITHIN */
+	geoState->runtimeMatcher.isMatched =
+		DatumGetBool(FunctionCall3(geoState->runtimeMatcher.flInfo,
+								   geoState->runtimeMatcher.queryGeoDatum,
+								   queryPoint,
+								   radiusArg));
+
+	DeepFreeWKB(pointBuffer);
 }

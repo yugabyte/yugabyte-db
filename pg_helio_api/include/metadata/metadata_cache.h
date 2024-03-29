@@ -195,6 +195,8 @@ Oid PostgisGeometryIsValidDetailFunctionId(void);
 Oid PostgisGeometryGistCompress2dFunctionId(void);
 Oid PostgisGeometryGistConsistent2dFunctionId(void);
 Oid PostgisGeographyFromWKBFunctionId(void);
+Oid PostgisForcePolygonCWFunctionId(void);
+Oid PostgisGeometryAsBinaryFunctionId(void);
 Oid PostgisGeographyGistCompressFunctionId(void);
 Oid PostgisGeographyGistConsistentFunctionId(void);
 Oid PostgisMakeEnvelopeFunctionId(void);

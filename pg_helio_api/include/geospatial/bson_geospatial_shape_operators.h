@@ -55,6 +55,9 @@ typedef struct ShapeOperatorInfo
 
 	GeospatialShapeOperator op;
 
+	/* Parent query operator type */
+	MongoQueryOperatorType queryOperatorType;
+
 	/*
 	 * Radius for $center and $centerSphere.
 	 * Can be set to anything for other operators

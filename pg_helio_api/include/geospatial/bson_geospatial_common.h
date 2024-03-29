@@ -39,6 +39,8 @@ typedef struct ProcessCommonGeospatialState ProcessCommonGeospatialState;
 /* Data Types*/
 /*================================*/
 
+/* Forward declaration of struct */
+typedef struct ProcessCommonGeospatialState ProcessCommonGeospatialState;
 
 /*
  * Types of validation performed when processing the geospatial data

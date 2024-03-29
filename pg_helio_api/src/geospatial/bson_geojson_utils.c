@@ -55,7 +55,8 @@ static bool ValidateCoordinatesNotArray(const bson_value_t *coordinatesValue,
 										GeoJsonParseState *parseState);
 static bool AdditionalPolygonValidation(StringInfo geoJsonWKB,
 										GeoJsonParseState *parseState,
-										int totalRings);
+										int totalRings,
+										bytea **outPolygonWKB);
 
 /* HashSet utilities for Points */
 static HTAB * CreatePointsHashSet(void);
@@ -203,15 +204,23 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 			/* Fill the number of rings found */
 			WriteNumToWKBBufferAtPosition(polygonWKB, numOfRingsPos, totalRings);
 
-			/* First append the polygon buffer into the main WKB for geoJson geometry */
-			WriteStringInfoBufferToWKBBufferWithOffset(geoJsonWKB, polygonWKB, VARHDRSZ);
-
-			/* addition polygon validity tests */
-			isValid = AdditionalPolygonValidation(polygonWKB, parseState, totalRings);
+			/* First: Perform additional polygon validity tests and get the WKB for clockwise oriented polygon */
+			bytea *validPolygonWkb = NULL;
+			isValid = AdditionalPolygonValidation(polygonWKB, parseState, totalRings,
+												  &validPolygonWkb);
 			if (!isValid)
 			{
 				return false;
 			}
+			WriteBufferWithLengthToWKBBuffer(geoJsonWKB,
+											 (char *) VARDATA_ANY(validPolygonWkb),
+											 VARSIZE_ANY_EXHDR(validPolygonWkb));
+
+			parseState->numOfRingsInPolygon = Max(parseState->numOfRingsInPolygon,
+												  totalRings);
+
+			DeepFreeWKB(polygonWKB);
+			pfree(validPolygonWkb);
 
 			break;
 		}
@@ -409,7 +418,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 				}
 
 				WriteStringInfoBufferToWKBBuffer(geoJsonWKB, nestedParseState.buffer);
-				pfree(nestedParseState.buffer->data);
+				DeepFreeWKB(nestedParseState.buffer);
 
 				totalGeometries++;
 			}
@@ -784,10 +793,12 @@ ValidateCoordinatesNotArray(const bson_value_t *coordinatesValue, GeoJsonType ge
  *
  * Unfortunately we can't validate the "geography" polygon as there is no Postgis Native support,
  * so we have to validate it against the "geometry" polygon only.
+ *
+ * Sets the WKB of validated polygon (clockwise oriented) in outPolygonWKB
  */
 static bool
 AdditionalPolygonValidation(StringInfo polygonWKB, GeoJsonParseState *parseState,
-							int totalRings)
+							int totalRings, bytea **outPolygonWKB)
 {
 	bool shouldThrowError = parseState->shouldThrowValidityError;
 
@@ -796,9 +807,13 @@ AdditionalPolygonValidation(StringInfo polygonWKB, GeoJsonParseState *parseState
 	bytea *wkbPolygon = (bytea *) polygonWKB->data;
 	Datum polygonGeometry = GetGeometryFromWKB(wkbPolygon);
 
+	/* Make sure the polygon is clock wise oriented for Postgis */
+	Datum clockWiseOrientedGeometry = OidFunctionCall1(PostgisForcePolygonCWFunctionId(),
+													   polygonGeometry);
+
 	HeapTupleHeader tupleHeader = DatumGetHeapTupleHeader(OidFunctionCall2(
 															  PostgisGeometryIsValidDetailFunctionId(),
-															  polygonGeometry,
+															  clockWiseOrientedGeometry,
 															  Int32GetDatum(0)));
 	Oid tupleType = HeapTupleHeaderGetTypeId(tupleHeader);
 	int32 tupleTypmod = HeapTupleHeaderGetTypMod(tupleHeader);
@@ -860,7 +875,7 @@ AdditionalPolygonValidation(StringInfo polygonWKB, GeoJsonParseState *parseState
 			 */
 			double areaOfPolygon = DatumGetFloat8(OidFunctionCall1(
 													  PostgisGeometryAreaFunctionId(),
-													  polygonGeometry));
+													  clockWiseOrientedGeometry));
 			if (areaOfPolygon > 0 || (areaOfPolygon == 0 &&
 									  totalRings > 1))
 			{
@@ -894,6 +909,24 @@ AdditionalPolygonValidation(StringInfo polygonWKB, GeoJsonParseState *parseState
 	}
 
 	ReleaseTupleDesc(tupleDescriptor);
+
+	/* If everything is okay, get the wkb of validated polygon (clock-wise oriented) and return it */
+	*outPolygonWKB = DatumGetByteaP(
+		OidFunctionCall1(PostgisGeometryAsBinaryFunctionId(),
+						 clockWiseOrientedGeometry));
+
+	if (outPolygonWKB == NULL)
+	{
+		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
+			shouldThrowError, (
+				errcode(GEO_ERROR_CODE(parseState->errorCtxt)),
+				errmsg(
+					"%sUnexpected, found null geometry after polygon validation.",
+					GEO_ERROR_PREFIX(parseState->errorCtxt)),
+				errhint(
+					"%sUnexpected, found null geometry after polygon validation.",
+					GEO_HINT_PREFIX(parseState->errorCtxt))));
+	}
 	return true;
 }
 

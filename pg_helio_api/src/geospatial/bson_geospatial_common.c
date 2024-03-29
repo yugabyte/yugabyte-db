@@ -340,7 +340,7 @@ SetQueryMatcherResult(ProcessCommonGeospatialState *state)
 	if (!isMatched)
 	{
 		/* Reset the buffer for next multikey value */
-		pfree(state->WKBBuffer->data);
+		DeepFreeWKB(state->WKBBuffer);
 		state->WKBBuffer = makeStringInfo();
 	}
 }
@@ -753,6 +753,20 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 	}
 
 
+	if (processState->opInfo != NULL &&
+		processState->opInfo->queryOperatorType == QUERY_OPERATOR_GEOWITHIN &&
+		parseState.type == GeoJsonType_POLYGON && parseState.numOfRingsInPolygon > 1)
+	{
+		/* TODO: Fix polygon with holes geowithin comparision, for now we throw unsupported error because of
+		 * Postgis matching difference for these cases
+		 */
+		ereport(ERROR, (
+					errcode(MongoCommandNotSupported),
+					errmsg("$geoWithin currently doesn't support polygons with holes")
+					));
+	}
+
+
 	/* We found a valid geography */
 	processState->isEmpty = false;
 	processState->total++;
@@ -821,7 +835,7 @@ BsonExtractGeospatialInternal(const pgbson *document, const StringView *pathView
 				   GetGeographyFromWKB(wkbBytea);
 
 	/* We can free the buffers now */
-	pfree(state.WKBBuffer);
+	DeepFreeWKB(state.WKBBuffer);
 	pfree(wkbBytea);
 
 	return result;

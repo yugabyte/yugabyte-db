@@ -10,6 +10,9 @@
 #ifndef WKBBufferITERATOR_H
 #define WKBBUfferITERATOR_H
 
+#include "postgres.h"
+
+#include "geospatial/bson_geospatial_private.h"
 #include "utils/mongo_errors.h"
 
 typedef struct WKBBufferIterator
@@ -23,6 +26,53 @@ typedef struct WKBBufferIterator
 	/* Original length of buffer */
 	int len;
 }WKBBufferIterator;
+
+
+/*
+ * A set of const pointer, length and type describing a shape in between a WKB buffer
+ * This is designed to be an immutable const struct to avoid any accidental modification of the buffer
+ * and also helps in avoiding memcpy from original wkb buffer to get the single geometry buffer by
+ * referring to the pointers in original buffer.
+ *
+ * Other shape specific const properties can also be added in the future.
+ */
+typedef struct WKBGeometryConst
+{
+	/* Shape definition */
+	const WKBGeometryType geometryType;
+	const char *geometryStart;
+	const int32 length;
+
+	/* Polygon state */
+	const int32 numberOfRings;
+} WKBGeometryConst;
+
+
+typedef struct WKBVisitorFunctions
+{
+	/*
+	 * Executed for a complete geometry represented by the WKB buffer type, it can be an atomic type such as
+	 * Point, Linestring, Polygon or a Multi collection such as MultiPoint, GeometryCollection etc.
+	 */
+	void (*VisitGeometry)(const WKBGeometryConst *wkbGeometry, void *state);
+
+	/*
+	 * Executed for each individual geometries inside of a Multi collection geometry.
+	 */
+	void (*VisitSingleGeometry)(const WKBGeometryConst *wkbGeometry, void *state);
+
+
+	/*
+	 * Called for each individual point found during traversal, points can be part of any geometry e.g lineString, polygons rings, multipoint etc.
+	 */
+	void (*VisitEachPoint)(const WKBGeometryConst *wkbGeometry, void *state);
+
+	/*
+	 * Whether or not continue traversal of the WKB buffer, this can be used to stop the traversal
+	 */
+	bool (*ContinueTraversal)(void *state);
+} WKBVisitorFunctions;
+
 
 /* Initialize a WKBBufferIterator from given wkb buffer stringinfo */
 static inline void
@@ -60,5 +110,8 @@ IncrementWKBBufferIteratorByNBytes(WKBBufferIterator *iter, size_t bytes)
 	}
 }
 
+
+void TraverseWKBBuffer(const StringInfo wkbBuffer, const
+					   WKBVisitorFunctions *visitorFuncs, void *state);
 
 #endif

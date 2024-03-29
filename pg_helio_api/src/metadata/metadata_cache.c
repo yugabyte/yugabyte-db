@@ -638,6 +638,12 @@ typedef struct HelioApiOidCacheData
 	/* Oid of bson_validate_geography function */
 	Oid BsonValidateGeographyFunctionId;
 
+	/* Oid of Posgtis ST_ForcePolygonCW function */
+	Oid PostgisForcePolygonCWFunctionId;
+
+	/* Oid of Postgis ST_AsBinary function */
+	Oid PostgisGeometryAsBinaryFunctionId;
+
 	/* Oid of the Postgis GIST support function geometry_gist_compress_2d */
 	Oid PostgisGeometryGistCompress2dFunctionId;
 
@@ -3039,6 +3045,38 @@ PostgisGeometryGistCompress2dFunctionId(void)
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryGistCompress2dFunctionId,
 		POSTGIS_EXTENSION_SCHEMA, "geometry_gist_compress_2d", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisForcePolygonCWFunctionId returns OID of postgis_public.ST_ForcePolygonCW
+ */
+Oid
+PostgisForcePolygonCWFunctionId(void)
+{
+	int nargs = 1;
+	Oid argTypes[1] = { GeometryTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisForcePolygonCWFunctionId,
+		POSTGIS_EXTENSION_SCHEMA, "st_forcepolygoncw", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisGeometryAsBinaryFunctionId returns OID of postgis_public.ST_AsBinary
+ */
+Oid
+PostgisGeometryAsBinaryFunctionId(void)
+{
+	int nargs = 1;
+	Oid argTypes[1] = { GeometryTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeometryAsBinaryFunctionId,
+		POSTGIS_EXTENSION_SCHEMA, "st_asbinary", nargs,
 		argTypes, missingOk);
 }
 
