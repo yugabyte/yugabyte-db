@@ -441,6 +441,15 @@ typedef struct HelioApiOidCacheData
 	/* OID of the array_append postgres function */
 	Oid PostgresArrayAppendFunctionOid;
 
+	/* Oid of the timestamptz_bin postgres method which gives timestamp for the bin input into specified interval aligned with specified origin. */
+	Oid PostgresDateBinFunctionId;
+
+	/* OID of the timestamp_age postgres method which gives the age betwwen 2 timestamp without zone. */
+	Oid PostgresAgeBetweenTimestamp;
+
+	/* Oid of the extract_interval postgres function which extracts a given date part from interval. */
+	Oid PostgresDatePartFromInterval;
+
 	/* OID of Rum Index access methods */
 	Oid RumIndexAmId;
 
@@ -1944,6 +1953,39 @@ PostgresArrayAppendFunctionOid(void)
 	return GetPostgresInternalFunctionId(
 		&Cache.PostgresArrayAppendFunctionOid,
 		"array_append");
+}
+
+
+/*
+ * Returns the OID of the "timestamptz_bin" internal postgres method
+ */
+Oid
+PostgresDateBinFunctionId(void)
+{
+	return GetPostgresInternalFunctionId(&Cache.PostgresDateBinFunctionId,
+										 "timestamptz_bin");
+}
+
+
+/*
+ * Returns the OID of the "timestamp_age" internal postgres method
+ */
+Oid
+PostgresAgeBetweenTimestamp(void)
+{
+	return GetPostgresInternalFunctionId(&Cache.PostgresAgeBetweenTimestamp,
+										 "timestamp_age");
+}
+
+
+/*
+ * Returns the OID of the "interval_part" internal postgres method
+ */
+Oid
+PostgresDatePartFromInterval(void)
+{
+	return GetPostgresInternalFunctionId(&Cache.PostgresDatePartFromInterval,
+										 "interval_part");
 }
 
 

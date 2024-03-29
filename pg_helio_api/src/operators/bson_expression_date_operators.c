@@ -7,11 +7,11 @@
  *
  *-------------------------------------------------------------------------
  */
-
 #include <postgres.h>
 #include <pgtime.h>
 #include <fmgr.h>
 #include <math.h>
+#include <utils/numeric.h>
 #include <utils/datetime.h>
 #include <utils/timestamp.h>
 #include <utils/builtins.h>
@@ -33,6 +33,8 @@
  * This is the base underlying year for calculations we add year, month, day, hour, minute, seconds interval to this timestamp.
  */
 #define DATE_FROM_PART_START_DATE_MS -62135596800000L
+#define DATE_TRUNC_TIMESTAMP_MS 946684800000L
+#define SECONDS_IN_DAY 86400
 
 /* --------------------------------------------------------- */
 /* Type declaration */
@@ -59,15 +61,31 @@ typedef enum DatePart
 static const char *isoDateFormat = "IYYY-IW-ID";
 static const char *defaultTimezone = "UTC";
 
-static const char *monthNamesCamelCase[12] = {
-	"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-};
-static const char *monthNamesUpperCase[12] = {
-	"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
-};
-static const char *monthNamesLowerCase[12] = {
-	"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
-};
+/* Enum that defines possible units for dateTrunc */
+typedef enum DateTruncUnit
+{
+	DateTruncUnit_Invalid = 0,
+	DateTruncUnit_Day = 1,
+	DateTruncUnit_Hour = 2,
+	DateTruncUnit_Minute = 3,
+	DateTruncUnit_Month = 4,
+	DateTruncUnit_Quarter = 5,
+	DateTruncUnit_Second = 6,
+	DateTruncUnit_Week = 7,
+	DateTruncUnit_Year = 8,
+} DateTruncUnit;
+
+typedef enum WeekDay
+{
+	WeekDay_Invalid = 0,
+	WeekDay_Monday = 1,
+	WeekDay_Tuesday = 2,
+	WeekDay_Wednesday = 3,
+	WeekDay_Thursday = 4,
+	WeekDay_Friday = 5,
+	WeekDay_Saturday = 6,
+	WeekDay_Sunday = 7
+}WeekDay;
 
 /* Struct that represents the parsed arguments to a $dateFromParts expression. */
 typedef struct DollarDateFromParts
@@ -102,13 +120,68 @@ typedef struct DollarDateFromPartsBsonValue
 	bson_value_t timezone;
 } DollarDateFromPartsBsonValue;
 
+/* State for a $dateTrunc operator. */
+typedef struct DollarDateTruncArgumentState
+{
+	/* The date to truncate, specified in UTC */
+	AggregationExpressionData date;
+
+	/*	The unit of time specified in year, quarter, week, month, day, hour, minute, second */
+	AggregationExpressionData unit;
+
+	/*Optional: numeric value to specify the time to divide */
+	AggregationExpressionData binSize;
+
+	/* Optional: Timezone for the $dateTrunc calculation */
+	AggregationExpressionData timezone;
+
+	/* Optional: Only used when unit is week , used as the first day of the week for the calculation */
+	AggregationExpressionData startOfWeek;
+
+	/*Stores unit as an enum . */
+	DateTruncUnit dateTruncUnit;
+
+	/* Stores startOfWeek as enum. */
+	WeekDay weekDay;
+} DollarDateTruncArgumentState;
+
+static const char *monthNamesCamelCase[12] = {
+	"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+};
+static const char *monthNamesUpperCase[12] = {
+	"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
+};
+static const char *monthNamesLowerCase[12] = {
+	"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
+};
+
+static const char *unitSizeForDateTrunc[8] = {
+	"day", "hour", "minute", "month", "quarter", "second", "week", "year"
+};
+
+static const char *weekDaysFullName[7] = {
+	"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
+};
+
+static const char *weekDaysAbbreviated[7] = {
+	"mon", "tue", "wed", "thu", "fri", "sat", "sun"
+};
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
+static Datum AddIntervalToTimestampWithPgTry(Datum timestamp, Datum interval,
+											 bool *isResultOverflow);
+static inline bool isArgumentForDateTruncNull(bson_value_t *date, bson_value_t *unit,
+											  bson_value_t *binSize,
+											  bson_value_t *timezone,
+											  bson_value_t *startOfWeek);
+static inline bool isDateTruncArgumentConstant(DollarDateTruncArgumentState *
+											   dateTruncArgument);
 static inline bool IsDollarDatePartsInputConstant(DollarDateFromParts *datePart);
 static inline bool IsInputForDatePartNull(
 	DollarDateFromPartsBsonValue *dateFromPartsValue, bool isIsoWeekDate);
+static inline bool isValidUnitForDateBinOid(DateTruncUnit dateTruncUnit);
 static void HandleDatePartOperator(pgbson *doc, const bson_value_t *operatorValue,
 								   ExpressionResult *expressionResult,
 								   const char *operatorName, DatePart datePart);
@@ -116,6 +189,10 @@ static bool ParseDatePartOperatorArgument(const bson_value_t *operatorValue,
 										  const char *operatorName,
 										  bson_value_t *dateExpression,
 										  bson_value_t *timezoneExpression);
+static void ParseInputDocumentForDateTrunc(const bson_value_t *inputArgument,
+										   bson_value_t *date, bson_value_t *unit,
+										   bson_value_t *binSize, bson_value_t *timezone,
+										   bson_value_t *startOfWeek);
 static void ParseInputForDateFromParts(const bson_value_t *argument, bson_value_t *year,
 									   bson_value_t *isoWeekYear, bson_value_t *month,
 									   bson_value_t *isoWeek,
@@ -127,17 +204,20 @@ static ExtensionTimezone ParseTimezone(StringView timezone);
 static int64_t ParseUtcOffset(StringView offset);
 static int32_t DetermineUtcOffsetForEpochWithTimezone(int64_t unixEpoch,
 													  ExtensionTimezone timezone);
-static bool TryParseTwoDigitNumber(StringView str, uint32_t *result);
 static uint32_t GetDatePartFromPgTimestamp(Datum pgTimestamp, DatePart datePart);
 static inline int GetDayOfWeek(int year, int month, int day);
+static Datum GetIntervalFromBinSize(int64_t binSize, DateTruncUnit dateTruncUnit);
 static Datum GetIntervalFromDatePart(int64 year, int64 month, int64 week, int64 day, int64
-									 hour, int64 minute, float8 second);
+									 hour, int64 minute, int64 seconds, int64 millis);
 static int GetIsoWeeksForYear(int64 year);
 static Datum GetPgTimestampAdjustedToTimezone(Datum timestamp, ExtensionTimezone
 											  timezoneToApply);
-static Datum GetPgTimestampFromEpochWithTimezone(int64_t epochInMs,
-												 ExtensionTimezone timezone);
+static Datum GetPgTimestampFromEpochWithTimezone(int64_t epochInMs, ExtensionTimezone
+												 timezone);
+static Datum GetPgTimestampFromEpochWithoutTimezone(int64_t epochInMs,
+													ExtensionTimezone timezone);
 static Datum GetPgTimestampFromUnixEpoch(int64_t epochInMs);
+static inline int64_t GetUnixEpochFromPgTimestamp(Datum timestamp);
 static StringView GetDateStringWithFormat(int64_t dateInMs, ExtensionTimezone timezone,
 										  StringView format);
 static inline void SetDefaultValueForDatePart(bson_value_t *datePart, bson_type_t
@@ -149,6 +229,41 @@ static void SetResultForDateFromIsoParts(DollarDateFromPartsBsonValue *dateFromP
 										 ExtensionTimezone
 										 timezoneToApply,
 										 bson_value_t *result);
+static void SetResultValueForDateTruncFromDateBin(Datum pgTimestamp, Datum
+												  referenceTimestamp, ExtensionTimezone
+												  timezoneToApply, int64 binSize,
+												  DateTruncUnit dateTruncUnit,
+												  bson_value_t *result);
+static void SetResultValueForDayUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
+											  timezoneToApply, int64 binSize,
+											  DateTruncUnit dateTruncUnit,
+											  bson_value_t *result);
+static void SetResultValueForDollarDateTrunc(DateTruncUnit dateTruncUnit, WeekDay weekDay,
+											 ExtensionTimezone timezoneToApply,
+											 ExtensionTimezone resultTimezone,
+											 bson_value_t *binSize, bson_value_t *date,
+											 bson_value_t *result);
+static void SetResultValueForMonthUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
+												timezoneToApply, int64 binSize,
+												DateTruncUnit dateTruncUnit,
+												bson_value_t *result);
+static void SetResultValueForWeekUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
+											   timezoneToApply, int64 binSize,
+											   DateTruncUnit dateTruncUnit,
+											   WeekDay startOfWeek,
+											   bson_value_t *result);
+static void SetResultValueForYearUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
+											   timezoneToApply, int64 binSize,
+											   DateTruncUnit dateTruncUnit,
+											   bson_value_t *result);
+static bool TryParseTwoDigitNumber(StringView str, uint32_t *result);
+static void ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
+										  bson_value_t *startOfWeek,
+										  bson_value_t *timezone, bson_value_t *unit,
+										  DateTruncUnit *dateTruncUnitEnum,
+										  WeekDay *weekDay,
+										  ExtensionTimezone *timezoneToApply,
+										  ExtensionTimezone resultTimezone);
 static void ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey);
 static void ValidateInputForDateFromParts(
 	DollarDateFromPartsBsonValue *dateFromPartsValue, bool isIsoWeekDate);
@@ -1403,6 +1518,25 @@ GetPgTimestampFromEpochWithTimezone(int64_t epochInMs, ExtensionTimezone timezon
 }
 
 
+/* Given a Unix epoch in milliseconds and a timezone (utc offset or an Olson Timezone Identifier) it returns a
+ * Datum holding a Timestamp instance adjusted to the provided timezone in order to use for date operations with postgres.
+ * It assumes the timezone is valid and was created with the ParseTimezone method. */
+static Datum
+GetPgTimestampFromEpochWithoutTimezone(int64_t epochInMs, ExtensionTimezone timezone)
+{
+	if (timezone.isUtcOffset)
+	{
+		epochInMs -= timezone.offsetInMs;
+		return GetPgTimestampFromUnixEpoch(epochInMs);
+	}
+
+
+	return OidFunctionCall2(PostgresTimestampToZoneWithoutTzFunctionId(),
+							CStringGetTextDatum(timezone.id),
+							GetPgTimestampFromUnixEpoch(epochInMs));
+}
+
+
 /* Parses a timezone string that can be a utc offset or an Olson timezone identifier.
  * If it represents a utc offset it throws if it doesn't follow the mongo valid offset format: +/-[hh], +/-[hh][mm] or +/-[hh]:[mm].
  * Otherwise, it throws if the timezone doesn't exist. */
@@ -1944,13 +2078,16 @@ ParseDollarDateFromParts(const bson_value_t *argument, AggregationExpressionData
 }
 
 
-/* A function to create postgres interval object given the amount of year, month, week, day, hour, second. */
+/* A function to create postgres interval object given the amount of year, month, week, day, hour, second, millis. */
 static Datum
 GetIntervalFromDatePart(int64 year, int64 month, int64 week, int64 day, int64 hour, int64
-						minute, float8 second)
+						minute, int64 second, int64 millis)
 {
+	float8 secondsAdjustedWithMillis = second + (((float8) millis) /
+												 MILLISECONDS_IN_SECOND);
 	return OidFunctionCall7(PostgresMakeIntervalFunctionId(),
-							year, month, week, day, hour, minute, Float8GetDatum(second));
+							year, month, week, day, hour, minute, Float8GetDatum(
+								secondsAdjustedWithMillis));
 }
 
 
@@ -1979,29 +2116,6 @@ GetDayOfWeek(int year, int month, int day)
 	static int t[] = { 0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4 };
 	year -= month < 3;
 	return (year + (year / 4) - (year / 100) + (year / 400) + t[month - 1] + day) % 7;
-}
-
-
-/* This is a helper function which just transforms the timestamp to a particular timezone. */
-/* This function returns a datum containing instance of timestamp and not timestamptz. */
-static Datum
-GetPgTimestampAdjustedToTimezone(Datum timestamp, ExtensionTimezone
-								 timezoneToApply)
-{
-	/* Timezone is utc offset need to make calculations in epoch */
-	if (timezoneToApply.isUtcOffset)
-	{
-		/* changing the sign as original input is in UTC and +04:30 means we need to subtract -04:30 epochms to get utc timestamp */
-		float8 offsetMsFloat = (float8) timezoneToApply.offsetInMs;
-		float8 secondsAdjust = 0 - (offsetMsFloat / MILLISECONDS_IN_SECOND);
-		Datum interval = GetIntervalFromDatePart(0, 0, 0, 0, 0, 0, secondsAdjust);
-		return OidFunctionCall2(PostgresAddIntervalToTimestampFunctionId(),
-								timestamp, interval);
-	}
-
-	/* Adjusting to timezone specified for olson. */
-	return OidFunctionCall2(PostgresTimestampToZoneWithoutTzFunctionId(),
-							CStringGetTextDatum(timezoneToApply.id), timestamp);
 }
 
 
@@ -2341,17 +2455,14 @@ SetResultForDateFromParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
 						  timezoneToApply, bson_value_t *result)
 {
 	Datum timestampStart = GetPgTimestampFromUnixEpoch(DATE_FROM_PART_START_DATE_MS);
-	float8 millis = (float8) dateFromPartsValue->millisecond.value.v_int64;
-	float8 secondsAdjustedWithMillis = dateFromPartsValue->second.value.v_int64 +
-									   (millis / MILLISECONDS_IN_SECOND);
-
 	Datum interval = GetIntervalFromDatePart(dateFromPartsValue->year.value.v_int64 - 1,
 											 dateFromPartsValue->month.value.v_int64 - 1,
 											 0,
 											 dateFromPartsValue->day.value.v_int64 - 1,
 											 dateFromPartsValue->hour.value.v_int64,
 											 dateFromPartsValue->minute.value.v_int64,
-											 secondsAdjustedWithMillis);
+											 dateFromPartsValue->second.value.v_int64,
+											 dateFromPartsValue->millisecond.value.v_int64);
 
 	Datum timestampPlusInterval = OidFunctionCall2(
 		PostgresAddIntervalToTimestampFunctionId(),
@@ -2414,18 +2525,14 @@ SetResultForDateFromIsoParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
 	{
 		daysAdjust -= -isoWeekDaysValue + 7;
 	}
-
-	float8 secondsAdjustedWithMillis = dateFromPartsValue->second.value.v_int64 +
-									   ((dateFromPartsValue->millisecond.value.v_int64 *
-										 1.0) / MILLISECONDS_IN_SECOND);
-
 	Datum interval = GetIntervalFromDatePart(0,
 											 0,
 											 0,
 											 daysAdjust,
 											 dateFromPartsValue->hour.value.v_int64,
 											 dateFromPartsValue->minute.value.v_int64,
-											 secondsAdjustedWithMillis);
+											 dateFromPartsValue->second.value.v_int64,
+											 dateFromPartsValue->millisecond.value.v_int64);
 
 	Datum datePlusInterval = OidFunctionCall2(PostgresAddIntervalToDateFunctionId(),
 											  toDateResult, interval);
@@ -2448,4 +2555,906 @@ SetResultForDateFromIsoParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
 										 resultTimeWithZone);
 
 	result->value.v_datetime = (int64) (DatumGetFloat8(resultEpoch) * 1000);
+}
+
+
+void
+HandlePreParsedDollarDateTrunc(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult)
+{
+	DollarDateTruncArgumentState *dateTruncState = arguments;
+	bson_value_t binSize = { 0 };
+	bson_value_t date = { 0 };
+	bson_value_t startOfWeek = { 0 };
+	bson_value_t timezone = { 0 };
+	bson_value_t unit = { 0 };
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+
+	EvaluateAggregationExpressionData(&dateTruncState->date, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	date = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateTruncState->binSize, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	binSize = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateTruncState->unit, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	unit = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateTruncState->timezone, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	timezone = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateTruncState->startOfWeek, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	startOfWeek = childExpression.value;
+
+	bson_value_t result = { .value_type = BSON_TYPE_NULL };
+	if (isArgumentForDateTruncNull(&date, &unit, &binSize, &timezone, &startOfWeek))
+	{
+		ExpressionResultSetValue(expressionResult, &result);
+		return;
+	}
+
+	ExtensionTimezone timezoneToApply;
+
+	ExtensionTimezone resultTimezone = {
+		.offsetInMs = 0,
+		.isUtcOffset = true,
+	};
+
+	dateTruncState->dateTruncUnit = DateTruncUnit_Invalid;
+	dateTruncState->weekDay = WeekDay_Invalid;
+
+/* Validate the input symbols and modify binSize to int64 val and timezone to understandable format*/
+	ValidateArgumentsForDateTrunc(&binSize,
+								  &date,
+								  &startOfWeek,
+								  &timezone,
+								  &unit,
+								  &dateTruncState->dateTruncUnit,
+								  &dateTruncState->weekDay,
+								  &timezoneToApply,
+								  resultTimezone);
+
+	SetResultValueForDollarDateTrunc(dateTruncState->dateTruncUnit,
+									 dateTruncState->weekDay, timezoneToApply,
+									 resultTimezone, &binSize, &date, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+void
+ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation5439007), errmsg(
+							"$dateTrunc only supports an object as its argument")));
+	}
+
+	bson_value_t binSize = { 0 };
+	bson_value_t date = { 0 };
+	bson_value_t startOfWeek = { 0 };
+	bson_value_t timezone = { 0 };
+	bson_value_t unit = { 0 };
+
+	ParseInputDocumentForDateTrunc(argument, &date, &unit, &binSize, &timezone,
+								   &startOfWeek);
+
+	DollarDateTruncArgumentState *dateTruncState = palloc0(
+		sizeof(DollarDateTruncArgumentState));
+
+	ParseAggregationExpressionData(&dateTruncState->date, &date);
+	ParseAggregationExpressionData(&dateTruncState->unit, &unit);
+	ParseAggregationExpressionData(&dateTruncState->binSize, &binSize);
+	ParseAggregationExpressionData(&dateTruncState->timezone, &timezone);
+	ParseAggregationExpressionData(&dateTruncState->startOfWeek, &startOfWeek);
+	if (isDateTruncArgumentConstant(dateTruncState))
+	{
+		/*add null check for behaviour */
+		bson_value_t result = { .value_type = BSON_TYPE_NULL };
+		if (isArgumentForDateTruncNull(&dateTruncState->date.value,
+									   &dateTruncState->unit.value,
+									   &dateTruncState->binSize.value,
+									   &dateTruncState->timezone.value,
+									   &dateTruncState->startOfWeek.value))
+		{
+			data->value = result;
+			data->kind = AggregationExpressionKind_Constant;
+			pfree(dateTruncState);
+			return;
+		}
+		ExtensionTimezone timezoneToApply;
+
+		ExtensionTimezone resultTimezone = {
+			.offsetInMs = 0,
+			.isUtcOffset = true,
+		};
+
+		dateTruncState->dateTruncUnit = DateTruncUnit_Invalid;
+		dateTruncState->weekDay = WeekDay_Invalid;
+
+		/* Validate the input symbols and modify binSize to int64 val and timezone to understandable format*/
+		ValidateArgumentsForDateTrunc(&dateTruncState->binSize.value,
+									  &dateTruncState->date.value,
+									  &dateTruncState->startOfWeek.value,
+									  &dateTruncState->timezone.value,
+									  &dateTruncState->unit.value,
+									  &dateTruncState->dateTruncUnit,
+									  &dateTruncState->weekDay,
+									  &timezoneToApply,
+									  resultTimezone);
+
+		SetResultValueForDollarDateTrunc(dateTruncState->dateTruncUnit,
+										 dateTruncState->weekDay, timezoneToApply,
+										 resultTimezone,
+										 &dateTruncState->binSize.value,
+										 &dateTruncState->date.value, &result);
+		data->value = result;
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(dateTruncState);
+	}
+	else
+	{
+		data->operator.arguments = dateTruncState;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+/* This function adds timestamp to interval and then returns a datum containing result. */
+/* In case of overflowing timestamp we return NULL. */
+static Datum
+AddIntervalToTimestampWithPgTry(Datum timestamp, Datum interval, bool *isResultOverflow)
+{
+	/* making volatile as we need to initialise with the default value and getting compilation error. */
+	volatile Datum resultTimestamp = 0;
+	PG_TRY();
+	{
+		/* Add interval to timestamp*/
+		resultTimestamp = OidFunctionCall2(PostgresAddIntervalToTimestampFunctionId(),
+										   timestamp,
+										   interval);
+	}
+	PG_CATCH();
+	{
+		*isResultOverflow = true;
+	}
+	PG_END_TRY();
+	return resultTimestamp;
+}
+
+
+/* This function takes in unit and bin and gets the interval datum. */
+static Datum
+GetIntervalFromBinSize(int64_t binSize, DateTruncUnit dateTruncUnit)
+{
+	int64 year = 0, month = 0, week = 0, day = 0, hour = 0, minute = 0;
+	float second = 0;
+	switch (dateTruncUnit)
+	{
+		case DateTruncUnit_Second:
+		{
+			second = binSize * 1.0;
+			break;
+		}
+
+		case DateTruncUnit_Minute:
+		{
+			minute = binSize;
+			break;
+		}
+
+		case DateTruncUnit_Hour:
+		{
+			hour = binSize;
+			break;
+		}
+
+		case DateTruncUnit_Day:
+		{
+			day = binSize;
+			break;
+		}
+
+		case DateTruncUnit_Week:
+		{
+			week = binSize;
+			break;
+		}
+
+		case DateTruncUnit_Month:
+		{
+			month = binSize;
+			break;
+		}
+
+		case DateTruncUnit_Quarter:
+		{
+			month = binSize * 3;
+			break;
+		}
+
+		case DateTruncUnit_Year:
+		{
+			year = binSize;
+			break;
+		}
+
+		default:
+			ereport(ERROR, (errcode(MongoLocation5439014), errmsg(
+								"Invalid unit specified. Cannot make interval")));
+	}
+
+	return GetIntervalFromDatePart(year, month, week, day, hour, minute, second, 0);
+}
+
+
+/* Given a datum timestamp and a timezone (utc offset or an Olson Timezone Identifier) it returns a
+ * Datum holding a Timestamp instance adjusted to the provided timezone in order to use for date operations with postgres.
+ * This function returns a timestamp shifted to the specified timezone.
+ * It assumes the timezone is valid and was created with the ParseTimezone method.
+ * This is a helper function which just transforms the timestamp to a particular timezone.
+ * This function returns a datum containing instance of timestamp and not timestamptz.
+ */
+static Datum
+GetPgTimestampAdjustedToTimezone(Datum timestamp, ExtensionTimezone timezoneToApply)
+{
+	/* No timezone is specified . All calculations are in UTC */
+	if (timezoneToApply.offsetInMs == 0)
+	{
+		return timestamp;
+	}
+
+	/* Handling the utcoffset timezone */
+	if (timezoneToApply.isUtcOffset)
+	{
+		/* changing the sign as original input is in UTC and +04:30 means we need to subtract -04:30 epochms to get utc timestamp */
+		Datum interval = GetIntervalFromDatePart(0, 0, 0, 0, 0, 0, 0,
+												 -timezoneToApply.offsetInMs);
+		return OidFunctionCall2(PostgresAddIntervalToTimestampFunctionId(),
+								timestamp, interval);
+	}
+
+	/* Adjusting to timezone specified. */
+	return OidFunctionCall2(PostgresTimestampToZoneWithoutTzFunctionId(),
+							CStringGetTextDatum(timezoneToApply.id), timestamp);
+}
+
+
+/* This function returns the unix epoch from PgTimestamp */
+static inline int64_t
+GetUnixEpochFromPgTimestamp(Datum timestamp)
+{
+	return timestamptz_to_time_t(timestamp) * MILLISECONDS_IN_SECOND;
+}
+
+
+/*
+ * This function takes in input as the argument of $dateTrunc and parses the given input document to find required values.
+ */
+static void
+ParseInputDocumentForDateTrunc(const bson_value_t *inputArgument,
+							   bson_value_t *date, bson_value_t *unit,
+							   bson_value_t *binSize, bson_value_t *timezone,
+							   bson_value_t *startOfWeek)
+{
+	bson_iter_t docIter;
+	BsonValueInitIterator(inputArgument, &docIter);
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "binSize") == 0)
+		{
+			*binSize = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "date") == 0)
+		{
+			*date = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "startOfWeek") == 0)
+		{
+			*startOfWeek = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "timezone") == 0)
+		{
+			*timezone = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "unit") == 0)
+		{
+			*unit = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation5439008), errmsg(
+								"Unrecognized argument to $dateTrunc: %s. Expected arguments are date, unit, and optionally, binSize, timezone, startOfWeek",
+								key),
+							errhint(
+								"Unrecognized argument to $dateTrunc: %s. Expected arguments are date, unit, and optionally, binSize, timezone, startOfWeek",
+								key)));
+		}
+	}
+
+	/*	Validation to check date and unit are required. */
+	if (date->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation5439009), errmsg(
+							"Missing 'date' parameter to $dateTrunc")));
+	}
+
+	if (unit->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation5439010), errmsg(
+							"Missing 'unit' parameter to $dateTrunc")));
+	}
+
+	if (binSize->value_type == BSON_TYPE_EOD)
+	{
+		binSize->value_type = BSON_TYPE_INT32;
+		binSize->value.v_int32 = 1;
+	}
+
+	if (timezone->value_type == BSON_TYPE_EOD)
+	{
+		timezone->value_type = BSON_TYPE_UTF8;
+		timezone->value.v_utf8.str = "UTC";
+		timezone->value.v_utf8.len = 3;
+	}
+
+	if (startOfWeek->value_type == BSON_TYPE_EOD)
+	{
+		startOfWeek->value_type = BSON_TYPE_UTF8;
+		startOfWeek->value.v_utf8.str = "Sunday";
+		startOfWeek->value.v_utf8.len = 6;
+	}
+}
+
+
+/* As per the behaviour if any argument is null return null */
+static inline bool
+isArgumentForDateTruncNull(bson_value_t *date, bson_value_t *unit, bson_value_t *binSize,
+						   bson_value_t *timezone, bson_value_t *startOfWeek)
+{
+	/* if unit is week then check startOfWeek else ignore */
+	bool isUnitNull = IsExpressionResultNullOrUndefined(unit);
+	bool isUnitWeek = !isUnitNull && strcasecmp(unit->value.v_utf8.str, "week") == 0;
+	if (isUnitNull ||
+		(isUnitWeek && IsExpressionResultNullOrUndefined(startOfWeek)) ||
+		IsExpressionResultNullOrUndefined(date) ||
+		IsExpressionResultNullOrUndefined(binSize) ||
+		IsExpressionResultNullOrUndefined(timezone))
+	{
+		return true;
+	}
+
+	return false;
+}
+
+
+/*
+ * This function checks if all the arguments for the operator are constant.
+ */
+static inline bool
+isDateTruncArgumentConstant(DollarDateTruncArgumentState *
+							dateTruncArgument)
+{
+	bool isBasicComponentsConstant =
+		IsAggregationExpressionConstant(&dateTruncArgument->date) &&
+		IsAggregationExpressionConstant(&dateTruncArgument->binSize) &&
+		IsAggregationExpressionConstant(&dateTruncArgument->timezone);
+
+	/* Early return if any of the basic components is not constant. */
+	if (!isBasicComponentsConstant)
+	{
+		return false;
+	}
+
+	/* Check if the 'unit' component of dateTruncArgument is constant. */
+	bool isUnitConstant = IsAggregationExpressionConstant(&dateTruncArgument->unit);
+	if (!isUnitConstant)
+	{
+		return false;
+	}
+
+	/* Check if the 'unit' value is 'week'. */
+	bool isUnitWeek = strcasecmp(dateTruncArgument->unit.value.value.v_utf8.str,
+								 "week") == 0;
+
+	/* If 'unit' is 'week', also check if 'startOfWeek' is constant. */
+	if (isUnitWeek)
+	{
+		return IsAggregationExpressionConstant(&dateTruncArgument->startOfWeek);
+	}
+
+	/* If all checks passed and we didn't early return, all required components are constant. */
+	return true;
+}
+
+
+/*
+ * This function checks if we call date_bin internal function for date calculation.
+ * If true, we will call date_bin internal postgres function for the same.
+ * If false, we do custom logic as per the unit.
+ */
+static inline bool
+isValidUnitForDateBinOid(DateTruncUnit dateTruncUnit)
+{
+	if (dateTruncUnit == DateTruncUnit_Second || dateTruncUnit == DateTruncUnit_Minute ||
+		dateTruncUnit == DateTruncUnit_Hour)
+	{
+		return true;
+	}
+	return false;
+}
+
+
+/*
+ * This function takes in all the arguments for the dateTrunc operator and validates them for the required value type
+ * This function also parses the timezone and sets the offset in ms in timezone to apply
+ * This function also modifies the binsize to a value of int64.
+ */
+static void
+ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
+							  bson_value_t *startOfWeek, bson_value_t *timezone,
+							  bson_value_t *unit, DateTruncUnit *dateTruncUnitEnum,
+							  WeekDay *weekDay, ExtensionTimezone *timezoneToApply,
+							  ExtensionTimezone resultTimezone)
+{
+	/* date is only expected to be of type date, timestamp, oid. */
+	if (!((date->value_type == BSON_TYPE_DATE_TIME) ||
+		  (date->value_type == BSON_TYPE_TIMESTAMP) ||
+		  (date->value_type == BSON_TYPE_OID)))
+	{
+		ereport(ERROR, (errcode(MongoLocation5439012), errmsg(
+							"$dateTrunc requires 'date' to be a date, but got %s",
+							BsonTypeName(date->value_type)),
+						errhint("$dateTrunc requires 'date' to be a date, but got %s",
+								BsonTypeName(date->value_type))));
+	}
+
+	/* validate unit type */
+	if (unit->value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(MongoLocation5439013), errmsg(
+							"$dateTrunc requires 'unit' to be a string, but got %s",
+							BsonTypeName(unit->value_type)),
+						errhint("$dateTrunc requires 'unit' to be a string, but got %s",
+								BsonTypeName(unit->value_type))));
+	}
+
+	int dateTruncUnitListSize = sizeof(unitSizeForDateTrunc) /
+								sizeof(unitSizeForDateTrunc[0]);
+	for (int index = 0; index < dateTruncUnitListSize; index++)
+	{
+		if (strcasecmp(unit->value.v_utf8.str, unitSizeForDateTrunc[index]) == 0)
+		{
+			/* Doing index +1 as invalid is the first index which is not in the unitSizeList. */
+			*dateTruncUnitEnum = (DateTruncUnit) (index + 1);
+			break;
+		}
+	}
+
+	if (*dateTruncUnitEnum == DateTruncUnit_Invalid)
+	{
+		ereport(ERROR, (errcode(MongoLocation5439014), errmsg(
+							"$dateTrunc parameter 'unit' value cannot be recognized as a time unit: %s",
+							unit->value.v_utf8.str),
+						errhint(
+							"$dateTrunc parameter 'unit' value cannot be recognized as a time unit: %s",
+							unit->value.v_utf8.str)));
+	}
+
+	/* Validate startOfWeekValue only if unit is week. Index 6 in the list if 'week' */
+	if (*dateTruncUnitEnum == DateTruncUnit_Week)
+	{
+		/* Typed loop check as days can never be increased. */
+		for (int index = 0; index < 7; index++)
+		{
+			if (strcasecmp(startOfWeek->value.v_utf8.str, weekDaysFullName[index]) == 0 ||
+				strcasecmp(startOfWeek->value.v_utf8.str, weekDaysAbbreviated[index]) ==
+				0)
+			{
+				/* Doing index +1 as invalid is the first index which is not in the weekDays list. */
+				*weekDay = (WeekDay) (index + 1);
+				break;
+			}
+		}
+		if (*weekDay == WeekDay_Invalid)
+		{
+			ereport(ERROR, (errcode(MongoLocation5439016), errmsg(
+								"$dateTrunc parameter 'startOfWeek' value cannot be recognized as a day of a week: %s",
+								startOfWeek->value.v_utf8.str),
+							errhint(
+								"$dateTrunc parameter 'startOfWeek' value cannot be recognized as a day of a week: %s",
+								startOfWeek->value.v_utf8.str)));
+		}
+	}
+
+	/* check binSize value type */
+	if (!IsBsonValueFixedInteger(binSize))
+	{
+		ereport(ERROR, (errcode(MongoLocation5439017), errmsg(
+							"$dateTrunc requires 'binSize' to be a 64-bit integer, but got value '%s' of type %s",
+							BsonValueToJsonForLogging(binSize), BsonTypeName(
+								binSize->value_type)),
+						errhint(
+							"$dateTrunc requires 'binSize' to be a 64-bit integer, but got value of type %s",
+							BsonTypeName(binSize->value_type))));
+	}
+
+	/* binSize should be greater than zero. */
+	int64_t binSizeVal = BsonValueAsInt64(binSize);
+	if (binSizeVal <= 0)
+	{
+		ereport(ERROR, (errcode(MongoLocation5439017), errmsg(
+							"$dateTrunc requires 'binSize' to be greater than 0, but got value %ld",
+							binSizeVal),
+						errhint(
+							"$dateTrunc requires 'binSize' to be greater than 0, but got value %ld",
+							binSizeVal)));
+	}
+
+	/* Setting the value in binsize to be of int64. Converting to a single type for calculations. */
+	binSize->value.v_int64 = binSizeVal;
+	binSize->value_type = BSON_TYPE_INT64;
+
+	/* Validate timezone type and then parse it to find offset in ms */
+	if (timezone->value_type != BSON_TYPE_UTF8)
+	{
+		ThrowLocation40517Error(timezone->value_type);
+	}
+
+	/* UTC is set as default value while parsing. In case no value is supplied we don't intend to make another Oid function call. */
+	if (strcmp(timezone->value.v_utf8.str, "UTC") != 0)
+	{
+		StringView timezoneToParse = {
+			.string = timezone->value.v_utf8.str,
+			.length = timezone->value.v_utf8.len
+		};
+		*timezoneToApply = ParseTimezone(timezoneToParse);
+	}
+	else
+	{
+		*timezoneToApply = resultTimezone;
+	}
+}
+
+
+static void
+SetResultValueForDateTruncFromDateBin(Datum pgTimestamp, Datum referenceTimestamp,
+									  ExtensionTimezone timezoneToApply, int64 binSize,
+									  DateTruncUnit dateTruncUnit, bson_value_t *result)
+{
+	Datum interval = GetIntervalFromBinSize(binSize, dateTruncUnit);
+	Datum timestampDateBinResult = OidFunctionCall3(PostgresDateBinFunctionId(),
+													interval, pgTimestamp,
+													referenceTimestamp);
+
+	result->value.v_datetime = GetUnixEpochFromPgTimestamp(timestampDateBinResult);
+}
+
+
+/* This function calculates the date bin for unit type day.
+ * Firstly, this calculates interval difference between start and end timestamp.
+ * Converts, that difference interval to number of days.
+ * Adds the interval to source timestamp and then apply the timezone specified
+ */
+static void
+SetResultValueForDayUnitDateTrunc(Datum pgTimestamp,
+								  ExtensionTimezone timezoneToApply, int64 binSize,
+								  DateTruncUnit dateTruncUnit,
+								  bson_value_t *result)
+{
+	/* Get timestamp for reference since epoch ms in UTC */
+	Datum defaultReferenceTimestamp = GetPgTimestampFromUnixEpoch(
+		DATE_TRUNC_TIMESTAMP_MS);
+
+	/* Calls Age function to determine the interval between 2 timestamps. */
+	Datum intervalDifference = OidFunctionCall2(PostgresAgeBetweenTimestamp(),
+												pgTimestamp, defaultReferenceTimestamp);
+
+	/* calculates the total number of seconds between the target date and the reference date */
+	Datum datePartFromInverval = OidFunctionCall2(PostgresDatePartFromInterval(),
+												  CStringGetTextDatum("epoch"),
+												  intervalDifference);
+
+	float8 epochMsFromDatePart = DatumGetFloat8(datePartFromInverval);
+
+	/* elog(NOTICE, "epoch sm from date partt %f", epochMsFromDatePart); */
+	int64 dayInterval = floor(epochMsFromDatePart / (SECONDS_IN_DAY * binSize));
+
+	/* elog(NOTICE, "days interval %ld", dayInterval); */
+
+	/* Make intervals from int64 */
+	Datum intervalDaySinceRef = GetIntervalFromBinSize(dayInterval * binSize,
+													   dateTruncUnit);
+
+	/* Add interval to timestamp */
+	bool isResultOverflow = false;
+	Datum resultTimestamp = AddIntervalToTimestampWithPgTry(defaultReferenceTimestamp,
+															intervalDaySinceRef,
+															&isResultOverflow);
+
+	if (isResultOverflow)
+	{
+		result->value.v_datetime = INT64_MAX;
+		return;
+	}
+
+	/* Adjusting to timezone specified . This is required to handle DST, etc. */
+	Datum resultTimestampWithZoneAdjusted = GetPgTimestampAdjustedToTimezone(
+		resultTimestamp, timezoneToApply);
+
+	result->value.v_datetime = GetUnixEpochFromPgTimestamp(
+		resultTimestampWithZoneAdjusted);
+}
+
+
+/* A function which takes in all the args and gives the result for dollarDateTrunc operator. */
+static void
+SetResultValueForDollarDateTrunc(DateTruncUnit dateTruncUnit, WeekDay weekDay,
+								 ExtensionTimezone timezoneToApply, ExtensionTimezone
+								 resultTimezone,
+								 bson_value_t *binSize, bson_value_t *date,
+								 bson_value_t *result)
+{
+	result->value_type = BSON_TYPE_DATE_TIME;
+	int64_t dateValueInMs = BsonValueAsDateTime(date);
+	Datum datePgTimestamp = GetPgTimestampFromEpochWithTimezone(dateValueInMs,
+																resultTimezone);
+	if (isValidUnitForDateBinOid(dateTruncUnit))
+	{
+		Datum referencePgTimestamp = GetPgTimestampFromEpochWithoutTimezone(
+			DATE_TRUNC_TIMESTAMP_MS,
+			timezoneToApply);
+		SetResultValueForDateTruncFromDateBin(datePgTimestamp, referencePgTimestamp,
+											  timezoneToApply,
+											  binSize->value.v_int64,
+											  dateTruncUnit, result);
+	}
+	else if (dateTruncUnit == DateTruncUnit_Day)
+	{
+		SetResultValueForDayUnitDateTrunc(datePgTimestamp,
+										  timezoneToApply,
+										  binSize->value.v_int64,
+										  dateTruncUnit, result);
+	}
+	else if (dateTruncUnit == DateTruncUnit_Month ||
+			 dateTruncUnit == DateTruncUnit_Quarter)
+	{
+		SetResultValueForMonthUnitDateTrunc(datePgTimestamp,
+											timezoneToApply,
+											binSize->value.v_int64,
+											dateTruncUnit, result);
+	}
+	else if (dateTruncUnit == DateTruncUnit_Year)
+	{
+		SetResultValueForYearUnitDateTrunc(datePgTimestamp,
+										   timezoneToApply,
+										   binSize->value.v_int64,
+										   dateTruncUnit, result);
+	}
+	else if (dateTruncUnit == DateTruncUnit_Week)
+	{
+		SetResultValueForWeekUnitDateTrunc(datePgTimestamp,
+										   timezoneToApply,
+										   binSize->value.v_int64,
+										   dateTruncUnit,
+										   weekDay,
+										   result);
+	}
+}
+
+
+/* This function calculates the date bin for unit type month.
+ * Firstly, this calculates interval difference between start and end timestamp.
+ * Converts, that difference interval to number of months.
+ * The interval can be of format x years and y months .
+ * To exactly compute the difference in months we extract number of years and then multiply by 12 to get months.
+ * Also, we extract the number of months and add with number of months extracted from years.
+ * Adds the interval to source timestamp and then apply the timezone specified
+ */
+static void
+SetResultValueForMonthUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
+									timezoneToApply, int64 binSize,
+									DateTruncUnit dateTruncUnit,
+									bson_value_t *result)
+{
+	/* Get timestamp for reference since epoch ms in UTC */
+	Datum defaultReferenceTimestamp = GetPgTimestampFromUnixEpoch(
+		DATE_TRUNC_TIMESTAMP_MS);
+
+	/* Calls Age function to determine the interval between 2 timestamps. */
+	Datum intervalDifference = OidFunctionCall2(PostgresAgeBetweenTimestamp(),
+												pgTimestamp, defaultReferenceTimestamp);
+
+	/* calculates the total number of years between the target date and the reference date */
+	Datum datePartYearFromInverval = OidFunctionCall2(PostgresDatePartFromInterval(),
+													  CStringGetTextDatum("year"),
+													  intervalDifference);
+
+	/* elog(NOTICE, "year interval from date part is %f", DatumGetFloat8(datePartYearFromInverval)); */
+
+	/* calculates the total number of months between the target date and the reference date */
+	Datum datePartMonthFromInverval = OidFunctionCall2(PostgresDatePartFromInterval(),
+													   CStringGetTextDatum("month"),
+													   intervalDifference);
+
+	/* elog(NOTICE, "month interval from date part is %f", DatumGetFloat8(datePartMonthFromInverval)); */
+
+
+	float8 intervalDiffAdjustedToMonths = DatumGetFloat8(datePartYearFromInverval) *
+										  MONTHS_PER_YEAR +
+										  DatumGetFloat8(datePartMonthFromInverval);
+
+	/* elog(NOTICE, "interval diff adjusted to months %f", intervalDiffAdjustedToMonths); */
+
+	/* Making sure that for quarters the binsize for months is * 3 by default. */
+	int64 monthInterval = floor(intervalDiffAdjustedToMonths / (binSize *
+																(dateTruncUnit ==
+																 DateTruncUnit_Quarter
+																 ? 3 : 1)));
+
+	/* Make intervals from int64 . Not multiplying *3 here as this function takes care of differencing between months and quarters. */
+	Datum intervalMonthSinceRef = GetIntervalFromBinSize(monthInterval * binSize,
+														 dateTruncUnit);
+
+	bool isResultOverflow = false;
+	Datum resultTimestamp = AddIntervalToTimestampWithPgTry(defaultReferenceTimestamp,
+															intervalMonthSinceRef,
+															&isResultOverflow);
+
+	if (isResultOverflow)
+	{
+		result->value.v_datetime = INT64_MAX;
+		return;
+	}
+
+	/* Adjusting to timezone specified . This is required to handle DST, etc. */
+	Datum resultTimestampWithZoneAdjusted = GetPgTimestampAdjustedToTimezone(
+		resultTimestamp,
+		timezoneToApply);
+
+	result->value.v_datetime = GetUnixEpochFromPgTimestamp(
+		resultTimestampWithZoneAdjusted);
+}
+
+
+/* This function calculates the date bin for unit type week.
+ * Firstly, this calculates interval difference between start and end timestamp.
+ * Converts, that difference interval to number of seconds.
+ * Adds interval in days to adjust for startOfWeek.
+ * As per the reference date 2000 1st Jan which is Saturday. Default value is Sunday if not specified.
+ * So for every calculation we add interval in days to adjust for startOfWeek
+ * Adds the interval to source timestamp and then apply the timezone specified
+ */
+static void
+SetResultValueForWeekUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
+								   timezoneToApply, int64 binSize,
+								   DateTruncUnit dateTruncUnit,
+								   WeekDay startOfWeek,
+								   bson_value_t *result)
+{
+	/* Get timestamp for reference since epoch ms in UTC */
+	Datum defaultReferenceTimestamp = GetPgTimestampFromUnixEpoch(
+		DATE_TRUNC_TIMESTAMP_MS);
+
+	/* Calls Age function to determine the interval between 2 timestamps. */
+	Datum intervalDifference = OidFunctionCall2(PostgresAgeBetweenTimestamp(),
+												pgTimestamp, defaultReferenceTimestamp);
+
+	/* calculates the total number of seconds between the target date and the reference date */
+	Datum datePartFromInverval = OidFunctionCall2(PostgresDatePartFromInterval(),
+												  CStringGetTextDatum("epoch"),
+												  intervalDifference);
+
+	float8 epochMsFromDatePart = DatumGetFloat8(datePartFromInverval);
+
+	/* elog(NOTICE, "seconds interval from date part is %f", epochMsFromDatePart); */
+	/* elog(NOTICE, "seconds interval from binsize  %ld", binSize); */
+	int64 elapsedBinSeconds = (int64) SECONDS_IN_DAY * (int64) 7 * binSize;
+
+	/* elog(NOTICE, "seconds elapsed   %ld", elapsedBinSeconds); */
+	int64 secondsInterval = floor(epochMsFromDatePart / (elapsedBinSeconds));
+
+	/* Make intervals from int64 */
+	/* elog(NOTICE, "seconds interval is %ld", secondsInterval); */
+
+	/* takes care of negative number while modulo. Positive mod: (a % b + b) % b; */
+	int64 daysIntervalForWeekStart = ((((int) startOfWeek - 6) % 7) + 7) % 7;
+	Datum intervalWeeksSinceRef = GetIntervalFromDatePart(0, 0, 0,
+														  daysIntervalForWeekStart, 0, 0,
+														  secondsInterval *
+														  elapsedBinSeconds,
+														  0);
+
+	/*
+	 *	This handling is done as for cases when seconds elapsed is itself out of range of timestamp.
+	 * So , we need to return invalid date.
+	 * Adding only time as while making interval max component is in seconds.
+	 * Day interval can max be 7 to adjust for startOfWeek
+	 */
+	int64 interval = ((Interval *) DatumGetIntervalP(intervalWeeksSinceRef))->time;
+	if (!IS_VALID_TIMESTAMP(interval))
+	{
+		result->value.v_datetime = INT64_MAX;
+		return;
+	}
+
+	/* Add interval to timestamp */
+	Datum resultTimestamp = OidFunctionCall2(PostgresAddIntervalToTimestampFunctionId(),
+											 defaultReferenceTimestamp,
+											 intervalWeeksSinceRef);
+
+	/* Adjusting to timezone specified . This is required to handle DST, etc. */
+	Datum resultTimestampWithZoneAdjusted = GetPgTimestampAdjustedToTimezone(
+		resultTimestamp, timezoneToApply);
+
+	result->value.v_datetime = GetUnixEpochFromPgTimestamp(
+		resultTimestampWithZoneAdjusted);
+}
+
+
+/* This function calculates the date bin for unit type year.
+ * Firstly, this calculates interval difference between start and end timestamp.
+ * Converts, that difference interval to number of years.
+ * Adds the interval to source timestamp and then apply the timezone specified
+ */
+static void
+SetResultValueForYearUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
+								   timezoneToApply, int64 binSize,
+								   DateTruncUnit dateTruncUnit,
+								   bson_value_t *result)
+{
+	Datum defaultReferenceTimestamp = GetPgTimestampFromUnixEpoch(
+		DATE_TRUNC_TIMESTAMP_MS);
+
+	/* Calls Age function to determine the interval between 2 timestamps. */
+	Datum intervalDifference = OidFunctionCall2(PostgresAgeBetweenTimestamp(),
+												pgTimestamp, defaultReferenceTimestamp);
+
+	/* calculates the total number of years between the target date and the reference date */
+	Datum datePartYearFromInverval = OidFunctionCall2(PostgresDatePartFromInterval(),
+													  CStringGetTextDatum("year"),
+													  intervalDifference);
+
+	int64 yearInterval = floor(DatumGetFloat8(datePartYearFromInverval) / binSize);
+
+	/* Make intervals from int64 .*/
+	Datum intervalYearsSinceRef = GetIntervalFromBinSize(yearInterval * binSize,
+														 dateTruncUnit);
+
+	bool isResultOverflow = false;
+	Datum resultTimestamp = AddIntervalToTimestampWithPgTry(defaultReferenceTimestamp,
+															intervalYearsSinceRef,
+															&isResultOverflow);
+
+	if (isResultOverflow)
+	{
+		result->value.v_datetime = INT64_MAX;
+		return;
+	}
+
+	/* Adjusting to timezone specified . This is required to handle DST, etc. */
+	Datum resultTimestampWithZoneAdjusted = GetPgTimestampAdjustedToTimezone(
+		resultTimestamp,
+		timezoneToApply);
+
+	result->value.v_datetime = GetUnixEpochFromPgTimestamp(
+		resultTimestampWithZoneAdjusted);
 }

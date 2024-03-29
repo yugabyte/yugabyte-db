@@ -137,12 +137,15 @@ Oid PostgresDrandomFunctionId(void);
 Oid PostgresToTimestamptzFunctionId(void);
 Oid PostgresDatePartFunctionId(void);
 Oid PostgresTimestampToZoneFunctionId(void);
-Oid PostgresMakeIntervalFunctionId(void);
 Oid PostgresAddIntervalToTimestampFunctionId(void);
 Oid PostgresAddIntervalToDateFunctionId(void);
 Oid PostgresTimestampToZoneWithoutTzFunctionId(void);
 Oid PostgresToDateFunctionId(void);
 Oid PostgresArrayAppendFunctionOid(void);
+Oid PostgresMakeIntervalFunctionId(void);
+Oid PostgresDateBinFunctionId(void);
+Oid PostgresAgeBetweenTimestamp(void);
+Oid PostgresDatePartFromInterval(void);
 
 /* Index AM */
 Oid RumIndexAmId(void);

@@ -179,6 +179,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_DATETOPARTS },
 	{ "$dateToString", &HandleDollarDateToString, NULL, NULL,
 	  FEATURE_AGG_OPERATOR_DATETOSTRING },
+	{ "$dateTrunc", NULL, &ParseDollarDateTrunc, &HandlePreParsedDollarDateTrunc,
+	  FEATURE_AGG_OPERATOR_DATETRUNC },
 	{ "$dayOfMonth", &HandleDollarDayOfMonth, NULL, NULL,
 	  FEATURE_AGG_OPERATOR_DAYOFMONTH },
 	{ "$dayOfWeek", &HandleDollarDayOfWeek, NULL, NULL, FEATURE_AGG_OPERATOR_DAYOFWEEK },

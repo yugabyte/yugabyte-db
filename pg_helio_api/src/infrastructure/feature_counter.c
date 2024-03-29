@@ -79,6 +79,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_AGG_OPERATOR_DATEFROMSTRING] = "agg_operator_datefromstring",
 	[FEATURE_AGG_OPERATOR_DATETOPARTS] = "agg_operator_datetoparts",
 	[FEATURE_AGG_OPERATOR_DATETOSTRING] = "agg_operator_datetostring",
+	[FEATURE_AGG_OPERATOR_DATETRUNC] = "agg_operator_datetrunc",
 	[FEATURE_AGG_OPERATOR_DAYOFMONTH] = "agg_operator_dayofmonth",
 	[FEATURE_AGG_OPERATOR_DAYOFWEEK] = "agg_operator_dayofweek",
 	[FEATURE_AGG_OPERATOR_DAYOFYEAR] = "agg_operator_dayofyear",

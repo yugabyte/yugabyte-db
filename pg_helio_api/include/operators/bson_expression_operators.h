@@ -404,6 +404,8 @@ void HandlePreParsedDollarCmp(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarDateFromParts(pgbson *doc, void *arguments,
 										ExpressionResult *expressionResult);
+void HandlePreParsedDollarDateTrunc(pgbson *doc, void *arguments,
+									ExpressionResult *expressionResult);
 void HandlePreParsedDollarEq(pgbson *doc, void *arguments,
 							 ExpressionResult *expressionResult);
 void HandlePreParsedDollarGt(pgbson *doc, void *arguments,
@@ -458,6 +460,7 @@ void ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionDa
 void ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarDateFromParts(const bson_value_t *argument,
 							  AggregationExpressionData *data);
+void ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarGte(const bson_value_t *argument, AggregationExpressionData *data);
