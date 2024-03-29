@@ -37,7 +37,9 @@ import {
   deleteItem,
   editItem,
   getIsFormDisabled,
-  readFileAsText
+  readFileAsText,
+  handleFormSubmitServerError,
+  AZURE_FORM_MAPPERS
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
@@ -47,9 +49,15 @@ import { CreateInfraProvider } from '../../InfraProvider';
 import { RegionOperation } from '../configureRegion/constants';
 import { NTP_SERVER_REGEX } from '../constants';
 
+import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
+import { QUERY_KEY } from '../../../../../redesign/features/universe/universe-form/utils/api';
 import { AZURegionMutation, AZUAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
@@ -156,13 +164,24 @@ export const AZUProviderCreateForm = ({
     resolver: yupResolver(VALIDATION_SCHEMA)
   });
 
+  const globalRuntimeConfigQuery = useQuery(QUERY_KEY.fetchGlobalRunTimeConfigs, () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  );
+
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
   const sshConfigureMsg = ConfigureSSHDetailsMsg();
 
-  if (hostInfoQuery.isLoading) {
+  if (hostInfoQuery.isLoading || globalRuntimeConfigQuery.isLoading) {
     return <YBLoading />;
+  }
+  if (globalRuntimeConfigQuery.isError) {
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
+    );
   }
   if (hostInfoQuery.isError) {
     return (
@@ -190,6 +209,11 @@ export const AZUProviderCreateForm = ({
     setIsRegionFormModalOpen(false);
   };
 
+  const isValidationAllowed =
+    globalRuntimeConfigQuery?.data?.configEntries?.find(
+      (c: any) => c.key === 'yb.provider.azure_provider_validation'
+    )?.value === 'true';
+
   const onFormSubmit: SubmitHandler<AZUProviderCreateFormFieldValues> = async (formValues) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
@@ -202,7 +226,19 @@ export const AZUProviderCreateForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues);
       try {
-        await createInfraProvider(providerPayload);
+        await createInfraProvider(providerPayload, {
+          shouldValidate: isValidationAllowed,
+          ignoreValidationErrors: false,
+          mutateOptions: {
+            onError: (err) => {
+              handleFormSubmitServerError(
+                (err as any)?.response?.data,
+                formMethods,
+                AZURE_FORM_MAPPERS
+              );
+            }
+          }
+        });
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
@@ -243,6 +279,7 @@ export const AZUProviderCreateForm = ({
     'sshKeypairManagement',
     DEFAULT_FORM_VALUES.sshKeypairManagement
   );
+
   const isFormDisabled = getIsFormDisabled(formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
