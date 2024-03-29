@@ -22,6 +22,8 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
+#include "yb/cdc/cdc_util.h"
+
 DEFINE_test_flag(bool, xcluster_fail_table_create_during_bootstrap, false,
     "Fail the table or index creation during xcluster bootstrap stage.");
 
@@ -149,7 +151,7 @@ void AddTableToXClusterTask::AddTableToReplicationGroup(
 void AddTableToXClusterTask::WaitForSetupUniverseReplicationToFinish() {
   IsSetupUniverseReplicationDoneRequestPB check_req;
   IsSetupUniverseReplicationDoneResponsePB check_resp;
-  check_req.set_producer_id(replication_group_id_.ToString());
+  check_req.set_producer_id(cdc::GetAlterReplicationGroupId(replication_group_id_).ToString());
   auto status = catalog_manager_->IsSetupUniverseReplicationDone(
       &check_req, &check_resp, /* RpcContext */ nullptr);
   if (status.ok() && check_resp.has_error()) {
