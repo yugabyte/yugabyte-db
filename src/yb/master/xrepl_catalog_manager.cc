@@ -132,6 +132,9 @@ DEFINE_RUNTIME_bool(enable_backfilling_cdc_stream_with_replication_slot, false,
     "Intended to be used for making CDC streams created before replication slot support work with"
     " the replication slot commands.");
 
+DEFINE_test_flag(bool, fail_universe_replication_merge, false, "Causes MergeUniverseReplication to "
+    "fail with an error.");
+
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
@@ -4295,6 +4298,12 @@ void CatalogManager::MergeUniverseReplication(
     scoped_refptr<UniverseReplicationInfo> universe, xcluster::ReplicationGroupId original_id) {
   // Merge back into primary command now that setup is a success.
   LOG(INFO) << "Merging CDC universe: " << universe->id() << " into " << original_id;
+
+  if (FLAGS_TEST_fail_universe_replication_merge) {
+    MarkUniverseReplicationFailed(
+        universe, STATUS(IllegalState, "TEST_fail_universe_replication_merge"));
+    return;
+  }
 
   scoped_refptr<UniverseReplicationInfo> original_universe;
   {

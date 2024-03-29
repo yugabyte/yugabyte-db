@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 
+#include "yb/cdc/xcluster_util.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/util/is_operation_done_result.h"
@@ -168,8 +169,8 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
 }
 
 Status AddTableToXClusterTargetTask::WaitForSetupUniverseReplicationToFinish() {
-  auto operation_result = VERIFY_RESULT(
-      IsSetupUniverseReplicationDone(universe_->ReplicationGroupId(), catalog_manager_));
+  auto operation_result = VERIFY_RESULT(IsSetupUniverseReplicationDone(
+      xcluster::GetAlterReplicationGroupId(universe_->ReplicationGroupId()), catalog_manager_));
 
   if (!operation_result.done()) {
     VLOG_WITH_PREFIX(2) << "Waiting for setup universe replication to finish";
