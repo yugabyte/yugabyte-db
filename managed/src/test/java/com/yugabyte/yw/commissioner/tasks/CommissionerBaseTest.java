@@ -377,7 +377,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
         return false;
       }
-      Thread.sleep(100);
+      Thread.sleep(10);
       numRetries++;
     }
     throw new RuntimeException(
@@ -394,7 +394,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (commissioner.isTaskPaused(taskUuid)) {
         return;
       }
-      Thread.sleep(100);
+      Thread.sleep(10);
       numRetries++;
     }
     throw new RuntimeException(
@@ -425,7 +425,26 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       TaskType taskType,
       ITaskParams taskParams) {
     verifyTaskRetries(
-        customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true);
+        customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true, 1);
+  }
+
+  public void verifyTaskRetries(
+      Customer customer,
+      CustomerTask.TaskType customerTaskType,
+      TargetType targetType,
+      UUID targetUuid,
+      TaskType taskType,
+      ITaskParams taskParams,
+      boolean checkStrictOrdering) {
+    verifyTaskRetries(
+        customer,
+        customerTaskType,
+        targetType,
+        targetUuid,
+        taskType,
+        taskParams,
+        checkStrictOrdering,
+        1);
   }
 
   /** This method returns all the subtasks of a task. */
@@ -471,7 +490,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       UUID targetUuid,
       TaskType taskType,
       ITaskParams taskParams,
-      boolean checkStrictOrdering) {
+      boolean checkStrictOrdering,
+      int abortStep) {
     try {
       setPausePosition(0);
       UUID taskUuid = commissioner.submit(taskType, taskParams);
@@ -588,7 +608,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           }
           totalSubTaskCount = retryTaskTypes.size();
         }
-        pendingSubTaskCount--;
+        pendingSubTaskCount -= abortStep;
       }
     } catch (RuntimeException e) {
       throw e;

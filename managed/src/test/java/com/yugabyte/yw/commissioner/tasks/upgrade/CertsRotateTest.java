@@ -887,6 +887,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
     taskParams.expectedUniverseVersion = -1;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.CertsRotate,
@@ -894,6 +896,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.CertsRotate,
         taskParams,
-        false);
+        false,
+        2 /* Abort every 2 steps */);
   }
 }
