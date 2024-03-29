@@ -1816,10 +1816,12 @@ void CDCServiceImpl::GetChanges(
   if (record.GetSourceType() == CDCSDK && FLAGS_enable_cdcsdk_lag_collection) {
     LogGetChangesLagForCDCSDK(stream_id, *resp);
   }
+
+  const auto* error_data = status.ErrorData(CDCErrorTag::kCategory);
   RPC_STATUS_RETURN_ERROR(
       status,
       resp->mutable_error(),
-      status.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
+      error_data ? CDCErrorTag::Decode(error_data) : CDCErrorPB::UNKNOWN_ERROR,
       context);
   tablet_peer = context_->LookupTablet(req->tablet_id());
 
