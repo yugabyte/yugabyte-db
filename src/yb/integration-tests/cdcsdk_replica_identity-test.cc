@@ -18,6 +18,8 @@ namespace cdc {
 
 class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
  public:
+  // TODO(#21681): This function is almost a duplicate of the corresponding function from the test
+  // base. It should de-duped.
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters, bool colocated,
       bool cdc_populate_safepoint_record = false) {

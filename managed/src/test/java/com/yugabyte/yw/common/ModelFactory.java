@@ -90,6 +90,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
@@ -733,7 +734,14 @@ public class ModelFactory {
       UUID customerUUID, String certificate, CertConfigType certType)
       throws IOException, NoSuchAlgorithmException {
     return CertificateInfo.create(
-        UUID.randomUUID(), customerUUID, "test", new Date(), new Date(), "", certificate, certType);
+        UUID.randomUUID(),
+        customerUUID,
+        "test-" + RandomStringUtils.randomAlphanumeric(8),
+        new Date(),
+        new Date(),
+        "",
+        certificate,
+        certType);
   }
 
   // Create a universe from the configuration string. The configuration string

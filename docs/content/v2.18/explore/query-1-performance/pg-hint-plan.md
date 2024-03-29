@@ -27,7 +27,7 @@ To use `pg_hint_plan` effectively, you need thorough knowledge of how your appli
 
 ## Configure pg_hint_plan
 
-pg_hint_plan is pre-configured, and enabled by default. The following YSQL parameters control pg_hint_plan:
+pg_hint_plan is pre-configured, and enabled by default. The following YSQL configuration parameters control pg_hint_plan:
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |
@@ -330,6 +330,7 @@ Join method hints enforce the join methods for SQL statements. Using pg_hint_pla
 | NoHashJoin(t1 t2 t3 ...) | Do not join t1, t2, and t3 using HashJoin.|
 | NestLoop(t1 t2 t3 ...) | Join t1, t2, and t3 using NestLoop join. |
 | NoNestLoop(t1 t2 t3 ...) | Do not join t1, t2, and t3 using NestLoop join.|
+| YbBatchedNL(t1 t2) | Join t1 and t2 using YbBatchedNL join.|
 
 ```sql
 /*+HashJoin(t1 t2)*/

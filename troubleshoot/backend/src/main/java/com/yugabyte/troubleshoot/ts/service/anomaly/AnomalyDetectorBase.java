@@ -118,10 +118,6 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
     return metadataBuilder.filters(filters).build();
   }
 
-  protected long getMinAnomalySizeMillis() {
-    return MIN_ANOMALY_SIZE_MILLIS;
-  }
-
   protected List<List<GraphData>> groupGraphLines(List<GraphData> lines) {
     return new ArrayList<>(
         lines.stream()
@@ -236,4 +232,6 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
           result.getAnomalies().add(anomalyBuilder.build());
         });
   }
+
+  protected abstract RuntimeConfigKey getMinAnomalyDurationKey();
 }

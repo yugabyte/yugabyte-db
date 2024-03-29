@@ -1168,7 +1168,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Operator owned resources api block",
           "A resource controlled by the kubernetes operator cannot be updated using the REST API",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> devTagsMap =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.dev_tags",

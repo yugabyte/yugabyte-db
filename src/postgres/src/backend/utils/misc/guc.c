@@ -2295,13 +2295,14 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"yb_enable_optimizer_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables use postgres selectivity model."),
+			gettext_noop("Enables use of the PostgreSQL selectivity estimation which utilizes "
+			"table statistics collected with ANALYZE. When disabled, a simpler heuristics based "
+			"selectivity estimation is used."),
 			NULL
 		},
 		&yb_enable_optimizer_statistics,
 		false,
 		NULL, NULL, NULL
-
 	},
 	{
 		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,

@@ -16,7 +16,7 @@ The YugabyteDB release that is powering a universe can be upgraded to get new fe
 
 {{< note title="Upgrading YugabyteDB on deprecated operating systems" >}}
 
-If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade to the next major YugabyteDB release. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
+If your universe is running on a [deprecated OS](../../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade to the next major YugabyteDB release. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
 
 {{< /note >}}
 

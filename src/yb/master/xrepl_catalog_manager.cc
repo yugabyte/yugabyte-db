@@ -132,6 +132,9 @@ DEFINE_RUNTIME_bool(enable_backfilling_cdc_stream_with_replication_slot, false,
     "Intended to be used for making CDC streams created before replication slot support work with"
     " the replication slot commands.");
 
+DEFINE_test_flag(bool, fail_universe_replication_merge, false, "Causes MergeUniverseReplication to "
+    "fail with an error.");
+
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
@@ -957,7 +960,9 @@ Status CatalogManager::CreateNewCdcsdkStream(
       has_replica_identity_full |= (replica_identity == PgReplicaIdentity::FULL);
 
       metadata->mutable_replica_identity_map()->insert({table_id, replica_identity});
-      VLOG(1) << "Replica identity for table " << table_id << " is " << replica_identity;
+      VLOG(1) << "Storing replica identity: " << replica_identity
+              << " for table: " << table_id
+              << " for stream_id: " << stream_id;
     }
   }
 
@@ -1308,9 +1313,23 @@ Status CatalogManager::SetXReplWalRetentionForTable(
   auto& table_id = table->id();
   VLOG_WITH_FUNC(4) << "Setting WAL retention for table: " << table_id;
 
+  SCHECK(
+      !table->IsPreparing(), IllegalState,
+      "Cannot set WAL retention of a table that has not yet been fully created");
+
+  const auto min_wal_retention_secs = FLAGS_cdc_wal_retention_time_secs;
+  const auto table_wal_retention_secs = table->LockForRead()->pb.wal_retention_secs();
+  if (table_wal_retention_secs >= min_wal_retention_secs) {
+    VLOG_WITH_FUNC(1) << "Table " << table_id << " already has WAL retention set to "
+                      << table_wal_retention_secs
+                      << ", which is equal or higher than cdc_wal_retention_time_secs: "
+                      << min_wal_retention_secs;
+    return Status::OK();
+  }
+
   AlterTableRequestPB alter_table_req;
   alter_table_req.mutable_table()->set_table_id(table_id);
-  alter_table_req.set_wal_retention_secs(GetAtomicFlag(&FLAGS_cdc_wal_retention_time_secs));
+  alter_table_req.set_wal_retention_secs(min_wal_retention_secs);
 
   AlterTableResponsePB alter_table_resp;
   RETURN_NOT_OK_PREPEND(
@@ -1580,10 +1599,15 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
         ltm->pb.state() == SysCDCStreamEntryPB::DELETING_METADATA) {
       for (const auto& unprocessed_table_id : *unprocessed_tables) {
         auto table = tables_->FindTableOrNull(unprocessed_table_id);
+        if (!table) {
+          LOG_WITH_FUNC(WARNING) << "Table " << unprocessed_table_id
+                                 << " deleted before it could be processed";
+          continue;
+        }
         Schema schema;
         auto status = table->GetSchema(&schema);
         if (!status.ok()) {
-          LOG(WARNING) << "Error while getting schema for table: " << table->name();
+          LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table->name();
           continue;
         }
         bool has_pk = true;
@@ -1668,13 +1692,14 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
         "Creation of CDCSDK stream with a replication slot name is disallowed");
   }
 
+  // No need to validate the record_type if replica identity support is enabled.
+  if (FLAGS_ysql_yb_enable_replica_identity) {
+    return Status::OK();
+  }
+
   cdc::CDCRecordType record_type_pb;
   if (!cdc::CDCRecordType_Parse(record_type_option_value, &record_type_pb)) {
     return STATUS(InvalidArgument, "Invalid CDCRecordType value", record_type_option_value);
-  }
-
-  if (FLAGS_ysql_yb_enable_replica_identity) {
-    return Status::OK();
   }
 
   switch (record_type_pb) {
@@ -1755,6 +1780,7 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
  *   1) Enabling the WAL retention for the tablets of the table
  *   2) INSERTING records for the tablets of this table and each stream for which
  *      this table is relevant into the cdc_state table
+ *   3) Storing the replica identity of the table in the stream metadata
  */
 Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
     const TableStreamIdsMap& table_to_unprocessed_streams_map,
@@ -1833,7 +1859,7 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
 
       if (!status.ok()) {
         LOG(WARNING) << "Encoutered error while trying to add tablets of table: " << table_id
-                     << ", to cdc_state table for stream" << stream->id() << ": " << status;
+                     << ", to cdc_state table for stream: " << stream->id() << ": " << status;
         stream_pending = true;
         continue;
       }
@@ -1843,6 +1869,21 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
         continue;
       }
       stream_lock.mutable_data()->pb.add_table_id(table_id);
+
+      // Store the replica identity information of the table in the stream metadata.
+      if (FLAGS_ysql_yb_enable_replica_identity) {
+        auto table = VERIFY_RESULT(FindTableById(table_id));
+        Schema schema;
+        RETURN_NOT_OK(table->GetSchema(&schema));
+        PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();
+
+        stream_lock.mutable_data()->pb.mutable_replica_identity_map()->insert(
+            {table_id, replica_identity});
+        VLOG(1) << "Storing replica identity: " << replica_identity
+                << " for table: " << table_id
+                << " for stream_id: " << stream->StreamId();
+      }
+
       // Also need to persist changes in sys catalog.
       status = sys_catalog_->Upsert(leader_ready_term(), stream);
       if (!status.ok()) {
@@ -4257,6 +4298,12 @@ void CatalogManager::MergeUniverseReplication(
     scoped_refptr<UniverseReplicationInfo> universe, xcluster::ReplicationGroupId original_id) {
   // Merge back into primary command now that setup is a success.
   LOG(INFO) << "Merging CDC universe: " << universe->id() << " into " << original_id;
+
+  if (FLAGS_TEST_fail_universe_replication_merge) {
+    MarkUniverseReplicationFailed(
+        universe, STATUS(IllegalState, "TEST_fail_universe_replication_merge"));
+    return;
+  }
 
   scoped_refptr<UniverseReplicationInfo> original_universe;
   {

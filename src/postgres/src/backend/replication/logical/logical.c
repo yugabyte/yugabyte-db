@@ -72,6 +72,8 @@ static void message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 				   XLogRecPtr message_lsn, bool transactional,
 				   const char *prefix, Size message_size, const char *message);
 
+static void yb_schema_change_cb_wrapper(ReorderBuffer *cache, Oid relid);
+
 static void LoadOutputPlugin(OutputPluginCallbacks *callbacks, char *plugin);
 
 /*
@@ -193,6 +195,9 @@ StartupDecodingContext(List *output_plugin_options,
 		AllocateSnapshotBuilder(ctx->reorder, xmin_horizon, start_lsn,
 								need_full_snapshot);
 
+	if (IsYugaByteEnabled())
+		ctx->yb_start_decoding_at = start_lsn;
+
 	ctx->reorder->private_data = ctx;
 
 	/* wrap output plugin callbacks, so we can add error context information */
@@ -202,6 +207,9 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->reorder->commit = commit_cb_wrapper;
 	ctx->reorder->message = message_cb_wrapper;
 
+	if (IsYugaByteEnabled())
+		ctx->reorder->yb_schema_change = yb_schema_change_cb_wrapper;
+
 	ctx->out = makeStringInfo();
 	ctx->prepare_write = prepare_write;
 	ctx->write = do_write;
@@ -210,6 +218,39 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->output_plugin_options = output_plugin_options;
 
 	ctx->fast_forward = fast_forward;
+
+	/*
+	 * Mark that we need to invalidate the relcache as part of the startup.
+	 *
+	 * Also, initialize the hash table needed for tracking per table relcache
+	 * invalidations based on DDL events.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		HASHCTL		ctl;
+
+		ctx->yb_handle_relcache_invalidation_startup = true;
+
+		/*
+		 * Allocate the hash table to handle relcache invaldations. Uses the
+		 * memory context of the LogicalDecodingContext.
+		 */
+		memset(&ctl, 0, sizeof(ctl));
+		ctl.keysize = sizeof(Oid);		/* table_oid */
+
+		/*
+		 * Ideally, we want to keep a bool as the value or not have a value at
+		 * all (set) but the HTAB implementation asserts that entrysize >=
+		 * keysize. So, we end up keeping the value also as the OID which
+		 * remains unused.
+		 */
+		ctl.entrysize = sizeof(Oid);
+		ctl.hcxt = context;
+		ctx->yb_needs_relcache_invalidation =
+			hash_create("yb_needs_relcache_invalidation table",
+						32, /* start small and extend */
+						&ctl, HASH_ELEM | HASH_BLOBS);
+	}
 
 	MemoryContextSwitchTo(old_context);
 
@@ -859,6 +900,34 @@ message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	/* do the actual work: call callback */
 	ctx->callbacks.message_cb(ctx, txn, message_lsn, transactional, prefix,
 							  message_size, message);
+
+	/* Pop the error context stack */
+	error_context_stack = errcallback.previous;
+}
+
+static void
+yb_schema_change_cb_wrapper(ReorderBuffer *cache, Oid relid)
+{
+	LogicalDecodingContext *ctx = cache->private_data;
+	LogicalErrorCallbackState state;
+	ErrorContextCallback errcallback;
+
+	Assert(!ctx->fast_forward);
+
+	/* Push callback + info on the error context stack */
+	state.ctx = ctx;
+	state.callback_name = "yb_schema_change";
+	state.report_location = InvalidXLogRecPtr;
+	errcallback.callback = output_plugin_error_callback;
+	errcallback.arg = (void *) &state;
+	errcallback.previous = error_context_stack;
+	error_context_stack = &errcallback;
+
+	/* set output state */
+	ctx->accept_writes = false;
+
+	/* do the actual work: call callback */
+	ctx->callbacks.yb_schema_change_cb(ctx, relid);
 
 	/* Pop the error context stack */
 	error_context_stack = errcallback.previous;

@@ -136,12 +136,12 @@ To start YugabyteDB Helm chart, perform the following:
 - Validate the chart version, as follows:
 
     ```sh
-    helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+    helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
     ```
 
     ```output
     NAME                 CHART VERSION  APP VERSION    DESCRIPTION
-  yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}         {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+  yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}         {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
   ```
 
 Now you are ready to create a local YugabyteDB cluster.
@@ -153,7 +153,7 @@ Create a YugabyteDB cluster in Minikube using the following commands. Note that 
 ```sh
 kubectl create namespace yb-demo
 helm install yb-demo yugabytedb/yugabyte \
---version {{<yb-version version="stable" format="short">}} \
+--version {{<yb-version version="preview" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1 --namespace yb-demo
@@ -163,7 +163,7 @@ Because load balancers are not available in a Minikube environment, the LoadBala
 
 ```sh
 helm install yb-demo yugabytedb/yugabyte \
---version {{<yb-version version="stable" format="short">}} \
+--version {{<yb-version version="preview" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo
@@ -244,7 +244,7 @@ $ kubectl --namespace yb-demo exec -it yb-tserver-0 -- sh -c "cd /home/yugabyte 
 ```
 
 ```output
-ysqlsh (11.2-YB-{{< yb-version version="stable">}}-b0)
+ysqlsh (11.2-YB-{{< yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -532,3 +532,9 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp
     ```-->
+
+## YugabyteDB Kubernetes Operator
+
+A preliminary version of the YugabyteDB Kubernetes Operator is available in [Tech Preview](/preview/releases/versioning/#feature-availability) (not recommended for production use). The operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
+
+For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.

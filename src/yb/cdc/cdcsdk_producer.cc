@@ -165,14 +165,16 @@ Status AddColumnToMap(
     col.ToQLValuePB(col_schema.type(), &ql_value);
   }
   if (tablet->table_type() == PGSQL_TABLE_TYPE) {
-    if (!IsNull(ql_value) && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
-      // Send data as QLValuePB to Walsender.
-      if (request_source == CDCSDKRequestSource::WALSENDER) {
-        cdc_datum_message->set_column_type(col_schema.pg_type_oid());
-        cdc_datum_message->mutable_pg_ql_value()->CopyFrom(ql_value);
-        return Status::OK();
-      }
+    // Send data as QLValuePB to Walsender. Do this outside of the `IsNull` check so that we also
+    // send NULL values to the walsender. This is needed to be able to differentiate between NULL
+    // and Omitted values.
+    if (request_source == CDCSDKRequestSource::WALSENDER) {
+      cdc_datum_message->set_column_type(col_schema.pg_type_oid());
+      cdc_datum_message->mutable_pg_ql_value()->CopyFrom(ql_value);
+      return Status::OK();
+    }
 
+    if (!IsNull(ql_value) && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
       RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
           ql_value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
           cdc_datum_message));

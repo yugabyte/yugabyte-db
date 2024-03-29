@@ -178,6 +178,10 @@ DEFINE_RUNTIME_uint32(cdcsdk_tablet_not_of_interest_timeout_secs, 4 * 60 * 60,
                       "Timeout after which it can be inferred that tablet is not of interest "
                       "for the stream");
 
+DEFINE_test_flag(bool, cdc_force_destroy_virtual_wal_failure, false,
+                 "For testing only. When set to true, DestroyVirtualWal RPC will return RPC "
+                 "failure response.");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -2402,18 +2406,17 @@ void CDCServiceImpl::FilterOutTabletsToBeDeletedByAllStreams(
 }
 
 Result<bool> CDCServiceImpl::CheckBeforeImageActive(
-    const TabletId& tablet_id, const StreamMetadata& stream_metadata) {
+    const TabletId& tablet_id, const StreamMetadata& stream_metadata,
+    const tablet::TabletPeerPtr& tablet_peer) {
   bool is_before_image_active = false;
   if (FLAGS_ysql_yb_enable_replica_identity) {
-    auto tablet_peeer = context_->LookupTablet(tablet_id);
     auto replica_identity_map = stream_metadata.GetReplicaIdentities();
-
     // If the tablet is colocated, we check the replica identities of all the tables residing in it.
     // If before image is active for any one of the tables then we should return true
-    if (tablet_peeer->tablet_metadata()->colocated()) {
-      auto table_ids = tablet_peeer->tablet_metadata()->GetAllColocatedTables();
+    if (tablet_peer->tablet_metadata()->colocated()) {
+      auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
       for (auto table_id : table_ids) {
-        auto table_name = tablet_peeer->tablet_metadata()->table_name(table_id);
+        auto table_name = tablet_peer->tablet_metadata()->table_name(table_id);
         if ((boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
              boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
           continue;
@@ -2429,9 +2432,9 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
         }
       }
     } else {
-      auto table_id = tablet_peeer->tablet_metadata()->table_id();
+      auto table_id = tablet_peer->tablet_metadata()->table_id();
       if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
-        is_before_image_active = replica_identity_map.at(table_id) == PgReplicaIdentity::FULL;
+        is_before_image_active = (replica_identity_map.at(table_id) == PgReplicaIdentity::FULL);
       } else {
         return STATUS_FORMAT(NotFound, "Replica identity not found for table: $0 ", table_id);
       }
@@ -2442,6 +2445,7 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
         (stream_metadata.GetRecordType() == CDCRecordType::ALL ||
          stream_metadata.GetRecordType() == CDCRecordType::PG_FULL);
   }
+
   return is_before_image_active;
 }
 
@@ -2483,6 +2487,13 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // will be passed to LEADER and it's peers for log cache eviction and clean the consumed intents
     // in a regular interval.
     if (!input_tablet_id.empty() && input_tablet_id != tablet_id) {
+      continue;
+    }
+
+    auto tablet_peeer = context_->LookupTablet(tablet_id);
+    if (!tablet_peeer) {
+      LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
+                   << ". Will not update its peers in this round";
       continue;
     }
 
@@ -2528,7 +2539,13 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
     // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
     // taking the snapshot of any table.
-    bool is_before_image_active = VERIFY_RESULT(CheckBeforeImageActive(tablet_id, record));
+    auto is_before_image_active_result = CheckBeforeImageActive(tablet_id, record, tablet_peeer);
+    if (!is_before_image_active_result.ok()) {
+      LOG(WARNING) << "Unable to obtain before image / replica identity information for tablet: "
+                   << tablet_id;
+      continue;
+    }
+    bool is_before_image_active = *is_before_image_active_result;
 
     if (entry.cdc_sdk_safe_time && (is_before_image_active || entry.snapshot_key.has_value())) {
       cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
@@ -4433,6 +4450,17 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
   }
 
   LOG(INFO) << "Received DestroyVirtualWALForCDC request: " << req->DebugString();
+
+  if (FLAGS_TEST_cdc_force_destroy_virtual_wal_failure) {
+    LOG(WARNING)
+        << "Returning error response since FLAGS_TEST_cdc_force_destroy_virtual_wal_failure. "
+           "This should only happen in TEST environment.";
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(Aborted, "Test flag FLAGS_TEST_cdc_force_destroy_virtual_wal_failure is true"),
+        CDCErrorPB::NOT_RUNNING, &context);
+    return;
+  }
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),

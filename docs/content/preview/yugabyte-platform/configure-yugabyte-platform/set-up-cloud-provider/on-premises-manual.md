@@ -699,19 +699,15 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 ## Install node agent
 
-The node agent is used to manage communication between YugabyteDB Anywhere and the node. YugabyteDB Anywhere uses node agents to communicate with the nodes. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+The node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/preview/faq/yugabyte-platform/#node-agent) FAQ.
 
 For automated and assisted manual provisioning, node agents are installed onto instances automatically when adding instances, or when running the pre-provisioning script using the `--install_node_agent` flag.
 
 Use the following procedure to install node agent for fully manual provisioning.
 
-{{< note title="Re-provisioning a node" >}}
-
-If you are re-provisioning a node (that is, node agent has previously been installed on the node), you need to unregister the node agent before installing node agent again. Refer to [Unregister node agent](#unregister-node-agent).
-
-{{< /note >}}
-
 To install the YugabyteDB node agent manually, as the `yugabyte` user, do the following:
+
+1. If you are re-provisioning the node (for example, you are [patching the Linux operating system](../../../manage-deployments/upgrade-nodes/), where node agent has previously been installed on the node), you need to [unregister the node agent](#unregister-node-agent) before installing node agent.
 
 1. Download the installer from YugabyteDB Anywhere using the [API token](../../../anywhere-automation/#authentication) of the Super Admin, as follows:
 
@@ -720,8 +716,6 @@ To install the YugabyteDB node agent manually, as the `yugabyte` user, do the fo
     ```
 
     To create an API token, navigate to your **User Profile** and click **Generate Key**.
-
-1. Verify that the installer file contains the script.
 
 1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
 
@@ -927,5 +921,3 @@ If the node agent configuration is corrupted, the command may fail. In this case
     ```sh
     curl -k -X DELETE --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents/<node_agent_id>
     ```
-
-For more information, refer to [Node agent](../../../../faq/yugabyte-platform/#node-agent) FAQ.

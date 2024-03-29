@@ -859,6 +859,8 @@ YBCStatus YBCPgUpdateAndPersistLSN(
 // Get a new OID from the OID allocator of database db_oid.
 YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);
 
+YBCStatus YBCYcqlStatementStats(YCQLStatementStats** stats, size_t* num_stats);
+
 // Active Session History
 void YBCStoreTServerAshSamples(
     YBCAshAcquireBufferLock acquire_cb_lock_fn, YBCAshGetNextCircularBufferSlot get_cb_slot_fn,

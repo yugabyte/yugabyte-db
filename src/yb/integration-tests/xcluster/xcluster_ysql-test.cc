@@ -2541,6 +2541,11 @@ class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
 
   static const std::string kTableName;
 
+  static Status CreateTable(Cluster* cluster, const NamespaceName& namespace_name) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.ExecuteFormat("CREATE TABLE $0(id INT PRIMARY KEY, balance INT)", kTableName);
+  }
+
   Result<Connections> PrepareClusters() {
     RETURN_NOT_OK(Initialize(3 /* replication factor */));
     const auto namespace_2 = "test_namespace2";
@@ -2552,8 +2557,7 @@ class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
 
     for (const auto& namespace_name : namespaces) {
       RETURN_NOT_OK(RunOnBothClusters([&namespace_name](Cluster* cluster) -> Status {
-        auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-        return conn.ExecuteFormat("CREATE TABLE $0(id INT PRIMARY KEY, balance INT)", kTableName);
+        return CreateTable(cluster, namespace_name);
       }));
     }
     auto table_names = VERIFY_RESULT(producer_client()->ListTables(kTableName));
@@ -2601,6 +2605,12 @@ const std::string XClusterYsqlTestReadOnly::kTableName{"test_table"};
 
 TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTestReadOnly) {
   auto consumer_conns = ASSERT_RESULT(PrepareClusters());
+
+  const auto namespace_3 = "namespace_3";
+  ASSERT_OK(CreateDatabase(&consumer_cluster_, namespace_3));
+  ASSERT_OK(CreateTable(&consumer_cluster_, namespace_3));
+  auto non_replicated_db_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_3));
+
   auto query_patterns = {
       "INSERT INTO $0 VALUES($1, 100)", "UPDATE $0 SET balance = 0 WHERE id = $1",
       "DELETE FROM $0 WHERE id = $1"};
@@ -2616,6 +2626,10 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
     }
   }
 
+  for (const auto& query : queries) {
+    ASSERT_OK(non_replicated_db_conn.Execute(query));
+  }
+
   ASSERT_OK(SetRoleToStandbyAndWaitForValidSafeTime());
 
   // Test that INSERT, UPDATE, and DELETE operations fail while the cluster is on STANDBY mode.
@@ -2625,13 +2639,19 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
       const auto status = conn.Execute(query);
       ASSERT_NOK(status);
       ASSERT_STR_CONTAINS(
-          status.ToString(), "Data modification by DML is forbidden with STANDBY xCluster role");
+          status.ToString(),
+          "Data modification is forbidden on database that is the target of a transactional "
+          "xCluster replication");
 
       // Writes should be allowed when yb_non_ddl_txn_for_sys_tables_allowed is set
       // which happens during ysql_upgrades
       ASSERT_OK(conn.Execute(Format("$0 $1", allow_writes, query)));
     }
     ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
+  }
+
+  for (const auto& query : queries) {
+    ASSERT_OK(non_replicated_db_conn.Execute(query));
   }
 
   ASSERT_OK(SetRoleToActive());
@@ -2641,6 +2661,10 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
     for (const auto& query : queries) {
       ASSERT_OK(conn.Execute(query));
     }
+  }
+
+  for (const auto& query : queries) {
+    ASSERT_OK(non_replicated_db_conn.Execute(query));
   }
 }
 
