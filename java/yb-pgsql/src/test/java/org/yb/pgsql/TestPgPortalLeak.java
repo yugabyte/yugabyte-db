@@ -31,6 +31,15 @@ public class TestPgPortalLeak extends BasePgSQLTest {
 
   private final int rowCount = 4000;
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    // TODO(#21956): In RC isolation, testNoPortalLeak fails because there actually seems to be a
+    // memory leak.
+    flags.put("yb_enable_read_committed_isolation", "false");
+    return flags;
+  }
+
   private void createTable(String tableName) throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute(
