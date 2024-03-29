@@ -21,6 +21,7 @@ import {
   makeStyles
 } from '@material-ui/core';
 import { YBCheckbox, YBModal } from '../../../components';
+import { YBPopover } from '../../../components/YBPopover/YBPopover';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { permissionOrderByRelevance, resourceOrderByRelevance } from '../common/RbacUtils';
 import { Action, Permission, Resource, ResourceType } from './IPermission';
@@ -238,8 +239,8 @@ function ListPermissionsModal({
                     resourceType === Resource.DEFAULT
                       ? t('selectAllOtherPermissions')
                       : t('selectAllPermissions', {
-                          resource: capitalize(resourceType.toLowerCase())
-                        })
+                        resource: capitalize(resourceType.toLowerCase())
+                      })
                   }
                   indeterminate={
                     selectedPermissions[resourceType].length > 0 &&
@@ -293,9 +294,9 @@ function ListPermissionsModal({
                   );
                   if (find(dependentPermissions, permission) !== undefined) {
                     return (
-                      <DisabledCheckbox hoverMsg={t('disabledDependentPerm')}>
+                      <YBPopover hoverMsg={t('disabledDependentPerm')} minWidth>
                         {comp}
-                      </DisabledCheckbox>
+                      </YBPopover>
                     );
                   }
                   return comp;
@@ -309,58 +310,7 @@ function ListPermissionsModal({
   );
 }
 
-const disabledPopoverStyles = makeStyles((theme) => ({
-  popover: {
-    pointerEvents: 'none'
-  },
-  root: {
-    padding: theme.spacing(1),
-    width: '210px',
-    color: '#67666C'
-  }
-}));
 
-const DisabledCheckbox = ({ children, hoverMsg }: { children: JSX.Element; hoverMsg: string }) => {
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
-  const classes = disabledPopoverStyles();
-
-  const handlePopoverOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handlePopoverClose = () => {
-    setAnchorEl(null);
-  };
-
-  const open = Boolean(anchorEl);
-
-  return (
-    <div onMouseEnter={handlePopoverOpen} onMouseLeave={handlePopoverClose}>
-      {children}
-      <Popover
-        id="dependent-perm-disabled"
-        className={classes.popover}
-        classes={{
-          paper: classes.root
-        }}
-        open={open}
-        anchorEl={anchorEl}
-        anchorOrigin={{
-          vertical: 'top',
-          horizontal: 'left'
-        }}
-        transformOrigin={{
-          vertical: 'bottom',
-          horizontal: 'left'
-        }}
-        onClose={handlePopoverClose}
-        disableRestoreFocus
-      >
-        <Typography variant="subtitle1">{hoverMsg}</Typography>
-      </Popover>
-    </div>
-  );
-};
 
 export default ListPermissionsModal;
