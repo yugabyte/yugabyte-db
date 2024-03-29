@@ -20,4 +20,4 @@ Delphix offers the following key capabilities as part of its integration with Yu
 
 The resulting virtual copies can then be used for different use cases such as development, testing, analytics, reporting, and so on.
 
-For more information, refer to [Getting Started with YugabyteDB](https://documentation.commvault.com/2024/essential/getting_started_with_yugabytedb.html) in the Delphix documentation.
+For more information, refer to [Yugabyte data sources](https://cd.delphix.com/docs/latest/yugabyte-data-sources) in the Delphix documentation.
