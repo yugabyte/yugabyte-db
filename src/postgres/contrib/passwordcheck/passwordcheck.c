@@ -45,9 +45,6 @@ static char *password_special_chars = "!@#$%^&*()_+{}|<>?=";
 #define PASSWORD_HAS_SPECIAL	0x0004	/* Special character */
 #define PASSWORD_HAS_NUMBER		0x0008	/* Number */
 
-/* Saved hook value in case of unload */
-static check_password_hook_type prev_check_password_hook = NULL;
-
 extern void _PG_init(void);
 
 /*
@@ -79,24 +76,12 @@ check_password(const char *username,
 	char		encrypted[MD5_PASSWD_LEN + 1];
 	int			i;
 	int			password_flag = 0;
-
-	/* YB_TODO(rajat@yugabyte)
-	 * - Need to check if Postgres's new code is needed.
-	 * - PLEASE don't delete or modify postgres code.  Instead do something similar to the following
-	 *   o Write YbCheckPassword() { ... }
-	 *   o Call it from this function.
-	 *     if (IsYugabyteEnabled()) {
-	 *         return YbCheckPassword();
-	 *     }
-	 */
-	if (prev_check_password_hook)
-		prev_check_password_hook(username, shadow_pass,
-								 password_type, validuntil_time,
-								 validuntil_null);
+	const char *errstr = NULL;
 
 	switch (password_type)
 	{
 		case PASSWORD_TYPE_MD5:
+
 			/*
 			 * Unfortunately we cannot perform exhaustive checks on encrypted
 			 * passwords - we are restricted to guessing. (Alternatively, we
@@ -105,8 +90,8 @@ check_password(const char *username,
 			 *
 			 * We only check for username = password.
 			 */
-			if (!pg_md5_encrypt(username, username, namelen, encrypted))
-				elog(ERROR, "password encryption failed");
+			if (!pg_md5_encrypt(username, username, namelen, encrypted, &errstr))
+				elog(ERROR, "password encryption failed: %s", errstr);
 			if (strcmp(password, encrypted) == 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -296,6 +281,8 @@ passwordcheck_load_params(void)
 							15, 1, 10000,
 							PGC_SUSET,
 							0, NULL, NULL, NULL);
+
+	MarkGUCPrefixReserved("passwordcheck_extra");
 }
 
 /*
@@ -308,6 +295,5 @@ _PG_init(void)
 	passwordcheck_load_params();
 
 	/* activate password checks when the module is loaded */
-	prev_check_password_hook = check_password_hook;
 	check_password_hook = check_password;
 }

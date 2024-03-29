@@ -1,11 +1,13 @@
--- YB note: LOAD is not ported because The extension is loaded using cmd line flag.
+-- Load the extension to enable the tests
+LOAD 'passwordcheck_extra';
+
 -- Restrictive policy
-SET passwordcheck.minimum_length TO 8;
-SET passwordcheck.maximum_length TO 15;
-SET passwordcheck.special_chars TO '%$?@';
-SET passwordcheck.restrict_lower TO true;
-SET passwordcheck.restrict_upper TO true;
-SET passwordcheck.restrict_numbers TO true;
+SET passwordcheck_extra.minimum_length TO 8;
+SET passwordcheck_extra.maximum_length TO 15;
+SET passwordcheck_extra.special_chars TO '%$?@';
+SET passwordcheck_extra.restrict_lower TO true;
+SET passwordcheck_extra.restrict_upper TO true;
+SET passwordcheck_extra.restrict_numbers TO true;
 
 -- Check password policy in place
 -- Password too short
@@ -54,11 +56,11 @@ CREATE ROLE regress_pwd_foo PASSWORD '012345678901Aa%';
 DROP ROLE regress_pwd_foo;
 
 -- Policy less restrictive
-SET passwordcheck.restrict_lower TO false;
-SET passwordcheck.restrict_upper TO false;
-SET passwordcheck.restrict_numbers TO false;
-SET passwordcheck.minimum_length TO 1;
-SET passwordcheck.maximum_length TO 100;
+SET passwordcheck_extra.restrict_lower TO false;
+SET passwordcheck_extra.restrict_upper TO false;
+SET passwordcheck_extra.restrict_numbers TO false;
+SET passwordcheck_extra.minimum_length TO 1;
+SET passwordcheck_extra.maximum_length TO 100;
 
 -- Special character missing
 CREATE ROLE regress_pwd_foo PASSWORD '012345678901Aa';
@@ -67,7 +69,7 @@ CREATE ROLE regress_pwd_foo PASSWORD '@%';
 DROP ROLE regress_pwd_foo;
 
 -- Even less restrictive policy
-SET passwordcheck.restrict_special TO false;
+SET passwordcheck_extra.restrict_special TO false;
 -- Valid password
 CREATE ROLE regress_pwd_foo PASSWORD 'A';
 DROP ROLE regress_pwd_foo;
