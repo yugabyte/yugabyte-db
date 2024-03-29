@@ -296,23 +296,43 @@ class AbstractCloud(AbstractCommandParser):
 
         return 3
 
+    def get_cert_fingerprints(self, remote_shell, remote_cert_path):
+        serials = []
+        # This command returns 'SHA1 Fingerprint=<value>' separated by new lines.
+        cmd = "bash -c \"while openssl x509 -fingerprint -noout 2>/dev/null;do :;done < '{}'\""
+        output = remote_shell.run_command(cmd.format(remote_cert_path))
+        for line in output.stdout.splitlines():
+            tokens = line.split('=')
+            if len(tokens) == 2:
+                logging.info("[app] Found fingerprint {} for {}"
+                             .format(tokens[1], remote_cert_path))
+                serials.append(tokens[1])
+        return set(serials)
+
     def append_new_root_cert(self, connect_options, root_cert_path,
                              certs_location, certs_dir):
         remote_shell = RemoteShell(connect_options)
         yb_root_cert_path = os.path.join(certs_dir, self.ROOT_CERT_NAME)
         yb_root_cert_new_path = os.path.join(certs_dir, self.ROOT_CERT_NEW_NAME)
-
         # Give write permissions to cert directory
         remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
+        # Delete the new destination cert file if it exists.
+        remote_shell.run_command("rm -f '{}'".format(yb_root_cert_new_path))
         # Copy the new root cert to ca_new.crt
         if certs_location == self.CERT_LOCATION_NODE:
             remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
                                                            yb_root_cert_new_path))
         if certs_location == self.CERT_LOCATION_PLATFORM:
             remote_shell.put_file(root_cert_path, yb_root_cert_new_path)
-        # Append new cert content to ca.crt
-        remote_shell.run_command(
-            "cat '{}' >> '{}'".format(yb_root_cert_new_path, yb_root_cert_path))
+        # Get the fingerprints of the certs.
+        new_fingerprints = self.get_cert_fingerprints(remote_shell, yb_root_cert_new_path)
+        current_fingerprints = self.get_cert_fingerprints(remote_shell, yb_root_cert_path)
+        if not new_fingerprints.issubset(current_fingerprints):
+            # Append new cert content to ca.crt.
+            remote_shell.run_command(
+                "cat '{}' >> '{}'".format(yb_root_cert_new_path, yb_root_cert_path))
+        else:
+            logging.info("Multi cert is already created")
         # Reset the write permissions
         remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
 
