@@ -16,8 +16,6 @@ It is strongly recommended that you take appropriate measures as outlined in the
 
 ## List of advisories
 
-{{<release "2.20+">}}  {{<release "2.20.x">}} {{<release "2.20.1+">}}
-
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------------- | :------- | :-----: | :---------------: | :--- |
