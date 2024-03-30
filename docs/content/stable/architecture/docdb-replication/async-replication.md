@@ -4,8 +4,6 @@ headerTitle: xCluster replication
 linkTitle: xCluster
 description: xCluster replication between multiple YugabyteDB universes.
 headContent: Asynchronous replication between independent YugabyteDB universes
-aliases:
-  - /preview/architecture/docdb/2dc-deployments/
 menu:
   stable:
     identifier: architecture-docdb-async-replication
