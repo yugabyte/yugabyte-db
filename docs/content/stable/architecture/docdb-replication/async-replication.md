@@ -7,7 +7,7 @@ headContent: Asynchronous replication between independent YugabyteDB universes
 aliases:
   - /preview/architecture/docdb/2dc-deployments/
 menu:
-  preview:
+  stable:
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
     weight: 1150
