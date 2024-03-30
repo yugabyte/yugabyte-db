@@ -8,8 +8,8 @@
 {{- range $version := $versions -}}
     {{- /* retain the original text for display */ -}}
     {{- $orig := trim $version " " -}}
-    {{- /* trim the spaces */ -}}
-    {{- $version = trim $version " " -}}
+    {{- /* trim the spaces,+,.,x,X */ -}}
+    {{- $version = trim $version " .+xX" -}}
     {{- $count = add $count 1 -}}
     {{- /* split the build part eg: -b12 */ -}}
     {{- $parts := split $version "-" -}}
