@@ -164,11 +164,11 @@ Ongoing work, [#17862](https://github.com/yugabyte/yugabyte-db/issues/17862), wi
 
 ## Supported deployment scenarios
 
-xCluster currently supports active- active single-mastrr and active-active multi-master deployments.
+xCluster currently supports active-active single-master and active-active multi-master deployments.
 
 ### Active- active single-master
 
-Here the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The target universe can serve reads but not writes. Since only the nodes in one universe can take writes this is referred to as single master. Note that within the source universe all nodes can serve writes.
+Here the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The source universe can serve both reads and writes. The target universe can only serve reads. Since only the nodes in one universe can take writes this mode is referred to as single master. Note that within the source universe all nodes can serve writes.
 
 Usually, such deployments are used for serving low-latency reads from the target universes, as well as for disaster recovery purposes.  When used primarily for disaster recovery purposes, these deployments are also called active-standby because the target universe stands by to take over if the source universe is lost.
 
@@ -180,9 +180,9 @@ The following diagram shows an example of this deployment:
 
 ### Active-active multi-master
 
-The replication of data can be bidirectional between two universes, in which case both universes can perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. If the same key is updated in both universes at similar times, this results in the write with the larger timestamp becoming the latest write. In this case, the universes are both active, and this deployment mode is called a multi-master or active-active deployment.
+The replication of data can be bidirectional between two universes, in which case both universes can perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. If the same key is updated in both universes at similar times, this results in the write with the larger timestamp becoming the latest write. In this case, both the universes serve writes, hence this deployment mode is called multi-master.
 
-The multi-master deployment is built internally using two source-target unidirectional replication streams using non-transactional mode. Special care is taken to ensure that the timestamps are assigned to guarantee last-writer-wins semantics and the data arriving from the replication stream is not re-replicated.
+The multi-master deployment is built using bidirectional replication which has two unidirectional replication streams using non-transactional mode. Special care is taken to ensure that the timestamps are assigned to guarantee last-writer-wins semantics and the data arriving from the replication stream is not re-replicated.
 
 The following diagram shows an example of this deployment:
 
@@ -236,9 +236,9 @@ Setting up xCluster replication for [materialized views](../../../explore/ysql-l
 
 When interacting with data replicated from another universe using non-transactional mode:
 
-- reads are only eventually consistent
-- last writer wins for writes
-- transactions are limited to isolation level SQL-92 READ COMMITTED
+- Reads are only eventually consistent
+- Last writer wins for writes
+- Transactions are limited to isolation level SQL-92 READ COMMITTED
 
 After losing one universe, the other universe may be left with torn transactions.
 
@@ -246,8 +246,8 @@ After losing one universe, the other universe may be left with torn transactions
 
 With transactional mode,
 
-- no writes are allowed in the target universe
-- active-active multi-master is not supported
+- No writes are allowed in the target universe
+- Active-active multi-master is not supported
 - YCQL is not yet supported
 
 When the source universe is lost, an explicit decision must be made to switch over to the standby universe and point-in-time recovery must run; this is expected to increase recovery time by a minute or so.
