@@ -197,6 +197,16 @@
     excludeVersion = true
 
 [[main]]
+  name = "Tech Advisories"
+  weight = 5
+  identifier = "tech-advisories-menu"
+  parent = "releases"
+  url = "/preview/releases/techadvisories/"
+  [main.params]
+    excludeVersion = true
+    imageUrl = "/icons/triangle-exclamation-thin.svg"
+
+[[main]]
   name = "YugabyteDB"
   weight = 1
   identifier = "yugabytedb-releases"
@@ -709,8 +719,16 @@
     showSection = true
 
 [[preview_releases]]
-  name = "YugabyteDB"
+  name = "Tech Advisories"
   weight = 4
+  identifier = "tech-advisories"
+  url = "/preview/releases/techadvisories/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
+  name = "YugabyteDB"
+  weight = 5
   identifier = "ybdb-releases"
   url = "/preview/releases/ybdb-releases/"
   [preview_releases.params]
@@ -726,7 +744,7 @@
 
 [[preview_releases]]
   name = "YugabyteDB Anywhere"
-  weight = 5
+  weight = 6
   identifier = "yba-releases"
   url = "/preview/releases/yba-releases/"
   [preview_releases.params]
@@ -735,7 +753,7 @@
 
 [[preview_releases]]
   name = "YugabyteDB Managed"
-  weight = 6
+  weight = 7
   identifier = "ybm-releases"
   url = "/preview/yugabyte-cloud/release-notes/"
   [preview_releases.params]
@@ -743,7 +761,7 @@
 
 [[preview_releases]]
   name = "YugabyteDB Voyager"
-  weight = 7
+  weight = 8
   identifier = "voy-releases"
   url = "/preview/yugabyte-voyager/release-notes/"
   [preview_releases.params]
