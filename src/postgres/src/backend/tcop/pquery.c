@@ -25,6 +25,7 @@
 #include "pg_trace.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
@@ -434,6 +435,45 @@ FetchStatementTargetList(Node *stmt)
 	return NIL;
 }
 
+
+char *
+format_params(ParamListInfo params)
+{
+    StringInfoData buf;
+    int i;
+
+    initStringInfo(&buf);
+
+    for (i = 0; i < params->numParams; i++)
+    {
+        if (params->params[i].isnull)
+        {
+            appendStringInfo(&buf, "NULL");
+        }
+        else
+        {
+            Oid typoutput;
+            bool typIsVarlena;
+            char *val;
+
+            getTypeOutputInfo(params->params[i].ptype, &typoutput, &typIsVarlena);
+            val = OidOutputFunctionCall(typoutput, params->params[i].value);
+            appendStringInfoString(&buf, val);
+        }
+
+        if (i < params->numParams - 1)
+        {
+            appendStringInfoChar(&buf, ',');
+        }
+    }
+
+	//insert a new line character in buf.data
+	appendStringInfoChar(&buf, '\n');
+
+    return buf.data;
+}
+
+
 /*
  * PortalStart
  *		Prepare a portal for execution.
@@ -553,6 +593,16 @@ PortalStart(Portal portal, ParamListInfo params,
 				portal->portalPos = 0;
 
 				PopActiveSnapshot();
+
+				if(queryDesc){
+					if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
+						MyValue* result = lookup_in_shared_hashtable(map, queryDesc->plannedstmt->queryId);
+						if(result && params){
+							strcat(result->bind_variables, format_params(params));
+							strcat(result->bind_variables, "\n");
+						}	
+					}		
+				}
 				break;
 
 			case PORTAL_ONE_RETURNING:
@@ -569,6 +619,15 @@ PortalStart(Portal portal, ParamListInfo params,
 					portal->tupDesc =
 						ExecCleanTypeFromTL(pstmt->planTree->targetlist,
 											false);
+
+
+					if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
+						MyValue* result = lookup_in_shared_hashtable(map, pstmt->queryId);
+						if(result && params){
+							strcat(result->bind_variables, format_params(params));
+							strcat(result->bind_variables, "\n");
+						}	
+					}
 				}
 
 				/*
@@ -602,8 +661,17 @@ PortalStart(Portal portal, ParamListInfo params,
 
 			case PORTAL_MULTI_QUERY:
 				/* Need do nothing now */
-				portal->tupDesc = NULL;
-				break;
+				{
+					PlannedStmt *pstmt = PortalGetPrimaryStmt(portal);
+					if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
+						MyValue* result = lookup_in_shared_hashtable(map, pstmt->queryId);
+						if(result && params){
+							strcat(result->bind_variables, format_params(params));
+						}	
+					}
+					portal->tupDesc = NULL;
+					break;
+				}
 		}
 	}
 	PG_CATCH();

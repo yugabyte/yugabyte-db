@@ -1656,6 +1656,8 @@ exec_bind_message(StringInfo input_message)
 
 	/* Get the parameter format codes */
 	numPFormats = pq_getmsgint(input_message, 2);
+
+
 	if (numPFormats > 0)
 	{
 		int			i;
@@ -5492,7 +5494,7 @@ PostgresMain(int argc, char *argv[],
 				 */
 				exec_bind_message(&input_message);
 				break;
-
+			
 			case 'E':			/* execute */
 				{
 					const char *portal_name;
@@ -5661,7 +5663,7 @@ PostgresMain(int argc, char *argv[],
 				}
 				break;
 
-			case 'F':			/* fastpath function call */
+			case 'F':{			/* fastpath function call */
 				forbidden_in_wal_sender(firstchar);
 
 				/* Set statement_timestamp() */
@@ -5693,7 +5695,7 @@ PostgresMain(int argc, char *argv[],
 
 				send_ready_for_query = true;
 				break;
-
+}
 			case 'C':			/* close */
 				{
 					int			close_type;

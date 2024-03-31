@@ -672,11 +672,6 @@ void QueryDiagnosticsHandler(const WebCallbackRegistry::WebRequest& req, WebCall
     std::string query_id = req.parsed_args.find("query_id")->second;
     std::string timestamp = req.parsed_args.find("timestamp")->second;
 
-        FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-        fprintf(fptr, "%s\n%s" , query_id.c_str(), timestamp.c_str());
-        fclose(fptr);
-
-
     if(query_id.empty() || timestamp.empty()) {
         resp->output << "<html><body><h1>Error: Query ID or Timestamp not provided</h1></body></html>";
         resp->code = 400; // Bad Request
@@ -687,17 +682,10 @@ void QueryDiagnosticsHandler(const WebCallbackRegistry::WebRequest& req, WebCall
     std::string tar_file_path = query_diagnostics_path + query_id + "_" + timestamp + ".tar";
     std::string tar_command = "tar -cf " + tar_file_path + " -C " + query_diagnostics_path + query_id + " " + timestamp;
 
-        FILE* fptr1 = fopen("/Users/ishanchhangani/test.txt","a");
-        fprintf(fptr1, "tar_file_path: %s \n query_directory_path: %s \n " ,tar_file_path.c_str(), query_directory_path.c_str());
-        fclose(fptr1);
-
     int result = system(tar_command.c_str());
     if (result != 0) {
         resp->output << "<html><body><h1>Error: Failed to create tar file</h1></body></html>";
         resp->code = 500; // Internal Server Error
-        FILE* fptr1 = fopen("/Users/ishanchhangani/test.txt","a");
-        fprintf(fptr1, "Got error\n");
-        fclose(fptr1);
         return;
     }
     // std::filesystem::rename(new_query_directory_path, query_directory_path);

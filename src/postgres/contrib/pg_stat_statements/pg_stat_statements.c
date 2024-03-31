@@ -301,7 +301,7 @@ static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 /* Links to shared memory state */
 static pgssSharedState *pgss = NULL;
 static HTAB *pgss_hash = NULL;
-
+char bindVar[8024];
 /*---- GUC variables ----*/
 
 typedef enum
@@ -1411,7 +1411,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 			if(result){
 				bundleExplain(1 , queryDesc , result);
 				fetchSchemaDetails(1,queryDesc->plannedstmt->rtable,result);
-			}
+			}	
 		}
 
 
@@ -1442,79 +1442,6 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					DestReceiver *dest, char *completionTag)
 {
 	Node	   *parsetree = pstmt->utilityStmt;
-
-
-	ExecuteStmt *stmt = (ExecuteStmt *) parsetree;
-	ListCell *lc;
-	foreach(lc, stmt->params)
-	{
-		Node *paramNode = (Node *) lfirst(lc);
-		if (IsA(paramNode, A_Const))
-		{
-			A_Const *constNode = (A_Const *) paramNode;
-
-			// Get the value of the constant
-			Value *value = &(constNode->val);
-
-			// Print the value of the constant
-			switch (value->type)
-			{
-				case T_Integer:
-				{
-					int value_int = intVal(value);
-					FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-					fprintf(fptr, "Parameter: value = %d\n", value_int);
-					fclose(fptr);
-					elog(NOTICE, "Parameter: value = %d\n", value_int);
-					break;
-				}
-				case T_Float:
-				{
-					double value_float = floatVal(value);
-					FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-					fprintf(fptr, "Parameter: value = %f\n", value_float);
-					fclose(fptr);
-					elog(NOTICE, "Parameter: value = %f\n", value_float);
-					break;
-				}
-				case T_String:
-				{
-					char *value_str = strVal(value);
-					FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-					fprintf(fptr, "Parameter: value = %s\n", value_str);
-					fclose(fptr);
-					elog(NOTICE, "Parameter: value = %s\n", value_str);
-					break;
-				}
-				case T_BitString:
-				{
-					char *value_bitstr = value->val.str;
-					FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-					fprintf(fptr, "Parameter: value = %s\n", value_bitstr);
-					fclose(fptr);
-					elog(NOTICE, "Parameter: value = %s\n", value_bitstr);
-					break;
-				}
-				case T_Null:
-				{
-					FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-					fprintf(fptr, "Parameter: value = NULL\n");
-					fclose(fptr);
-					elog(NOTICE, "Parameter: value = NULL\n");
-					break;
-				}
-				default:
-				{
-					FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-					fprintf(fptr, "Parameter: Unknown value type\n");
-					fclose(fptr);
-					elog(NOTICE, "Parameter: Unknown value type\n");
-					break;
-				}
-			}
-		}
-	}
-
 
 	/*
 	 * If it's an EXECUTE statement, we don't track it and don't increment the
@@ -4078,6 +4005,14 @@ void fetchSchemaDetails(int flag ,List *rtable,MyValue *result)
 		strcat(pgss_log_path, "schema.txt");
 		FILE *fptr = fopen(pgss_log_path, "w");
 		fprintf(fptr,"%s",result->schema_str);
+		fclose(fptr);
+
+		// for bind variables
+		pgss_log_path = (char*)malloc(strlen(result->log_path) + 30);
+		strcpy(pgss_log_path, result->log_path);
+		strcat(pgss_log_path, "bindVar.txt");
+		fptr = fopen(pgss_log_path, "w");
+		fprintf(fptr,"%s",result->bind_variables);
 		fclose(fptr);
 	}
 	else if(strlen(result->schema_str) == 0){

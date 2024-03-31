@@ -4722,7 +4722,8 @@ yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a speci
 	0,0,0,
 	0,0,0,
 	0,0,0,
-	0,"",false,""};
+	0,"",false,"",
+	""};
 	
 	char *log_path_ptr = getPath(queryid,timeStr);
 	if(log_path_ptr == NULL) {
