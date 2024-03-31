@@ -34,13 +34,14 @@ SET pgaudit.log_level=notice;
 
 ## Prerequisites
 
-Create an export configuration. An export configuration defines the settings and login information for the tool that you want to export your logs to. Refer to [Export configuration](../metrics-export/#export-configuration).
+Create an integration. An integration defines the settings and login information for the tool that you want to export your logs to. Refer to [Integrations](../metrics-export/#export-configuration).
 
 ## Recommendations
 
 - Configuring logging requires a rolling restart of your cluster. Configure logging when the cluster isn't experiencing heavy traffic.
 - Configuring logging blocks other cluster operations, such as backups and maintenance. Avoid changing your settings before maintenance windows and during scheduled backups. The operation will block a backup from running.
 - Logging requires disk storage. Make sure the disk space on your cluster is sufficient for the anticipated data.
+- Logging impacts performance. If your application has high traffic, avoid logging all statements.
 
 ## Database Query Log
 
@@ -48,10 +49,8 @@ To enable database query logging for a cluster, do the following:
 
 1. On the cluster **Settings** tab, select **Database Query Log**.
 1. Click **Enable Database Query Logging**.
-1. Set the Database query log settings.
-
+1. Set the [Database query log settings](#database-query-log-settings).
 1. Select the export configuration to use.
-
 1. Click **Enable YSQL Query Logging**.
 
 YugabyteDB Managed begins the rolling restart.
@@ -66,7 +65,7 @@ Turn this option on to log SQL statements by type. You can choose the following 
 
 - ddl - log data definition statements CREATE, ALTER, and DROP.
 - mod - in addition to ddl statements, log data-modifying statements INSERT, UPDATE, DELETE, TRUNCATE, and COPY FROM.
-- all - log all statements
+- all - log all statements.
 
 Statements that fail before the execute phase, or that have syntax errors, are not included; to log error statements, use [Log SQL statements with severity](#log-sql-statements-with-severity-log-min-error-statement).
 
@@ -76,9 +75,29 @@ Note that if this option is off, statements may still be logged, depending on th
 
 Add metadata, such as the user or database name, to the start of each log line. This is applied to logs captured on YugabyteDB nodes and exported to your monitoring dashboard.
 
-To build the prefix, click **Edit** to open the **Edit Log Line Prefix** dialog. To add prefix items, click **Add Prefix** and choose the prefix items; these can also include parentheses and colons. Click and drag items added to the log line prefix to arrange them in the order you want in the log.
+To build the prefix, click **Edit** to open the **Edit Log Line Prefix** dialog. To add prefix items, click **Add Prefix** and choose the prefix items; these can also include punctuation. Click and drag items added to the log line prefix to arrange them in the order you want in the log.
 
-To see the available prefixes, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
+| Prefix | Description | Default |
+| :--- | :--- | :--- |
+| %p | Process ID | Always on |
+| %t | Timestamp of the log | Always on |
+| %e | SQLSTATE error code | off |
+| %r | Remote hostname or IP address, and remote port | on |
+| %a | Application name | off |
+| %u | Username | on |
+| %d | Database name | on |
+| : | Colon |  |
+| [] | Brackets |  |
+| () | Parentheses |  |
+| @ | Ampersand |  |
+
+The default prefix is as follows:
+
+```output
+%m : %r : %u @ %d :[%p]:
+
+timestamp : remote hostname and port : username@database : [process ID]:
+```
 
 ##### Log SQL statements with severity (log_min_error_statement)
 
@@ -94,13 +113,17 @@ Log the duration of all completed statements. Statement text is not included. Us
 
 ##### Log all statements with duration (log_min_duration_statement)
 
-Log the duration and statement text of all statements that ran for the specified duration (in ms) or longer. Use this setting to identify slow queries. If a statement has been logged for Log SQL statements, the text is not repeated in the duration log message. Set to 0 to log all statements, with their duration.
+Log the duration and statement text of all statements that ran for the specified duration (in ms) or longer. Use this setting to identify slow queries. If a statement has been logged for [Log SQL statements](#log-sql-statements-log_statement), the text is not repeated in the duration log message.
+
+Setting this option to 0 logs all statements, with their duration, which is not recommended unless you have low traffic. You should set this to a reasonable value for your application (for example, 1000 milliseconds), or use [log sampling](#sample-statements-with-duration-log_min_duration_sample-and-log_statement_sample_rate).
+
+This setting overrides [the sampling setting](#sample-statements-with-duration-log_min_duration_sample-and-log_statement_sample_rate); queries exceeding the minimum duration are not subject to sampling and are always logged.
 
 ##### Sample statements with duration (log_min_duration_sample and log_statement_sample_rate)
 
 Log a sampling of statements that ran for a specified duration (in ms) or longer. These options are used together, typically to identify slow queries while minimizing the performance impact on high traffic clusters.
 
-For example, to log 25% of queries exceeding 1000ms, set the sample rate to 0.25, and set the duration to 1000.
+For example, to log 25% of queries exceeding 1000ms, set the sample rate to 25 per cent, and set the duration to 1000.
 
 When duration is off, the sample rate has no effect.
 
@@ -155,3 +178,5 @@ The YSQL audit logging settings are derived from the settings for logging used b
 ## Learn more
 
 - [Logging in YugabyteDB](../../../secure/audit-logging/)
+- [PostgreSQL Error Reporting and Logging](https://www.postgresql.org/docs/11/runtime-config-logging.html)
+- [Annotated PostgreSQL configuration settings](https://github.com/jberkus/annotated.conf)

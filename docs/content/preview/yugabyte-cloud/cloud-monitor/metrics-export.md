@@ -27,11 +27,11 @@ Exporting cluster metrics and logs counts against your data transfer allowance. 
 
 ## Configure integrations
 
-Create integrations on the **Integrations** page.
+Create and manage integrations on the **Integrations** page.
 
-![Integrations](/images/yb-cloud/managed-metrics-export.png)
+![Integrations](/images/yb-cloud/managed-integrations.png)
 
-The page lists the tools that are available for ingesting metrics or logs.
+The page lists the configured and available third-party integrations.
 
 ### Manage integrations
 
