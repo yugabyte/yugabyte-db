@@ -454,6 +454,10 @@ void HandlePreParsedDollarSubstrCP(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
 void HandlePreParsedDollarSum(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
+void HandlePreParsedDollarTsIncrement(pgbson *doc, void *arguments,
+									  ExpressionResult *expressionResult);
+void HandlePreParsedDollarTsSecond(pgbson *doc, void *arguments,
+								   ExpressionResult *expressionResult);
 void ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarBsonSize(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionData *data);
@@ -493,6 +497,9 @@ void ParseDollarSubstrBytes(const bson_value_t *argument,
 							AggregationExpressionData *data);
 void ParseDollarSubstrCP(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarTsSecond(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarTsIncrement(const bson_value_t *argument,
+							AggregationExpressionData *data);
 
 /* Shared functions for operator handlers */
 void * ParseFixedArgumentsForExpression(const bson_value_t *argumentValue,
