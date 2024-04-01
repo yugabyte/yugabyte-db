@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -186,6 +187,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
+          TaskType.WaitForDuration,
           TaskType.ModifyBlackList,
           TaskType.KubernetesCommandExecutor,
           TaskType.UpdateUniverseIntent,
@@ -199,6 +201,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
@@ -430,6 +433,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             + "\"}}]}";
     List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear.getKey(), "1 ms");
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
