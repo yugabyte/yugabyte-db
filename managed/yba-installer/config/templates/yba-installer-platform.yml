@@ -113,6 +113,11 @@ services:
             {{ end }}
             custom_headers = {{ yamlPathSlice "platform.custom_headers" }}
           }
+          java {
+            tls {
+              disabled_algorithms = {{ yamlPathSlice "platform.tlsDisabledAlgorithms" }}
+            }
+          }
         }
         # If SSO needs to be enabled on the platform.
         security.use_oauth = false
