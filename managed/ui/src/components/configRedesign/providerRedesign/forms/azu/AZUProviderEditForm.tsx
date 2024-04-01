@@ -53,7 +53,7 @@ import {
   getIsFormDisabled,
   readFileAsText,
   handleFormSubmitServerError,
-  AZURE_FORM_MAPPERS
+  UseProviderValidationEnabled
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
@@ -91,6 +91,7 @@ import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxV
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { getYBAHost } from '../../utils';
 import { hostInfoQueryKey } from '../../../../../redesign/helpers/api';
+import { AZURE_FORM_MAPPERS } from './constants';
 
 interface AZUProviderEditFormProps {
   editProvider: EditProvider;
@@ -202,13 +203,14 @@ export const AZUProviderEditForm = ({
   });
 
   const customerUUID = localStorage.getItem('customerId') ?? '';
-  const globalRuntimeConfigQuery = useQuery(QUERY_KEY.fetchGlobalRunTimeConfigs, () =>
-    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
-  );
   const customerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
+  const {
+    isLoading: isProviderValidationLoading,
+    isValidationEnabled
+  } = UseProviderValidationEnabled(CloudType.azu);
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
@@ -221,7 +223,7 @@ export const AZUProviderEditForm = ({
       />
     );
   }
-  if (customerRuntimeConfigQuery.isError || globalRuntimeConfigQuery.isError) {
+  if (customerRuntimeConfigQuery.isError) {
     return (
       <YBErrorIndicator
         customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
@@ -231,7 +233,7 @@ export const AZUProviderEditForm = ({
   if (
     hostInfoQuery.isLoading ||
     customerRuntimeConfigQuery.isLoading ||
-    globalRuntimeConfigQuery.isLoading
+    isProviderValidationLoading
   ) {
     return <YBLoading />;
   }
@@ -254,10 +256,6 @@ export const AZUProviderEditForm = ({
   const hideRegionFormModal = () => {
     setIsRegionFormModalOpen(false);
   };
-  const isValidationAllowed =
-    globalRuntimeConfigQuery?.data?.configEntries?.find(
-      (c: any) => c.key === 'yb.provider.azure_provider_validation'
-    )?.value === 'true';
 
   const onFormReset = () => {
     formMethods.reset(defaultValues);
@@ -275,7 +273,7 @@ export const AZUProviderEditForm = ({
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
         await editProvider(providerPayload, {
-          shouldValidate: isValidationAllowed,
+          shouldValidate: isValidationEnabled,
           ignoreValidationErrors: false,
           mutateOptions: {
             onError: (err) => {

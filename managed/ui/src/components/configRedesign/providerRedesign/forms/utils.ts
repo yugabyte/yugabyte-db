@@ -147,16 +147,16 @@ export const constructAccessKeysEditPayload = (
   return {
     allAccessKeys: editSSHKeypair
       ? [
-        {
-          keyInfo: {
-            ...(newAccessKey.sshKeypairName && { keyPairName: newAccessKey.sshKeypairName }),
-            ...(newAccessKey.sshPrivateKeyContent && {
-              sshPrivateKeyContent: newAccessKey.sshPrivateKeyContent
-            }),
-            skipKeyValidateAndUpload: newAccessKey.skipKeyValidateAndUpload ?? false
+          {
+            keyInfo: {
+              ...(newAccessKey.sshKeypairName && { keyPairName: newAccessKey.sshKeypairName }),
+              ...(newAccessKey.sshPrivateKeyContent && {
+                sshPrivateKeyContent: newAccessKey.sshPrivateKeyContent
+              }),
+              skipKeyValidateAndUpload: newAccessKey.skipKeyValidateAndUpload ?? false
+            }
           }
-        }
-      ]
+        ]
       : currentAccessKeys
   };
 };
@@ -187,26 +187,6 @@ export const getIsFieldDisabled = (
   isFormDisabled ||
   (NonEditableInUseProviderField[providerCode].includes(fieldName) && isProviderInUse);
 
-export const AZURE_FORM_MAPPERS = {
-  '$.details.cloudInfo.azu.azuClientId': 'azuClientId', //string;
-  '$.details.cloudInfo.azu.azuClientSecret': 'azuClientSecret', //string;
-  '$.details.cloudInfo.azu.azuHostedZoneId': 'azuHostedZoneId', // string;
-  '$.details.cloudInfo.azu.azuRG': 'azuRG', //string;
-  '$.details.cloudInfo.azu.azuNetworkRG': 'azuNetworkRG', // string;
-  '$.details.cloudInfo.azu.azuSubscriptionId': 'azuSubscriptionId', // string;
-  '$.details.cloudInfo.azu.azuNetworkSubscriptionId': 'azuNetworkSubscriptionId', // string;
-  '$.details.cloudInfo.azu.azuTenantId': 'azuTenantId', // string;
-  '$.details.airGapInstall': 'dbNodePublicInternetAccess', //boolean;
-  '$.allAccessKeys[0].keyInfo.sshPrivateKeyContent': 'sshPrivateKeyContent', // File;
-  '$.allAccessKeys[0].keyInfo.keyPairName': 'sshKeypairName',
-  '$.details.setUpChrony.sshPort': 'sshPort',
-  '$.details.setUpChrony.sshUser': 'sshUser',
-  '$.name': 'providerName', // string;
-  '$.regions': 'regions', // CloudVendorRegionField[];
-  '$.details.ntpServers': 'ntpServers', // string[];
-  '$.imageBundles': 'imageBundles' //ImageBundle[];
-};
-
 export const ValidationErrMsgDelimiter = '<br>';
 
 export const handleFormSubmitServerError = (
@@ -234,33 +214,33 @@ export const handleFormSubmitServerError = (
       const prevError = get(formMethods.formState.errors, topLevelKey);
 
       formMethods.setError(topLevelKey, {
-        message: `${prevError ? prevError?.message + ValidationErrMsgDelimiter : ''}${error[key]?.join(ValidationErrMsgDelimiter) ?? ''
-          }`
+        message: `${prevError ? prevError?.message + ValidationErrMsgDelimiter : ''}${
+          error[key]?.join(ValidationErrMsgDelimiter) ?? ''
+        }`
       });
     }
   });
 };
 
-
 const ProviderValidationRuntimeConfigKeys = {
-  [CloudType.gcp]: "yb.provider.gcp_provider_validation",
-  [CloudType.azu]: "yb.provider.azure_provider_validation",
-  [CloudType.kubernetes]: "yb.provider.kubernetes_provider_validation",
-
+  [CloudType.gcp]: 'yb.provider.gcp_provider_validation',
+  [CloudType.azu]: 'yb.provider.azure_provider_validation',
+  [CloudType.kubernetes]: 'yb.provider.kubernetes_provider_validation'
 };
 
-export function UseProviderValidationEnabled(provider: CloudType): {
+export function UseProviderValidationEnabled(
+  provider: CloudType
+): {
   isLoading: boolean;
   isValidationEnabled: boolean;
 } {
+  const isProviderSupported = [CloudType.azu, CloudType.gcp, CloudType.kubernetes].includes(
+    provider
+  );
 
-  const isProviderSupported = [CloudType.azu, CloudType.gcp, CloudType.kubernetes].includes(provider);
-
-  const {
-    data: globalRuntimeConfigs,
-    isLoading
-  } = useQuery(runtimeConfigQueryKey.globalScope(), () =>
-    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data),
+  const { data: globalRuntimeConfigs, isLoading } = useQuery(
+    runtimeConfigQueryKey.globalScope(),
+    () => fetchGlobalRunTimeConfigs(true).then((res: any) => res.data),
     {
       enabled: isProviderSupported
     }
@@ -268,11 +248,10 @@ export function UseProviderValidationEnabled(provider: CloudType): {
 
   if (!isProviderSupported) return { isLoading: false, isValidationEnabled: false };
 
-
   const isValidationEnabled =
     globalRuntimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === ProviderValidationRuntimeConfigKeys[provider]
     )?.value === 'true';
 
   return { isLoading, isValidationEnabled };
-};
+}

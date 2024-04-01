@@ -5,7 +5,7 @@ import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'react-toastify';
 import { useQuery } from 'react-query';
-
+import { useTranslation } from 'react-i18next';
 import {
   RadioGroupOrientation,
   YBInputField,
@@ -39,7 +39,7 @@ import {
   getIsFormDisabled,
   readFileAsText,
   handleFormSubmitServerError,
-  AZURE_FORM_MAPPERS
+  UseProviderValidationEnabled
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
@@ -66,7 +66,7 @@ import { getYBAHost } from '../../utils';
 import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
-import { useTranslation } from 'react-i18next';
+import { AZURE_FORM_MAPPERS } from './constants';
 
 interface AZUProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -167,22 +167,23 @@ export const AZUProviderCreateForm = ({
   const globalRuntimeConfigQuery = useQuery(QUERY_KEY.fetchGlobalRunTimeConfigs, () =>
     fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
-
+  const {
+    isLoading: isProviderValidationLoading,
+    isValidationEnabled
+  } = UseProviderValidationEnabled(CloudType.azu);
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
   const sshConfigureMsg = ConfigureSSHDetailsMsg();
 
-  if (hostInfoQuery.isLoading || globalRuntimeConfigQuery.isLoading) {
+  if (
+    hostInfoQuery.isLoading ||
+    globalRuntimeConfigQuery.isLoading ||
+    isProviderValidationLoading
+  ) {
     return <YBLoading />;
   }
-  if (globalRuntimeConfigQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
-      />
-    );
-  }
+
   if (hostInfoQuery.isError) {
     return (
       <YBErrorIndicator
@@ -209,11 +210,6 @@ export const AZUProviderCreateForm = ({
     setIsRegionFormModalOpen(false);
   };
 
-  const isValidationAllowed =
-    globalRuntimeConfigQuery?.data?.configEntries?.find(
-      (c: any) => c.key === 'yb.provider.azure_provider_validation'
-    )?.value === 'true';
-
   const onFormSubmit: SubmitHandler<AZUProviderCreateFormFieldValues> = async (formValues) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
@@ -227,7 +223,7 @@ export const AZUProviderCreateForm = ({
       const providerPayload = await constructProviderPayload(formValues);
       try {
         await createInfraProvider(providerPayload, {
-          shouldValidate: isValidationAllowed,
+          shouldValidate: isValidationEnabled,
           ignoreValidationErrors: false,
           mutateOptions: {
             onError: (err) => {
