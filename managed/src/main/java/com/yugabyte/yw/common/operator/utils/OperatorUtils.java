@@ -1,17 +1,33 @@
 package com.yugabyte.yw.common.operator.utils;
 
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -89,5 +105,138 @@ public class OperatorUtils {
     String uid = ybUniverse.getMetadata().getUid();
     int hashCode = name.concat(namespace).concat(uid).hashCode();
     return name.concat("-").concat(Integer.toString(Math.abs(hashCode)));
+  }
+
+  /*--- YBUniverse related help methods ---*/
+
+  public boolean shouldUpdateYbUniverse(
+      UserIntent currentUserIntent, int newNumNodes, DeviceInfo newDeviceInfo) {
+    return !(currentUserIntent.numNodes == newNumNodes)
+        || !currentUserIntent.deviceInfo.volumeSize.equals(newDeviceInfo.volumeSize);
+  }
+
+  public String getKubernetesOverridesString(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides kubernetesOverrides) {
+    if (kubernetesOverrides == null) {
+      return null;
+    }
+    ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+    mapper.setSerializationInclusion(Include.NON_NULL);
+    mapper.setSerializationInclusion(Include.NON_EMPTY);
+    SimpleModule simpleModule = new SimpleModule();
+    simpleModule.addSerializer(new KubernetesOverridesSerializer());
+    mapper.registerModule(simpleModule);
+    try {
+      return mapper.writeValueAsString(kubernetesOverrides);
+    } catch (Exception e) {
+      log.error("Unable to parse universe overrides", e);
+    }
+    return null;
+  }
+
+  public boolean checkIfGFlagsChanged(Universe universe, SpecificGFlags newGFlags) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    Cluster primaryCluster = universeDetails.getPrimaryCluster();
+    return universe.getNodesByCluster(primaryCluster.uuid).stream()
+        .filter(
+            nD -> {
+              // New gflags for servers
+              Map<String, String> oldTserverGFlags =
+                  newGFlags.getGFlags(nD.getAzUuid(), ServerType.TSERVER);
+              Map<String, String> oldMasterGFlags =
+                  newGFlags.getGFlags(nD.getAzUuid(), ServerType.MASTER);
+
+              // Old gflags for servers
+              Map<String, String> newTserverGFlags =
+                  primaryCluster.userIntent.specificGFlags.getGFlags(
+                      nD.getAzUuid(), ServerType.TSERVER);
+              Map<String, String> newMasterGFlags =
+                  primaryCluster.userIntent.specificGFlags.getGFlags(
+                      nD.getAzUuid(), ServerType.MASTER);
+              return !(oldTserverGFlags.equals(newTserverGFlags)
+                  && oldMasterGFlags.equals(newMasterGFlags));
+            })
+        .findAny()
+        .isPresent();
+  }
+
+  public SpecificGFlags getGFlagsFromSpec(YBUniverse ybUniverse, Provider provider) {
+    SpecificGFlags specificGFlags = new SpecificGFlags();
+    if (ybUniverse.getSpec().getGFlags() != null) {
+      SpecificGFlags.PerProcessFlags perProcessFlags = new PerProcessFlags();
+      if (ybUniverse.getSpec().getGFlags().getTserverGFlags() != null) {
+        perProcessFlags.value.put(
+            ServerType.TSERVER, ybUniverse.getSpec().getGFlags().getTserverGFlags());
+      }
+      if (ybUniverse.getSpec().getGFlags().getMasterGFlags() != null) {
+        perProcessFlags.value.put(
+            ServerType.MASTER, ybUniverse.getSpec().getGFlags().getMasterGFlags());
+      }
+      specificGFlags.setPerProcessFlags(perProcessFlags);
+      if (ybUniverse.getSpec().getGFlags().getPerAZ() != null) {
+        Map<UUID, SpecificGFlags.PerProcessFlags> azOverridesMap = new HashMap<>();
+        ybUniverse.getSpec().getGFlags().getPerAZ().entrySet().stream()
+            .forEach(
+                e -> {
+                  Optional<AvailabilityZone> oAz =
+                      AvailabilityZone.maybeGetByCode(provider, e.getKey());
+                  if (oAz.isPresent()) {
+                    SpecificGFlags.PerProcessFlags pPFlags = new PerProcessFlags();
+                    if (e.getValue().getTserverGFlags() != null) {
+                      pPFlags.value.put(ServerType.TSERVER, e.getValue().getTserverGFlags());
+                    }
+                    if (e.getValue().getMasterGFlags() != null) {
+                      pPFlags.value.put(ServerType.MASTER, e.getValue().getMasterGFlags());
+                    }
+                    azOverridesMap.put(oAz.get().getUuid(), pPFlags);
+                  }
+                });
+        specificGFlags.setPerAZ(azOverridesMap);
+      }
+    }
+    return specificGFlags;
+  }
+
+  public DeviceInfo mapDeviceInfo(io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo spec) {
+    DeviceInfo di = new DeviceInfo();
+
+    Long numVols = spec.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long volSize = spec.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    di.storageClass = spec.getStorageClass();
+
+    return di;
+  }
+
+  public boolean universeAndSpecMismatch(Customer cust, Universe u, YBUniverse ybUniverse) {
+    UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+    if (universeDetails == null || universeDetails.getPrimaryCluster() == null) {
+      throw new RuntimeException(
+          String.format("Invalid universe details found for {}", u.getName()));
+    }
+
+    UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
+
+    Provider provider =
+        Provider.getOrBadRequest(cust.getUuid(), UUID.fromString(currentUserIntent.provider));
+    // Get all required params
+    SpecificGFlags specGFlags = getGFlagsFromSpec(ybUniverse, provider);
+    String incomingOverrides =
+        getKubernetesOverridesString(ybUniverse.getSpec().getKubernetesOverrides());
+    String incomingYbSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
+    DeviceInfo incomingDeviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
+    int incomingNumNodes = (int) ybUniverse.getSpec().getNumNodes().longValue();
+
+    return (!StringUtils.equals(incomingOverrides, currentUserIntent.universeOverrides))
+        || checkIfGFlagsChanged(u, specGFlags)
+        || shouldUpdateYbUniverse(currentUserIntent, incomingNumNodes, incomingDeviceInfo)
+        || !StringUtils.equals(currentUserIntent.ybSoftwareVersion, incomingYbSoftwareVersion);
   }
 }
