@@ -29,7 +29,8 @@ import {
   ReleasePlatformButtonProps,
   ReleaseArchitectureButtonProps,
   Releases,
-  UrlArtifactStatus
+  UrlArtifactStatus,
+  ReleaseType
 } from '../dtos';
 import {
   IMPORT_METHOD_OPTIONS,
@@ -438,7 +439,7 @@ export const AddReleaseModal = ({
               formValues.platform === ReleasePlatform.KUBERNETES ? null : formValues.architecture
           }
         ],
-        release_type: formValues.releaseType ?? '',
+        release_type: formValues.releaseType ?? ReleaseType.PREVIEW,
         release_date: formValues.releaseDate,
         release_notes: formValues.releaseNotes
       };
@@ -459,6 +460,7 @@ export const AddReleaseModal = ({
         architecture:
           formValues.platform === ReleasePlatform.KUBERNETES ? null : formValues.architecture
       });
+      newArchitecturePayload.release_type = formValues.releaseType ?? ReleaseType.PREVIEW;
       newArchitecturePayload.release_tag = formValues.releaseTag;
       setIsSubmitting(true);
       const artifactsLength = newArchitecturePayload.artifacts.length;
