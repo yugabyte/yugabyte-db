@@ -2135,7 +2135,14 @@ YbPredetermineNeedsRecheck(Relation relation,
 	/*
 	 * Finally, ybscan has everything needed to determine recheck.  Do it now.
 	 */
-	return (YbNeedsPgRecheck(&ybscan) || YbMayFailPreliminaryCheck(&ybscan));
+	bool needs_recheck = YbNeedsPgRecheck(&ybscan) ||
+						 YbMayFailPreliminaryCheck(&ybscan);
+
+	bms_free(scan_plan.hash_key);
+	bms_free(scan_plan.primary_key);
+	bms_free(scan_plan.sk_cols);
+
+	return needs_recheck;
 }
 
 typedef struct {
