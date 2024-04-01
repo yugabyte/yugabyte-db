@@ -4520,12 +4520,13 @@ will fail if the table or column in question does not exist.
 
 The type argument may be formatted using the full name of the type or any
 supported alias. For example, if you created a `varchar(64)` column, you can
-pass the type as either "varchar(64)" or "character varying(64)". Example:
+pass the type as either "varchar(64)" or "character varying(64)". Same deal
+for timestamps, as in this example:
 
-    SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', 'timespantz(3)' );
+    SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', 'timestamptz(3)' );
 
-The exception to this rule is interval types, which must be specified as
-rendered by PostgreSQL itself:
+The exception to this rule is interval types prior to Postgres 17, which must
+be specified as rendered by PostgreSQL itself:
 
     SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', 'interval second(3)' );
 
@@ -8316,8 +8317,9 @@ the calling `format_type()` with the type OID and type modifier that define
 the column, but returns a `NULL` on an invalid or missing type, rather than
 raising an error. Types can be defined by their canonical names or their
 aliases, e.g., `character varying` or `varchar`. The exception is `interval`
-types, which must be specified exactly as Postgres renders them internally,
-e.g., `'interval(0)`, `interval second(0)`, or `interval day to second(4)`.
+types prior to Postgres 17, which must be specified exactly as Postgres
+renders them internally, e.g., `'interval(0)`, `interval second(0)`, or
+`interval day to second(4)`.
 
     try=# SELECT format_type_string('timestamp(3)');
         format_type_string

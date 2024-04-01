@@ -3,7 +3,8 @@ Revision history for pgTAP
 
 1.3.3
 --------------------------
-
+* Improved the correctness and performance of `col_type_is` on Postgres 17
+  thanks to the introduction of the `to_regtypemod()` function.
 * Fix bug introduced in v1.3.2 where `col_type_is` throws an error when the
   type isn't in the search path. Thanks to Erik Wienhold for the PR (#332)!
 * Removed the reference to PGUnit from the docs, as the project seems to have
