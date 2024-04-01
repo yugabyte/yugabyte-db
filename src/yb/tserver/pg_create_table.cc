@@ -200,9 +200,6 @@ Status PgCreateTable::Exec(
       }
       return STATUS(InvalidArgument, "Duplicate table");
     }
-    if (s.IsNotFound()) {
-      return STATUS(InvalidArgument, "Database not found", table_name_.namespace_name());
-    }
     return STATUS_FORMAT(
         InvalidArgument, "Invalid table definition: $0",
         s.ToString(false /* include_file_and_line */, false /* include_code */));
