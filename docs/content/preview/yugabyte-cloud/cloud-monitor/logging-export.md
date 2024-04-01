@@ -129,7 +129,7 @@ When duration is off, the sample rate has no effect.
 
 ##### Log the internal representation of the query plan (debug_print_plan)
 
-Log the debug-level execution plan used by the parser.
+Log the debug-level execution plan used by the parser. Used for debugging. Not recommended for production.
 
 ##### Log connections (log_connections)
 
