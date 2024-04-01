@@ -1031,7 +1031,9 @@ Status BackfillTable::MarkAllIndexesAsFailed() {
 }
 
 Status BackfillTable::MarkAllIndexesAsSuccess() {
-  return MarkIndexesAsDesired(indexes_to_build(), BackfillJobPB::SUCCESS, "");
+  const auto index_ids = indexes_to_build();
+  RETURN_NOT_OK(master_->xcluster_manager()->MarkIndexBackfillCompleted(index_ids, epoch_));
+  return MarkIndexesAsDesired(index_ids, BackfillJobPB::SUCCESS, "");
 }
 
 Status BackfillTable::MarkIndexesAsDesired(

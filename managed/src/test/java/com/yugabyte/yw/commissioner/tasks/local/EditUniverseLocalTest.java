@@ -459,9 +459,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             .filter(t -> t.getTaskType() == TaskType.ChangeMasterConfig)
             .findFirst()
             .get()
-            .getDetails()
-            .get("errorString")
-            .asText(),
+            .getErrorMessage(),
         containsString("AddMaster operation has not completed within PT30S"));
   }
 

@@ -377,7 +377,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         taskInfo = TaskInfo.getOrBadRequest(taskUUID);
         if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
-          if (taskInfo.getDetails() != null) {
+          if (taskInfo.getTaskParams() != null) {
             return taskInfo;
           }
         }
@@ -403,17 +403,17 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public static String getBriefTaskInfo(TaskInfo taskInfo) {
     StringBuilder sb = new StringBuilder();
     sb.append(taskInfo.getTaskType());
-    if (taskInfo.getDetails().has("nodeName")) {
+    if (taskInfo.getTaskParams().has("nodeName")) {
       sb.append("(");
-      sb.append(taskInfo.getDetails().get("nodeName").textValue());
-      if (taskInfo.getDetails().has("serverType")) {
-        sb.append(" ").append(taskInfo.getDetails().get("serverType").textValue());
+      sb.append(taskInfo.getTaskParams().get("nodeName").textValue());
+      if (taskInfo.getTaskParams().has("serverType")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("serverType").textValue());
       }
-      if (taskInfo.getDetails().has("process")) {
-        sb.append(" ").append(taskInfo.getDetails().get("process").textValue());
+      if (taskInfo.getTaskParams().has("process")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("process").textValue());
       }
-      if (taskInfo.getDetails().has("command")) {
-        sb.append(" ").append(taskInfo.getDetails().get("command").textValue());
+      if (taskInfo.getTaskParams().has("command")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("command").textValue());
       }
       sb.append(")");
     }

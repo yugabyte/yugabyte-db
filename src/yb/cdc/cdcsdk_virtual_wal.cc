@@ -75,6 +75,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
   auto table_info = req.mutable_table_info();
   table_info->set_stream_id(stream_id.ToString());
   table_info->set_table_id(table_id);
+  // parent_tablet_id will be non-empty in case of tablet split.
   if (!parent_tablet_id.empty()) {
     req.set_tablet_id(parent_tablet_id);
   }
@@ -103,16 +104,38 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
     }
   }
 
-  // parent_tablet_id will be non-empty in case of tablet split. Hence, remove parent tablet's entry
-  // from all relevant maps.
+  // parent_tablet_id will be non-empty in case of tablet split. Hence, add children tablet entries
+  // in all relevant maps & then remove parent tablet's entry from all relevant maps.
   if (!parent_tablet_id.empty()) {
-    RETURN_NOT_OK(RemoveParentTabletEntryOnSplit(parent_tablet_id));
+    std::vector<TabletId> children_tablets;
+    for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
+      auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
+      children_tablets.push_back(tablet_id);
+    }
+
+    RSTATUS_DCHECK(
+        !tablet_id_to_table_id_map_[parent_tablet_id].empty(), NotFound,
+        Format("Table_id not found for parent tablet_id $0"), parent_tablet_id);
+    RSTATUS_DCHECK(
+        tablet_next_req_map_.contains(parent_tablet_id), NotFound,
+        Format("Next getchanges_request_info not found for parent tablet_id $0", parent_tablet_id));
+    RSTATUS_DCHECK(
+        tablet_queues_.contains(parent_tablet_id), NotFound,
+        Format("Tablet queue not found for parent tablet_id $0", parent_tablet_id));
+
+    // We cannot assert entry of parent tablet_id in last_sent_req_map because it is only
+    // initialised after the 1st Getchanges call on a tablet. Therefore, in a scenario, it can
+    // happen that on the 1st GetChanges call on the parent tablet, we might get the split error and
+    // so, we might not even add an entry for the parent tablet in the last_sent_req_map.
+
+    RETURN_NOT_OK(UpdateTabletMapsOnSplit(parent_tablet_id, children_tablets));
+    return Status::OK();
   }
 
   for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
     auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
     if (!tablet_id_to_table_id_map_.contains(tablet_id)) {
-      tablet_id_to_table_id_map_[tablet_id] = table_id;
+      tablet_id_to_table_id_map_[tablet_id].insert(table_id);
     }
     auto checkpoint = tablet_checkpoint_pair.cdc_sdk_checkpoint();
     if (!tablet_next_req_map_.contains(tablet_id)) {
@@ -135,20 +158,72 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
   return Status::OK();
 }
 
-Status CDCSDKVirtualWAL::RemoveParentTabletEntryOnSplit(const TabletId& parent_tablet_id) {
-  // TODO (20968): get the parent from_op_id and assign it to children's entry on split.
-  if (tablet_next_req_map_.contains(parent_tablet_id)) {
-    tablet_next_req_map_.erase(parent_tablet_id);
-    VLOG(1) << "Removed entry in tablet checkpoint map for tablet_id: " << parent_tablet_id;
+Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
+    const TabletId& parent_tablet_id, const std::vector<TabletId> children_tablets) {
+  // First add children tablet entries in all relevant maps and initialise them with the values of
+  // the parent tablet, then erase parent tablet's entry from these maps.
+  const auto parent_tablet_table_id = tablet_id_to_table_id_map_.at(parent_tablet_id);
+  const auto parent_next_req_info = tablet_next_req_map_.at(parent_tablet_id);
+
+  LastSentGetChangesRequestInfo parent_last_sent_req_info;
+  if (tablet_last_sent_req_map_.contains(parent_tablet_id)) {
+    parent_last_sent_req_info = tablet_last_sent_req_map_.at(parent_tablet_id);
+  } else {
+    // If parent tablet's entry is not found in tablet_last_sent_req_map_, add children tablet
+    // entries in this map with the same values that we are planning to send in the 1st GetChanges
+    // call on the children tablets. It is safe to do this because without making the GetChanges
+    // call on children tablets, we are not going to ship anything from the VWAL. Since, after the
+    // 1st GetChanges call, this map will anyway be updated with the values present in the
+    // tablet_next_req_map_, it is safe to perform the same step here itself.
+    parent_last_sent_req_info.from_op_id = parent_next_req_info.from_op_id;
+    parent_last_sent_req_info.safe_hybrid_time = parent_next_req_info.safe_hybrid_time;
   }
 
-  if (tablet_queues_.contains(parent_tablet_id)) {
-    tablet_queues_.erase(parent_tablet_id);
-    VLOG(1) << "Removed tablet queue for tablet_id: " << parent_tablet_id;
-  }
-
-  if (tablet_id_to_table_id_map_.contains(parent_tablet_id)) {
+  for (const auto& child_tablet_id : children_tablets) {
+    DCHECK(!tablet_id_to_table_id_map_.contains(child_tablet_id));
+    tablet_id_to_table_id_map_[child_tablet_id] = parent_tablet_table_id;
     tablet_id_to_table_id_map_.erase(parent_tablet_id);
+
+    DCHECK(!tablet_queues_.contains(child_tablet_id));
+    tablet_queues_[child_tablet_id] = std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>();
+    VLOG(3) << "Adding empty tablet queue for child tablet_id: " << child_tablet_id;
+    tablet_queues_.erase(parent_tablet_id);
+    VLOG(3) << "Removed tablet queue for parent tablet_id: " << parent_tablet_id;
+
+    DCHECK(!tablet_last_sent_req_map_.contains(child_tablet_id));
+    tablet_last_sent_req_map_[child_tablet_id] = parent_last_sent_req_info;
+    VLOG(3) << "Added entry in tablet_last_sent_req_map_ for child tablet_id: " << child_tablet_id
+            << " with last_sent_request_info: " << parent_last_sent_req_info.ToString();
+    if (tablet_last_sent_req_map_.contains(parent_tablet_id)) {
+      tablet_last_sent_req_map_.erase(parent_tablet_id);
+      VLOG(3) << "Removed entry in tablet_last_sent_req_map_ for parent tablet_id: "
+              << parent_tablet_id;
+    }
+
+    DCHECK(!tablet_next_req_map_.contains(child_tablet_id));
+    tablet_next_req_map_[child_tablet_id] = parent_next_req_info;
+    VLOG(3) << "Added entry in tablet_next_req_map_ for child tablet_id: " << child_tablet_id
+            << " with next getchanges_request_info: " << parent_next_req_info.ToString();
+    tablet_next_req_map_.erase(parent_tablet_id);
+    VLOG(3) << "Removed entry in tablet_next_req_map_ for parent tablet_id: " << parent_tablet_id;
+  }
+
+  for (auto& entry : commit_meta_and_last_req_map_) {
+    auto& last_req_map = entry.second.last_sent_req_for_begin_map;
+    if (last_req_map.contains(parent_tablet_id)) {
+      auto parent_tablet_req_info = last_req_map.at(parent_tablet_id);
+      for (const auto& child_tablet_id : children_tablets) {
+        DCHECK(!last_req_map.contains(child_tablet_id));
+        last_req_map[child_tablet_id] = parent_tablet_req_info;
+      }
+      // Delete parent's tablet entry
+      last_req_map.erase(parent_tablet_id);
+      VLOG(3) << "Succesfully added entries in last_sent_req_for_begin_map corresponding to "
+                 "commit_lsn: "
+              << entry.first << " for child tablets: " << children_tablets[0] << " &  "
+              << children_tablets[1]
+              << " and removed entry for parent tablet_id: " << parent_tablet_id;
+    }
   }
 
   return Status::OK();
@@ -387,11 +462,15 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
               tablet_id_to_table_id_map_.contains(tablet_id), InternalError,
               Format("Couldnt find the correspondig table_id for tablet_id: $0", tablet_id));
           LOG(INFO) << "Tablet split encountered on tablet_id : " << tablet_id
-                    << " on table_id: " << tablet_id_to_table_id_map_[tablet_id]
+                    << " on table_id: " << *tablet_id_to_table_id_map_[tablet_id].begin()
                     << ". Fetching children tablets";
 
+          // It is safe to get the table_id at the begin position since there will be only one
+          // single entry in the set unless it's a colocated table case, in which case, the tablet
+          // is not expected to split.
           s = GetTabletListAndCheckpoint(
-                  stream_id, tablet_id_to_table_id_map_[tablet_id], hostport, deadline, tablet_id);
+                  stream_id, *tablet_id_to_table_id_map_[tablet_id].begin(), hostport, deadline,
+              tablet_id);
           if (!s.ok()) {
             error_msg = Format("Error fetching children tablets for tablet_id: $0", tablet_id);
             LOG(WARNING) << s.CloneAndPrepend(error_msg).ToString();

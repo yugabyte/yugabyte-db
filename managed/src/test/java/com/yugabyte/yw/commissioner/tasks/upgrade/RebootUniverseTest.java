@@ -202,7 +202,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     List<String> nodeNames = new ArrayList<>();
     for (TaskInfo subTask : subTasks) {
       if (subTask.getTaskType() == TaskType.RebootServer) {
-        nodeNames.add(subTask.getDetails().get("nodeName").textValue());
+        nodeNames.add(subTask.getTaskParams().get("nodeName").textValue());
       }
     }
     Assert.assertEquals(expected, nodeNames);

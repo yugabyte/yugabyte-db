@@ -481,7 +481,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(RENAME_FAILURE_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
     }
 
-    String taskErrMsg = taskInfo.getSubTasks().get(3).getDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(3).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "Failed to rename XClusterConfig(%s): %s", xClusterConfig.getUuid(), renameErrMsg);
@@ -719,7 +719,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     assertEquals(Failure, taskInfo.getTaskState());
 
     assertEquals(TaskType.SetReplicationPaused, taskInfo.getSubTasks().get(3).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(3).getDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(3).getErrorMessage();
     assertThat(taskErrMsg, containsString("Failed to pause/enable XClusterConfig"));
     assertThat(taskErrMsg, containsString(pauseResumeErrMsg));
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.getStatus());
@@ -965,7 +965,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.get(i), subtaskGroup.getTaskType());
     }
 
-    String taskErrMsg = taskInfo.getSubTasks().get(5).getDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(5).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "Failed to add tables to XClusterConfig(%s): %s",
@@ -1047,7 +1047,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.get(i), subtaskGroup.getTaskType());
     }
 
-    String taskErrMsg = taskInfo.getSubTasks().get(5).getDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(5).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "XClusterConfig(%s) operation failed: code: %s\nmessage: \"%s\"",
@@ -1188,7 +1188,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     assertEquals(Failure, taskInfo.getTaskState());
 
     assertEquals(TaskType.XClusterConfigModifyTables, taskInfo.getSubTasks().get(4).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(4).getDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(4).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "Failed to remove tables from XClusterConfig(%s): %s",

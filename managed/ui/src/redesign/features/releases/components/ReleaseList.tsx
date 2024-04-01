@@ -11,7 +11,7 @@ import { DeploymentStatus } from './ReleaseDeploymentStatus';
 import { AddReleaseModal } from './ReleaseDialogs/AddReleaseModal';
 import { EditArchitectureModal } from './ReleaseDialogs/EditArchitectureModal';
 import { EditReleaseTagModal } from './ReleaseDialogs/EditReleaseTagModal';
-import { DisableReleaseModal } from './ReleaseDialogs/DisableReleaseModal';
+import { ModifyReleaseStateModal } from './ReleaseDialogs/ModifyReleaseStateModal';
 import { DeleteReleaseModal } from './ReleaseDialogs/DeleteReleaseModal';
 import { YBButton, YBCheckbox } from '../../../components';
 import { YBPanelItem } from '../../../../components/panels';
@@ -711,7 +711,7 @@ export const NewReleaseList = () => {
         />
       )}
       {showDisableReleaseDialog && selectedReleaseDetails && (
-        <DisableReleaseModal
+        <ModifyReleaseStateModal
           open={showDisableReleaseDialog}
           onActionPerformed={onActionPerformed}
           onClose={onDisableReleaseDialogClose}

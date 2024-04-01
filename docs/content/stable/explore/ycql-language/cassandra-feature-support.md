@@ -160,5 +160,5 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 
 ## Learn more
 
-- [Comparison with Apache Cassandra](../../../faq/comparisons/cassandra/)
+- [Comparison with Apache Cassandra](/preview/faq/comparisons/cassandra/)
 - [YCQL command reference](../../../api/ycql/)

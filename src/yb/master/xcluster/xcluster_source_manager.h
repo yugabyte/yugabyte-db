@@ -136,6 +136,9 @@ class XClusterSourceManager {
   Status RemoveStreamsFromSysCatalog(
       const std::vector<CDCStreamInfo*>& streams, const LeaderEpoch& epoch);
 
+  Status MarkIndexBackfillCompleted(
+      const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch);
+
  private:
   friend class XClusterOutboundReplicationGroup;
 

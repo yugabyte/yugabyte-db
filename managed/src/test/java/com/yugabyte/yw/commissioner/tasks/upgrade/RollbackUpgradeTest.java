@@ -161,8 +161,8 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
           List<TaskInfo> tasks = subTasksByPosition.get(pos);
           TaskInfo task = tasks.get(0);
           String curNodeName = "???";
-          if (task.getDetails().get("nodeName") != null) {
-            curNodeName = task.getDetails().get("nodeName").asText();
+          if (task.getTaskParams().get("nodeName") != null) {
+            curNodeName = task.getTaskParams().get("nodeName").asText();
           }
           TaskType taskType = task.getTaskType();
           log.debug("act {} {} - {}", curNodeName, pos++, taskType);

@@ -13,7 +13,9 @@ export const HaGlobalState = {
   AWAITING_REPLICAS: 'AwaitingReplicas',
   OPERATIONAL: 'Operational',
   ERROR: 'Error',
-  WARNING: 'Warning'
+  WARNING: 'Warning',
+  STANDBY_CONNECTED: 'StandbyConnected',
+  STANDBY_DISCONNECTED: 'StandbyDisconnected'
 } as const;
 export type HaGlobalState = typeof HaGlobalState[keyof typeof HaGlobalState];
 

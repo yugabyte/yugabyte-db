@@ -133,6 +133,11 @@ public class AlertConfigurationWriter {
           || !configuration.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
         requiresReload.set(true);
+        if (definition != null) {
+          // Don't want to retry inactive definitions.
+          definition.setConfigWritten(true);
+          alertDefinitionService.save(definition);
+        }
         return SyncResult.REMOVED;
       }
       if (definition.isConfigWritten()) {

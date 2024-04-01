@@ -96,6 +96,9 @@ func init() {
 	rootCmd.AddCommand(storageconfiguration.StorageConfigurationCmd)
 	rootCmd.AddCommand(task.TaskCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
+	
+	// Example for adding preview commands to the list of available commands
+	// util.AddCommandIfFeatureFlag(rootCmd, exampleCmd, util.PREVIEW)
 
 }
 

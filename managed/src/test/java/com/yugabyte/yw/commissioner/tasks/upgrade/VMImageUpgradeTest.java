@@ -228,7 +228,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             .collect(Collectors.toList());
     createRootVolumeTasks.forEach(
         task -> {
-          JsonNode details = task.getDetails();
+          JsonNode details = task.getTaskParams();
           UUID azUuid = UUID.fromString(details.get("azUuid").asText());
           AvailabilityZone zone =
               AvailabilityZone.find.query().fetch("region").where().idEq(azUuid).findOne();
@@ -265,7 +265,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         }
 
         if (taskType == TaskType.ReplaceRootVolume) {
-          JsonNode details = task.getDetails();
+          JsonNode details = task.getTaskParams();
           UUID az = UUID.fromString(details.get("azUuid").asText());
           replaceRootVolumeParams.compute(az, (k, v) -> v == null ? 1 : v + 1);
         }
@@ -416,7 +416,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             .collect(Collectors.toList());
     createRootVolumeTasks.forEach(
         task -> {
-          JsonNode details = task.getDetails();
+          JsonNode details = task.getTaskParams();
           UUID azUuid = UUID.fromString(details.get("azUuid").asText());
           AvailabilityZone zone =
               AvailabilityZone.find.query().fetch("region").where().idEq(azUuid).findOne();
@@ -455,13 +455,13 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         }
 
         if (taskType == TaskType.ReplaceRootVolume) {
-          JsonNode details = task.getDetails();
+          JsonNode details = task.getTaskParams();
           UUID az = UUID.fromString(details.get("azUuid").asText());
           replaceRootVolumeParams.compute(az, (k, v) -> v == null ? 1 : v + 1);
         }
 
         if (taskType.equals(TaskType.AnsibleSetupServer)) {
-          JsonNode details = task.getDetails();
+          JsonNode details = task.getTaskParams();
           UUID azUuid = UUID.fromString(details.get("azUuid").asText());
           AvailabilityZone zone =
               AvailabilityZone.find.query().fetch("region").where().idEq(azUuid).findOne();
