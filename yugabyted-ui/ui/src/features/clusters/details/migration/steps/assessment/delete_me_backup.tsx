@@ -54,6 +54,7 @@ interface MigrationAssessmentProps {
   isFetching?: boolean;
 }
 
+/* DATO: Delete me old assessment */
 export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   heading,
   migration,

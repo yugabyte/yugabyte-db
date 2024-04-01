@@ -34,7 +34,31 @@ const useStyles = makeStyles((theme) => ({
     paddingLeft: theme.spacing(4),
     marginBottom: theme.spacing(4),
   },
+  hardComp: {
+    color: theme.palette.error.main,
+  },
+  mediumComp: {
+    color: theme.palette.warning[700],
+  },
+  easyComp: {
+    color: theme.palette.success.main,
+  },
 }));
+
+const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexity: string) => {
+  const complexityL = complexity.toLowerCase();
+
+  const className =
+    complexityL === "hard"
+      ? classes.hardComp
+      : complexityL === "medium"
+      ? classes.mediumComp
+      : complexityL === "easy"
+      ? classes.easyComp
+      : undefined;
+
+  return <Box className={className}>{complexity || "N/A"}</Box>;
+};
 
 export interface ITabListItem {
   name: string;
@@ -49,10 +73,6 @@ const tabList: ITabListItem[] = [
   {
     name: "tabAssessmentResults",
     testId: "ClusterTabList-AssessmentResults",
-  },
-  {
-    name: "tabComplexityOverview",
-    testId: "ClusterTabList-ComplexityOverview",
   },
 ];
 
@@ -87,52 +107,110 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
 
   const overviewData = [
     {
-      task: "Preparing",
-      progress: "100%",
-      status: "Complete",
+      result: "Result 1",
+      complexity: "Easy",
+      timeTaken: "1h 30m",
+      tableSharding: "Colocated",
+      targetClusterSizing: "No",
+      vCpu: "4",
+      ram: "16GB",
+      disk: "100GB",
+      nodeCount: "3",
     },
     {
-      task: "Processing",
-      progress: "45%",
-      status: "In Progress",
+      result: "Result 2",
+      complexity: "Medium",
+      timeTaken: "2h 45m",
+      tableSharding: "Non-colocated",
+      targetClusterSizing: "Yes",
+      vCpu: "-",
+      ram: "-",
+      disk: "-",
+      nodeCount: "-",
     },
     {
-      task: "Finalization",
-      progress: "0%",
-      status: "N/A",
+      result: "Result 3",
+      complexity: "Hard",
+      timeTaken: "5h 00m",
+      tableSharding: "Colocated",
+      targetClusterSizing: "Yes",
+      vCpu: "-",
+      ram: "-",
+      disk: "-",
+      nodeCount: "-",
     },
   ];
 
   const overviewColumns = [
     {
-      name: "task",
-      label: t("clusterDetail.voyager.planAndAssess.overview.task"),
+      name: "result",
+      label: t("clusterDetail.voyager.planAndAssess.summary.result"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "progress",
-      label: t("clusterDetail.voyager.planAndAssess.overview.progress"),
+      name: "complexity",
+      label: t("clusterDetail.voyager.planAndAssess.summary.complexity"),
+      options: {
+        customBodyRender: ComplexityComponent(classes),
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "timeTaken",
+      label: t("clusterDetail.voyager.planAndAssess.summary.timeTaken"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "status",
-      label: t("clusterDetail.voyager.planAndAssess.overview.status"),
+      name: "tableSharding",
+      label: t("clusterDetail.voyager.planAndAssess.summary.tableSharding"),
       options: {
-        customBodyRender: (status: string) =>
-          status !== "N/A" ? (
-            <YBBadge
-              variant={status === "Complete" ? BadgeVariant.Success : BadgeVariant.InProgress}
-              text={status}
-            />
-          ) : (
-            status
-          ),
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "targetClusterSizing",
+      label: t("clusterDetail.voyager.planAndAssess.summary.targetClusterSizing"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "vCpu",
+      label: t("clusterDetail.voyager.planAndAssess.summary.vCpu"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "ram",
+      label: t("clusterDetail.voyager.planAndAssess.summary.ram"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "disk",
+      label: t("clusterDetail.voyager.planAndAssess.summary.disk"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "nodeCount",
+      label: t("clusterDetail.voyager.planAndAssess.summary.nodeCount"),
+      options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
@@ -141,16 +219,20 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
 
   const nextStepsData = [
     {
-      phase: "Resizing",
+      phase: "Resize",
       status: "Complete",
     },
     {
-      phase: "Processing",
+      phase: "Migrate Schema",
       status: "In Progress",
     },
     {
-      phase: "Finalization",
-      status: "N/A",
+      phase: "Migrate Data",
+      status: "-",
+    },
+    {
+      phase: "Verify Performance",
+      status: "-",
     },
   ];
 
@@ -168,9 +250,9 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.nextSteps.status"),
       options: {
         customBodyRender: (status: string) =>
-          status !== "N/A" ? (
+          status !== "-" ? (
             <YBBadge
-              variant={status === "Complete" ? BadgeVariant.Success : BadgeVariant.InProgress}
+              variant={status === "Complete" ? BadgeVariant.Success :  BadgeVariant.InProgress}
               text={status}
             />
           ) : (
@@ -190,7 +272,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
 
       <YBAccordion
         titleContent={
-          <MigrationAccordionTitle title={t("clusterDetail.voyager.planAndAssess.overviewTab")} />
+          <MigrationAccordionTitle title={t("clusterDetail.voyager.planAndAssess.summaryTab")} />
         }
         defaultExpanded
       >
@@ -248,14 +330,6 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
                 isFetching={isFetching}
               />
             )}
-            {tab === "tabComplexityOverview" && (
-              <MigrationComplexityOverview
-                heading={heading}
-                migration={migration}
-                onRefetch={onRefetch}
-                isFetching={isFetching}
-              />
-            )}
           </Box>
         </Box>
       </YBAccordion>
@@ -269,14 +343,13 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
           <ul className={classes.nextSteps}>
             <li>
               <Typography variant="body2">
-                It is recommended to manually run validation queries on both the source and target
-                database to ensure that the data is correctly migrated.
+                Ensure that the assessment results are reviewed and validated before proceeding with
+                the migration.
               </Typography>
             </li>
             <li>
               <Typography variant="body2">
-                A sample query to validate the databases can include checking the row count of each
-                table.
+                The next steps will guide you through the migration process.
               </Typography>
             </li>
           </ul>

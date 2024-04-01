@@ -883,17 +883,23 @@
           "assessmentPendingDesc": "Run the analyze schema command for assessing the migration",
           "assessmentComplete": "Analyze schema completed successfully",
           "assessmentCompleteDesc": "Schema assessment is complete",
-          "overviewTab": "Overview",
+          "summaryTab": "Summary",
           "assessmentTab": "Assessment",
           "nextStepsTab": "Next Steps",
           "complexityOverview": "Complexity Overview",
           "tabAssessmentDetails": "Assessment Details",
           "tabAssessmentResults": "Assessment Results",
           "tabComplexityOverview": "Complexity Overview",
-          "overview": {
-            "task": "Task",
-            "progress": "Progress",
-            "status": "Status"
+          "summary": {
+            "result": "Result",
+            "complexity": "Complexity",
+            "timeTaken": "Time taken",
+            "tableSharding": "Table sharding",
+            "targetClusterSizing": "Target cluster sizing",
+            "vCpu": "vCPU",
+            "ram": "RAM",
+            "disk": "Disk",
+            "nodeCount": "Node count"
           },
           "details": {
             "table": "Table",
