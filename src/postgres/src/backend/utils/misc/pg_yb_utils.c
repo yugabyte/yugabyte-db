@@ -2035,6 +2035,12 @@ YbDdlModeOptional YbGetDdlMode(
 			is_version_increment = false;
 			is_breaking_change = false;
 			is_ddl = castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
+			/*
+			 * Increment catalog version for ANALYZE statement to force catalog cache refresh
+			 * to pick up latest table statistics.
+			 */
+			if (is_ddl && ddl_transaction_state.original_node_tag == T_VacuumStmt)
+				is_version_increment = true;
 			break;
 
 		case T_RefreshMatViewStmt:
