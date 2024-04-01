@@ -90,10 +90,11 @@ class CDCSDKVirtualWAL {
     int begin_records = 0;
     int commit_records = 0;
     int dml_records = 0;
+    int ddl_records = 0;
     std::unordered_set<uint32_t> txn_ids;
     uint32_t min_txn_id = std::numeric_limits<uint32_t>::max();
     uint32_t max_txn_id = 0;
-    uint64_t min_lsn = std::numeric_limits<uint64_t>::max();;
+    uint64_t min_lsn = std::numeric_limits<uint64_t>::max();
     uint64_t max_lsn = 0;
     bool is_last_txn_fully_sent = false;
   };
@@ -105,7 +106,8 @@ class CDCSDKVirtualWAL {
       const xrepl::StreamId& stream_id, const TableId table_id, const HostPort hostport,
       const CoarseTimePoint deadline, const TabletId& parent_tablet_id = "");
 
-  Status RemoveParentTabletEntryOnSplit(const TabletId& parent_tablet_id);
+  Status UpdateTabletMapsOnSplit(
+      const TabletId& parent_tablet_id, const std::vector<TabletId> children_tablets);
 
   Status GetChangesInternal(
       const xrepl::StreamId& stream_id, const std::unordered_set<TabletId> tablet_to_poll_list,
@@ -152,7 +154,14 @@ class CDCSDKVirtualWAL {
   CDCServiceImpl* cdc_service_;
 
   std::unordered_set<TableId> publication_table_list_;
-  std::unordered_map<TabletId, TableId> tablet_id_to_table_id_map_;
+
+  // The primary requirement of this map is to efficiently retrieve the table_id of a tablet
+  // whenever we plan to call GetTabletListToPoll on a tablet to get children tablets when it is
+  // split. It is safe to get the first element of the corresponsding set. Note that, tablet entry
+  // for colocated tables can have a set with more than 1 element. But this map will never be used
+  // in the case of a tablet hosting colocated tables since such a tablet is never expected to
+  // split.
+  std::unordered_map<TabletId, std::unordered_set<TableId>> tablet_id_to_table_id_map_;
 
   // Tablet queues hold the records received from GetChanges RPC call on their respective tablets.
   std::unordered_map<TabletId, std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>> tablet_queues_;

@@ -9,7 +9,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
@@ -54,8 +57,15 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
     String certificate = universe.getCertificateNodetoNode();
     log.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
     Set<String> errors;
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    if (cloudEnabled) {
+      log.debug("Skipping check for ybm");
+      return;
+    }
     try (YBClient ybClient = ybService.getClient(masterAddresses, certificate)) {
-      errors = doCheckServers(ybClient, universe);
+      errors = doCheckServers(ybClient, universe, cloudEnabled);
     } catch (Exception e) {
       throw new RuntimeException("Failed to compare current state", e);
     }
@@ -67,7 +77,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
     }
   }
 
-  private Set<String> doCheckServers(YBClient ybClient, Universe universe) {
+  private Set<String> doCheckServers(YBClient ybClient, Universe universe, boolean cloudEnabled) {
     Set<String> errors = new HashSet<>();
     doWithConstTimeout(
         DELAY_BETWEEN_RETRIES_MS,
@@ -75,7 +85,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
         () -> {
           errors.clear();
           try {
-            errors.addAll(checkCurrentServers(ybClient, universe, false));
+            errors.addAll(checkCurrentServers(ybClient, universe, false, cloudEnabled));
           } catch (Exception e) {
             throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
           }
@@ -88,13 +98,15 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
   }
 
   public static List<String> checkCurrentServers(
-      YBClient ybClient, Universe universe, boolean strict) throws Exception {
+      YBClient ybClient, Universe universe, boolean strict, boolean cloudEnabled) throws Exception {
     List<String> errors = new ArrayList<>();
     ListMastersResponse listMastersResponse = ybClient.listMasters();
     Set<String> masterIps =
         listMastersResponse.getMasters().stream().map(m -> m.getHost()).collect(Collectors.toSet());
 
-    errors.addAll(checkServers(masterIps, universe, UniverseTaskBase.ServerType.MASTER, strict));
+    errors.addAll(
+        checkServers(
+            masterIps, universe, UniverseTaskBase.ServerType.MASTER, strict, cloudEnabled));
 
     boolean hasLeader =
         listMastersResponse.getMasters().stream().filter(m -> m.isLeader()).findFirst().isPresent();
@@ -106,7 +118,9 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
         liveTabletServersResponse.getTabletServers().stream()
             .map(ts -> ts.getPrivateAddress().getHost())
             .collect(Collectors.toSet());
-    errors.addAll(checkServers(tserverIps, universe, UniverseTaskBase.ServerType.TSERVER, strict));
+    errors.addAll(
+        checkServers(
+            tserverIps, universe, UniverseTaskBase.ServerType.TSERVER, strict, cloudEnabled));
     return errors;
   }
 
@@ -114,7 +128,8 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
       Set<String> currentIPs,
       Universe universe,
       UniverseTaskBase.ServerType serverType,
-      boolean strict) {
+      boolean strict,
+      boolean cloudEnabled) {
     Set<String> errors = new HashSet<>();
     List<NodeDetails> neededServers =
         universe.getUniverseDetails().nodeDetailsSet.stream()
@@ -124,13 +139,22 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
             .collect(Collectors.toList());
 
     Set<String> expectedIPs =
-        neededServers.stream().map(n -> n.cloudInfo.private_ip).collect(Collectors.toSet());
+        neededServers.stream()
+            .map(
+                n -> {
+                  if (GFlagsUtil.isUseSecondaryIP(universe, n, cloudEnabled)) {
+                    return n.cloudInfo.secondary_private_ip;
+                  } else {
+                    return n.cloudInfo.private_ip;
+                  }
+                })
+            .collect(Collectors.toSet());
 
     log.debug("Checking {}: expected {} actual {}", serverType, expectedIPs, currentIPs);
 
     for (String currentIP : currentIPs) {
       if (!expectedIPs.remove(currentIP)) {
-        NodeDetails nodeDetails = universe.getNodeByPrivateIP(currentIP);
+        NodeDetails nodeDetails = universe.getNodeByAnyIP(currentIP);
         if (nodeDetails != null) {
           errors.add(
               String.format(

@@ -600,7 +600,7 @@ Prepare your target YugabyteDB database cluster by creating a database, and a us
 
 Add the following flags to the cluster before starting migration, and revert them after the migration is complete.
 
-For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0`, set the following flag:
+For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0` (or later minor versions), set the following flag:
 
 ```sh
 ysql_pg_conf_csv = yb_max_query_layer_retries=0
@@ -612,6 +612,7 @@ For all the other target YugabyteDB versions, set the following flags:
 ysql_max_read_restart_attempts = 0
 ysql_max_write_restart_attempts = 0
 ```
+Turn off the [read-committed](../../../explore/transactions/isolation-levels//#read-committed-isolation) isolation level on the target YugabyteDB cluster during the migration.
 
 {{</note>}}
 

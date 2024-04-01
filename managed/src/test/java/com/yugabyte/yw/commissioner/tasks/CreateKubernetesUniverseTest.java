@@ -423,7 +423,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       int expectedSize = taskCountPerPosition.get(i);
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertEquals(expectedSize, tasks.size());
       assertEquals(taskType, tasks.get(0).getTaskType());
       assertJsonEqual(expectedResults, taskDetails.get(0));

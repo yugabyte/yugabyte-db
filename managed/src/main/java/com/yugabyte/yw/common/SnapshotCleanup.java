@@ -129,7 +129,7 @@ public class SnapshotCleanup {
     List<TaskInfo> tInfoList = TaskInfo.getLatestIncompleteBackupTask();
     if (CollectionUtils.isNotEmpty(tInfoList)) {
       tInfoList.stream()
-          .map(tInfo -> Json.fromJson(tInfo.getDetails(), BackupRequestParams.class))
+          .map(tInfo -> Json.fromJson(tInfo.getTaskParams(), BackupRequestParams.class))
           .filter(bRP -> bRP.backupUUID != null)
           .forEach(bRP -> backupParamsMap.put(bRP.getUniverseUUID(), bRP));
     }

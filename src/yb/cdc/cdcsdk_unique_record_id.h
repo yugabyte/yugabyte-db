@@ -27,11 +27,11 @@ class CDCSDKUniqueRecordID {
       uint32_t write_id, std::string& table_id, std::string& primary_key);
 
   enum VWALRecordType {
-    // These are arranged in the priority order with BEGIN having the highest priority.
-    BEGIN = 0,
-    DML = 1,
-    COMMIT = 2,
-    DDL = 3,
+    // These are arranged in the priority order with DDL having the highest priority.
+    DDL = 0,
+    BEGIN = 1,
+    DML = 2,
+    COMMIT = 3,
     SAFEPOINT = 4,
     UNKNOWN = 5 // should never be encountered
   };
@@ -39,6 +39,8 @@ class CDCSDKUniqueRecordID {
   CDCSDKUniqueRecordID::VWALRecordType GetVWALRecordTypeFromOp(const RowMessage_Op op);
 
   static bool CanFormUniqueRecordId(const std::shared_ptr<CDCSDKProtoRecordPB>& record);
+
+  bool CompareDDLOrder(const std::shared_ptr<CDCSDKUniqueRecordID>& other_unique_record_id);
 
   // This comparator will be used by the Virtual WAL's Priority queue to sort records in the PQ.
   // Returns true iff this "HasHigherPriorityThan" other <=> this < other.

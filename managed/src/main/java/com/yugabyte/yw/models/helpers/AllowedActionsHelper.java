@@ -234,7 +234,7 @@ public class AllowedActionsHelper {
       return errorMsg(
           action, String.format("Task %s is still pending", lastTaskInfo.getTaskType()));
     }
-    String nodeName = lastTaskInfo.getDetails().get("nodeName").textValue();
+    String nodeName = lastTaskInfo.getTaskParams().get("nodeName").textValue();
     if (!Objects.equals(nodeName, node.nodeName)) {
       return errorMsg(action, String.format("Node %s has a pending task", nodeName));
     }

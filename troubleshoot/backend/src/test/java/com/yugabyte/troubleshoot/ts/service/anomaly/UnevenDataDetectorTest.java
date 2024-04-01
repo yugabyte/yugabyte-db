@@ -4,6 +4,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.yugabyte.troubleshoot.ts.CommonUtils;
+import com.yugabyte.troubleshoot.ts.models.UniverseMetadata;
 import com.yugabyte.troubleshoot.ts.service.ServiceTest;
 import java.time.Instant;
 import java.util.UUID;
@@ -42,12 +43,17 @@ public class UnevenDataDetectorTest extends AnomalyDetectorTestBase {
         .expect(requestTo(promQuery))
         .andRespond(withSuccess(queryResponse, MediaType.APPLICATION_JSON));
 
+    UniverseMetadata metadata =
+        new UniverseMetadata()
+            .setId(UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"))
+            .setCustomerId(UUID.randomUUID());
     AnomalyDetector.AnomalyDetectionResult result =
         unevenDataDetector.findAnomalies(
             AnomalyDetector.AnomalyDetectionContext.builder()
-                .universeUuid(UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"))
+                .universeMetadata(metadata)
                 .startTime(Instant.parse("2024-01-18T15:00:00Z"))
                 .endTime(Instant.parse("2024-01-18T19:00:00Z"))
+                .config(runtimeConfigService.getUniverseConfig(metadata))
                 .build());
 
     assertResult(result, "anomaly/uneven_data/anomalies.json");

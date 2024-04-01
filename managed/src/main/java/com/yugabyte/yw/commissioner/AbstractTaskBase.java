@@ -129,13 +129,13 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   @Override
-  public JsonNode getTaskDetails() {
+  public JsonNode getTaskParams() {
     return Json.toJson(taskParams);
   }
 
   @Override
   public String toString() {
-    return getName() + " : details=" + getTaskDetails();
+    return getName() + " : params=" + getTaskParams();
   }
 
   @Override

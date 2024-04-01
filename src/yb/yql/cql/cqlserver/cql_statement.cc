@@ -83,8 +83,7 @@ void StmtCounters::WriteAsJson(
   // sample variance, as we have data for the whole population, so
   // Bessel's correction is not used, and we don't divide by
   // this->num_calls-1.
-  const double stddev_time = this->num_calls == 0 ? 0. :
-      sqrt(this->sum_var_time_in_msec / this->num_calls);
+  const double stddev_time = GetStdDevTime();
 
   jw->String("stddev_time");
   jw->Double(stddev_time);
@@ -97,6 +96,11 @@ void StmtCounters::ResetCounters() {
   this->min_time_in_msec = 0.;
   this->max_time_in_msec = 0.;
   this->sum_var_time_in_msec = 0.;
+}
+
+double StmtCounters::GetStdDevTime() const {
+  return this->num_calls == 0 ? 0. :
+      sqrt(this->sum_var_time_in_msec / this->num_calls);
 }
 
 }  // namespace cqlserver

@@ -35,12 +35,12 @@ export const DeleteReleaseModal = ({
   // DELETE API call to delete the release
   const deleteRelease = useMutation(() => ReleasesAPI.deleteRelease(releaseUuid!), {
     onSuccess: (response: any) => {
-      toast.success('Deleted release successfully');
+      toast.success(t('releases.deleteReleaseModal.deleteReleaseSuccess'));
       onActionPerformed();
       onClose();
     },
     onError: () => {
-      toast.error('Failed to delete release');
+      toast.error(t('releases.deleteReleaseModal.deleteReleaseFailure'));
     }
   });
 
@@ -52,7 +52,7 @@ export const DeleteReleaseModal = ({
     <YBModal
       open={open}
       onClose={onClose}
-      title={t('releases.deleteReleaseModal.modalTile')}
+      title={t('releases.deleteReleaseModal.modalTitle')}
       onSubmit={handleSubmit}
       cancelLabel={t('common.cancel')}
       submitLabel={t('common.delete')}

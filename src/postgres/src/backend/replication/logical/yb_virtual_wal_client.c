@@ -292,6 +292,7 @@ TrackUnackedTransaction(YBCPgVirtualWalRecord *record)
 
 		/* Not of interest here. */
 		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN: switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_DDL: switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT: switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_UPDATE: switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:

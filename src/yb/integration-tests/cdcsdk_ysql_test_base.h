@@ -126,6 +126,10 @@ namespace cdc {
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
 
+static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
+static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
+static constexpr uint64_t kVWALSessionId3 = std::numeric_limits<uint64_t>::max() / 2 + 2;
+
 class CDCSDKYsqlTest : public CDCSDKTestBase {
  public:
   struct ExpectedRecord {
@@ -148,6 +152,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     OpId op_id = OpId::Max();
     int64_t cdc_sdk_latest_active_time = 0;
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
+    uint64_t confirmed_flush_lsn = 0;
+    uint64_t restart_lsn = 0;
+    uint32_t xmin = 0;
+    uint64_t record_id_commit_time = 0;
   };
 
   struct GetAllPendingChangesResponse {
@@ -401,6 +409,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
       const bool& validate_third_column = false, const int32_t& value2 = 0);
 
+  void AssertKeyValue(const CDCSDKProtoRecordPB& record1, const CDCSDKProtoRecordPB& record2);
+
+  void AssertCDCSDKProtoRecords(
+      const CDCSDKProtoRecordPB& record1, const CDCSDKProtoRecordPB& record2);
+
   void AssertBeforeImageKeyValue(
       const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
       const bool& validate_third_column = false, const int32_t& value2 = 0);
@@ -464,20 +477,21 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status InitVirtualWAL(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id = 1);
+      const uint64_t session_id = kVWALSessionId1);
 
-  Status DestroyVirtualWAL(const uint64_t session_id = 1);
+  Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
   Status UpdateAndPersistLSN(
       const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
-      const uint64_t restart_lsn, const uint64_t session_id = 1);
+      const uint64_t restart_lsn, const uint64_t session_id = kVWALSessionId1);
 
   // This method will keep on consuming changes until it gets the txns fully i.e COMMIT record of
   // the last txn. This indicates that even though we might have received the expecpted DML records,
   // we might still continue calling GetConsistentChanges until we receive the COMMIT record.
   Result<GetAllPendingChangesResponse> GetAllPendingTxnsFromVirtualWAL(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
-      bool init_virtual_wal, const uint64_t session_id = 1, bool allow_sending_feedback = true);
+      bool init_virtual_wal, const uint64_t session_id = kVWALSessionId1,
+      bool allow_sending_feedback = true);
 
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
@@ -506,8 +520,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint32_t replication_factor, bool add_tables_without_primary_key = false);
 
   Result<GetConsistentChangesResponsePB> GetConsistentChangesFromCDC(
-      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id = 1);
+      const xrepl::StreamId& stream_id, const uint64_t session_id = kVWALSessionId1);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
@@ -567,6 +580,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, client::YBClient* client);
 
   void ValidateColumnCounts(const GetChangesResponsePB& resp, uint32_t excepted_column_counts);
+
+  void ValidateColumnCounts(
+      const GetAllPendingChangesResponse& resp, uint32_t excepted_column_counts);
 
   void ValidateInsertCounts(const GetChangesResponsePB& resp, uint32_t excepted_insert_counts);
 
@@ -630,7 +646,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckRecordsConsistency(const std::vector<CDCSDKProtoRecordPB>& records);
 
-  void CheckRecordCount(GetAllPendingChangesResponse resp, int expected_dml_records);
+  void CheckRecordCount(
+      GetAllPendingChangesResponse resp, int expected_dml_records, int expected_ddl_records = 0,
+      int expected_min_txn_id = 2 /* VWAL's min_txn_id */);
 
   void CheckRecordsConsistencyFromVWAL(const std::vector<CDCSDKProtoRecordPB>& records);
 
