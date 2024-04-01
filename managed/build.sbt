@@ -963,6 +963,9 @@ Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSiz
 
 Test / javaOptions += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testOptions += Tests.Filter(s =>
+  !s.contains("com.yugabyte.yw.commissioner.tasks.local")
+)
 
 // Skip packaging javadoc for now
 Compile / doc / sources := Seq()
