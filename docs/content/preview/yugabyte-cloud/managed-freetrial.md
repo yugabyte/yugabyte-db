@@ -34,7 +34,8 @@ After the free trial begins, you can use your credits to create dedicated cluste
 - Partition by region
 - Read replicas
 
-[Choose a plan](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/) any time. You won't be charged until your credits are used.
+<!--[Choose a plan](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/) any time. You won't be charged until your credits are used.-->
+Add a payment method any time. You won't be charged until your credits are used.
 
 ## Limitations
 
