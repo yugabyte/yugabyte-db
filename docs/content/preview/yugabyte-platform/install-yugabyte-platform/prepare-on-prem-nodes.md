@@ -49,7 +49,7 @@ You can prepare VMs for use as nodes in an on-premises deployment, as follows:
     This checklist also gives an idea of [recommended instance types across public clouds](../../../deploy/checklist/#public-clouds).
 
 1. Install the prerequisites and verify the system resource limits, as described in [system configuration](../../../deploy/manual-deployment/system-config).
-1. Ensure you have SSH access to the server and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
+1. Ensure you have SSH access to the server and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use). If your SSH user does not have sudo privileges at all, follow the steps in [Manually provision on-premises nodes](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 1. Execute the following command to verify that you can `ssh` into the node (from your local machine if the node has a public address):
 
     ```sh

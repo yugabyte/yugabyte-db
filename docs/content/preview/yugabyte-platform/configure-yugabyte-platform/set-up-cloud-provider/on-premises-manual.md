@@ -60,7 +60,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 
 | Protocol | Port | Description |
 | :------- | :--- | :---------- |
-| TCP | 22 | SSH (optional but recommended for troubleshooting) |
+| TCP | 22 | SSH (for provisioning) |
 | TCP | 5433 | YSQL client |
 | TCP | 6379 | YEDIS client |
 | TCP | 7000 | YB master webserver |
@@ -300,11 +300,15 @@ On each node, perform the following as a user with sudo access:
 
 ## Enable yugabyte user processes to run after logout
 
-To enable services to run even when the `yugabyte` user is not logged in, run the following commands as the yugabyte user:
+To enable services to run even when the `yugabyte` user is not logged in, run the following command as the yugabyte user:
 
 ```sh
 loginctl enable-linger yugabyte
-vi ~/.bashrc
+```
+
+Then add the following to `/home/yugabyte/.bashrc`:
+
+```sh
 export XDG_RUNTIME_DIR=/run/user/$(id -u yugabyte)
 ```
 
@@ -562,13 +566,9 @@ You can install systemd-specific database service unit files, as follows:
 
 ### Ulimits on Red Hat Enterprise Linux 8
 
-On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle Enterprise Linux 8.x, Amazon Linux 2), additionally, enter the following commands:
+On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle Enterprise Linux 8.x, Amazon Linux 2), additionally, add the following line to `/etc/systemd/system.conf` and `/etc/systemd/user.conf`:
 
 ```sh
-vi /etc/systemd/system.conf 
-DefaultLimitNOFILE=1048576 
-
-vi /etc/systemd/user.conf
 DefaultLimitNOFILE=1048576 
 ```
 
