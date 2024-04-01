@@ -47,10 +47,10 @@ Create a peering connection.
 | :--- | :--- |
 | --name | Required. Name for the peering. |
 | --yb-vpc-name | Required. Name of the YugabyteDB VPC to be peered. |
-| --cloud-provider | Required. Cloud provider of the VPC being peered. `AWS` or `GCP`.
+| --cloud-provider | Required. Cloud provider of the VPC being peered. `AWS` or `GCP`. |
 | --app-vpc-project-id | Required for GCP. Project ID of the application VPC being peered. GCP only. |
 | --app-vpc-name | Required for GCP. Name of the application VPC being peered. GCP only. |
-| --app-vpc-cidr | Required for AWS. CIDR of the application VPC. Optional for GCP.
+| --app-vpc-cidr | Required for AWS. CIDR of the application VPC. Optional for GCP. |
 | --app-vpc-account-id | Required for AWS. Account ID of the application VPC. AWS only. |
 | --app-vpc-id | Required for AWS. ID of the application VPC. AWS only. |
 | --app-vpc-region | Required for AWS. Region of the application VPC. AWS only. |
