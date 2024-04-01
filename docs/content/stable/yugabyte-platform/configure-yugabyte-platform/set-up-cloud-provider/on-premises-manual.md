@@ -43,8 +43,6 @@ For each node, perform the following:
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
 - [Manually pre-provision the node](#pre-provision-nodes-manually)
 - [Install Prometheus Node Exporter](#install-prometheus-node-exporter)
-- [Install backup utilities](#install-backup-utilities)
-- [Set crontab permissions](#set-crontab-permissions)
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
 - [Install the node agent](#install-node-agent)
 
@@ -62,13 +60,14 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 
 | Protocol | Port | Description |
 | :------- | :--- | :---------- |
-| TCP | 22 | SSH (for automatic administration) |
+| TCP | 22 | SSH (for provisioning) |
 | TCP | 5433 | YSQL client |
 | TCP | 6379 | YEDIS client |
 | TCP | 7000 | YB master webserver |
 | TCP | 7100 | YB master RPC |
 | TCP | 9000 | YB tablet server webserver |
 | TCP | 9042 | YCQL client |
+| TCP | 9070 | Node agent |
 | TCP | 9090 | Prometheus server |
 | TCP | 9100 | YB tablet server RPC |
 | TCP | 9300 | Prometheus Node Exporter |
@@ -106,15 +105,19 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    `yugabyte_home` is the path to the Yugabyte home directory. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
+    `yugabyte_home` is the path to the Yugabyte home directory. By default, this is `/home/yugabyte`. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
+
+    If you are using NFS for backups, ensure the `yugabyte` user has the same UID across all nodes in the same cluster.
 
 1. If the node is running SELinux and the home directory is not the default, set the correct SELinux ssh context, as follows:
 
     ```bash
     chcon -R -t ssh_home_t <yugabyte_home>
     ```
+
+    The rest of this document assumes a home of `/home/yugabyte`. If you set a custom path for home, change the path in the examples as appropriate.
 
 1. Copy the SSH public key to each DB node. This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
 
@@ -295,149 +298,31 @@ On each node, perform the following as a user with sudo access:
     sudo systemctl status node_exporter
     ```
 
-## Install backup utilities
+## Enable yugabyte user processes to run after logout
 
-YugabyteDB Anywhere supports backing up YugabyteDB to Amazon S3, Azure Storage, Google Cloud Storage, and Network File System (NFS). For more information, see [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/).
+To enable services to run even when the `yugabyte` user is not logged in, run the following command as the yugabyte user:
 
-You can install the backup utility for the backup storage you plan to use, as follows:
+```sh
+loginctl enable-linger yugabyte
+```
 
-- NFS: Install rsync, which YugabyteDB Anywhere uses to perform NFS backups installed during one of the previous steps.
+Then add the following to `/home/yugabyte/.bashrc`:
 
-- Amazon S3: Install s3cmd, on which YugabyteDB Anywhere relies to support copying backups to Amazon S3. You have the following installation options:
+```sh
+export XDG_RUNTIME_DIR=/run/user/$(id -u yugabyte)
+```
 
-  - For a regular installation, execute the following:
+## Install systemd-related database service unit files
 
-      ```sh
-      sudo dnf install s3cmd
-      ```
+You can install systemd-specific database service unit files, as follows:
 
-  - For an airgapped installation, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the YugabyteDB Anywhere node to the database node, and then extract it into the `/usr/local` directory on the database node, as follows:
-
-      ```sh
-      cd /usr/local
-      sudo tar xvfz path-to-s3cmd-2.0.1.tar.gz
-      sudo ln -s /usr/local/s3cmd-2.0.1/s3cmd /usr/local/bin/s3cmd
-      ```
-
-- Azure Storage: Install azcopy using one of the following options:
-
-  - Download `azcopy_linux_amd64_10.13.0.tar.gz` using the following command:
-
-      ```sh
-      wget https://azcopyvnext.azureedge.net/release20211027/azcopy_linux_amd64_10.13.0.tar.gz
-      ```
-
-  - For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the YugabyteDB Anywhere node, as follows:
-
-      ```sh
-      cd /usr/local
-      sudo tar xfz path-to-azcopy_linux_amd64_10.13.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.13.0/azcopy --strip-components 1
-      ```
-
-- Google Cloud Storage: Install gsutil using one of the following options:
-
-  - Download `gsutil_4.60.tar.gz` using the following command:
-
-      ```sh
-      wget https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
-      ```
-
-  - For airgapped installations, copy `/opt/third-party/gsutil_4.60.tar.gz` from the YugabyteDB Anywhere node, as follows:
-
-      ```sh
-      cd /usr/local
-      sudo tar xvfz gsutil_4.60.tar.gz
-      sudo ln -s /usr/local/gsutil/gsutil /usr/local/bin/gsutil
-      ```
-
-## Set crontab permissions
-
-YugabyteDB Anywhere supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs.
-
-Note that sudo is required to set up this service.
-
-If YugabyteDB Anywhere will be using cron jobs, ensure that the `yugabyte` user is allowed to run crontab:
-
-- If you are using the `cron.allow` file to manage crontab access, add the `yugabyte` user to this file.
-- If you are using the `cron.deny` file, remove the `yugabyte` user from this file.
-
-If you are not using either file, no changes are required.
-
-<!--
-
-##### Manage liveness checks, logs, and cores
-
-YugabyteDB Anywhere supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services.
-
-**Sudo is required to set up these services**
-
-If YugabyteDB Anywhere will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you're using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you're using the cron.deny file, remove the yugabyte user from this file.
-
-YugabyteDB Anywhere **systemd services** to perform the monitoring operations mentioned above, then make sure ...
--->
-
-### Install systemd-related database service unit files
-
-As an alternative to setting crontab permissions, you can install systemd-specific database service unit files, as follows:
-
-1. Enable the `yugabyte` user to run the following commands as sudo or root:
+1. Create the directory `.config/systemd/user` in the yugabyte home directory. For example:
 
     ```sh
-    yugabyte ALL=(ALL:ALL) NOPASSWD: \
-    /bin/systemctl start yb-master, \
-    /bin/systemctl stop yb-master, \
-    /bin/systemctl restart yb-master, \
-    /bin/systemctl enable yb-master, \
-    /bin/systemctl disable yb-master, \
-    /bin/systemctl start yb-tserver, \
-    /bin/systemctl stop yb-tserver, \
-    /bin/systemctl restart yb-tserver, \
-    /bin/systemctl enable yb-tserver, \
-    /bin/systemctl disable yb-tserver, \
-    /bin/systemctl start yb-controller, \
-    /bin/systemctl stop yb-controller, \
-    /bin/systemctl restart yb-controller, \
-    /bin/systemctl enable yb-controller, \
-    /bin/systemctl disable yb-controller, \
-    /bin/systemctl start yb-bind_check.service, \
-    /bin/systemctl stop yb-bind_check.service, \
-    /bin/systemctl restart yb-bind_check.service, \
-    /bin/systemctl enable yb-bind_check.service, \
-    /bin/systemctl disable yb-bind_check.service, \
-    /bin/systemctl start yb-zip_purge_yb_logs.timer, \
-    /bin/systemctl stop yb-zip_purge_yb_logs.timer, \
-    /bin/systemctl restart yb-zip_purge_yb_logs.timer, \
-    /bin/systemctl enable yb-zip_purge_yb_logs.timer, \
-    /bin/systemctl disable yb-zip_purge_yb_logs.timer, \
-    /bin/systemctl start yb-clean_cores.timer, \
-    /bin/systemctl stop yb-clean_cores.timer, \
-    /bin/systemctl restart yb-clean_cores.timer, \
-    /bin/systemctl enable yb-clean_cores.timer, \
-    /bin/systemctl disable yb-clean_cores.timer, \
-    /bin/systemctl start yb-collect_metrics.timer, \
-    /bin/systemctl stop yb-collect_metrics.timer, \
-    /bin/systemctl restart yb-collect_metrics.timer, \
-    /bin/systemctl enable yb-collect_metrics.timer, \
-    /bin/systemctl disable yb-collect_metrics.timer, \
-    /bin/systemctl start yb-zip_purge_yb_logs, \
-    /bin/systemctl stop yb-zip_purge_yb_logs, \
-    /bin/systemctl restart yb-zip_purge_yb_logs, \
-    /bin/systemctl enable yb-zip_purge_yb_logs, \
-    /bin/systemctl disable yb-zip_purge_yb_logs, \
-    /bin/systemctl start yb-clean_cores, \
-    /bin/systemctl stop yb-clean_cores, \
-    /bin/systemctl restart yb-clean_cores, \
-    /bin/systemctl enable yb-clean_cores, \
-    /bin/systemctl disable yb-clean_cores, \
-    /bin/systemctl start yb-collect_metrics, \
-    /bin/systemctl stop yb-collect_metrics, \
-    /bin/systemctl restart yb-collect_metrics, \
-    /bin/systemctl enable yb-collect_metrics, \
-    /bin/systemctl disable yb-collect_metrics, \
-    /bin/systemctl daemon-reload
+    mkdir /home/yugabyte/.config/systemd/user
     ```
 
-2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):
+1. Add the following service and timer files to the `/.config/systemd/user` directory you created:
 
     `yb-master.service`
 
@@ -454,8 +339,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     PathExists=/home/yugabyte/master/conf/server.conf
 
     [Service]
-    User=yugabyte
-    Group=yugabyte
     # Start
     ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
     Restart=on-failure
@@ -493,8 +376,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     PathExists=/home/yugabyte/tserver/conf/server.conf
 
     [Service]
-    User=yugabyte
-    Group=yugabyte
     # Start
     ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
     Restart=on-failure
@@ -525,8 +406,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     Wants=yb-zip_purge_yb_logs.timer
 
     [Service]
-    User=yugabyte
-    Group=yugabyte
     Type=oneshot
     WorkingDirectory=/home/yugabyte/bin
     ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
@@ -543,8 +422,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     Requires=yb-zip_purge_yb_logs.service
 
     [Timer]
-    User=yugabyte
-    Group=yugabyte
     Unit=yb-zip_purge_yb_logs.service
     # Run hourly at minute 0 (beginning) of every hour
     OnCalendar=00/1:00
@@ -561,8 +438,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     Wants=yb-clean_cores.timer
 
     [Service]
-    User=yugabyte
-    Group=yugabyte
     Type=oneshot
     WorkingDirectory=/home/yugabyte/bin
     ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
@@ -586,8 +461,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     PathExists=/home/yugabyte/controller/conf/server.conf
 
     [Service]
-    User=yugabyte
-    Group=yugabyte
     # Start
     ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
         --flagfile /home/yugabyte/controller/conf/server.conf
@@ -619,8 +492,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     Requires=yb-clean_cores.service
 
     [Timer]
-    User=yugabyte
-    Group=yugabyte
     Unit=yb-clean_cores.service
     # Run every 10 minutes offset by 5 (5, 15, 25...)
     OnCalendar=*:0/10:30
@@ -637,8 +508,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     Wants=yb-collect_metrics.timer
 
     [Service]
-    User=yugabyte
-    Group=yugabyte
     Type=oneshot
     WorkingDirectory=/home/yugabyte/bin
     ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
@@ -655,8 +524,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     Requires=yb-collect_metrics.service
 
     [Timer]
-    User=yugabyte
-    Group=yugabyte
     Unit=yb-collect_metrics.service
     # Run every 1 minute
     OnCalendar=*:0/1:0
@@ -696,6 +563,16 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     [Install]
     WantedBy=default.target
     ```
+
+### Ulimits on Red Hat Enterprise Linux 8
+
+On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle Enterprise Linux 8.x, Amazon Linux 2), additionally, add the following line to `/etc/systemd/system.conf` and `/etc/systemd/user.conf`:
+
+```sh
+DefaultLimitNOFILE=1048576 
+```
+
+You must reboot the system for these two settings to take effect.
 
 ## Install node agent
 
