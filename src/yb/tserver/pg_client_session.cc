@@ -807,10 +807,6 @@ Status PgClientSession::CreateTablegroup(
     return STATUS(InvalidArgument, "Duplicate tablegroup");
   }
 
-  if (s.IsNotFound()) {
-    return STATUS(InvalidArgument, "Database not found", req.database_name());
-  }
-
   return STATUS_FORMAT(
       InvalidArgument, "Invalid table definition: $0",
       s.ToString(false /* include_file_and_line */, false /* include_code */));
