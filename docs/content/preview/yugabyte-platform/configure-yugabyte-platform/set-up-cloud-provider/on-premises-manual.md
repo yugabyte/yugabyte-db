@@ -60,13 +60,14 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 
 | Protocol | Port | Description |
 | :------- | :--- | :---------- |
-| TCP | 22 | SSH (for automatic administration) |
+| TCP | 22 | SSH (optional but recommended for troubleshooting) |
 | TCP | 5433 | YSQL client |
 | TCP | 6379 | YEDIS client |
 | TCP | 7000 | YB master webserver |
 | TCP | 7100 | YB master RPC |
 | TCP | 9000 | YB tablet server webserver |
 | TCP | 9042 | YCQL client |
+| TCP | 9070 | Node agent |
 | TCP | 9090 | Prometheus server |
 | TCP | 9100 | YB tablet server RPC |
 | TCP | 9300 | Prometheus Node Exporter |
@@ -107,6 +108,8 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
     `yugabyte_home` is the path to the Yugabyte home directory. By default, this is `/home/yugabyte`. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
+
+    If you are using NFS for backups, ensure the `yugabyte` user has the same UID across all nodes in the same cluster.
 
 1. If the node is running SELinux and the home directory is not the default, set the correct SELinux ssh context, as follows:
 
