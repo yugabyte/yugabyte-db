@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/xcluster_replication_group.h"
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/common/wire_protocol.pb.h"
@@ -267,8 +268,11 @@ Result<bool> ShouldAddTableToReplicationGroup(
   const auto& table_pb = table_info.old_pb();
 
   // Only user created YSQL tables should be automatically added to xCluster replication.
+  // xCluster DDL Repl: replicated_ddls is only used on the target, so don't replicate it either.
   if (table_pb.colocated() || table_pb.table_type() != PGSQL_TABLE_TYPE ||
-      !catalog_manager.IsUserCreatedTable(table_info)) {
+      !catalog_manager.IsUserCreatedTable(table_info) ||
+      (table_pb.name() == xcluster::kDDLReplicatedTableName &&
+       table_pb.schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName)) {
     return false;
   }
 

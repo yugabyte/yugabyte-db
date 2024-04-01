@@ -583,16 +583,18 @@ void XClusterConsumer::TriggerPollForNewTablets() {
 
         if (FLAGS_TEST_xcluster_enable_ddl_replication &&
             ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
-          auto namespace_info_res = get_namespace_info_func_(consumer_tablet_info.table_id);
+          auto namespace_info_res = get_namespace_info_func_(consumer_tablet_info.tablet_id);
           if (!namespace_info_res.ok()) {
-            LOG(WARNING) << "Could not get ddl_queue namespace info for " << replication_group_id
-                         << ": " << namespace_info_res.status().ToString();
-            continue;  // Don't finish creation.  Try again on the next RunThread().
+            // Consumer will handle clean up in next run of TriggerDeletionOfOldPollers.
+            xcluster_poller->MarkFailed(
+                Format("Could not find ddl_queue namespace info for $0", replication_group_id),
+                namespace_info_res.status());
+          } else {
+            const auto& [namespace_id, namespace_name] = *namespace_info_res;
+            xcluster_poller->InitDDLQueuePoller(
+                use_local_tserver, rate_limiter_.get(), namespace_name, namespace_id,
+                connect_to_pg_func_);
           }
-          const auto& [namespace_id, namespace_name] = *namespace_info_res;
-          xcluster_poller->InitDDLQueuePoller(
-              use_local_tserver, rate_limiter_.get(), namespace_name, namespace_id,
-              connect_to_pg_func_);
         } else {
           xcluster_poller->Init(use_local_tserver, rate_limiter_.get());
         }

@@ -1191,7 +1191,7 @@ Status TabletServer::CreateXClusterConsumer() {
     auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
     SCHECK(tablet_peer, NotFound, "Could not find tablet $0", tablet_id);
     return std::make_pair(
-        tablet_peer->tablet_metadata()->namespace_id(),
+        VERIFY_RESULT(tablet_peer->GetNamespaceId()),
         tablet_peer->tablet_metadata()->namespace_name());
   };
 
