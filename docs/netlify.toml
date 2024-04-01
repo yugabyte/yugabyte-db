@@ -14,16 +14,19 @@
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  HUGO_SEGMENT_API_KEY = "EML32SZ7I5GK9nKD8WiTeNCNKsyAsmqv"
 
 [context.branch-deploy.environment]
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  HUGO_SEGMENT_API_KEY = "EML32SZ7I5GK9nKD8WiTeNCNKsyAsmqv"
 
 [context.production.environment]
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+#  HUGO_SEGMENT_API_KEY = "EML32SZ7I5GK9nKD8WiTeNCNKsyAsmqv"
 
 ################ REDIRECTS ################
 #
@@ -1272,6 +1275,7 @@
             https://umbcujcbe8-dsn.algolia.net/
             https://www.google-analytics.com/
             https://www.yugabyte.com
+            https://api.segment.io/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
@@ -1294,6 +1298,7 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com
+            https://cdn.segment.com/
         ;
 
         style-src 'self' 'unsafe-inline'
