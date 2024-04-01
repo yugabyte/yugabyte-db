@@ -784,6 +784,7 @@ class PostgresBuilder(YbBuildToolBase):
             os.path.join(self.pg_build_root, 'contrib/pgcrypto'),
             os.path.join(self.pg_build_root, 'contrib/uuid-ossp'),
             os.path.join(self.pg_build_root, 'contrib/file_fdw'),
+            os.path.join(self.pg_build_root, 'contrib/postgres_fdw'),
             # YB_TODO: end
             third_party_extensions_dir,
         ]
