@@ -326,11 +326,9 @@ public class ReleaseArtifact extends Model {
 
   private void fillJsonText() {
     if (gcsFileJson != null) {
-      log.debug("filling out gcs file json");
       gcsFile = Json.fromJson(Json.parse(gcsFileJson), GCSFile.class);
     }
     if (s3FileJson != null) {
-      log.debug("filling out s3 file json");
       s3File = Json.fromJson(Json.parse(s3FileJson), S3File.class);
     }
   }

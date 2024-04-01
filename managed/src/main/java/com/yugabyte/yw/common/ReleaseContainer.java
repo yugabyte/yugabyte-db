@@ -32,21 +32,31 @@ public class ReleaseContainer {
 
   private CloudUtilFactory cloudUtilFactory;
   private Config appConfig;
+  private ReleasesUtils releasesUtils;
 
   // Internally set the artifact used for getFilePath
   private ReleaseArtifact artifact;
 
-  public ReleaseContainer(Release release, CloudUtilFactory cloudUtilFactory, Config appConfig) {
+  public ReleaseContainer(
+      Release release,
+      CloudUtilFactory cloudUtilFactory,
+      Config appConfig,
+      ReleasesUtils releasesUtils) {
     this.release = release;
     this.cloudUtilFactory = cloudUtilFactory;
     this.appConfig = appConfig;
+    this.releasesUtils = releasesUtils;
   }
 
   public ReleaseContainer(
-      ReleaseMetadata metadata, CloudUtilFactory cloudUtilFactory, Config appConfig) {
+      ReleaseMetadata metadata,
+      CloudUtilFactory cloudUtilFactory,
+      Config appConfig,
+      ReleasesUtils releasesUtils) {
     this.metadata = metadata;
     this.cloudUtilFactory = cloudUtilFactory;
     this.appConfig = appConfig;
+    this.releasesUtils = releasesUtils;
   }
 
   public boolean isLegacy() {
@@ -423,7 +433,11 @@ public class ReleaseContainer {
   }
 
   public ReleaseManager.ReleaseMetadata getMetadata() {
-    return this.metadata;
+    if (isLegacy()) {
+      return this.metadata;
+    } else {
+      return releasesUtils.releaseToReleaseMetadata(this.release);
+    }
   }
 
   private void setArtifactMatchingPackage(String ybPackage) {

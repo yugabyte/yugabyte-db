@@ -2,7 +2,10 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
@@ -16,6 +19,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.ParseException;
@@ -44,9 +48,12 @@ public class ReleasesUtils {
   public final String YB_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
   // We can see helm packages as either yugabyte-<version>.tgz or yugabyte-version-helm.tgz
-  public final String YB_HELM_PACKAGE_REGEX = "yugabyte-(?:ee-)?(.*?)(?:-helm)?.tar.gz";
+  public final String YB_HELM_PACKAGE_REGEX = "yugabyte-(?:ee-)?(.*?)(?:-helm)?.(?:tar.gz|tgz)";
   // Match release form 2.16.1.2 and return 2.16 or 2024.1.0.0 and return 2024
   public final String YB_VERSION_TYPE_REGEX = "(2\\.\\d+|\\d\\d\\d\\d)";
+
+  // The first version where YBDB must include a metadata.json file
+  public final String YBDB_METADATA_REQUIRED_VERSION = "2024.1.0.0";
 
   // Should fallback to preview if a version is not in the map
   public final Map<String, String> releaseTypeMap =
@@ -86,6 +93,10 @@ public class ReleasesUtils {
       log.error("could not compute sha256", e);
     }
     try {
+      if (isHelmChart(releaseFilePath.toString())) {
+        return metadataFromHelmChart(
+            new BufferedInputStream(Files.newInputStream(releaseFilePath)));
+      }
       ExtractedMetadata em =
           versionMetadataFromInputStream(
               new BufferedInputStream(new FileInputStream(releaseFilePath.toFile())));
@@ -105,6 +116,9 @@ public class ReleasesUtils {
 
   public ExtractedMetadata versionMetadataFromURL(URL url) {
     try {
+      if (isHelmChart(url.getFile())) {
+        return metadataFromHelmChart(new BufferedInputStream(url.openStream()));
+      }
       return versionMetadataFromInputStream(new BufferedInputStream(url.openStream()));
     } catch (MetadataParseException e) {
       // Fallback to file name validation
@@ -259,6 +273,44 @@ public class ReleasesUtils {
     }
     em.release_type = releaseTypeFromVersion(em.version);
     return em;
+  }
+
+  private boolean isHelmChart(String fileName) {
+    Pattern ybHelmChartPattern = Pattern.compile(YB_HELM_PACKAGE_REGEX);
+    Matcher helmPackage = ybHelmChartPattern.matcher(fileName);
+    return helmPackage.find();
+  }
+
+  // Basic class to load chart yaml into. Only contains the fields we care about
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  static class BasicChartYaml {
+    public String appVersion;
+  }
+
+  private ExtractedMetadata metadataFromHelmChart(InputStream helmStream) {
+    ExtractedMetadata metadata = new ExtractedMetadata();
+    metadata.platform = ReleaseArtifact.Platform.KUBERNETES;
+    try (GzipCompressorInputStream gzIn = new GzipCompressorInputStream(helmStream);
+        TarArchiveInputStream tarInput = new TarArchiveInputStream(gzIn)) {
+      TarArchiveEntry entry;
+      while ((entry = tarInput.getNextEntry()) != null) {
+        if (entry.getName().endsWith("Chart.yaml") || entry.getName().endsWith("Chart.yml")) {
+          log.debug("Found Chart.yml");
+          // We can reasonably assume that the version metadata json is small enough to read in
+          // oneshot
+          byte[] fileContent = new byte[(int) entry.getSize()];
+          tarInput.read(fileContent, 0, fileContent.length);
+          ObjectMapper om = new ObjectMapper(new YAMLFactory());
+          BasicChartYaml chartYaml = om.readValue(fileContent, BasicChartYaml.class);
+          metadata.version = chartYaml.appVersion;
+          metadata.release_type = releaseTypeFromVersion(metadata.version);
+          return metadata;
+        }
+      }
+      throw new RuntimeException("invalid helm chart -no Chart.yml found");
+    } catch (java.io.IOException e) {
+      throw new RuntimeException("failed to read metadata", e);
+    }
   }
 
   public String releaseTypeFromVersion(String version) {
