@@ -96,7 +96,7 @@ Disabling Crontab creates alerts after the universe is created, but they can be 
     In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
 
     ```sh
-    sudo alternatives --set python3 /usr/bin/python3.9
+    sudo alternatives --set python3 /usr/bin/python3.6
     sudo alternatives --display python3
     python3 -V
     ```
