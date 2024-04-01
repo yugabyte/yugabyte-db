@@ -22,9 +22,9 @@ The following page describes the steps to perform and verify a successful offlin
 
 | Step | Description |
 | :--- | :---|
-| [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
-| [Prepare source](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
-| [Prepare target](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
+| [Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
+| [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
+| [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
 | [Export schema](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
 | [Analyze schema](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
 | [Modify schema](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
@@ -32,7 +32,7 @@ The following page describes the steps to perform and verify a successful offlin
 | [Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | [Import data](#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
 | [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
-| [Verify migration](#verify-migration) | Check if the offline migration is successful. |
+| [Verify](#verify-migration) | Check if the offline migration is successful. |
 | [End migration](#end-migration) | Clean up the migration information stored in the export directory and databases (source and target). |
 
 Before proceeding with migration, ensure that you have completed the following steps:
