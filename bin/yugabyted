@@ -430,7 +430,10 @@ class ControlScript(object):
     # Prints status of YugabyteDB.
     def status(self):
         if len(os.listdir(self.configs.saved_data.get("data_dir"))) != 0:
-            Output.print_out(self.get_status_string())
+            Output.init_animation("Fetching status...")
+            status_output = self.get_status_string().strip()
+            Output.update_animation("")
+            Output.print_out(status_output)
         else:
             Output.print_out("{} is not running.".format(SCRIPT_NAME))
 
@@ -1239,6 +1242,7 @@ class ControlScript(object):
             return "Failed to start tserver {}".format(SCRIPT_NAME)
 
         if not was_already_setup:
+            self.configs.saved_data["cluster_member"] = True
             master_addresses = self.configs.saved_data.get("current_masters")
             universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
             if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
@@ -2001,6 +2005,10 @@ class ControlScript(object):
             Output.log('HTTP error occurred while fetching current' +
                     'masters from tserver: {}', http_err)
             return ''
+        except URLError as url_err:
+            Output.log('URL error occurred while fetching current' +
+                    'masters from tserver: {}', url_err)
+            return ''
         except Exception as err:
             Output.log('Other error occurred while fetching current' +
                     'masters from tserver: {}', err)
@@ -2503,7 +2511,6 @@ class ControlScript(object):
             # join_ip, let's try to add ourselves to it, otherwise
             # it is a hard failure.
             if current_node_master_uuid in master_uuids:
-                self.configs.saved_data["cluster_member"] = True
                 return True
             if not join_ip:
                 return False
@@ -2533,7 +2540,6 @@ class ControlScript(object):
 
         try:
             if retry_op_with_argument(self.get_master_uuids, master_addrs, timeout):
-                self.configs.saved_data["cluster_member"] = True
                 Output.log("Completed setup and wait for master.")
                 return True
         except RuntimeError:
@@ -2673,6 +2679,8 @@ class ControlScript(object):
             if was_already_setup:
                 if master_addrs:
                     status = "Running."
+                else:
+                    status = "Bootstrapping."
             else:
                 if self.wait_get_all_masters(timeout=10):
                     status = "Running."
@@ -2705,10 +2713,10 @@ class ControlScript(object):
                 Output.update_animation("Data placement constraint successfully verified")
             else:
                 rf = YBAdminProxy.get_cluster_rf(master_addrs)
-            status_info = [
-                (Output.make_yellow("Status"), status),
-                (Output.make_yellow("Replication Factor"), rf),
-            ]
+
+            status_info = [(Output.make_yellow("Status"), status)]
+            if rf:
+                status_info.append((Output.make_yellow("Replication Factor"), rf))
 
             if enabled_security_features:
                 status_info += [
@@ -3387,6 +3395,7 @@ class ControlScript(object):
             if args.background is None:
                 args.background = "True"
 
+            cluster_member = self.configs.saved_data.get("cluster_member")
             if args.join is not None:
                 if not self.validate_hostname_ip(args.join):
                     Output.log_error_and_exit(Output.make_red("ERROR") + ": --join" +
@@ -3394,26 +3403,36 @@ class ControlScript(object):
                         "IPV6 or DNS.")
 
                 Output.print_and_log("Fetching configs from join IP...")
-                try:
-                    leaderMasterURL = "http://{}:{}/api/v1/varz".format(args.join,
-                                            self.configs.saved_data.get("master_webserver_port"))
-                    response = urlopen(Request(leaderMasterURL))
-                    Output.log("Trying to hit endpoint {}".format(leaderMasterURL) +
-                            " to check if join IP is reachable. (Timeout=60s)")
-                    response = urlopen(Request(leaderMasterURL), timeout=60)
-                except HTTPError as http_err:
-                    Output.log("HTTP Error occured while hitting the api endpoint " +
-                        "http://{}:{}/api/v1/varz: {}".format(args.join,
-                                    self.configs.saved_data.get("master_webserver_port"), http_err))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") + "master at the join ip " +
-                        "provided is not reachable.")
-                except Exception as err:
-                    Output.log("Error occured while hitting the api endpoint " +
-                        "http://{}:{}/api/v1/varz: {}".format(args.join,
-                                    self.configs.saved_data.get("master_webserver_port"), err))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") + "master at the join ip " +
-                        "provided is not reachable.")
-
+                if not cluster_member:
+                    try:
+                        leaderMasterURL = "http://{}:{}/api/v1/varz".format(args.join,
+                                    self.configs.saved_data.get("master_webserver_port"))
+                        response = urlopen(Request(leaderMasterURL))
+                        Output.log("Trying to hit endpoint {}".format(leaderMasterURL) +
+                                " to check if join IP is reachable. (Timeout=60s)")
+                        response = urlopen(Request(leaderMasterURL), timeout=60)
+                    except HTTPError as http_err:
+                        Output.log("HTTP Error occured while hitting the api endpoint " +
+                            "http://{}:{}/api/v1/varz: {}".format(args.join,
+                                self.configs.saved_data.get("master_webserver_port"), http_err))
+                        Output.log_error_and_exit(Output.make_red("ERROR:") + "master at " +
+                            " the join ip provided is not reachable.")
+                    except Exception as err:
+                        Output.log("Error occured while hitting the api endpoint " +
+                            "http://{}:{}/api/v1/varz: {}".format(args.join,
+                                self.configs.saved_data.get("master_webserver_port"), err))
+                        Output.log_error_and_exit(Output.make_red("ERROR:") + "master at" +
+                            " the join ip provided is not reachable.")
+                # Restart node as a part of an existing cluster with the join flag specified
+                else:
+                    Output.log("Restarting node as part of an existing cluster.")
+            # If no --join is passed, check if its a first time start or its a restart
+            else:
+                if not cluster_member:
+                    Output.log("Starting first primary node.")
+                # Restart node as a part of an existing cluster without the join flag specified
+                else:
+                    Output.log("Restarting node as part of an existing cluster.")
 
             self.find_security_nature_of_deployment(args)
 
@@ -3424,7 +3443,7 @@ class ControlScript(object):
                     ": --certs_dir flag needs to be accompanied with the --secure flag.")
 
             if args.insecure:
-                if args.join:
+                if args.join and not cluster_member:
                     master_hostport = "{}:{}".format(args.join,
                             self.configs.saved_data.get("master_webserver_port"))
                     if self.is_leader_master_secure(master_hostport):
@@ -3435,7 +3454,7 @@ class ControlScript(object):
                             "IP was provided in --join flag has SSL/TLS enabled. Cannot join a " +
                             "secure and an insecure node.")
             elif args.secure:
-                if args.join:
+                if args.join and not cluster_member:
                     master_hostport = "{}:{}".format(args.join,
                             self.configs.saved_data.get("master_webserver_port"))
                     if not self.is_leader_master_secure(master_hostport):
@@ -3892,6 +3911,7 @@ class Configs(object):
             "current_masters": "",
             "ui": True,
             "dns_enabled": False,
+            "cluster_member": False,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -4994,7 +5014,12 @@ class Output(object):
                     symbol = status
                     running = False
 
-                line = "\r{} {}".format(symbol, msg)
+                if msg == "":
+                    line = "\r" + " " * line_len
+                    running = False
+                else:
+                    line = "\r{} {}".format(symbol, msg)
+
                 line_len = max(len(line), line_len)
                 line_to_write = "{:<{}}".format(line, line_len)
                 if not running:
