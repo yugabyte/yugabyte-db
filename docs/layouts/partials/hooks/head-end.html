@@ -11,7 +11,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- End Google Tag Manager -->
 
 {{ $segment_api_key := os.Getenv "SEGMENT_API_KEY" }}
-HELLO SEGMENT ==- {{ site.Params.segment.api.key }} ==== {{ $segment_api_key }} ------========= {{ os.Getenv "HUGO_SEGMENT_API_KEY" }}
 
 {{- if $segment_api_key -}}
 <script>
