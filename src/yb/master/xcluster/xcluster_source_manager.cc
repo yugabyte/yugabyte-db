@@ -16,6 +16,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/cdc/xcluster_types.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/xcluster/xcluster_status.h"
@@ -52,6 +53,12 @@ bool ShouldReplicateTable(const TableInfoPtr& table) {
 
   if (table->IsColocatedUserTable()) {
     // Only the colocated parent table needs to be replicated.
+    return false;
+  }
+
+  if (table->name() == xcluster::kDDLReplicatedTableName &&
+      table->pgschema_name() == xcluster::kDDLQueuePgSchemaName) {
+    // replicated_ddls is only used on the target, so we do not want to replicate it.
     return false;
   }
 

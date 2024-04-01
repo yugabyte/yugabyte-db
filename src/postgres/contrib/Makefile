@@ -54,6 +54,7 @@ SUBDIRS = \
 		vacuumlo    \
 		yb_pg_metrics \
 		yb_test_extension \
+		yb_xcluster_ddl_replication \
 		yb_ycql_utils
 
 ifeq ($(with_openssl),yes)

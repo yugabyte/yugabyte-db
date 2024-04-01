@@ -45,9 +45,10 @@ class XClusterDDLQueueHandler {
 
   virtual Status ProcessDDLQuery(int64 start_time, int64 query_id, const std::string& query);
 
-  virtual Status InitPGConnection(const HybridTime& apply_safe_time);
+  virtual Status InitPGConnection();
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace();
-  virtual Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess();
+  virtual Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
+      const HybridTime& apply_safe_time);
 
   const std::shared_ptr<XClusterClient> local_client_;
 
