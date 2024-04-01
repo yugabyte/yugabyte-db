@@ -66,11 +66,11 @@ public class UnevenDataDetector extends UnevenDistributionDetector {
         + anomaly.getLabelFirstValue(GraphFilter.tableId.name());
   }
 
-  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+  protected AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context) {
     AnomalyDetectionContext updatedContext =
         context.toBuilder().stepSeconds(Duration.ofHours(3).toSeconds()).build();
 
-    return super.findAnomalies(updatedContext);
+    return super.findAnomaliesInternal(updatedContext);
   }
 
   @Override

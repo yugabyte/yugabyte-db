@@ -1,11 +1,14 @@
 package com.yugabyte.troubleshoot.ts.task;
 
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.*;
+
 import com.yugabyte.troubleshoot.ts.models.UniverseDetails;
 import com.yugabyte.troubleshoot.ts.models.UniverseMetadata;
 import com.yugabyte.troubleshoot.ts.service.UniverseDetailsService;
 import com.yugabyte.troubleshoot.ts.service.UniverseMetadataService;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClient;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClientError;
+import io.prometheus.client.Summary;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,6 +27,9 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Profile("!test")
 public class UniverseDetailsQuery {
+  private static final Summary QUERY_TIME =
+      buildSummary(
+          "ts_universe_details_query_time_millis", "Universe details query time", LABEL_RESULT);
 
   private final Map<UUID, UniverseProgress> universesProcessStartTime = new ConcurrentHashMap<>();
   private final UniverseMetadataService universeMetadataService;
@@ -71,6 +77,7 @@ public class UniverseDetailsQuery {
 
   private void processUniverse(UniverseMetadata metadata, UniverseProgress progress) {
     log.info("Processing universe {}", metadata.getId());
+    long startTime = System.currentTimeMillis();
     try {
       progress.setInProgress(true);
       progress.setStartTimestamp(System.currentTimeMillis());
@@ -88,7 +95,9 @@ public class UniverseDetailsQuery {
             error.getStatusCode(),
             error.getError());
       }
+      QUERY_TIME.labels(RESULT_SUCCESS).observe(System.currentTimeMillis() - startTime);
     } catch (Exception e) {
+      QUERY_TIME.labels(RESULT_FAILURE).observe(System.currentTimeMillis() - startTime);
       log.error("Failed to get universe {} details", metadata.getId(), e);
     } finally {
       progress.setInProgress(false);
