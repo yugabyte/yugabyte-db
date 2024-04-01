@@ -522,10 +522,13 @@ Status PollTransactionStatusBase::VerifyTransaction() {
     nullptr /* tablet */,
     client,
     &req,
-    [this, rpc_handle]
+    [this, task_retained = std::weak_ptr<server::MonitoredTask>(GetSharedFromThis()), rpc_handle]
         (Status status, const tserver::GetTransactionStatusResponsePB& resp) {
-      auto retained = rpcs_.Unregister(rpc_handle);
-      TransactionReceived(std::move(status), resp);
+      auto self_shared = task_retained.lock();
+      if (self_shared) {
+        auto retained = rpcs_.Unregister(rpc_handle);
+        TransactionReceived(std::move(status), resp);
+      }
     });
   (**rpc_handle).SendRpc();
   return Status::OK();
