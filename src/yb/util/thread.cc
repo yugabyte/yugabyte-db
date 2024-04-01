@@ -126,6 +126,8 @@ const char Thread::kPaddingChar = 'x';
 
 namespace {
 
+const std::string kAllGroups = "all";
+
 uint64_t GetCpuUTime() {
   rusage ru;
   CHECK_ERR(getrusage(RUSAGE_SELF, &ru));
@@ -245,6 +247,8 @@ class ThreadMgr {
   // Removes a thread from the supplied category. If the thread has
   // already been removed, this is a no-op.
   void RemoveThread(const pthread_t& pthread_id, const string& category);
+
+  void RenderThreadGroup(const std::string& group, std::ostream& output);
 
  private:
   // Container class for any details we want to capture about a thread
@@ -510,58 +514,67 @@ void ThreadMgr::RenderThreadCategoryRows(const ThreadCategory& category, std::st
   }
 }
 
-void ThreadMgr::ThreadPathHandler(const WebCallbackRegistry::WebRequest& req,
+void ThreadMgr::RenderThreadGroup(const std::string& group, std::ostream& output) {
+  output << "<h2>Thread Group: ";
+  EscapeForHtml(group, &output);
+  output << "</h2>" << endl;
+
+  std::vector<const ThreadCategory*> categories_to_print;
+  if (group != kAllGroups) {
+    auto category = thread_categories_.find(group);
+    if (category == thread_categories_.end()) {
+      output << "Thread group '";
+      EscapeForHtml(group, &output);
+      output << "' not found" << endl;
+      return;
+    }
+    categories_to_print.push_back(&category->second);
+    output << "<h3>" << category->first << " : " << category->second.size() << "</h3>";
+  } else {
+    for (const ThreadCategoryMap::value_type& category : thread_categories_) {
+      categories_to_print.push_back(&category.second);
+    }
+    output << "<h3>All Threads : </h3>";
+  }
+
+  output << "<table class='table table-hover table-border'>";
+  output << "<tr><th>Thread name</th><th>Cumulative User CPU(s)</th>"
+         << "<th>Cumulative Kernel CPU(s)</th>"
+         << "<th>Cumulative IO-wait(s)</th></tr>";
+
+  std::array<std::string, kStackTraceGroupMapSize> groups;
+
+  for (const ThreadCategory* category : categories_to_print) {
+    RenderThreadCategoryRows(*category, groups.data());
+  }
+
+  for (auto g : StackTraceGroupList()) {
+    output << groups[to_underlying(g)];
+  }
+  output << "</table>";
+}
+
+void ThreadMgr::ThreadPathHandler(
+    const WebCallbackRegistry::WebRequest& req,
     WebCallbackRegistry::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+  auto& output = resp->output;
   MutexLock l(lock_);
-  vector<const ThreadCategory*> categories_to_print;
   auto category_name = req.parsed_args.find("group");
   if (category_name != req.parsed_args.end()) {
     string group = EscapeForHtmlToString(category_name->second);
-    (*output) << "<h2>Thread Group: " << group << "</h2>" << endl;
-    if (group != "all") {
-      ThreadCategoryMap::const_iterator category = thread_categories_.find(group);
-      if (category == thread_categories_.end()) {
-        (*output) << "Thread group '" << group << "' not found" << endl;
-        return;
-      }
-      categories_to_print.push_back(&category->second);
-      (*output) << "<h3>" << category->first << " : " << category->second.size()
-                << "</h3>";
-    } else {
-      for (const ThreadCategoryMap::value_type& category : thread_categories_) {
-        categories_to_print.push_back(&category.second);
-      }
-      (*output) << "<h3>All Threads : </h3>";
-    }
-
-    (*output) << "<table class='table table-hover table-border'>";
-    (*output) << "<tr><th>Thread name</th><th>Cumulative User CPU(s)</th>"
-              << "<th>Cumulative Kernel CPU(s)</th>"
-              << "<th>Cumulative IO-wait(s)</th></tr>";
-
-    std::array<std::string, kStackTraceGroupMapSize> groups;
-
-    for (const ThreadCategory* category : categories_to_print) {
-      RenderThreadCategoryRows(*category, groups.data());
-    }
-
-    for (auto g : StackTraceGroupList()) {
-      *output << groups[to_underlying(g)];
-    }
-    (*output) << "</table>";
+    RenderThreadGroup(group, output);
   } else {
-    (*output) << "<h2>Thread Groups</h2>";
+    output << "<h2>Thread Groups</h2>";
     if (metrics_enabled_) {
-      (*output) << "<h4>" << threads_running_metric_ << " thread(s) running";
+      output << "<h4>" << threads_running_metric_ << " thread(s) running";
     }
-    (*output) << "<a href='/threadz?group=all'><h3>All Threads</h3>";
+    output << "<a href='/threadz?group=" << kAllGroups << "'><h3>All Threads</h3>";
 
     for (const ThreadCategoryMap::value_type& category : thread_categories_) {
       string category_arg;
       UrlEncode(category.first, &category_arg);
-      (*output) << "<a href='/threadz?group=" << category_arg << "'><h3>"
-                << category.first << " : " << category.second.size() << "</h3></a>";
+      output << "<a href='/threadz?group=" << category_arg << "'><h3>"
+             << category.first << " : " << category.second.size() << "</h3></a>";
     }
   }
 }
@@ -891,6 +904,10 @@ CDSAttacher::CDSAttacher() {
 
 CDSAttacher::~CDSAttacher() {
   cds::threading::Manager::detachThread();
+}
+
+void RenderAllThreadStacks(std::ostream& output) {
+  thread_manager->RenderThreadGroup(kAllGroups, output);
 }
 
 } // namespace yb

@@ -28,6 +28,7 @@ struct RpcMetrics {
   scoped_refptr<AtomicGauge<int64_t>> outbound_calls_alive;
   scoped_refptr<Counter> outbound_calls_created;
   scoped_refptr<Counter> outbound_calls_stuck;
+  scoped_refptr<AtomicGauge<int64_t>> busy_reactors;
 };
 
 } // namespace rpc

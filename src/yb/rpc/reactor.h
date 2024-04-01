@@ -288,6 +288,9 @@ class Reactor {
   // libev callback for handling timer events in our libev thread.
   void TimerHandler(ev::timer &watcher, int revents) ON_REACTOR_THREAD; // NOLINT
 
+  static void AcquireLoop(struct ev_loop* loop) noexcept;
+  static void ReleaseLoop(struct ev_loop* loop) noexcept;
+
   // ----------------------------------------------------------------------------------------------
   // Fields set in the constructor
   // ----------------------------------------------------------------------------------------------
