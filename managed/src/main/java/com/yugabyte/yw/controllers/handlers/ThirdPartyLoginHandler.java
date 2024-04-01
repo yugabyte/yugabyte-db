@@ -158,6 +158,10 @@ public class ThirdPartyLoginHandler {
       } else {
         groups = idToken.getJWTClaimsSet().getStringListClaim("groups");
       }
+      // return if groups claim not found in token
+      if (groups == null) {
+        return roles;
+      }
       log.info("List of user's groups = {}", groups.toString());
 
       for (String group : groups) {
