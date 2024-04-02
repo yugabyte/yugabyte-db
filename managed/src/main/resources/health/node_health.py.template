@@ -70,7 +70,6 @@ K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
 
 K8S_CLIENT_CERTS_PATH = "/root/.yugabytedb/"
 K8S_CLIENT_CA_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "root.crt")
-K8S_CLIENT_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "yugabytedb.crt")
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
 FATAL_TIME_THRESHOLD_MINUTES = 12
@@ -754,12 +753,6 @@ class NodeChecker():
 
         return os.path.join(self.yb_home_dir, ".yugabytedb/root.crt")
 
-    def get_client_certificate_path(self):
-        if self.is_k8s:
-            return K8S_CLIENT_CERT_FILE_PATH
-
-        return os.path.join(self.yb_home_dir, ".yugabytedb/yugabytedb.crt")
-
     def check_node_to_node_ca_certificate_expiration(self):
         return self.check_certificate_expiration("Node To Node CA",
                                                  self.get_node_to_node_ca_certificate_path(),
@@ -794,13 +787,6 @@ class NodeChecker():
         return self.check_certificate_expiration("Client CA",
                                                  self.get_client_ca_certificate_path(),
                                                  HEALTH_CHECK_CLIENT_CA_CERT_VALIDITY_DAYS,
-                                                 False
-                                                 )
-
-    def check_client_certificate_expiration(self):
-        return self.check_certificate_expiration("Client",
-                                                 self.get_client_certificate_path(),
-                                                 HEALTH_CHECK_CLIENT_CERT_VALIDITY_DAYS,
                                                  False
                                                  )
 
@@ -1825,7 +1811,6 @@ def main():
         coordinator.add_check(checker, "check_node_to_node_runtime_certificate_expiration")
     if n.enable_tls_client:
         coordinator.add_check(checker, "check_client_ca_certificate_expiration")
-        coordinator.add_check(checker, "check_client_certificate_expiration")
         if not n.root_and_client_root_ca_same:
             coordinator.add_check(checker, "check_client_to_node_ca_certificate_expiration")
             coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
