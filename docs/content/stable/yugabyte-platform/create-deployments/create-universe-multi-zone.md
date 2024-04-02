@@ -88,6 +88,18 @@ Enable encryption in transit to encrypt universe traffic. Refer to [Enable encry
 
 Enable encryption at rest to encrypt the universe data. Refer to [Enable encryption at rest](../../security/enable-encryption-at-rest/).
 
+### Advanced Configuration
+
+Choose the version of YugabyteDB to install on the nodes.
+
+The access key is the SSH key that is created in the provider. Usually, each provider has its own access key, but if you are reusing keys across providers, they are listed here.
+
+For AWS providers, you can assign an ARN to the nodes in the universe; this allow them to be seamlessly backed up without explicit credentials.
+
+To use cron instead of systemd for managing nodes, you can disable systemd services. This not recommended.
+
+To customize the ports used for the universe, select the **Override Deployment Ports** option and enter the custom port numbers for the services you want to change.
+
 ### G-Flags
 
 Optionally, add configuration flags for your YB-Master and YB-TServer nodes. You can also set flags after universe creation. Refer to [Edit configuration flags](../../manage-deployments/edit-config-flags/).

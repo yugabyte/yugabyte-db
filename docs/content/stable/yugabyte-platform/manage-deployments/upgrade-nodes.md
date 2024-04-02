@@ -43,11 +43,11 @@ Upgrades are performed via a rolling update, where one node in the universe is t
 - Perform upgrades during low traffic periods to reduce the impact of a universe node being offline.
 - Avoid performing upgrades during scheduled backups.
 
-Before you start, make sure that all nodes in the universe are running correctly.
-
 ## Prerequisites
 
 If your patching and upgrading process is likely to take longer than 15 minutes, increase the WAL log retention time. Set the WAL log retention time using the `--log_min_seconds_to_retain` YB-TServer flag. Refer to [Edit configuration flags](../edit-config-flags/).
+
+Before you start, make sure that all nodes in the universe are running correctly.
 
 ## Patch nodes
 
