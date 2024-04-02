@@ -942,6 +942,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     LOG.info("Waiting for restart LSN to become {}", expectedLSN);
     TestUtils.waitFor(() -> {
       LogSequenceNumber restartLSN = getRestartLSN(connection, slotName);
+      LOG.info("The actual restartLSN {}", restartLSN);
       return restartLSN.asLong() == expectedLSN;
     }, 10000);
     LOG.info("Done waiting for restart LSN to become {}", expectedLSN);
@@ -1604,5 +1605,187 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertEquals(expectedResult, result);
 
     stream.close();
+  }
+
+  // The reorderbuffer spills transactions with more than max_changes_in_memory (4096) changes
+  // on the disk. This test asserts that such transactions also work correctly.
+  @Test
+  public void testReplicationWithSpilledTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+    String slotName = "test_with_spilled_txn";
+    // This must be more than max_changes_in_memory defined in reorderbuffer.c
+    int numInserts = 5000;
+
+    Connection conn =
+        getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      for (int i = 0; i < numInserts; i++) {
+        stmt.execute(
+            String.format("INSERT INTO t1 VALUES(%s, '%s')", i, String.format("text_%d", i)));
+      }
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    // 1 Relation, 1 begin, 5000 insert, 1 commit.
+    result.addAll(receiveMessage(stream, 5003));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        // Note: 0x138B = 5003 in decimal which is the lsn of the commit record as expected.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138B"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
+            Arrays.asList(
+                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+      }
+    };
+    for (int i = 0; i < numInserts; i++) {
+      expectedResult.add(
+          PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue(String.format("%d", i)),
+                  new PgOutputMessageTupleColumnValue(String.format("text_%d", i))))));
+    }
+    expectedResult.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/138B"), LogSequenceNumber.valueOf("0/138C")));
+
+    assertEquals(expectedResult, result);
+    stream.close();
+  }
+
+  private void testReplicationWithSpilledTransactionAndRestart(boolean differentNode)
+      throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+    String slotName = "test_with_spilled_txn_restart_different_node";
+    // This must be more than max_changes_in_memory defined in reorderbuffer.c
+    int numInserts = 5000;
+
+    Connection conn =
+        getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES(999999, '999999')");
+
+      stmt.execute("BEGIN");
+      for (int i = 0; i < numInserts; i++) {
+        stmt.execute(
+            String.format("INSERT INTO t1 VALUES(%s, '%s')", i, String.format("text_%d", i)));
+      }
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    // Txn1: 1 RELATION, 1 BEGIN, 1 INSERT, 1 COMMIT
+    result.addAll(receiveMessage(stream, 4));
+
+    // Txn2 (partially): 1 BEGIN, 2800 INSERT
+    receiveMessage(stream, 2801);
+
+    // Ack Txn1.
+    // Note that getLastReceiveLSN() will return the LSN of the last record we read using
+    // receiveMessage above which will be 2806.
+    stream.setFlushedLSN(stream.getLastReceiveLSN());
+    stream.forceUpdateStatus();
+    waitForRestartLSN(connection, slotName, 4L);
+    stream.close();
+    conn.close();
+
+    if (differentNode) {
+      // Connect with the other tserver.
+      conn = getConnectionBuilder().withTServer(1).replicationConnect();
+    } else {
+      conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    }
+    replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    stream = replConnection.replicationStream()
+                 .logical()
+                 .withSlotName(slotName)
+                 // Streaming should begin after Txn1.
+                 .withStartPosition(LogSequenceNumber.valueOf(0L))
+                 .withSlotOption("proto_version", 1)
+                 .withSlotOption("publication_names", "pub")
+                 .start();
+
+    // Txn2: 1 BEGIN, 1 RELATION, 5000 INSERT, 1 COMMIT
+    // The whole txn2 will be streamed again since we never received it fully.
+    result.addAll(receiveMessage(stream, 5003));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
+            Arrays.asList(
+                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("999999"),
+                new PgOutputMessageTupleColumnValue("999999")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138E"), 3));
+        // Relation message gets sent again due to the restart.
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
+            Arrays.asList(
+                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+      }
+    };
+    for (int i = 0; i < numInserts; i++) {
+      expectedResult.add(
+          PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue(String.format("%d", i)),
+                  new PgOutputMessageTupleColumnValue(String.format("text_%d", i))))));
+    }
+    expectedResult.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/138E"), LogSequenceNumber.valueOf("0/138F")));
+
+    assertEquals(expectedResult, result);
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testReplicationWithSpilledTransactionAndRestartOnSameNode() throws Exception {
+    testReplicationWithSpilledTransactionAndRestart(false /* differentNode */);
+  }
+
+  @Test
+  public void testReplicationWithSpilledTransactionAndRestartOnDifferentNode() throws Exception {
+    testReplicationWithSpilledTransactionAndRestart(true /* differentNode */);
   }
 }
