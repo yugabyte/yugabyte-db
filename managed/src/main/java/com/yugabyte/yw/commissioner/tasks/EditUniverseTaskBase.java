@@ -114,7 +114,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
       boolean updateMasters,
-      boolean force) {
+      boolean forceDestroyServers) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
     log.info(
@@ -389,7 +389,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createDestroyServerTasks(
               universe,
               nodesToBeRemoved,
-              force /* isForceDelete */,
+              forceDestroyServers /* isForceDelete */,
               true /* deleteNode */,
               true /* deleteRootVolumes */,
               false /* skipDestroyPrecheck */)
