@@ -54,7 +54,6 @@ $YB_SRC_ROOT/python/yugabyte/aggregate_test_reports.py
 $YB_SRC_ROOT/python/yugabyte/download_and_extract_archive.py
   export YB_SCRIPT_PATH_FIX_PATHS_IN_COMPILE_ERRORS=\
 $YB_SRC_ROOT/python/yugabyte/fix_paths_in_compile_errors.py
-  export YB_SCRIPT_PATH_FOSSA_ANALYSIS=$YB_SRC_ROOT/python/yugabyte/fossa_analysis.py
   export YB_SCRIPT_PATH_GEN_AUTO_FLAGS_JSON=$YB_SRC_ROOT/python/yugabyte/gen_auto_flags_json.py
   export YB_SCRIPT_PATH_GEN_FLAGS_METADATA=$YB_SRC_ROOT/python/yugabyte/gen_flags_metadata.py
   export YB_SCRIPT_PATH_GEN_INITIAL_SYS_CATALOG_SNAPSHOT=\
