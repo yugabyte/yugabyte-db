@@ -20,11 +20,13 @@ namespace cdc {
 
 class CDCSDKUniqueRecordID {
  public:
-  explicit CDCSDKUniqueRecordID(const std::shared_ptr<CDCSDKProtoRecordPB>& record);
+  explicit CDCSDKUniqueRecordID(
+      const bool& publication_refresh_record, const std::shared_ptr<CDCSDKProtoRecordPB>& record);
 
   explicit CDCSDKUniqueRecordID(
-      RowMessage_Op op, uint64_t commit_time, std::string& docdb_txn_id, uint64_t record_time,
-      uint32_t write_id, std::string& table_id, std::string& primary_key);
+      bool publication_refresh_record, RowMessage_Op op, uint64_t commit_time,
+      std::string& docdb_txn_id, uint64_t record_time, uint32_t write_id, std::string& table_id,
+      std::string& primary_key);
 
   enum VWALRecordType {
     // These are arranged in the priority order with DDL having the highest priority.
@@ -32,13 +34,17 @@ class CDCSDKUniqueRecordID {
     BEGIN = 1,
     DML = 2,
     COMMIT = 3,
-    SAFEPOINT = 4,
-    UNKNOWN = 5 // should never be encountered
+    PUBLICATION_REFRESH = 4,
+    SAFEPOINT = 5,
+    UNKNOWN = 6 // should never be encountered
   };
 
-  CDCSDKUniqueRecordID::VWALRecordType GetVWALRecordTypeFromOp(const RowMessage_Op op);
+  CDCSDKUniqueRecordID::VWALRecordType GetVWALRecordTypeFromOp(
+      const bool& is_publication_refresh, const RowMessage_Op& op);
 
-  static bool CanFormUniqueRecordId(const std::shared_ptr<CDCSDKProtoRecordPB>& record);
+  static bool CanFormUniqueRecordId(
+      const bool& is_publication_refresh_record,
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record);
 
   bool CompareDDLOrder(const std::shared_ptr<CDCSDKUniqueRecordID>& other_unique_record_id);
 
@@ -54,6 +60,8 @@ class CDCSDKUniqueRecordID {
   uint64_t GetCommitTime() const;
 
   std::string ToString() const;
+
+  bool IsPublicationRefreshRecord() const;
 
  private:
   RowMessage_Op op_;

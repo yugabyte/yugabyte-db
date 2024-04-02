@@ -39,6 +39,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestVWALRestartOnMultiThenSingleShardTxn(FeedbackType feedback_type);
   void TestVWALRestartOnLongTxns(FeedbackType feedback_type);
   void TestConcurrentConsumptionFromMultipleVWAL(CDCSDKSnapshotOption snapshot_option);
+  void TestCommitTimeTieWithPublicationRefreshRecord(bool special_record_in_separate_response);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -1750,7 +1751,7 @@ TEST_F(
     ASSERT_OK(conn.Execute("COMMIT"));
   }
 
-  // The expected DML record is set to 40 in consideration with the flags values set above for
+  // The expected DML record is set to 35 in consideration with the flags values set above for
   // maximum records in GetConsistentChanges & GetChanges. This value is chosen such that we receive
   // partial records from a txn at the end.
   int expected_dml_records = 35;
@@ -1837,6 +1838,454 @@ TEST_F(
   auto resp_after_restart = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {table.table_id()}, leftover_dml_records, true /* init_virtual_wal */));
   LOG(INFO) << "Got " << resp_after_restart.records.size() << " records.";
+
+  size_t expected_repeated_records_size = records_to_be_received_again_on_restart.size();
+
+  //  Let x be the num of partial records received for the last txn in the previous
+  // GetConsistentChanges call. Since we had partially acknowledged this txn, it will be received
+  // again from the start on a restart. Therefore, The first x records received after restart should
+  // match with our expected records list.
+  for (size_t i = 0; i < expected_repeated_records_size; ++i) {
+    AssertCDCSDKProtoRecords(
+        records_to_be_received_again_on_restart[i], resp_after_restart.records[i]);
+  }
+
+  for (size_t i = expected_repeated_records_size; i < resp_after_restart.records.size(); ++i) {
+    received_records.push_back(resp_after_restart.records[i]);
+  }
+
+  GetAllPendingChangesResponse final_resp;
+  final_resp.records = received_records;
+  for (int i = 0; i < 8; ++i) {
+    final_resp.record_count[i] = record_count_before_restart[i] +
+                                 resp_after_restart.record_count[i] - common_record_count[i];
+  }
+
+  CheckRecordsConsistencyFromVWAL(received_records);
+  CheckRecordsConsistencyFromVWAL(resp_after_restart.records);
+  CheckRecordCount(final_resp, total_dml_performed);
+}
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAddition) {
+  uint64_t publication_refresh_interval = 5 * 1000000; /* 5 seconds */
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_micros) =
+      publication_refresh_interval;
+
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test1 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
+  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+    ASSERT_OK(
+      conn.Execute("CREATE TABLE test2 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
+  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
+  // that order.
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  int expecpted_count[] = {0, 3, 0, 0, 0, 0, 2, 2};
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (1,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  SleepFor(MonoDelta::FromMicroseconds(2 * publication_refresh_interval));
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (2,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (3,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // We will receive the records from txn 1 belonging to table test1 only.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    ASSERT_EQ(record.row_message().table(), "test1");
+    UpdateRecordCount(record, count);
+  }
+
+
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // Between txn1 and txn2 a publication refresh record will be popped from the priority queue.
+  // (Because of the sleep between the two txns).
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  ASSERT_TRUE(
+      change_resp.has_needs_publication_table_list_refresh() &&
+      change_resp.needs_publication_table_list_refresh() &&
+      change_resp.has_publication_refresh_time());
+  ASSERT_GT(change_resp.publication_refresh_time(), 0);
+
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, count);
+  }
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expecpted_count[i], count[i]);
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesRemoval) {
+  uint64_t publication_refresh_interval = 5 * 1000000; /* 5 seconds */
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_micros) =
+      publication_refresh_interval;
+
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test1 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
+  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+    ASSERT_OK(
+      conn.Execute("CREATE TABLE test2 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
+  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
+  // that order.
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  int expecpted_count[] = {0, 3, 0, 0, 0, 0, 2, 2};
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (1,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  SleepFor(MonoDelta::FromMicroseconds(2 * publication_refresh_interval));
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (2,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (3,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id(), table_2.table_id()}));
+
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // We will receive records from txn 2 belonging to both the txns.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+  bool resp_has_insert_from_test1 = false;
+  bool resp_has_insert_from_test2 = false;
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, count);
+    if (record.row_message().op() == RowMessage_Op_INSERT &&
+        record.row_message().table() == "test1") {
+      resp_has_insert_from_test1 = true;
+    } else if (
+        record.row_message().op() == RowMessage_Op_INSERT &&
+        record.row_message().table() == "test2") {
+      resp_has_insert_from_test2 = true;
+    }
+  }
+  ASSERT_TRUE(resp_has_insert_from_test1 && resp_has_insert_from_test2);
+
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // Between txn1 and txn2 a publication refresh record will be popped from the priority queue.
+  // (Because of the sleep between the two txns).
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  ASSERT_TRUE(
+      change_resp.has_needs_publication_table_list_refresh() &&
+      change_resp.needs_publication_table_list_refresh() &&
+      change_resp.has_publication_refresh_time());
+  ASSERT_GT(change_resp.publication_refresh_time(), 0);
+
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id()}));
+
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    ASSERT_EQ(record.row_message().table(), "test1");
+    UpdateRecordCount(record, count);
+  }
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expecpted_count[i], count[i]);
+  }
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestCommitTimeTieWithoutSeparateResponseForPublicationRefreshNotification) {
+  TestCommitTimeTieWithPublicationRefreshRecord(false);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestCommitTimeTieWithSeparateResponseForPublicationRefreshNotification) {
+  TestCommitTimeTieWithPublicationRefreshRecord(true);
+}
+
+// This method is used to test the behaviour of VWAL when the publication refresh record from the
+// publication refresh tablet queue has a commit time same as one of the transactions. The expected
+// behaviour in such cases is that the publication refresh record will be popped from the priority
+// queue after all the other records with same commit time. There are two cases possible here : Case
+// 1: Txn records are sent in the same response which has the need_pub_refresh set to true. Case 2:
+// Txn records are sent in a different response then the one with needs_pub_refresh set to true. In
+// both these cases when the acknowledgement feedback is received for the txn , upon restart we
+// should see that we repopulate this publication refresh record and accordingly signal the
+// WALSender to refresh publication's table list
+void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRefreshRecord(
+    bool pub_refresh_record_in_separate_response) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test1 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
+  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test2 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
+  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  auto cdcsdk_consistent_snapshot_time = slot_row.last_pub_refresh_time;
+  HybridTime commit_time;
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (2,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (3,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (4,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  // Initialize VWAL and call GetConsistentChanges to find out the commit time of the second
+  // transaction.
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  uint64_t restart_lsn = 0;
+  uint64_t last_record_lsn = 0;
+
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 6);
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    last_record_lsn = record.row_message().pg_lsn();
+    restart_lsn = last_record_lsn + 1;
+    if (record.row_message().op() == RowMessage_Op_COMMIT) {
+      commit_time = HybridTime(record.row_message().commit_time());
+    }
+  }
+
+  // Calculate the difference between commit time and consistent snapshot time. We need to set out
+  // refresh interval equal to this difference so as to create commit time ties of special record
+  // with txn 2
+  auto delta = commit_time.PhysicalDiff(cdcsdk_consistent_snapshot_time);
+
+  ASSERT_OK(DestroyVirtualWAL());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_micros) = delta;
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  if (pub_refresh_record_in_separate_response) {
+    // Disable populating the safepoint records so that we can get Publication refresh notification
+    // in a separate GetConsistentChanges response
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = false;
+  } else {
+    // This transaction wont be streamed in next GetConsistentChanges call as its
+    // commit time > publication refresh time
+    ASSERT_OK(conn.Execute("BEGIN;"));
+    ASSERT_OK(conn.Execute("INSERT INTO test1 values (5,1)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test2 values (6,1)"));
+    ASSERT_OK(conn.Execute("COMMIT;"));
+  }
+
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  if (pub_refresh_record_in_separate_response) {
+    // We will receive 5 records in the previous GetConsistentChanges response. This is because the
+    // commit of txn 2 will be popped but not shipped because the tablet queue for test1
+    // will be empty as there are no safepoint records.
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 5);
+
+    //  This transaction wont be streamed in next GetConsistentChanges call as its
+    //  commit time > publication refresh time.
+    ASSERT_OK(conn.Execute("BEGIN;"));
+    ASSERT_OK(conn.Execute("INSERT INTO test1 values (5,1)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test2 values (6,1)"));
+    ASSERT_OK(conn.Execute("COMMIT;"));
+
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+          return change_resp.cdc_sdk_proto_records_size() == 1;
+        },
+        MonoDelta::FromSeconds(60), "Did not get commit record of Txn 2"));
+
+    // Commit record of txn2 will be shipped when publication refresh record will be popped from the
+    // priority queue.
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 1);
+    auto record = change_resp.cdc_sdk_proto_records()[0];
+    ASSERT_EQ(record.row_message().op(), RowMessage_Op_COMMIT);
+    ASSERT_EQ(record.row_message().commit_time(), commit_time.ToUint64());
+  } else {
+    // With safepoints we will receive all the records in txn 1 and txn 2.
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 6);
+  }
+
+  ASSERT_TRUE(
+      change_resp.has_needs_publication_table_list_refresh() &&
+      change_resp.needs_publication_table_list_refresh() &&
+      change_resp.has_publication_refresh_time());
+  ASSERT_EQ(commit_time.ToUint64(), change_resp.publication_refresh_time());
+
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, last_record_lsn, restart_lsn));
+
+  // Restart
+  ASSERT_OK(DestroyVirtualWAL());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // Since the txn2 was acknowledged, the pub_refresh_time corresponding to its commit record (which
+  // will be equal to consistent snapshot time) will be persisted. Upon restart the first
+  // publication_refresh_record will have commit time equal to the persisted last_pub_refresh_time +
+  // refresh_interval. In this case this is equal to the commit time of txn 2. As a result the
+  // response of first GetConsistentChanges after restart will contain no records, but will have the
+  // fields to indicate publication refresh set.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  ASSERT_TRUE(
+      change_resp.has_needs_publication_table_list_refresh() &&
+      change_resp.needs_publication_table_list_refresh() &&
+      change_resp.has_publication_refresh_time());
+  ASSERT_EQ(commit_time.ToUint64(), change_resp.publication_refresh_time());
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestLSNDeterminismWithSpecialRecordOnRestartWithPartialAck) {
+  uint64_t publication_refresh_interval =  500000; /* 0.5 sec */
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 15;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_micros) =
+      publication_refresh_interval;
+
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  int num_batches = 2;
+  int inserts_per_batch = 30;
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  for (int i = 0; i < num_batches; i++) {
+    ASSERT_OK(conn.Execute("BEGIN"));
+    for (int j = i * inserts_per_batch; j < ((i + 1) * inserts_per_batch); j++) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2)", kTableName, j, j + 1));
+    }
+    ASSERT_OK(conn.Execute("COMMIT"));
+    // Sleep to ensure that we will receive publication refresh record.
+    SleepFor(MonoDelta::FromMicroseconds(2 * publication_refresh_interval));
+  }
+
+  // The expected DML record is set to 35 in consideration with the flags values set above for
+  // maximum records in GetConsistentChanges & GetChanges. This value is chosen such that we receive
+  // partial records from a txn at the end.
+  int expected_dml_records = 35;
+  std::vector<CDCSDKProtoRecordPB> received_records;
+  int received_dml_records = 0;
+  // The record count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN,
+  // COMMIT in that order.
+  int record_count_before_restart[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+  bool received_pub_refresh_indicator = false;
+  while (received_dml_records < expected_dml_records) {
+    auto get_consistent_changes_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    if (get_consistent_changes_resp.has_needs_publication_table_list_refresh() &&
+        get_consistent_changes_resp.needs_publication_table_list_refresh() &&
+        get_consistent_changes_resp.has_publication_refresh_time() &&
+        get_consistent_changes_resp.publication_refresh_time() > 0) {
+      received_pub_refresh_indicator = true;
+    }
+    for (const auto& record : get_consistent_changes_resp.cdc_sdk_proto_records()) {
+      received_records.push_back(record);
+      UpdateRecordCount(record, record_count_before_restart);
+      if (IsDMLRecord(record)) {
+        ++received_dml_records;
+      }
+    }
+  }
+  ASSERT_TRUE(received_pub_refresh_indicator);
+
+  // We should have received only partial records from the last txn.
+  ASSERT_TRUE(IsDMLRecord(received_records.back()));
+  auto last_record_txn_id = received_records.back().row_message().pg_transaction_id();
+  auto last_record_lsn = received_records.back().row_message().pg_lsn();
+  // Send feedback for the last txn that is fully received. The partially received txn will be
+  // received again on restart.
+  std::vector<CDCSDKProtoRecordPB> records_to_be_received_again_on_restart;
+  int dml_to_be_received_again_on_restart = 0;
+  // The record count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN,
+  // COMMIT in that order.
+  int common_record_count[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+  uint64_t restart_lsn = 0;
+  for (const auto& record : received_records) {
+    if (record.row_message().pg_transaction_id() == last_record_txn_id) {
+      records_to_be_received_again_on_restart.push_back(record);
+      UpdateRecordCount(record, common_record_count);
+      if (IsDMLRecord(record)) {
+        ++dml_to_be_received_again_on_restart;
+      }
+    } else {
+      // restart_lsn will be the (lsn + 1) of the commit record of the second last txn. we are
+      // following commit_lsn + 1 feedback mechanism model.
+      restart_lsn = record.row_message().pg_lsn() + 1;
+    }
+  }
+
+  LOG(INFO) << "records_to_be_received_again_on_restart: "
+            << AsString(records_to_be_received_again_on_restart);
+
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, last_record_lsn, restart_lsn));
+  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_EQ(slot_row.restart_lsn, restart_lsn - 1);
+  ASSERT_EQ(slot_row.confirmed_flush_lsn, last_record_lsn);
+
+  // Sleep to ensure that we will receive publication refresh record.
+  SleepFor(MonoDelta::FromMicroseconds(2 * publication_refresh_interval));
+  std::thread t1([&]() -> void {
+    PerformSingleAndMultiShardInserts(
+        num_batches, inserts_per_batch, 20, (2 * num_batches * inserts_per_batch));
+  });
+  std::thread t2([&]() -> void {
+    PerformSingleAndMultiShardInserts(
+        num_batches, inserts_per_batch, 50, (3 * num_batches * inserts_per_batch));
+  });
+
+  t1.join();
+  t2.join();
+
+  ASSERT_OK(DestroyVirtualWAL());
+
+  int total_dml_performed = 3 * num_batches * inserts_per_batch;
+  int leftover_dml_records =
+      total_dml_performed - received_dml_records + dml_to_be_received_again_on_restart;
+  auto resp_after_restart = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, leftover_dml_records, true /* init_virtual_wal */));
+  LOG(INFO) << "Got " << resp_after_restart.records.size() << " records.";
+  ASSERT_TRUE(resp_after_restart.has_publication_refresh_indicator);
 
   size_t expected_repeated_records_size = records_to_be_received_again_on_restart.size();
 
