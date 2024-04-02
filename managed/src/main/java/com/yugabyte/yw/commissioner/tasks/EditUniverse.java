@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -105,7 +106,7 @@ public class EditUniverse extends EditUniverseTaskBase {
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
             updateMasters,
-            false /* force */);
+            cluster.userIntent.providerType == CloudType.onprem /* force destroy servers */);
         // Updating placement info and userIntent in DB
         createUpdateUniverseIntentTask(cluster);
       }
