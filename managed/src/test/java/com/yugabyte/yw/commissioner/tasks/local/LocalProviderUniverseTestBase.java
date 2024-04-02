@@ -853,7 +853,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
                 () -> {
                   try {
                     return CheckClusterConsistency.checkCurrentServers(
-                        client, universe, true, false);
+                        client, universe, null, true, false);
                   } catch (Exception e) {
                     return Collections.singletonList("Got error: " + e.getMessage());
                   }
