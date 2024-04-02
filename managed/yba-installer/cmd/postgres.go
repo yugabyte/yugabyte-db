@@ -231,6 +231,11 @@ func (pg Postgres) Restart() error {
 	log.Info("Restarting postgres..")
 
 	if common.HasSudoAccess() {
+		// reload systemd daemon
+		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
+			return out.Error
+		}
+
 		if out := shell.Run(common.Systemctl, "restart",
 			filepath.Base(pg.SystemdFileLocation)); !out.SucceededOrLog() {
 			return out.Error
