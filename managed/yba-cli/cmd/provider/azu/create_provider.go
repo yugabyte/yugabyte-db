@@ -239,7 +239,7 @@ func init() {
 				formatter.GreenColor)+
 			" Security Group ID and YB Image (AMI) are optional. "+
 			"Each region needs to be added using a separate --region flag. "+
-			"Example: --region region-name=westus2,vnet=<vent-id>")
+			"Example: --region region-name=westus2,vnet=<vnet-id>")
 	createAzureProviderCmd.Flags().StringArray("zone", []string{},
 		"[Required] Zone associated to the Azure Region defined. "+
 			"Provide the following comma separated fields as key-value pairs:"+
