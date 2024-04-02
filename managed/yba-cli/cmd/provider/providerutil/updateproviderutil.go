@@ -137,9 +137,9 @@ func BuildZoneMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
-		case "overrirdes-file-path":
+		case "overrides-file-path":
 			if len(strings.TrimSpace(val)) != 0 {
-				zone["overrirdes-file-path"] = val
+				zone["overrides-file-path"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
@@ -283,9 +283,9 @@ func BuildRegionMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
-		case "overrirdes-file-path":
+		case "overrides-file-path":
 			if len(strings.TrimSpace(val)) != 0 {
-				region["overrirdes-file-path"] = val
+				region["overrides-file-path"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
