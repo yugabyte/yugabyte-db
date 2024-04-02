@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB smart drivers for YCQL
+title: YugabyteDB YCQL drivers
 linkTitle: Smart drivers
-description: Use YugabyteDB smart drivers to improve performance with partition-aware load balancing and JSON support for YCQL
-headcontent: Manage partition-aware load balancing automatically using smart drivers
+description: Use YugabyteDB drivers to improve performance with partition-aware load balancing and JSON support for YCQL
+headcontent: Manage partition-aware load balancing automatically using YCQL drivers
 menu:
   stable:
     identifier: smart-drivers-ycql
@@ -30,8 +30,6 @@ Yugabyte has extended the upstream Cassandra drivers with specific changes to le
 | [YugabyteDB C++ Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-driver) | [DataStax C++ Driver](https://github.com/datastax/cpp-driver) | [Documentation](../cpp/ycql/) |
 | [YugabyteDB C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-driver) | [DataStax C# Driver](https://github.com/datastax/csharp-driver) | [Documentation](../csharp/ycql/) |
 | [YugabyteDB Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver) | [DataStax Ruby Driver](https://github.com/datastax/ruby-driver) | [Documentation](../rust/yb-rust-postgres) |
-
-All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
 ## Key features
 
@@ -90,7 +88,7 @@ When a client application starts, the driver attempts to create a control connec
 
 You can configure the size of the connection pool. For example, in the Java driver, you can define different pool sizes for nodes in a local datacenter, and for those in other (remote) datacenters. If the number of connections in a pool go lower than the defined size for any reason, the driver immediately tries to fill the gap in the background.
 
-## Using smart drivers with YugabyteDB Managed
+## Using YCQL drivers with YugabyteDB Managed
 
 ### Deploy applications
 
