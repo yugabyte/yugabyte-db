@@ -18,8 +18,6 @@
 #include "geospatial/bson_geospatial_shape_operators.h"
 #include "utils/list_utils.h"
 
-#define RADIUS_OF_EARTH_KM 6378.1
-
 /*
  * This defines the bounds of a rectangle in 2D space.
  */
@@ -547,7 +545,7 @@ BsonValueGetCenter(const bson_value_t *shapeValue, MongoQueryOperatorType operat
 	}
 
 	/* Return geometry of the center with default SRID */
-	return DatumWithDefaultSRID(OidFunctionCall2(PostgisBufferFunctionId(),
+	return DatumWithDefaultSRID(OidFunctionCall2(PostgisGeometryBufferFunctionId(),
 												 centerPoint,
 												 Float8GetDatum(radius)));
 }
@@ -680,7 +678,7 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, MongoQueryOperatorType 
 	bson_iter_t centerValueIter;
 	BsonValueInitIterator(shapeValue, &centerValueIter);
 	int16 index = 0;
-	Datum centerPoint = 0;
+	Point point;
 	double radius = 0.0;
 	while (bson_iter_next(&centerValueIter))
 	{
@@ -700,7 +698,6 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, MongoQueryOperatorType 
 			}
 			else
 			{
-				Point point;
 				memset(&point, 0, sizeof(Point));
 
 				bool throwError = true;
@@ -710,14 +707,6 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, MongoQueryOperatorType 
 				errCtxt.errCode = MongoBadValue;
 
 				ParseBsonValueAsPoint(value, throwError, &errCtxt, &point);
-
-				StringInfo buffer = makeStringInfo();
-
-				/* Valid point, write to buffer */
-				WriteHeaderToWKBBuffer(buffer, WKBGeometryType_Point);
-				WritePointToWKBBuffer(buffer, &point);
-				bytea *wkbBytea = WKBBufferGetByteaWithSRID(buffer);
-				centerPoint = GetGeographyFromWKB(wkbBytea);
 			}
 		}
 
@@ -757,16 +746,78 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, MongoQueryOperatorType 
 	}
 
 	DollarCenterOperatorState *state = palloc0(sizeof(DollarCenterOperatorState));
+
+	/*
+	 * If radius is greater than pi/2 but less than pi, that means an area greater than hemishpere of earth
+	 * is being considered. In that case we also need to check intersection with compliment area.
+	 * If it is greater than pi, that means whole earth is covered so we can consider radius to be infinite
+	 * and return matched for all valid docs.
+	 */
+	if (radius > (PI / 2) &&
+		radius < PI)
+	{
+		Point antipode;
+		if (point.x > 0)
+		{
+			antipode.x = point.x - 180;
+		}
+		else
+		{
+			antipode.x = point.x + 180;
+		}
+
+		antipode.y = -point.y;
+
+		StringInfo buffer = makeStringInfo();
+
+		/* write to buffer */
+		WriteHeaderToWKBBuffer(buffer, WKBGeometryType_Point);
+		WritePointToWKBBuffer(buffer, &antipode);
+		bytea *wkbBytea = WKBBufferGetByteaWithSRID(buffer);
+		Datum antipodeDatum = GetGeographyFromWKB(wkbBytea);
+		double complimentRadius = (PI - radius) * RADIUS_OF_EARTH_M;
+		Datum complimentArea = DatumWithDefaultSRID(OidFunctionCall2(
+														PostgisGeographyBufferFunctionId(),
+														antipodeDatum,
+														Float8GetDatum(
+															complimentRadius)));
+		state->complimentArea = complimentArea;
+
+		DeepFreeWKB(buffer);
+		pfree(wkbBytea);
+		pfree(DatumGetPointer(antipodeDatum));
+	}
+	else if (radius >= PI)
+	{
+		state->isRadiusInfinite = true;
+		opInfo->opState = (ShapeOperatorState *) state;
+		return (Datum) 0;
+	}
+
+	Datum centerPoint = 0;
+	StringInfo buffer = makeStringInfo();
+
+	/* Valid point, write to buffer */
+	WriteHeaderToWKBBuffer(buffer, WKBGeometryType_Point);
+	WritePointToWKBBuffer(buffer, &point);
+	bytea *wkbBytea = WKBBufferGetByteaWithSRID(buffer);
+	centerPoint = GetGeographyFromWKB(wkbBytea);
+	pfree(wkbBytea);
+	DeepFreeWKB(buffer);
+
 	state->isRadiusInfinite = false;
-	state->radius = radius * RADIUS_OF_EARTH_KM * 1000;
+	state->radiusInRadians = radius;
+
 	opInfo->opState = (ShapeOperatorState *) state;
+
+	state->radiusInMeters = radius * RADIUS_OF_EARTH_M;
 
 	if (opInfo->queryStage == QueryStage_INDEX)
 	{
 		/* Return geography with expanded area for index pushdown. */
 		return OidFunctionCall2(PostgisGeographyExpandFunctionId(),
 								centerPoint,
-								Float8GetDatum(state->radius));
+								Float8GetDatum(state->radiusInMeters));
 	}
 
 	return centerPoint;

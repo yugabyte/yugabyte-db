@@ -103,12 +103,17 @@ typedef struct DollarCenterOperatorState
 {
 	ShapeOperatorState opState;
 
-	double radius;
+	double radiusInRadians;
+
+	double radiusInMeters;
+
+	Datum complimentArea;
 
 	bool isRadiusInfinite;
 }DollarCenterOperatorState;
 
 const ShapeOperator * GetShapeOperatorByValue(const bson_value_t *shapeValue,
 											  bson_value_t *shapePointsOut);
+
 
 #endif

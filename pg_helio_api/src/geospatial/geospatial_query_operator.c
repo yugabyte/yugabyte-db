@@ -17,7 +17,6 @@
 #include "io/helio_bson_core.h"
 #include "io/pgbsonelement.h"
 #include "geospatial/bson_geospatial_common.h"
-#include "geospatial/bson_geospatial_shape_operators.h"
 #include "geospatial/bson_geospatial_wkb_iterator.h"
 #include "planner/mongo_query_operator.h"
 #include "metadata/metadata_cache.h"
@@ -39,10 +38,13 @@ typedef struct RuntimeBsonGeospatialState
 	MongoQueryOperatorType type;
 
 	/*
-	 * Cached FmgrInfo for the Postgis equivalend function that decided whether query matched the document or not
+	 * Cached FmgrInfo store for the Postgis equivalend functions that decide whether query matched the document or not
 	 * e.g For $geoIntersects we use ST_Intersects function from Postgres
 	 */
-	FmgrInfo *postgisFuncFmgrInfo;
+	FmgrInfo **postgisFuncFmgrInfo;
+
+	/* Main postgis function to use for runtime matching */
+	PostgisFuncsForDollarGeo runtimePostgisFunc;
 
 	/* Shape operator specific state */
 	ShapeOperatorInfo *opInfo;
@@ -68,6 +70,8 @@ static bool CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *
 											StringInfo buffer);
 static bool CompareForGeoWithinDatum(const ProcessCommonGeospatialState *state,
 									 StringInfo wkbBuffer);
+static void FillFmgrInfoForGeoWithin(const ShapeOperator *shapeOperator,
+									 RuntimeBsonGeospatialState *runtimeState);
 
 /*================= Operator Execution functions =======================*/
 static bool ContinueIfMatched(void *state);
@@ -187,7 +191,6 @@ PopulateBsonDollarGeoWithinQueryState(RuntimeBsonGeospatialState *runtimeState,
 																	   QUERY_OPERATOR_GEOWITHIN,
 																	   runtimeState->
 																	   opInfo);
-	Oid coverFunctionOid;
 
 	/*
 	 * Postgis provides ST_Within function but that doesn't provide the same
@@ -197,19 +200,7 @@ PopulateBsonDollarGeoWithinQueryState(RuntimeBsonGeospatialState *runtimeState,
 	 *
 	 * So we use ST_Covers which includes geometries at the boundaries
 	 */
-	if (shapeOperator->op == GeospatialShapeOperator_CENTERSPHERE)
-	{
-		coverFunctionOid = PostgisGeographyDWithinFunctionId();
-	}
-	else
-	{
-		coverFunctionOid = shapeOperator->isSpherical ?
-						   PostgisGeographyCoversFunctionId() :
-						   PostgisGeometryCoversFunctionId();
-	}
-
-	runtimeState->postgisFuncFmgrInfo = palloc0(sizeof(FmgrInfo));
-	fmgr_info(coverFunctionOid, runtimeState->postgisFuncFmgrInfo);
+	FillFmgrInfoForGeoWithin(shapeOperator, runtimeState);
 }
 
 
@@ -238,9 +229,45 @@ PopulateBsonDollarGeoIntersectQueryState(RuntimeBsonGeospatialState *runtimeStat
 																	   runtimeState->
 																	   opInfo);
 
+	runtimeState->postgisFuncFmgrInfo =
+		(FmgrInfo **) palloc0(PostgisFuncsForDollarGeo_MAX * sizeof(FmgrInfo *));
 	Oid intersectsFunctionOid = PostgisGeographyIntersectsFunctionId();
-	runtimeState->postgisFuncFmgrInfo = palloc0(sizeof(FmgrInfo));
-	fmgr_info(intersectsFunctionOid, runtimeState->postgisFuncFmgrInfo);
+	runtimeState->postgisFuncFmgrInfo[Geography_Intersects] = palloc0(sizeof(FmgrInfo));
+	fmgr_info(intersectsFunctionOid,
+			  runtimeState->postgisFuncFmgrInfo[Geography_Intersects]);
+	runtimeState->runtimePostgisFunc = Geography_Intersects;
+}
+
+
+/* Populate the FmgrInfo store for $geoWithin depending on shape operator */
+static void
+FillFmgrInfoForGeoWithin(const ShapeOperator *shapeOperator,
+						 RuntimeBsonGeospatialState *runtimeState)
+{
+	Oid coverFunctionOid;
+	PostgisFuncsForDollarGeo postgisFunc;
+	if (shapeOperator->op == GeospatialShapeOperator_CENTERSPHERE)
+	{
+		coverFunctionOid = PostgisGeographyDWithinFunctionId();
+		postgisFunc = Geography_DWithin;
+	}
+	else
+	{
+		coverFunctionOid = shapeOperator->isSpherical ?
+						   PostgisGeographyCoversFunctionId() :
+						   PostgisGeometryCoversFunctionId();
+		postgisFunc = shapeOperator->isSpherical ? Geography_Covers : Geometry_Covers;
+	}
+
+	runtimeState->postgisFuncFmgrInfo =
+		(FmgrInfo **) palloc0(PostgisFuncsForDollarGeo_MAX * sizeof(FmgrInfo *));
+	runtimeState->postgisFuncFmgrInfo[postgisFunc] = palloc0(sizeof(FmgrInfo));
+	fmgr_info(coverFunctionOid, runtimeState->postgisFuncFmgrInfo[postgisFunc]);
+	runtimeState->runtimePostgisFunc = postgisFunc;
+
+	runtimeState->postgisFuncFmgrInfo[Geography_Intersects] = palloc0(sizeof(FmgrInfo));
+	Oid geoIntersectsOid = PostgisGeographyIntersectsFunctionId();
+	fmgr_info(geoIntersectsOid, runtimeState->postgisFuncFmgrInfo[Geography_Intersects]);
 }
 
 
@@ -265,7 +292,13 @@ CompareGeoWithinState(const pgbson *document, const char *path,
 	withinState.runtimeMatcher.isMatched = false;
 	withinState.runtimeMatcher.matcherFunc = &CompareForGeoWithinDatum;
 	withinState.runtimeMatcher.queryGeoDatum = runtimeState->state.geoSpatialDatum;
-	withinState.runtimeMatcher.flInfo = runtimeState->postgisFuncFmgrInfo;
+
+	withinState.runtimeMatcher.runtimeFmgrStore =
+		(FmgrInfo **) palloc0(PostgisFuncsForDollarGeo_MAX * sizeof(FmgrInfo *));
+
+	withinState.runtimeMatcher.runtimeFmgrStore = runtimeState->postgisFuncFmgrInfo;
+	withinState.runtimeMatcher.runtimePostgisFunc = runtimeState->runtimePostgisFunc;
+
 	withinState.opInfo = runtimeState->opInfo;
 
 	if (runtimeState->opInfo->op == GeospatialShapeOperator_CENTERSPHERE ||
@@ -318,7 +351,14 @@ CompareGeoIntersectsState(const pgbson *document, const char *path,
 	geoIntersectState.runtimeMatcher.isMatched = false;
 	geoIntersectState.runtimeMatcher.matcherFunc = &CompareGeoDatumsWithFmgrInfo;
 	geoIntersectState.runtimeMatcher.queryGeoDatum = runtimeState->state.geoSpatialDatum;
-	geoIntersectState.runtimeMatcher.flInfo = runtimeState->postgisFuncFmgrInfo;
+
+	geoIntersectState.runtimeMatcher.runtimeFmgrStore =
+		(FmgrInfo **) palloc0(PostgisFuncsForDollarGeo_MAX * sizeof(FmgrInfo *));
+
+	geoIntersectState.runtimeMatcher.runtimeFmgrStore =
+		runtimeState->postgisFuncFmgrInfo;
+	geoIntersectState.runtimeMatcher.runtimePostgisFunc =
+		runtimeState->runtimePostgisFunc;
 
 	bson_iter_t documentIterator;
 	PgbsonInitIterator(document, &documentIterator);
@@ -354,9 +394,12 @@ CompareGeoDatumsWithFmgrInfo(const ProcessCommonGeospatialState *state, StringIn
 
 	pfree(wkbBytea);
 
-	return DatumGetBool(FunctionCall2(state->runtimeMatcher.flInfo,
-									  state->runtimeMatcher.queryGeoDatum,
-									  documentGeo));
+	const RuntimeQueryMatcherInfo *runtimeMatcher = &state->runtimeMatcher;
+	return DatumGetBool(
+		FunctionCall2(
+			runtimeMatcher->runtimeFmgrStore[runtimeMatcher->runtimePostgisFunc],
+			state->runtimeMatcher.queryGeoDatum,
+			documentGeo));
 }
 
 
@@ -371,6 +414,8 @@ CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *state,
 {
 	if (state->opInfo != NULL)
 	{
+		const RuntimeQueryMatcherInfo *runtimeMatcher = &state->runtimeMatcher;
+
 		if (state->opInfo->op == GeospatialShapeOperator_CENTERSPHERE &&
 			state->opInfo->opState != NULL)
 		{
@@ -385,7 +430,28 @@ CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *state,
 			/* Traverse and extract each point and check for distance from the center point */
 			TraverseWKBBuffer(buffer, &GeoWithinCenterSphereVisitorFuncs, (void *) state);
 
-			return state->runtimeMatcher.isMatched;
+			bool isMatched = state->runtimeMatcher.isMatched;
+
+			/* Additionally, check for intersection with compliment area if radius > PI/2 */
+			bool geographyIntersectsWithCompliment = false;
+
+			if (isMatched &&
+				centerState->complimentArea != (Datum) 0)
+			{
+				bytea *wkbBytea = WKBBufferGetByteaWithSRID(buffer);
+				Datum docDatum = GetGeographyFromWKB(wkbBytea);
+
+				geographyIntersectsWithCompliment =
+					DatumGetBool(
+						FunctionCall2(
+							runtimeMatcher->runtimeFmgrStore[Geography_Intersects],
+							centerState->complimentArea,
+							docDatum));
+				pfree(DatumGetPointer(docDatum));
+				pfree(wkbBytea);
+			}
+
+			return isMatched && !geographyIntersectsWithCompliment;
 		}
 		else if (state->opInfo->op == GeospatialShapeOperator_CENTER)
 		{
@@ -408,9 +474,11 @@ CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *state,
 			}
 
 			/* TODO: update this to match $centerSphere in using ST_DWITHIN */
-			return DatumGetBool(FunctionCall2(state->runtimeMatcher.flInfo,
-											  state->runtimeMatcher.queryGeoDatum,
-											  documentGeo));
+			return DatumGetBool(
+				FunctionCall2(
+					runtimeMatcher->runtimeFmgrStore[runtimeMatcher->runtimePostgisFunc],
+					runtimeMatcher->queryGeoDatum,
+					documentGeo));
 		}
 	}
 
@@ -527,14 +595,18 @@ VisitEachPointForCenterSphere(const WKBGeometryConst *pointConst, void *state)
 	DollarCenterOperatorState *centerState =
 		(DollarCenterOperatorState *) geoState->opInfo->opState;
 
-	Datum radiusArg = Float8GetDatum(centerState->radius);
+	double radiusInMeters = centerState->radiusInMeters;
+	Datum radiusArg = Float8GetDatum(radiusInMeters);
+	RuntimeQueryMatcherInfo *runtimeMatcher = &geoState->runtimeMatcher;
 
 	/* result from ST_DWITHIN */
 	geoState->runtimeMatcher.isMatched =
-		DatumGetBool(FunctionCall3(geoState->runtimeMatcher.flInfo,
-								   geoState->runtimeMatcher.queryGeoDatum,
-								   queryPoint,
-								   radiusArg));
+		DatumGetBool(
+			FunctionCall3(
+				runtimeMatcher->runtimeFmgrStore[runtimeMatcher->runtimePostgisFunc],
+				runtimeMatcher->queryGeoDatum,
+				queryPoint,
+				radiusArg));
 
 	DeepFreeWKB(pointBuffer);
 }

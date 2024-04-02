@@ -674,8 +674,11 @@ typedef struct HelioApiOidCacheData
 	/* Oid of the ST_MakePoint Postgis function */
 	Oid PostgisMakePointFunctionId;
 
-	/* Oid of the ST_buffer Postgis function */
-	Oid PostgisBufferFunctionId;
+	/* Oid of the geometry ST_buffer Postgis function */
+	Oid PostgisGeometryBufferFunctionId;
+
+	/* Oid of the geography ST_buffer Postgis function */
+	Oid PostgisGeographyBufferFunctionId;
 
 	/* Oid of the ST_Collect Postgis function */
 	Oid PostgisCollectFunctionId;
@@ -3204,16 +3207,32 @@ PostgisMakePointFunctionId(void)
 
 
 /*
- * PostgisBufferFunctionId returns the OID of the postgis_public.st_buffer function.
+ * PostgisGeometryBufferFunctionId returns the OID of the postgis_public.st_buffer function for geometry.
  */
 Oid
-PostgisBufferFunctionId(void)
+PostgisGeometryBufferFunctionId(void)
 {
 	int nargs = 3;
 	Oid argTypes[3] = { GeometryTypeId(), FLOAT8OID, TEXTOID };
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
-		&Cache.PostgisBufferFunctionId,
+		&Cache.PostgisGeometryBufferFunctionId,
+		POSTGIS_EXTENSION_SCHEMA, "st_buffer", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisGeographyBufferFunctionId returns the OID of the postgis_public.st_buffer function for geography.
+ */
+Oid
+PostgisGeographyBufferFunctionId(void)
+{
+	int nargs = 2;
+	Oid argTypes[2] = { GeographyTypeId(), FLOAT8OID };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeographyBufferFunctionId,
 		POSTGIS_EXTENSION_SCHEMA, "st_buffer", nargs,
 		argTypes, missingOk);
 }

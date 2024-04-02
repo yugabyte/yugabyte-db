@@ -81,6 +81,19 @@ typedef enum GeospatialType
 	GeospatialType_Geography,
 } GeospatialType;
 
+/*
+ * Enum for postgis functions used in runtime matching in $geoWithin and $geoIntersects
+ */
+typedef enum PostgisFuncsForDollarGeo
+{
+	Geometry_Intersects = 0,
+	Geography_Intersects,
+	Geometry_Covers,
+	Geography_Covers,
+	Geography_DWithin,
+	PostgisFuncsForDollarGeo_MAX
+} PostgisFuncsForDollarGeo;
+
 
 /*
  * The common cache state for geometries / geographies which are used for
@@ -112,8 +125,11 @@ typedef struct RuntimeQueryMatcherInfo
 	/* Matcher function to call for checking a match */
 	GeospatialQueryMatcherFunc matcherFunc;
 
-	/* FmgrInfo of the runtime matching function */
-	FmgrInfo *flInfo;
+	/* FmgrInfo store for the runtime matching functions */
+	FmgrInfo **runtimeFmgrStore;
+
+	/* Main postgis function to use for runtime matching */
+	PostgisFuncsForDollarGeo runtimePostgisFunc;
 
 	/* Query geometry/geography datum precomputed */
 	Datum queryGeoDatum;
