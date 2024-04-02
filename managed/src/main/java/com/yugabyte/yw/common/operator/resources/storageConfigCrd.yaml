@@ -9,6 +9,9 @@ spec:
     plural: storageconfigs
     singular: storageconfig
     kind: StorageConfig
+    categories:
+      - all
+      - yugabyte
   versions:
     - name: v1alpha1
       subresources:
