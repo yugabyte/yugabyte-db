@@ -891,15 +891,13 @@
           "tabAssessmentResults": "Assessment Results",
           "tabComplexityOverview": "Complexity Overview",
           "summary": {
-            "result": "Result",
+            "iteration": "Iteration",
             "complexity": "Complexity",
             "timeTaken": "Time taken",
-            "tableSharding": "Table sharding",
-            "targetClusterSizing": "Target cluster sizing",
-            "vCpu": "vCPU",
-            "ram": "RAM",
-            "disk": "Disk",
-            "nodeCount": "Node count"
+            "colocatedTables": "Colocated tables",
+            "nonColocatedTables": "Non-colocated tables",
+            "targetClusterSizing": "Target cluster",
+            "recommendedClusterSizing": "Recommended cluster"
           },
           "details": {
             "table": "Table",

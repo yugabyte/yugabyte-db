@@ -58,6 +58,7 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
                 migration={migration}
                 step={selectedStep}
                 onRefetch={onRefetch}
+                onStepChange={setSelectedStep}
                 isFetching={isFetching}
               />
             </Box>

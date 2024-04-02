@@ -16,6 +16,7 @@ interface MigrationStepProps {
   migration: Migration;
   step: number;
   onRefetch: () => void;
+  onStepChange?: (step: number) => void;
   isFetching?: boolean;
 }
 
@@ -26,6 +27,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
   migration,
   step,
   onRefetch,
+  onStepChange,
   isFetching = false,
 }) => {
   const { refetch: refetchMigrationAssesmentDetails } = useGetVoyagerMigrationAssesmentDetailsQuery(
@@ -68,6 +70,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
               heading={steps[step]}
               migration={migration}
               onRefetch={refetch}
+              onStepChange={onStepChange}
               isFetching={isFetching}
             />
           );

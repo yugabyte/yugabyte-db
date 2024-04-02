@@ -1,23 +1,12 @@
 import React, { FC } from "react";
-import {
-  Box,
-  LinearProgress,
-  makeStyles,
-  Tab,
-  Tabs,
-  Typography,
-  useTheme,
-} from "@material-ui/core";
+import { Box, makeStyles, Tab, Tabs, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { Migration } from "../../MigrationOverview";
-import { GenericFailure, STATUS_TYPES, YBAccordion, YBStatus, YBTable } from "@app/components";
-import { MigrationStepNA } from "../../MigrationStepNA";
+import { YBAccordion, YBTable } from "@app/components";
 import MigrationAccordionTitle from "../../MigrationAccordionTitle";
-import { ErrorRounded, InfoOutlined } from "@material-ui/icons";
-import { MigrationAssesmentInfo, useGetVoyagerMigrationAssesmentDetailsQuery } from "@app/api/src";
+import { useGetVoyagerMigrationAssesmentDetailsQuery } from "@app/api/src";
 import { MigrationAssessmentDetails } from "./AssessmentDetails";
 import { MigrationAssessmentResults } from "./AssessmentResults";
-import { MigrationComplexityOverview } from "./ComplexityOverview";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 
 const useStyles = makeStyles((theme) => ({
@@ -81,6 +70,7 @@ interface MigrationAssessmentProps {
   migration: Migration;
   step: number;
   onRefetch: () => void;
+  onStepChange?: (step: number) => void;
   isFetching?: boolean;
 }
 
@@ -88,6 +78,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   heading,
   migration,
   onRefetch,
+  onStepChange,
   isFetching = false,
 }) => {
   const classes = useStyles();
@@ -107,44 +98,38 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
 
   const overviewData = [
     {
-      result: "Result 1",
+      iteration: "1",
       complexity: "Easy",
       timeTaken: "1h 30m",
-      tableSharding: "Colocated",
+      colocatedTables: 10,
+      nonColocatedTables: 5,
       targetClusterSizing: "No",
-      vCpu: "4",
-      ram: "16GB",
-      disk: "100GB",
-      nodeCount: "3",
+      recommendedClusterSizing: "4 vCPU, 16GB RAM, 100GB Disk, 3 Nodes",
     },
     {
-      result: "Result 2",
+      iteration: "2",
       complexity: "Medium",
-      timeTaken: "2h 45m",
-      tableSharding: "Non-colocated",
+      timeTaken: "2h 15m",
+      colocatedTables: 8,
+      nonColocatedTables: 7,
       targetClusterSizing: "Yes",
-      vCpu: "-",
-      ram: "-",
-      disk: "-",
-      nodeCount: "-",
+      recommendedClusterSizing: "-",
     },
     {
-      result: "Result 3",
+      iteration: "3",
       complexity: "Hard",
-      timeTaken: "5h 00m",
-      tableSharding: "Colocated",
+      timeTaken: "3h 45m",
+      colocatedTables: 5,
+      nonColocatedTables: 10,
       targetClusterSizing: "Yes",
-      vCpu: "-",
-      ram: "-",
-      disk: "-",
-      nodeCount: "-",
+      recommendedClusterSizing: "-",
     },
   ];
 
   const overviewColumns = [
     {
-      name: "result",
-      label: t("clusterDetail.voyager.planAndAssess.summary.result"),
+      name: "iteration",
+      label: t("clusterDetail.voyager.planAndAssess.summary.iteration"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -168,8 +153,16 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       },
     },
     {
-      name: "tableSharding",
-      label: t("clusterDetail.voyager.planAndAssess.summary.tableSharding"),
+      name: "colocatedTables",
+      label: t("clusterDetail.voyager.planAndAssess.summary.colocatedTables"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "nonColocatedTables",
+      label: t("clusterDetail.voyager.planAndAssess.summary.nonColocatedTables"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -184,35 +177,11 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       },
     },
     {
-      name: "vCpu",
-      label: t("clusterDetail.voyager.planAndAssess.summary.vCpu"),
+      name: "recommendedClusterSizing",
+      label: t("clusterDetail.voyager.planAndAssess.summary.recommendedClusterSizing"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "ram",
-      label: t("clusterDetail.voyager.planAndAssess.summary.ram"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "disk",
-      label: t("clusterDetail.voyager.planAndAssess.summary.disk"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "nodeCount",
-      label: t("clusterDetail.voyager.planAndAssess.summary.nodeCount"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px", maxWidth: "40px" } }),
       },
     },
   ];
@@ -243,16 +212,18 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        sort: false,
       },
     },
     {
       name: "status",
       label: t("clusterDetail.voyager.planAndAssess.nextSteps.status"),
       options: {
+        sort: false,
         customBodyRender: (status: string) =>
           status !== "-" ? (
             <YBBadge
-              variant={status === "Complete" ? BadgeVariant.Success :  BadgeVariant.InProgress}
+              variant={status === "Complete" ? BadgeVariant.Success : BadgeVariant.InProgress}
               text={status}
             />
           ) : (
@@ -359,6 +330,12 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
             columns={nextStepsColumns}
             options={{
               pagination: true,
+              onRowClick: (_, { dataIndex }) => {
+                console.log(migration.migration_phase)
+                if (dataIndex === 1 || dataIndex === 2) {
+                  onStepChange?.(dataIndex);
+                }
+              },
             }}
             withBorder={false}
           />
