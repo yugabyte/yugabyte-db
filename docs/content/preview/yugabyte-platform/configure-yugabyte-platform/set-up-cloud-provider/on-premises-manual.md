@@ -48,6 +48,10 @@ For each node, perform the following:
 
 After you have provisioned the nodes, you can proceed to [Add instances to the on-prem provider](../on-premises-nodes/#add-instances).
 
+{{<note title="Root-level systemd or cron">}}
+The following instructions use user-level systemd to provide the necessary access to system resources. Versions prior to v2.20 use root-level systemd or cron. If you have previously provisioned nodes for this provider using either root-level systemd or cron, you should use the same steps, as all nodes in a provider need to be provisioned in the same way. For instructions on provisioning using root-level systemd or cron, see the [instructions for v2.18](/v2.18/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
+{{</note>}}
+
 ## Set up time synchronization
 
 A local Network Time Protocol (NTP) server or equivalent must be available.
@@ -154,15 +158,6 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
     ```text
     *          soft    nproc     12000
     ```
-
-1. Install the rsync and OpenSSL packages (if not already included with your Linux distribution) using the following commands:
-
-    ```sh
-    sudo dnf install openssl
-    sudo dnf install rsync
-    ```
-
-    For airgapped environments, make sure your DNF repository mirror contains these packages.
 
 1. If running on a virtual machine, execute the following to tune kernel settings:
 
