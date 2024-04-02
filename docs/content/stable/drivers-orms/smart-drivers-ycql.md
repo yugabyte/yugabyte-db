@@ -18,11 +18,11 @@ type: docs
 
 The standard/official drivers available for Cassandra work out-of-the-box with [YugabyteDB YCQL API](../../api/ycql/).
 
-In addition to the compatible Cassandra drivers, YugabyteDB also developed the following YCQL drivers with specific changes to leverage YugabyteDB features, available as open source software under the Apache 2.0 license.
+Yugabyte has extended the upstream Cassandra drivers with specific changes to leverage YugabyteDB features, available as open source software under the Apache 2.0 license.
 
 | GitHub project | Based on | Learn more |
 | :--- | :--- | :--- |
-| [YugabyteDB Java Driver for YCQL (3.10)](https://github.com/yugabyte/cassandra-java-driver) | [DataStax Java Driver 3.10](https://docs.datastax.com/en/developer/java-driver/3.10/) | [Documentation](../java/ycql/) |
+| [YugabyteDB Java Driver for YCQL (3.10)](https://github.com/yugabyte/cassandra-java-driver/tree/3.10.0-yb-x) | [DataStax Java Driver 3.10](https://docs.datastax.com/en/developer/java-driver/3.10/) | [Documentation](../java/ycql/) |
 | [YugabyteDB Java Driver for YCQL (4.15)](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) | [DataStax Java Driver 4.15](https://docs.datastax.com/en/developer/java-driver/4.15/) | [Documentation](../java/ycql-4.x/) |
 | [YugabyteDB Go Driver for YCQL](https://github.com/yugabyte/gocql) | [gocql](https://gocql.github.io/) | [Documentation](../go/ycql/) |
 | [YugabyteDB Python Driver for YCQL](https://github.com/yugabyte/cassandra-python-driver) | [DataStax Python Driver](https://github.com/datastax/python-driver) | [Documentation](../python/ycql/) |
@@ -41,8 +41,8 @@ YugabyteDB YCQL drivers have the following key features.
 | :--- | :--- |
 | [Retry policy](#retry-policy) | Like the upstream driver, the YugabyteDB YCQL driver retries certain operations in case of failures. |
 | [Multiple contact points](#multiple-contact-points) | As with the upstream driver, you can specify multiple contact points for the initial connection, to avoid dropping connections in the case where the primary contact point is unavailable. |
-| [Partition-aware load balancing policy](#partition-aware-load-balance-policy) (YugabyteDB-specific) | Smart driver can target a specific tablet/node for a particular query where the required data is hosted. |
-| [JSONB support](#jsonb-support) (YugabyteDB-specific) | Smart driver supports the use of JSONB data type for the table columns. |
+| [Partition-aware load balancing policy](#partition-aware-load-balance-policy) | (YugabyteDB driver only) You can target a specific tablet or node for a particular query where the required data is hosted. |
+| [JSONB support](#jsonb-support) | (YugabyteDB driver only) YugabyteDB YCQL drivers support the use of the JSONB data type for table columns. |
 
 ## Using YugabyteDB YCQL drivers
 
@@ -52,7 +52,7 @@ YugabyteDB is a distributed, fault tolerant, and highly available database with 
 
 As with the upstream Cassandra drivers, YugabyteDB YCQL drivers can retry certain operations if they fail the first time. This is governed by a retry-policy. The default number of retries is one for a failed operation for certain cases, depending on the language driver. The retry may happen on the same node or the next available node as per the query's plan.
 
-Some of the drivers allow you to provide a custom retry policy.
+Some drivers allow you to provide a custom retry policy.
 Refer to [Retries](https://docs.datastax.com/en/developer/java-driver/4.15/manual/core/retries/#retries) in DataStax documentation for information on built-in retry polices.
 
 ### Multiple contact points
@@ -96,7 +96,7 @@ You can configure the size of the connection pool. For example, in the Java driv
 
 [YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use load balancing provided by the cloud provider where the cluster is provisioned. The nodes are not directly accessible to the outside world. This is in contrast to the desired setup of YCQL drivers, which need direct access to all the nodes in a cluster.
 
-The smart driver still works in such a setup but the client applications lose out on some of the benefits of the driver like [partition-aware query routing](#partition-aware-load-balance-policy). The default retry policy of the driver too becomes ineffective in this case.
+The drivers still work in this situation, but the client applications lose some of the benefits of the driver, including [partition-aware query routing](#partition-aware-load-balance-policy). The default retry policy of the driver also becomes ineffective in this case.
 
 To take advantage of the driver's partition-aware load balancing feature when connecting to clusters in YugabyteDB Managed, the applications must be deployed in a VPC that has been peered with the cluster VPC; VPC peering enables the client application to access all nodes of the cluster. For information on VPC peering in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
