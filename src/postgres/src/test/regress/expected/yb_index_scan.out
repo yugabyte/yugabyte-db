@@ -3933,3 +3933,24 @@ select * from t1;
 (0 rows)
 
 drop table t1;
+create table sample(a int, primary key(a asc));
+insert into sample values (0);
+select * from sample where a = x'8000000000000000'::bigint;
+ a
+---
+(0 rows)
+
+drop table sample;
+create table sample(a int2, primary key(a asc));
+insert into sample values (0);
+select * from sample where a = x'8000000000000000'::bigint;
+ a
+---
+(0 rows)
+
+select * from sample where a = x'80000000'::int;
+ a
+---
+(0 rows)
+
+drop table sample;
