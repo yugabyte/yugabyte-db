@@ -103,9 +103,4 @@ Perform the following steps:
 
 1. Reduce the `retentionTime` and increase the `scrapeInterval` configuration options in the `/opt/yba-ctl/yba-ctl.yml` file.
 1. Run `yba-ctl reconfigure` to [reconfigure](../../../install-yugabyte-platform/install-software/installer/#reconfigure) your YugabyteDB Anywhere instance with the new settings.
-1. Verify the decrease in the Prometheus directory size using the following commands:
-
-    ```sh
-    $ cd /opt/yugabyte/data/prometheus/storage && ll
-    $ du -sh
-    ```
+1. Verify the decrease in the Prometheus directory size.
