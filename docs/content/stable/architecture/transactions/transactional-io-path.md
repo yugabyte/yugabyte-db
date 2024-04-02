@@ -22,7 +22,7 @@ The write path can be demonstrated through the lifecycle of a single distributed
 The following diagram depicts the high-level steps of a distributed write-only transaction, not including
 any conflict resolution:
 
-![Distributed write-only transaction](/images/architecture/txn/distributed_txn_write_path.svg)
+![Distributed write-only transaction](/images/architecture/txn/distributed_txn_write_path.png)
 
 ### Client requests transaction
 
@@ -81,7 +81,7 @@ As described in [Single-row transactions](../single-row-transactions/), up-to-da
 
 The following diagram depicts the process:
 
-![Distributed transaction read path diagram](/images/architecture/txn/distributed_txn_read_path.svg)
+![Distributed transaction read path diagram](/images/architecture/txn/distributed_txn_read_path.png)
 
 ### Handle the client's request and initialize read transaction
 

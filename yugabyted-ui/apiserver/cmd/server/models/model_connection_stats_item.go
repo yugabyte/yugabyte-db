@@ -2,8 +2,9 @@ package models
 
 type ConnectionStatsItem struct {
 
-    // GH #19722 : Structure of Ysql Connection Manager stats have changed.
-    Pool string `json:"pool"`
+    DatabaseName string `json:"database_name"`
+
+    UserName string `json:"user_name"`
 
     ActiveLogicalConnections int64 `json:"active_logical_connections"`
 

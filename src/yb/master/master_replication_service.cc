@@ -69,6 +69,8 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
       (XClusterDeleteOutboundReplicationGroup)
       (IsXClusterBootstrapRequired)
       (GetXClusterStreams)
+      (CreateXClusterReplication)
+      (IsCreateXClusterReplicationDone)
   )
 };
 

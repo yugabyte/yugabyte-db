@@ -1481,9 +1481,7 @@ class PgPartitioningWaitQueuesOffTest : public PgPartitioningTest {
   void SetUp() override {
     // Disable wait queues to fail faster in case of transactions conflict instead of waiting until
     // request times out.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    // Fail txn early in case of conflict to reduce test runtime.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
+    EnableFailOnConflict();
     PgPartitioningTest::SetUp();
   }
 };

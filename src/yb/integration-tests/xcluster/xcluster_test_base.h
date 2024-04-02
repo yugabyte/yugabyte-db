@@ -331,6 +331,8 @@ class XClusterTestBase : public YBTest {
     return CoarseMonoClock::Now() + propagation_timeout_;
   }
 
+  Status SetupCertificates(const xcluster::ReplicationGroupId& replication_group_id);
+
   Cluster producer_cluster_;
   Cluster consumer_cluster_;
   MonoDelta propagation_timeout_;

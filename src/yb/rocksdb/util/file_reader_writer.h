@@ -47,6 +47,8 @@ namespace rocksdb {
 class Statistics;
 class HistogramImpl;
 
+YB_STRONGLY_TYPED_BOOL(AllocateBuffer);
+
 std::unique_ptr<RandomAccessFile> NewReadaheadRandomAccessFile(
   std::unique_ptr<RandomAccessFile>&& file, size_t readahead_size);
 
@@ -148,9 +150,11 @@ class WritableFileWriter {
   yb::PriorityThreadPoolSuspender* suspender_;
 
  public:
-  WritableFileWriter(std::unique_ptr<WritableFile>&& file,
-                     const EnvOptions& options,
-                     yb::PriorityThreadPoolSuspender* suspender = nullptr)
+  WritableFileWriter(
+      std::unique_ptr<WritableFile>&& file,
+      const EnvOptions& options,
+      yb::PriorityThreadPoolSuspender* suspender = nullptr,
+      AllocateBuffer allocate_buffer = AllocateBuffer::kTrue)
       : writable_file_(std::move(file)),
         buf_(),
         max_buffer_size_(options.writable_file_max_buffer_size),
@@ -166,7 +170,9 @@ class WritableFileWriter {
         suspender_(suspender) {
 
     buf_.Alignment(writable_file_->GetRequiredBufferAlignment());
-    buf_.AllocateNewBuffer(FLAGS_rocksdb_file_starting_buffer_size);
+    if (allocate_buffer) {
+      buf_.AllocateNewBuffer(FLAGS_rocksdb_file_starting_buffer_size);
+    }
   }
 
   WritableFileWriter(const WritableFileWriter&) = delete;

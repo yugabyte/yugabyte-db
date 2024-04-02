@@ -1,15 +1,20 @@
 import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
-import { useFormContext } from 'react-hook-form';
+import { useSelector } from 'react-redux';
 
 import { YBTooltip } from '../../../../redesign/components';
 import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
+import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
 import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
-import { EditTablesFormValues } from './EditTablesModal';
 import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
+import { useFormContext } from 'react-hook-form';
+import { EditTablesFormValues } from './EditTablesModal';
 
 interface ConfigureBootstrapStepProps {
+  isDrInterface: boolean;
   isFormDisabled: boolean;
+
+  storageConfigUuid?: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -33,10 +38,22 @@ const useStyles = makeStyles((theme) => ({
 const TRANSLATION_KEY_PREFIX =
   'clusterDetail.disasterRecovery.config.editTablesModal.step.configureBootstrap';
 
-export const ConfigureBootstrapStep = ({ isFormDisabled }: ConfigureBootstrapStepProps) => {
+export const ConfigureBootstrapStep = ({
+  isDrInterface,
+  isFormDisabled,
+  storageConfigUuid
+}: ConfigureBootstrapStepProps) => {
   const { control } = useFormContext<EditTablesFormValues>();
   const classes = useStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
+    reduxState?.customer?.configs?.data.filter(
+      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+    )
+  );
+  const storageConfigName =
+    storageConfigs?.find((storageConfig) => storageConfig.configUUID === storageConfigUuid)
+      ?.configName ?? '';
   return (
     <>
       <div className={classes.formSectionDescription}>
@@ -49,27 +66,48 @@ export const ConfigureBootstrapStep = ({ isFormDisabled }: ConfigureBootstrapSte
       </div>
       <div className={classes.fieldLabel}>
         <Typography variant="body2">{t('backupStorageConfig.label')}</Typography>
-        <YBTooltip
-          title={
-            <Typography variant="body2">
-              <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX}.backupStorageConfig.tooltip`}
-                components={{ paragraph: <p />, bold: <b /> }}
-              />
-            </Typography>
-          }
-        >
-          <InfoIcon className={classes.infoIcon} />
-        </YBTooltip>
+        {!isDrInterface && (
+          <YBTooltip
+            title={
+              <Typography variant="body2">
+                <Trans
+                  i18nKey={`${TRANSLATION_KEY_PREFIX}.backupStorageConfig.tooltip`}
+                  components={{ paragraph: <p />, bold: <b /> }}
+                />
+              </Typography>
+            }
+          >
+            <InfoIcon className={classes.infoIcon} />
+          </YBTooltip>
+        )}
       </div>
-      <ReactSelectStorageConfigField
-        control={control}
-        name="storageConfig"
-        rules={{ required: t('error.backupStorageConfigRequired') }}
-        isDisabled={isFormDisabled}
-        autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
-        maxWidth="100%"
-      />
+      {/* Backup storage config should already be saved for each DR config. */}
+      {isDrInterface ? (
+        storageConfigName ? (
+          <Typography variant="body2">
+            <Trans
+              i18nKey={`clusterDetail.disasterRecovery.backupStorageConfig.currentStorageConfigInfo`}
+              components={{ bold: <b /> }}
+              values={{ storageConfigName: storageConfigName }}
+            />
+          </Typography>
+        ) : (
+          <Typography variant="body2">
+            {t('missingStorageConfigInfo', {
+              keyPrefix: 'clusterDetail.disasterRecovery.backupStorageConfig'
+            })}
+          </Typography>
+        )
+      ) : (
+        <ReactSelectStorageConfigField
+          control={control}
+          name="storageConfig"
+          rules={{ required: t('error.backupStorageConfigRequired') }}
+          isDisabled={isFormDisabled}
+          autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
+          maxWidth="100%"
+        />
+      )}
     </>
   );
 };

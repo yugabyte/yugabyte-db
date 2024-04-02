@@ -58,7 +58,7 @@ The local cluster setup on a single host is intended for development and learnin
 
 ## Install YugabyteDB
 
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the YugabyteDB package](#download-yugabytedb).
+Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the YugabyteDB package](#download).
 
 ### Prerequisites
 

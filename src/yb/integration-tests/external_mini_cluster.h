@@ -35,6 +35,7 @@
 #include <string.h>
 #include <sys/types.h>
 
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>
@@ -65,11 +66,13 @@
 #include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/curl_util.h"
+#include "yb/util/env.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
 #include "yb/util/status.h"
 #include "yb/util/tsan_util.h"
 
@@ -940,6 +943,10 @@ class ExternalTabletServer : public ExternalDaemon {
   const std::string& bind_host() const {
     return bind_host_;
   }
+
+  // Postmaster helper functions
+  Result<pid_t> PostmasterPid();
+  Result<int> SignalPostmaster(int signal);
 
   // Assigned ports.
   uint16_t rpc_port() const {

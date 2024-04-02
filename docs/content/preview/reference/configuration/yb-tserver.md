@@ -1204,6 +1204,32 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
+## Concurrency control flags
+
+To learn about Wait-on-Conflict concurrency control, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
+
+##### --enable_wait_queues
+
+When set to true, enables in-memory wait queues, deadlock detection, and wait-on-conflict semantics in all YSQL traffic.
+
+Default: `true`
+
+##### --disable_deadlock_detection
+
+When set to true, disables deadlock detection. If `enable_wait_queues=false`, this flag has no effect as deadlock detection is not running anyways.
+
+Default: `false`
+
+{{< warning title="Warning">}}
+Use of this flag can potentially result in deadlocks that can't be resolved by YSQL. Use this flag only if the application layer can guarantee deadlock avoidance.
+{{< /warning >}}
+
+##### --wait_queue_poll_interval_ms
+
+If `enable_wait_queues=true`, this controls the rate at which each tablet's wait queue polls transaction coordinators for the status of transactions which are blocking contentious resources.
+
+Default: `100`
+
 ## Metric export flags
 
 ##### --export_help_and_type_in_prometheus_metrics
@@ -1295,6 +1321,26 @@ You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
 Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
 
 Default: `1GB`
+
+## Advanced flags
+
+##### backfill_index_client_rpc_timeout_ms
+
+Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
+
+Default: 86400000 (1 day)
+
+##### backfill_index_timeout_grace_margin_ms
+
+The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
+
+Default: -1, where the system automatically calculates the value to be approximately 1 second.
+
+##### backfill_index_write_batch_size
+
+The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/indexes-constraints/gin/), the number can include more index rows.
+
+Default: 128
 
 ## Admin UI
 

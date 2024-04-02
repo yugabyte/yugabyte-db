@@ -242,6 +242,12 @@ extern bool YBRelHasSecondaryIndices(Relation relation);
 extern bool YBTransactionsEnabled();
 
 /*
+ * Whether read committed isolation is supported for the cluster or not (via the TServer gflag
+ * yb_enable_read_committed_isolation).
+ */
+extern bool YBIsReadCommittedSupported();
+
+/*
  * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level, and it uses
  * the new READ COMMITTED implementation instead of mapping to REPEATABLE READ level. The latter
  * condition is dictated by the value of gflag yb_enable_read_committed_isolation.
@@ -731,6 +737,15 @@ YbTableProperties YbGetTableProperties(Relation rel);
 YbTableProperties YbGetTablePropertiesById(Oid relid);
 YbTableProperties YbTryGetTableProperties(Relation rel);
 
+typedef enum YbTableDistribution
+{
+	YB_SYSTEM,
+	YB_COLOCATED,
+	YB_HASH_SHARDED,
+	YB_RANGE_SHARDED
+} YbTableDistribution;
+YbTableDistribution YbGetTableDistribution(Oid relid);
+
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
  */
@@ -1083,5 +1098,8 @@ extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
  * is colocated.
  */
 extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup, bool is_first_key);
+
+extern void YbGetRedactedQueryString(const char* query, int query_len,
+									 const char** redacted_query, int* redacted_query_len);
 
 #endif /* PG_YB_UTILS_H */

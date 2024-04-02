@@ -88,3 +88,4 @@ The following example uses the `employees` table from the Secondary indexes [exa
 
 - [Partial and expression indexes](../../json-support/jsonb-ysql/#partial-and-expression-indexes)
 - [SQL Puzzle: Partial Versus Expression Indexes](https://www.yugabyte.com/blog/sql-puzzle-partial-versus-expression-indexes/)
+- [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/#expression-indexes)

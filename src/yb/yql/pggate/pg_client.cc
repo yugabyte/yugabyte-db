@@ -926,6 +926,20 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory() {
+    tserver::PgActiveSessionHistoryRequestPB req;
+    req.set_fetch_tserver_states(true);
+    req.set_fetch_flush_and_compaction_states(true);
+    req.set_fetch_raft_log_appender_states(true);
+    req.set_fetch_cql_states(true);
+    req.set_ignore_ash_calls(true);
+    tserver::PgActiveSessionHistoryResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -1203,6 +1217,10 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots
 Result<tserver::PgGetReplicationSlotStatusResponsePB> PgClient::GetReplicationSlotStatus(
     const ReplicationSlotName& slot_name) {
   return impl_->GetReplicationSlotStatus(slot_name);
+}
+
+Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory() {
+  return impl_->ActiveSessionHistory();
 }
 
 void PerformExchangeFuture::wait() const {

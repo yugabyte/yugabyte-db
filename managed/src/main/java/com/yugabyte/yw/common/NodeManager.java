@@ -49,6 +49,7 @@ import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -204,7 +205,7 @@ public class NodeManager extends DevopsBase {
     return universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
   }
 
-  private List<String> getCloudArgs(NodeTaskParams nodeTaskParam) {
+  private List<String> getCloudArgs(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     List<String> command = new ArrayList<>();
     command.add("--zone");
     command.add(nodeTaskParam.getAZ().getCode());
@@ -222,10 +223,18 @@ public class NodeManager extends DevopsBase {
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       // Instance may not be present if it is deleted from NodeInstance table after a release
-      // action. Node UUID is not available in 2.6.
-      Optional<NodeInstance> node = NodeInstance.maybeGetByName(nodeTaskParam.getNodeName());
+      // action.
+      ObjectNode detailsJson = Json.newObject();
+      Optional<NodeInstance> optional = NodeInstance.maybeGet(nodeTaskParam.nodeUuid);
+      if (optional.isPresent()) {
+        NodeInstanceData instanceData = optional.get().getDetails();
+        detailsJson = (ObjectNode) Json.toJson(instanceData);
+        if (type == NodeCommandType.Precheck && StringUtils.isEmpty(instanceData.nodeName)) {
+          detailsJson.put("nodeName", nodeTaskParam.nodeName);
+        }
+      }
       command.add("--node_metadata");
-      command.add(node.isPresent() ? node.get().getDetailsJson() : "{}");
+      command.add(detailsJson.toString());
     }
     return command;
   }
@@ -1596,8 +1605,11 @@ public class NodeManager extends DevopsBase {
     String nodeIp = null;
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+
       Optional<NodeInstance> nodeInstanceOp =
-          NodeInstance.maybeGetByName(nodeTaskParam.getNodeName());
+          nodeTaskParam.nodeUuid == null
+              ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName())
+              : NodeInstance.maybeGet(nodeTaskParam.nodeUuid);
       if (nodeInstanceOp.isPresent()) {
         nodeIp = nodeInstanceOp.get().getDetails().ip;
       }
@@ -1630,9 +1642,28 @@ public class NodeManager extends DevopsBase {
       Universe universe, NodeTaskParams nodeTaskParam, List<String> commandArgs) {
     NodeDetails node = universe.getNode(nodeTaskParam.getNodeName());
     commandArgs.add("--remote_tmp_dir");
-    commandArgs.add(GFlagsUtil.getCustomTmpDirectory(node, universe));
+    if (node == null) {
+      Cluster cluster = universe.getCluster(nodeTaskParam.placementUuid);
+      commandArgs.add(
+          GFlagsUtil.getCustomTmpDirectory(
+              universe,
+              cluster,
+              nodeTaskParam.azUuid,
+              nodeTaskParam.isMaster,
+              nodeTaskParam.isTserver));
+    } else {
+      commandArgs.add(GFlagsUtil.getCustomTmpDirectory(node, universe));
+    }
   }
 
+  /**
+   * Runs command on the node which may not yet be present in the universe nodes in some of the
+   * commands. An example is preflight-check of a node which is not yet added to the universe.
+   *
+   * @param type the command type.
+   * @param nodeTaskParam the given node parameters.
+   * @return the command response.
+   */
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
     Provider provider = nodeTaskParam.getProvider();
@@ -1806,13 +1837,6 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
             }
-            /*
-            // TODO(bogdan): talk to Ram about this, if we want/use it for kube/onprem?
-            if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
-              commandArgs.add("--machine_image");
-              commandArgs.add(taskParam.getRegion().ybImage);
-            }
-            */
             if (taskParam.assignPublicIP) {
               commandArgs.add("--assign_public_ip");
             }
@@ -2435,7 +2459,7 @@ public class NodeManager extends DevopsBase {
               .regionUUID(nodeTaskParam.getRegion().getUuid())
               .command(type.toString().toLowerCase())
               .commandArgs(commandArgs)
-              .cloudArgs(getCloudArgs(nodeTaskParam))
+              .cloudArgs(getCloudArgs(type, nodeTaskParam))
               .envVars(envVars)
               .redactedVals(redactedVals)
               .sensitiveData(sensitiveData)

@@ -180,7 +180,7 @@ class PgMiniTestFailOnConflict : public PgMiniTest {
   void SetUp() override {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    EnableFailOnConflict();
     PgMiniTest::SetUp();
   }
 };
@@ -424,6 +424,9 @@ TEST_F(PgMiniAsh, YB_DISABLE_TEST_IN_TSAN(Ash)) {
 
   int kNumCalls = 100;
   tserver::PgActiveSessionHistoryRequestPB req;
+  req.set_fetch_tserver_states(true);
+  req.set_fetch_flush_and_compaction_states(true);
+  req.set_fetch_cql_states(true);
   tserver::PgActiveSessionHistoryResponsePB resp;
   rpc::RpcController controller;
   std::unordered_map<std::string, size_t> method_counts;
@@ -879,6 +882,29 @@ TEST_F_EX(PgMiniTest, BulkCopyWithRestart, PgMiniSmallWriteBufferTest) {
               kTableName, ++key, RandomHumanReadableString(kValueSize)));
     return false;
   }, 10s * kTimeMultiplier, "Intents cleanup", 200ms));
+}
+
+TEST_F_EX(PgMiniTest, SmallParallelScan, PgMiniTestSingleNode) {
+  const std::string kDatabaseName = "testdb";
+  constexpr auto kNumRows = 100;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocation=true", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int, primary key(k ASC)) with (colocation=true)"));
+
+  LOG(INFO) << "Loading data";
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i FROM generate_series(1, $0) i", kNumRows));
+
+  ASSERT_OK(conn.Execute("SET yb_parallel_range_rows to 10"));
+  ASSERT_OK(conn.Execute("SET yb_enable_base_scans_cost_model to true"));
+  ASSERT_OK(conn.Execute("SET force_parallel_mode = TRUE"));
+
+  LOG(INFO) << "Starting scan";
+  auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, kNumRows);
 }
 
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {

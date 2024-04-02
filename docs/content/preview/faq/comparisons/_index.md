@@ -12,6 +12,8 @@ menu:
     identifier: comparisons
     parent: comparisons-home
     weight: 100
+cascade:
+  unversioned: true
 type: indexpage
 ---
 

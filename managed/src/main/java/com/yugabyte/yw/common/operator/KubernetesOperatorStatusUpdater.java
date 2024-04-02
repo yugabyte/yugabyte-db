@@ -184,7 +184,9 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       action.setStatus(Actions.Status.QUEUED);
       ybUniverse.setStatus(ybuStatus);
       String eventStr =
-          String.format("Queued task %s on universe %s", taskName, universe.getName());
+          String.format(
+              "Queued task %s on universe resource: %s, namespace: %s",
+              taskName, universeName.name, universeName.namespace);
       this.updateUniverseStatus(client, ybUniverse, universe, universeName, eventStr);
     } catch (Exception e) {
       log.warn("Error in creating Kubernetes Operator Universe status", e);
@@ -284,6 +286,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
         YBUniverseStatus ybUniverseStatus = getOrCreateUniverseStatus(ybUniverse);
         ybUniverseStatus.setCqlEndpoints(cqlEndpoints);
         ybUniverseStatus.setSqlEndpoints(sqlEndpoints);
+        ybUniverseStatus.setResourceUUID(u.getUniverseUUID().toString());
         ybUniverse.setStatus(ybUniverseStatus);
       }
       // Update the universe CR status.
@@ -294,7 +297,8 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
           .updateStatus(); // Note: Vscode is saying this is invalid, but it is the right way.
 
       // Update Swamper Targets configMap
-      String configMapName = ybUniverse.getMetadata().getName() + "-prometheus-targets";
+      String configMapName =
+          YBUniverseReconciler.getYbaUniverseName(ybUniverse) + "-prometheus-targets";
       // TODO (@anijhawan) should call the swamperHelper target function but we are in static
       // context here.
       if (u != null) {
@@ -546,7 +550,9 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
   private YBUniverseStatus getOrCreateUniverseStatus(YBUniverse universe) {
     YBUniverseStatus status = universe.getStatus();
     if (status == null) {
-      log.debug("Creating new universe status for %s", universe.getMetadata().getName());
+      log.debug(
+          "Creating new universe status for %s, namespace %s",
+          universe.getMetadata().getName(), universe.getMetadata().getNamespace());
       status = new YBUniverseStatus();
     }
     return status;

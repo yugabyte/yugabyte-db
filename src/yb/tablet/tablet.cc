@@ -890,6 +890,7 @@ Status Tablet::OpenKeyValueTablet() {
     rocksdb::Options intents_rocksdb_options(rocksdb_options);
     intents_rocksdb_options.compaction_context_factory = {};
     docdb::SetLogPrefix(&intents_rocksdb_options, LogPrefix(docdb::StorageDbType::kIntents));
+    intents_rocksdb_options.tablet_id = tablet_id();
 
     intents_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
       return std::bind(&Tablet::IntentsDbFlushFilter, this, _1, _2);
@@ -3221,7 +3222,7 @@ Status Tablet::ModifyFlushedFrontier(
     });
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
-        &rocksdb_options, LogPrefix(), /* statistics */ nullptr, tablet_options_,
+        &rocksdb_options, LogPrefix(), tablet_id(), /* statistics */ nullptr, tablet_options_,
         rocksdb::BlockBasedTableOptions(), hash_for_data_root_dir(metadata_->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     LOG_WITH_PREFIX(INFO) << "Opening the test RocksDB at " << checkpoint_dir_for_test
@@ -3894,7 +3895,7 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
         &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_, db_info.db_type),
-        /* statistics */ nullptr, tablet_options_, rocksdb::BlockBasedTableOptions(),
+        tablet_id, /* statistics */ nullptr, tablet_options_, rocksdb::BlockBasedTableOptions(),
         hash_for_data_root_dir(metadata->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     // Disable background compactions, we only need to update flushed frontier.
@@ -3971,8 +3972,8 @@ void Tablet::InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
     rocksdb::BlockBasedTableOptions table_options) {
   docdb::InitRocksDBOptions(
-      options, log_prefix, regulardb_statistics_, tablet_options_, std::move(table_options),
-      hash_for_data_root_dir(metadata_->data_root_dir()));
+      options, log_prefix, tablet_id(), regulardb_statistics_, tablet_options_,
+      std::move(table_options), hash_for_data_root_dir(metadata_->data_root_dir()));
 }
 
 rocksdb::Env& Tablet::rocksdb_env() const {

@@ -13,11 +13,87 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 
+#include "yb/client/xcluster_client.h"
 #include "yb/master/catalog_entity_info.h"
 
 #include "yb/util/test_util.h"
 
 namespace yb::master {
+
+const UniverseUuid kTargetUniverseUuid = UniverseUuid::GenerateRandom();
+
+inline bool operator==(const NamespaceCheckpointInfo& lhs, const NamespaceCheckpointInfo& rhs) {
+  return YB_STRUCT_EQUALS(initial_bootstrap_required, table_infos);
+}
+
+class XClusterRemoteClientMocked : public client::XClusterRemoteClient {
+ public:
+  XClusterRemoteClientMocked() : client::XClusterRemoteClient("na", MonoDelta::kMax) {}
+
+  Status Init(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<HostPort>& remote_masters) override {
+    return Status::OK();
+  }
+
+  Result<UniverseUuid> SetupUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<HostPort>& source_master_addresses,
+      const std::vector<NamespaceName>& namespace_names,
+      const std::vector<TableId>& source_table_ids,
+      const std::vector<xrepl::StreamId>& bootstrap_ids, Transactional transactional) override {
+    replication_group_id_ = replication_group_id;
+    source_master_addresses_ = source_master_addresses;
+    namespace_names_ = namespace_names;
+    source_table_ids_ = source_table_ids;
+    bootstrap_ids_ = bootstrap_ids;
+    transactional_ = transactional;
+
+    return kTargetUniverseUuid;
+  }
+
+  Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
+      const xcluster::ReplicationGroupId& replication_group_id) override {
+    return is_setup_universe_replication_done_;
+  }
+
+  xcluster::ReplicationGroupId replication_group_id_;
+  std::vector<HostPort> source_master_addresses_;
+  std::vector<NamespaceName> namespace_names_;
+  std::vector<TableId> source_table_ids_;
+  std::vector<xrepl::StreamId> bootstrap_ids_;
+  bool transactional_;
+
+  Result<IsOperationDoneResult> is_setup_universe_replication_done_ =
+      IsOperationDoneResult(true, Status::OK());
+};
+
+class XClusterOutboundReplicationGroupMocked : public XClusterOutboundReplicationGroup {
+ public:
+  explicit XClusterOutboundReplicationGroupMocked(
+      const xcluster::ReplicationGroupId& replication_group_id, HelperFunctions helper_functions)
+      : XClusterOutboundReplicationGroup(replication_group_id, {}, std::move(helper_functions)) {
+    remote_client_ = std::make_shared<XClusterRemoteClientMocked>();
+  }
+
+  void SetRemoteClient(std::shared_ptr<XClusterRemoteClientMocked> remote_client) {
+    remote_client_ = remote_client;
+  }
+
+  bool IsDeleted() const {
+    SharedLock m_l(mutex_);
+    return outbound_rg_info_->LockForRead()->pb.state() ==
+           SysXClusterOutboundReplicationGroupEntryPB::DELETED;
+  }
+
+ private:
+  virtual Result<std::shared_ptr<client::XClusterRemoteClient>> GetRemoteClient(
+      const std::vector<HostPort>& remote_masters) const override {
+    return remote_client_;
+  }
+
+  std::shared_ptr<XClusterRemoteClientMocked> remote_client_;
+};
 
 class XClusterOutboundReplicationGroupMockedTest : public YBTest {
  public:
@@ -56,8 +132,9 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     return table_info;
   }
 
-  XClusterOutboundReplicationGroup CreateReplicationGroup() {
-    return XClusterOutboundReplicationGroup(kReplicationGroupId, {}, helper_functions);
+  std::shared_ptr<XClusterOutboundReplicationGroupMocked> CreateReplicationGroup() {
+    return std::make_shared<XClusterOutboundReplicationGroupMocked>(
+        kReplicationGroupId, helper_functions);
   }
 
   xrepl::StreamId CreateXClusterStream(const TableId& table_id) {
@@ -75,11 +152,21 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
           [this](YQLDatabase db_type, const NamespaceName& namespace_name) {
             return namespace_ids[namespace_name];
           },
+      .get_namespace_name_func = [this](const NamespaceId& namespace_id) -> Result<NamespaceName> {
+        for (const auto& [name, id] : namespace_ids) {
+          if (id == namespace_id) {
+            return name;
+          }
+        }
+        return STATUS_FORMAT(NotFound, "Namespace $0 not found", namespace_id);
+      },
       .get_tables_func =
           [this](const NamespaceId& namespace_id) { return namespace_tables[namespace_id]; },
       .bootstrap_tables_func =
-          [this](const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline)
-          -> Result<std::vector<xrepl::StreamId>> {
+          [this](
+              const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline,
+              StreamCheckpointLocation checkpoint_location,
+              const LeaderEpoch& epoch) -> Result<std::vector<xrepl::StreamId>> {
         std::vector<xrepl::StreamId> stream_ids;
         for (const auto& table_info : table_infos) {
           stream_ids.emplace_back(CreateXClusterStream(table_info->id()));
@@ -140,10 +227,13 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 TEST_F(XClusterOutboundReplicationGroupMockedTest, TestMultipleTable) {
   CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName);
   CreateTable(kNamespaceId, kTableId2, kTableName2, kPgSchemaName2);
-  auto outbound_rg = CreateReplicationGroup();
+  auto outbound_rg_ptr = CreateReplicationGroup();
+  auto& outbound_rg = *outbound_rg_ptr;
 
+  ASSERT_FALSE(outbound_rg.HasNamespace(kNamespaceId));
   auto namespace_id = ASSERT_RESULT(outbound_rg.AddNamespace(kEpoch, kNamespaceName, kDeadline));
   ASSERT_EQ(namespace_id, kNamespaceId);
+  ASSERT_TRUE(outbound_rg.HasNamespace(kNamespaceId));
 
   auto ns_info_opt = ASSERT_RESULT(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
   ASSERT_TRUE(ns_info_opt.has_value());
@@ -176,6 +266,10 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, TestMultipleTable) {
 
   ASSERT_OK(outbound_rg.Delete(kEpoch));
   ASSERT_FALSE(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
+  auto result = outbound_rg.GetMetadata();
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsNotFound());
+  ASSERT_TRUE(outbound_rg.IsDeleted());
 
   // We should have 0 streams now.
   ASSERT_TRUE(xcluster_streams.empty());
@@ -192,7 +286,8 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddDeleteNamespaces) {
   CreateTable(namespace_id_2, ns2_table_id_1, kTableName1, kPgSchemaName);
   CreateTable(namespace_id_2, ns2_table_id_2, kTableName2, kPgSchemaName);
 
-  auto outbound_rg = CreateReplicationGroup();
+  auto outbound_rg_ptr = CreateReplicationGroup();
+  auto& outbound_rg = *outbound_rg_ptr;
   auto out_namespace_id =
       ASSERT_RESULT(outbound_rg.AddNamespaces(kEpoch, {kNamespaceName}, kDeadline));
   ASSERT_EQ(out_namespace_id.size(), 1);
@@ -231,6 +326,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddDeleteNamespaces) {
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(ns2_table_id_1, ns2_table_id_2, *ns2_info_opt));
 
   ASSERT_OK(outbound_rg.RemoveNamespace(kEpoch, kNamespaceId));
+  ASSERT_FALSE(outbound_rg.HasNamespace(kNamespaceId));
   ASSERT_NOK(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
 
   // We should only have only the streams from second namespace.
@@ -242,8 +338,106 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddDeleteNamespaces) {
   }
 
   ASSERT_OK(outbound_rg.Delete(kEpoch));
+  ASSERT_FALSE(outbound_rg.HasNamespace(namespace_id_2));
   ASSERT_NOK(outbound_rg.GetNamespaceCheckpointInfo(namespace_id_2));
   ASSERT_TRUE(xcluster_streams.empty());
+}
+
+TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup) {
+  CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName);
+
+  auto outbound_rg_ptr = CreateReplicationGroup();
+  auto& outbound_rg = *outbound_rg_ptr;
+  auto remote_client = std::make_shared<XClusterRemoteClientMocked>();
+  outbound_rg.SetRemoteClient(remote_client);
+
+  ASSERT_OK(outbound_rg.AddNamespace(kEpoch, kNamespaceName, kDeadline));
+
+  ASSERT_OK(outbound_rg.CreateXClusterReplication({}, {}, kEpoch));
+
+  ASSERT_EQ(remote_client->replication_group_id_, kReplicationGroupId);
+  ASSERT_EQ(remote_client->namespace_names_, std::vector<NamespaceName>{kNamespaceName});
+  ASSERT_EQ(remote_client->source_table_ids_.size(), 1);
+  ASSERT_EQ(remote_client->source_table_ids_[0], kTableId1);
+  ASSERT_EQ(remote_client->bootstrap_ids_.size(), xcluster_streams.size());
+
+  remote_client->is_setup_universe_replication_done_ = IsOperationDoneResult(false, Status::OK());
+
+  auto create_result = ASSERT_RESULT(outbound_rg.IsCreateXClusterReplicationDone({}, kEpoch));
+  ASSERT_FALSE(create_result.done);
+
+  // Fail the Setup.
+  const auto error_str = "Failed by test";
+  remote_client->is_setup_universe_replication_done_ = STATUS(IllegalState, error_str);
+  auto result = outbound_rg.IsCreateXClusterReplicationDone({}, kEpoch);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), error_str);
+
+  auto pb = ASSERT_RESULT(outbound_rg.GetMetadata());
+  ASSERT_TRUE(pb.has_target_universe_info());
+  ASSERT_EQ(pb.target_universe_info().universe_uuid(), kTargetUniverseUuid.ToString());
+  ASSERT_EQ(
+      pb.target_universe_info().state(),
+      SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::CREATING_REPLICATION_GROUP);
+
+  remote_client->is_setup_universe_replication_done_ =
+      IsOperationDoneResult(true, STATUS(IllegalState, error_str));
+  create_result = ASSERT_RESULT(outbound_rg.IsCreateXClusterReplicationDone({}, kEpoch));
+  ASSERT_TRUE(create_result.done);
+  ASSERT_STR_CONTAINS(create_result.status.ToString(), error_str);
+
+  pb = ASSERT_RESULT(outbound_rg.GetMetadata());
+  ASSERT_FALSE(pb.has_target_universe_info());
+
+  // Success case.
+  remote_client->is_setup_universe_replication_done_ = IsOperationDoneResult(true, Status::OK());
+
+  ASSERT_OK(outbound_rg.CreateXClusterReplication({}, {}, kEpoch));
+  create_result = ASSERT_RESULT(outbound_rg.IsCreateXClusterReplicationDone({}, kEpoch));
+  ASSERT_TRUE(create_result.done);
+  ASSERT_OK(create_result.status);
+
+  pb = ASSERT_RESULT(outbound_rg.GetMetadata());
+  ASSERT_TRUE(pb.has_target_universe_info());
+  ASSERT_EQ(pb.target_universe_info().universe_uuid(), kTargetUniverseUuid.ToString());
+  ASSERT_EQ(
+      pb.target_universe_info().state(),
+      SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::REPLICATING);
+}
+
+TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTable) {
+  auto table_info1 = CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName);
+  CreateTable(kNamespaceId, kTableId2, kTableName2, kPgSchemaName2);
+
+  auto outbound_rg = CreateReplicationGroup();
+  auto namespace_id = ASSERT_RESULT(outbound_rg->AddNamespace(kEpoch, kNamespaceName, kDeadline));
+  ASSERT_TRUE(outbound_rg->HasNamespace(kNamespaceId));
+  ASSERT_EQ(xcluster_streams.size(), 2);
+
+  auto ns_info = ASSERT_RESULT(outbound_rg->GetNamespaceCheckpointInfo(kNamespaceId));
+  ASSERT_EQ(ns_info->table_infos.size(), 2);
+
+  std::promise<Status> promise;
+  auto completion_cb = [&promise](const Status& status) { promise.set_value(status); };
+
+  // Same table should not get added twice.
+  outbound_rg->AddTable(table_info1, kEpoch, completion_cb);
+  ASSERT_OK(promise.get_future().get());
+
+  ASSERT_EQ(ns_info->table_infos.size(), 2);
+
+  const TableName table_3 = "table3";
+  const TableId table_id_3 = "table_id_3";
+  auto table_info3 = CreateTable(kNamespaceId, table_id_3, table_3, kPgSchemaName);
+
+  promise = {};
+  outbound_rg->AddTable(table_info3, kEpoch, completion_cb);
+  ASSERT_OK(promise.get_future().get());
+
+  ASSERT_EQ(xcluster_streams.size(), 3);
+  ns_info = ASSERT_RESULT(outbound_rg->GetNamespaceCheckpointInfo(kNamespaceId));
+  ASSERT_TRUE(ns_info.has_value());
+  ASSERT_EQ(ns_info->table_infos.size(), 3);
 }
 
 }  // namespace yb::master

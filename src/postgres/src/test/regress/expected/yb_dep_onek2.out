@@ -13,7 +13,7 @@
 --
 CREATE TABLE onek2 AS SELECT * FROM onek;
 VACUUM ANALYZE onek2;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 ERROR:  Transaction for catalog table write operation 'pg_statistic' not found
 --
 -- yb_pg_create_index

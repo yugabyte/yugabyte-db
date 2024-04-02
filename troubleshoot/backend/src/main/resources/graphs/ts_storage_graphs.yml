@@ -1,0 +1,69 @@
+query_latency:
+  table: "pg_stat_statements"
+  timestamp_column: "actual_timestamp"
+  filter_columns:
+    universeUuid:
+      name: universe_id
+      type: type_uuid
+    queryId:
+      name: query_id
+      type: type_int
+    instanceName:
+      name: node_name
+  data_columns:
+    avg_latency:
+      alias: Average
+    mean_latency:
+      alias: Mean
+    p90_latency:
+      alias: P90
+    p99_latency:
+      alias: P99
+    max_latency:
+      alias: Max
+  layout:
+    title: "Query Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+
+query_rps:
+  table: "pg_stat_statements"
+  timestamp_column: "actual_timestamp"
+  filter_columns:
+    universeUuid:
+      name: universe_id
+      type: type_uuid
+    queryId:
+      name: query_id
+      type: type_int
+    instanceName:
+      name: node_name
+  data_columns:
+    rps:
+      alias: RPS
+  layout:
+    title: "Query RPS"
+    xaxis:
+      type: "date"
+
+query_rows_avg:
+  table: "pg_stat_statements"
+  timestamp_column: "actual_timestamp"
+  filter_columns:
+    universeUuid:
+      name: universe_id
+      type: type_uuid
+    queryId:
+      name: query_id
+      type: type_int
+    instanceName:
+      name: node_name
+  data_columns:
+    rows_avg:
+      alias: Rows
+  layout:
+    title: "Query RPS"
+    xaxis:
+      type: "date"

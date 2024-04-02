@@ -126,7 +126,8 @@ extern ExprState *execTuplesMatchPrepare(TupleDesc desc,
 extern void execTuplesHashPrepare(int numCols,
 								  const Oid *eqOperators,
 								  Oid **eqFuncOids,
-								  FmgrInfo **hashFunctions);
+								  FmgrInfo **leftHashFunctions,
+								  FmgrInfo **rightHashFunctions);
 extern ExprState *ybPrepareOuterExprsEqualFn(List *outer_exprs,
 											 Oid *eqOps, PlanState *parent);
 extern TupleHashTable BuildTupleHashTable(PlanState *parent,

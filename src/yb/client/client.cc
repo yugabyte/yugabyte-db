@@ -332,6 +332,19 @@ void FillFromRepeatedTabletLocations(
             BOOST_PP_CAT(method, Async))); \
   } while(0);
 
+#define IMPLEMENT_SYNC_LEADER_MASTER_RPC_IMP(service, method) \
+  Result<master::BOOST_PP_CAT(method, ResponsePB)> YBClient::method( \
+      const master::BOOST_PP_CAT(method, RequestPB) & req) { \
+    master::BOOST_PP_CAT(method, ResponsePB) resp; \
+    CALL_SYNC_LEADER_MASTER_RPC_EX(service, req, resp, method); \
+    return resp; \
+  }
+
+#define IMPLEMENT_SYNC_LEADER_MASTER_RPC(i, data, set) IMPLEMENT_SYNC_LEADER_MASTER_RPC_IMP set
+
+#define IMPLEMENT_SYNC_LEADER_MASTER_RPCS(rpcs) \
+  BOOST_PP_SEQ_FOR_EACH(IMPLEMENT_SYNC_LEADER_MASTER_RPC, ~, rpcs)
+
 // Adapts between the internal LogSeverity and the client's YBLogSeverity.
 static void LoggingAdapterCB(YBLoggingCallback* user_cb,
                              LogSeverity severity,
@@ -1029,9 +1042,12 @@ std::unique_ptr<YBNamespaceAlterer> YBClient::NewNamespaceAlterer(
 }
 
 Result<vector<NamespaceInfo>> YBClient::ListNamespaces(
-    const boost::optional<YQLDatabase>& database_type) {
+  IncludeNonrunningNamespaces include_nonrunning, std::optional<YQLDatabase> database_type) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
+  if (include_nonrunning) {
+    req.set_include_nonrunning(include_nonrunning);
+  }
   if (database_type) {
     req.set_database_type(*database_type);
   }
@@ -1122,20 +1138,22 @@ Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
   return Status::OK();
 }
 
-Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
-                                       const boost::optional<YQLDatabase>& database_type) {
-  for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.id.name() == namespace_name) {
+Result<bool> YBClient::NamespaceExists(
+    const std::string& NamespaceName, const std::optional<YQLDatabase>& database_type) {
+  for (const auto& ns :
+       VERIFY_RESULT(ListNamespaces(IncludeNonrunningNamespaces::kFalse, database_type))) {
+    if (ns.id.name() == NamespaceName) {
       return true;
     }
   }
   return false;
 }
 
-Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
-                                         const boost::optional<YQLDatabase>& database_type) {
-  for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.id.id() == namespace_id) {
+Result<bool> YBClient::NamespaceIdExists(
+    const std::string& NamespaceId, const std::optional<YQLDatabase>& database_type) {
+  for (const auto& ns :
+       VERIFY_RESULT(ListNamespaces(IncludeNonrunningNamespaces::kFalse, database_type))) {
+    if (ns.id.id() == NamespaceId) {
       return true;
     }
   }
@@ -2778,10 +2796,6 @@ CoarseTimePoint YBClient::PatchAdminDeadline(CoarseTimePoint deadline) const {
   return CoarseMonoClock::Now() + default_admin_operation_timeout();
 }
 
-Result<vector<NamespaceInfo>> YBClient::ListNamespaces() {
-  return ListNamespaces(boost::none);
-}
-
 Result<YBTablePtr> YBClient::OpenTable(const TableId& table_id) {
   YBTablePtr result;
   RETURN_NOT_OK(OpenTable(table_id, &result));
@@ -2888,6 +2902,8 @@ Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
 
   return std::move(resp.service_info());
 }
+
+IMPLEMENT_SYNC_LEADER_MASTER_RPCS(CLIENT_SYNC_LEADER_MASTER_RPC_LIST);
 
 }  // namespace client
 }  // namespace yb

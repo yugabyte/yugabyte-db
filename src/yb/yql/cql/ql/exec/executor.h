@@ -22,6 +22,8 @@
 
 #include <rapidjson/document.h>
 
+#include "yb/ash/wait_state_fwd.h"
+
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
@@ -507,6 +509,7 @@ class Executor : public qlexpr::QLExprExecutor {
 
     Executor* executor_ = nullptr;
     ResetAsyncCalls reset_async_calls_{nullptr};
+    ash::WaitStateInfoPtr wait_state_{nullptr};
   };
 
   class ProcessAsyncResultsTask : public ExecutorTask {

@@ -229,6 +229,10 @@ $$;
 create trigger self_ref_trigger_del_trig before delete on self_ref_trigger
   for each row execute procedure self_ref_trigger_del_func();
 
+create index nonconcurrently on self_ref_trigger (parent asc);
+create index nonconcurrently on self_ref_trigger (data asc);
+create index nonconcurrently on self_ref_trigger (nchildren asc);
+
 insert into self_ref_trigger values (1, null, 'root');
 insert into self_ref_trigger values (2, 1, 'root child A');
 insert into self_ref_trigger values (3, 1, 'root child B');
@@ -236,16 +240,29 @@ insert into self_ref_trigger values (4, 2, 'grandchild 1');
 insert into self_ref_trigger values (5, 3, 'grandchild 2');
 
 update self_ref_trigger set data = 'root!' where id = 1;
+update self_ref_trigger set nchildren = nchildren + 1;
+update self_ref_trigger set nchildren = nchildren - 1;
 
-select * from self_ref_trigger;
+-- Check that all indexes are consistent with the table (see #20648).
+\set ordering ''
+\set query 'SELECT * FROM (select * from self_ref_trigger :ordering LIMIT ALL) ybview ORDER BY id'
+\set run 'EXPLAIN (costs off) :query; :query'
+:run;
+\set ordering 'order by parent'
+:run;
+\set ordering 'order by data'
+:run;
+\set ordering 'order by nchildren'
+:run;
 
 delete from self_ref_trigger where id in (2, 4);
 
-select * from self_ref_trigger;
+\set ordering ''
+:run;
 
 delete from self_ref_trigger;
 
-select * from self_ref_trigger;
+:run;
 
 drop table self_ref_trigger;
 drop function self_ref_trigger_ins_func();

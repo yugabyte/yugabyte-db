@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -581,6 +582,32 @@ public class GFlagsUtil {
               universe.getUniverseDetails().clusters));
     }
 
+    return res.getOrDefault(TMP_DIRECTORY, "/tmp");
+  }
+
+  public static String getCustomTmpDirectory(
+      Universe universe,
+      Cluster cluster,
+      @Nullable UUID azUuid,
+      boolean isMaster,
+      boolean isTserver) {
+    Map<String, String> res = new HashMap<>();
+    if (isMaster) {
+      res.putAll(
+          getGFlagsForAZ(
+              azUuid,
+              UniverseTaskBase.ServerType.MASTER,
+              cluster,
+              universe.getUniverseDetails().clusters));
+    }
+    if (isTserver) {
+      res.putAll(
+          getGFlagsForAZ(
+              azUuid,
+              UniverseTaskBase.ServerType.TSERVER,
+              cluster,
+              universe.getUniverseDetails().clusters));
+    }
     return res.getOrDefault(TMP_DIRECTORY, "/tmp");
   }
 

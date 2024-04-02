@@ -44,7 +44,6 @@
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/snapshot_transfer_manager.h"
-#include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -2569,7 +2568,13 @@ Result<scoped_refptr<UniverseReplicationInfo>>
 CatalogManager::CreateUniverseReplicationInfoForProducer(
     const xcluster::ReplicationGroupId& replication_group_id,
     const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
+    const std::vector<NamespaceId>& producer_namespace_ids,
+    const std::vector<NamespaceId>& consumer_namespace_ids,
     const google::protobuf::RepeatedPtrField<std::string>& table_ids, bool transactional) {
+  SCHECK_EQ(
+      producer_namespace_ids.size(), consumer_namespace_ids.size(), InvalidArgument,
+      "We should have the namespaceIds from both producer and consumer");
+
   scoped_refptr<UniverseReplicationInfo> ri;
   {
     TRACE("Acquired catalog manager lock");
@@ -2577,8 +2582,7 @@ CatalogManager::CreateUniverseReplicationInfoForProducer(
 
     if (FindPtrOrNull(universe_replication_map_, replication_group_id) != nullptr) {
       return STATUS(
-          InvalidArgument, "Producer already present", replication_group_id.ToString(),
-          MasterError(MasterErrorPB::INVALID_REQUEST));
+          AlreadyPresent, "Replication group already present", replication_group_id.ToString());
     }
   }
 
@@ -2588,6 +2592,15 @@ CatalogManager::CreateUniverseReplicationInfoForProducer(
   SysUniverseReplicationEntryPB* metadata = &ri->mutable_metadata()->mutable_dirty()->pb;
   metadata->set_replication_group_id(replication_group_id.ToString());
   metadata->mutable_producer_master_addresses()->CopyFrom(master_addresses);
+
+  if (!producer_namespace_ids.empty()) {
+    auto* db_scoped_info = metadata->mutable_db_scoped_info();
+    for (size_t i = 0; i < producer_namespace_ids.size(); i++) {
+      auto* ns_info = db_scoped_info->mutable_namespace_infos()->Add();
+      ns_info->set_producer_namespace_id(producer_namespace_ids[i]);
+      ns_info->set_consumer_namespace_id(consumer_namespace_ids[i]);
+    }
+  }
   metadata->mutable_tables()->CopyFrom(table_ids);
   metadata->set_state(SysUniverseReplicationEntryPB::INITIALIZING);
   metadata->set_transactional(transactional);
@@ -3092,9 +3105,32 @@ Status CatalogManager::SetupUniverseReplication(
     }
   }
 
+  SCHECK_EQ(
+      req->namespace_names_size(), req->producer_namespace_ids_size(), InvalidArgument,
+      "Incorrect number of namespace names and producer namespace ids");
+
+  std::vector<NamespaceId> producer_namespace_ids, consumer_namespace_ids;
+  for (int i = 0; i < req->namespace_names_size(); ++i) {
+    NamespaceIdentifierPB ns_id;
+    ns_id.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    ns_id.set_name(req->namespace_names(i));
+    auto ns_info = VERIFY_RESULT(FindNamespace(ns_id));
+    consumer_namespace_ids.push_back(ns_info->id());
+    producer_namespace_ids.push_back(req->producer_namespace_ids(i));
+  }
+
+  // We should set the universe uuid even if we fail with AlreadyPresent error.
+  {
+    auto l = ClusterConfig()->LockForRead();
+    if (l->pb.has_universe_uuid()) {
+      resp->set_universe_uuid(l->pb.universe_uuid());
+    }
+  }
+
   auto ri = VERIFY_RESULT(CreateUniverseReplicationInfoForProducer(
       xcluster::ReplicationGroupId(req->replication_group_id()), req->producer_master_addresses(),
-      req->producer_table_ids(), setup_info.transactional));
+      producer_namespace_ids, consumer_namespace_ids, req->producer_table_ids(),
+      setup_info.transactional));
 
   // Initialize the CDC Stream by querying the Producer server for RPC sanity checks.
   auto result = ri->GetOrCreateXClusterRpcTasks(req->producer_master_addresses());
@@ -4239,8 +4275,9 @@ void CatalogManager::MergeUniverseReplication(
           "Updating universe replication entries and cluster config in sys-catalog");
     }
 
-    SyncXClusterConsumerReplicationStatusMap(
-        xcluster::ReplicationGroupId(original_universe->id()), *pm);
+    SyncXClusterConsumerReplicationStatusMap(original_universe->ReplicationGroupId(), *pm);
+    SyncXClusterConsumerReplicationStatusMap(universe->ReplicationGroupId(), *pm);
+
     alter_lock.Commit();
     cl.Commit();
     original_lock.Commit();
@@ -5933,6 +5970,18 @@ Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
   }
 
   return Status::OK();
+}
+
+std::vector<SysUniverseReplicationEntryPB>
+CatalogManager::GetAllXClusterUniverseReplicationInfos() {
+  SharedLock lock(mutex_);
+  std::vector<SysUniverseReplicationEntryPB> result;
+  for (const auto& [_, universe_info] : universe_replication_map_) {
+    auto l = universe_info->LockForRead();
+    result.push_back(l->pb);
+  }
+
+  return result;
 }
 
 // Validate that the given replication slot name is valid.

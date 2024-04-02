@@ -14,24 +14,11 @@ type: docs
 
 Using YugabyteDB Anywhere (YBA), you can deploy YugabyteDB universes on nodes with the following architectures and operating systems.
 
-## Supported CPU architectures
+## Supported operating systems and CPU architectures
 
 YBA supports deploying YugabyteDB on both x86 and ARM (aarch64) architecture-based hardware.
 
-Note that support for ARM architectures is unavailable for airgapped setups, because YBA ARM support for [AWS Graviton](https://aws.amazon.com/ec2/graviton/) requires Internet connectivity.
-
-## Supported operating systems
-
-YBA supports deploying YugabyteDB on the following operating systems:
-
-* AlmaLinux OS 8 (default)
-* CentOS
-* Oracle Linux 7
-* Oracle Linux 8
-* Ubuntu 18
-* Ubuntu 20
-* Red Hat Enterprise Linux 7
-* Red Hat Enterprise Linux 8
+YBA supports deploying YugabyteDB on a variety of [operating systems](../../../reference/configuration/operating-systems/). AlmaLinux OS 8 is used by default.
 
 ### Requirements for all OSes
 

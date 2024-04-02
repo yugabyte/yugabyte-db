@@ -256,11 +256,12 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   protected boolean doWithExponentialTimeout(
-      long minDelayMs, long maxDelayMs, long totalDelayMs, Supplier<Boolean> funct) {
+      long initialDelayMs, long maxDelayMs, long totalDelayMs, Supplier<Boolean> funct) {
     AtomicInteger iteration = new AtomicInteger();
     return doWithModifyingTimeout(
         (prevDelay) ->
-            Util.getExponentialBackoffDelayMs(minDelayMs, maxDelayMs, iteration.getAndIncrement()),
+            Util.getExponentialBackoffDelayMs(
+                initialDelayMs, maxDelayMs, iteration.getAndIncrement()),
         totalDelayMs,
         funct);
   }

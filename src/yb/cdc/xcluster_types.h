@@ -65,4 +65,5 @@ struct XClusterTabletInfo {
 
   const std::string& producer_tablet_id() const { return producer_tablet_info.tablet_id; }
 };
+
 }  // namespace yb::xcluster

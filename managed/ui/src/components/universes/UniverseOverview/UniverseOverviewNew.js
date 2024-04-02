@@ -474,11 +474,14 @@ export default class UniverseOverviewNew extends Component {
 
   getPrimaryClusterWidget = (currentUniverse, isRollBackFeatureEnabled) => {
     const isDedicatedNodes = isDedicatedNodePlacement(currentUniverse);
-
+    
     if (isNullOrEmpty(currentUniverse)) return;
+
+    const clusterWidgetSize = this.hasReadReplica(currentUniverse) ? 3 : 4;
+
     if (isRollBackFeatureEnabled) {
       return (
-        <Col lg={4} sm={8} md={8} xs={12}>
+        <Col lg={clusterWidgetSize} sm={8} md={6} xs={12}>
           <ClusterInfoPanelContainer
             type={'primary'}
             universeInfo={currentUniverse}
@@ -489,7 +492,7 @@ export default class UniverseOverviewNew extends Component {
       );
     } else {
       return isDedicatedNodes ? (
-        <Col lg={4} sm={8} md={8} xs={12}>
+        <Col lg={clusterWidgetSize} sm={8} md={6} xs={12}>
           <ClusterInfoPanelContainer
             type={'primary'}
             universeInfo={currentUniverse}
@@ -498,7 +501,7 @@ export default class UniverseOverviewNew extends Component {
           />
         </Col>
       ) : (
-        <Col lg={4} sm={6} md={4} xs={8}>
+        <Col lg={clusterWidgetSize} sm={6} md={6} xs={12}>
           <ClusterInfoPanelContainer
             type={'primary'}
             universeInfo={currentUniverse}
@@ -513,7 +516,7 @@ export default class UniverseOverviewNew extends Component {
   getReadReplicaClusterWidget = (currentUniverse) => {
     if (isNullOrEmpty(currentUniverse)) return;
     return (
-      <Col lg={2} sm={6} md={4} xs={8}>
+      <Col lg={3} sm={6} md={6} xs={12}>
         <ClusterInfoPanelContainer
           type={'read-replica'}
           universeInfo={currentUniverse}

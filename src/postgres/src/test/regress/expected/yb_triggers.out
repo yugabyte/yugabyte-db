@@ -338,33 +338,118 @@ end;
 $$;
 create trigger self_ref_trigger_del_trig before delete on self_ref_trigger
   for each row execute procedure self_ref_trigger_del_func();
+create index nonconcurrently on self_ref_trigger (parent asc);
+create index nonconcurrently on self_ref_trigger (data asc);
+create index nonconcurrently on self_ref_trigger (nchildren asc);
 insert into self_ref_trigger values (1, null, 'root');
 insert into self_ref_trigger values (2, 1, 'root child A');
 insert into self_ref_trigger values (3, 1, 'root child B');
 insert into self_ref_trigger values (4, 2, 'grandchild 1');
 insert into self_ref_trigger values (5, 3, 'grandchild 2');
 update self_ref_trigger set data = 'root!' where id = 1;
-select * from self_ref_trigger;
+update self_ref_trigger set nchildren = nchildren + 1;
+update self_ref_trigger set nchildren = nchildren - 1;
+-- Check that all indexes are consistent with the table (see #20648).
+\set ordering ''
+\set query 'SELECT * FROM (select * from self_ref_trigger :ordering LIMIT ALL) ybview ORDER BY id'
+\set run 'EXPLAIN (costs off) :query; :query'
+:run;
+             QUERY PLAN
+------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Seq Scan on self_ref_trigger
+(3 rows)
+
  id | parent |     data     | nchildren
 ----+--------+--------------+-----------
-  5 |      3 | grandchild 2 |         0
   1 |        | root!        |         2
-  4 |      2 | grandchild 1 |         0
   2 |      1 | root child A |         1
   3 |      1 | root child B |         1
+  4 |      2 | grandchild 1 |         0
+  5 |      3 | grandchild 2 |         0
+(5 rows)
+
+\set ordering 'order by parent'
+:run;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Index Scan using self_ref_trigger_parent_idx on self_ref_trigger
+(3 rows)
+
+ id | parent |     data     | nchildren
+----+--------+--------------+-----------
+  1 |        | root!        |         2
+  2 |      1 | root child A |         1
+  3 |      1 | root child B |         1
+  4 |      2 | grandchild 1 |         0
+  5 |      3 | grandchild 2 |         0
+(5 rows)
+
+\set ordering 'order by data'
+:run;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Index Scan using self_ref_trigger_data_idx on self_ref_trigger
+(3 rows)
+
+ id | parent |     data     | nchildren
+----+--------+--------------+-----------
+  1 |        | root!        |         2
+  2 |      1 | root child A |         1
+  3 |      1 | root child B |         1
+  4 |      2 | grandchild 1 |         0
+  5 |      3 | grandchild 2 |         0
+(5 rows)
+
+\set ordering 'order by nchildren'
+:run;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Index Scan using self_ref_trigger_nchildren_idx on self_ref_trigger
+(3 rows)
+
+ id | parent |     data     | nchildren
+----+--------+--------------+-----------
+  1 |        | root!        |         2
+  2 |      1 | root child A |         1
+  3 |      1 | root child B |         1
+  4 |      2 | grandchild 1 |         0
+  5 |      3 | grandchild 2 |         0
 (5 rows)
 
 delete from self_ref_trigger where id in (2, 4);
-select * from self_ref_trigger;
+\set ordering ''
+:run;
+             QUERY PLAN
+------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Seq Scan on self_ref_trigger
+(3 rows)
+
  id | parent |     data     | nchildren
 ----+--------+--------------+-----------
-  5 |      3 | grandchild 2 |         0
   1 |        | root!        |         1
   3 |      1 | root child B |         1
+  5 |      3 | grandchild 2 |         0
 (3 rows)
 
 delete from self_ref_trigger;
-select * from self_ref_trigger;
+:run;
+             QUERY PLAN
+------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Seq Scan on self_ref_trigger
+(3 rows)
+
  id | parent | data | nchildren
 ----+--------+------+-----------
 (0 rows)
@@ -452,7 +537,7 @@ RESET SESSION AUTHORIZATION;
 -- Verify trigger was run
 INSERT INTO foo VALUES (0);
 SELECT * from bar;
- b 
+ b
 ---
  1
 (1 row)

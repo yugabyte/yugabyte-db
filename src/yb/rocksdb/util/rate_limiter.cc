@@ -23,6 +23,8 @@
 
 #include <iomanip>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rocksdb/util/rate_limiter.h"
@@ -108,6 +110,7 @@ void GenericRateLimiter::Request(int64_t bytes, const yb::IOPriority priority) {
   assert(bytes <= refill_bytes_per_period_.load(std::memory_order_relaxed));
 
   const auto pri = yb::to_underlying(priority);
+  SCOPED_WAIT_STATUS(RocksDB_RateLimiter);
 
   MutexLock g(&request_mutex_);
   if (stop_) {

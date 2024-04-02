@@ -11,7 +11,8 @@ import {
   YBInput,
   YBInputField,
   YBRadioGroupField,
-  YBToggleField
+  YBToggleField,
+  OptionProps
 } from '../../../../../redesign/components';
 import { YBButton } from '../../../../common/forms/fields';
 import {
@@ -61,6 +62,7 @@ import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
+import { YBAHost } from '../../../../../redesign/helpers/constants';
 
 import {
   AZUAvailabilityZone,
@@ -71,16 +73,26 @@ import {
   ImageBundle,
   YBProviderMutation
 } from '../../types';
-import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
+import { getYBAHost } from '../../utils';
+import { hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 
 interface AZUProviderEditFormProps {
   editProvider: EditProvider;
   linkedUniverses: UniverseItem[];
   providerConfig: AZUProvider;
+}
+
+enum ProviderCredentialType {
+  HOST_INSTANCE_MI = 'hostInstanceMI',
+  SPECIFIED_SERVICE_PRINCIPAL = 'specifiedServicePrincipal'
 }
 
 export interface AZUProviderEditFormFieldValues {
@@ -105,6 +117,8 @@ export interface AZUProviderEditFormFieldValues {
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
+  providerCredentialType: ProviderCredentialType;
+  editClientSecret: boolean;
 }
 
 const VALIDATION_SCHEMA = object().shape({
@@ -115,7 +129,19 @@ const VALIDATION_SCHEMA = object().shape({
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
   azuClientId: string().required('Azure Client ID is required.'),
-  azuClientSecret: string().required('Azure Client Secret is required.'),
+  azuClientSecret: mixed().test({
+    test: (value, context) => {
+      if (
+        context.parent.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL
+      ) {
+        if (!value) {
+          return false;
+        }
+      }
+      return true;
+    },
+    message: 'Azure Client Secret is required.'
+  }),
   azuRG: string().required('Azure Resource Group is required.'),
   azuSubscriptionId: string().required('Azure Subscription ID is required.'),
   azuTenantId: string().required('Azure Tenant ID is required.'),
@@ -171,13 +197,17 @@ export const AZUProviderEditForm = ({
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
+  const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
+  if (hostInfoQuery.isError) {
+    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+  }
   if (customerRuntimeConfigQuery.isError) {
     return (
       <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
     );
   }
-  if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
+  if (hostInfoQuery.isLoading || customerRuntimeConfigQuery.isLoading) {
     return <YBLoading />;
   }
 
@@ -235,12 +265,26 @@ export const AZUProviderEditForm = ({
   const onDeleteRegionSubmit = (currentRegion: CloudVendorRegionField) =>
     deleteItem(currentRegion, regions, setRegions);
 
+  const credentialOptions: OptionProps[] = [
+    {
+      value: ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
+      label: 'Specify Client Secret'
+    },
+    {
+      value: ProviderCredentialType.HOST_INSTANCE_MI,
+      label: `Use Managed Identity from this YBA host's instance`,
+      disabled: hostInfoQuery.data === undefined || getYBAHost(hostInfoQuery.data) !== YBAHost.AZU
+    }
+  ];
+
   const currentProviderVersion = formMethods.watch('version', defaultValues.version);
   const keyPairManagement = formMethods.watch('sshKeypairManagement');
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
   const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
+  const providerCredentialType = formMethods.watch('providerCredentialType');
+  const editClientSecret = formMethods.watch('editClientSecret', defaultValues.editClientSecret);
   /**
    * In use zones for selected region.
    */
@@ -253,7 +297,8 @@ export const AZUProviderEditForm = ({
   const isProviderInUse = linkedUniverses.length > 0;
   const isFormDisabled =
     (!isEditInUseProviderEnabled && isProviderInUse) ||
-    getIsFormDisabled(formMethods.formState, providerConfig);
+    getIsFormDisabled(formMethods.formState, providerConfig) ||
+    !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -293,19 +338,68 @@ export const AZUProviderEditForm = ({
                 />
               </FormField>
               <FormField>
-                <FieldLabel>Client Secret</FieldLabel>
-                <YBInputField
+                <FieldLabel
+                  infoTitle="Credential Type"
+                  infoContent="For public cloud providers, YBA creates compute instances and therefore requires sufficient permissions to do so."
+                >
+                  Credential Type
+                </FieldLabel>
+                <YBRadioGroupField
+                  name="providerCredentialType"
                   control={formMethods.control}
-                  name="azuClientSecret"
-                  disabled={getIsFieldDisabled(
+                  options={credentialOptions}
+                  orientation={RadioGroupOrientation.HORIZONTAL}
+                  isDisabled={getIsFieldDisabled(
                     ProviderCode.AZU,
-                    'azuClientSecret',
+                    'providerCredentialType',
                     isFormDisabled,
                     isProviderInUse
                   )}
-                  fullWidth
                 />
               </FormField>
+              {providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && (
+                <>
+                  <FormField>
+                    <FieldLabel>Current Client Secret</FieldLabel>
+                    <YBInput
+                      value={providerConfig.details.cloudInfo.azu.azuClientSecret}
+                      disabled={true}
+                      fullWidth
+                    />
+                  </FormField>
+                  <FormField>
+                    <FieldLabel>Change AZU Credentials</FieldLabel>
+                    <YBToggleField
+                      name="editClientSecret"
+                      control={formMethods.control}
+                      disabled={getIsFieldDisabled(
+                        ProviderCode.AZU,
+                        'editClientSecret',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
+                    />
+                  </FormField>
+                  {editClientSecret && (
+                    <>
+                      <FormField>
+                        <FieldLabel>Client Secret</FieldLabel>
+                        <YBInputField
+                          control={formMethods.control}
+                          name="azuClientSecret"
+                          disabled={getIsFieldDisabled(
+                            ProviderCode.AZU,
+                            'azuClientSecret',
+                            isFormDisabled,
+                            isProviderInUse
+                          )}
+                          fullWidth
+                        />
+                      </FormField>
+                    </>
+                  )}
+                </>
+              )}
               <FormField>
                 <FieldLabel>Resource Group</FieldLabel>
                 <YBInputField
@@ -395,10 +489,7 @@ export const AZUProviderEditForm = ({
               heading="Regions"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -442,7 +533,12 @@ export const AZUProviderEditForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
-            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.azu} viewMode='EDIT' providerStatus={providerConfig.usabilityState} />
+            <LinuxVersionCatalog
+              control={formMethods.control as any}
+              providerType={CloudType.azu}
+              viewMode="EDIT"
+              providerStatus={providerConfig.usabilityState}
+            />
             <FieldGroup heading="SSH Key Pairs">
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
@@ -604,7 +700,10 @@ export const AZUProviderEditForm = ({
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
-              onClick={onFormReset}
+              onClick={(e: any) => {
+                onFormReset();
+                e.currentTarget.blur();
+              }}
               disabled={isFormDisabled}
               data-testid={`${FORM_NAME}-ClearButton`}
             />
@@ -671,7 +770,11 @@ const constructDefaultFormValues = (
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
   sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
-  version: providerConfig.version
+  version: providerConfig.version,
+  providerCredentialType: providerConfig.details.cloudInfo.azu.azuClientSecret
+    ? ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL
+    : ProviderCredentialType.HOST_INSTANCE_MI,
+  editClientSecret: false
 });
 
 const constructProviderPayload = async (
@@ -715,7 +818,12 @@ const constructProviderPayload = async (
       cloudInfo: {
         [ProviderCode.AZU]: {
           azuClientId: formValues.azuClientId,
-          azuClientSecret: formValues.azuClientSecret,
+          ...(formValues.providerCredentialType ===
+            ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && {
+            azuClientSecret: formValues.editClientSecret
+              ? formValues.azuClientSecret
+              : providerConfig.details.cloudInfo.azu.azuClientSecret
+          }),
           ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,
           ...(formValues.azuNetworkRG && { azuNetworkRG: formValues.azuNetworkRG }),

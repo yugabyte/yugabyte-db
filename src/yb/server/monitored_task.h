@@ -84,7 +84,8 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kTryStepDown)
   (kUpdateTransactionTablesVersion)
   (kAddTableToXClusterTarget)
-  (kMarkTableAsRunning));
+  (kMarkTableAsRunning)
+  (kAddTableToXClusterSource));
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:
@@ -132,6 +133,8 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   std::atomic<MonoTime> start_timestamp_, completion_timestamp_;
   std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
 };
+
+using MonitoredTaskPtr = std::shared_ptr<MonitoredTask>;
 
 class RunnableMonitoredTask : public MonitoredTask {
  public:

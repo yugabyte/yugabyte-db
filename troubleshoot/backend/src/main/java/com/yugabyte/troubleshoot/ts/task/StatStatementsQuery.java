@@ -14,6 +14,7 @@ import com.yugabyte.troubleshoot.ts.yba.client.YBAClient;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClientError;
 import com.yugabyte.troubleshoot.ts.yba.models.RunQueryResult;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
@@ -256,16 +257,24 @@ public class StatStatementsQuery {
         nodeResult.getQueries().put(key, new QueryData(dbName, queryText));
         JsonNode previousStats = queryLastStats.get(key);
         if (previousStats != null) {
+          Instant oldTimestamp =
+              OffsetDateTime.parse(previousStats.get(TIMESTAMP).textValue(), TIMESTAMP_FORMAT)
+                  .toInstant();
+          Instant newTimestamp =
+              OffsetDateTime.parse(statsJson.get(TIMESTAMP).textValue(), TIMESTAMP_FORMAT)
+                  .toInstant();
           PgStatStatements statStatements =
               new PgStatStatements()
                   .setUniverseId(metadata.getId())
                   .setNodeName(node.getNodeName())
-                  .setActualTimestamp(
-                      OffsetDateTime.parse(statsJson.get(TIMESTAMP).textValue(), TIMESTAMP_FORMAT)
-                          .toInstant())
+                  .setActualTimestamp(newTimestamp)
                   .setScheduledTimestamp(Instant.ofEpochMilli(progress.scheduleTimestamp))
                   .setQueryId(statsJson.get(QUERY_ID).asLong());
-          fillStats(previousStats, statsJson, statStatements);
+          fillStats(
+              previousStats,
+              statsJson,
+              Duration.between(oldTimestamp, newTimestamp),
+              statStatements);
           statStatementsList.add(statStatements);
         }
         queryLastStats.put(key, statsJson);
@@ -283,25 +292,28 @@ public class StatStatementsQuery {
     return new NodeProcessResult(false);
   }
 
-  private void fillStats(JsonNode oldValue, JsonNode newValue, PgStatStatements stats)
+  private void fillStats(
+      JsonNode oldValue, JsonNode newValue, Duration duration, PgStatStatements stats)
       throws IOException {
+
     long oldCalls = oldValue.get(CALLS).asLong();
     long newCalls = newValue.get(CALLS).asLong();
     double oldTime = oldValue.get(TOTAL_TIME).asDouble();
     double newTime = newValue.get(TOTAL_TIME).asDouble();
     long oldRows = oldValue.get(ROWS).asLong();
     long newRows = newValue.get(ROWS).asLong();
-
+    long calls = newCalls;
     Map<String, Long> oldHistogramMap = new HashMap<>();
     if (newCalls < oldCalls || newTime < oldTime || newRows < oldRows) {
       // This is stats reset scenario
-      stats.setCalls(newCalls);
-      stats.setRows(newRows);
+      stats.setRps((double) newCalls / duration.toSeconds());
+      stats.setRowsAvg((double) newRows / newCalls);
       stats.setAvgLatency(newTime / newCalls);
     } else {
-      stats.setCalls(newCalls - oldCalls);
-      stats.setRows(newRows - oldRows);
-      stats.setAvgLatency((newTime - oldTime) / stats.getCalls());
+      calls = newCalls - oldCalls;
+      stats.setRps((double) (newCalls - oldCalls) / duration.toSeconds());
+      stats.setRowsAvg((double) (newRows - oldRows) / calls);
+      stats.setAvgLatency((newTime - oldTime) / calls);
       // Only read old values in case it's not a reset
       if (oldValue.has(YB_LATENCY_HISTOGRAM)) {
         List<HistogramInterval> oldHistogram = readHistogram(oldValue);
@@ -318,20 +330,20 @@ public class StatStatementsQuery {
       Double upperBound =
           Double.valueOf(bounds.substring(bounds.indexOf(',') + 1, bounds.indexOf(')')));
       callsCount += (histogramInterval.count - oldHistogramMap.getOrDefault(bounds, 0L));
-      if (stats.getMeanLatency() == null && callsCount >= stats.getCalls() * 0.5) {
+      if (stats.getMeanLatency() == null && callsCount >= calls * 0.5) {
         stats.setMeanLatency(upperBound);
       }
-      if (stats.getP90Latency() == null && callsCount >= stats.getCalls() * 0.9) {
+      if (stats.getP90Latency() == null && callsCount >= calls * 0.9) {
         stats.setP90Latency(upperBound);
       }
-      if (stats.getP99Latency() == null && callsCount >= stats.getCalls() * 0.99) {
+      if (stats.getP99Latency() == null && callsCount >= calls * 0.99) {
         stats.setP99Latency(upperBound);
       }
-      if (callsCount == stats.getCalls()) {
+      if (callsCount == calls) {
         stats.setMaxLatency(upperBound);
       }
     }
-    if (callsCount > stats.getCalls()) {
+    if (callsCount > calls) {
       log.warn(
           "Histogram value is not consistent with calls count. stats: {}, histogtam: {}",
           stats,

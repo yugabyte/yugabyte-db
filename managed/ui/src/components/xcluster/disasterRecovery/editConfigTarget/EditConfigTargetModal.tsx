@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { Typography } from '@material-ui/core';
 import { AxiosError } from 'axios';
 import { useState } from 'react';
@@ -8,7 +9,6 @@ import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
 
 import { CurrentFormStep } from './CurrentFormStep';
-import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import { Universe } from '../../../../redesign/helpers/dtos';
 import { YBErrorIndicator } from '../../../common/indicators';
 import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
@@ -29,7 +29,6 @@ interface EditConfigTargetModalProps {
 
 export interface EditConfigTargetFormValues {
   targetUniverse: { label: string; value: Universe };
-  storageConfig: StorageConfigOption;
 }
 
 export const FormStep = {
@@ -61,12 +60,7 @@ export const EditConfigTargetModal = ({
     (formValues: EditConfigTargetFormValues) => {
       const replaceDrReplicaRequest: ReplaceDrReplicaRequest = {
         primaryUniverseUuid: drConfig.primaryUniverseUuid ?? '',
-        drReplicaUniverseUuid: formValues.targetUniverse.value.universeUUID,
-        bootstrapParams: {
-          backupRequestParams: {
-            storageConfigUUID: formValues.storageConfig.value.uuid
-          }
-        }
+        drReplicaUniverseUuid: formValues.targetUniverse.value.universeUUID
       };
       return api.replaceDrReplica(drConfig.uuid, replaceDrReplicaRequest);
     },
@@ -111,7 +105,10 @@ export const EditConfigTargetModal = ({
     }
   );
 
-  if (drConfig.primaryUniverseUuid === undefined) {
+  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
+    const i18nKey = drConfig.primaryUniverseUuid
+      ? 'undefinedDrReplicaUniveresUuid'
+      : 'undefinedDrPrimaryUniveresUuid';
     return (
       <YBModal
         title={t('title')}
@@ -119,7 +116,9 @@ export const EditConfigTargetModal = ({
         cancelTestId={`${MODAL_NAME}-CancelButton`}
         {...modalProps}
       >
-        <YBErrorIndicator customErrorMessage="The DR primary universe is not defined for this DR configuration." />
+        <YBErrorIndicator
+          customErrorMessage={t(i18nKey, { keyPrefix: 'clusterDetail.disasterRecovery.error' })}
+        />
       </YBModal>
     );
   }
@@ -182,8 +181,10 @@ export const EditConfigTargetModal = ({
       <FormProvider {...formMethods}>
         <CurrentFormStep
           currentFormStep={currentFormStep}
-          sourceUniverseUUID={drConfig.primaryUniverseUuid}
+          sourceUniverseUuid={drConfig.primaryUniverseUuid}
+          targetUniverseUuid={drConfig.drReplicaUniverseUuid}
           isFormDisabled={isFormDisabled}
+          storageConfigUuid={drConfig.bootstrapParams.backupRequestParams.storageConfigUUID}
         />
       </FormProvider>
     </YBModal>

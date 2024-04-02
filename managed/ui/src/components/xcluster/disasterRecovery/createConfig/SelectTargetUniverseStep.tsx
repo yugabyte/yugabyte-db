@@ -130,9 +130,8 @@ export const SelectTargetUniverseStep = ({
             maxWidth="100%"
             rules={{
               validate: {
-                required: (targetUniverse: { label: string; value: Universe }) =>
-                  !!targetUniverse || t('error.targetUniverseRequired'),
-                hasMatchingTLSConfiguration: (targetUniverse: { label: string; value: Universe }) =>
+                required: (targetUniverse) => !!targetUniverse || t('error.targetUniverseRequired'),
+                hasMatchingTLSConfiguration: (targetUniverse: any) =>
                   getPrimaryCluster(targetUniverse.value.universeDetails.clusters)?.userIntent
                     ?.enableNodeToNodeEncrypt ===
                     getPrimaryCluster(sourceUniverse.universeDetails.clusters)?.userIntent

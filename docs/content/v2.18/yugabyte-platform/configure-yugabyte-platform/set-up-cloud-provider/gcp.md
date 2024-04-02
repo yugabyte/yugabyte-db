@@ -128,7 +128,23 @@ Navigate to **Configs > Infrastructure > Google Cloud Platform** to see a list o
 
 To view a provider, select it in the list of GCP Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YBA version 2.18.5, depending on whether the provider has been used to create a universe, you can only edit a subset of fields such as the following:
+
+- Provider Name
+- Credential Type. You can upload a new Google Service Account JSON file (`gceApplicationCredentials`). Note that the `project_id` field can't have a new entry. For example:
+
+    ```json
+    {
+      "type": "service_account",
+      "project_id": "new-project-yb",
+       ...
+    }
+    ```
+
+    If `new-project-yb` is a new GCE project, the backend request fails and you will be notified that you can't change the GCE project for an in-use provider.
+
+- Regions - You can add regions and zones to an in-use provider.
+Note that you cannot edit existing region details, or delete a region if any of the region's zones are in use. You also cannot delete zones which are in-use.
 
 To view the universes created using the provider, select **Universes**.
 

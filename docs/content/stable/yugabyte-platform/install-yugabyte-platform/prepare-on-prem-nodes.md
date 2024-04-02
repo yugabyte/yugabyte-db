@@ -43,8 +43,8 @@ For more information on ports used by YugabyteDB, refer to [Default ports](../..
 
 You can prepare nodes for on-premises deployment, as follows:
 
-1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/preview/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/preview/deploy/checklist/#public-clouds).
-1. Install the prerequisites and verify the system resource limits, as described in [system configuration](/preview/deploy/manual-deployment/system-config).
+1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](../../../deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](../../../deploy/checklist/#public-clouds).
+1. Install the prerequisites and verify the system resource limits, as described in [system configuration](../../../deploy/manual-deployment/system-config).
 1. Ensure you have SSH access to the server and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
 1. Execute the following command to verify that you can `ssh` into this node (from your local machine if the node has a public address):
 
@@ -59,7 +59,7 @@ The following actions are performed with sudo access:
 * Create the `prometheus:prometheus` user and group.
 
   {{< tip title="Tip" >}}
-If you are using the LDAP directory for managing system users, you can preprovision Yugabyte and Prometheus users, as follows:
+If you are using the LDAP directory for managing system users, you can pre-provision Yugabyte and Prometheus users, as follows:
 
 * Ensure that the `yugabyte` user belongs to the `yugabyte` group.
 
@@ -113,7 +113,7 @@ By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB
 
 To upload the Tectia license, manually copy it at `${storage_path}/yugaware/data/licenses/<license.txt>`, where *storage_path* is the path provided during the Replicated installation.
 
-Once the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
+After the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
 
 ```shell
 curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ssh2_enabled'

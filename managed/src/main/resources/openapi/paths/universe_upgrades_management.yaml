@@ -1,0 +1,41 @@
+'/customers/{cUUID}/universes/{uniUUID}/upgrade/gflags':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: upgradeGFlags
+    summary: Upgrade GFlags
+    description: 'Queues a task to perform GFlags upgrade in a universe. The input set of GFlags will replace any existing GFlags in the universe. Refer [YB-Master configuration flags](https://docs.yugabyte.com/preview/reference/configuration/yb-master/#configuration-flags) and [YB-TServer configuration flags](https://docs.yugabyte.com/preview/reference/configuration/yb-tserver/#configuration-flags).'
+    tags:
+      - Universe Upgrades Management
+    requestBody:
+      $ref: ../components/requestBodies/UpgradeGFlagsParams.yaml
+    responses:
+      '202':
+        description: successful operation
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas/YBPTask.yaml
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []

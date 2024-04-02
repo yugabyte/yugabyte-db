@@ -2293,6 +2293,63 @@ tserver_async_replication_lag_micros:
         "async_replication_sent_lag_micros": "Sent Lag"
         "async_replication_committed_lag_micros": "Committed Lag"
 
+cdcsdk_sent_lag_micros:
+  metric: "cdcsdk_sent_lag_micros"
+  operator: "/ 1000"
+  function: "max by (saved_name)"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Lag"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;ms"
+      alias:
+        "cdcsdk_sent_lag_micros": "Current Lag"
+
+
+cdcsdk_expiry_time_mins:
+  metric: "cdcsdk_expiry_time_ms"
+  function: "min by (saved_name)"
+  operator: "/ 60000"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Expiry Time"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;min(s)"
+      alias:
+        "cdcsdk_expiry_time_ms": "Expiry Time"
+
+cdcsdk_change_event_count:
+  metric: "cdcsdk_change_event_count"
+  function: "rate|sum by (saved_name)"
+  range: true
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Messages Emitted"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "cdcsdk_change_event_count": "Messages Emitted"
+
+cdcsdk_traffic_sent:
+  metric: "cdcsdk_traffic_sent"
+  operator: "/ 1048576"
+  function: "rate|sum by (saved_name)"
+  range: true
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Messages Emitted Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;MB"
+      alias:
+        "cdcsdk_traffic_sent": "Messages Emitted size"
+
 async_replication_sent_lag:
   metric: "async_replication_sent_lag_micros"
   operator: "/ 1000"

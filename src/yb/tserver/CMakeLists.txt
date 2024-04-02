@@ -306,6 +306,7 @@ ADD_YB_LIBRARY(yb-tserver_util
 set(TSERVER_MAIN_DEPS
     tserver
     yb-tserver_util
+    yb_ash
     yb-cql
     yb-redis
     yb_process_wrapper
