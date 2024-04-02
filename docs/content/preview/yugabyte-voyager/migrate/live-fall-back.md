@@ -39,29 +39,29 @@ The following illustration describes the workflow for live migration using YB Vo
 
 ![fall-back-workflow](/images/migrate/fall-back-workflow-new.png)
 
-| Step | Description |
-| :--- | :---|
-| [Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
-| [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ and WRITE (for fall-back) access to all the resources to be migrated. |
-| [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with necessary privileges. |
-| [Export](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
-| [Analyze](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
-| [Modify](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
-| [Import](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
-| Start | Start the phases: export data first, followed by import data to target and archive changes simultaneously. |
-| [Export data](#export-data-from-source) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
-| [Import data](#import-data-to-target) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
-| [Import&nbsp;indexes&nbsp;and triggers to target DB](#import-indexes-and-triggers) | After the snapshot import is complete, import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
-| [Archive changes](#archive-changes-optional) | Continuously archive migration changes to limit disk utilization. |
-| [Initiate cutover and prepare for fall-back to target DB](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
-| [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
-| [Verify target DB](#cutover-to-the-target) | Check if the live migration is successful on both the source and the target databases. |
-| [(Manual) Disable triggers and foreign keys on source DB](#cutover-to-the-target) | Run PL/SQL commands to ensure that triggers and foreign key checks are disabled so the data can be imported correctly from the target YugabyteDB database to the source database.  |
-| [Initiate cutover to source](#cutover-to-the-source-optional) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your target YugabyteDB database, allow all the remaining changes to be applied on the source database, and then restart your applications pointing to the source database. |
-| [Wait for cutover to complete](#cutover-to-the-source-optional) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
-| [(Manual) Re-enable&nbsp;triggers&nbsp;and&nbsp;foreign keys on source DB](#cutover-to-the-source-optional) | Run PL/SQL commands to re-enable the triggers and foreign keys on the source database.  |
-| [Verify source DB](#cutover-to-the-source-optional) | Check if the live migration is successful on both the source and the target databases. |
-| [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source and target). |
+| Phase | Step | Description |
+| :---- | :--- | :---|
+| PREPARE | [Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
+| | [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ and WRITE (for fall-back) access to all the resources to be migrated. |
+| | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with necessary privileges. |
+| SCHEMA | [Export](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
+| | [Analyze](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
+| | [Modify](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
+| | [Import](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
+| LIVE MIGRATION | Start | Start the phases: export data first, followed by import data to target and archive changes simultaneously. |
+| | [Export data](#export-data-from-source) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
+| | [Import data](#import-data-to-target) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
+| | [Import indexes and triggers to target DB](#import-indexes-and-triggers) | After the snapshot import is complete, import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
+| | [Archive changes](#archive-changes-optional) | Continuously archive migration changes to limit disk utilization. |
+| CUTOVER TO TARGET | [Initiate cutover and prepare for fall-back to target DB](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
+| | [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
+| | [Verify target DB](#cutover-to-the-target) | Check if the live migration is successful on both the source and the target databases. |
+| | [(Manual) Disable triggers and foreign keys on source DB](#cutover-to-the-target) | Run PL/SQL commands to ensure that triggers and foreign key checks are disabled so the data can be imported correctly from the target YugabyteDB database to the source database.  |
+| (OPTIONAL) CUTOVER TO SOURCE | [Initiate cutover to source](#cutover-to-the-source-optional) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your target YugabyteDB database, allow all the remaining changes to be applied on the source database, and then restart your applications pointing to the source database. |
+| | [Wait for cutover to complete](#cutover-to-the-source-optional) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
+| | [(Manual) Re-enable triggers and foreign keys on source DB](#cutover-to-the-source-optional) | Run PL/SQL commands to re-enable the triggers and foreign keys on the source database.  |
+| | [Verify source DB](#cutover-to-the-source-optional) | Check if the live migration is successful on both the source and the target databases. |
+| END | [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source and target). |
 
 Before proceeding with migration, ensure that you have completed the following steps:
 
