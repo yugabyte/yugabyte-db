@@ -15,6 +15,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/monotime.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
@@ -607,7 +608,7 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
   ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
 
   auto session_1 = ASSERT_RESULT(Init("foo", "1"));
-  auto init_micros = ASSERT_RESULT(conn.FetchRow<int64_t>(
+  auto init_stamp = ASSERT_RESULT(conn.FetchRow<MonoDelta>(
       "SELECT DISTINCT(waitend) FROM pg_locks WHERE granted"));
 
   auto status_future_write_req = std::async(std::launch::async, [&]() -> Status {
@@ -627,23 +628,27 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
 
 
   SleepFor(2ms * FLAGS_heartbeat_interval_ms * kTimeMultiplier);
-  auto now_micros = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT NOW()"));
+  auto now_stamp = ASSERT_RESULT(conn.FetchRow<MonoDelta>("SELECT NOW()"));
 
   auto wait_start_time_1_query =
       "SELECT DISTINCT(waitstart) FROM pg_locks WHERE NOT granted ORDER BY waitstart LIMIT 1";
-  auto wait_start_time_1 = ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_1_query));
-  ASSERT_LE(init_micros, wait_start_time_1);
-  ASSERT_GE(now_micros, wait_start_time_1);
+  auto wait_start_time_1 =
+      ASSERT_RESULT(conn.FetchRow<MonoDelta>(wait_start_time_1_query));
+  ASSERT_LE(init_stamp, wait_start_time_1);
+  ASSERT_GE(now_stamp, wait_start_time_1);
 
   auto wait_start_time_2_query =
       "SELECT DISTINCT(waitstart) FROM pg_locks WHERE NOT granted ORDER BY waitstart DESC LIMIT 1";
-  auto wait_start_time_2 = ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_2_query));
-  ASSERT_LE(init_micros, wait_start_time_2);
-  ASSERT_GE(now_micros, wait_start_time_2);
+  auto wait_start_time_2 =
+      ASSERT_RESULT(conn.FetchRow<MonoDelta>(wait_start_time_2_query));
+  ASSERT_LE(init_stamp, wait_start_time_2);
+  ASSERT_GE(now_stamp, wait_start_time_2);
 
   SleepFor(2 * waiter_refresh_secs * 1s * kTimeMultiplier);
-  ASSERT_EQ(wait_start_time_1, ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_1_query)));
-    ASSERT_EQ(wait_start_time_2, ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_2_query)));
+  ASSERT_EQ(wait_start_time_1,
+            ASSERT_RESULT(conn.FetchRow<MonoDelta>(wait_start_time_1_query)));
+  ASSERT_EQ(wait_start_time_2,
+            ASSERT_RESULT(conn.FetchRow<MonoDelta>(wait_start_time_2_query)));
   ASSERT_OK(session_1.conn->CommitTransaction());
   ASSERT_OK(status_future_write_req.get());
   ASSERT_OK(status_future_read_req.get());
@@ -728,33 +733,33 @@ TEST_F(PgGetLockStatusTestRF3, TestLocksOfSingleShardWaiters) {
   // When we set max num txns to 1, the distributed transaction should get prioritized over
   // the single shard waiters.
   ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=1"));
-  auto num_txns = ASSERT_RESULT(setup_conn.FetchRow<int64>(
+  auto num_txns = ASSERT_RESULT(setup_conn.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_locks WHERE fastpath"));
   ASSERT_EQ(num_txns, 0);
 
   ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=10"));
-  num_txns = ASSERT_RESULT(setup_conn.FetchRow<int64>(
+  num_txns = ASSERT_RESULT(setup_conn.FetchRow<PGUint64>(
       "SELECT COUNT(DISTINCT(waitstart)) FROM pg_locks WHERE fastpath"));
   ASSERT_EQ(num_txns, 2);
   // Assert that the single shard txns are waiting for locks.
-  num_txns = ASSERT_RESULT(setup_conn.FetchRow<int64>(
+  num_txns = ASSERT_RESULT(setup_conn.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_locks WHERE fastpath AND granted"));
   ASSERT_EQ(num_txns, 0);
 
-  auto waiter1_start_time = ASSERT_RESULT(setup_conn.FetchRow<int64>(
+  auto waiter1_start_time = ASSERT_RESULT(setup_conn.FetchRow<MonoDelta>(
       "SELECT waitstart FROM pg_locks WHERE fastpath order by waitstart limit 1"));
   // Now limit the results to just 1 single shard waiter and see that the older one is prioritized.
   ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=2"));
-  num_txns = ASSERT_RESULT(setup_conn.FetchRow<int64>(
+  num_txns = ASSERT_RESULT(setup_conn.FetchRow<PGUint64>(
       "SELECT COUNT(DISTINCT(waitstart)) FROM pg_locks WHERE fastpath"));
   ASSERT_EQ(num_txns, 1);
-  ASSERT_EQ(waiter1_start_time, ASSERT_RESULT(setup_conn.FetchRow<int64>(
+  ASSERT_EQ(waiter1_start_time, ASSERT_RESULT(setup_conn.FetchRow<MonoDelta>(
       "SELECT DISTINCT(waitstart) FROM pg_locks WHERE fastpath"
   )));
   // Wait for kSingleShardWaiterRetryMs and check that the start time of the
   // single shard waiter remains consistent.
   SleepFor(1ms * 2 * kSingleShardWaiterRetryMs * kTimeMultiplier);
-  ASSERT_EQ(waiter1_start_time, ASSERT_RESULT(setup_conn.FetchRow<int64>(
+  ASSERT_EQ(waiter1_start_time, ASSERT_RESULT(setup_conn.FetchRow<MonoDelta>(
       "SELECT DISTINCT(waitstart) FROM pg_locks WHERE fastpath"
   )));
   ASSERT_OK(conn.CommitTransaction());

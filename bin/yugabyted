@@ -21,6 +21,8 @@ import socket
 import tarfile
 import operator
 import string
+import glob
+import tarfile
 from datetime import datetime
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
@@ -82,6 +84,8 @@ YUGABYTED_LINK = "https://docs.yugabyte.com/preview/reference/configuration/yuga
 YUGABYTED_START = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#start"
 GENERATE_SERVER_CERTS = "https://docs.yugabyte.com/preview/secure/tls-encryption/\
 server-certificates/#create-the-server-certificates"
+YBC_DOWNLOAD_LINK = "https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/" + \
+"2.0.0.0-b20/ybc-2.0.0.0-b20-linux-x86_64.tar.gz"
 DEFAULT_DEMO_DATABASE = "northwind"
 DEFAULT_FAULT_TOLERANCE = "zone"
 DEFAULT_START_FAULT_TOLERANCE = "none"
@@ -147,6 +151,8 @@ PREFIX = {
     'configure_read_replica new': "",
     'configure_read_replica modify': "",
     'configure_read_replica delete': "",
+    'backup': "",
+    'restore': "",
     'connect' : "",
     'connect ycql' : "",
     'connect ysql' : "",
@@ -173,6 +179,8 @@ USAGE = {
     'configure_read_replica new': "yugabyted configure_read_replica new [flags]",
     'configure_read_replica modify': "yugabyted configure_read_replica modify [flags]",
     'configure_read_replica delete' : "yugabyted configure_read_replica delete",
+    'backup' : "yugabyted backup [flags]",
+    'restore' : "yugabyted restore [flags]",
     'connect' : "yugabyted connect [command] [flags]",
     'connect ycql' : "yugabyted connect ycql [flags]",
     'connect ysql' : "yugabyted connect ysql [flags]",
@@ -198,6 +206,12 @@ EXAMPLE = {
     'collect_logs' : "",
     'cert' : "# Create node sever certificates:\n" +
              "yugabyted cert generate_server_certs --hostnames=<comma_seperated_hostnames>\n\n",
+    'backup' : "# Backup a YSQL Database into AWS S3 Bucket: \n" +
+               "yugabyted backup --database=northwind --cloud_storage_uri=s3://\n\n" +
+               "# Backup a YCQL namespace into AWS S3 Bucket: \n" +
+               "yugabyted backup --namespace=default --cloud_storage_uri=s3://\n\n",
+    'restore' : "# Restore a YSQL Database into AWS S3 Bucket: \n" +
+                "yugabyted restore --database=northwind --cloud_storage_uri=s3://\n\n",
     'configure_read_replica' : "# Configure a new read replica cluster:\n" +
                   "yugabyted configure_read_replica new --rf=<replication_factor> " +
                   "--data_placement_constraint=<placement_policy_for_rr_cluster>\n\n" +
@@ -256,6 +270,8 @@ EPILOG_SPECIFIC = {
     'collect_logs' : "",
     'configure' : "",
     'cert' : "",
+    "backup" : "",
+    "restore" : "",
 }
 
 # YugabyteDB configs.
@@ -305,6 +321,7 @@ YUGAWARE_BIN_DIR = os.path.join(YUGAWARE_DIR, "bin")
 YUGAWARE_CONF = os.path.join(YUGAWARE_DIR, "conf/application.yugabyted.conf")
 WEBSERVER_DB = "system_platform"
 DEMO_DB_PREFIX = "yb_demo_"
+YBC_NFS_DIR  = "/tmp/nfs"
 
 BREW_CONF_FILE = "/usr/local/etc/yugabyted.conf"
 
@@ -373,6 +390,98 @@ def find_binary_location(binary_name):
     ]
 
     return search_file_in_paths(dir_candidates, binary_name)
+
+# Extract or Download YBC package
+def download_extract_ybc_binary():
+
+    # Check for existence of YBC package
+    ybc_file_pattern = "ybc-*.tar.gz"
+    matching_files = glob.glob(ybc_file_pattern)
+    result = True
+    if len(matching_files) == 0:
+        Output.log(
+            "YBC binary archive file not found in {}.".
+                format(YUGABYTE_DIR), logging.WARN
+        )
+        # check if Development environment
+        if os.path.exists(os.path.join(YUGABYTE_DIR, "build", "latest", "bin")):
+            Output.log(
+                "Downloading YBC binary from {}.".
+                    format(YBC_DOWNLOAD_LINK), logging.INFO)
+            result = download_ybc_package()
+            if result:
+                matching_files = glob.glob(ybc_file_pattern)
+            else:
+                result = False
+                return result
+        else:
+            # YBC binary not found in the YugabyteDB release package.
+            result = False
+            return result
+
+    if len(matching_files) > 1:
+        Output.log(
+            "More than one YBC archive file found. Extracting the following {}.".
+            format(matching_files[0], logging.WARN)
+        )
+
+    # Extract the YBC package into /ybc folder
+    ybc_archive_path = YUGABYTE_DIR + "/" + matching_files[0]
+    ybc_untar_path = YUGABYTE_DIR + "/ybc"
+    with tarfile.open(ybc_archive_path, 'r:gz') as tar:
+        for member in tar.getmembers():
+            # Check if the member is a file (not a directory)
+            if member.isfile():
+                path_components = member.path.split(os.path.sep)
+                # Remove the first folder path
+                member.path = os.path.sep.join(path_components[1:])
+                tar.extract(member, path=ybc_untar_path)
+
+    return result
+
+# Download YBC release from S3 bucket in dev environment
+def download_ybc_package():
+    try:
+        response = urlopen(YBC_DOWNLOAD_LINK)
+        CHUNK_SIZE = 1 << 20
+        fileName = 'ybc-2.0.0.0-b20-linux-x86_64.tar.gz'
+        Output.log('Downloading YBC Package: {}', YBC_DOWNLOAD_LINK)
+        with open(fileName, 'wb') as f:
+            while True:
+                chunk = response.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                f.write(chunk)
+    except HTTPError as http_err:
+        Output.log('HTTP error occurred while downloading YBC package: {}', http_err)
+        return False
+    except Exception as err:
+        Output.log('Other error occurred while downloading YBC package current: {}', err)
+        return False
+    return True
+
+# Find the yb controller binary
+def find_ybc_binary_location(binary_name):
+    # Default if tar is downloaded
+    dir_candidates = [
+        os.path.join(YUGABYTE_DIR, "ybc", "bin")
+    ]
+
+    return search_file_in_paths(dir_candidates, binary_name)
+
+# Find the path of a particular postgres binary
+def find_postgres_binary_location(binary_name):
+    # Default if tar is downloaded
+    dir_candidates = [
+        os.path.join(YUGABYTE_DIR, "postgres", "bin"),
+    ]
+
+    # Development environment
+    dir_candidates += [
+        os.path.join(YUGABYTE_DIR, "build", "latest", "postgres", "bin"),
+    ]
+    return search_file_in_paths(dir_candidates, binary_name)
+
 
 # Finds the path of the sample data
 def find_sample_data_location(data_file):
@@ -475,6 +584,248 @@ class ControlScript(object):
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         sys.exit(0)
 
+    # Back up a database.
+    def backup(self):
+
+        status_details = []
+        status_display_info = {}
+
+        if not self.configs.saved_data.get("backup_daemon"):
+            final_status = "Backup daemon process not found. " + \
+                            "Please restart the node with --backup_daemon=true."
+            status_details = [
+                (Output.make_red("Error"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+        else:
+            YBControllerCLIProxy.init()
+
+        ybc_server_dir = "{}/yb-data/ybc".format(self.configs.saved_data.get("data_dir"))
+        ybc_task_type = "backup"
+
+        backup_args = dict()
+        backup_args["cloud_type"] = self.configs.temp_data.get("ybc_cloud_type")
+        backup_args["bucket"] = self.configs.temp_data.get("ybc_cloud_storage_bucket")
+        backup_args["cloud_dir"] = self.configs.temp_data.get("ybc_cloud_storage_dir")
+        backup_args["ybc_task"] = ybc_task_type
+        if self.configs.temp_data.get("database_name_backup_restore"):
+            backup_args["ns"] = self.configs.temp_data.get("database_name_backup_restore")
+            backup_args["ns_type"] = "ysql"
+        if self.configs.temp_data.get("keyspace_name_backup_restore"):
+            backup_args["ns"] = self.configs.temp_data.get("keyspace_name_backup_restore")
+            backup_args["ns_type"] = "ycql"
+
+        if OS_NAME != "Linux":
+            final_status = "Backup command is not supported in {} enviroments.".format(OS_NAME)
+            status_details = [
+                (Output.make_yellow("Status"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        if self.configs.temp_data.get("ybc_status"):
+            final_status = ""
+            backup_status = YBControllerCLIProxy.check_for_ongoing_ybc_task(
+                backup_args, ybc_server_dir)
+            if backup_status is not None:
+                if backup_status == "OK":
+                    final_status = "Backup is complete."
+                elif backup_status == "COMMAND_FAILED":
+                    final_status = "Backup has failed. " + \
+                        "Check the logs for more details."
+                    status_display_info[final_status] = Output.make_red
+                elif len(backup_status) == 0:
+                    final_status = "Backup is in Progress. Check the logs for more details."
+                else:
+                    final_status = "Backup status: {}".format(backup_status)
+            else:
+                if YBControllerCLIProxy.check_for_existing_backup(backup_args):
+                    final_status = "Backup is complete."
+                else:
+                    final_status = "Backup not found in the given cloud location."
+                    status_display_info[final_status] = Output.make_red
+
+            status_details = [
+                    (Output.make_yellow("Status"), final_status)
+                ]
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        # Check if there is a currently running backup task on the local node.
+        backup_status = YBControllerCLIProxy.check_for_ongoing_ybc_task(
+            backup_args, ybc_server_dir)
+        if backup_status is not None:
+            if backup_status in ["OK", "NOT_FOUND", "COMMAND_FAILED"]:
+                YBControllerCLIProxy.rename_ybc_lock_file(backup_args, ybc_server_dir)
+            else:
+                final_status = "Backup is in progress."
+                status_details = [
+                    (Output.make_yellow("Status"), final_status)
+                ]
+                Output.print_out(self.get_status_string_common(status_details))
+                return
+
+        # Todo: check if there is any ongoing backup tasks on other nodes.
+
+        # Check if the cloud location has any other previous backup.
+        if YBControllerCLIProxy.check_for_existing_backup(backup_args):
+            final_status = "Already a backup is present " +  \
+                            "in the cloud location {}. Abort!!".format( backup_args["cloud_dir"])
+            status_details = [
+                (Output.make_yellow("Status"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+
+        advertise_ip = self.advertise_ip()
+        backup_task_id = YBControllerCLIProxy.backup_to_cloud(
+            advertise_ip, backup_args
+        )
+        if not backup_task_id:
+            final_status = "Backup failed. Check the logs."
+            status_details = [
+                (Output.make_yellow("Status"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        YBControllerCLIProxy.write_ybc_lock_file(
+            backup_args, backup_task_id, ybc_server_dir, advertise_ip
+        )
+        final_status = "Backup started successfully."
+        Output.log("Backup started successfully with Task UUID: {}".format(backup_task_id))
+        status_details = [
+            (Output.make_yellow("Status"), final_status)
+        ]
+        Output.print_out(self.get_status_string_common(status_details))
+
+    # Restore a database.
+    def restore(self):
+
+        status_details = []
+        status_display_info = {}
+
+        if not self.configs.saved_data.get("backup_daemon"):
+            final_status = "Backup daemon process not found. " + \
+                            "Please restart the node with --backup_daemon=true."
+            status_details = [
+                (Output.make_red("Error"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+        else:
+            YBControllerCLIProxy.init()
+
+        ybc_server_dir = "{}/yb-data/ybc".format(self.configs.saved_data.get("data_dir"))
+        ybc_task_type = "restore"
+
+        restore_args = dict()
+        restore_args["cloud_type"] = self.configs.temp_data.get("ybc_cloud_type")
+        restore_args["bucket"] = self.configs.temp_data.get("ybc_cloud_storage_bucket")
+        restore_args["cloud_dir"] = self.configs.temp_data.get("ybc_cloud_storage_dir")
+        restore_args["ybc_task"] = ybc_task_type
+
+        if self.configs.temp_data.get("database_name_backup_restore"):
+            restore_args["ns"] = self.configs.temp_data.get("database_name_backup_restore")
+            restore_args["ns_type"] = "ysql"
+        if self.configs.temp_data.get("keyspace_name_backup_restore"):
+            restore_args["ns"] = self.configs.temp_data.get("keyspace_name_backup_restore")
+            restore_args["ns_type"] = "ycql"
+
+        if OS_NAME != "Linux":
+            final_status = "Restore command is not supported in {} enviroments.".format(OS_NAME)
+            status_details = [
+                (Output.make_yellow("Status"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        if self.configs.temp_data.get("ybc_status"):
+            final_status = ""
+            restore_status = YBControllerCLIProxy.check_for_ongoing_ybc_task(
+                restore_args, ybc_server_dir)
+            if restore_status is not None:
+                if restore_status == "OK":
+                    final_status = "Restore is complete."
+                elif restore_status == "COMMAND_FAILED":
+                    final_status = "Restore has failed. Check the logs for more details."
+                    status_display_info[final_status] = Output.make_red
+                elif not restore_status:
+                    final_status = "Restore is in progress."
+                else:
+                    final_status = "Restore status: {}".format(restore_status)
+            else:
+                final_status = "No restore task found for {}".format(restore_args["ns"])
+                status_display_info[final_status] = Output.make_red
+
+            status_details = [
+                    (Output.make_yellow("Status"), final_status)
+                ]
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        # Check if the cloud location has a backup.
+        if not YBControllerCLIProxy.check_for_existing_backup(restore_args):
+            final_status = "Backup not present in the given " + \
+                "cloud location {}. Abort!!".format(restore_args["cloud_dir"])
+            status_details = [
+                    (Output.make_yellow("Status"), final_status)
+                ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        # Check if there is a currently running backup task on the local node.
+        ybc_task_status = YBControllerCLIProxy.check_for_ongoing_ybc_task(
+            restore_args, ybc_server_dir)
+        if ybc_task_status is not None:
+            if ybc_task_status in ["OK"]:
+                YBControllerCLIProxy.rename_ybc_lock_file(restore_args, ybc_server_dir)
+            else:
+                final_status = "backup/restore operation is in progress. " + \
+                        "Check the logs for more details."
+                status_details = [
+                    (Output.make_yellow("Status"), final_status)
+                ]
+                status_display_info[final_status] = Output.make_red
+                Output.print_out(self.get_status_string_common(status_details,
+                                                               status_display_info))
+                return
+
+
+        advertise_ip = self.advertise_ip()
+        restore_task_id = YBControllerCLIProxy.restore_from_cloud(
+            advertise_ip, restore_args
+        )
+        if not restore_task_id:
+            final_status = "Restore has failed. Check the logs for more details."
+            status_details = [
+                (Output.make_yellow("Status"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details,
+                                                            status_display_info))
+            return
+
+        YBControllerCLIProxy.write_ybc_lock_file(
+            restore_args, restore_task_id, ybc_server_dir, advertise_ip
+        )
+        final_status = "Restore started successfully."
+        Output.log("Restore started successfully with Task UUID: {}".format(restore_task_id))
+        status_details = [
+            (Output.make_yellow("Status"), final_status)
+        ]
+        Output.print_out(self.get_status_string_common(status_details))
+
+
     # Prints status of YugabyteDB.
     def status(self):
         if len(os.listdir(self.configs.saved_data.get("data_dir"))) != 0:
@@ -538,7 +889,6 @@ class ControlScript(object):
     # Prints YugabyteDB version.
     def version(self):
         VERSION_METADATA_PATH = find_version_metadata_location("version_metadata.json")
-        print(VERSION_METADATA_PATH)
         with open(VERSION_METADATA_PATH) as metadata:
             data = json.load(metadata)
             title = "Version".format(SCRIPT_NAME)
@@ -1617,6 +1967,14 @@ class ControlScript(object):
         # exit no matter what
         os._exit(os.EX_OK)
 
+    def start_ybc_server(self):
+
+        ybc_server_cmd = self.get_ybc_cmd(self.configs.saved_data.get("data_dir"))
+        self.processes["ybc-server"] = YBProcessManager(
+                "ybc-server", ybc_server_cmd, self.configs.saved_data.get("log_dir"),
+                        self.configs.saved_data.get("data_dir"))
+        self.processes.get("ybc-server").start()
+
     def start_first_master_tserver(self):
         self.processes.get("master").start()
 
@@ -1665,10 +2023,10 @@ class ControlScript(object):
 
         return None
 
-
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
+
         advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
@@ -1705,6 +2063,8 @@ class ControlScript(object):
         is_first_run = True
         callhome_thread = None
         masters_list_update_thread = None
+        #Start the different thread for extracting the YBC binaries
+        ybc_extract_thread = None
         self.stop_callhome = False
         while True:
             should_callhome = False
@@ -1726,6 +2086,12 @@ class ControlScript(object):
                     ("Found files {} in data dir {} from possibly failed initialization."
                     " Removing...").format(data_dir_files, data_dir))
                 rmcontents(data_dir, exclude_names=[pid_file_name])
+
+            if self.configs.saved_data.get("backup_daemon"):
+                if not os.path.exists(os.path.join(YUGABYTE_DIR, "ybc")):
+                    ybc_extract_thread = Thread(target=download_extract_ybc_binary)
+                    ybc_extract_thread.daemon = True
+                    ybc_extract_thread.start()
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
@@ -1846,6 +2212,14 @@ class ControlScript(object):
                             "yugabyted-ui", yugabyted_ui_cmd,
                             self.configs.saved_data.get("log_dir"),
                             self.configs.saved_data.get("data_dir"))
+
+
+            if ybc_extract_thread is not None:
+                ybc_extract_thread.join()
+
+            if self.configs.saved_data.get("backup_daemon"):
+                if self.processes.get("ybc-server") is None:
+                    self.start_ybc_server()
 
             if self.configs.saved_data.get("ui") and ui_port_available:
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
@@ -2345,6 +2719,37 @@ class ControlScript(object):
             yb_tserver_cmd.extend(["--use_node_hostname_for_local_tserver=true"])
 
         return yb_tserver_cmd
+
+    # Returns the ybc-server start command
+    def get_ybc_cmd(self, data_dir):
+
+        # yb-controller-server requires the log directory to be
+        # created before hand.
+        ybc_server_logdir = "{}/yb-data/ybc/logs".format(self.configs.saved_data.get("data_dir"))
+        if not os.path.exists(ybc_server_logdir):
+            os.makedirs(ybc_server_logdir, 0o755)
+            if not os.path.exists(ybc_server_logdir):
+                Output.log("Error: YBC logs dir didn't get created.")
+
+
+        advertise_ip = self.advertise_ip()
+
+        ybc_cmd = [find_ybc_binary_location("yb-controller-server")] + \
+            [
+                "--server_address={}".format(advertise_ip),
+                "--yb_tserver_address={}".format(advertise_ip),
+                "--yb_master_address={}".format(advertise_ip),
+                "--log_dir={}".format(ybc_server_logdir),
+                "--yb_admin={}".format(find_binary_location("yb-admin")),
+                "--yb_ctl={}".format(find_binary_location("yb-ctl")),
+                "--ysql_dump={}".format(find_postgres_binary_location("ysql_dump")),
+                "--ysql_dumpall={}".format(find_postgres_binary_location("ysql_dumpall")),
+                "--ysqlsh={}".format(find_binary_location("ysqlsh")),
+                "--ycqlsh={}".format(find_binary_location("ycqlsh")),
+                "--redis_cli={}".format(find_binary_location("redis-cli")),
+            ]
+        return ybc_cmd
+
 
     # Returns (error string, yw_started).
     # yw_started is True if YW was actually started
@@ -3933,7 +4338,6 @@ class ControlScript(object):
             # Persist the config if masters have changed
             self.configs.save_configs()
 
-
     # Calls func after receiving certain exit signals.
     def set_signals(self, func):
         for sig in EXIT_SIGNALS:
@@ -4325,6 +4729,102 @@ class ControlScript(object):
                 "provided is not reachable.")
 
 
+
+    def validate_ybc_cloud_uri(self, cloud_storage_uri):
+
+        if cloud_storage_uri.startswith("s3://"):
+            pattern = r'^s3://[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)*$'
+            if re.match(pattern, cloud_storage_uri) is not None:
+
+                if os.environ.get("AWS_ACCESS_KEY_ID") is None or \
+                   os.environ.get("AWS_SECRET_ACCESS_KEY") is None or \
+                   os.environ.get("AWS_DEFAULT_REGION") is None:
+
+                    Output.print_and_log(
+                        Output.make_red("Error: ") + "AWS credentials are not provided. " + \
+                            "Environment variables AWS_ACCESS_KEY_ID, " + \
+                            "AWS_SECRET_ACCESS_KEY and AWS_DEFAULT_REGION " + \
+                            "needs to be set."
+                    )
+                    return False
+
+                self.configs.temp_data["ybc_cloud_type"] = "s3"
+                bucket_dir = cloud_storage_uri[5:].split("/", 1)
+                # s3 bucket
+                self.configs.temp_data["ybc_cloud_storage_bucket"] = bucket_dir[0]
+                # s3 directory
+                self.configs.temp_data["ybc_cloud_storage_dir"] = bucket_dir[1]
+                return True
+        elif cloud_storage_uri.startswith("gs://"):
+            pattern = r'^gs://[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)*$'
+            if re.match(pattern, cloud_storage_uri) is not None:
+                self.configs.temp_data["ybc_cloud_type"] = "google"
+                bucket_dir = cloud_storage_uri[5:].split("/", 1)
+                # gcp bucket
+                self.configs.temp_data["ybc_cloud_storage_bucket"] = bucket_dir[0]
+                # gcp directory
+                self.configs.temp_data["ybc_cloud_storage_dir"] = bucket_dir[1]
+                return True
+        elif cloud_storage_uri.find('blob.core.windows.net') !=  -1:
+            Output.print_and_log(
+                Output.make_red("Error: ") + "Azure support is comming soon!"
+            )
+            return False
+        else:
+            # check if nfs path is valid
+            pattern = r'^/([a-zA-Z0-9._-]+/)*[a-zA-Z0-9._-]+$'
+            if re.match(pattern, cloud_storage_uri) is not None:
+                if not os.environ.get("YBC_NFS_DIR"):
+                    os.environ["YBC_NFS_DIR"] = YBC_NFS_DIR
+                    if not os.path.exists(YBC_NFS_DIR):
+                        os.mkdir(YBC_NFS_DIR)
+                self.configs.temp_data["ybc_cloud_type"] = "nfs"
+                bucket_dir = cloud_storage_uri[0:].split("/")[-2:]
+                self.configs.temp_data["ybc_cloud_storage_bucket"] = bucket_dir[0]
+                self.configs.temp_data["ybc_cloud_storage_dir"] = bucket_dir[1]
+                return True
+            return False
+
+    def validate_ybc_args(self, args):
+
+        if args.cloud_storage_uri is not None:
+            if not self.validate_ybc_cloud_uri(args.cloud_storage_uri):
+                Output.print_and_log(
+                    Output.make_red("Error: ") + "--cloud_storage_uri is invalid."
+                )
+                return False
+        else:
+            Output.print_and_log(
+                Output.make_red("Error: ") + "--cloud_storage_uri is empty."
+            )
+            return False
+
+        if args.status:
+            self.configs.temp_data["ybc_status"] = True
+
+        if args.database is not None and args.keyspace is not None:
+            Output.print_and_log(
+                    Output.make_red("Error: ") +
+                    "Cannot specify both database and keyspace args. " +
+                    "Specify either the database or the keyspace argument for the command."
+                )
+            return False
+        elif args.database is None and args.keyspace is None:
+            Output.print_and_log(
+                Output.make_red("Error: ") +
+                "Specify either the database or the keyspace argument for the command."
+            )
+            return False
+        elif args.database is not None and args.keyspace is None:
+            self.configs.temp_data["database_name_backup_restore"] = args.database
+            return True
+        elif args.keyspace is not None and args.database is None:
+            self.configs.temp_data["keyspace_name_backup_restore"] = args.keyspace
+            return True
+
+        return False
+
+
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
 
@@ -4332,6 +4832,14 @@ class ControlScript(object):
 
         if self.configs.saved_data.get("database_password") is not None:
             self.setup_env_init.update_passwords(self.configs.saved_data.get("database_password"))
+
+        if args.parser == "backup":
+            if not self.validate_ybc_args(args):
+                has_errors = True
+
+        if args.parser == "restore":
+            if not self.validate_ybc_args(args):
+                has_errors = True
 
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
@@ -4351,8 +4859,6 @@ class ControlScript(object):
                 has_errors = True
                 Output.print_and_log(Output.make_red("Error:") + " --command flag is empty. " +
                                  "Please specify a yb-admin command to execute.")
-                # Output.print_out("--command flag is empty. " +
-                #                  "Specify a yb-admin command to execute.")
             else:
                 self.configs.temp_data["admin_command"] = args.command
 
@@ -4791,6 +5297,11 @@ class ControlScript(object):
             else:
                 args.ui = self.configs.saved_data.get("ui")
 
+            if args.backup_daemon is not None:
+                args.backup_daemon = self.parse_bool(args.backup_daemon)
+            else:
+                args.backup_daemon = self.configs.saved_data.get("backup_daemon")
+
             self.configs.temp_data["ui_port_available"] = self.is_port_available(
                 args.advertise_address, self.configs.saved_data.get("yugabyted_ui_port"))
 
@@ -4821,6 +5332,7 @@ class ControlScript(object):
 
             self.configs.temp_data["background"] = args.background
             self.configs.saved_data["ui"] = args.ui
+            self.configs.saved_data["backup_daemon"] = args.backup_daemon
             self.configs.temp_data["initial_scripts_dir"] = args.initial_scripts_dir
 
         if has_errors:
@@ -4867,6 +5379,8 @@ class ControlScript(object):
                 ("start", "Start YugabyteDB cluster."),
                 ("stop", "Stop running YugabyteDB cluster."),
                 ("destroy", "Destroy YugabyteDB cluster and remove data."),
+                ("backup", "Back up a database."),
+                ("restore", "Restore a database."),
                 ("status", "Print status of YugabyteDB cluster."),
                 ("version", "Release version of YugabyteDB cluster."),
                 ("collect_logs", "Collect and package logs for troubleshooting.")):
@@ -5086,6 +5600,42 @@ class ControlScript(object):
                 "--data_placement_constraint", help="Placement policy for the read replica " +
                 "cluster.", metavar="")
 
+        # Top level command: backup
+        for cmd in ("backup",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--database", metavar="",
+                help="YSQL Database to be backed up to cloud storage.")
+            cur_parser.add_argument(
+                "--keyspace", metavar="",
+                help="YCQL Keyspace to be backed up to cloud storage.")
+            cur_parser.add_argument(
+                "--cloud_storage_uri", metavar="",
+                help="Cloud location to store the backup data.")
+            cur_parser.add_argument(
+                "--status",
+                help="Check the status of the backup task.",
+                action="store_true", default=None
+            )
+
+        # Top level command: restore
+        for cmd in ("restore",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--database", metavar="",
+                help="YSQL Database to be backed up to cloud storage.")
+            cur_parser.add_argument(
+                "--keyspace", metavar="",
+                help="YCQL Keyspace to be backed up to cloud storage.")
+            cur_parser.add_argument(
+                "--cloud_storage_uri", metavar="",
+                help="Cloud location to store the backup data.")
+            cur_parser.add_argument(
+                "--status",
+                help="Check the status of the restore task.",
+                action="store_true", default=None
+            )
+
         # Commands that can alter configuration file.
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
@@ -5139,6 +5689,9 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--ui", choices=BOOL_CHOICES, metavar="",
                 help="Toggle enabling or disabling webserver UI. Default true.")
+            cur_parser.add_argument(
+                "--backup_daemon", choices=BOOL_CHOICES, metavar="",
+                help="Toggle enabling or disabling YBC server. Default False.")
             cur_parser.add_argument(
                 "--ysql_enable_auth", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
@@ -5310,6 +5863,7 @@ class Configs(object):
             "database_password": None,
             "current_masters": "",
             "ui": True,
+            "backup_daemon": False,
             "dns_enabled": False,
             "read_replica": False,
         }
@@ -5330,7 +5884,12 @@ class Configs(object):
             "rr_data_placement_constraint": "",
             "rr_replication_factor": "",
             "ui_port_available": True,
-            "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs")
+            "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs"),
+            "database_name_backup_restore": "",
+            "ybc_cloud_type": "",
+            "ybc_cloud_storage_bucket": "",
+            "ybc_cloud_storage_dir": "",
+            "ybc_status": False,
         }
         self.config_file = config_file
 
@@ -5703,6 +6262,194 @@ class Diagnostics(object):
                 if os.path.isfile(filepath):
                     size += os.path.getsize(filepath)
         return size
+
+class YBControllerCLIProxy(object):
+    cmd_args = []
+
+    @staticmethod
+    def init():
+        YBControllerCLIProxy.cmd_args.append(find_ybc_binary_location("yb-controller-cli"))
+
+    @staticmethod
+    def set_certs_dir(master_flags, secure, certs_dir):
+        # If the user is attempting to use TLS, let's point yb-admin to
+        # the same certs dir as the master
+        if secure:
+            YBControllerCLIProxy.cmd_args.append("--certs_dir_name={}".format(certs_dir))
+        elif master_flags:
+            flags_list = master_flags.split(",")
+            if 'use_node_to_node_encryption=true' not in flags_list:
+                return
+            certs_dir_name = [y for y in
+                [re.match('certs_dir=(.*)', x) for x in flags_list]
+                if y is not None]
+            if not certs_dir_name[0]:
+                raise RuntimeError("use_node_to_node_encryption=true must "
+                                "be accompanied by a certs_dir setting")
+            YBControllerCLIProxy.cmd_args.append('--certs_dir_name={}'.
+                                                 format(certs_dir_name[0].group(1)))
+
+    @staticmethod
+    def backup_to_cloud(tserver_ip, ybc_cli_flags):
+
+        cmd = YBControllerCLIProxy.cmd_args + \
+        [
+                "backup",
+                "--cloud_type={}".format(ybc_cli_flags["cloud_type"]),
+                "--bucket={}".format(ybc_cli_flags["bucket"]),
+                "--cloud_dir={}".format(ybc_cli_flags["cloud_dir"]),
+                "--tserver_ip={}".format(tserver_ip),
+                "--ns={}".format(ybc_cli_flags["ns"]),
+                "--ns_type={}".format(ybc_cli_flags["ns_type"]),
+        ]
+
+        out, err, ret_code = run_process(cmd, timeout=10, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return []
+
+        match = re.search("task:", out)
+        if match:
+            task_id = out[match.end():]
+            task_id = task_id.lstrip()
+            task_id = task_id.rstrip()
+            return task_id
+
+        return []
+
+    @staticmethod
+    def restore_from_cloud(tserver_ip, ybc_cli_flags):
+        # ./bin/yb-controller-cli restore
+        # --bucket nikhil.customer.share
+        # --cloud_type nfs --tserver_ip 10.151.0.29
+        # --ns yb_demo_northwind --ns_type ysql --wait
+        # --cloud_dir ybc_test_08_04_2023_1
+
+        cmd = YBControllerCLIProxy.cmd_args + \
+        [
+                "restore",
+                "--cloud_type={}".format(ybc_cli_flags["cloud_type"]),
+                "--bucket={}".format(ybc_cli_flags["bucket"]),
+                "--cloud_dir={}".format(ybc_cli_flags["cloud_dir"]),
+                "--tserver_ip={}".format(tserver_ip),
+                "--ns={}".format(ybc_cli_flags["ns"]),
+                "--ns_type={}".format(ybc_cli_flags["ns_type"]),
+        ]
+
+        out, err, ret_code = run_process(cmd, timeout=10, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return []
+
+        match = re.search("task:", out)
+        if match:
+            task_id = out[match.end():]
+            task_id = task_id.lstrip()
+            task_id = task_id.rstrip()
+            return task_id
+
+        return []
+
+    # Records the backup task id in backup.lock
+    @staticmethod
+    def write_ybc_lock_file(ybc_args, task_id, ybc_dir, tserver_ip):
+        # "{}/yb-data/ybc".format(data_dir)
+        backup_lock = os.path.join(
+            ybc_dir,
+            "{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type")))
+        with open(backup_lock, "w+") as backup_lock_file:
+            backup_lock_file.write(
+                str(task_id + "," + tserver_ip + "," + ybc_args.get("ybc_task")))
+            Output.log("Started backup with task id {}.".format(task_id))
+
+    @staticmethod
+    def rename_ybc_lock_file(ybc_args, ybc_dir):
+        # "{}/yb-data/ybc".format(data_dir)
+        backup_lock = os.path.join(
+            ybc_dir, "{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"))
+        )
+        rename_filename = os.path.join(
+            ybc_dir, "{}_{}.{}".format(ybc_args.get("ns"), ybc_args.get("ns_type"), time.time())
+        )
+        try:
+            os.rename(backup_lock, rename_filename)
+        except OSError as e:
+            Output.log("Unable to delete the backup lock file. " + str(e))
+
+    @staticmethod
+    def check_for_ongoing_ybc_task(ybc_args, ybc_dir):
+        ybc_lock = os.path.join(
+            ybc_dir,
+            "{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type")))
+        ybc_task_details = []
+        if os.path.isfile(ybc_lock):
+            with open(ybc_lock, 'r') as file:
+                line = file.readline()
+                ybc_task_details = line.split(',')
+                Output.log("{}: checking for ongoing ybc task {},{}".
+                           format(ybc_args.get("ybc_task"),
+                                  ybc_task_details[0],
+                                  ybc_task_details[1])
+                           )
+        else:
+             return None
+
+        backup_status = YBControllerCLIProxy.get_ybc_task_status(
+            ybc_task_details[0], ybc_task_details[1])
+
+        return backup_status
+
+    @staticmethod
+    def check_for_existing_backup(ybc_cli_flags):
+
+        # ./bin/yb-controller-cli download_md
+        # --cloud_dir ybc_test_08_04_2023_1
+        # --bucket nikhil.customer.share
+        # --cloud_type nfs --local_dir /tmp/ybc_test_08_04_2023_1
+        cmd = YBControllerCLIProxy.cmd_args + \
+            [
+                "download_md",
+                "--cloud_dir={}".format(ybc_cli_flags["cloud_dir"]),
+                "--bucket={}".format(ybc_cli_flags["bucket"]),
+                "--cloud_type={}".format(ybc_cli_flags["cloud_type"]),
+                "--local_dir=/tmp/{}".format(ybc_cli_flags["cloud_dir"])
+            ]
+        out, err, ret_code = run_process(cmd, timeout=10, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return False
+
+        match = re.search("Status:", out)
+        if match:
+            download_md_status = out[match.end():]
+            download_md_status = download_md_status.lstrip()
+            download_md_status = download_md_status.rstrip()
+            if download_md_status == "OK":
+                Output.log("Existing backup found at - {}".format(
+                    ybc_cli_flags["cloud_dir"]))
+                return True
+
+        return False
+
+    @staticmethod
+    def get_ybc_task_status(taskid, tserver_ip):
+
+        cmd = YBControllerCLIProxy.cmd_args + \
+            [
+                "task_progress",
+                "--task_id={}".format(taskid),
+                "--tserver_ip={}".format(tserver_ip),
+            ]
+        out, err, ret_code = run_process(cmd, timeout=10, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return []
+
+        match = re.search("Final Status:", out)
+        if match:
+            ybc_task_status = out[match.end():]
+            ybc_task_status = ybc_task_status.lstrip()
+            ybc_task_status = ybc_task_status.rstrip()
+            Output.log("backup: task status {} - {}".format(taskid, ybc_task_status))
+            return ybc_task_status
+
+        return []
 
 
 # Proxy for parsing output from yb-admin commands.

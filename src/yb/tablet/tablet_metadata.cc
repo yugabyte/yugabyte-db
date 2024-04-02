@@ -764,7 +764,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   rocksdb::Options rocksdb_options;
   TabletOptions tablet_options;
   docdb::InitRocksDBOptions(
-      &rocksdb_options, log_prefix_, nullptr /* statistics */, tablet_options);
+      &rocksdb_options, log_prefix_, raft_group_id_, nullptr /* statistics */, tablet_options);
 
   const auto& rocksdb_dir = this->rocksdb_dir();
   LOG_WITH_PREFIX(INFO) << "Destroying regular db at: " << rocksdb_dir;

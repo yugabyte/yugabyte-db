@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -150,6 +151,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected File pgBinDir;
 
   protected static final int DEFAULT_STATEMENT_TIMEOUT_MS = 30000;
+
+  protected static Map<String, String> FailOnConflictTestGflags = new HashMap<String, String>()
+    {
+      {
+          put("enable_wait_queues", "false");
+          // The retries are set to 2 to speed up the tests.
+          put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
+      }
+    };
 
   protected static ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap =
       new ConcurrentSkipListSet<>();

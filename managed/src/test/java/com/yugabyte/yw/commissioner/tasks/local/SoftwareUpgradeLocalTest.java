@@ -20,7 +20,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
 import org.junit.Before;
-import org.junit.Test;
 
 public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
@@ -60,7 +59,8 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         OLD_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + OLD_DB_VERSION + "/bin");
   }
 
-  @Test
+  //   @Test
+  // TODO(vbasnal): Fix this test by placing DB bits in a new public s3 bucket.
   public void testSoftwareUpgradeWithNoRollbackSupport() throws InterruptedException {
     String downloadURL = String.format(OLD_DB_VERSION_URL, os, arch);
     downloadAndSetUpYBSoftware(os, arch, downloadURL, OLD_DB_VERSION);

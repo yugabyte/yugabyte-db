@@ -331,7 +331,6 @@ void Rpcs::Shutdown() {
     std::unique_lock<std::mutex> lock(*mutex_);
     while (!calls_.empty()) {
       LOG(INFO) << "Waiting calls: " << calls_.size();
-      SCOPED_WAIT_STATUS(Rpcs_WaitOnMutexInShutdown);
       if (cond_.wait_until(lock, deadline) == std::cv_status::timeout) {
         break;
       }

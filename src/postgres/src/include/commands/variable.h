@@ -24,6 +24,7 @@ extern const char *show_log_timezone(void);
 extern bool check_transaction_read_only(bool *newval, void **extra, GucSource source);
 extern bool check_XactIsoLevel(int *newval, void **extra, GucSource source);
 extern void yb_assign_XactIsoLevel(int newval, void *extra);
+extern bool check_yb_default_xact_isolation(int *newval, void **extra, GucSource source);
 extern bool check_transaction_deferrable(bool *newval, void **extra, GucSource source);
 extern void assign_transaction_read_only(bool newval, void *extra);
 extern void assign_transaction_deferrable(bool newval, void *extra);

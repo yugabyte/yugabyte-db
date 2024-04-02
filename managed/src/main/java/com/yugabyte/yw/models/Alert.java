@@ -9,6 +9,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValue;
 import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValues;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
+import autovalue.shaded.com.google.common.collect.Streams;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.annotations.VisibleForTesting;
@@ -39,6 +40,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Data;
@@ -201,6 +203,7 @@ public class Alert extends Model implements AlertLabelsProvider {
   private AlertConfiguration.TargetType configurationType;
 
   @OneToMany(mappedBy = "alert", cascade = CascadeType.ALL, orphanRemoval = true)
+  @EqualsAndHashCode.Exclude
   private List<AlertLabel> labels;
 
   @ApiModelProperty(
@@ -283,8 +286,12 @@ public class Alert extends Model implements AlertLabelsProvider {
     return this;
   }
 
-  public List<AlertLabel> getLabels() {
-    return labels.stream()
+  @JsonIgnore
+  @EqualsAndHashCode.Include
+  public List<AlertLabel> getEffectiveLabels() {
+    AlertLabel uuidLabel =
+        new AlertLabel(this, KnownAlertLabels.ALERT_UUID.labelName(), uuid.toString());
+    return Streams.concat(labels.stream(), Stream.of(uuidLabel))
         .sorted(Comparator.comparing(AlertLabel::getName))
         .collect(Collectors.toList());
   }

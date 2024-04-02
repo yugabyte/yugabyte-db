@@ -1009,4 +1009,8 @@ PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
   return {wait_starter_, wait_event};
 }
 
+Result<tserver::PgActiveSessionHistoryResponsePB> PgSession::ActiveSessionHistory() {
+  return pg_client_.ActiveSessionHistory();
+}
+
 }  // namespace yb::pggate

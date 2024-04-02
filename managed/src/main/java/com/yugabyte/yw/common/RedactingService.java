@@ -83,6 +83,9 @@ public class RedactingService {
           // Custom hooks
           .add("$..hook.hookText")
           .add("$..hook.runtimeArgs")
+          // LDAP - DB Universe Sync
+          .add("$..dbuserPassword")
+          .add("$..ldapBindPassword")
           .build();
 
   // List of json paths to any secret fields we want to redact.

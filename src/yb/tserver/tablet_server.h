@@ -249,7 +249,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
-  rpc::Messenger* GetMessenger() const override;
+  rpc::Messenger* GetMessenger(ServerType type) const override;
+
+  void SetCQLServer(yb::server::RpcAndWebServerBase* server) override;
 
   virtual Env* GetEnv();
 
@@ -462,6 +464,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::unique_ptr<rocksdb::Env> rocksdb_env_;
   std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
+
+  std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

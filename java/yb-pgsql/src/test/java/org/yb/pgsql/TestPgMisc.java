@@ -89,15 +89,31 @@ public class TestPgMisc extends BasePgSQLTest {
     }
   }
 
+  private void executeVacuumTest(Statement statement, String sql) throws Exception {
+    String EXPECTED_NOTICE_STRING =
+        "VACUUM is a no-op statement since YugabyteDB performs garbage collection " +
+        "of dead tuples automatically";
+    statement.execute(sql);
+    SQLWarning notice = statement.getWarnings();
+    assertNotNull("Vacuum executed without notice", notice);
+    assertTrue(String.format("Unexpected Notice Message. Got: '%s', expected to contain: '%s'",
+                            notice.getMessage(),
+                            EXPECTED_NOTICE_STRING),
+              notice.getMessage().equals(EXPECTED_NOTICE_STRING));
+    assertNull("Unexpected additional warning", notice.getNextWarning());
+  }
+
   @Test
   public void testVacuum() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      statement.execute("VACUUM;");
-      if (statement.getWarnings() != null) {
-        throw statement.getWarnings();
-      }
-      fail("Vacuum executed without warnings");
-    } catch(PSQLWarning w) {
+      statement.execute("CREATE TEMP TABLE test_table(a int);");
+      executeVacuumTest(statement, "VACUUM;");
+      executeVacuumTest(statement, "VACUUM test_table;");
+      executeVacuumTest(statement, "VACUUM FULL");
+      executeVacuumTest(statement, "VACUUM VERBOSE test_table;");
+      executeVacuumTest(statement, "VACUUM ANALYZE test_table;");
+    } catch (PSQLException e) {
+      fail("Vacuum executed with exception");
     }
   }
 

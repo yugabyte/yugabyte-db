@@ -199,11 +199,13 @@
     <then>
       <logger name="application" level="INFO" />
       <logger name="com.yugabyte.yw" level="DEBUG" />
+      <logger name="api" level="DEBUG" />
       <logger name="org.flywaydb.core" level="INFO" />
     </then>
     <else>
       <logger name="application" level="DEBUG" />
       <logger name="com.yugabyte.yw" level="DEBUG" />
+      <logger name="api" level="DEBUG" />
       <logger name="org.flywaydb.core" level="TRACE" />
     </else>
   </if>

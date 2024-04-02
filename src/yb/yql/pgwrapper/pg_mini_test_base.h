@@ -79,6 +79,8 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   virtual Status SetupConnection(PGConn* conn) const;
 
+  void EnableFailOnConflict();
+
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port);
 

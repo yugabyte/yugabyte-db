@@ -211,7 +211,7 @@ Status OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_o
   op_id_copy_.store(op_id, boost::memory_order_release);
 
   RETURN_NOT_OK(operation_->AddedToLeader(op_id, committed_op_id));
-  SET_WAIT_STATUS(Raft_WaitingForQuorum);
+  SET_WAIT_STATUS(Raft_WaitingForReplication);
 
   StartOperation();
   return Status::OK();

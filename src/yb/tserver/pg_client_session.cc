@@ -996,6 +996,11 @@ template <class DataPtr>
 Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
                                   rpc::RpcContext* context) {
   auto& options = *data->req.mutable_options();
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    if (options.has_ash_metadata()) {
+      wait_state->UpdateMetadataFromPB(options.ash_metadata(), /* use_hex */ false);
+    }
+  }
   auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();
   if (!ddl_mode && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
     for (const auto& op : data->req.ops()) {

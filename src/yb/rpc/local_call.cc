@@ -84,14 +84,7 @@ LocalYBInboundCall::LocalYBInboundCall(
     CoarseTimePoint deadline)
     : YBInboundCall(rpc_metrics, remote_method), outbound_call_(outbound_call),
       deadline_(deadline) {
-  if (wait_state_) {
-    wait_state_->UpdateMetadata({.rpc_request_id = reinterpret_cast<int64_t>(this)});
-    wait_state_->set_client_host_port(HostPort(remote_address()));
-    wait_state_->UpdateAuxInfo({.method = method_name().ToBuffer()});
-  } else {
-    LOG_IF(ERROR, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash))
-        << "Wait state is nullptr for " << ToString();
-  }
+  UpdateWaitStateInfo();
 }
 
 const Endpoint& LocalYBInboundCall::remote_address() const {
@@ -141,25 +134,15 @@ AnyMessageConstPtr LocalYBInboundCall::SerializableResponse() {
   return outbound_call()->response();
 }
 
-namespace {
-
-uintptr_t AsKey(const InboundCall* call) {
-  return reinterpret_cast<uintptr_t>(call);
-}
-
-} // namespace
-
 void LocalYBInboundCallTracker::CallProcessed(InboundCall* call) {
   std::lock_guard lg(lock_);
-  calls_being_handled_.erase(AsKey(call));
+  calls_being_handled_.erase(CHECK_NOTNULL(call)->instance_id());
 }
 
 void LocalYBInboundCallTracker::Enqueue(const InboundCallPtr& call) {
-    call->SetCallProcessedListener(this);
-    auto call_id = AsKey(call.get());
-
+    CHECK_NOTNULL(call)->SetCallProcessedListener(this);
     std::lock_guard lg(lock_);
-    calls_being_handled_.emplace(call_id, call);
+    calls_being_handled_.emplace(call->instance_id(), call);
 }
 
 Status LocalYBInboundCallTracker::DumpRunningRpcs(

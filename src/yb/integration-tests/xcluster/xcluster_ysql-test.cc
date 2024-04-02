@@ -155,38 +155,6 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
       std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
       uint32_t num_tablet_servers = 1, bool range_partitioned = false);
 
-  Status SetUpWithParams(
-      const std::vector<uint32_t>& num_consumer_tablets,
-      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
-      uint32_t num_masters = 1, const bool ranged_partitioned = false) {
-    RETURN_NOT_OK(Initialize(replication_factor, num_masters));
-
-    SCHECK_EQ(
-        num_consumer_tablets.size(), num_producer_tablets.size(), IllegalState,
-        Format(
-            "Num consumer tables: $0 num producer tables: $1 must be equal.",
-            num_consumer_tablets.size(), num_producer_tablets.size()));
-
-    RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-      const auto* num_tablets = &num_producer_tablets;
-      if (cluster == &consumer_cluster_) {
-        num_tablets = &num_consumer_tablets;
-      }
-
-      for (uint32_t i = 0; i < num_tablets->size(); i++) {
-        auto table_name = VERIFY_RESULT(CreateYsqlTable(
-            i, num_tablets->at(i), cluster, boost::none /* tablegroup */, false /* colocated */,
-            ranged_partitioned));
-        std::shared_ptr<client::YBTable> table;
-        RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
-        cluster->tables_.push_back(table);
-      }
-      return Status::OK();
-    }));
-
-    return PostSetUp();
-  }
-
   std::string GetCompleteTableName(const YBTableName& table) {
     // Append schema name before table name, if schema is available.
     return table.has_pgschema_name() ? Format("$0.$1", table.pgschema_name(), table.table_name())

@@ -6,7 +6,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.troubleshoot.ts.TestUtils;
+import com.yugabyte.troubleshoot.ts.CommonUtils;
 import com.yugabyte.troubleshoot.ts.metric.models.MetricQuery;
 import com.yugabyte.troubleshoot.ts.metric.models.MetricRangeQuery;
 import com.yugabyte.troubleshoot.ts.metric.models.MetricResponse;
@@ -19,12 +19,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 
 @ServiceTest
-@ActiveProfiles("test")
 public class PrometheusClientTest {
 
   @Autowired private PrometheusClient client;
@@ -42,7 +40,7 @@ public class PrometheusClientTest {
 
   @Test
   public void testVectorQuery() {
-    String queryResponse = TestUtils.readResource("metrics/query_response.json");
+    String queryResponse = CommonUtils.readResource("metrics/query_response.json");
     this.server
         .expect(
             requestTo("http://localhost:9000/api/v1/query?query=up&time=2015-07-01T20:10:51.781Z"))
@@ -69,7 +67,7 @@ public class PrometheusClientTest {
 
   @Test
   public void testRangeQuery() {
-    String queryRangeResponse = TestUtils.readResource("metrics/query_range_response.json");
+    String queryRangeResponse = CommonUtils.readResource("metrics/query_range_response.json");
     this.server
         .expect(
             requestTo(

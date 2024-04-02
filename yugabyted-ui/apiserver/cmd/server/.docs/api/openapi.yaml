@@ -2523,7 +2523,9 @@ components:
       type: object
     ConnectionStatsItem:
       properties:
-        pool:
+        database_name:
+          type: string
+        user_name:
           type: string
         active_logical_connections:
           format: int64

@@ -204,4 +204,16 @@ public class PlatformResults {
           ybpTaskList.stream().map(ybTask -> ybTask.taskUUID).collect(Collectors.toList());
     }
   }
+
+  public static class YBPCreateSuccess extends OkResult {
+    @ApiModelProperty(
+        value = "UUID of the successfully created resource",
+        accessMode = ApiModelProperty.AccessMode.READ_ONLY)
+    @VisibleForTesting
+    public final UUID resourceUUID;
+
+    public YBPCreateSuccess(UUID resourceUUID) {
+      this.resourceUUID = resourceUUID;
+    }
+  }
 }

@@ -73,13 +73,13 @@ class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
 TEST(XClusterSafeTimeServiceTest, ComputeSafeTime) {
   using ProducerTabletInfo = XClusterSafeTimeService::ProducerTabletInfo;
 
-  const string cluster_uuid = "c1";
+  const auto replication_group_id = xcluster::ReplicationGroupId("c1");
   const NamespaceId db1 = "db1";
   const NamespaceId db2 = "db2";
-  const ProducerTabletInfo t1 = {cluster_uuid, "t1"};
-  const ProducerTabletInfo t2 = {cluster_uuid, "t2"};
-  const ProducerTabletInfo t3 = {cluster_uuid, "t3"};
-  const ProducerTabletInfo t4 = {cluster_uuid, "t4"};
+  const ProducerTabletInfo t1 = {replication_group_id, "t1"};
+  const ProducerTabletInfo t2 = {replication_group_id, "t2"};
+  const ProducerTabletInfo t3 = {replication_group_id, "t3"};
+  const ProducerTabletInfo t4 = {replication_group_id, "t4"};
   std::map<ProducerTabletInfo, NamespaceId> default_consumer_registry;
   default_consumer_registry[t1] = db1;
   default_consumer_registry[t2] = db2;
@@ -216,31 +216,20 @@ TEST(XClusterSafeTimeServiceTest, ComputeSafeTime) {
     ASSERT_TRUE(further_computation_needed);
   }
 
-  // Lagging transaction status tablet
   {
     XClusterSafeTimeServiceMocked safe_time_service;
     safe_time_service.consumer_registry_ = default_consumer_registry;
 
-    const ProducerTabletInfo t5 = {cluster_uuid, "t5"};
+    const ProducerTabletInfo t5 = {replication_group_id, "t5"};
     safe_time_service.table_entries_[t1] = ht2;
     safe_time_service.table_entries_[t2] = ht2;
     safe_time_service.table_entries_[t3] = ht2;
     safe_time_service.table_entries_[t5] = ht1;
     safe_time_service.consumer_registry_[t5] = kSystemNamespaceId;
 
-    ASSERT_OK(safe_time_service.ComputeSafeTime(dummy_leader_term));
-    ASSERT_EQ(safe_time_service.safe_time_map_.size(), 3);
-    ASSERT_EQ(safe_time_service.safe_time_map_[db1], ht1);
-    ASSERT_EQ(safe_time_service.safe_time_map_[db2], ht1);
-    ASSERT_EQ(safe_time_service.safe_time_map_[kSystemNamespaceId], ht1);
-    ASSERT_EQ(safe_time_service.entries_to_delete_.size(), 0);
-
-    safe_time_service.table_entries_[t5] = ht2;
-    ASSERT_OK(safe_time_service.ComputeSafeTime(dummy_leader_term));
-    ASSERT_EQ(safe_time_service.safe_time_map_.size(), 3);
-    ASSERT_EQ(safe_time_service.safe_time_map_[db1], ht2);
-    ASSERT_EQ(safe_time_service.safe_time_map_[db2], ht2);
-    ASSERT_EQ(safe_time_service.safe_time_map_[kSystemNamespaceId], ht2);
+    auto result = safe_time_service.ComputeSafeTime(dummy_leader_term);
+    ASSERT_NOK(result);
+    ASSERT_STR_CONTAINS(result.ToString(), "System tables cannot be replicated");
   }
 }
 

@@ -111,6 +111,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     }
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
   }
 
   private void setupUniverseSingleAZ(boolean setMasters) {

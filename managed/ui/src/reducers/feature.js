@@ -7,6 +7,7 @@ const initialStateFeatureInTest = {
   enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
   enableXCluster: false,
+  enableTroubleshooting: false,
   enableHCVault: true,
   enableHCVaultEAT: true,
   enableNodeComparisonModal: false,
@@ -32,7 +33,8 @@ const initialStateFeatureInTest = {
   enableRRGflags: true,
   enableLDAPRoleMapping: true,
   enableNewRestoreModal: true,
-  enableCACertRotation: true
+  enableCACertRotation: true,
+  enableNewAdvancedRestoreModal: false
 };
 
 const initialStateFeatureReleased = {
@@ -42,6 +44,7 @@ const initialStateFeatureReleased = {
   enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
   enableXCluster: true,
+  enableTroubleshooting: false,
   enableHCVault: true,
   enableHCVaultEAT: true,
   enableNodeComparisonModal: false,

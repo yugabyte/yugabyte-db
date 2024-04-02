@@ -13,10 +13,12 @@ import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { getNamespaceIdSafetimeEpochUsMap } from '../utils';
 import { EstimatedDataLossLabel } from '../drConfig/EstimatedDataLossLabel';
+import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
 
 import { DrConfig } from '../dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
+import { useSelector } from 'react-redux';
 
 interface InitiateFailoverrModalProps {
   drConfig: DrConfig;
@@ -69,6 +71,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+const MODAL_NAME = 'InitiateFailoverModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.failover.initiateModal';
 
 export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailoverrModalProps) => {
@@ -81,6 +84,16 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
   const currentSafetimesQuery = useQuery(drConfigQueryKey.safetimes(drConfig.uuid), () =>
     api.fetchCurrentSafetimes(drConfig.uuid)
   );
+  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
+    reduxState?.customer?.configs?.data.filter(
+      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+    )
+  );
+  const storageConfigName =
+    storageConfigs?.find(
+      (storageConfig) =>
+        storageConfig.configUUID === drConfig.bootstrapParams.backupRequestParams.storageConfigUUID
+    )?.configName ?? '';
 
   const targetUniverseUuid = drConfig.drReplicaUniverseUuid;
   const targetUniverseQuery = useQuery(
@@ -157,44 +170,65 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     }
   );
 
-  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
-    const i18nKey = drConfig.primaryUniverseUuid
-      ? 'undefinedTargetUniverseUuid'
-      : 'undefinedSourceUniverseUuid';
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t(i18nKey, {
-          keyPrefix: 'clusterDetail.xCluster.error'
-        })}
-      />
-    );
-  }
-  if (targetUniverseQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchTargetuniverse', {
-          keyPrefix: 'queryError.error',
+  const modalTitle = t('title');
+  const cancelLabel = t('cancel', { keyPrefix: 'common' });
+  if (
+    !drConfig.primaryUniverseUuid ||
+    !drConfig.drReplicaUniverseUuid ||
+    targetUniverseQuery.isError ||
+    currentSafetimesQuery.isError
+  ) {
+    const customErrorMessage = !drConfig.primaryUniverseUuid
+      ? t('undefinedDrPrimaryUniveresUuid', {
+          keyPrefix: 'clusterDetail.disasterRecovery.error'
+        })
+      : !drConfig.drReplicaUniverseUuid
+      ? t('undefinedDrReplicaUniveresUuid', {
+          keyPrefix: 'clusterDetail.disasterRecovery.error'
+        })
+      : targetUniverseQuery.isError
+      ? t('failedToFetchDrReplicaUniverse', {
+          keyPrefix: 'queryError',
           universeUuid: drConfig.drReplicaUniverseUuid
-        })}
-      />
-    );
-  }
-  if (currentSafetimesQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchCurrentSafetimes', {
+        })
+      : currentSafetimesQuery.isError
+      ? t('failedToFetchCurrentSafetimes', {
           keyPrefix: 'clusterDetail.xCluster.error'
-        })}
-      />
+        })
+      : '';
+
+    return (
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        size="md"
+        {...modalProps}
+      >
+        <YBErrorIndicator customErrorMessage={customErrorMessage} />
+      </YBModal>
     );
   }
+
   if (
     targetUniverseQuery.isLoading ||
     targetUniverseQuery.isIdle ||
     currentSafetimesQuery.isLoading ||
     currentSafetimesQuery.isIdle
   ) {
-    return <YBLoading />;
+    return (
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        size="md"
+        {...modalProps}
+      >
+        <YBLoading />
+      </YBModal>
+    );
   }
 
   const namespaceIdSafetimeEpochUsMap = getNamespaceIdSafetimeEpochUsMap(
@@ -216,9 +250,11 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
   const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
   return (
     <YBModal
-      title={t('title')}
+      title={modalTitle}
+      cancelLabel={cancelLabel}
+      submitTestId={`${MODAL_NAME}-SubmitButton`}
+      cancelTestId={`${MODAL_NAME}-CancelButton`}
       submitLabel={t('submitButton')}
-      cancelLabel={t('cancel', { keyPrefix: 'common' })}
       onSubmit={onSubmit}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
       isSubmitting={isSubmitting}
@@ -240,6 +276,21 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
             <EstimatedDataLossLabel drConfigUuid={drConfig.uuid} />
           </div>
         </div>
+        {storageConfigName ? (
+          <Typography variant="body2">
+            <Trans
+              i18nKey={`clusterDetail.disasterRecovery.backupStorageConfig.currentStorageConfigInfo`}
+              components={{ bold: <b /> }}
+              values={{ storageConfigName: storageConfigName }}
+            />
+          </Typography>
+        ) : (
+          <Typography variant="body2">
+            {t('missingStorageConfigInfo', {
+              keyPrefix: 'clusterDetail.disasterRecovery.backupStorageConfig'
+            })}
+          </Typography>
+        )}
       </div>
       <Box marginTop={2}>
         <Typography variant="body2">

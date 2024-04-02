@@ -16,4 +16,4 @@ INSERT INTO INT4_TBL(f1) VALUES
   ('2147483647'),  -- largest and smallest values
   ('-2147483647');
 VACUUM INT4_TBL;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically

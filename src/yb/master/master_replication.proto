@@ -265,10 +265,16 @@ message SetupUniverseReplicationRequestPB {
   repeated string producer_bootstrap_ids = 4;
   // Is the created replication group transactionally consistent.
   optional bool transactional = 5; // [default = false]
+
+  // Used for DB Scoped replication.
+  repeated string namespace_names = 6; // YSQL database names.
+  repeated string producer_namespace_ids = 7;
 }
 
 message SetupUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
+
+  optional string universe_uuid = 2;
 }
 
 message DeleteUniverseReplicationRequestPB {
@@ -580,6 +586,32 @@ message GetXClusterStreamsResponsePB {
   repeated TableInfo table_infos = 4;
 }
 
+message CreateXClusterReplicationRequestPB {
+  required string replication_group_id = 1;
+
+  repeated HostPortPB target_master_addresses = 2;
+}
+
+message CreateXClusterReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsCreateXClusterReplicationDoneRequestPB {
+  required string replication_group_id = 1;
+
+  repeated HostPortPB target_master_addresses = 2;
+}
+
+message IsCreateXClusterReplicationDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bool done = 2; // [default = false]
+
+  // Only set when done is true. OK if the created succeeded or the error if it
+  // failed.
+  optional AppStatusPB replication_error = 3;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -668,4 +700,10 @@ service MasterReplication {
       returns (IsXClusterBootstrapRequiredResponsePB);
   rpc GetXClusterStreams(GetXClusterStreamsRequestPB)
       returns (GetXClusterStreamsResponsePB);
+
+  // xCluster APIsV2
+  rpc CreateXClusterReplication(CreateXClusterReplicationRequestPB)
+      returns (CreateXClusterReplicationResponsePB);
+  rpc IsCreateXClusterReplicationDone(IsCreateXClusterReplicationDoneRequestPB)
+      returns (IsCreateXClusterReplicationDoneResponsePB);
 }

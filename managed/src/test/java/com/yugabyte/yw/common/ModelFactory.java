@@ -384,6 +384,11 @@ public class ModelFactory {
 
   public static CustomerConfig createNfsStorageConfig(
       Customer customer, String configName, String backupLocation) {
+    return createNfsStorageConfig(customer, configName, backupLocation, "yugabyte_backup");
+  }
+
+  public static CustomerConfig createNfsStorageConfig(
+      Customer customer, String configName, String backupLocation, String bucketName) {
     JsonNode formData =
         Json.parse(
             "{\"configName\": \""
@@ -391,6 +396,8 @@ public class ModelFactory {
                 + "\", \"name\": \"NFS\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \""
                 + backupLocation
+                + "\", \"NFS_BUCKET\": \""
+                + bucketName
                 + "\"}}");
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }

@@ -31,11 +31,15 @@ namespace yb {
 
 class MemTracker;
 
+namespace server {
+class RpcAndWebServerBase;
+}
 namespace tserver {
 
 using CertificateReloader = std::function<Status(void)>;
 using PgConfigReloader = std::function<Status(void)>;
 
+YB_DEFINE_ENUM(ServerType, (TServer)(CQLServer));
 class TabletServerIf : public LocalTabletServer {
  public:
   virtual ~TabletServerIf() {}
@@ -77,7 +81,9 @@ class TabletServerIf : public LocalTabletServer {
     return client_future().get();
   }
 
-  virtual rpc::Messenger* GetMessenger() const = 0;
+  virtual void SetCQLServer(yb::server::RpcAndWebServerBase* server) = 0;
+
+  virtual rpc::Messenger* GetMessenger(ServerType type = ServerType::TServer) const = 0;
 };
 
 } // namespace tserver

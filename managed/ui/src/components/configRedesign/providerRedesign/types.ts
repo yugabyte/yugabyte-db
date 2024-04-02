@@ -263,7 +263,7 @@ interface AWSCloudInfo extends AWSCloudInfoBase {
 
 interface AZUCloudInfoBase {
   azuClientId: string;
-  azuClientSecret: string;
+  azuClientSecret?: string;
   azuRG: string; // azure resource group
   azuNetworkRG?: string;
   azuSubscriptionId: string;

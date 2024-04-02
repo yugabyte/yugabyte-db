@@ -109,6 +109,11 @@ public class AuditService {
   }
 
   public void createAuditEntryWithReqBody(
+      Http.Request request, Audit.TargetType target, Audit.ActionType action) {
+    createAuditEntry(request, target, null, action, request.body().asJson(), null);
+  }
+
+  public void createAuditEntryWithReqBody(
       Http.Request request,
       Audit.TargetType target,
       String targetID,

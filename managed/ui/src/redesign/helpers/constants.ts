@@ -18,6 +18,7 @@ export type YBTableRelationType = typeof YBTableRelationType[keyof typeof YBTabl
 export const YBAHost = {
   GCP: 'gcp',
   AWS: 'aws',
+  AZU: 'azu',
   SELF_HOSTED: 'selfHosted'
 } as const;
 

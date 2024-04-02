@@ -43,6 +43,25 @@
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
 
+#define INTERNAL_SCHECK_PB_FIELD_IS_SET(i, pb, field) \
+  if (!pb.BOOST_PP_CAT(has_, field)()) { \
+    _missing_fields.emplace_back(BOOST_PP_STRINGIZE(field)); \
+  }
+
+// Check that the provided fields have been set in the protobuf. If the check fails returns from the
+// function with an InvalidArgument Status who's message containing the list of missing fields.
+// Ex:
+// SCHECK_PB_FIELDS_ARE_SET(req, field_1, field_2, field_3);
+#define SCHECK_PB_FIELDS_ARE_SET(pb, ...) \
+  do { \
+    std::vector<std::string> _missing_fields; \
+    BOOST_PP_SEQ_FOR_EACH( \
+        INTERNAL_SCHECK_PB_FIELD_IS_SET, pb, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)) \
+    SCHECK_FORMAT( \
+        _missing_fields.empty(), InvalidArgument, "Missing required arguments: $0", \
+        _missing_fields); \
+  } while (0)
+
 namespace google {
 namespace protobuf {
 

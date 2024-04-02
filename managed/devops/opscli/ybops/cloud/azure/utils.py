@@ -8,7 +8,7 @@
 import time
 
 from azure.core.exceptions import HttpResponseError
-from azure.identity import ClientSecretCredential
+from azure.identity import DefaultAzureCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
@@ -24,7 +24,6 @@ from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
 from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
 
-import adal
 import base64
 import datetime
 import json
@@ -103,11 +102,13 @@ class GetPriceWorker(Thread):
 
 
 def get_credentials():
-    credentials = ClientSecretCredential(
-        client_id=os.environ.get("AZURE_CLIENT_ID"),
-        client_secret=os.environ.get("AZURE_CLIENT_SECRET"),
-        tenant_id=os.environ.get("AZURE_TENANT_ID")
-    )
+    """
+    DefaultAzureCredential authenticates using various mechanisms in a pre-defined order:
+    1) EnvironmentCredential: Reads credentials from environment variables.
+    2) WorkloadIdentityCredential: Authenticates on Kubernetes with workload-identity.
+    3) ManagedIdentityCredential: Authenticates on Azure hosts with managed-identity.
+    """
+    credentials = DefaultAzureCredential()
     return credentials
 
 
@@ -1062,14 +1063,10 @@ class AzureCloudAdmin():
 
     def get_ultra_instances(self, regions, folder):
         FOLDER_FORMAT = folder + "{}.json"
-        tenant = os.environ['AZURE_TENANT_ID']
-        authority_url = 'https://login.microsoftonline.com/' + tenant
-        client_id = os.environ['AZURE_CLIENT_ID']
-        client_secret = os.environ['AZURE_CLIENT_SECRET']
         resourceURL = 'https://management.azure.com/'
-        context = adal.AuthenticationContext(authority_url)
-        token = context.acquire_token_with_client_credentials(resourceURL, client_id, client_secret)
-        headers = {'Authorization': 'Bearer ' + token['accessToken'],
+        credentials = self.credentials
+        token = credentials.get_token(resourceURL)
+        headers = {'Authorization': 'Bearer ' + token[0],
                    'Content-Type': 'application/json'}
         for region in regions:
             vms = {}

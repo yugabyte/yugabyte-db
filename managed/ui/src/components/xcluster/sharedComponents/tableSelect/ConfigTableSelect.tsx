@@ -26,6 +26,8 @@ import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
 
 import styles from './ConfigTableSelect.module.scss';
+import { useTranslation } from 'react-i18next';
+import { Typography } from '@material-ui/core';
 
 interface RowItem {
   keyspace: string;
@@ -35,8 +37,9 @@ interface RowItem {
 
 interface ConfigTableSelectProps {
   xClusterConfig: XClusterConfig;
-  selectedTableUUIDs: string[];
+  isDrInterface: boolean;
   setSelectedTableUUIDs: (tableUUIDs: string[]) => void;
+  selectedTableUUIDs: string[];
   configTableType: XClusterTableType;
   selectedKeyspaces: string[];
   setSelectedKeyspaces: (selectedKeyspaces: string[]) => void;
@@ -46,8 +49,7 @@ interface ConfigTableSelectProps {
 
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40] as const;
-
-const TABLE_DESCRIPTOR = 'List of databases and tables in the source universe';
+const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
 
 /**
  * Input component for selecting tables for xCluster configuration.
@@ -57,6 +59,7 @@ export const ConfigTableSelect = ({
   xClusterConfig,
   selectedTableUUIDs,
   setSelectedTableUUIDs,
+  isDrInterface,
   configTableType,
   selectedKeyspaces,
   setSelectedKeyspaces,
@@ -68,6 +71,7 @@ export const ConfigTableSelect = ({
   const [activePage, setActivePage] = useState(1);
   const [sortField, setSortField] = useState<keyof RowItem>('keyspace');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
@@ -189,15 +193,17 @@ export const ConfigTableSelect = ({
       setSortOrder(sortOrder);
     }
   };
-
+  const tableDescriptor = isDrInterface
+    ? t('selectionDescriptorDr')
+    : t('selectionDescriptorXCluster');
   const sourceUniverseUUID = xClusterConfig.sourceUniverseUUID;
   return (
     <>
-      <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
+      <div className={styles.tableDescriptor}>{tableDescriptor}</div>
       <div className={styles.tableToolbar}>
         <YBInputField
           containerClassName={styles.keyspaceSearchInput}
-          placeHolder="Search for keyspace.."
+          placeHolder="Search for database.."
           onValueChanged={(searchTerm: string) => setKeyspaceSearchTerm(searchTerm)}
         />
       </div>
@@ -272,16 +278,21 @@ export const ConfigTableSelect = ({
           />
         </div>
       )}
-      {configTableType === TableType.PGSQL_TABLE_TYPE ? (
-        <div>
-          Tables in {selectedKeyspaces.length} of {rowItems.length} database(s) selected
-        </div>
+      {configTableType === TableType.YQL_TABLE_TYPE ? (
+        <Typography variant="body2">
+          {t('tableSelectionCount', {
+            selectedTableCount: selectedTableUUIDs.length,
+            availableTableCount: tablesForSelection.length
+          })}
+        </Typography>
       ) : (
-        <div>
-          {selectedTableUUIDs.length} of {tablesForSelection.length} table(s) selected
-        </div>
+        <Typography variant="body2">
+          {t('databaseSelectionCount', {
+            selectedDatabaseCount: selectedKeyspaces.length,
+            availableDatabaseCount: rowItems.length
+          })}
+        </Typography>
       )}
-
       {(selectionError || selectionWarning) && (
         <div className={styles.validationContainer}>
           {selectionError && (
