@@ -97,7 +97,7 @@ public class CertificateController extends AuthenticatedController {
     CertificateParams.CustomServerCertData customServerCertData =
         formData.get().customServerCertData;
     HashicorpVaultConfigParams hcVaultParams = formData.get().hcVaultCertParams;
-
+    checkForDuplicateCertConfig(customerUUID, label);
     switch (certType) {
       case SelfSigned:
         {
@@ -466,5 +466,13 @@ public class CertificateController extends AuthenticatedController {
                     .setStartDate(backwardCompatibleDate ? info.getStartDate() : null)
                     .setExpiryDate(backwardCompatibleDate ? info.getExpiryDate() : null))
         .collect(Collectors.toList());
+  }
+
+  private void checkForDuplicateCertConfig(UUID customerUUID, String label) {
+    CertificateInfo certificateInfo = CertificateInfo.get(customerUUID, label);
+    if (certificateInfo != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Certificate with name - %s already exists", label));
+    }
   }
 }

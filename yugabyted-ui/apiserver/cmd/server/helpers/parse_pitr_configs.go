@@ -40,6 +40,7 @@ func (h *HelperContainer) GetPITRConfigFuture(future chan PITRConfigFuture) {
         Config: PITRConfig{},
         Error:  nil,
     }
+    h.logger.Infof("Starting to fetch PITR configuration")
     masterAddresses := MasterAddressCache.Get()
     masterAddressesString := strings.Join(masterAddresses, ",")
     ybAdminResult, ybAdminError := h.ListSnapshotSchedules(masterAddressesString)

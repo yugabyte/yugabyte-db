@@ -272,7 +272,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         assertEquals("At position: " + position, taskType, tasks.get(0).getTaskType());
         JsonNode expectedResults = WITH_MASTER_UNDER_REPLICATED_RESULTS.get(position);
         List<JsonNode> taskDetails =
-            tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+            tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
         assertJsonEqual(expectedResults, taskDetails.get(0));
         position++;
       }
@@ -283,7 +283,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         assertEquals("At position: " + position, taskType, tasks.get(0).getTaskType());
         JsonNode expectedResults = START_NODE_TASK_EXPECTED_RESULTS.get(position);
         List<JsonNode> taskDetails =
-            tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+            tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
         assertJsonEqual(expectedResults, taskDetails.get(0));
         position++;
       }

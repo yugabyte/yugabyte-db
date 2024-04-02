@@ -1179,49 +1179,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTableAndMast
   ASSERT_EQ(expected_tablet_ids, tablets_found);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStreamDelete)) {
-  // Setup cluster.
-  ASSERT_OK(SetUpWithParams(1, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
-
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
-
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-
-  RpcController rpc;
-  CreateCDCStreamRequestPB create_req;
-  CreateCDCStreamResponsePB create_resp;
-
-  create_req.set_table_id(table_id);
-  create_req.set_source_type(XCLUSTER);
-  ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
-  // Drop table on YSQL tables deletes associated xCluster streams.
-  DropTable(&test_cluster_, kTableName);
-
-  // Wait for bg thread to cleanup entries from cdc_state.
-  CDCStateTable cdc_state_table(test_client());
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        Status s;
-        for (auto row_result : VERIFY_RESULT(cdc_state_table.GetTableRange(
-                 CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
-          RETURN_NOT_OK(row_result);
-          auto& row = *row_result;
-          if (row.key.stream_id.ToString() == create_resp.stream_id()) {
-            return false;
-          }
-        }
-        RETURN_NOT_OK(s);
-        return true;
-      },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
-
-  // This should fail now as the stream is deleted.
-  ASSERT_EQ(
-      DeleteCDCStream(ASSERT_RESULT(xrepl::StreamId::FromString(create_resp.stream_id()))), false);
-}
-
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRestart)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
@@ -2680,6 +2637,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 10;
+
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
 
@@ -5192,6 +5150,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // We want to force every GetChanges to update the cdc_state table.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // When replica identity is enabled, it takes precedence over what is passed in the command, so we
+  // disable it here since we want to use the record type syntax (see PG_FULL below).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
 
   const uint32_t num_tservers = 3;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
@@ -5533,6 +5494,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetricUnchangedOnEmp
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExpiredStreamWithCompaction)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // When replica identity is enabled, it takes precedence over what is passed in the command, so we
+  // disable it here since we want to use the record type syntax (see PG_FULL below).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
+
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -7571,7 +7536,7 @@ TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {
-  FLAGS_catalog_manager_bg_task_wait_ms = 50000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 50000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto old_table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "old_table"));
 

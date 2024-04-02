@@ -50,11 +50,19 @@ export const MasterPlacementField = ({
     if (!isPrimary) {
       setValue(MASTER_PLACEMENT_FIELD, MasterPlacementMode.COLOCATED);
     }
-    if (isPrimary && provider?.code === CloudType.kubernetes) {
-      setValue(
-        MASTER_PLACEMENT_FIELD,
-        useK8CustomResources ? MasterPlacementMode.DEDICATED : MasterPlacementMode.COLOCATED
-      );
+    if (isPrimary) {
+      if (provider?.code === CloudType.kubernetes) {
+        setValue(
+          MASTER_PLACEMENT_FIELD,
+          useK8CustomResources ? MasterPlacementMode.DEDICATED : MasterPlacementMode.COLOCATED
+        );
+      }
+      else{
+        setValue(
+          MASTER_PLACEMENT_FIELD,
+          MasterPlacementMode.COLOCATED
+        );
+      }
     }
   }, [isPrimary, provider]);
 

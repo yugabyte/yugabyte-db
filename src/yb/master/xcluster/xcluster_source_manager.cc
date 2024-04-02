@@ -123,7 +123,7 @@ void XClusterSourceManager::RecordOutboundStream(
   stream_list.push_back(stream);
 }
 
-void XClusterSourceManager::CleanUpXReplStream(const CDCStreamInfo& stream) {
+void XClusterSourceManager::CleanupStreamFromMaps(const CDCStreamInfo& stream) {
   std::lock_guard l(tables_to_stream_map_mutex_);
   for (auto& id : stream.table_id()) {
     if (tables_to_stream_map_.contains(id)) {
@@ -417,7 +417,7 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
 
   void Rollback() {
     for (const auto& stream : streams_) {
-      xcluster_manager_.CleanUpXReplStream(*stream);
+      xcluster_manager_.CleanupStreamFromMaps(*stream);
       catalog_manager_.ReleaseAbandonedXReplStream(stream->StreamId());
     }
   }
@@ -578,25 +578,43 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
 
 void XClusterSourceManager::PopulateTabletDeleteRetainerInfoForTabletDrop(
     const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const {
-  // For xCluster , the only time we try to delete a single tablet that is part of an active stream
-  // is during tablet splitting, where we need to keep the parent tablet around until we have
+  // For xCluster, the only time we try to delete a tablet that is part of an active stream is
+  // during tablet splitting, where we need to keep the parent tablet around until we have
   // replicated its SPLIT_OP record.
-  {
-    auto tablet_lock = tablet_info.LockForRead();
-    if (tablet_lock->pb.split_tablet_ids_size() < 2) {
-      return;
-    }
+
+  auto outbound_streams = GetStreamsForTable(tablet_info.table()->id());
+  if (!outbound_streams.empty()) {
+    LOG(INFO) << "Retaining dropped tablet " << tablet_info.id()
+              << " since it has active xCluster streams " << AsString(outbound_streams);
+    delete_retainer.active_xcluster = true;
   }
-  delete_retainer.active_xcluster = IsTableReplicated(tablet_info.table()->id());
+}
+
+void XClusterSourceManager::PopulateTabletDeleteRetainerInfoForTableDrop(
+    const TableInfo& table_info, TabletDeleteRetainerInfo& delete_retainer) const {
+  // On table drop, we need to retain the table as long as it has active xCluster streams. When the
+  // target table is dropped, it will cleanup the stream on the source. In case the target is down
+  // or lagging, the streams of dropped tables are automatically dropped after
+  // cdc_wal_retention_time_secs.
+
+  // Only the parent colocated table is replicated via xCluster.
+  if (table_info.IsColocatedUserTable()) {
+    return;
+  }
+
+  const auto& table_id = table_info.id();
+  auto outbound_streams = GetStreamsForTable(table_id);
+  if (!outbound_streams.empty()) {
+    LOG(INFO) << "Retaining dropped table " << table_id << " since it has active xCluster streams "
+              << AsString(outbound_streams);
+    delete_retainer.active_xcluster = true;
+  }
 }
 
 bool XClusterSourceManager::IsTableReplicated(const TableId& table_id) const {
-  auto streams = GetStreamsForTable(table_id);
-
   // Check that at least one of these streams is active (ie not being deleted).
-  return std::any_of(streams.begin(), streams.end(), [](const auto& stream) {
-    return !stream->LockForRead()->is_deleting();
-  });
+  auto streams = GetStreamsForTable(table_id);
+  return !streams.empty();
 }
 
 bool XClusterSourceManager::DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const {
@@ -614,18 +632,33 @@ void XClusterSourceManager::RecordHiddenTablets(
     return;
   }
 
-  std::lock_guard l(retained_hidden_tablets_mutex_);
+  decltype(retained_hidden_tablets_) tablet_to_retain;
 
   for (const auto& hidden_tablet : hidden_tablets) {
+    if (!IsTableReplicated(hidden_tablet->table()->id())) {
+      continue;
+    }
+
+    decltype(HiddenTabletInfo::split_tablets) split_tablets = {};
     auto tablet_lock = hidden_tablet->LockForRead();
     auto& tablet_pb = tablet_lock->pb;
+    if (tablet_pb.split_tablet_ids_size() == kNumSplitParts) {
+      split_tablets = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)};
+    }
+
     HiddenTabletInfo info{
         .table_id = hidden_tablet->table()->id(),
         .parent_tablet_id = tablet_pb.split_parent_tablet_id(),
-        .split_tablets = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)},
+        .split_tablets = std::move(split_tablets),
     };
 
-    retained_hidden_tablets_.emplace(hidden_tablet->id(), std::move(info));
+    tablet_to_retain.emplace(hidden_tablet->id(), std::move(info));
+  }
+  {
+    std::lock_guard l(retained_hidden_tablets_mutex_);
+    for (const auto& [table_id, hidden_info] : tablet_to_retain) {
+      retained_hidden_tablets_.emplace(table_id, std::move(hidden_info));
+    }
   }
 }
 
@@ -643,84 +676,118 @@ Status XClusterSourceManager::DoProcessHiddenTablets() {
     }
     hidden_tablets = retained_hidden_tablets_;
   }
+  const auto now = master_.clock()->Now();
 
   std::unordered_set<TabletId> tablets_to_delete;
   std::vector<cdc::CDCStateTableKey> entries_to_delete;
 
-  // Check cdc_state table to see if the children tablets being polled.
+  struct TableHideInfo {
+    std::vector<CDCStreamInfoPtr> outbound_streams;
+    bool is_hidden = false;
+    bool HasActiveStreams() const { return !outbound_streams.empty(); }
+  };
+  std::unordered_map<TableId, TableHideInfo> table_hide_infos;
+
+  const auto get_table_hide_info = [this, &table_hide_infos, &now](
+                                       const TableId& table_id,
+                                       const TabletId& tablet_id) -> Result<const TableHideInfo&> {
+    if (table_hide_infos.contains(table_id)) {
+      return &table_hide_infos[table_id];
+    }
+
+    TableHideInfo table_hide_info;
+    table_hide_info.outbound_streams = GetStreamsForTable(table_id);
+
+    auto table = VERIFY_RESULT(catalog_manager_.GetTableById(table_id));
+    auto table_lock = table->LockForRead();
+
+    if (table_lock->started_deleting()) {
+      LOG(DFATAL) << "Table " << table_id << " is deleting while there is a hidden tablet "
+                  << tablet_id << ". Orphaned xCluster streams "
+                  << AsString(table_hide_info.outbound_streams);
+
+      // This is not expected. In release builds orphan the streams so that the tablets get
+      // correctly cleaned up.
+      table_hide_info.outbound_streams = {};
+    }
+
+    if (table_hide_info.HasActiveStreams()) {
+      table_hide_info.is_hidden = table_lock->started_hiding();
+
+      if (table_hide_info.is_hidden && table_lock->pb.has_hide_hybrid_time()) {
+        auto hide_ht = HybridTime(table_lock->pb.hide_hybrid_time());
+        if (hide_ht.AddSeconds(FLAGS_cdc_wal_retention_time_secs) < now) {
+          LOG(WARNING) << "Table " << table_id << " has been marked hidden for longer than "
+                       << FLAGS_cdc_wal_retention_time_secs
+                       << "s (cdc_wal_retention_time_secs). Dropping its xCluster streams "
+                       << AsString(table_hide_info.outbound_streams);
+          RETURN_NOT_OK(catalog_manager_.DropXReplStreams(
+              table_hide_info.outbound_streams, SysCDCStreamEntryPB::DELETING));
+
+          table_hide_info.outbound_streams = {};
+        } else {
+          YB_LOG_EVERY_N_SECS(INFO, 300)
+              << "Tablets of Dropped table " << table_id
+              << " are being retained since it has active xCluster streams "
+              << AsString(table_hide_info.outbound_streams);
+        }
+      }
+    }
+
+    table_hide_infos[table_id] = std::move(table_hide_info);
+
+    return &table_hide_infos[table_id];
+  };
+
   for (auto& [tablet_id, hidden_tablet] : hidden_tablets) {
-    // If our parent tablet is still around, need to process that one first.
-    const auto parent_tablet_id = hidden_tablet.parent_tablet_id;
-    if (!parent_tablet_id.empty() && hidden_tablets.contains(parent_tablet_id)) {
+    const auto& table_id = hidden_tablet.table_id;
+
+    const auto& table_hide_info = VERIFY_RESULT(get_table_hide_info(table_id, tablet_id)).get();
+
+    // If table is no longer replicated then we no longer have to retain its tablets.
+    if (!table_hide_info.HasActiveStreams()) {
+      tablets_to_delete.insert(tablet_id);
       continue;
     }
 
-    // For each hidden tablet, check if for each stream we have an entry in the mapping for them.
-    const auto streams = GetStreamsForTable(hidden_tablet.table_id);
-
-    std::vector<xrepl::StreamId> tablet_streams_to_delete;
-    size_t count_streams_already_deleted = 0;
-    for (const auto& stream : streams) {
-      const auto& stream_id = stream->StreamId();
-      const cdc::CDCStateTableKey entry_key{tablet_id, stream_id};
-
-      // Check parent entry, if it doesn't exist, then it was already deleted.
-      // If the entry for the tablet does not exist, then we can go ahead with deletion of the
-      // tablet.
-      auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-          entry_key, cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
-
-      // This means we already deleted the entry for this stream in a previous iteration.
-      if (!entry_opt) {
-        VLOG(2) << "Did not find an entry corresponding to the tablet: " << tablet_id
-                << ", and stream: " << stream_id << ", in the cdc_state table";
-        ++count_streams_already_deleted;
-        continue;
-      }
-
-      if (!entry_opt->last_replication_time) {
-        // Still haven't processed this tablet since timestamp is null, no need to check children.
-        break;
-      }
-
-      // This means there was an active stream for the source tablet. In which case if we see
-      // that all children tablet entries have started streaming, we can delete the parent tablet.
-      bool found_all_children = true;
-      for (auto& child_tablet_id : hidden_tablet.split_tablets) {
-        auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-            {child_tablet_id, stream_id},
-            cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
-
-        if (!entry_opt || !entry_opt->last_replication_time) {
-          // Check checkpoint to ensure that there has been a poll for this tablet, or if the split
-          // has been reported.
-          VLOG(2) << "The stream: " << stream_id
-                  << ", has not started polling for the child tablet: " << child_tablet_id
-                  << ".Hence we will not delete the hidden parent tablet: " << tablet_id;
-          found_all_children = false;
-          break;
-        }
-      }
-      if (found_all_children) {
-        LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
-                  << ". Reason: Consumer finished processing parent tablet after split.";
-        tablet_streams_to_delete.push_back(stream_id);
-        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
-      }
+    // If the entire table is hidden, then wait for the streams to get dropped.
+    if (table_hide_info.is_hidden) {
+      VLOG(2) << "Hidden tablet " << tablet_id << " belongs to table " << table_id
+              << " that is dropped. Waiting for its xCluster streams to drop.";
+      continue;
     }
 
-    if (tablet_streams_to_delete.size() + count_streams_already_deleted == streams.size()) {
+    if (hidden_tablet.split_tablets.empty()) {
+      LOG_WITH_FUNC(DFATAL)
+          << "Unexpected state: Tablet " << tablet_id
+          << " does not have any split children info, and the table is not hidden";
+
+      // Log warning and skip this tablet in release builds.
+      continue;
+    }
+
+    const auto parent_tablet_id = hidden_tablet.parent_tablet_id;
+    if (!parent_tablet_id.empty() && hidden_tablets.contains(parent_tablet_id)) {
+      VLOG(1) << tablet_id << "is waiting for parent tablet " << parent_tablet_id
+              << " to get deleted";
+      continue;
+    }
+
+    if (VERIFY_RESULT(ProcessSplitChildStreams(
+            tablet_id, hidden_tablet, table_hide_info.outbound_streams, entries_to_delete))) {
       tablets_to_delete.insert(tablet_id);
     }
   }
 
-  RETURN_NOT_OK_PREPEND(
-      cdc_state_table_->DeleteEntries(entries_to_delete),
-      "Error deleting cdc stream rows from cdc_state table");
+  if (!entries_to_delete.empty()) {
+    RETURN_NOT_OK_PREPEND(
+        cdc_state_table_->DeleteEntries(entries_to_delete),
+        "Error deleting xCluster stream rows from cdc_state table");
+  }
 
   // Delete tablets from retained_hidden_tablets_, CatalogManager::CleanupHiddenTablets will do the
   // actual tablet deletion.
-  {
+  if (!tablets_to_delete.empty()) {
     std::lock_guard l(retained_hidden_tablets_mutex_);
     for (const auto& tablet_id : tablets_to_delete) {
       retained_hidden_tablets_.erase(tablet_id);
@@ -730,14 +797,82 @@ Status XClusterSourceManager::DoProcessHiddenTablets() {
   return Status::OK();
 }
 
-std::vector<CDCStreamInfoPtr> XClusterSourceManager::GetStreamsForTable(
-    const TableId& table_id) const {
-  SharedLock lock(tables_to_stream_map_mutex_);
-  auto stream_list = FindOrNull(tables_to_stream_map_, table_id);
-  if (!stream_list) {
-    return {};
+Result<bool> XClusterSourceManager::ProcessSplitChildStreams(
+    const TabletId& tablet_id, const HiddenTabletInfo& hidden_tablet,
+    const std::vector<CDCStreamInfoPtr>& outbound_streams,
+    std::vector<cdc::CDCStateTableKey>& entries_to_delete) {
+  // Check cdc_state table to see if the children tablets are being polled.
+  // For each hidden tablet, check if for each stream we have an entry in the mapping for them.
+
+  size_t count_streams_deleted = 0;
+  for (const auto& stream : outbound_streams) {
+    const auto& stream_id = stream->StreamId();
+    const cdc::CDCStateTableKey entry_key{tablet_id, stream_id};
+
+    // Check parent entry, if it doesn't exist, then it was already deleted.
+    // If the entry for the tablet does not exist, then we can go ahead with deletion of the
+    // tablet.
+    auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+        entry_key, cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
+
+    // This means we already deleted the entry for this stream in a previous iteration.
+    if (!entry_opt) {
+      VLOG(2) << "Did not find an entry corresponding to the tablet: " << tablet_id
+              << ", and stream: " << stream_id << ", in the cdc_state table";
+      ++count_streams_deleted;
+      continue;
+    }
+
+    if (!entry_opt->last_replication_time) {
+      // Still haven't processed this tablet since timestamp is null, no need to check children.
+      break;
+    }
+
+    // This means there was an active stream for the source tablet. In which case if we see
+    // that all children tablet entries have started streaming, we can delete the parent tablet.
+    bool found_all_children = true;
+    for (auto& child_tablet_id : hidden_tablet.split_tablets) {
+      auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+          {child_tablet_id, stream_id},
+          cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
+
+      if (!entry_opt || !entry_opt->last_replication_time) {
+        // Check checkpoint to ensure that there has been a poll for this tablet, or if the split
+        // has been reported.
+        VLOG(2) << "The stream: " << stream_id
+                << ", has not started polling for the child tablet: " << child_tablet_id
+                << ".Hence we will not delete the hidden parent tablet: " << tablet_id;
+        found_all_children = false;
+        break;
+      }
+    }
+    if (found_all_children) {
+      LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
+                << ". Reason: Consumer finished processing parent tablet after split.";
+      ++count_streams_deleted;
+      entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+    }
   }
-  return *stream_list;
+
+  return count_streams_deleted == outbound_streams.size();
+}
+
+std::vector<CDCStreamInfoPtr> XClusterSourceManager::GetStreamsForTable(
+    const TableId& table_id, bool include_dropped) const {
+  std::vector<CDCStreamInfoPtr> streams;
+  {
+    SharedLock lock(tables_to_stream_map_mutex_);
+    auto stream_it = FindOrNull(tables_to_stream_map_, table_id);
+    if (stream_it) {
+      streams = *stream_it;
+    }
+  }
+
+  if (!include_dropped) {
+    EraseIf([](const auto& stream) { return stream->LockForRead()->is_deleting(); }, &streams);
+  }
+
+  return streams;
 }
 
 Result<xrepl::StreamId> XClusterSourceManager::CreateNewXClusterStreamForTable(
@@ -910,4 +1045,48 @@ Status XClusterSourceManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
   return Status::OK();
 }
 
+Status XClusterSourceManager::RemoveStreamsFromSysCatalog(
+    const std::vector<CDCStreamInfo*>& streams, const LeaderEpoch& epoch) {
+  for (auto& outbound_group : GetAllOutboundGroups()) {
+    RETURN_NOT_OK(outbound_group->RemoveStreams(streams, epoch));
+  }
+
+  return Status::OK();
+}
+
+Status XClusterSourceManager::MarkIndexBackfillCompleted(
+    const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) {
+  // Checkpoint xCluster streams of indexes after the backfill completes. The backfilled data is not
+  // replicated, and the target cluster performs its own backfill, so we can skip streaming changes
+  // before the backfill completion.
+
+  std::vector<std::pair<TableId, xrepl::StreamId>> table_streams;
+  {
+    SharedLock l(tables_to_stream_map_mutex_);
+    for (const auto& index_id : index_ids) {
+      if (tables_to_stream_map_.contains(index_id)) {
+        for (const auto& stream : tables_to_stream_map_.at(index_id)) {
+          LOG(INFO) << "Checkpointing xCluster stream " << stream->StreamId() << " of index "
+                    << index_id << " to its end of WAL";
+          table_streams.push_back({index_id, stream->StreamId()});
+        }
+      }
+    }
+  }
+  if (table_streams.empty()) {
+    return Status::OK();
+  }
+
+  std::promise<Result<bool>> promise;
+
+  RETURN_NOT_OK(CheckpointStreamsToEndOfWAL(
+      table_streams, epoch, /*check_if_bootstrap_required=*/false,
+      [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
+  auto bootstrap_required = VERIFY_RESULT(promise.get_future().get());
+
+  LOG_IF(DFATAL, bootstrap_required)
+      << "Unexpectedly found bootstrap required when check_if_bootstrap_required was set to false";
+
+  return Status::OK();
+}
 }  // namespace yb::master

@@ -363,6 +363,9 @@ retry:
 	if (IsYugaByteEnabled())
 	{
 		YBCReplicationSlotDescriptor *yb_replication_slot;
+		int							 replica_identity_idx = 0;
+		HTAB						 *replica_identities;
+		HASHCTL						 ctl;
 
 		YBCGetReplicationSlot(name, &yb_replication_slot);
 
@@ -388,7 +391,46 @@ retry:
 		slot->data.catalog_xmin = yb_replication_slot->xmin;
 		slot->data.restart_lsn = yb_replication_slot->restart_lsn;
 
+		slot->data.yb_initial_record_commit_time_ht =
+			yb_replication_slot->record_id_commit_time_ht;
+
 		MyReplicationSlot = slot;
+
+		/* Setup the per-table replica identity table. */
+		memset(&ctl, 0, sizeof(ctl));
+		ctl.keysize = sizeof(Oid);
+		/*
+		 * We just need a char (1 byte) but the HTAB implementation requires
+		 * entrysize >= keysize. So we just end up storing both the table_oid
+		 * and the replica identity.
+		 */
+		ctl.entrysize = sizeof(YBCPgReplicaIdentityDescriptor);
+		ctl.hcxt = GetCurrentMemoryContext();
+
+		/*
+		 * TODO(#21028): This HTAB must be refreshed in case of dynamic table
+		 * additions so that it also includes the replica identity of the newly
+		 * added columns. It is not necessary to handle drop of a table though.
+		 */
+		replica_identities = hash_create("yb_repl_slot_replica_identities",
+										 32, /* start small and extend */
+										 &ctl, HASH_ELEM | HASH_BLOBS);
+		for (replica_identity_idx = 0;
+			 replica_identity_idx <
+			 yb_replication_slot->replica_identities_count;
+			 replica_identity_idx++)
+		{
+			YBCPgReplicaIdentityDescriptor *desc =
+				&yb_replication_slot->replica_identities[replica_identity_idx];
+
+			YBCPgReplicaIdentityDescriptor *value = hash_search(
+				replica_identities, &desc->table_oid, HASH_ENTER, NULL);
+			value->table_oid = desc->table_oid;
+			value->identity_type = desc->identity_type;
+		}
+		slot->data.yb_replica_identities = replica_identities;
+
+		pfree(yb_replication_slot);
 		return;
 	}
 
@@ -520,6 +562,9 @@ ReplicationSlotRelease(void)
 		SpinLockRelease(&slot->mutex);
 		ConditionVariableBroadcast(&slot->active_cv);
 	}
+
+	if (IsYugaByteEnabled() && MyReplicationSlot->data.yb_replica_identities)
+		hash_destroy(MyReplicationSlot->data.yb_replica_identities);
 
 	MyReplicationSlot = NULL;
 

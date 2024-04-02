@@ -2,6 +2,8 @@ package helpers
 
 import (
     "flag"
+    "os"
+    "path/filepath"
 )
 
 var (
@@ -20,11 +22,15 @@ var (
     MasterUIPort   string
     TserverUIPort  string
     Warnings       string
+    DataDir        string
 )
 
 func init() {
+    homeDir, _ := os.UserHomeDir()
+    defaultDataDir := filepath.Join(homeDir, "var", "data")
     flag.StringVar(&HOST, "database_host", "127.0.0.1",
         "Advertise address of the local YugabyteDB node.")
+    flag.StringVar(&DataDir, "data_dir", defaultDataDir, "Path to the data directory")
     flag.IntVar(&YsqlPort, "ysql_port", 5433, "YSQL port.")
     flag.IntVar(&YcqlPort, "ycql_port", 9042, "YCQL port.")
     flag.StringVar(&BindAddr, "bind_address", "",

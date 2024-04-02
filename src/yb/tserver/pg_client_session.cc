@@ -47,7 +47,7 @@
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_table_cache.h"
-#include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
@@ -579,7 +579,7 @@ Status Commit(client::YBTransaction* txn, PgResponseCache::Disabler disabler) {
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
     client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
-    const std::optional<XClusterContext>& xcluster_context,
+    const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
     PgSequenceCache* sequence_cache)
     : shared_this_(std::shared_ptr<PgClientSession>(std::move(shared_this_source), this)),
@@ -725,9 +725,11 @@ Status PgClientSession::CreateReplicationSlot(
     const PgCreateReplicationSlotRequestPB& req, PgCreateReplicationSlotResponsePB* resp,
     rpc::RpcContext* context) {
   std::unordered_map<std::string, std::string> options;
-  // TODO(#19260): Support customizing the CDCRecordType.
   options.reserve(5);
   options.emplace(cdc::kIdType, cdc::kNamespaceId);
+  // TODO(#21686): This line should be removed. This is only here because in some tests, we create
+  // tables after creating the slot/stream. In those cases, we cannot rely on the replica identity
+  // support and hence, fallback on the record type support.
   options.emplace(cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
   options.emplace(cdc::kRecordFormat, CDCRecordFormat_Name(cdc::CDCRecordFormat::PROTO));
   options.emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
@@ -805,10 +807,6 @@ Status PgClientSession::CreateTablegroup(
 
   if (s.IsAlreadyPresent()) {
     return STATUS(InvalidArgument, "Duplicate tablegroup");
-  }
-
-  if (s.IsNotFound()) {
-    return STATUS(InvalidArgument, "Database not found", req.database_name());
   }
 
   return STATUS_FORMAT(
@@ -1063,15 +1061,19 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
     }
   }
   auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();
-  if (!ddl_mode && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
+  if (!ddl_mode && xcluster_context_ &&
+      xcluster_context_->IsXClusterReadOnlyMode(options.namespace_id())) {
     for (const auto& op : data->req.ops()) {
       if (op.has_write() && !op.write().is_backfill()) {
         // Only DDLs and index backfill is allowed in xcluster read only mode.
         return STATUS(
-            InvalidArgument, "Data modification by DML is forbidden with STANDBY xCluster role");
+            IllegalState,
+            "Data modification is forbidden on database that is the target of a transactional "
+            "xCluster replication");
       }
     }
   }
+
   if (options.has_caching_info()) {
     data->cache_setter = VERIFY_RESULT(response_cache_.Get(
         options.mutable_caching_info(), &data->resp, &data->sidecars, deadline));
@@ -1168,8 +1170,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
     return Status::OK();
   }
 
-  auto xcluster_safe_time =
-      VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(namespace_id));
+  auto xcluster_safe_time = VERIFY_RESULT(xcluster_context_->GetSafeTime(namespace_id));
   if (!xcluster_safe_time) {
     // No xCluster safe time for this namespace.
       return Status::OK();
@@ -1191,8 +1192,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
   // If read_point is set to a time ahead of the xcluster safe time then we wait.
   return WaitFor(
       [&requested_read_time, &namespace_id, this]() -> Result<bool> {
-        auto safe_time =
-            VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(namespace_id));
+        auto safe_time = VERIFY_RESULT(xcluster_context_->GetSafeTime(namespace_id));
         if (!safe_time) {
           // We dont have a safe time anymore so no need to wait.
           return true;

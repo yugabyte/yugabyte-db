@@ -1980,6 +1980,15 @@ std::shared_ptr<IndexMap> RaftGroupMetadata::index_map(const TableId& table_id) 
   return table_info->index_map;
 }
 
+void RaftGroupMetadata::GetTableIdToSchemaVersionMap(
+    TableIdToSchemaVersionMap* table_to_version) const {
+  std::lock_guard lock(data_mutex_);
+  for (const auto& table_id : GetAllColocatedTablesUnlocked()) {
+    const TableInfoPtr table_info = CHECK_RESULT(GetTableInfoUnlocked(table_id));
+    (*table_to_version)[table_id] = table_info->schema_version;
+  }
+}
+
 SchemaVersion RaftGroupMetadata::schema_version(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info = CHECK_RESULT(GetTableInfo(table_id));
@@ -2058,6 +2067,10 @@ bool RaftGroupMetadata::UsePartialRangeKeyIntents() const {
 
 std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() const {
   std::lock_guard lock(data_mutex_);
+  return GetAllColocatedTablesUnlocked();
+}
+
+std::vector<TableId> RaftGroupMetadata::GetAllColocatedTablesUnlocked() const {
   std::vector<TableId> table_ids;
   table_ids.reserve(kv_store_.tables.size());
   for (const auto& id_and_info : kv_store_.tables) {

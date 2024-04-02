@@ -55,7 +55,7 @@ static const uint32_t kRangePartitionInterval = 500;
 
 template <typename TabletServer>
 auto GetSafeTime(const TabletServer* tserver, const NamespaceId& namespace_id) {
-  return tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+  return tserver->GetXClusterContext().GetSafeTime(namespace_id);
 }
 
 class XClusterTestBase : public YBTest {
@@ -150,6 +150,7 @@ class XClusterTestBase : public YBTest {
 
   Status CreateDatabase(
       Cluster* cluster, const std::string& namespace_name, bool colocated = false);
+  Status DropDatabase(Cluster& cluster, const std::string& namespace_name);
 
   static Result<client::YBTableName> CreateTable(
       YBClient* client, const std::string& namespace_name, const std::string& table_name,
@@ -215,6 +216,10 @@ class XClusterTestBase : public YBTest {
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled);
+
+  Result<master::GetUniverseReplicationResponsePB> GetUniverseReplicationInfo(
+      Cluster& cluster,
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
 
   Status VerifyUniverseReplicationDeleted(
       MiniCluster* consumer_cluster, YBClient* consumer_client,

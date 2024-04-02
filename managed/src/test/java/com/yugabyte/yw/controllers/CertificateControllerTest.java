@@ -403,4 +403,28 @@ public class CertificateControllerTest extends FakeDBApplication {
     assertEquals(ci.getCertType(), CertConfigType.SelfSigned);
     assertAuditEntry(1, customer.getUuid());
   }
+
+  @Test
+  public void testCreateCertificateWithDuplicateLabel() {
+    // Create a new certificate with label = test_dup_cert
+    String cert_content = TestUtils.readResource("platform.dev.crt");
+    Date date = new Date();
+    ObjectNode certConfig = Json.newObject();
+    certConfig.put("label", "test_dup_cert");
+    certConfig.put("certContent", cert_content);
+    certConfig.put("certStart", date.getTime());
+    certConfig.put("certExpiry", date.getTime());
+    certConfig.put("certType", "CustomCertHostPath");
+    ObjectNode certJson = Json.newObject();
+    certJson.put("rootCertPath", "/tmp/rootCertPath");
+    certJson.put("nodeCertPath", "/tmp/nodeCertPath");
+    certJson.put("nodeKeyPath", "/tmp/nodeKeyPath");
+    certConfig.set("customCertInfo", certJson);
+    Result result = uploadCertificate(customer.getUuid(), certConfig);
+    // Create the same certificate again
+    Result createDuplicateCertificateResult =
+        assertPlatformException(() -> uploadCertificate(customer.getUuid(), certConfig));
+    assertBadRequest(
+        createDuplicateCertificateResult, "Certificate with name - test_dup_cert already exists");
+  }
 }

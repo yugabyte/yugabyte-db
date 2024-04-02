@@ -428,7 +428,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     assertEquals(0, configList.size());
 
     assertEquals(TaskType.XClusterConfigSync, taskInfo.getSubTasks().get(1).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(1).getDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(1).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "Failed to getMasterClusterConfig from target universe (%s): %s",

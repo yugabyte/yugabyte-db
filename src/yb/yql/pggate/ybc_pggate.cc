@@ -2084,6 +2084,23 @@ YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle,
   return YBCStatusOK();
 }
 
+char GetReplicaIdentity(yb::tserver::PgReplicaIdentityPB replica_identity_pb) {
+  switch (replica_identity_pb.replica_identity()) {
+    case tserver::DEFAULT:
+      return YBC_REPLICA_IDENTITY_DEFAULT;
+    case tserver::FULL:
+      return YBC_REPLICA_IDENTITY_FULL;
+    case tserver::NOTHING:
+      return YBC_REPLICA_IDENTITY_NOTHING;
+    case tserver::CHANGE:
+      return YBC_YB_REPLICA_IDENTITY_CHANGE;
+    default:
+      LOG(FATAL) << Format(
+          "Received unexpected replica identity $0", replica_identity_pb.DebugString());
+      return 'a';
+  }
+}
+
 YBCStatus YBCPgListReplicationSlots(
     YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots) {
   const auto result = pgapi->ListReplicationSlots();
@@ -2099,6 +2116,19 @@ YBCStatus YBCPgListReplicationSlots(
         YBCPAlloc(sizeof(YBCReplicationSlotDescriptor) * replication_slots_info.size()));
     YBCReplicationSlotDescriptor *dest = *replication_slots;
     for (const auto &info : replication_slots_info) {
+      int replica_identities_count = info.replica_identity_map_size();
+      YBCPgReplicaIdentityDescriptor* replica_identities =
+          static_cast<YBCPgReplicaIdentityDescriptor*>(
+              YBCPAlloc(sizeof(YBCPgReplicaIdentityDescriptor) * replica_identities_count));
+
+      int replica_identity_idx = 0;
+      for (const auto& replica_identity : info.replica_identity_map()) {
+        replica_identities[replica_identity_idx].table_oid = replica_identity.first;
+        replica_identities[replica_identity_idx].identity_type =
+            GetReplicaIdentity(replica_identity.second);
+        replica_identity_idx++;
+      }
+
       new (dest) YBCReplicationSlotDescriptor{
           .slot_name = YBCPAllocStdString(info.slot_name()),
           .stream_id = YBCPAllocStdString(info.stream_id()),
@@ -2107,6 +2137,9 @@ YBCStatus YBCPgListReplicationSlots(
           .confirmed_flush = info.confirmed_flush_lsn(),
           .restart_lsn = info.restart_lsn(),
           .xmin = info.xmin(),
+          .record_id_commit_time_ht = info.record_id_commit_time_ht(),
+          .replica_identities = replica_identities,
+          .replica_identities_count = replica_identities_count,
       };
       ++dest;
     }
@@ -2121,10 +2154,26 @@ YBCStatus YBCPgGetReplicationSlot(
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
+
+  VLOG(4) << "The GetReplicationSlot for slot_name = " << std::string(slot_name)
+          << " is: " << result->DebugString();
+
   const auto& slot_info = result.get().replication_slot_info();
 
   *replication_slot =
       static_cast<YBCReplicationSlotDescriptor*>(YBCPAlloc(sizeof(YBCReplicationSlotDescriptor)));
+
+  int replica_identities_count = slot_info.replica_identity_map_size();
+  YBCPgReplicaIdentityDescriptor* replica_identities = static_cast<YBCPgReplicaIdentityDescriptor*>(
+      YBCPAlloc(sizeof(YBCPgReplicaIdentityDescriptor) * replica_identities_count));
+
+  int replica_identity_idx = 0;
+  for (const auto& replica_identity : slot_info.replica_identity_map()) {
+    replica_identities[replica_identity_idx].table_oid = replica_identity.first;
+    replica_identities[replica_identity_idx].identity_type =
+        GetReplicaIdentity(replica_identity.second);
+    replica_identity_idx++;
+  }
 
   new (*replication_slot) YBCReplicationSlotDescriptor{
       .slot_name = YBCPAllocStdString(slot_info.slot_name()),
@@ -2133,7 +2182,10 @@ YBCStatus YBCPgGetReplicationSlot(
       .active = slot_info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
       .confirmed_flush = slot_info.confirmed_flush_lsn(),
       .restart_lsn = slot_info.restart_lsn(),
-      .xmin = slot_info.xmin()
+      .xmin = slot_info.xmin(),
+      .record_id_commit_time_ht = slot_info.record_id_commit_time_ht(),
+      .replica_identities = replica_identities,
+      .replica_identities_count = replica_identities_count,
   };
 
   return YBCStatusOK();
@@ -2147,6 +2199,36 @@ YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
 
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropReplicationSlot(handle));
+}
+
+YBCStatus YBCYcqlStatementStats(YCQLStatementStats** stats, size_t* num_stats) {
+  const auto result = pgapi->YCQLStatementStats();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& statements_stat = result->statements();
+  *num_stats = statements_stat.size();
+  *stats = NULL;
+  if (!statements_stat.empty()) {
+    *stats = static_cast<YCQLStatementStats*>(
+        YBCPAlloc(sizeof(YCQLStatementStats) * statements_stat.size()));
+    YCQLStatementStats *dest = *stats;
+    for (const auto &info : statements_stat) {
+      new (dest) YCQLStatementStats {
+          .queryid = info.queryid(),
+          .query = YBCPAllocStdString(info.query()),
+          .is_prepared = info.is_prepared(),
+          .calls = info.calls(),
+          .total_time = info.total_time(),
+          .min_time = info.min_time(),
+          .max_time = info.max_time(),
+          .mean_time = info.mean_time(),
+          .stddev_time = info.stddev_time(),
+      };
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
 }
 
 void YBCStoreTServerAshSamples(
@@ -2205,6 +2287,8 @@ YBCPgRowMessageAction GetRowMessageAction(yb::cdc::RowMessage row_message_pb) {
       return YB_PG_ROW_MESSAGE_ACTION_UPDATE;
     case cdc::RowMessage_Op_DELETE:
       return YB_PG_ROW_MESSAGE_ACTION_DELETE;
+    case cdc::RowMessage_Op_DDL:
+      return YB_PG_ROW_MESSAGE_ACTION_DDL;
     default:
       LOG(FATAL) << Format("Received unexpected operation $0", row_message_pb.op());
       return YB_PG_ROW_MESSAGE_ACTION_UNKNOWN;
@@ -2246,7 +2330,7 @@ YBCStatus YBCPgGetCDCConsistentChanges(
     // For update: both old and new tuples will be present.
     std::unordered_map<std::string, std::pair<size_t, size_t>> col_name_idx_map;
     int new_tuple_idx = 0;
-    for (auto &new_tuple : row_message_pb.new_tuple()) {
+    for (const auto &new_tuple : row_message_pb.new_tuple()) {
       if (new_tuple.has_column_name()) {
         col_name_idx_map.emplace(
             new_tuple.column_name(), std::make_pair(OMITTED_VALUE, new_tuple_idx));
@@ -2254,7 +2338,7 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       new_tuple_idx++;
     }
     int old_tuple_idx = 0;
-    for (auto& old_tuple : row_message_pb.old_tuple()) {
+    for (const auto& old_tuple : row_message_pb.old_tuple()) {
       if (old_tuple.has_column_name()) {
         auto itr = col_name_idx_map.find(old_tuple.column_name());
         if (itr != col_name_idx_map.end()) {
@@ -2277,31 +2361,35 @@ YBCStatus YBCPgGetCDCConsistentChanges(
         YBCPgTypeAttrs type_attrs{-1 /* typmod */};
         const auto& column_name = col_idxs.first;
 
-        // Old value.
-        uint64 old_datum = 0;
-        bool old_is_null = true;
-        if (col_idxs.second.first != OMITTED_VALUE) {
+        // Before Op value aka Before Image.
+        uint64 before_op_datum = 0;
+        bool before_op_is_null = true;
+        bool before_op_is_omitted = col_idxs.second.first == OMITTED_VALUE;
+        if (!before_op_is_omitted) {
           const auto old_datum_pb =
               &row_message_pb.old_tuple(static_cast<int>(col_idxs.second.first));
           const auto *type_entity =
               pgapi->FindTypeEntity(static_cast<int>(old_datum_pb->column_type()));
           auto s = PBToDatum(
-              type_entity, type_attrs, old_datum_pb->pg_ql_value(), &old_datum, &old_is_null);
+              type_entity, type_attrs, old_datum_pb->pg_ql_value(), &before_op_datum,
+              &before_op_is_null);
           if (!s.ok()) {
             return ToYBCStatus(s);
           }
         }
 
-        // New value.
-        uint64 new_datum = 0;
-        bool new_is_null = true;
-        if (col_idxs.second.second != OMITTED_VALUE) {
+        // After Op value.
+        uint64 after_op_datum = 0;
+        bool after_op_is_null = true;
+        bool after_op_is_omitted = col_idxs.second.second == OMITTED_VALUE;
+        if (!after_op_is_omitted) {
           const auto new_datum_pb =
               &row_message_pb.new_tuple(static_cast<int>(col_idxs.second.second));
           const auto *type_entity =
               pgapi->FindTypeEntity(static_cast<int>(new_datum_pb->column_type()));
           auto s = PBToDatum(
-              type_entity, type_attrs, new_datum_pb->pg_ql_value(), &new_datum, &new_is_null);
+              type_entity, type_attrs, new_datum_pb->pg_ql_value(), &after_op_datum,
+              &after_op_is_null);
           if (!s.ok()) {
             return ToYBCStatus(s);
           }
@@ -2309,10 +2397,12 @@ YBCStatus YBCPgGetCDCConsistentChanges(
 
         auto col = &cols[tuple_idx++];
         col->column_name = YBCPAllocStdString(column_name);
-        col->after_op_datum = new_datum;
-        col->after_op_is_null = new_is_null;
-        col->before_op_datum = old_datum;
-        col->before_op_is_null = old_is_null;
+        col->after_op_datum = after_op_datum;
+        col->after_op_is_null = after_op_is_null;
+        col->after_op_is_omitted = after_op_is_omitted;
+        col->before_op_datum = before_op_datum;
+        col->before_op_is_null = before_op_is_null;
+        col->before_op_is_omitted = before_op_is_omitted;
       }
     }
 

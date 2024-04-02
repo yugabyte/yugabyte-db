@@ -1,15 +1,19 @@
 import { FC, useRef } from 'react';
-import { Field, FormikProps } from 'formik';
+import { Field, FormikActions, FormikProps } from 'formik';
 import moment from 'moment';
 import * as Yup from 'yup';
-import { useMutation, useQuery } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { browserHistory } from 'react-router';
-import { toast } from 'react-toastify';
 import { Alert } from 'react-bootstrap';
+import { Box, useTheme } from '@material-ui/core';
+import { AxiosError } from 'axios';
+
 import { YBModalForm } from '../../common/forms';
 import { api, QUERY_KEY } from '../../../redesign/helpers/api';
 import { YBLoading } from '../../common/indicators';
 import { YBCheckBox, YBFormSelect } from '../../common/forms/fields';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
+
 import './PromoteInstanceModal.scss';
 
 interface PromoteInstanceModalProps {
@@ -19,14 +23,16 @@ interface PromoteInstanceModalProps {
   instanceId: string;
 }
 
-interface FormValues {
+interface PromoteInstanceFormValues {
   backupFile: { value: string; label: string } | null;
   confirmed: boolean;
+  isForcePromote: boolean;
 }
 
-const INITIAL_VALUES: FormValues = {
+const INITIAL_VALUES: PromoteInstanceFormValues = {
   backupFile: null,
-  confirmed: false
+  confirmed: false,
+  isForcePromote: false
 };
 
 const validationSchema = Yup.object().shape({
@@ -34,7 +40,7 @@ const validationSchema = Yup.object().shape({
   confirmed: Yup.boolean().oneOf([true])
 });
 
-const mapFileName = (value: string): FormValues['backupFile'] => {
+const adaptHaBackupToFormFieldOption = (value: string): PromoteInstanceFormValues['backupFile'] => {
   // backup_21-02-20-00-40.tgz --> 21-02-20-00-40
   const timestamp = value.replace('backup_', '').replace('.tgz', '');
   const label = moment.utc(timestamp, 'YY-MM-DD-HH:mm').local().format('LLL');
@@ -42,13 +48,18 @@ const mapFileName = (value: string): FormValues['backupFile'] => {
   return { value, label };
 };
 
+const POST_PROMOTION_REDIRECT_URL = '/login';
+
 export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
   visible,
   onClose,
   configId,
   instanceId
 }) => {
-  const formik = useRef({} as FormikProps<FormValues>);
+  const formik = useRef({} as FormikProps<PromoteInstanceFormValues>);
+  const theme = useTheme();
+  const queryClient = useQueryClient();
+
   const { isLoading, data } = useQuery(
     [QUERY_KEY.getHABackups, configId],
     () => api.getHABackups(configId),
@@ -57,31 +68,43 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
       onSuccess: (data) => {
         // pre-select first backup file from the list
         if (Array.isArray(data) && data.length) {
-          formik.current.setFieldValue('backupFile', mapFileName(data[0]));
+          formik.current.setFieldValue('backupFile', adaptHaBackupToFormFieldOption(data[0]));
         }
       }
     }
   );
-  const { mutateAsync: promoteInstance } = useMutation<void, unknown, string>((backupFile) =>
-    api.promoteHAInstance(configId, instanceId, backupFile)
+  const promoteHaInstanceMutation = useMutation(
+    (formValues: PromoteInstanceFormValues) =>
+      api.promoteHAInstance(configId, instanceId, formValues.isForcePromote, {
+        backup_file: formValues.backupFile?.value ?? ''
+      }),
+    {
+      onSuccess(_) {
+        queryClient.invalidateQueries(QUERY_KEY.getHAConfig);
+        browserHistory.push(POST_PROMOTION_REDIRECT_URL);
+        onClose();
+      },
+      onError: (error: Error | AxiosError) => {
+        handleServerError(error, { customErrorLabel: 'Failed to promote platform instance' });
+      }
+    }
   );
 
-  const backupsList = (data ?? []).map(mapFileName);
+  const backupsList = (data ?? []).map(adaptHaBackupToFormFieldOption);
 
   const closeModal = () => {
-    if (!formik.current.isSubmitting) onClose();
-  };
-
-  const submitForm = async (values: FormValues) => {
-    try {
-      // values.backupFile never be null here due to form validation
-      await promoteInstance(values.backupFile!.value);
-      browserHistory.push('/login');
-    } catch (error) {
-      toast.error('Failed to promote platform instance');
-      formik.current.setSubmitting(false);
+    if (!formik.current.isSubmitting) {
       onClose();
     }
+  };
+
+  const submitForm = async (
+    formValues: PromoteInstanceFormValues,
+    actions: FormikActions<PromoteInstanceFormValues>
+  ) => {
+    return promoteHaInstanceMutation.mutate(formValues, {
+      onSettled: () => actions.setSubmitting(false)
+    });
   };
 
   if (visible) {
@@ -97,9 +120,22 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
         onHide={closeModal}
         onFormSubmit={submitForm}
         footerAccessory={
-          <Field name="confirmed" component={YBCheckBox} label="Confirm promotion" />
+          <Box display="flex" gridGap={theme.spacing(1)}>
+            <Field
+              name="confirmed"
+              dataTestId="confirmedCheckbox"
+              component={YBCheckBox}
+              label="Confirm promotion"
+            />
+            <Field
+              name="isForcePromote"
+              dataTestId="isForcePromoteCheckbox"
+              component={YBCheckBox}
+              label="Force promotion"
+            />
+          </Box>
         }
-        render={(formikProps: FormikProps<FormValues>) => {
+        render={(formikProps: FormikProps<PromoteInstanceFormValues>) => {
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
 

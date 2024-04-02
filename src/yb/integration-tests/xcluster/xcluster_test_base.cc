@@ -37,6 +37,7 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -219,6 +220,11 @@ Status XClusterTestBase::CreateDatabase(
   auto conn = VERIFY_RESULT(cluster->Connect());
   return conn.ExecuteFormat(
       "CREATE DATABASE $0$1", namespace_name, colocated ? " colocated = true" : "");
+}
+
+Status XClusterTestBase::DropDatabase(Cluster& cluster, const std::string& namespace_name) {
+  auto conn = VERIFY_RESULT(cluster.Connect());
+  return conn.ExecuteFormat("DROP DATABASE $0", namespace_name);
 }
 
 Result<YBTableName> XClusterTestBase::CreateTable(
@@ -497,6 +503,22 @@ Status XClusterTestBase::ChangeXClusterRole(const cdc::XClusterRole role, Cluste
   return Status::OK();
 }
 
+Result<master::GetUniverseReplicationResponsePB> XClusterTestBase::GetUniverseReplicationInfo(
+    Cluster& cluster, const xcluster::ReplicationGroupId& replication_group_id) {
+  master::GetUniverseReplicationRequestPB req;
+  master::GetUniverseReplicationResponsePB resp;
+  req.set_replication_group_id(replication_group_id.ToString());
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &cluster.client_->proxy_cache(),
+      VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+  RETURN_NOT_OK(master_proxy->GetUniverseReplication(req, &resp, &rpc));
+  return resp;
+}
+
 Status XClusterTestBase::VerifyUniverseReplicationDeleted(
     MiniCluster* consumer_cluster, YBClient* consumer_client,
     const xcluster::ReplicationGroupId& replication_group_id, int timeout) {
@@ -670,16 +692,14 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
   for (auto& tserver : cluster->mini_cluster_->mini_tablet_servers()) {
     RETURN_NOT_OK(Wait(
         [&]() -> Result<bool> {
-          auto safe_time_result =
-              tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+          auto safe_time_result = tserver->server()->GetXClusterContext().GetSafeTime(namespace_id);
           if (!safe_time_result || !*safe_time_result) {
             return false;
           }
           CHECK(safe_time_result.get()->is_valid());
           return true;
         },
-        *deadline,
-        description));
+        *deadline, description));
   }
 
   return Status::OK();
@@ -884,8 +904,7 @@ Status XClusterTestBase::WaitForSafeTime(
     }
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_result =
-              tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+          auto safe_time_result = tserver->server()->GetXClusterContext().GetSafeTime(namespace_id);
           if (!safe_time_result) {
             CHECK(safe_time_result.status().IsTryAgain());
 

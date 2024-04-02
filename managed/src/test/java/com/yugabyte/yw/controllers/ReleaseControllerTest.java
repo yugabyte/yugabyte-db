@@ -34,6 +34,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -58,6 +59,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
   private Region mockRegion;
   private Config mockConfig;
 
+  private ReleasesUtils mockReleasesUtils;
+
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
@@ -66,6 +69,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     region = Region.create(provider, "us-west-2", "us-west-2", "yb-image");
     mockRegion = mock(Region.class);
     mockConfig = mock(Config.class);
+    mockReleasesUtils = mock(ReleasesUtils.class);
   }
 
   private Result getReleases(UUID customerUUID) {
@@ -512,7 +516,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testUpdateRelease() {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
-    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig);
+    ReleaseContainer release =
+        new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
     ObjectNode body = Json.newObject();
     body.put("version", "0.0.1");
@@ -560,7 +565,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testUpdateReleaseWithMissingStateParam() {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
-    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig);
+    ReleaseContainer release =
+        new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
     ObjectNode body = Json.newObject();
     Result result = assertPlatformException(() -> updateRelease(customer.getUuid(), "0.0.1", body));
@@ -607,7 +613,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteReleaseSuccess() {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.2");
-    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig);
+    ReleaseContainer release =
+        new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     when(mockReleaseManager.getReleaseByVersion("0.0.2")).thenReturn(release);
     Result result = deleteRelease(customer.getUuid(), "0.0.2");
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
@@ -618,7 +625,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteReleaseWithException() {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.3");
-    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig);
+    ReleaseContainer release =
+        new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     when(mockReleaseManager.getReleaseByVersion("0.0.3")).thenReturn(release);
     doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).removeRelease("0.0.3");
     Result result = assertPlatformException(() -> deleteRelease(customer.getUuid(), "0.0.3"));

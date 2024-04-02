@@ -112,6 +112,7 @@
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug-util.h"
@@ -2552,13 +2553,8 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
   }
   reported_tablet->set_schema_version(tablet_peer->tablet_metadata()->schema_version());
 
-  auto& id_to_version = *reported_tablet->mutable_table_to_version();
-  // Attach schema versions of all tables including the colocated ones.
-  for (const auto& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
-    if (id_to_version.find(table_id) == id_to_version.end()) {
-      id_to_version[table_id] = tablet_peer->tablet_metadata()->schema_version(table_id);
-    }
-  }
+  tablet_peer->tablet_metadata()->GetTableIdToSchemaVersionMap(
+      reported_tablet->mutable_table_to_version());
 
   {
     auto tablet_ptr = tablet_peer->shared_tablet();
@@ -3128,7 +3124,7 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
   }
 
   auto xcluster_safe_time_result =
-      server_->GetXClusterSafeTimeMap().GetSafeTime(metadata->namespace_id());
+      server_->GetXClusterContext().GetSafeTime(metadata->namespace_id());
   if (!xcluster_safe_time_result) {
     VLOG(1) << "XCluster GetSafeTime call failed with " << xcluster_safe_time_result.status()
             << " for namespace: " << metadata->namespace_id();

@@ -50,7 +50,10 @@ func (a *AuthAPIClient) List(pUUID string) (
 // NewProviderYBAVersionCheck checks if the new API request body can be used for the Create
 // Provider API
 func (a *AuthAPIClient) NewProviderYBAVersionCheck() (bool, string, error) {
-	allowedVersions := []string{util.YBAAllowNewProviderMinVersion}
+	allowedVersions := YBAMinimumVersion{
+		Stable: util.YBAAllowNewProviderMinVersion,
+		Preview: util.YBAAllowNewProviderMinVersion,
+	}
 	allowed, version, err := a.CheckValidYBAVersion(allowedVersions)
 	if err != nil {
 		return false, "", err

@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -396,7 +397,13 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
 
     if (!tserversToBeRemoved.isEmpty()) {
-      // Clear blacklisted tservers.
+      Duration sleepBeforeStart =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
+      if (sleepBeforeStart.compareTo(Duration.ZERO) > 0) {
+        createWaitForDurationSubtask(universe, sleepBeforeStart)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      }
       createModifyBlackListTask(
               null /* addNodes */,
               tserversToBeRemoved /* removeNodes */,
