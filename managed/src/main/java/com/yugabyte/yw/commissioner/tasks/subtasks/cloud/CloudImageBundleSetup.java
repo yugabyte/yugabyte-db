@@ -223,7 +223,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
 
   @Override
   public void run() {
-    Provider provider = getProvider();
+    Provider provider = getProvider(true);
     List<Region> regions = provider.getRegions();
 
     List<ImageBundle> imageBundles = taskParams().imageBundles;
