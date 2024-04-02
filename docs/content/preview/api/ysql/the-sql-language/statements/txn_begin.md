@@ -17,7 +17,11 @@ Use the `BEGIN` statement to start a transaction with the default (or specified)
 ## Syntax
 
 {{%ebnf%}}
-  begin
+  begin,
+  transaction_mode,
+  isolation_level,
+  read_write_mode,
+  deferrable_mode
 {{%/ebnf%}}
 
 ## Semantics
