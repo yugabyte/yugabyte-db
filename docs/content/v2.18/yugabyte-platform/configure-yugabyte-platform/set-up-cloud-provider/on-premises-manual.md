@@ -50,6 +50,10 @@ For each node, perform the following:
 
 After you have provisioned the nodes, you can proceed to [add instances to the on-prem provider](../on-premises/#add-instances).
 
+{{<note title="Root-level systemd or cron">}}
+You can configure nodes to use either cron or root-level systemd to provide the necessary access to system resources. All nodes in a provider need to be provisioned in the same way. If you use cron or root-level systemd on one node, be sure to provision all nodes in the provider using cron or root-level systemd, respectively.
+{{</note>}}
+
 ## Set up time synchronization
 
 A local Network Time Protocol (NTP) server or equivalent must be available.
