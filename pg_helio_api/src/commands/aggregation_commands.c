@@ -402,7 +402,7 @@ command_distinct_query(PG_FUNCTION_ARGS)
 		pgbson_writer defaultWriter;
 		PgbsonWriterInit(&defaultWriter);
 		PgbsonWriterAppendEmptyArray(&defaultWriter, "values", 6);
-		PgbsonWriterAppendInt32(&defaultWriter, "ok", 2, 1);
+		PgbsonWriterAppendDouble(&defaultWriter, "ok", 2, 1);
 		response = PgbsonWriterGetPgbson(&defaultWriter);
 	}
 

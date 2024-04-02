@@ -1217,7 +1217,7 @@ PostProcessCursorPage(PG_FUNCTION_ARGS,
 	/* Finish the cursor doc*/
 	PgbsonWriterEndArray(cursorDoc, arrayWriter);
 	PgbsonWriterEndDocument(topLevelWriter, cursorDoc);
-	PgbsonWriterAppendInt32(topLevelWriter, "ok", 2, 1);
+	PgbsonWriterAppendDouble(topLevelWriter, "ok", 2, 1);
 
 
 	bool queryFullyDrained = continuation == NULL;

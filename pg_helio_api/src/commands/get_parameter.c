@@ -125,7 +125,7 @@ command_get_parameter(PG_FUNCTION_ARGS)
 			PG_RETURN_POINTER(GetNoOptionFoundResponse());
 		}
 	}
-	PgbsonWriterAppendInt32(&writer, "ok", 2, 1);
+	PgbsonWriterAppendDouble(&writer, "ok", 2, 1);
 	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
 }
 
@@ -138,7 +138,7 @@ GetNoOptionFoundResponse(void)
 {
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
-	PgbsonWriterAppendInt32(&writer, "ok", strlen("ok"), false);
+	PgbsonWriterAppendDouble(&writer, "ok", strlen("ok"), false);
 	PgbsonWriterAppendUtf8(&writer, "errmsg", strlen("errmsg"), NO_OPTION_FOUND);
 	return PgbsonWriterGetPgbson(&writer);
 }

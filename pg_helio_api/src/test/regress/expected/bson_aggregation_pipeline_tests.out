@@ -637,27 +637,27 @@ SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeli
 
 -- distinct
 SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "aggregation_pipeline", "key": "_id" }');
-                            document                             
------------------------------------------------------------------
- { "values" : [ "1", "2", "3" ], "ok" : { "$numberInt" : "1" } }
+                               document                               
+----------------------------------------------------------------------
+ { "values" : [ "1", "2", "3" ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "non_existent_coll", "key": "foo" }');
-                      document                      
-----------------------------------------------------
- { "values" : [  ], "ok" : { "$numberInt" : "1" } }
+                        document                         
+---------------------------------------------------------
+ { "values" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT document FROM helio_api.distinct_query('db', '{ "distinct": "aggregation_pipeline", "key": "_id" }');
-                            document                             
------------------------------------------------------------------
- { "values" : [ "1", "2", "3" ], "ok" : { "$numberInt" : "1" } }
+                               document                               
+----------------------------------------------------------------------
+ { "values" : [ "1", "2", "3" ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT document FROM helio_api.distinct_query('db', '{ "distinct": "non_existent_coll", "key": "foo" }');
-                      document                      
-----------------------------------------------------
- { "values" : [  ], "ok" : { "$numberInt" : "1" } }
+                        document                         
+---------------------------------------------------------
+ { "values" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- Vector search with cosmosSearch

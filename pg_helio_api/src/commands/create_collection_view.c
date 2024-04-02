@@ -142,7 +142,7 @@ command_create_collection_view(PG_FUNCTION_ARGS)
 	/* If we got here we succeeded, just return { ok: 1 } */
 	pgbson_writer finalWriter;
 	PgbsonWriterInit(&finalWriter);
-	PgbsonWriterAppendInt32(&finalWriter, "ok", 2, 1);
+	PgbsonWriterAppendDouble(&finalWriter, "ok", 2, 1);
 
 	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&finalWriter));
 }

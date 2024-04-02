@@ -340,6 +340,6 @@ BuildResponseMessage(ValidateResult *result)
 	}
 	PgbsonWriterEndArray(&writer, &writeErrorsWriter);
 
-	PgbsonWriterAppendInt32(&writer, "ok", 2, result->ok);
+	PgbsonWriterAppendDouble(&writer, "ok", 2, result->ok);
 	return PgbsonWriterGetPgbson(&writer);
 }

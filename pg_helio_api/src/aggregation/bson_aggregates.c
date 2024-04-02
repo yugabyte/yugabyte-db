@@ -528,7 +528,7 @@ bson_distinct_array_agg_final(PG_FUNCTION_ARGS)
 			currentArrayAgg);
 		PgbsonWriterEndArray(&state->writer, &state->arrayWriter);
 
-		PgbsonWriterAppendInt32(&state->writer, "ok", 2, 1);
+		PgbsonWriterAppendDouble(&state->writer, "ok", 2, 1);
 		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&state->writer));
 	}
 	else
@@ -537,7 +537,7 @@ bson_distinct_array_agg_final(PG_FUNCTION_ARGS)
 		PgbsonWriterInit(&emptyWriter);
 		PgbsonWriterAppendEmptyArray(&emptyWriter, "values", 6);
 
-		PgbsonWriterAppendInt32(&emptyWriter, "ok", 2, 1);
+		PgbsonWriterAppendDouble(&emptyWriter, "ok", 2, 1);
 		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&emptyWriter));
 	}
 }
@@ -1075,7 +1075,7 @@ bson_build_distinct_response(PG_FUNCTION_ARGS)
 
 	PgbsonWriterEndArray(&writer, &arrayWriter);
 
-	PgbsonWriterAppendInt32(&writer, "ok", 2, 1);
+	PgbsonWriterAppendDouble(&writer, "ok", 2, 1);
 
 	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
 }
