@@ -35,22 +35,22 @@ All YugabyteDB smart driver libraries are actively maintained, and receive bug f
 
 ## Key features
 
-YugabyteDB smart drivers have the following key features.
+YugabyteDB YCQL drivers have the following key features.
 
 | Feature | Notes |
 | :--- | :--- |
-| [Retry policy](#retry-policy) | Smart driver retries certain operations in case of failures. |
-| [Multiple contact points](#multiple-contact-points) | Smart driver supports providing multiple contact points to ensure that the application initializes successfully, even if one or few of the contact points are inaccessible. |
+| [Retry policy](#retry-policy) | Like the upstream driver, the YugabyteDB YCQL driver retries certain operations in case of failures. |
+| [Multiple contact points](#multiple-contact-points) | As with the upstream driver, you can specify multiple contact points for the initial connection, to avoid dropping connections in the case where the primary contact point is unavailable. |
 | [Partition-aware load balancing policy](#partition-aware-load-balance-policy) (YugabyteDB-specific) | Smart driver can target a specific tablet/node for a particular query where the required data is hosted. |
 | [JSONB support](#jsonb-support) (YugabyteDB-specific) | Smart driver supports the use of JSONB data type for the table columns. |
 
-## Overview
+## Using YugabyteDB YCQL drivers
 
 YugabyteDB is a distributed, fault tolerant, and highly available database with low latencies for reads and writes. Data in YugabyteDB is automatically sharded, replicated, and balanced across multiple nodes that can potentially be in different availability zones and regions. For better performance and fault tolerance, you can also balance application traffic (database connections) across the nodes in the universe to avoid excessive CPU and memory load on any single node.
 
 ### Retry policy
 
-The smart driver can retry certain operations if they fail the first time, and this is governed by a retry-policy (the default number of retries being one for a failed operation for certain cases depending on the language driver). The retry may happen on the same node or the next available node as per the query's plan.
+As with the upstream Cassandra drivers, YugabyteDB YCQL drivers can retry certain operations if they fail the first time. This is governed by a retry-policy. The default number of retries is one for a failed operation for certain cases, depending on the language driver. The retry may happen on the same node or the next available node as per the query's plan.
 
 Some of the drivers allow you to provide a custom retry policy.
 Refer to [Retries](https://docs.datastax.com/en/developer/java-driver/4.15/manual/core/retries/#retries) in DataStax documentation for information on built-in retry polices.
@@ -58,19 +58,20 @@ Refer to [Retries](https://docs.datastax.com/en/developer/java-driver/4.15/manua
 ### Multiple contact points
 
 Usually, the contact point is the host address given in the connection configuration by the application. The driver creates a control connection to this host address. If this host address is unavailable at the time of application's initialization, the application itself fails.
-To avoid such a scenario, you can specify comma-separated multiple host addresses for your applications as contact points. If the first host is not accessible, the driver tries to create a control connection to the next contact point, and so on, until it succeeds or all contact points are attempted.
+To avoid this scenario, you can specify multiple comma-separated host addresses for your applications as contact points. If the first host is not accessible, the driver tries to create a control connection to the next contact point, and so on, until it succeeds or all contact points are attempted.
 
 ### YugabyteDB-specific features
 
-Yugabyte has forked some of the standard Cassandra drivers and implemented the following additional features to further optimize the performance of YugabyteDB clusters.
-Note that no configuration needs to be explicitly specified to _enable_ these YugabyteDB-specific features.
+Yugabyte has extended the standard Cassandra drivers with the following additional features to further optimize the performance of YugabyteDB clusters.
+
+These features are enabled by default.
 
 #### Partition-aware load balance policy
 
-The smart driver provides a few built-in load balancing policies which govern how requests from the client applications should be routed to a particular node in the cluster. Some policies prefer nodes in the local datacenter, whereas others select a node randomly from the entire cluster irrespective of the datacenter they are in.
+The YugabyteDB drivers provide a few built-in load balancing policies which govern how requests from the client applications should be routed to a particular node in the cluster. Some policies prefer nodes in the local datacenter, whereas others select a node randomly from the entire cluster irrespective of the datacenter they are in.
 
 YugabyteDB partitions its table data across the nodes in the cluster as tablets, and labels one copy of each tablet as the _leader_ tablet and other copies as _follower_ tablets.
-The smart drivers have been modified to make use of this distinction, and optimize the read and write performance, by introducing a new load balancing policy.
+The YCQL drivers have been modified to make use of this distinction, and optimize the read and write performance, by introducing a new load balancing policy.
 
 Whenever it is possible to calculate the hash of the partitioning key (token in Cassandra) from a query, the driver figures out the nodes hosting the leader/follower tablets and sends the query to the appropriate node. The decision on which node gets picked up is also determined by the values of Consistency Level (CL) and local datacenter specified by the application. YugabyteDB supports only two CLs: QUORUM and ONE. If none is specified, it considers QUORUM.
 
@@ -84,7 +85,7 @@ For information on how to define and handle table columns with JSONB data type, 
 
 ## Connection handling
 
-The smart driver maintains a pool of connections for each node in a cluster.
+YCQL drivers maintain a pool of connections for each node in a cluster.
 When a client application starts, the driver attempts to create a control connection to the node specified as [contact point](#multiple-contact-points). After the connection is established, the driver fetches the information about all the nodes in the cluster, and then creates a pool of connections for each of those nodes.
 
 You can configure the size of the connection pool. For example, in the Java driver, you can define different pool sizes for nodes in a local datacenter, and for those in other (remote) datacenters. If the number of connections in a pool go lower than the defined size for any reason, the driver immediately tries to fill the gap in the background.
@@ -93,10 +94,11 @@ You can configure the size of the connection pool. For example, in the Java driv
 
 ### Deploy applications
 
-[YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use load balancing provided by the cloud provider where the cluster is provisioned. The nodes are not directly accessible to the outside world. This is in contrast to the desired setup of the YCQL drivers which need direct access to all the nodes in a cluster.
+[YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use load balancing provided by the cloud provider where the cluster is provisioned. The nodes are not directly accessible to the outside world. This is in contrast to the desired setup of YCQL drivers, which need direct access to all the nodes in a cluster.
+
 The smart driver still works in such a setup but the client applications lose out on some of the benefits of the driver like [partition-aware query routing](#partition-aware-load-balance-policy). The default retry policy of the driver too becomes ineffective in this case.
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC; VPC peering enables the client application to access all nodes of the cluster. For information on VPC peering in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+To take advantage of the driver's partition-aware load balancing feature when connecting to clusters in YugabyteDB Managed, the applications must be deployed in a VPC that has been peered with the cluster VPC; VPC peering enables the client application to access all nodes of the cluster. For information on VPC peering in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 If VPC peering is not possible, you can attempt to restore the retry capability by increasing the size of the connection pool (default size is 1 in Java driver) and providing a custom retry policy to retry the failed operation on the same node.
 
