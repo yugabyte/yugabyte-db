@@ -11905,6 +11905,7 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
     tsinfo_pb->set_permanent_uuid(peer.permanent_uuid());
     CopyRegistration(peer, tsinfo_pb);
   }
+  locs_pb->set_raft_config_opid_index(cstate.config().opid_index());
   return Status::OK();
 }
 
@@ -12072,6 +12073,8 @@ Status CatalogManager::BuildLocationsForTablet(
     InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
     locs = tablet->GetReplicaLocations();
     locs_pb->set_stale(locs->empty());
+    locs_pb->set_raft_config_opid_index(
+        l_tablet->pb.committed_consensus_state().config().opid_index());
     if (partitions_only) {
       return Status::OK();
     }
