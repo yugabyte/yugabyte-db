@@ -50,6 +50,10 @@ class CDCSDKVirtualWAL {
       const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
       const uint64_t restart_lsn_hint);
 
+  Status UpdatePublicationTableListInternal(
+      const xrepl::StreamId& stream_id, const std::unordered_set<TableId>& new_tables,
+      const HostPort hostport, const CoarseTimePoint deadline);
+
  private:
   struct GetChangesRequestInfo {
     int64_t safe_hybrid_time;
@@ -77,6 +81,7 @@ class CDCSDKVirtualWAL {
     uint64_t commit_lsn;
     uint64_t commit_txn_id;
     std::shared_ptr<CDCSDKUniqueRecordID> commit_record_unique_id;
+    uint64_t last_pub_refresh_time;
   };
 
   // Custom comparator to sort records in the TabletRecordPriorityQueue by comparing their unique
@@ -97,6 +102,7 @@ class CDCSDKVirtualWAL {
     uint64_t min_lsn = std::numeric_limits<uint64_t>::max();
     uint64_t max_lsn = 0;
     bool is_last_txn_fully_sent = false;
+    bool contains_publication_refresh_record = false;
   };
 
   using TabletRecordPriorityQueue = std::priority_queue<
@@ -151,6 +157,12 @@ class CDCSDKVirtualWAL {
 
   void ResetCommitDecisionVariables();
 
+  Status CreatePublicationRefreshTabletQueue();
+
+  Status PushRecordToPublicationRefreshTabletQueue();
+
+  std::vector<TabletId> GetTabletsForTable (const TableId& table_id);
+
   CDCServiceImpl* cdc_service_;
 
   std::unordered_set<TableId> publication_table_list_;
@@ -162,6 +174,8 @@ class CDCSDKVirtualWAL {
   // in the case of a tablet hosting colocated tables since such a tablet is never expected to
   // split.
   std::unordered_map<TabletId, std::unordered_set<TableId>> tablet_id_to_table_id_map_;
+
+  const std::string kPublicationRefreshTabletID = "publication_refresh_tablet_id";
 
   // Tablet queues hold the records received from GetChanges RPC call on their respective tablets.
   std::unordered_map<TabletId, std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>> tablet_queues_;
@@ -188,6 +202,12 @@ class CDCSDKVirtualWAL {
 
   // Holds the 1st commit record of a pg_txn. Reset to false after shipping the held commit record.
   std::shared_ptr<TabletRecordInfoPair> curr_active_txn_commit_record = nullptr;
+
+  // This will hold the time at which the publication's table list was last refreshed.
+  uint64_t last_pub_refresh_time;
+
+  // This will hold the interval between two publication table list refresh operations.
+  uint64_t pub_refresh_interval;
 
   // This map stores all information for the next GetChanges call on a per tablet basis except for
   // the explicit checkpoint. The key is the tablet id. The value is a struct used to populate the
