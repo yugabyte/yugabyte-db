@@ -549,3 +549,13 @@ select * from sample where b <= 3 and b <= 2 and b >= 2;
 
 drop table sample;
 
+create table sample(a int, primary key(a asc));
+insert into sample values (0);
+select * from sample where a = x'8000000000000000'::bigint;
+drop table sample;
+
+create table sample(a int2, primary key(a asc));
+insert into sample values (0);
+select * from sample where a = x'8000000000000000'::bigint;
+select * from sample where a = x'80000000'::int;
+drop table sample;
