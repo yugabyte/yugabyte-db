@@ -250,11 +250,6 @@ extern bool IsYBReadCommitted();
 extern bool YBIsWaitQueueEnabled();
 
 /*
- * Whether to allow users to use SAVEPOINT commands at the query layer.
- */
-extern bool YBSavepointsEnabled();
-
-/*
  * Whether the per database catalog version mode is enabled.
  */
 extern bool YBIsDBCatalogVersionMode();
