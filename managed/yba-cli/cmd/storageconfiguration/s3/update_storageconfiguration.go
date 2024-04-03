@@ -173,7 +173,7 @@ func init() {
 	updateS3StorageConfigurationCmd.PersistentFlags().String("new-name", "",
 		"[Optional] Update name of the storage configuration.")
 	updateS3StorageConfigurationCmd.Flags().Bool("update-credentials", false,
-		"[Optional] Update credentials of the storage configuration, defaults to false."+
+		"[Optional] Update credentials of the storage configuration. (default false)"+
 			" If set to true, provide either (access-key-id,secret-access-key) pair"+
 			" or set use-iam-instance-profile.")
 	updateS3StorageConfigurationCmd.Flags().String("access-key-id", "",
@@ -193,6 +193,6 @@ func init() {
 	updateS3StorageConfigurationCmd.MarkFlagsRequiredTogether("access-key-id", "secret-access-key")
 	updateS3StorageConfigurationCmd.Flags().Bool("use-iam-instance-profile", false,
 		"[Optional] Use IAM Role from the YugabyteDB Anywhere Host. Configuration "+
-			"creation will fail on insufficient permissions on the host, defaults to false.")
+			"creation will fail on insufficient permissions on the host. (default false)")
 
 }

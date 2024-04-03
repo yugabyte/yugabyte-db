@@ -211,10 +211,10 @@ func init() {
 			"Run \"yba provider list --code <provider-code>\" "+
 			"to check the default provider for the given provider-code.")
 	createUniverseCmd.Flags().Bool("dedicated-nodes", false,
-		"[Optional] Place Masters on dedicated nodes, defaults to false for aws, azu, gcp, onprem."+
+		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem."+
 			" Defaults to true for kubernetes.")
 	createUniverseCmd.Flags().Bool("add-read-replica", false,
-		"[Optional] Add a read replica cluster to the universe, defaults to false.")
+		"[Optional] Add a read replica cluster to the universe. (default false)")
 
 	// Following fields are required individually for both primary and read replica cluster
 
@@ -353,7 +353,7 @@ func init() {
 	createUniverseCmd.Flags().String("ycql-password", "",
 		"[Optional] YCQL authentication password.")
 	createUniverseCmd.Flags().Bool("enable-yedis", false,
-		"[Optional] Enable YEDIS endpoint, defaults to false.")
+		"[Optional] Enable YEDIS endpoint. (default false)")
 
 	// Encryption fields
 
@@ -369,7 +369,7 @@ func init() {
 			" certificate for the universe if encryption in transit in enabled.")
 
 	createUniverseCmd.Flags().Bool("enable-volume-encryption", false,
-		"[Optional] Enable encryption for data stored on the tablet servers, defaults to false.")
+		"[Optional] Enable encryption for data stored on the tablet servers. (default false)")
 	createUniverseCmd.Flags().String("kms-config", "",
 		"[Optional] Key management service config. "+
 			formatter.Colorize("Required when enable-volume-encryption is set to true.",
@@ -377,7 +377,7 @@ func init() {
 
 	createUniverseCmd.Flags().Bool("enable-ipv6", false,
 		"[Optional] Enable IPV6 networking for connections between the DB Servers, supported "+
-			"only for Kubernetes universes defaults to false. ")
+			"only for Kubernetes universes (default false) ")
 	createUniverseCmd.Flags().String("yb-db-version", "",
 		"[Optional] YugabyteDB Software Version, defaults to the latest available version"+
 			"Run \"yba yb-db-version list\" to find the latest version.")
