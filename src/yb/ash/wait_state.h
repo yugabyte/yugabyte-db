@@ -178,6 +178,15 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   (kQueryIdForRaftUpdateConsensus)
 );
 
+YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
+  (kCpu)
+  (kDiskIO)
+  (kNetwork)
+  (kWaitOnCondition)
+);
+
+WaitStateType GetWaitStateType(WaitStateCode code);
+
 struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
   Uuid yql_endpoint_tserver_uuid = Uuid::Nil();
