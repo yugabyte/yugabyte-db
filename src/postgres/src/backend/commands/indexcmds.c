@@ -609,6 +609,22 @@ DefineIndex(Oid relationId,
 	 * there's no harm in grabbing a stronger lock, and a non-concurrent DROP
 	 * is more efficient.  Do this before any use of the concurrent option is
 	 * done.
+	 *
+	 * YB note: this logic is mostly thrown away by redefining the "concurrent"
+	 * variable later on.  It is only needed right now for
+	 * pgstat_progress_update_param with an estimation on the "concurrent"
+	 * value.  Note that stmt->concurrent is an enum in YB and a bool in PG,
+	 * but the upstream PG condition "stmt->concurrent" still works well as
+	 * - for YB, it covers the non-zero cases YB_CONCURRENCY_IMPLICIT_ENABLED
+	 *   and YB_CONCURRENCY_EXPLICIT_ENABLED, which are a good estimate.
+	 * - for PG, ideally we want to only allow YB_CONCURRENCY_EXPLICIT_ENABLED,
+	 *   but we don't need to worry about YB_CONCURRENCY_IMPLICIT_ENABLED
+	 *   because
+	 *   - in case of temporary relations, the second condition "!=
+	 *     RELPERSISTENCE_TEMP" covers the inaccuracy.
+	 *   - in case of initdb, gram.y sets "stmt->concurrent" to
+	 *     YB_CONCURRENCY_DISABLED by default because
+	 *     YbIsConnectedToTemplateDb.
 	 */
 	if (stmt->concurrent && get_rel_persistence(relationId) != RELPERSISTENCE_TEMP)
 		concurrent = true;
@@ -624,7 +640,7 @@ DefineIndex(Oid relationId,
 		pgstat_progress_start_command(PROGRESS_COMMAND_CREATE_INDEX,
 									  relationId);
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_COMMAND,
-									 concurrent && IsYBRelationById(relationId) ?
+									 concurrent ?
 									 PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY :
 									 PROGRESS_CREATEIDX_COMMAND_CREATE);
 	}
@@ -677,10 +693,10 @@ DefineIndex(Oid relationId,
 	 * parallel workers under the control of certain particular ambuild
 	 * functions will need to be updated, too.
 	 *
-	 * In YB, opening the relation under AccessShareLock first, just to get access to
-	 * its metadata. Stronger lock will be taken later.
+	 * YB note: opening the relation under AccessShareLock first, just to get
+	 * access to its metadata.  Stronger lock will be taken later.
 	 */
-	lockmode = IsYugaByteEnabled()? AccessShareLock : concurrent ? ShareUpdateExclusiveLock : ShareLock;
+	lockmode = IsYugaByteEnabled() ? AccessShareLock : concurrent ? ShareUpdateExclusiveLock : ShareLock;
 	rel = table_open(relationId, lockmode);
 
 	/*
@@ -720,7 +736,7 @@ DefineIndex(Oid relationId,
 		databaseId = YBCGetDatabaseOid(rel);
 
 		/*
-		 * An index build should not be concurent when
+		 * An index build should not be concurrent when
 		 * - index backfill is disabled
 		 * - the index is primary
 		 * - the indexed table is temporary
@@ -744,7 +760,7 @@ DefineIndex(Oid relationId,
 		 *   CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
 		 *   is safe to be disabled.
 		 */
-		if (IsCatalogRelation(rel))
+		if (concurrent && IsCatalogRelation(rel))
 		{
 			if (stmt->concurrent == YB_CONCURRENCY_EXPLICIT_ENABLED)
 				ereport(ERROR,
@@ -752,17 +768,19 @@ DefineIndex(Oid relationId,
 						errmsg("CREATE INDEX CONCURRENTLY is currently not "
 								"supported for system catalog")));
 			else
-				stmt->concurrent = YB_CONCURRENCY_DISABLED;
+				concurrent = false;
 		}
-		if (!IsYBRelation(rel))
-			stmt->concurrent = YB_CONCURRENCY_DISABLED;
-
-		if (stmt->primary || IsBootstrapProcessingMode())
+		/*
+		 * For concurrent to be true, temporary tables should already be ruled
+		 * out by the PG-owned code far above, and by also ruling out system
+		 * tables, what's left should be YB relations.
+		 */
+		Assert(!concurrent || IsYBRelation(rel));
+		if (concurrent && (stmt->primary || IsBootstrapProcessingMode()))
 		{
 			Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);
-			stmt->concurrent = YB_CONCURRENCY_DISABLED;
+			concurrent = false;
 		}
-
 		/*
 		* Use fast path create index when in nested DDL. This is desired
 		* when there would be no concurrency issues (e.g. `CREATE TABLE
@@ -772,14 +790,16 @@ DefineIndex(Oid relationId,
 		* CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
 		* is safe to be disabled.
 		*/
-		if (stmt->concurrent != YB_CONCURRENCY_DISABLED &&
-			YBGetDdlNestingLevel() > 1)
+		if (concurrent && YBGetDdlNestingLevel() > 1)
 		{
 			Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);
-			stmt->concurrent = YB_CONCURRENCY_DISABLED;
+			concurrent = false;
 		}
 
-		concurrent = stmt->concurrent != YB_CONCURRENCY_DISABLED;
+		/*
+		 * Now that we know the true value of "concurrent", take the right
+		 * lock.
+		 */
 		lockmode = concurrent ? ShareUpdateExclusiveLock : ShareLock;
 		LockRelationOid(relationId, lockmode);
 
@@ -789,7 +809,7 @@ DefineIndex(Oid relationId,
 		 * - initdb (bootstrap mode) is prevented from being concurrent
 		 * - users cannot create indexes on system tables
 		 */
-		Assert(!(stmt->concurrent && IsSystemRelation(rel)));
+		Assert(!(concurrent && IsSystemRelation(rel)));
 	}
 
 	relIsShared = rel->rd_rel->relisshared;
