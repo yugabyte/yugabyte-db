@@ -1,5 +1,6 @@
 package com.yugabyte.troubleshoot.ts.service;
 
+import com.yugabyte.troubleshoot.ts.logs.LogsUtil;
 import com.yugabyte.troubleshoot.ts.models.Anomaly;
 import com.yugabyte.troubleshoot.ts.models.AnomalyMetadata;
 import com.yugabyte.troubleshoot.ts.models.UniverseMetadata;
@@ -64,7 +65,9 @@ public class TroubleshootingService {
             .config(runtimeConfigService.getUniverseConfig(universeMetadata))
             .build();
     for (AnomalyDetector detector : anomalyDetectors) {
-      futures.add(anomalyDetectionExecutor.submit(() -> detector.findAnomalies(context)));
+      futures.add(
+          anomalyDetectionExecutor.submit(
+              LogsUtil.wrapCallable(() -> detector.findAnomalies(context))));
     }
     List<Anomaly> result = new ArrayList<>();
     for (Future<AnomalyDetector.AnomalyDetectionResult> future : futures) {
