@@ -18,6 +18,7 @@
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
@@ -33,32 +34,6 @@ DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 using namespace std::placeholders;
 
 namespace yb::master {
-
-namespace {
-// Should the table be part of xCluster replication?
-bool ShouldReplicateTable(const TableInfoPtr& table) {
-  if (table->GetTableType() != PGSQL_TABLE_TYPE || table->is_system()) {
-    // Limited to ysql databases.
-    // System tables are not replicated. DDLs statements will be replicated and executed on the
-    // target universe to handle catalog changes.
-    return false;
-  }
-
-  if (table->is_matview()) {
-    // Materialized views need not be replicated, since they are not modified. Every time the view
-    // is refreshed, new tablets are created. The same refresh can just run on the target universe.
-    return false;
-  }
-
-  if (table->IsColocatedUserTable()) {
-    // Only the colocated parent table needs to be replicated.
-    return false;
-  }
-
-  return true;
-}
-
-}  // namespace
 
 XClusterSourceManager::XClusterSourceManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
@@ -199,14 +174,9 @@ XClusterSourceManager::InitOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const SysXClusterOutboundReplicationGroupEntryPB& metadata) {
   XClusterOutboundReplicationGroup::HelperFunctions helper_functions = {
-      .get_namespace_id_func =
-          [&catalog_manager = catalog_manager_](
-              YQLDatabase db_type, const NamespaceName& namespace_name) {
-            return catalog_manager.GetNamespaceId(db_type, namespace_name);
-          },
-      .get_namespace_name_func =
-          [&catalog_manager = catalog_manager_](const NamespaceId& namespace_id) {
-            return catalog_manager.GetNamespaceName(namespace_id);
+      .get_namespace_func =
+          [&catalog_manager = catalog_manager_](const NamespaceIdentifierPB& ns_identifier) {
+            return catalog_manager.FindNamespace(ns_identifier);
           },
       .get_tables_func = std::bind(&XClusterSourceManager::GetTablesToReplicate, this, _1),
       .create_xcluster_streams_func =
@@ -255,14 +225,16 @@ XClusterSourceManager::GetOutboundReplicationGroup(
 Result<std::vector<TableInfoPtr>> XClusterSourceManager::GetTablesToReplicate(
     const NamespaceId& namespace_id) {
   auto table_infos = VERIFY_RESULT(catalog_manager_.GetTableInfosForNamespace(namespace_id));
-  EraseIf([](const TableInfoPtr& table) { return !ShouldReplicateTable(table); }, &table_infos);
+  EraseIf(
+      [](const TableInfoPtr& table) { return !IsTableEligibleForXClusterReplication(*table); },
+      &table_infos);
   return table_infos;
 }
 
 std::vector<std::shared_ptr<PostTabletCreateTaskBase>>
 XClusterSourceManager::GetPostTabletCreateTasks(
     const TableInfoPtr& table_info, const LeaderEpoch& epoch) {
-  if (!ShouldReplicateTable(table_info)) {
+  if (!IsTableEligibleForXClusterReplication(*table_info)) {
     return {};
   }
 

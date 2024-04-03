@@ -788,9 +788,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   bool IsUserIndex(const TableInfo& table) const override EXCLUDES(mutex_);
   bool IsUserIndexUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
 
-  // Is the table a special sequences system table?
-  bool IsSequencesSystemTable(const TableInfo& table) const;
-
   // Is the table a materialized view?
   bool IsMatviewTable(const TableInfo& table) const;
 
@@ -2880,7 +2877,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // updates consumer_table_id with the new table id. Return the consumer table schema if the
   // validation is successful.
   Status ValidateTableSchemaForXCluster(
-      const std::shared_ptr<client::YBTableInfo>& info, const SetupReplicationInfo& setup_info,
+      const client::YBTableInfo& info, const SetupReplicationInfo& setup_info,
       GetTableSchemaResponsePB* resp);
 
   // Adds a validated table to the sys catalog table map for the given universe
@@ -2921,9 +2918,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const SetupReplicationInfo& setup_info, const Status& s);
   void GetTablegroupSchemaCallback(
       const xcluster::ReplicationGroupId& replication_group_id,
-      const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
+      const std::shared_ptr<std::vector<client::YBTableInfo>>& infos,
       const TablegroupId& producer_tablegroup_id, const SetupReplicationInfo& setup_info,
       const Status& s);
+  Status GetTablegroupSchemaCallbackInternal(
+      scoped_refptr<UniverseReplicationInfo>& universe,
+      const std::vector<client::YBTableInfo>& infos, const TablegroupId& producer_tablegroup_id,
+      const SetupReplicationInfo& setup_info, const Status& s);
   void GetColocatedTabletSchemaCallback(
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
