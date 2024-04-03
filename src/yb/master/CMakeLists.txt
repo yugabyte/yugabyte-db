@@ -136,6 +136,7 @@ set(MASTER_SRCS
   util/yql_vtable_helpers.cc
   xcluster/add_table_to_xcluster_source_task.cc
   xcluster/add_table_to_xcluster_target_task.cc
+  xcluster/master_xcluster_util.cc
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc

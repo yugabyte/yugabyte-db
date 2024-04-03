@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.yugabyte.troubleshoot.ts.CommonUtils;
+import com.yugabyte.troubleshoot.ts.logs.LogsUtil;
 import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.PgStatStatementsQueryService;
 import com.yugabyte.troubleshoot.ts.service.PgStatStatementsService;
@@ -128,6 +129,10 @@ public class StatStatementsQuery {
       fixedRateString = "${task.pg_stat_statements_query.period}",
       initialDelayString = "PT5S")
   public Map<UUID, UniverseProgress> processAllUniverses() {
+    return LogsUtil.callWithContext(this::processAllUniversesInternal);
+  }
+
+  private Map<UUID, UniverseProgress> processAllUniversesInternal() {
     Map<UUID, UniverseProgress> result = new HashMap<>();
     for (UniverseMetadata universeMetadata : universeMetadataService.listAll()) {
       UniverseDetails details = universeDetailsService.get(universeMetadata.getId());
@@ -156,7 +161,9 @@ public class StatStatementsQuery {
       result.put(universeMetadata.getId(), newProgress);
       try {
         pgStatStatementsQueryExecutor.execute(
-            () -> processUniverse(universeMetadata, details, newProgress));
+            LogsUtil.withUniverseId(
+                () -> processUniverse(universeMetadata, details, newProgress),
+                universeMetadata.getId()));
       } catch (Exception e) {
         log.error("Failed to schedule universe " + universeMetadata.getId(), e);
         universesProcessStartTime.remove(universeMetadata.getId());
@@ -179,7 +186,7 @@ public class StatStatementsQuery {
         results.put(
             node.getNodeName(),
             pgStatStatementsNodesQueryExecutor.submit(
-                () -> processNode(metadata, details, node, progress)));
+                LogsUtil.wrapCallable(() -> processNode(metadata, details, node, progress))));
       }
       Map<QueryKey, QueryData> combinedQueries = new HashMap<>();
       for (Map.Entry<String, Future<NodeProcessResult>> resultEntry : results.entrySet()) {

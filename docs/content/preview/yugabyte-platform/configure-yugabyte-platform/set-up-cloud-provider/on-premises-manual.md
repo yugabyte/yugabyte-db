@@ -52,6 +52,29 @@ After you have provisioned the nodes, you can proceed to [Add instances to the o
 The following instructions use user-level systemd to provide the necessary access to system resources. Versions prior to v2.20 use root-level systemd or cron. If you have previously provisioned nodes for this provider using either root-level systemd or cron, you should use the same steps, as all nodes in a provider need to be provisioned in the same way. For instructions on provisioning using root-level systemd or cron, see the [instructions for v2.18](/v2.18/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 {{</note>}}
 
+## Verify the python version installed on the node
+
+Verify that Python 3.5-3.8 is installed on the node. v3.6 is recommended.
+
+In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
+
+```sh
+sudo alternatives --set python3 /usr/bin/python3.6
+sudo alternatives --display python3
+python3 -V
+```
+
+If you are using Python later than v3.6, install the [selinux](https://pypi.org/project/selinux/) package corresponding to your version of python. For example, using [pip](https://pip.pypa.io/en/stable/installation/), you can install as follows:
+
+```sh
+python3 -m pip install selinux
+```
+
+Refer to [Ansible playbook fails with libselinux-python aren't installed on RHEL8](https://access.redhat.com/solutions/5674911) for more information.
+
+If you are using Python later than v3.7, set the **Max Python Version (exclusive)** Global
+Configuration option to the python version. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
 ## Set up time synchronization
 
 A local Network Time Protocol (NTP) server or equivalent must be available.

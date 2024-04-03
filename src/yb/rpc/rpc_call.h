@@ -35,6 +35,8 @@ YB_DEFINE_ENUM(TransferState, (PENDING)(FINISHED)(ABORTED));
 
 class RpcCall : public OutboundData {
  public:
+  RpcCall();
+
   // This functions is invoked in reactor thread of the appropriate connection, except during
   // reactor shutdown. In case of shutdown all such final calls are sequential. Therefore, this
   // function doesn't require synchronization.
@@ -50,6 +52,7 @@ class RpcCall : public OutboundData {
   virtual void NotifyTransferred(const Status& status, const ConnectionPtr& conn) = 0;
 
   std::atomic<TransferState> transfer_state_{TransferState::PENDING};
+  const uint64_t start_time_ns_;
 };
 
 }  // namespace rpc

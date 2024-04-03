@@ -416,4 +416,6 @@ class CDSAttacher {
   ~CDSAttacher();
 };
 
+void RenderAllThreadStacks(std::ostream& output);
+
 } // namespace yb
