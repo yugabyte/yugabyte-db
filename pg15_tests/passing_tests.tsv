@@ -16,6 +16,7 @@ JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTableWithRangeKey
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTempTables
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testUniqueConstraints
 JAVA	org.yb.pgsql.TestPgAuthorization
+JAVA	org.yb.pgsql.TestPgBackendMemoryContext
 JAVA	org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
 JAVA	org.yb.pgsql.TestPgConnection
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeMetrics

@@ -12,11 +12,11 @@ COMMENT ON FUNCTION cron.schedule(text,text,text)
 IS 'schedule a pg_cron job';
 
 CREATE FUNCTION cron.alter_job(job_id bigint,
-                schedule text default null,
-                command text default null,
-                database text default null,
-                username text default null,
-                active boolean default null)
+								schedule text default null,
+								command text default null,
+								database text default null,
+								username text default null,
+								active boolean default null)
 RETURNS void
 LANGUAGE C
 AS 'MODULE_PATHNAME', $$cron_alter_job$$;
@@ -28,11 +28,11 @@ IS 'Alter the job identified by job_id. Any option left as NULL will not be modi
 REVOKE ALL ON FUNCTION cron.alter_job(bigint,text,text,text,text,boolean) FROM public;
 
 CREATE FUNCTION cron.schedule_in_database(job_name text,
-                      schedule text,
-                      command text,
-                      database text,
-                      username text default null,
-                      active boolean default 'true')
+										  schedule text,
+										  command text,
+										  database text,
+										  username text default null,
+										  active boolean default 'true')
 RETURNS bigint
 LANGUAGE C
 AS 'MODULE_PATHNAME', $$cron_schedule_named$$;
