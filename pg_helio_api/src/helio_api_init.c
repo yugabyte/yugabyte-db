@@ -60,6 +60,12 @@ static const struct config_enum_entry READ_CONCERN_LEVEL_CONFIG_ENTRIES[] =
  */
 extern bool EnableCreateCollectionOnInsert;
 
+/* In single node mode, we always inline write operations */
+bool DefaultInlineWriteOperations = true;
+
+#define DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES false
+bool UseLocalExecutionShardQueries = DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES;
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -572,6 +578,13 @@ InitApiConfigurations(char *prefix)
 		gettext_noop("Feature flag for the group push support"), NULL,
 		&EnableGroupPushSupport, DEFAULT_ENABLE_PUSH_SUPPORT, PGC_USERSET, 0,
 		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.useLocalExecutionShardQueries",
+		gettext_noop(
+			"Determines whether or not to push local shard queries to the shard directly."),
+		NULL, &UseLocalExecutionShardQueries, DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES,
+		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 
 

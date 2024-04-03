@@ -34,6 +34,8 @@ IsShardTableForMongoTable_HookType is_shard_table_for_mongo_table_hook = NULL;
 HandleColocation_HookType handle_colocation_hook = NULL;
 RewriteListCollectionsQueryForDistribution_HookType rewrite_list_collections_query_hook =
 	NULL;
+TryGetShardNameForUnshardedCollection_HookType
+	try_get_shard_name_for_unsharded_collection_hook = NULL;
 
 
 /*
@@ -99,19 +101,23 @@ RunQueryWithCommutativeWrites(const char *query, int nargs, Oid *argTypes,
  * Sets the system to allow nested query execution.
  */
 void
-RunMultiValueQueryWithNestedDistribution(const char *query, bool readOnly, int
-										 expectedSPIOK,
-										 Datum *datums, bool *isNull, int numValues)
+RunMultiValueQueryWithNestedDistribution(const char *query, int nArgs, Oid *argTypes,
+										 Datum *argDatums, char *argNulls, bool readOnly,
+										 int expectedSPIOK, Datum *datums, bool *isNull,
+										 int numValues)
 {
 	if (run_query_with_nested_distribution_hook != NULL)
 	{
-		run_query_with_nested_distribution_hook(query, readOnly, expectedSPIOK, datums,
+		run_query_with_nested_distribution_hook(query, nArgs, argTypes, argDatums,
+												argNulls,
+												readOnly, expectedSPIOK, datums,
 												isNull, numValues);
 	}
 	else
 	{
-		ExtensionExecuteMultiValueQueryViaSPI(query, readOnly, expectedSPIOK, datums,
-											  isNull, numValues);
+		ExtensionExecuteMultiValueQueryWithArgsViaSPI(
+			query, nArgs, argTypes, argDatums, argNulls,
+			readOnly, expectedSPIOK, datums, isNull, numValues);
 	}
 }
 
@@ -257,4 +263,18 @@ MutateListCollectionsQueryForDistribution(Query *cosmosMetadataQuery)
 	}
 
 	return NULL;
+}
+
+
+const char *
+TryGetShardNameForUnshardedCollection(Oid relationOid, uint64 collectionId, const
+									  char *tableName)
+{
+	if (try_get_shard_name_for_unsharded_collection_hook != NULL)
+	{
+		return try_get_shard_name_for_unsharded_collection_hook(relationOid, collectionId,
+																tableName);
+	}
+
+	return InvalidOid;
 }

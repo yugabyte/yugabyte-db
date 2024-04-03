@@ -274,4 +274,9 @@ Oid BsonCurrentOpAggregationFunctionId(void);
 /* Catalog */
 Oid ApiDataNamespaceOid(void);
 
+/* CRUD functions */
+Oid UpdateWorkerFunctionOid(void);
+Oid InsertWorkerFunctionOid(void);
+Oid DeleteWorkerFunctionOid(void);
+
 #endif

@@ -638,8 +638,14 @@ CollectionIdGetIndexes(uint64 collectionId, bool excludeIdIndex,
 	Datum results[2];
 	if (enableNestedDistribution)
 	{
-		RunMultiValueQueryWithNestedDistribution(cmdStr->data, readOnly, SPI_OK_SELECT,
-												 results, isNull, numValues);
+		int nArgs = 0;
+		Oid *argTypes = NULL;
+		Datum *argValues = NULL;
+		char *argNulls = NULL;
+		RunMultiValueQueryWithNestedDistribution(cmdStr->data, nArgs, argTypes, argValues,
+												 argNulls,
+												 readOnly, SPI_OK_SELECT, results, isNull,
+												 numValues);
 	}
 	else
 	{

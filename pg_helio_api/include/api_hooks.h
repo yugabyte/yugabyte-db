@@ -49,9 +49,11 @@ Datum RunQueryWithCommutativeWrites(const char *query, int nargs, Oid *argTypes,
  * Note: This should be used very cautiously in any place where data correctness is
  * required.
  */
-void RunMultiValueQueryWithNestedDistribution(const char *query, bool readOnly, int
-											  expectedSPIOK,
-											  Datum *datums, bool *isNull, int numValues);
+void RunMultiValueQueryWithNestedDistribution(const char *query, int nargs, Oid *argTypes,
+											  Datum *argValues, char *argNulls, bool
+											  readOnly,
+											  int expectedSPIOK, Datum *datums,
+											  bool *isNull, int numValues);
 
 
 /*
@@ -115,5 +117,14 @@ void HandleColocation(MongoCollection *collection, const bson_value_t *colocatio
  * and colocation information as required. Noops for single node.
  */
 Query * MutateListCollectionsQueryForDistribution(Query *cosmosMetadataQuery);
+
+
+/*
+ * Given a table OID, if the table is not the actual physical shard holding the data (say in a
+ * distributed setup), tries to return the full shard name of the actual table if it can be found locally
+ * or NULL otherwise (e.g. for ApiDataSchema.documents_1 returns ApiDataSchema.documents_1_12341 or NULL)
+ */
+const char * TryGetShardNameForUnshardedCollection(Oid relationOid, uint64 collectionId,
+												   const char *tableName);
 
 #endif

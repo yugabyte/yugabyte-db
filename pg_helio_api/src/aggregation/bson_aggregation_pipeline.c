@@ -1164,6 +1164,8 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	bson_value_t skip = { 0 };
 	pg_uuid_t *collectionUuid = NULL;
 
+	/* For finds, we can generally query the shard directly if available. */
+	context.allowShardBaseTable = true;
 	while (bson_iter_next(&findIterator))
 	{
 		StringView keyView = bson_iter_key_string_view(&findIterator);
@@ -1255,6 +1257,38 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 						errmsg("Collection name can't be empty.")));
 	}
 
+	/* Find supports negative limit (as well as count) */
+	if (BsonValueIsNumber(&limit))
+	{
+		int64_t intValue = BsonValueAsInt64(&limit);
+		if (intValue < 0)
+		{
+			limit.value.v_int64 = labs(intValue);
+			limit.value_type = BSON_TYPE_INT64;
+		}
+		else if (intValue == 0)
+		{
+			limit.value_type = BSON_TYPE_EOD;
+		}
+	}
+
+	/* TODO: In cases that need persisted cursors, we can't allow querying base table directly
+	 * until we find a solution for persisted cursors here.
+	 */
+	if (sort.value_type != BSON_TYPE_EOD ||
+		skip.value_type != BSON_TYPE_EOD)
+	{
+		context.allowShardBaseTable = false;
+		context.requiresPersistentCursor = true;
+	}
+
+	if (limit.value_type != BSON_TYPE_EOD &&
+		RequiresPersistentCursorLimit(&limit))
+	{
+		context.allowShardBaseTable = false;
+		context.requiresPersistentCursor = true;
+	}
+
 	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, collectionUuid,
 										  &context);
 	Query *baseQuery = query;
@@ -1271,7 +1305,6 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	{
 		query = HandleSort(&sort, query, &context);
 		context.stageNum++;
-		context.requiresPersistentCursor = true;
 	}
 
 	/* Then do skip and then limit */
@@ -1279,32 +1312,12 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	{
 		query = HandleSkip(&skip, query, &context);
 		context.stageNum++;
-		context.requiresPersistentCursor = true;
-	}
-
-	/* Find supports negative limit (as well as count) */
-	if (BsonValueIsNumber(&limit))
-	{
-		int64_t intValue = BsonValueAsInt64(&limit);
-		if (intValue < 0)
-		{
-			limit.value.v_int64 = labs(intValue);
-			limit.value_type = BSON_TYPE_INT64;
-		}
-		else if (intValue == 0)
-		{
-			limit.value_type = BSON_TYPE_EOD;
-		}
 	}
 
 	if (limit.value_type != BSON_TYPE_EOD)
 	{
 		query = HandleLimit(&limit, query, &context);
 		context.stageNum++;
-		if (RequiresPersistentCursorLimit(&limit))
-		{
-			context.requiresPersistentCursor = true;
-		}
 	}
 
 	/* finally update projection */
@@ -3806,6 +3819,14 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	{
 		rte->rtekind = RTE_RELATION;
 		rte->relid = collection->relationId;
+		if (context->allowShardBaseTable)
+		{
+			Oid shardOid = TryGetCollectionShardTable(collection, AccessShareLock);
+			if (shardOid != InvalidOid)
+			{
+				rte->relid = shardOid;
+			}
+		}
 
 		rte->alias = makeAlias(collectionAlias, NIL);
 		rte->eref = makeAlias(collectionAlias, colNames);

@@ -110,12 +110,15 @@ extern ModifyTableColumnNames_HookType modify_table_column_names_hook;
 /*
  * Hook for enabling running a query with nested distribution enabled.
  */
-typedef void (*RunQueryWithNestedDistribution_HookType)(const char *query, bool
-														readOnly, int
-														expectedSPIOK,
+typedef void (*RunQueryWithNestedDistribution_HookType)(const char *query,
+														int nArgs, Oid *argTypes,
+														Datum *argDatums,
+														char *argNulls,
+														bool readOnly,
+														int expectedSPIOK,
 														Datum *datums,
-														bool *isNull, int
-														numValues);
+														bool *isNull,
+														int numValues);
 extern RunQueryWithNestedDistribution_HookType run_query_with_nested_distribution_hook;
 
 typedef bool (*IsShardTableForMongoTable_HookType)(const char *relName, const
@@ -131,6 +134,13 @@ extern HandleColocation_HookType handle_colocation_hook;
 typedef Query *(*RewriteListCollectionsQueryForDistribution_HookType)(Query *query);
 extern RewriteListCollectionsQueryForDistribution_HookType
 	rewrite_list_collections_query_hook;
+
+typedef const char *(*TryGetShardNameForUnshardedCollection_HookType)(Oid relationOid,
+																	  uint64 collectionId,
+																	  const char *
+																	  tableName);
+extern TryGetShardNameForUnshardedCollection_HookType
+	try_get_shard_name_for_unsharded_collection_hook;
 
 /*
  * Hook for creating an update tracker if tracking is enabled.
@@ -156,4 +166,6 @@ typedef void (*NotifyUpdatedFieldPathView_HookType)(BsonUpdateTracker *tracker, 
 													const bson_value_t *value);
 extern NotifyUpdatedFieldPathView_HookType notify_updated_field_path_view_hook;
 
+
+extern bool DefaultInlineWriteOperations;
 #endif

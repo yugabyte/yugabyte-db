@@ -31,6 +31,9 @@
 #include "commands/retryable_writes.h"
 #include "io/pgbsonsequence.h"
 #include "utils/feature_counter.h"
+#include "utils/version_utils.h"
+#include "utils/query_utils.h"
+#include "api_hooks.h"
 
 /*
  * DeletionSpec describes a single delete operation.
@@ -79,6 +82,7 @@ typedef struct
 
 PG_FUNCTION_INFO_V1(command_delete);
 PG_FUNCTION_INFO_V1(command_delete_one);
+PG_FUNCTION_INFO_V1(command_delete_worker);
 
 
 static BatchDeletionSpec * BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter,
@@ -103,7 +107,22 @@ static void DeleteOneObjectId(MongoCollection *collection,
 							  DeleteOneResult *result);
 static List * ValidateQueryDocuments(BatchDeletionSpec *batchSpec);
 static pgbson * BuildResponseMessage(BatchDeletionResult *batchResult);
-
+static void CallDeleteOneCore(MongoCollection *collection,
+							  DeleteOneParams *deleteOneParams,
+							  int64 shardKeyHash, text *transactionId,
+							  DeleteOneResult *result);
+static void DeleteOneInternalCore(uint64 collectionId, int64 shardKeyHash,
+								  DeleteOneParams *deleteOneParams,
+								  text *transactionId, DeleteOneResult *deleteOneResult);
+static void CallDeleteWorkerForDeleteOne(MongoCollection *collection,
+										 DeleteOneParams *deleteOneParams,
+										 int64 shardKeyHash, text *transactionId,
+										 DeleteOneResult *result);
+static pgbson * SerializeDeleteOneParams(const DeleteOneParams *deleteParams);
+static void DeserializeUpdateWorkerSpec(pgbson *workerSpec,
+										DeleteOneParams *deleteOneParams);
+static void DeserializeWorkerDeleteResult(pgbson *resultBson, DeleteOneResult *result);
+static pgbson * SerializeDeleteOneResult(DeleteOneResult *result);
 
 /*
  * command_delete handles a single delete on a collection.
@@ -686,13 +705,102 @@ DeleteAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 }
 
 
+void
+CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
+			  int64 shardKeyHash, text *transactionId, DeleteOneResult *result)
+{
+	/* In single node scenarios (like HelioDB where we can inline the write, call the internal)
+	 * delete functions directly.
+	 * Alternatively in a distributed scenario, if the shard is colocated on the current node anyway,
+	 * then we don't need to go remote - we can simply call the delete internal functions directly.
+	 */
+	if (DefaultInlineWriteOperations || collection->shardTableName[0] != '\0')
+	{
+		DeleteOneInternalCore(collection->collectionId, shardKeyHash, deleteOneParams,
+							  transactionId, result);
+	}
+	else if (IsClusterVersionAtleastThis(1, 16, 0))
+	{
+		/*
+		 * If the cluster supports it, and we need to go remote, call the update worker
+		 * function with the appropriate spec args.
+		 */
+		CallDeleteWorkerForDeleteOne(collection, deleteOneParams, shardKeyHash,
+									 transactionId, result);
+	}
+	else
+	{
+		/* Fall back to the existing logic of calling delete_one */
+		CallDeleteOneCore(collection, deleteOneParams, shardKeyHash, transactionId,
+						  result);
+	}
+}
+
+
+static void
+CallDeleteWorkerForDeleteOne(MongoCollection *collection,
+							 DeleteOneParams *deleteOneParams,
+							 int64 shardKeyHash, text *transactionId,
+							 DeleteOneResult *result)
+{
+	int argCount = 6;
+	Datum argValues[6];
+
+	/* whitespace means not null, n means null */
+	char argNulls[6] = { ' ', ' ', ' ', ' ', 'n', 'n' };
+	Oid argTypes[6] = { INT8OID, INT8OID, REGCLASSOID, BYTEAOID, BYTEAOID, TEXTOID };
+
+	const char *updateQuery = FormatSqlQuery(
+		" SELECT helio_api_internal.delete_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM %s.documents_"
+		UINT64_FORMAT " WHERE shard_key_value = %ld",
+		ApiDataSchemaName, collection->collectionId, shardKeyHash);
+
+	argValues[0] = UInt64GetDatum(collection->collectionId);
+
+	/* p_shard_key_value */
+	argValues[1] = Int64GetDatum(shardKeyHash);
+
+	/* p_shard_oid */
+	argValues[2] = ObjectIdGetDatum(InvalidOid);
+
+	argValues[3] = PointerGetDatum(SerializeDeleteOneParams(deleteOneParams));
+
+	if (transactionId != NULL)
+	{
+		argValues[5] = PointerGetDatum(transactionId);
+		argNulls[5] = ' ';
+	}
+
+	bool readOnly = false;
+
+	Datum resultDatum[1] = { 0 };
+	bool isNulls[1] = { false };
+	int numResults = 1;
+
+	/* forceDelegation assumes nested distribution */
+	RunMultiValueQueryWithNestedDistribution(updateQuery, argCount, argTypes, argValues,
+											 argNulls,
+											 readOnly, SPI_OK_SELECT, resultDatum,
+											 isNulls, numResults);
+
+	if (isNulls[0])
+	{
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg("delete_worker should not return null")));
+	}
+	pgbson *resultPgbson = (pgbson *) DatumGetPointer(resultDatum[0]);
+
+	DeserializeWorkerDeleteResult(resultPgbson, result);
+}
+
+
 /*
  * CallDeleteOne calls the __API_INTERNAL_SCHEMA__.delete_one function, which could
  * get delegated based on the shard key value.
  */
-void
-CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
-			  int64 shardKeyHash, text *transactionId, DeleteOneResult *result)
+static void
+CallDeleteOneCore(MongoCollection *collection, DeleteOneParams *deleteOneParams,
+				  int64 shardKeyHash, text *transactionId, DeleteOneResult *result)
 {
 	StringInfoData deleteQuery;
 	int argCount = 7;
@@ -803,6 +911,55 @@ CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 }
 
 
+static void
+DeleteOneInternalCore(uint64 collectionId, int64 shardKeyHash,
+					  DeleteOneParams *deleteOneParams,
+					  text *transactionId, DeleteOneResult *deleteOneResult)
+{
+	if (transactionId != NULL)
+	{
+		/* transaction ID specified, use retryable write path */
+		RetryableWriteResult writeResult;
+
+		/*
+		 * If a retry record exists, delete it since only a single retry is allowed.
+		 */
+		if (DeleteRetryRecord(collectionId, shardKeyHash, transactionId, &writeResult))
+		{
+			/*
+			 * Get rows affected from the retry record.
+			 */
+			deleteOneResult->isRowDeleted = writeResult.rowsAffected > 0;
+
+			deleteOneResult->resultDeletedDocument = writeResult.resultDocument;
+		}
+		else
+		{
+			/*
+			 * No retry record exists, delete the row and get the object ID.
+			 */
+			DeleteOneInternal(collectionId, deleteOneParams, shardKeyHash,
+							  deleteOneResult);
+
+			/*
+			 * Remember that we performed a retryable write with the given
+			 * transaction ID.
+			 */
+			InsertRetryRecord(collectionId, shardKeyHash, transactionId,
+							  deleteOneResult->objectId, deleteOneResult->isRowDeleted,
+							  deleteOneResult->resultDeletedDocument);
+		}
+	}
+	else
+	{
+		/*
+		 * No transaction ID specified, do regular delete.
+		 */
+		DeleteOneInternal(collectionId, deleteOneParams, shardKeyHash, deleteOneResult);
+	}
+}
+
+
 /*
  * command_delete_one handles a single deletion on a shard.
  */
@@ -863,49 +1020,10 @@ command_delete_one(PG_FUNCTION_ARGS)
 		.returnFields = returnFields
 	};
 
-	if (!PG_ARGISNULL(6))
-	{
-		/* transaction ID specified, use retryable write path */
-		text *transactionId = PG_GETARG_TEXT_P(6);
+	text *transactionId = PG_ARGISNULL(6) ? NULL : PG_GETARG_TEXT_PP(6);
 
-		RetryableWriteResult writeResult;
-
-		/*
-		 * If a retry record exists, delete it since only a single retry is allowed.
-		 */
-		if (DeleteRetryRecord(collectionId, shardKeyHash, transactionId, &writeResult))
-		{
-			/*
-			 * Get rows affected from the retry record.
-			 */
-			deleteOneResult.isRowDeleted = writeResult.rowsAffected > 0;
-
-			deleteOneResult.resultDeletedDocument = writeResult.resultDocument;
-		}
-		else
-		{
-			/*
-			 * No retry record exists, delete the row and get the object ID.
-			 */
-			DeleteOneInternal(collectionId, &deleteOneParams, shardKeyHash,
-							  &deleteOneResult);
-
-			/*
-			 * Remember that we performed a retryable write with the given
-			 * transaction ID.
-			 */
-			InsertRetryRecord(collectionId, shardKeyHash, transactionId,
-							  deleteOneResult.objectId, deleteOneResult.isRowDeleted,
-							  deleteOneResult.resultDeletedDocument);
-		}
-	}
-	else
-	{
-		/*
-		 * No transaction ID specified, do regular delete.
-		 */
-		DeleteOneInternal(collectionId, &deleteOneParams, shardKeyHash, &deleteOneResult);
-	}
+	DeleteOneInternalCore(collectionId, shardKeyHash, &deleteOneParams, transactionId,
+						  &deleteOneResult);
 
 	/* prepare result tuple */
 	Datum values[2];
@@ -929,6 +1047,39 @@ command_delete_one(PG_FUNCTION_ARGS)
 
 	HeapTuple resultTuple = heap_form_tuple(resultTupDesc, values, isNulls);
 	PG_RETURN_DATUM(HeapTupleGetDatum(resultTuple));
+}
+
+
+Datum
+command_delete_worker(PG_FUNCTION_ARGS)
+{
+	uint64 collectionId = PG_GETARG_INT64(0);
+	int64 shardKeyHash = PG_GETARG_INT64(1);
+	Oid shardOid = PG_GETARG_OID(2);
+
+	pgbson *deleteInternalSpec = PG_GETARG_PGBSON_PACKED(3);
+
+	if (shardOid == InvalidOid)
+	{
+		/* The planner is expected to replace this */
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg("Explicit shardOid must be set - this is a server bug"),
+						errhint("Explicit shardOid must be set - this is a server bug")));
+	}
+
+	text *transactionId = PG_ARGISNULL(5) ? NULL : PG_GETARG_TEXT_PP(5);
+
+	DeleteOneParams deleteOneParams = { 0 };
+	DeserializeUpdateWorkerSpec(deleteInternalSpec, &deleteOneParams);
+
+	DeleteOneResult result;
+	memset(&result, 0, sizeof(result));
+
+	DeleteOneInternalCore(collectionId, shardKeyHash, &deleteOneParams, transactionId,
+						  &result);
+
+	pgbson *serializedResult = SerializeDeleteOneResult(&result);
+	PG_RETURN_POINTER(serializedResult);
 }
 
 
@@ -1106,6 +1257,130 @@ DeleteOneInternal(uint64 collectionId, DeleteOneParams *deleteOneParams,
 	}
 
 	SPI_finish();
+}
+
+
+static pgbson *
+SerializeDeleteOneParams(const DeleteOneParams *deleteParams)
+{
+	pgbson_writer commandWriter;
+	pgbson_writer writer;
+	PgbsonWriterInit(&commandWriter);
+
+	PgbsonWriterStartDocument(&commandWriter, "deleteOne", 9, &writer);
+
+	if (deleteParams->query != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "query", 5, deleteParams->query);
+	}
+
+	if (deleteParams->sort != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "sort", 4, deleteParams->sort);
+	}
+
+	PgbsonWriterAppendBool(&writer, "returnDeletedDocument", 21,
+						   deleteParams->returnDeletedDocument);
+
+	if (deleteParams->returnFields != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "returnFields", 12,
+								   deleteParams->returnFields);
+	}
+
+	PgbsonWriterEndDocument(&commandWriter, &writer);
+	return PgbsonWriterGetPgbson(&commandWriter);
+}
+
+
+static void
+DeserializeUpdateWorkerSpec(pgbson *workerSpec, DeleteOneParams *deleteOneParams)
+{
+	pgbsonelement commandElement;
+	PgbsonToSinglePgbsonElement(workerSpec, &commandElement);
+
+	if (strcmp(commandElement.path, "deleteOne") != 0)
+	{
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg("Delete worker only supports deleteOne call")));
+	}
+
+	bson_iter_t commandIter;
+	BsonValueInitIterator(&commandElement.bsonValue, &commandIter);
+
+	while (bson_iter_next(&commandIter))
+	{
+		const char *key = bson_iter_key(&commandIter);
+		if (strcmp(key, "query") == 0)
+		{
+			deleteOneParams->query = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																		 &commandIter));
+		}
+		else if (strcmp(key, "sort") == 0)
+		{
+			deleteOneParams->sort = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																		&commandIter));
+		}
+		else if (strcmp(key, "returnDeletedDocument") == 0)
+		{
+			deleteOneParams->returnDeletedDocument = bson_iter_bool(&commandIter);
+		}
+		else if (strcmp(key, "returnFields") == 0)
+		{
+			deleteOneParams->returnFields = PgbsonInitFromDocumentBsonValue(
+				bson_iter_value(&commandIter));
+		}
+	}
+}
+
+
+static void
+DeserializeWorkerDeleteResult(pgbson *resultBson, DeleteOneResult *result)
+{
+	bson_iter_t deleteResultIter;
+	PgbsonInitIterator(resultBson, &deleteResultIter);
+
+	while (bson_iter_next(&deleteResultIter))
+	{
+		const char *key = bson_iter_key(&deleteResultIter);
+		if (strcmp(key, "isRowDeleted") == 0)
+		{
+			result->isRowDeleted = bson_iter_bool(&deleteResultIter);
+		}
+		else if (strcmp(key, "objectId") == 0)
+		{
+			result->objectId = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																   &deleteResultIter));
+		}
+		else if (strcmp(key, "resultDeletedDocument") == 0)
+		{
+			result->resultDeletedDocument = PgbsonInitFromDocumentBsonValue(
+				bson_iter_value(&deleteResultIter));
+		}
+	}
+}
+
+
+static pgbson *
+SerializeDeleteOneResult(DeleteOneResult *result)
+{
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+
+	PgbsonWriterAppendBool(&writer, "isRowDeleted", 12, result->isRowDeleted);
+
+	if (result->objectId != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "objectId", 8, result->objectId);
+	}
+
+	if (result->resultDeletedDocument != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "resultDeletedDocument", 21,
+								   result->resultDeletedDocument);
+	}
+
+	return PgbsonWriterGetPgbson(&writer);
 }
 
 

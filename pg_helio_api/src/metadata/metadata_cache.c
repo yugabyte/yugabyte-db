@@ -14,6 +14,7 @@
 #include <access/table.h>
 #include <catalog/pg_extension.h>
 #include <catalog/pg_proc.h>
+#include <catalog/pg_type.h>
 #include <utils/fmgroids.h>
 
 #include "commands/extension.h"
@@ -733,6 +734,15 @@ typedef struct HelioApiOidCacheData
 
 	/* Oid of the ApiDataSchemaName namespace */
 	Oid ApiDataNamespaceOid;
+
+	/* OID of the helio_api_internal.update_worker function */
+	Oid UpdateWorkerFunctionOid;
+
+	/* OID of the helio_api_internal.insert_worker function */
+	Oid InsertWorkerFunctionOid;
+
+	/* OID of the helio_api_internal.delete_worker function */
+	Oid DeleteWorkerFunctionOid;
 } HelioApiOidCacheData;
 
 static HelioApiOidCacheData Cache;
@@ -2157,6 +2167,75 @@ ApiCursorStateFunctionId(void)
 	}
 
 	return Cache.CursorStateFunctionId;
+}
+
+
+Oid
+UpdateWorkerFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.UpdateWorkerFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString("update_worker"));
+		Oid paramOids[6] = {
+			INT8OID, INT8OID, REGCLASSOID, HelioCoreBsonTypeId(),
+			HelioCoreBsonSequenceTypeId(), TEXTOID
+		};
+		bool missingOK = true;
+
+		Cache.UpdateWorkerFunctionOid =
+			LookupFuncName(functionNameList, 6, paramOids, missingOK);
+	}
+
+	return Cache.UpdateWorkerFunctionOid;
+}
+
+
+Oid
+InsertWorkerFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.InsertWorkerFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString("insert_worker"));
+		Oid paramOids[6] = {
+			INT8OID, INT8OID, REGCLASSOID, HelioCoreBsonTypeId(),
+			HelioCoreBsonSequenceTypeId(), TEXTOID
+		};
+		bool missingOK = true;
+
+		Cache.InsertWorkerFunctionOid =
+			LookupFuncName(functionNameList, 6, paramOids, missingOK);
+	}
+
+	return Cache.InsertWorkerFunctionOid;
+}
+
+
+Oid
+DeleteWorkerFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.DeleteWorkerFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString("delete_worker"));
+		Oid paramOids[6] = {
+			INT8OID, INT8OID, REGCLASSOID, HelioCoreBsonTypeId(),
+			HelioCoreBsonSequenceTypeId(), TEXTOID
+		};
+		bool missingOK = true;
+
+		Cache.DeleteWorkerFunctionOid =
+			LookupFuncName(functionNameList, 6, paramOids, missingOK);
+	}
+
+	return Cache.DeleteWorkerFunctionOid;
 }
 
 

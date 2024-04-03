@@ -12,6 +12,7 @@
 #include "miscadmin.h"
 
 #include "access/xact.h"
+#include "catalog/pg_attribute.h"
 #include "commands/extension.h"
 #include "executor/spi.h"
 #include "lib/stringinfo.h"
@@ -36,6 +37,7 @@
 #include "utils/query_utils.h"
 #include "utils/guc_utils.h"
 #include "metadata/metadata_guc.h"
+#include "api_hooks.h"
 
 #define CREATE_COLLECTION_FUNC_NARGS 2
 
@@ -97,6 +99,8 @@ static const int NonWritableSystemCollectionNamesLength = 4;
 static const uint32_t MaxDatabaseCollectionLength = 235;
 static const StringView SystemPrefix = { .length = 7, .string = "system." };
 
+extern bool UseLocalExecutionShardQueries;
+
 /* user-defined functions */
 PG_FUNCTION_INFO_V1(command_collection_table);
 PG_FUNCTION_INFO_V1(command_invalidate_collection_cache);
@@ -115,7 +119,7 @@ static bool GetMongoCollectionFromCatalogByNameDatum(Datum databaseNameDatum,
 													 MongoCollection *collection);
 static Oid GetRelationIdForCollectionTableName(char *collectionTableName,
 											   LOCKMODE lockMode);
-static AttrNumber GetMongoDataCreationTimeVarAttrNumber(const char *pgTableName);
+static AttrNumber GetMongoDataCreationTimeVarAttrNumber(Oid collectionOid);
 static MongoCollection * GetMongoCollectionByNameDatumCore(Datum databaseNameDatum,
 														   Datum collectionNameDatum,
 														   LOCKMODE lockMode);
@@ -423,6 +427,42 @@ GetMongoCollectionByNameDatum(Datum databaseNameDatum, Datum collectionNameDatum
 
 
 /*
+ * Given a collection, tries to get a shardOID if one is applicable (there is
+ * a single shard corresponding to that collection) and if it's available
+ * locally. If such a shard is found, locks it with the given lock mode
+ * and returns it to the caller.
+ */
+Oid
+TryGetCollectionShardTable(MongoCollection *collection, LOCKMODE lockMode)
+{
+	/* If we don't have a local shard, bail. */
+	if (collection->shardTableName[0] == '\0')
+	{
+		return InvalidOid;
+	}
+
+	if (!UseLocalExecutionShardQueries)
+	{
+		return InvalidOid;
+	}
+
+	/* Don't allow direct shard access in a multi-statement transaction
+	 * This is because switching states between remote execution and local execution can produce
+	 * isolation issues. So only support this if we're a single command.
+	 */
+	if (IsTransactionBlock())
+	{
+		return InvalidOid;
+	}
+
+	Oid relationShardOid = GetRelationIdForCollectionTableName(collection->shardTableName,
+															   lockMode);
+	ereport(DEBUG3, (errmsg("Has relation shard: %d", relationShardOid != InvalidOid)));
+	return relationShardOid;
+}
+
+
+/*
  * GetMongoCollectionByName returns collection metadata by database and
  * collection name or NULL if the collection does not exist.
  */
@@ -536,6 +576,19 @@ GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameD
 			/* record exists, but table was dropped (maybe just after reading the record) */
 			return NULL;
 		}
+
+		if (collection.shardKey == NULL)
+		{
+			savedGUCLevel = NewGUCNestLevel();
+			SetGUCLocally("client_min_messages", "WARNING");
+			const char *shardName = TryGetShardNameForUnshardedCollection(
+				collection.relationId, collection.collectionId, collection.tableName);
+			RollbackGUCChange(savedGUCLevel);
+			if (shardName != NULL)
+			{
+				strcpy(collection.shardTableName, shardName);
+			}
+		}
 	}
 
 
@@ -557,7 +610,7 @@ GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameD
 	else
 	{
 		collection.mongoDataCreationTimeVarAttrNumber =
-			GetMongoDataCreationTimeVarAttrNumber(collection.tableName);
+			GetMongoDataCreationTimeVarAttrNumber(collection.relationId);
 	}
 
 	/* collection exists, so write a name -> collection cache entry */
@@ -616,6 +669,7 @@ GetTempMongoCollectionByNameDatum(Datum databaseNameDatum, Datum collectionNameD
 	collection->collectionId = UINT64_MAX; /*unused */
 	collection->relationId = InvalidOid; /* unused */
 	sprintf(collection->tableName, "documents_temp");
+	collection->shardTableName[0] = '\0';
 
 	return collection;
 }
@@ -734,6 +788,21 @@ GetMongoCollectionFromCatalogById(uint64 collectionId, Oid relationId,
 
 		collection->collectionId = collectionId;
 		collection->relationId = relationId;
+		if (collection->shardKey == NULL && collection->viewDefinition == NULL)
+		{
+			const char *shardName = TryGetShardNameForUnshardedCollection(relationId,
+																		  collectionId,
+																		  collection->
+																		  tableName);
+			if (shardName == NULL)
+			{
+				collection->shardTableName[0] = '\0';
+			}
+			else
+			{
+				strcpy(collection->shardTableName, shardName);
+			}
+		}
 
 		collectionExists = true;
 	}
@@ -886,27 +955,21 @@ GetRelationIdForCollectionTableName(char *collectionTableName, LOCKMODE lockMode
  * GetMongoDataCreationTimeVarAttrNumber returns the attribute number of creation_time column.
  */
 static AttrNumber
-GetMongoDataCreationTimeVarAttrNumber(const char *pgTableName)
+GetMongoDataCreationTimeVarAttrNumber(Oid collectionOid)
 {
-	StringInfo cmdStr = makeStringInfo();
-	appendStringInfo(cmdStr,
-					 "SELECT attnum from pg_attribute where attrelid = '%s.%s'::regclass AND attname = 'creation_time'",
-					 ApiDataSchemaName, pgTableName);
-	bool isNull = true;
-	bool readOnly = true;
-	int savedGUCLevel = NewGUCNestLevel();
-	SetGUCLocally("client_min_messages", "WARNING");
-	Datum resultDatum = ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_SELECT,
-													&isNull);
-	RollbackGUCChange(savedGUCLevel);
+	HeapTuple tuple = SearchSysCacheAttName(collectionOid, "creation_time");
 
-	if (isNull)
+	if (!HeapTupleIsValid(tuple))
 	{
 		/* If collection doesn't exist, we'll arrive here */
 		return (AttrNumber) 4;
 	}
 
-	return DatumGetUInt16(resultDatum);
+	Form_pg_attribute targetatt = (Form_pg_attribute) GETSTRUCT(tuple);
+	int16 attnum = targetatt->attnum;
+	ReleaseSysCache(tuple);
+
+	return attnum;
 }
 
 

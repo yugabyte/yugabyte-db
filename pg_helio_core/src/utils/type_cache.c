@@ -44,6 +44,9 @@ typedef struct OidTypeCacheData
 	/* OID of the bsonquery type */
 	Oid BsonQueryTypeId;
 
+	/* OID of the helio_core.bsonsequence type */
+	Oid HelioCoreBsonSequenceTypeId;
+
 	/* OID of the helio_core.bson type */
 	Oid HelioCoreBsonTypeId;
 } OidTypeCacheData;
@@ -70,6 +73,23 @@ BsonTypeId(void)
 	}
 
 	return TypeCache.BsonTypeId;
+}
+
+
+PGDLLEXPORT Oid
+HelioCoreBsonSequenceTypeId(void)
+{
+	InitializeOidCaches();
+
+	if (TypeCache.HelioCoreBsonSequenceTypeId == InvalidOid)
+	{
+		List *bsonTypeNameList = list_make2(makeString("helio_core"),
+											makeString("bsonsequence"));
+		TypeName *bsonTypeName = makeTypeNameFromNameList(bsonTypeNameList);
+		TypeCache.HelioCoreBsonSequenceTypeId = typenameTypeId(NULL, bsonTypeName);
+	}
+
+	return TypeCache.HelioCoreBsonSequenceTypeId;
 }
 
 

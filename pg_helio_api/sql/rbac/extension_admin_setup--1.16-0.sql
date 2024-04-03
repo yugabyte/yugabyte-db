@@ -1,0 +1,1 @@
+GRANT USAGE ON SCHEMA helio_core TO helio_admin_role;

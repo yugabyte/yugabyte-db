@@ -65,6 +65,8 @@ static void ExtractAndSetSearchParamterFromWrapFunction(IndexPath *indexPath,
 														context);
 static Path * OptimizeBitmapQualsForBitmapAnd(BitmapAndPath *path,
 											  ReplaceExtensionFunctionContext *context);
+static IndexPath * OptimizeIndexPathForFilters(IndexPath *indexPath,
+											   ReplaceExtensionFunctionContext *context);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -912,6 +914,8 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 		{
 			path = OptimizeIndexExpressionsForDollarIn(root, rel, path, parentType);
 		}
+
+		indexPath = OptimizeIndexPathForFilters(indexPath, context);
 	}
 
 	return path;
@@ -1127,4 +1131,24 @@ OptimizeBitmapQualsForBitmapAnd(BitmapAndPath *andPath,
 	}
 
 	return (Path *) andPath;
+}
+
+
+static IndexPath *
+OptimizeIndexPathForFilters(IndexPath *indexPath,
+							ReplaceExtensionFunctionContext *context)
+{
+	/* For cases of partial filter expressions the base restrict info is "copied" into the index exprs
+	 * so in this case we need to do the restrictinfo changes here too.
+	 * see check_index_predicates on indxpath.c.
+	 */
+	if (indexPath->indexinfo->indpred == NIL)
+	{
+		return indexPath;
+	}
+
+	indexPath->indexinfo->indrestrictinfo =
+		ReplaceExtensionFunctionOperatorsInRestrictionPaths(
+			indexPath->indexinfo->indrestrictinfo, context);
+	return indexPath;
 }

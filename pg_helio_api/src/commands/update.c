@@ -92,6 +92,7 @@
 #include "io/pgbsonsequence.h"
 #include "utils/feature_counter.h"
 #include "utils/query_utils.h"
+#include "utils/version_utils.h"
 
 #include "api_hooks.h"
 
@@ -187,7 +188,13 @@ typedef struct
 	/* collection in which to perform updates */
 	char *collectionName;
 
-	/* UpdateSpec list describing the updates */
+	/* A pointer to the update value in the updateSpec */
+	bson_value_t updateValue;
+
+	/* A pointer to the bson sequence containing updates */
+	pgbsonsequence *updateSequence;
+
+	/* UpdateSpec list describing the updates (processed from one of the above) */
 	List *updates;
 
 	/* if ordered, stop after the first failure */
@@ -195,6 +202,9 @@ typedef struct
 
 	/* whether any of the updates have upsert:true */
 	bool hasUpsert;
+
+	/* The optional shard level table OID for the update */
+	Oid shardTableOid;
 } BatchUpdateSpec;
 
 
@@ -242,9 +252,18 @@ static UpdateAllMatchingDocsResult UpdateAllMatchingDocuments(MongoCollection *c
 static void CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 						  int64 shardKeyHash, text *transactionId,
 						  UpdateOneResult *result);
+static void CallUpdateOneCore(MongoCollection *collection,
+							  UpdateOneParams *updateOneParams,
+							  int64 shardKeyHash, text *transactionId,
+							  UpdateOneResult *result);
 static void UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 							  pgbson *shardKeyBson, int64 shardKeyHash,
 							  UpdateOneResult *result);
+static void UpdateOneInternalWithRetryRecord(uint64 collectionId, int64 shardKeyHash,
+											 text *transactionId,
+											 pgbson *shardKeyBson,
+											 UpdateOneParams *updateOneParams,
+											 UpdateOneResult *result);
 static bool SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
 								  pgbson *update, pgbson *arrayFilters, pgbson *sort,
 								  UpdateCandidate *updateCandidate,
@@ -261,10 +280,20 @@ static pgbson * UpsertDocument(MongoCollection *collection, pgbson *update,
 							   pgbson *query, pgbson *arrayFilters);
 static List * ValidateQueryAndUpdateDocuments(BatchUpdateSpec *batchSpec);
 static pgbson * BuildResponseMessage(BatchUpdateResult *batchResult);
-
+static void BuildUpdates(BatchUpdateSpec *spec);
+static void DeserializeUpdateWorkerSpec(pgbson *updateInternalSpec, pgbson **shardKeyBson,
+										UpdateOneParams *params);
+static pgbson * SerializeUpdateOneResult(UpdateOneResult *result);
+static pgbson * SerializeUpdateOneParams(UpdateOneParams *params, pgbson *shardKeyBson);
+static void DeserializeUpdateResult(pgbson *resultBson, UpdateOneResult *result);
+static void CallUpdateWorkerForUpdateOne(MongoCollection *collection,
+										 UpdateOneParams *updateOneParams,
+										 int64 shardKeyHash, text *transactionId,
+										 UpdateOneResult *result);
 
 PG_FUNCTION_INFO_V1(command_update);
 PG_FUNCTION_INFO_V1(command_update_one);
+PG_FUNCTION_INFO_V1(command_update_worker);
 
 
 /*
@@ -328,6 +357,9 @@ command_update(PG_FUNCTION_ARGS)
 	HeapTuple resultTuple;
 	if (collection == NULL)
 	{
+		/* We have to create the update spec here to ensure we track hasUpsert */
+		BuildUpdates(batchSpec);
+
 		ValidateCollectionNameForUnauthorizedSystemNs(batchSpec->collectionName,
 													  databaseNameDatum);
 
@@ -368,6 +400,52 @@ command_update(PG_FUNCTION_ARGS)
 
 
 /*
+ * Reentrant function that looks at the update spec
+ * and parses the update list OR update sequence of documents
+ * and builds a batch update spec.
+ * This is done as a second pass so that in subsequent changes,
+ * for single shard updates, we can skip the parse stage and just
+ * send the entire spec to the worker.
+ */
+static void
+BuildUpdates(BatchUpdateSpec *spec)
+{
+	if (spec->updates != NIL)
+	{
+		return;
+	}
+
+	List *updates = NIL;
+	if (spec->updateSequence != NULL)
+	{
+		updates = BuildUpdateSpecListFromSequence(spec->updateSequence, &spec->hasUpsert);
+	}
+	else if (spec->updateValue.value_type == BSON_TYPE_ARRAY)
+	{
+		bson_iter_t updateArrayIter;
+		BsonValueInitIterator(&spec->updateValue, &updateArrayIter);
+		updates = BuildUpdateSpecList(&updateArrayIter, &spec->hasUpsert);
+	}
+	else
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						errmsg("BSON field 'update.updates' is missing but "
+							   "a required field")));
+	}
+
+	int updateCount = list_length(updates);
+	if (updateCount == 0 || updateCount > MaxWriteBatchSize)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						errmsg("Write batch sizes must be between 1 and %d. "
+							   "Got %d operations.", MaxWriteBatchSize, updateCount)));
+	}
+
+	spec->updates = updates;
+}
+
+
+/*
  * BuildBatchUpdateSpec validates the update command BSON and builds
  * a BatchUpdateSpec.
  */
@@ -375,11 +453,9 @@ static BatchUpdateSpec *
 BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 {
 	const char *collectionName = NULL;
-	List *updates = NIL;
 	bool isOrdered = true;
-	bool hasUpdates = false;
-	bool hasUpsert = false;
 
+	bson_value_t updateValue = { 0 };
 	while (bson_iter_next(updateCommandIter))
 	{
 		const char *field = bson_iter_key(updateCommandIter);
@@ -406,11 +482,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 								errmsg("Unexpected additional updates")));
 			}
 
-			bson_iter_t updateArrayIter;
-			bson_iter_recurse(updateCommandIter, &updateArrayIter);
-
-			updates = BuildUpdateSpecList(&updateArrayIter, &hasUpsert);
-			hasUpdates = true;
+			updateValue = *bson_iter_value(updateCommandIter);
 		}
 		else if (strcmp(field, "ordered") == 0)
 		{
@@ -444,33 +516,13 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 							   "a required field")));
 	}
 
-	if (updateDocs != NULL)
-	{
-		updates = BuildUpdateSpecListFromSequence(updateDocs, &hasUpsert);
-		hasUpdates = true;
-	}
-
-	if (!hasUpdates)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						errmsg("BSON field 'update.updates' is missing but "
-							   "a required field")));
-	}
-
-	int updateCount = list_length(updates);
-	if (updateCount == 0 || updateCount > MaxWriteBatchSize)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						errmsg("Write batch sizes must be between 1 and %d. "
-							   "Got %d operations.", MaxWriteBatchSize, updateCount)));
-	}
 
 	BatchUpdateSpec *batchSpec = palloc0(sizeof(BatchUpdateSpec));
 
 	batchSpec->collectionName = (char *) collectionName;
-	batchSpec->updates = updates;
+	batchSpec->updateValue = updateValue;
+	batchSpec->updateSequence = updateDocs;
 	batchSpec->isOrdered = isOrdered;
-	batchSpec->hasUpsert = hasUpsert;
 
 	return batchSpec;
 }
@@ -820,8 +872,18 @@ static void
 ProcessBatchUpdate(MongoCollection *collection, BatchUpdateSpec *batchSpec,
 				   text *transactionId, BatchUpdateResult *batchResult)
 {
+	BuildUpdates(batchSpec);
 	List *updates = batchSpec->updates;
 	bool isOrdered = batchSpec->isOrdered;
+
+	/* Check if we can inline the updates */
+	if (transactionId == NULL && collection->shardKey == NULL)
+	{
+		/* Share Lock is okay here since we use SPI internally for the updates */
+		batchSpec->shardTableOid = TryGetCollectionShardTable(collection,
+															  AccessShareLock);
+	}
+
 
 	batchResult->ok = 1;
 	batchResult->rowsMatched = 0;
@@ -1025,9 +1087,14 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 						   pgbson *updateDoc, pgbson *arrayFilters,
 						   bool hasShardKeyValueFilter, int64 shardKeyHash)
 {
-	uint64 collectionId = collection->collectionId;
-
 	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(queryDoc);
+
+	const char *tableName = collection->tableName;
+	if (collection->shardTableName[0] != '\0')
+	{
+		/* If we can push down to the local shard, then prefer that. */
+		tableName = collection->shardTableName;
+	}
 
 	StringInfoData updateQuery;
 	int argCount = 3;
@@ -1062,11 +1129,11 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 	 *
 	 */
 	appendStringInfo(&updateQuery,
-					 "WITH u AS (UPDATE %s.documents_" UINT64_FORMAT
+					 "WITH u AS (UPDATE %s.%s"
 					 " SET document = (SELECT COALESCE(newDocument, document)"
 					 " FROM %s.bson_update_document(document, $2::%s, "
 					 "$1::%s, $3::%s, %s)) WHERE document OPERATOR(%s.@@) $1::%s ",
-					 ApiDataSchemaName, collectionId,
+					 ApiDataSchemaName, tableName,
 					 ApiInternalSchemaName,
 					 FullBsonTypeName, FullBsonTypeName, FullBsonTypeName,
 					 "false",
@@ -1204,13 +1271,52 @@ UpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 }
 
 
+static void
+CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
+			  int64 shardKeyHash, text *transactionId, UpdateOneResult *result)
+{
+	/* If we can simply call the updateOne here, don't bother trying to spin up an SPI runtime
+	 * to call UpdateOne again.
+	 * In the scenarios where we can thunk directly to the table since the table (shard) is on the same
+	 * node as the query coordinator, call the functions directly here.
+	 */
+	if (DefaultInlineWriteOperations || collection->shardTableName[0] != '\0')
+	{
+		if (transactionId != NULL)
+		{
+			UpdateOneInternalWithRetryRecord(collection->collectionId, shardKeyHash,
+											 transactionId,
+											 collection->shardKey, updateOneParams,
+											 result);
+		}
+		else
+		{
+			UpdateOneInternal(collection->collectionId, updateOneParams,
+							  collection->shardKey,
+							  shardKeyHash, result);
+		}
+	}
+	else if (IsClusterVersionAtleastThis(1, 16, 0))
+	{
+		/* Otherwise, call the worker via worker update one */
+		CallUpdateWorkerForUpdateOne(collection, updateOneParams, shardKeyHash,
+									 transactionId, result);
+	}
+	else
+	{
+		CallUpdateOneCore(collection, updateOneParams, shardKeyHash, transactionId,
+						  result);
+	}
+}
+
+
 /*
  * CallUpdateOne calls the ApiInternalSchemaName.update_one function, which could
  * get delegated based on the shard key value.
  */
 static void
-CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
-			  int64 shardKeyHash, text *transactionId, UpdateOneResult *result)
+CallUpdateOneCore(MongoCollection *collection, UpdateOneParams *updateOneParams,
+				  int64 shardKeyHash, text *transactionId, UpdateOneResult *result)
 {
 	/* initialize result */
 	result->isRowUpdated = false;
@@ -1440,6 +1546,123 @@ CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 }
 
 
+static void
+CallUpdateWorkerForUpdateOne(MongoCollection *collection,
+							 UpdateOneParams *updateOneParams,
+							 int64 shardKeyHash, text *transactionId,
+							 UpdateOneResult *result)
+{
+	/* initialize result */
+	result->isRowUpdated = false;
+	result->updateSkipped = false;
+	result->isRetry = false;
+	result->reinsertDocument = NULL;
+	result->resultDocument = NULL;
+	result->upsertedObjectId = NULL;
+
+	int argCount = 6;
+	Datum argValues[6];
+
+	/* whitespace means not null, n means null */
+	char argNulls[6] = { ' ', ' ', ' ', ' ', 'n', 'n' };
+	Oid argTypes[6] = { INT8OID, INT8OID, REGCLASSOID, BYTEAOID, BYTEAOID, TEXTOID };
+
+	const char *updateQuery = FormatSqlQuery(
+		" SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM %s.documents_"
+		UINT64_FORMAT " WHERE shard_key_value = %ld",
+		ApiDataSchemaName, collection->collectionId, shardKeyHash);
+
+	argValues[0] = UInt64GetDatum(collection->collectionId);
+
+	/* p_shard_key_value */
+	argValues[1] = Int64GetDatum(shardKeyHash);
+
+	/* p_shard_oid: We set this to InvalidOid here. The planner hook on the worker node will set this to
+	 * non-InvalidOid before the actual function is executed.
+	 */
+	argValues[2] = ObjectIdGetDatum(InvalidOid);
+
+	argValues[3] = PointerGetDatum(SerializeUpdateOneParams(updateOneParams,
+															collection->shardKey));
+
+	if (transactionId != NULL)
+	{
+		argValues[5] = PointerGetDatum(transactionId);
+		argNulls[5] = ' ';
+	}
+
+	bool readOnly = false;
+
+	Datum resultDatum[1] = { 0 };
+	bool isNulls[1] = { false };
+	int numResults = 1;
+
+	/* forceDelegation assumes nested distribution */
+	RunMultiValueQueryWithNestedDistribution(updateQuery, argCount, argTypes, argValues,
+											 argNulls,
+											 readOnly, SPI_OK_SELECT, resultDatum,
+											 isNulls, numResults);
+
+	if (isNulls[0])
+	{
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg("update_worker should not return null")));
+	}
+	pgbson *resultPgbson = (pgbson *) DatumGetPointer(resultDatum[0]);
+
+	DeserializeUpdateResult(resultPgbson, result);
+}
+
+
+static void
+UpdateOneInternalWithRetryRecord(uint64 collectionId, int64 shardKeyHash,
+								 text *transactionId,
+								 pgbson *shardKeyBson, UpdateOneParams *updateOneParams,
+								 UpdateOneResult *result)
+{
+	RetryableWriteResult writeResult;
+
+	/* if a retry record exists, delete it since only a single retry is allowed */
+	if (DeleteRetryRecord(collectionId, shardKeyHash, transactionId, &writeResult))
+	{
+		/* get rows affected from the retry record */
+		result->isRowUpdated = writeResult.rowsAffected;
+
+		/* even if we reinserted the first time, there is no need to do more work */
+		result->reinsertDocument = NULL;
+
+		/* this is a retry */
+		result->isRetry = true;
+
+		result->resultDocument = writeResult.resultDocument;
+
+		/* return the _id generated in the first try */
+		result->upsertedObjectId = writeResult.objectId;
+	}
+	else
+	{
+		/* no retry record exists, update the row and get the object ID */
+		UpdateOneInternal(collectionId, updateOneParams, shardKeyBson, shardKeyHash,
+						  result);
+
+		pgbson *objectId = NULL;
+
+		/* we only care about object ID in case of upsert */
+		if (updateOneParams->isUpsert)
+		{
+			objectId = result->upsertedObjectId;
+		}
+
+		/*
+		 * Remember that we performed a retryable write with the given
+		 * transaction ID.
+		 */
+		InsertRetryRecord(collectionId, shardKeyHash, transactionId,
+						  objectId, result->isRowUpdated, result->resultDocument);
+	}
+}
+
+
 /*
  * command_update_one handles a single update on a shard.
  */
@@ -1520,47 +1743,9 @@ command_update_one(PG_FUNCTION_ARGS)
 	{
 		/* transaction ID specified, use retryable write path */
 		text *transactionId = PG_GETARG_TEXT_P(10);
-
-		RetryableWriteResult writeResult;
-
-		/* if a retry record exists, delete it since only a single retry is allowed */
-		if (DeleteRetryRecord(collectionId, shardKeyHash, transactionId, &writeResult))
-		{
-			/* get rows affected from the retry record */
-			result.isRowUpdated = writeResult.rowsAffected;
-
-			/* even if we reinserted the first time, there is no need to do more work */
-			result.reinsertDocument = NULL;
-
-			/* this is a retry */
-			result.isRetry = true;
-
-			result.resultDocument = writeResult.resultDocument;
-
-			/* return the _id generated in the first try */
-			result.upsertedObjectId = writeResult.objectId;
-		}
-		else
-		{
-			/* no retry record exists, update the row and get the object ID */
-			UpdateOneInternal(collectionId, &updateOneParams, shardKeyBson, shardKeyHash,
-							  &result);
-
-			pgbson *objectId = NULL;
-
-			/* we only care about object ID in case of upsert */
-			if (isUpsert)
-			{
-				objectId = result.upsertedObjectId;
-			}
-
-			/*
-			 * Remember that we performed a retryable write with the given
-			 * transaction ID.
-			 */
-			InsertRetryRecord(collectionId, shardKeyHash, transactionId,
-							  objectId, result.isRowUpdated, result.resultDocument);
-		}
+		UpdateOneInternalWithRetryRecord(collectionId, shardKeyHash, transactionId,
+										 shardKeyBson,
+										 &updateOneParams, &result);
 	}
 	else
 	{
@@ -1623,6 +1808,243 @@ command_update_one(PG_FUNCTION_ARGS)
 
 	HeapTuple resultTuple = heap_form_tuple(resultDescriptor, values, isNulls);
 	PG_RETURN_DATUM(HeapTupleGetDatum(resultTuple));
+}
+
+
+/*
+ * Worker function for the update on a remote shard.
+ */
+Datum
+command_update_worker(PG_FUNCTION_ARGS)
+{
+	uint64 collectionId = PG_GETARG_INT64(0);
+	int64 shardKeyHash = PG_GETARG_INT64(1);
+	Oid shardOid = PG_GETARG_OID(2);
+
+	pgbson *updateInternalSpec = PG_GETARG_PGBSON_PACKED(3);
+
+	if (shardOid == InvalidOid)
+	{
+		/* The planner is expected to replace this */
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg("Explicit shardOid must be set - this is a server bug"),
+						errhint("Explicit shardOid must be set - this is a server bug")));
+	}
+
+
+	pgbson *shardKeyBson = NULL;
+	UpdateOneParams updateOneParams = { 0 };
+	DeserializeUpdateWorkerSpec(updateInternalSpec, &shardKeyBson, &updateOneParams);
+
+	UpdateOneResult result;
+	memset(&result, 0, sizeof(result));
+
+	if (!PG_ARGISNULL(5))
+	{
+		/* transaction ID specified, use retryable write path */
+		text *transactionId = PG_GETARG_TEXT_P(5);
+		UpdateOneInternalWithRetryRecord(collectionId, shardKeyHash, transactionId,
+										 shardKeyBson,
+										 &updateOneParams, &result);
+	}
+	else
+	{
+		/* no transaction ID specified, do regular update */
+		UpdateOneInternal(collectionId, &updateOneParams, shardKeyBson,
+						  shardKeyHash, &result);
+	}
+
+	pgbson *serializedResult = SerializeUpdateOneResult(&result);
+	PG_RETURN_POINTER(serializedResult);
+}
+
+
+static pgbson *
+SerializeUpdateOneParams(UpdateOneParams *params, pgbson *shardKeyBson)
+{
+	pgbson_writer commandWriter;
+	PgbsonWriterInit(&commandWriter);
+
+	pgbson_writer writer;
+	PgbsonWriterStartDocument(&commandWriter, "updateOne", -1, &writer);
+
+	if (params->query != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "query", -1, params->query);
+	}
+
+	if (shardKeyBson != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "shardKeyBson", -1, shardKeyBson);
+	}
+
+	PgbsonWriterAppendDocument(&writer, "update", -1, params->update);
+
+	PgbsonWriterAppendBool(&writer, "isUpsert", -1, params->isUpsert != 0);
+
+	if (params->sort != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "sort", 4, params->sort);
+	}
+
+	PgbsonWriterAppendInt32(&writer, "returnDocument", -1, (int) params->returnDocument);
+
+	if (params->returnFields != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "returnFields", -1, params->returnFields);
+	}
+
+	if (params->arrayFilters != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "arrayFilters", -1, params->arrayFilters);
+	}
+
+	PgbsonWriterEndDocument(&commandWriter, &writer);
+	return PgbsonWriterGetPgbson(&commandWriter);
+}
+
+
+static void
+DeserializeUpdateWorkerSpec(pgbson *updateInternalSpec, pgbson **shardKeyBson,
+							UpdateOneParams *params)
+{
+	pgbsonelement singleElement;
+	bson_iter_t internalIter;
+
+	/* The top level is a pgbsonelement describing a type of update
+	 * Right now the only supported mode is single doc update (updateOne)
+	 */
+	PgbsonToSinglePgbsonElement(updateInternalSpec, &singleElement);
+
+	if (strcmp(singleElement.path, "updateOne") != 0 ||
+		singleElement.bsonValue.value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoInternalError), (errmsg(
+														  "Update worker only supports update_one as a document"))));
+	}
+
+	BsonValueInitIterator(&singleElement.bsonValue, &internalIter);
+	while (bson_iter_next(&internalIter))
+	{
+		const char *key = bson_iter_key(&internalIter);
+		if (strcmp(key, "shardKeyBson") == 0)
+		{
+			*shardKeyBson = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																&internalIter));
+		}
+		else if (strcmp(key, "isUpsert") == 0)
+		{
+			params->isUpsert = bson_iter_bool(&internalIter);
+		}
+		else if (strcmp(key, "arrayFilters") == 0)
+		{
+			params->arrayFilters = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																	   &internalIter));
+		}
+		else if (strcmp(key, "query") == 0)
+		{
+			params->query = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																&internalIter));
+		}
+		else if (strcmp(key, "sort") == 0)
+		{
+			params->sort = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+															   &internalIter));
+		}
+		else if (strcmp(key, "update") == 0)
+		{
+			params->update = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																 &internalIter));
+		}
+		else if (strcmp(key, "returnFields") == 0)
+		{
+			params->returnFields = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																	   &internalIter));
+		}
+		else if (strcmp(key, "returnDocument") == 0)
+		{
+			params->returnDocument = (UpdateReturnValue) bson_iter_int32(&internalIter);
+		}
+	}
+}
+
+
+static pgbson *
+SerializeUpdateOneResult(UpdateOneResult *result)
+{
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+
+	PgbsonWriterAppendBool(&writer, "isRowUpdated", -1, result->isRowUpdated);
+	PgbsonWriterAppendBool(&writer, "updateSkipped", -1, result->updateSkipped);
+	PgbsonWriterAppendBool(&writer, "isRetry", -1, result->isRetry);
+
+	if (result->reinsertDocument != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "reinsertDocument", -1,
+								   result->reinsertDocument);
+	}
+
+	if (result->resultDocument != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "resultDocument", -1, result->resultDocument);
+	}
+
+	if (result->upsertedObjectId != NULL)
+	{
+		PgbsonWriterAppendDocument(&writer, "upsertedObjectId", -1,
+								   result->upsertedObjectId);
+	}
+
+	return PgbsonWriterGetPgbson(&writer);
+}
+
+
+static void
+DeserializeUpdateResult(pgbson *resultBson, UpdateOneResult *result)
+{
+	bson_iter_t updateIter;
+	PgbsonInitIterator(resultBson, &updateIter);
+
+	while (bson_iter_next(&updateIter))
+	{
+		const char *key = bson_iter_key(&updateIter);
+		if (strcmp(key, "isRowUpdated") == 0)
+		{
+			result->isRowUpdated = bson_iter_bool(&updateIter);
+		}
+		else if (strcmp(key, "updateSkipped") == 0)
+		{
+			result->updateSkipped = bson_iter_bool(&updateIter);
+		}
+		else if (strcmp(key, "isRowUpdated") == 0)
+		{
+			result->isRowUpdated = bson_iter_bool(&updateIter);
+		}
+		else if (strcmp(key, "updateSkipped") == 0)
+		{
+			result->updateSkipped = bson_iter_bool(&updateIter);
+		}
+		else if (strcmp(key, "isRetry") == 0)
+		{
+			result->isRetry = bson_iter_bool(&updateIter);
+		}
+		else if (strcmp(key, "reinsertDocument") == 0)
+		{
+			result->reinsertDocument = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																		   &updateIter));
+		}
+		else if (strcmp(key, "resultDocument") == 0)
+		{
+			result->resultDocument = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																		 &updateIter));
+		}
+		else if (strcmp(key, "upsertedObjectId") == 0)
+		{
+			result->upsertedObjectId = PgbsonInitFromDocumentBsonValue(bson_iter_value(
+																		   &updateIter));
+		}
+	}
 }
 
 

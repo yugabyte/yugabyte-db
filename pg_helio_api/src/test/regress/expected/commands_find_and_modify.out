@@ -193,7 +193,6 @@ BEGIN;
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 100}, "sort": {"b": 1}, "update": { "$set": { "a.$[a]": 10 }}, "fields": {"b": 1, "_id": 0}, "upsert": true, "arrayFilters": [ { "a": 30 } ]}');
 ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, helio_core.bson) does not exist
-CONTEXT:  SQL statement " SELECT o_is_row_updated, o_is_retry, o_reinsert_document,         o_upserted_object_id, o_result_document, o_update_skipped FROM helio_api_internal.update_one($1,$2,$3::helio_core.bson, $4::helio_core.bson, $5::helio_core.bson,$6,$7::helio_core.bson, $8,$9::helio_core.bson,$10::helio_core.bson,$11)"
 ROLLBACK;
 BEGIN;
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": { "$gte": 15 } }, "sort": {}, "update": {"$set": {"z": 5}, "$inc": {"z": 5}, "$inc": {"a": 10}}, "upsert": false, "new": true, "fields": {}}');
@@ -605,7 +604,6 @@ SELECT document FROM helio_api.collection('fam', 'retryable_update') ORDER BY do
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 1}, "update": {"$inc": {"b": 1}}, "new": true, "upsert": true, "fields": {"foo": {"$pop": ["bar"]}}}');
 ERROR:  Unknown expression $pop
 HINT:  Unknown expression $pop
-CONTEXT:  SQL statement " SELECT o_is_row_updated, o_is_retry, o_reinsert_document,         o_upserted_object_id, o_result_document, o_update_skipped FROM helio_api_internal.update_one($1,$2,$3::helio_core.bson, $4::helio_core.bson, $5::helio_core.bson,$6,$7::helio_core.bson, $8,$9::helio_core.bson,$10::helio_core.bson,$11)"
 -- test with operator expression in fields argument
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 1}, "update": {"$inc": {"b": 1}}, "new": true, "upsert": true, "fields": {"foo": {"$pow": [1, 2]}}}');
                                                                                                                                    find_and_modify                                                                                                                                    

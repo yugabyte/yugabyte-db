@@ -69,6 +69,13 @@ typedef struct
 	 * it is set only when the filter of vector search is specified
 	 */
 	HTAB *requiredFilterPathNameHashSet;
+
+	/* Whether or not the aggregation query allows direct shard delegation
+	 * This allows queries to go directly against a local shard *iff* it's available.
+	 * This can be done for base streaming queries. TODO: Investigate whether or not
+	 * this can be extended to other types of queries.
+	 */
+	bool allowShardBaseTable;
 } AggregationPipelineBuildContext;
 
 

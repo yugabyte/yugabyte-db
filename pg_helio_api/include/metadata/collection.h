@@ -79,6 +79,12 @@ typedef struct
 
 	/* creation_time column attribute number */
 	AttrNumber mongoDataCreationTimeVarAttrNumber;
+
+	/*
+	 * An optional name for the shardTable if it has a distributed table associated with it
+	 * on the current node or empty string (Default) if unavailable.
+	 */
+	char shardTableName[NAMEDATALEN];
 } MongoCollection;
 
 
@@ -117,6 +123,14 @@ MongoCollection * GetTempMongoCollectionByNameDatum(Datum dbNameDatum,
 													Datum collectionNameDatum,
 													char *collectionName,
 													LOCKMODE lockMode);
+
+/*
+ * Returns the OID of the physical shard table if applicable and if it
+ * is available on the current node. If no such valid shard table can be
+ * found (due to the table having multiple shards or it being on a different
+ * machine), returns InvalidOid
+ */
+Oid TryGetCollectionShardTable(MongoCollection *collection, LOCKMODE lockMode);
 
 /*
  * Check if DB exists. Check is done case insensitively. If exists, return

@@ -45,6 +45,8 @@ typedef struct
  */
 typedef struct
 {
+	const char *collectionName;
+
 	/* Index update options */
 	CollModIndexOptions index;
 
@@ -139,9 +141,38 @@ command_coll_mod(PG_FUNCTION_ARGS)
 	 * refer other collections are supported right now . e.g. viewOn, pipelines, validators etc
 	 */
 	Datum databaseDatum = PG_GETARG_DATUM(0);
+
+	/* Validate the collMod options received because GW only checks for valid collection name */
+	CollModOptions collModOptions = {
+		.collectionName = NULL,
+		.index = { 0 },
+		.viewDefinition = { 0 }
+	};
+	CollModSpecFlags specFlags = ParseSpecSetCollModOptions(collModSpec,
+															&collModOptions);
+
+	if (collModOptions.collectionName == NULL)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse), (errmsg(
+														  "collMod must be specified"))));
+	}
+
+	if (!PG_ARGISNULL(1))
+	{
+		const char *collectionName = TextDatumGetCString(PG_GETARG_DATUM(1));
+
+		if (strcmp(collectionName, collModOptions.collectionName) != 0)
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg(
+								"Collection name specified in the top level must match that in the spec")));
+		}
+	}
+
 	MongoCollection *collection =
 		GetMongoCollectionOrViewByNameDatum(databaseDatum,
-											PG_GETARG_DATUM(1),
+											CStringGetTextDatum(
+												collModOptions.collectionName),
 											AccessExclusiveLock);
 
 	if (collection == NULL)
@@ -149,14 +180,6 @@ command_coll_mod(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errcode(MongoNamespaceNotFound),
 						errmsg("ns does not exist")));
 	}
-
-	/* Validate the collMod options received because GW only checks for valid collection name */
-	CollModOptions collModOptions = {
-		.index = { 0 },
-		.viewDefinition = { 0 }
-	};
-	CollModSpecFlags specFlags = ParseSpecSetCollModOptions(collModSpec,
-															&collModOptions);
 
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
@@ -224,7 +247,8 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 		const bson_value_t *value = bson_iter_value(&iter);
 		if (strcmp(key, "collMod") == 0)
 		{
-			continue; /* This is just the name of collection which we already get and validated in GW */
+			EnsureTopLevelFieldType("collMod.collMod", &iter, BSON_TYPE_UTF8);
+			collModOptions->collectionName = bson_iter_utf8(&iter, NULL);
 		}
 		else if (strcmp(key, "index") == 0)
 		{

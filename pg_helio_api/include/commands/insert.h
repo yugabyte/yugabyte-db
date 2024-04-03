@@ -20,8 +20,6 @@ bool InsertDocument(uint64 collectionId, int64 shardKeyValue,
 
 bool InsertDocumentToTempCollection(MongoCollection *collection, int64 shardKeyValue,
 									pgbson *document);
-uint64 CallInsertOne(MongoCollection *collection, int64 shardKeyHash,
-					 pgbson *document, text *transactionId);
 bool TryInsertOne(MongoCollection *collection, pgbson *document, int64 shardKeyHash, bool
 				  sameSourceAndTarget, WriteError *writeError);
 #endif

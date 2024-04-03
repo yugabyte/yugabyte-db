@@ -39,6 +39,12 @@ extern PGDLLIMPORT const StringView IdFieldStringView;
  */
 extern bool EnableCreateCollectionOnInsert;
 
+/*
+ * Whether or not write operations are inlined or if they are dispatched
+ * to a remote shard. For single node scenarios like HelioDB that don't need
+ * distributed dispatch. Reset in scenarios that need distributed dispatch.
+ */
+extern bool DefaultInlineWriteOperations;
 extern int BatchWriteSubTransactionCount;
 extern int MaxWriteBatchSize;
 

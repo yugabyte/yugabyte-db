@@ -82,7 +82,8 @@ static bool HasUnresolvedExternParamsWalker(Node *expression, ParamListInfo boun
 static bytea * TryFindTextIndexForRelation(RelOptInfo *rel, RangeTblEntry *rte);
 static bool IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
 										 uint64 *collectionId);
-
+static bool ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
+										RangeTblEntry *rte);
 extern bool ForceRUMIndexScanToBitmapHeapScan;
 
 planner_hook_type ExtensionPreviousPlannerHook = NULL;
@@ -451,6 +452,11 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	}
 
 	if (!isShardQuery)
+	{
+		return;
+	}
+
+	if (ProcessWorkerWriteQueryPath(root, rel, rti, rte))
 	{
 		return;
 	}
@@ -1192,4 +1198,82 @@ IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
 	}
 
 	return false;
+}
+
+
+/*
+ * For Insert/Update/Delete queries, we can't use create_distributed_function
+ * directly since that needs a single colocation group. Consequently, we use
+ * a special query - where we write the query as
+ *
+ * SELECT update_worker(collectionId, shardKeyValue, 0, ...) FROM ApiData.documents_1 WHERE shard_key_value = 1;
+ *
+ * In the query coordinator. When that query gets distributed to the shard, it will look like
+ *
+ * SELECT update_worker(collectionId, shardKeyValue, 0, ...) FROM ApiData.documents_1_shardid WHERE shard_key_value = 1;
+ *
+ * In the shard, we then rewrite that query (as below into)
+ * SELECT update_worker(collectionId, shardKeyValue, <oid of shard table>, ...);
+ *
+ * The replacement of the shard table in the function allows the worker function to know that the planner replacement
+ * happened (and error out otherwise).
+ *
+ * In future iterations the worker function can use the shard OID but for now it's only used to indicate that this planner
+ * replacement happened.
+ *
+ * In the future, once distribution works across colo groups this can be removed.
+ */
+static bool
+ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
+							RangeTblEntry *rte)
+{
+	if (list_length(root->processed_tlist) != 1)
+	{
+		return false;
+	}
+
+	TargetEntry *entry = linitial(root->processed_tlist);
+	if (!IsA(entry->expr, FuncExpr))
+	{
+		return false;
+	}
+
+	/* Reduce the likelihood of doing the Func OID lookup since older
+	 * schemas won't have it.
+	 */
+	FuncExpr *funcExpr = (FuncExpr *) entry->expr;
+	if (list_length(funcExpr->args) != 6)
+	{
+		return false;
+	}
+
+	if (!(funcExpr->funcid == UpdateWorkerFunctionOid() ||
+		  funcExpr->funcid == InsertWorkerFunctionOid() ||
+		  funcExpr->funcid == DeleteWorkerFunctionOid()))
+	{
+		return false;
+	}
+
+	/* It's a shard query for a update worker projector
+	 * Transform this query into a FuncRTE with a Var projector
+	 */
+	entry->expr = (Expr *) makeVar(1, 1, HelioCoreBsonTypeId(), -1,
+								   InvalidOid, 0);
+	rte->rtekind = RTE_FUNCTION;
+	RangeTblFunction *func = makeNode(RangeTblFunction);
+	Node *shardArg = list_nth(funcExpr->args, 2);
+	if (IsA(shardArg, Const))
+	{
+		Const *shardConst = (Const *) shardArg;
+		shardConst->constvalue = ObjectIdGetDatum(rte->relid);
+	}
+
+	func->funcexpr = (Node *) funcExpr;
+	rte->functions = list_make1(func);
+
+	Path *funcScanPath = create_functionscan_path(root, rel, NIL, 0);
+	rel->pathlist = list_make1(funcScanPath);
+	rel->partial_pathlist = NIL;
+	rel->baserestrictinfo = NIL;
+	return true;
 }
