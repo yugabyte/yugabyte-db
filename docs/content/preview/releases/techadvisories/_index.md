@@ -26,5 +26,11 @@ It is strongly recommended that you take appropriate measures as outlined in the
 | {{<release "All">}}
 | {{<nobreak "12 Mar 2024">}}
 |
-
+| {{<ta 20648>}}
+|Index update can be wrongly applied on batch writes
+| {{<product "ysql">}}
+| {{<release "2.20.x, 2.19.x">}}
+| {{<nobreak "23 Jan 2024">}}
+|
 {{%/table%}}
+
