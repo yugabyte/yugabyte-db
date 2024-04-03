@@ -45,17 +45,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -306,7 +296,7 @@ public class GFlagsUtil {
           getMasterDefaultGFlags(
               taskParam, universe, useHostname, useSecondaryIp, isDualNet, confGetter);
       // Merge into masterGFlags.
-      mergeCSVs(masterGFlags, extra_gflags, UNDEFOK);
+      mergeCSVs(masterGFlags, extra_gflags, UNDEFOK, false);
       extra_gflags.putAll(masterGFlags);
     }
 
@@ -889,7 +879,7 @@ public class GFlagsUtil {
       // Always set this to true in shell mode to avoid forming a cluster even if the master
       // addresses are set by mistake. Once the master joins an existing cluster, this is ignored.
       gflags.put(MASTER_JOIN_EXISTING_UNIVERSE, "true");
-      gflags.merge(UNDEFOK, MASTER_JOIN_EXISTING_UNIVERSE, (v1, v2) -> mergeCSVs(v1, v2));
+      gflags.merge(UNDEFOK, MASTER_JOIN_EXISTING_UNIVERSE, (v1, v2) -> mergeCSVs(v1, v2, false));
     }
     return gflags;
   }
@@ -962,7 +952,7 @@ public class GFlagsUtil {
       boolean allowOverrideAll,
       RuntimeConfGetter confGetter,
       AnsibleConfigureServers.Params taskParams) {
-    mergeCSVs(userGFlags, platformGFlags, UNDEFOK);
+    mergeCSVs(userGFlags, platformGFlags, UNDEFOK, false);
     if (!allowOverrideAll) {
       GFLAGS_FORBIDDEN_TO_OVERRIDE.forEach(
           gflag -> {
@@ -998,8 +988,8 @@ public class GFlagsUtil {
       processHbaConfFlagIfRequired(node, userGFlags, confGetter, taskParams.getUniverseUUID());
     }
     // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
-    mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV);
-    mergeCSVs(userGFlags, platformGFlags, YSQL_PG_CONF_CSV);
+    mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV, false);
+    mergeCSVs(userGFlags, platformGFlags, YSQL_PG_CONF_CSV, true);
   }
 
   /**
@@ -1148,19 +1138,20 @@ public class GFlagsUtil {
     return trimData;
   }
 
-  public static String mergeCSVs(String csv1, String csv2) {
+  public static String mergeCSVs(String csv1, String csv2, boolean mergeKeyValues) {
     StringWriter writer = new StringWriter();
     try {
       CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
       try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
+        Set<String> existingKeys = new HashSet<>();
         Set<String> records = new LinkedHashSet<>();
         CSVParser parser = new CSVParser(new StringReader(csv1), csvFormat);
         for (CSVRecord record : parser) {
-          records.addAll(record.toList());
+          appendEntries(record, records, existingKeys, mergeKeyValues);
         }
         parser = new CSVParser(new StringReader(csv2), csvFormat);
         for (CSVRecord record : parser) {
-          records.addAll(record.toList());
+          appendEntries(record, records, existingKeys, mergeKeyValues);
         }
         csvPrinter.printRecord(records);
         csvPrinter.flush();
@@ -1171,11 +1162,45 @@ public class GFlagsUtil {
     return writer.toString();
   }
 
+  private static void appendEntries(
+      CSVRecord record, Set<String> result, Set<String> existingKeys, boolean mergeKeyValues) {
+    record
+        .toList()
+        .forEach(
+            entry -> {
+              if (mergeKeyValues) {
+                Optional<String> key = getKey(entry);
+                if (key.isPresent()) {
+                  if (existingKeys.contains(key.get())) {
+                    return;
+                  }
+                  existingKeys.add(key.get());
+                }
+              }
+              result.add(entry);
+            });
+  }
+
+  private static Optional<String> getKey(String keyValue) {
+    if (StringUtils.isEmpty(keyValue)) {
+      return Optional.empty();
+    }
+    int equalIndex = keyValue.indexOf("=");
+    if (equalIndex > 0) {
+      return Optional.of(keyValue.substring(0, equalIndex).trim());
+    }
+    return Optional.empty();
+  }
+
   public static void mergeCSVs(
-      Map<String, String> userGFlags, Map<String, String> platformGFlags, String key) {
+      Map<String, String> userGFlags,
+      Map<String, String> platformGFlags,
+      String key,
+      boolean mergeKeyValues) {
     if (userGFlags.containsKey(key)) {
       String userValue = userGFlags.get(key);
-      userGFlags.put(key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, "")));
+      userGFlags.put(
+          key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, ""), mergeKeyValues));
     }
   }
 

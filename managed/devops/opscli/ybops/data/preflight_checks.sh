@@ -156,6 +156,15 @@ preflight_provision_check() {
   fi
 
   check_free_space "$yb_home_dir" $HOME_FREE_SPACE_MB
+
+  # Check Locale
+  result=$(locale -a | grep -q -E "en_US.utf8|en_US.UTF-8")
+  if [[ "$?" -eq 0 ]]; then
+    update_result_json "locale_present" true
+  else
+    update_result_json "locale_present" false
+  fi
+
 }
 
 preflight_configure_check() {

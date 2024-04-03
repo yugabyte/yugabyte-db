@@ -2,10 +2,9 @@
 
 package com.yugabyte.yw.common.gflags;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
+import static com.yugabyte.yw.common.gflags.GFlagsUtil.mergeCSVs;
+import static org.hamcrest.Matchers.equalTo;
+import static org.junit.Assert.*;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -103,5 +102,17 @@ public class GFlagsUtilTest {
         "G-Flag value for 'start_cql_proxy' is inconsistent between "
             + "master and tserver ('true' vs 'false')",
         exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testMergeCsv() {
+    String csv1 = "key1=val1,key2=val2,qwe";
+    String csv2 = "key1=val11,key3=val3,qwe asd";
+
+    String mergeNoKeyValues = mergeCSVs(csv1, csv2, false);
+    assertThat(mergeNoKeyValues, equalTo("key1=val1,key2=val2,qwe,key1=val11,key3=val3,qwe asd"));
+
+    String mergeKeyValues = mergeCSVs(csv1, csv2, true);
+    assertThat(mergeKeyValues, equalTo("key1=val1,key2=val2,qwe,key3=val3,qwe asd"));
   }
 }
