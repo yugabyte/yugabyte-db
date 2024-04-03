@@ -157,13 +157,6 @@ typedef struct ImportQual
 					feature " not supported due to setting of flag --" flag,  \
 					-2, extra_hint)
 
-#define parser_ybc_signal_savepoints_disabled(pos, feature)				 \
-	parser_ybc_signal_unsupported_by_flag(pos, feature,					 \
-		"enable_pg_savepoints",											 \
-		"The flag may have been set to false because savepoints do not " \
-		"currently work with xCluster replication "						 \
-		"(see https://github.com/yugabyte/yugabyte-db/issues/14308).");
-
 #define parser_ybc_not_support_in_templates(pos, feature) \
 	ybc_not_support_in_templates(pos, yyscanner, feature " is not supported in template0/template1 yet")
 
@@ -10841,10 +10834,6 @@ TransactionStmt:
 				}
 			| SAVEPOINT ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "SAVEPOINT <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_SAVEPOINT;
 					n->savepoint_name = $2;
@@ -10852,10 +10841,6 @@ TransactionStmt:
 				}
 			| RELEASE SAVEPOINT ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "RELEASE SAVEPOINT <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $3;
@@ -10863,10 +10848,6 @@ TransactionStmt:
 				}
 			| RELEASE ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "RELEASE <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $2;
@@ -10874,10 +10855,6 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO SAVEPOINT ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "ROLLBACK <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
 					n->savepoint_name = $5;
@@ -10885,10 +10862,6 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "ROLLBACK <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
 					n->savepoint_name = $4;
