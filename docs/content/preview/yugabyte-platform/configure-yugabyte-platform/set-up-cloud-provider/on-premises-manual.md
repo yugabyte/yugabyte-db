@@ -39,6 +39,7 @@ Note that you need access to a user with sudo privileges in order to complete th
 
 For each node, perform the following:
 
+- [Verify the python version installed on the node](#verify-the-python-version-installed-on-the-node)
 - [Set up time synchronization](#set-up-time-synchronization)
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
 - [Manually pre-provision the node](#pre-provision-nodes-manually)
