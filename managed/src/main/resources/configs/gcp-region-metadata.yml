@@ -1,5 +1,9 @@
 # Copyright (c) YugaByte, Inc.
-
+africa-south1:
+  name: Johannesburg, South Africa
+  latitude: 26.2056
+  longitude:  28.0337
+  availabilty_zones: [africa-south1-a, africa-south1-b, africa-south1-c]
 asia-east1:
   name: Taiwan
   latitude: 23.9919519
@@ -105,16 +109,36 @@ southamerica-east1:
   latitude: -23.286926
   longitude: -46.627497
   availabilty_zones: [southamerica-east1-a, southamerica-east1-b, southamerica-east1-c]
+southamerica-west1:
+  name: Chile
+  latitude: 35.6751
+  longitude: 71.5430
+  availabilty_zones: [southamerica-west1-a, southamerica-west1-b, southamerica-west1-c]
 europe-central2:
   name: Poland
   latitude: 52.229676
   longitude: 21.012229
   availabilty_zones: [europe-central2-a, europe-central2-b, europe-central2-c]
+europe-southwest1:
+  name: Spain
+  latitude: 40.4637
+  longitude: 3.7492
+  availabilty_zones: [europe-southwest1-a, europe-southwest1-b, europe-southwest1-c]
 europe-west1:
   name: Belgium
   latitude: 50.489824
   longitude: 3.7378805
   availabilty_zones: [europe-west1-b, europe-west1-c, europe-west1-d]
+europe-west10:
+  name: Germany
+  latitude: 51.1657
+  longitude: 10.4515
+  availabilty_zones: [europe-west10-a, europe-west10-b, europe-west10-c]
+europe-west12:
+  name: Turin, Italy
+  latitude: 41.8719
+  longitude: 12.5674
+  availabilty_zones: [europe-west12-a, europe-west12-b, europe-west12-c]
 europe-west2:
   name: London
   latitude: 51.500152
@@ -135,6 +159,16 @@ europe-west6:
   latitude: 47.376887
   longitude: 8.541694
   availabilty_zones: [europe-west6-a, europe-west6-b, europe-west6-c]
+europe-west8:
+  name: Milan, Italy
+  latitude: 41.8719
+  longitude: 12.5674
+  availabilty_zones: [europe-west8-a, europe-west8-b, europe-west8-c]
+europe-west9:
+  name: France
+  latitude: 46.2276
+  longitude: 2.2137
+  availabilty_zones: [europe-west9-a, europe-west9-b, europe-west9-c]
 europe-north1:
   name: Finland
   latitude: 60.5695912
@@ -150,3 +184,18 @@ australia-southeast2:
   latitude:  -37.813628
   longitude: 144.963058
   availabilty_zones: [australia-southeast2-a, australia-southeast2-b, australia-southeast2-c]
+me-central1:
+  name: Qatar
+  latitude:  25.3548
+  longitude: 51.1839
+  availabilty_zones: [me-central1-a, me-central1-b, me-central1-c]
+me-central2:
+  name: Saudi Arabia
+  latitude:  23.8859
+  longitude: 45.0792
+  availabilty_zones: [me-central2-a, me-central2-b, me-central2-c]
+me-west1:
+  name: Israel
+  latitude:  31.0461
+  longitude: 34.8516
+  availabilty_zones: [me-west1-a, me-west1-b, me-west1-c]

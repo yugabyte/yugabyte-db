@@ -11,6 +11,14 @@ credential_vars:
 - GCE_PROJECT
 region_cidr_format: '{}.0.0/16'
 regions:
+  africa-south1:
+    cidr_prefix: '10.231'
+    image: almalinux-8-v20240213
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
   asia-east1:
     cidr_prefix: '10.203'
     image: almalinux-8-v20240213
@@ -115,6 +123,14 @@ regions:
     - a
     - b
     - c
+  europe-southwest1:
+    cidr_prefix: '10.232'
+    image: almalinux-8-v20240213
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
   europe-west1:
     cidr_prefix: '10.201'
     image: almalinux-8-v20240213
@@ -123,6 +139,22 @@ regions:
     - b
     - c
     - d
+  europe-west10:
+    cidr_prefix: '10.233'
+    image: almalinux-8-v20240213
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  europe-west12:
+    cidr_prefix: '10.234'
+    image: almalinux-8-v20240213
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
   europe-west2:
     cidr_prefix: '10.209'
     image: almalinux-8-v20240213
@@ -155,6 +187,46 @@ regions:
     - a
     - b
     - c
+  europe-west8:
+    cidr_prefix: '10.235'
+    image: almalinux-8-v20240213
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  europe-west9:
+    cidr_prefix: '10.236'
+    image: almalinux-8-v20240213
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  me-central1:
+    cidr_prefix: '10.237'
+    image: almalinux-8-v20240213
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  me-central2:
+    cidr_prefix: '10.238'
+    image: almalinux-8-v20240213
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  me-west1:
+    cidr_prefix: '10.239'
+    image: almalinux-8-v20240213
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
   northamerica-northeast1:
     cidr_prefix: '10.213'
     image: almalinux-8-v20240213
@@ -173,6 +245,14 @@ regions:
     - c
   southamerica-east1:
     cidr_prefix: '10.211'
+    image: almalinux-8-v20240213
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  southamerica-west1:
+    cidr_prefix: '10.240'
     image: almalinux-8-v20240213
     project: almalinux-cloud
     zones:
