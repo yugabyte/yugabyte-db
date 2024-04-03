@@ -28,6 +28,13 @@ A cluster is a group of [nodes](#node) on which YugabyteDB is deployed. The tabl
 Sometimes the term *cluster* is used interchangeably with the term *universe*. However, the two are not always equivalent, as described in [Universe](#universe).
 {{</note>}}
 
+## DocDB
+
+DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized verison of [RocksDB](http://rocksdb.org/) {{<link "../docdb">}}
+
+## Fault domain
+
+A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link "../../../explore/fault-tolerance/#fault-domains">}}
 ## Master server
 
 The [YB-Master](../yb-master/) service is responsible for keeping system metadata, coordinating system-wide operations, such as creating, altering, and dropping tables, as well as initiating maintenance operations such as load balancing. {{<link "yb-master">}}
@@ -58,6 +65,10 @@ YugabyteDB tries to keep the no.of leaders evenly distributed across the [nodes]
 
 A primary cluster can perform both writes and reads. Replication between [nodes](#node) in a primary cluster is performed synchronously.
 
+## Raft
+
+Raft stands for Replication for availability and fault tolerance. This is the algorithm that YugabyteDB uses for replication guaranteeing consistency. {{<link "../docdb-replication/replication/">}}
+
 ## Read replica cluster
 
 Read replica clusters can perform only reads; writes sent to read replica clusters get automatically rerouted to the primary cluster of the [universe](#universe). These clusters enable reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications.
@@ -68,13 +79,23 @@ Data is brought into the read replica clusters through asynchronous replication 
 
 Rebalancing is the process of keeping an even distribution of tablets across the [nodes](#node) in a cluster. {{<link "../../explore/linear-scalability/data-distribution/#rebalancing">}}
 
+## Replication factor (RF)
+
+The number of copies of data in a YugabyteDB universe. YugabyteDB replicates data across zones (or fault domains) in order to tolerate faults. Fault tolerance (FT) and RF are correlated. To achieve a FT of k nodes, the universe has to be configured with a RF of (2k + 1).
+
+The RF should be an odd number to ensure majority consensus can be established during failures. {{<link "../docdb-replication/replication/#replication-factor">}}
+
 ## Sharding
 
-Sharding is the process of mapping a table row to a tablet. YugabyteDB supports 2 types of sharding, Hash and Range. {{<link "../docdb-sharding">}}
+Sharding is the process of mapping a table row to a [tablet](#tablet). YugabyteDB supports 2 types of sharding, Hash and Range. {{<link "../docdb-sharding">}}
 
 ## Tablet
 
 YugabyteDB splits a table into multiple small pieces called tablets for data distribution. The word "tablet" finds its origins in ancient history, when civilizations utilized flat slabs made of clay or stone as surfaces for writing and maintaining records. {{<link "../../explore/linear-scalability/data-distribution/">}}
+
+{{<tip>}}
+Tablets are also referred as shards.
+{{</tip>}}
 
 ## Tablet splitting
 
@@ -96,6 +117,18 @@ Sometimes the terms *universe* and *cluster* are used interchangeably. However, 
 
 xCluster is the scheme of asynchronous replication between 2 [universes](#universe). Primary used for disaster recovery. YugabyteDB supports transactional xCluster {{<link "../docdb-replication/async-replication/">}}
 
-## Raft
+## YCQL
 
-Raft stands for Replication for availability and fault tolerance. This is the algorithm that YugabyteDB uses for replication guaranteeing consistency. {{<link "../docdb-replication/replication/">}}
+Semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link "../../api/ycql">}}
+
+## YQL
+
+The YugabyteDB Query Layer (YQL) is the primary layer that provides interfaces for applications to interact with using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). {{<link "../query-layer">}}
+
+## YSQL
+
+Fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Note that YSQL reuses the native query layer of the PostgreSQL open source project. {{<link "../../api/ysql">}}
+
+## Zone
+
+Typically referred as Availability Zones or just AZ, zone is a datacenters or a group of colocated datacenters. Zone is the default fault domain in YugabyteDB.
