@@ -160,11 +160,14 @@ class WaitStateTestCheckMethodCounts : public WaitStateITest {
 
   void DoAshCalls(std::atomic<bool>& stop);
   void RunTestsAndFetchAshMethodCounts();
+  virtual void PrintRowsFromASH();
+  virtual void VerifyRowsFromASH() {}
   virtual bool IsDone() EXCLUDES(mutex_) = 0;
   virtual void VerifyCountsUnlocked() REQUIRES(mutex_);
   virtual void PrintCountsUnlocked() REQUIRES(mutex_);
   void UpdateCounts(const tserver::PgActiveSessionHistoryResponsePB& resp) EXCLUDES(mutex_);
   size_t GetMethodCount(const std::string& method) EXCLUDES(mutex_);
+  virtual void VerifyResponse(const tserver::PgActiveSessionHistoryResponsePB& resp) {}
 
   void CreateCqlTables();
   void DoCqlWritesUntilStopped(std::atomic<bool>& stop);
@@ -333,6 +336,7 @@ void WaitStateTestCheckMethodCounts::DoAshCalls(std::atomic<bool>& stop) {
     controller.Reset();
     ++num_ash_calls_done_;
     VLOG(1) << "Call " << num_ash_calls_done_.load() << " got " << yb::ToString(resp);
+    VerifyResponse(resp);
     UpdateCounts(resp);
     SleepFor(10ms);
   }
@@ -358,6 +362,16 @@ void WaitStateTestCheckMethodCounts::RunTestsAndFetchAshMethodCounts() {
     PrintCountsUnlocked();
     VerifyCountsUnlocked();
   }
+  PrintRowsFromASH();
+  VerifyRowsFromASH();
+}
+
+void WaitStateTestCheckMethodCounts::PrintRowsFromASH() {
+  auto conn = ASSERT_RESULT(Connect());
+  auto query = "SELECT count(*) FROM yb_active_session_history;";
+  LOG(INFO) << "Running: " << query;
+  auto rows = ASSERT_RESULT(conn.FetchAllAsString(query, ",", "\n"));
+  LOG(INFO) << " Got :\n" << rows;
 }
 
 void WaitStateTestCheckMethodCounts::PrintCountsUnlocked() {
@@ -426,6 +440,35 @@ class AshTestCql : public WaitStateTestCheckMethodCounts {
   void VerifyCountsUnlocked() REQUIRES(mutex_) override {
     WaitStateTestCheckMethodCounts::VerifyCountsUnlocked();
     ASSERT_GE(method_counts_["CQLProcessCall"], 1);
+  }
+
+  void VerifyRowsFromASH() override {
+    std::vector<std::string> queries;
+    queries.push_back("SELECT count(*) FROM yb_active_session_history;");
+    queries.push_back(
+        "SELECT wait_event_component, wait_event_class, wait_event, "
+        "CASE WHEN wait_event_aux = '' THEN 'Null' ELSE 'NonNull' END as null_or_not, count(*) "
+        "FROM yb_active_session_history "
+        "GROUP BY wait_event_component, wait_event_class, wait_event, null_or_not;");
+    queries.push_back(
+        "SELECT wait_event_component, wait_event_class, wait_event, "
+        "CASE WHEN rpc_request_id = 0 THEN 'Zero' ELSE 'NonZero' END as zero_or_not, count(*) "
+        "FROM yb_active_session_history "
+        "GROUP BY wait_event_component, wait_event_class, wait_event, zero_or_not;");
+
+    auto conn = ASSERT_RESULT(Connect());
+    for (const auto& query : queries) {
+      LOG(INFO) << "Running: " << query;
+      auto rows = ASSERT_RESULT(conn.FetchAllAsString(query, ",", "\n"));
+      LOG(INFO) << " Got :\n" << rows;
+    }
+  }
+
+  void VerifyResponse(const tserver::PgActiveSessionHistoryResponsePB& resp) override {
+    for (const auto& wait_state_pb : resp.cql_wait_states().wait_states()) {
+      LOG_IF(ERROR, wait_state_pb.metadata().rpc_request_id() == 0)
+          << "wait_state_pb is " << wait_state_pb.DebugString();
+    }
   }
 
   bool IsDone() override EXCLUDES(mutex_) {

@@ -329,6 +329,7 @@ class WaitStateInfo {
   void set_query_id(uint64_t query_id) EXCLUDES(mutex_);
   uint64_t session_id() EXCLUDES(mutex_);
   void set_session_id(uint64_t session_id) EXCLUDES(mutex_);
+  int64_t rpc_request_id() EXCLUDES(mutex_);
   void set_rpc_request_id(int64_t id) EXCLUDES(mutex_);
   void set_client_host_port(const HostPort& host_port) EXCLUDES(mutex_);
 

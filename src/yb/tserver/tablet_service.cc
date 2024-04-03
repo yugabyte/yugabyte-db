@@ -2211,9 +2211,6 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   }
 
   const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_tablet_id()) {
-    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = req->tablet_id(), .method = "Write"});
-  }
   if (wait_state && req->has_ash_metadata()) {
     wait_state->UpdateMetadataFromPB(req->ash_metadata());
   }
@@ -2248,9 +2245,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   }
 
   const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_tablet_id()) {
-    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = req->tablet_id(), .method = "Read"});
-  }
   if (wait_state && req->has_ash_metadata()) {
     wait_state->UpdateMetadataFromPB(req->ash_metadata());
   }
