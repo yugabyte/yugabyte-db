@@ -152,11 +152,36 @@ germanywestcentral:
   latitude: 50.110924
   longitude: 8.682127
   availabilty_zones: [germanywestcentral-1, germanywestcentral-2, germanywestcentral-3]
+israelcentral:
+  name: Israel Central
+  latitude: 31.0461
+  longitude: 34.8516
+  availabilty_zones: [israelcentral-1, israelcentral-2, israelcentral-3]
+italynorth:
+  name: Italy north
+  latitude: 41.8719
+  longitude: 12.5674
+  availabilty_zones: [italynorth-1, italynorth-2, italynorth-3]
 norwayeast:
   name: Norway East
   latitude: 59.913868
   longitude: 10.752245
   availabilty_zones: [norwayeast-1, norwayeast-2, norwayeast-3]
+polandcentral:
+  name: Poland Central
+  latitude: 59.913868
+  longitude: 10.752245
+  availabilty_zones: [polandcentral-1, polandcentral-2, polandcentral-3]
+qatarcentral:
+  name: Qatar Central
+  latitude: 25.3548
+  longitude: 51.1839
+  availabilty_zones: [qatarcentral-1, qatarcentral-2, qatarcentral-3]
+swedencentral:
+  name: Sweden Central
+  latitude: 60.1282
+  longitude: 18.6435
+  availabilty_zones: [swedencentral-1, swedencentral-2, swedencentral-3]
 switzerlandnorth:
   name: Switzerland North
   latitude: 47.451542
