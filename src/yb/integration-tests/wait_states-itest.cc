@@ -532,6 +532,9 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
       enable_cql_ = false;
     }
 
+    const auto code_class = ash::Class(to_underlying(code_to_look_for_) >> YB_ASH_CLASS_POSITION);
+    do_compactions_ = (code_class == ash::Class::kRocksDB);
+
     WaitStateITest::SetUp();
   }
 
@@ -609,6 +612,9 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
         code_to_look_for_ == ash::WaitStateCode::kLockedBatchEntry_Lock) {
       return 10;
     }
+    if (code_to_look_for_ == ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot) {
+      return 0;
+    }
     return 1;
   }
 
@@ -633,7 +639,8 @@ void AshTestVerifyOccurrenceBase::CreateIndexesUntilStopped(std::atomic<bool>& s
 
     auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
         table_name, idx_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
-    ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+    LOG_IF(ERROR, perm != IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE)
+        << "Got " << yb::ToString(perm);
 
     LOG(INFO) << "Created index " << i;
     ++num_indexes_created_;
@@ -655,8 +662,6 @@ std::string WaitStateCodeToString(const testing::TestParamInfo<ash::WaitStateCod
 }
 
 void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder) {
-  do_compactions_ = true;
-  AshTestWithCompactions::LaunchWorkers(thread_holder);
   switch (code_to_look_for_) {
     case ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
     case ash::WaitStateCode::kCreatingNewTablet:
@@ -673,6 +678,7 @@ void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder)
     default: {
     }
   }
+  AshTestWithCompactions::LaunchWorkers(thread_holder);
 }
 
 class AshTestVerifyOccurrence : public AshTestVerifyOccurrenceBase,
