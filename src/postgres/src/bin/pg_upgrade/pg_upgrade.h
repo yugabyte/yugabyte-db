@@ -261,6 +261,7 @@ typedef struct
 	char	   *pgopts;			/* options to pass to the server, like pg_ctl
 								 * -o */
 	char	   *sockdir;		/* directory for Unix Domain socket, if any */
+	char	   *hostaddr;		/* host address for Yugabyte node */
 	unsigned short port;		/* port number where postmaster is waiting */
 	uint32		major_version;	/* PG_VERSION of cluster */
 	char		major_version_str[64];	/* string PG_VERSION of cluster */
@@ -439,7 +440,7 @@ void		cleanup_output_dirs(void);
 void		prep_status(const char *fmt,...) pg_attribute_printf(1, 2);
 void		prep_status_progress(const char *fmt,...) pg_attribute_printf(1, 2);
 unsigned int str2uint(const char *str);
-
+bool		is_yugabyte_enabled();
 
 /* version.c */
 

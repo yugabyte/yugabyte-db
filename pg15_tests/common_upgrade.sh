@@ -57,14 +57,12 @@ ysql_upgrade_using_node_2() {
   # Restart tserver 2 to PG15 for the upgrade, with postgres binaries in binary_upgrade mode
   yb_ctl restart_node 2 --tserver_flags="TEST_pg_binary_upgrade=true"
 
-  # To simulate a core piece of pg_upgrade, we run ysql_dump and pg_restore. Together these
-  # utilities
-  # with these options migrate the metadata for database 'yugabyte'.
-  build/latest/postgres/bin/ysql_dump -h "$PGHOST" --schema-only --quote-all-identifiers \
-      --binary-upgrade --format=custom --file="$data_dir"/yugabyte-db.custom \
-      --include-yb-metadata dbname=yugabyte
-  build/latest/postgres/bin/pg_restore -h "$pghost2" --clean --create --exit-on-error --verbose \
-      --dbname template1 "$data_dir"/yugabyte-db.custom
+  # Run pg_upgrade which calls ysql_dumpall, ysql_dump and pg_restore.
+  # ysql_dump and pg_restore together migrate the metadata for the databases.
+  # Currently, pg_upgrade migrates only the 'yugabyte' database.
+  build/latest/postgres/bin/pg_upgrade -b "$prefix/yugabyte-$ybversion_pg11/postgres/bin" \
+    -d "$data_dir/node-1/disk-1/pg_data" -D "$data_dir/node-2/disk-1/pg_data" -h "$PGHOST" -p 5433 \
+    -H "$pghost2" -P 5433 --username "yugabyte"
 
   # The upgrade is finished. Restart node 2 with postgres binaries *not* in binary upgrade mode
   yb_ctl restart_node 2

@@ -86,12 +86,17 @@ check_and_dump_old_cluster(bool live_check)
 {
 	/* -- OLD -- */
 
-	if (!live_check)
-		start_postmaster(&old_cluster, true);
+	if (!is_yugabyte_enabled())
+	{
+		if (!live_check)
+			start_postmaster(&old_cluster, true);
+	}
 
 	/* Extract a list of databases and tables from the old cluster */
 	get_db_and_rel_infos(&old_cluster);
 
+	#ifdef YB_TODO
+	/* Enable these checks and other functions to initialize new node */
 	init_tablespaces();
 
 	get_loadable_libraries();
@@ -167,6 +172,7 @@ check_and_dump_old_cluster(bool live_check)
 	/* Pre-PG 9.4 had a different 'line' data type internal format */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
 		old_9_3_check_for_line_data_type_usage(&old_cluster);
+	#endif
 
 	/*
 	 * While not a check option, we do this now because this is the only time
@@ -175,8 +181,11 @@ check_and_dump_old_cluster(bool live_check)
 	if (!user_opts.check)
 		generate_old_dump();
 
-	if (!live_check)
-		stop_postmaster(false);
+	if (!is_yugabyte_enabled())
+	{
+		if (!live_check)
+			stop_postmaster(false);
+	}
 }
 
 

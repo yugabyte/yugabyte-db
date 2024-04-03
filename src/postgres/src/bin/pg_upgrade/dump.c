@@ -21,7 +21,7 @@ generate_old_dump(void)
 
 	/* run new pg_dumpall binary for globals */
 	exec_prog(UTILITY_LOG_FILE, NULL, true, true,
-			  "\"%s/pg_dumpall\" %s --globals-only --quote-all-identifiers "
+			  "\"%s/ysql_dumpall\" %s --globals-only --quote-all-identifiers "
 			  "--binary-upgrade %s -f \"%s/%s\"",
 			  new_cluster.bindir, cluster_conn_opts(&old_cluster),
 			  log_opts.verbose ? "--verbose" : "",
@@ -40,6 +40,9 @@ generate_old_dump(void)
 		PQExpBufferData connstr,
 					escaped_connstr;
 
+		/* YB_TODO: Dump all databases */
+		if (strcmp(old_db->db_name, "yugabyte") != 0)
+			continue;
 		initPQExpBuffer(&connstr);
 		appendPQExpBufferStr(&connstr, "dbname=");
 		appendConnStrVal(&connstr, old_db->db_name);
@@ -52,8 +55,8 @@ generate_old_dump(void)
 		snprintf(log_file_name, sizeof(log_file_name), DB_DUMP_LOG_FILE_MASK, old_db->db_oid);
 
 		parallel_exec_prog(log_file_name, NULL,
-						   "\"%s/pg_dump\" %s --schema-only --quote-all-identifiers "
-						   "--binary-upgrade --format=custom %s --file=\"%s/%s\" %s",
+						   "\"%s/ysql_dump\" %s --schema-only --quote-all-identifiers "
+						   "--binary-upgrade --format=custom %s --file=\"%s/%s\" %s --include-yb-metadata",
 						   new_cluster.bindir, cluster_conn_opts(&old_cluster),
 						   log_opts.verbose ? "--verbose" : "",
 						   log_opts.dumpdir,

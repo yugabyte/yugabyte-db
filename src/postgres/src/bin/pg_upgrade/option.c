@@ -57,6 +57,9 @@ parseCommandLine(int argc, char *argv[])
 		{"verbose", no_argument, NULL, 'v'},
 		{"clone", no_argument, NULL, 1},
 
+		/* Yugabyte flags */
+		{"old-host", required_argument, NULL, 'h'},
+		{"new-host", required_argument, NULL, 'H'},
 		{NULL, 0, NULL, 0}
 	};
 	int			option;			/* Command line option */
@@ -99,7 +102,7 @@ parseCommandLine(int argc, char *argv[])
 	if (os_user_effective_id == 0)
 		pg_fatal("%s: cannot be run as root\n", os_info.progname);
 
-	while ((option = getopt_long(argc, argv, "d:D:b:B:cj:kNo:O:p:P:rs:U:v",
+	while ((option = getopt_long(argc, argv, "d:D:b:B:ch:H:j:kNo:O:p:P:rs:U:v",
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -122,6 +125,14 @@ parseCommandLine(int argc, char *argv[])
 
 			case 'D':
 				new_cluster.pgdata = pg_strdup(optarg);
+				break;
+
+			case 'h':
+				old_cluster.hostaddr = pg_strdup(optarg);
+				break;
+
+			case 'H':
+				new_cluster.hostaddr = pg_strdup(optarg);
 				break;
 
 			case 'j':
