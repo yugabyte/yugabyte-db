@@ -14,21 +14,21 @@ menu:
 type: docs
 ---
 
-DocDB is a document-oriented data store that utilizes a key-value model for persisting and retrieving data. In this approach, data is stored as values associated with unique keys. Each row within a table represented as document in DocDB. The data store supports ordered operations on these documents, enabling efficient range queries and iterative access through keys. The keys themselves are designed to facilitate rapid lookups and optimized range scanning over the stored values.
+DocDB is a document-oriented data store that utilizes a key-value model for persisting and retrieving data. In this approach, data is stored as values associated with unique keys. Each row in a table is represented as a document in DocDB. The data store supports ordered operations on these documents, enabling efficient range queries and iterative access through keys. The keys themselves are designed to facilitate rapid lookups and optimized range scanning over the stored values.
 
-To better understand DocDB's architecture, let us examine how the keys and values are structured within the system.
+To better understand DocDB's architecture, let's examine how the keys and values are structured in the system.
 
 ![Data model](/images/architecture/docdb_key_value_encoding.png)
 
 {{<note>}}
-DocDB has now adopted an optimized form of row storage. For details, see [Packed rows](./packed-rows)
+DocDB has adopted an optimized form of row storage as of v2.20. For details, see [Packed rows](../packed-rows).
 {{</note>}}
 
 ## DocDB key
 
 The keys in a DocDB document model are compound keys consisting of zero or more hash-organized components followed by zero or more ordered (range) components. These components are stored in their data type-specific sort order, with both ascending and descending sort order supported for each ordered component of the key.  If any hash columns are present then they are preceded by a 16-bit hash of the hash column values.
 
-If [colocation](../../docdb-sharding/colocated-tables/) is being used then the key will be prefixed with the colocation ID of the table it is referring to (not shown in the diagram); this separates data from different tables colocated in the same tablet.
+If [colocation](../../docdb-sharding/colocated-tables/) is used, then the key is prefixed with the colocation ID of the table it is referring to (not shown in the diagram); this separates data from different tables colocated in the same tablet.
 
 ## DocDB value
 
@@ -37,11 +37,11 @@ The values in a DocDB document data model can be of the following types:
 - Primitive types, such as int32, int64, double, text, timestamp, and so on.
 - Non-primitive types (sorted maps), where objects map scalar keys to values that could be either scalar or sorted maps.
 
-This model allows multiple levels of nesting and corresponds to a JSON-like format. Other data structures such as lists, sorted sets, and so on are implemented using DocDB's object type with special key encodings. In DocDB, [hybrid timestamps](../../transactions/distributed-txns/) of each update are recorded carefully, making it possible to recover the state of any document at some point in the past. Overwritten or deleted versions of data are garbage-collected as soon as there are no transactions reading at a snapshot at which the old value would be visible.
+This model allows multiple levels of nesting and corresponds to a JSON-like format. Other data structures such as lists, sorted sets, and so on are implemented using DocDB's object type with special key encodings. In DocDB, [hybrid timestamps](../../transactions/transactions-overview/#mvcc-using-hybrid-time) of each update are recorded carefully, making it possible to recover the state of any document at some point in the past. Overwritten or deleted versions of data are garbage-collected as soon as there are no transactions reading at a snapshot at which the old value would be visible.
 
 ## Encoding documents
 
-In DocDB, each table row is are converted to multiple key-value pairs along with timestamps. Because documents are spread across many different key-values, it is possible to partially modify them without incurring overhead.
+In DocDB, each table row is converted to multiple key-value pairs along with timestamps. Because documents are spread across many different key-values, it is possible to partially modify them without incurring overhead.
 
 The following example shows a document stored in DocDB:
 
@@ -55,11 +55,11 @@ DocumentKey1 = {
 }
 ```
 
-Keys stored in DocDB consist of a number of components, where the first component is a document key, followed by several scalar components, and finally followed by a MVCC timestamp (sorted in reverse order). Each component in the DocumentKey, SubKey, and Value, are PrimitiveValues, which are type value pairs that can be encoded to and decoded from byte arrays. When encoding primitive values in keys, a binary-comparable encoding is used for the value, so that sort order of the encoding is the same as the sort order of the value.
+Keys stored in DocDB consist of a number of components, where the first component is a document key, followed by several scalar components, and finally followed by a MVCC timestamp (sorted in reverse order). Each component in the DocumentKey, SubKey, and Value, are "PrimitiveValues", which are type-value pairs that can be encoded to and decoded from byte arrays. When encoding primitive values in keys, a binary-comparable encoding is used for the value, so that sort order of the encoding is the same as the sort order of the value.
 
 ## Updates and deletes
 
-Suppose the document provided in the example in [Encoding documents](#encoding-documents) was written at time `T10` entirely. Internally that document is stored using five DocDB key value pairs, as per the following:
+Suppose the document provided in the example in [Encoding documents](#encoding-documents) was written at time `T10` entirely, then internally that document is stored using five DocDB key value pairs, as per the following:
 
 ```output
 DocumentKey1, T10 -> {} // This is an init marker
@@ -69,7 +69,7 @@ DocumentKey1, SubKey1, SubKey3, T10 -> Value2
 DocumentKey1, SubKey4, T10 -> Value3
 ```
 
-Deletions of documents and subdocuments are performed by writing a single Tombstone marker at the corresponding value. During compaction, overwritten or deleted values are cleaned up to reclaim space.
+Deletions of documents and sub-documents are performed by writing a single Tombstone marker at the corresponding value. During compaction, overwritten or deleted values are cleaned up to reclaim space.
 
 ## Primary key columns
 
@@ -82,12 +82,12 @@ The document key contains the full primary key with column values organized in t
 Each data type supported is represented by a unique byte. The type prefix is also present in the primary key hash or range components.
 
 {{<note>}}
-In the scenario where a primary key is not explicitly defined, YugabyteDB automatically generates an internal rowid to uniquely identify the row
+In the scenario where a primary key is not explicitly defined, YugabyteDB automatically generates an internal row ID to uniquely identify the row.
 {{</note>}}
 
 ## Non-primary key columns
 
-The non-primary key columns correspond to sub-documents in the document. The sub-document key corresponds to the column ID. There's a unique byte for each data type we support. The values are prefixed with the corresponding byte. If a column is a non-primitive type (such as a map or set), the corresponding sub-document is an Object.
+The non-primary key columns correspond to sub-documents in the document. The sub-document key corresponds to the column ID. There's a unique byte for each data type Yugabyte supports. The values are prefixed with the corresponding byte. If a column is a non-primitive type (such as a map or set), the corresponding sub-document is an object.
 
 A binary-comparable encoding is used for translating the value for each type to strings that are added to the key-value store.
 
@@ -216,10 +216,10 @@ T5: DELETE FROM msgs    // Delete entire row corresponding to msg_id 10
 ## Data expiration
 
 {{<warning>}}
-Data expiration is a [YCQL](../../api/ysql)-only feature
+Data expiration is a [YCQL](../../../api/ycql)-only feature.
 {{</warning>}}
 
-YCQL supports expiration of rows. The expiration is specified as TTL(Time-to-live) value in a few ways.
+YCQL supports expiration of rows. The expiration is specified as TTL (Time-to-live) value in a few ways.
 
 - Table-level TTL: YCQL allows the TTL property to be specified at the table level. In this case, TTL is not stored on a per key-value pair basis in DocDB; instead, TTL is implicitly enforced on reads and during compactions to reclaim space.
 - Row- and column-level TTL: YCQL allows the TTL property to be specified at the level of each `INSERT` and `UPDATE` operation. In such cases, TTL is stored as part of the DocDB value.
@@ -269,8 +269,7 @@ T2: UPDATE page_views
 The entries in DocDB should look similar to the following:
 
 <pre>
-<code>
-(hash1, 'abc.com'), liveness_column_id, T1 -> (TTL = 86400) [NULL]
+<code>(hash1, 'abc.com'), liveness_column_id, T1 -> (TTL = 86400) [NULL]
 (hash1, 'abc.com'), views_column_id, T1 -> (TTL = 86400) 10
 <b>(hash1, 'abc.com'), category_column_id, T2 -> (TTL = 3600) 'news'</b>
 </code>
