@@ -1958,7 +1958,20 @@ std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
   auto data = std::make_shared<SharedExchangeQuery>(shared_this_.lock(), &table_cache_, exchange);
   auto status = data->Init(size);
   if (status.ok()) {
+    static std::atomic<int64_t> next_rpc_id{0};
+    auto wait_state = yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>();
+    ADOPT_WAIT_STATE(wait_state);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
+    if (wait_state) {
+      wait_state->UpdateMetadata(
+          {.rpc_request_id = next_rpc_id.fetch_add(1, std::memory_order_relaxed)});
+      wait_state->UpdateAuxInfo({.method = "Perform"});
+      ash::SharedMemoryPgPerformTracker().Track(wait_state);
+    }
     status = DoPerform(data, data->deadline, nullptr);
+    if (wait_state) {
+      ash::SharedMemoryPgPerformTracker().Untrack(wait_state);
+    }
   }
   if (!status.ok()) {
     StatusToPB(status, data->resp.mutable_status());

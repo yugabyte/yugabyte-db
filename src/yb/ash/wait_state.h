@@ -480,5 +480,6 @@ class WaitStateTracker {
 
 WaitStateTracker& FlushAndCompactionWaitStatesTracker();
 WaitStateTracker& RaftLogAppenderWaitStatesTracker();
+WaitStateTracker& SharedMemoryPgPerformTracker();
 
 }  // namespace yb::ash

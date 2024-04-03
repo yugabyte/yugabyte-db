@@ -46,7 +46,6 @@
 
 using namespace std::literals;
 
-DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(ysql_yb_ash_enable_infra);
 DECLARE_bool(ysql_yb_enable_ash);
 
@@ -414,8 +413,6 @@ class AshTestPg : public WaitStateTestCheckMethodCounts {
 
  protected:
   void SetUp() override {
-    // This test counts number of performed RPC calls, so turn off pg client shared memory.
-    FLAGS_pg_client_use_shared_memory = false;
     WaitStateTestCheckMethodCounts::SetUp();
   }
 
