@@ -490,17 +490,6 @@ YBIsWaitQueueEnabled()
 	return IsYugaByteEnabled() && cached_value;
 }
 
-bool
-YBSavepointsEnabled()
-{
-	static int cached_value = -1;
-	if (cached_value == -1)
-	{
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_pg_savepoints", true);
-	}
-	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
-}
-
 /*
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
@@ -943,15 +932,13 @@ YBCAbortTransaction()
 void
 YBCSetActiveSubTransaction(SubTransactionId id)
 {
-	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgSetActiveSubTransaction(id));
+	HandleYBStatus(YBCPgSetActiveSubTransaction(id));
 }
 
 void
 YBCRollbackToSubTransaction(SubTransactionId id)
 {
-	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgRollbackToSubTransaction(id));
+	HandleYBStatus(YBCPgRollbackToSubTransaction(id));
 }
 
 bool
