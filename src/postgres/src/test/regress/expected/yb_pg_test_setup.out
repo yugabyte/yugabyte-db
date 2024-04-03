@@ -110,11 +110,9 @@ CREATE TABLE onek (
 COPY onek FROM :'filename';
 VACUUM ANALYZE onek;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
-ERROR:  Transaction for catalog table write operation 'pg_statistic' not found
 CREATE TABLE onek2 AS SELECT * FROM onek;
 VACUUM ANALYZE onek2;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
-ERROR:  Transaction for catalog table write operation 'pg_statistic' not found
 CREATE TABLE tenk1 (
 	unique1		int4,
 	unique2		int4,
@@ -137,11 +135,9 @@ CREATE TABLE tenk1 (
 COPY tenk1 FROM :'filename';
 VACUUM ANALYZE tenk1;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
-ERROR:  Transaction for catalog table write operation 'pg_statistic' not found
 CREATE TABLE tenk2 AS SELECT * FROM tenk1;
 VACUUM ANALYZE tenk2;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
-ERROR:  Transaction for catalog table write operation 'pg_statistic' not found
 CREATE TABLE person (
 	name 		text,
 	age			int4,
@@ -151,7 +147,6 @@ CREATE TABLE person (
 COPY person FROM :'filename';
 VACUUM ANALYZE person;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
-ERROR:  Transaction for catalog table write operation 'pg_statistic' not found
 CREATE TABLE emp (
 	salary 		int4,
 	manager 	name

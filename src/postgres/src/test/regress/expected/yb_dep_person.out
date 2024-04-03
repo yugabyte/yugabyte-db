@@ -19,4 +19,3 @@ CREATE TABLE person (
 COPY person FROM :'filename';
 VACUUM ANALYZE person;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
-ERROR:  Transaction for catalog table write operation 'pg_statistic' not found

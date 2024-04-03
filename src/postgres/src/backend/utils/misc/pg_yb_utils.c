@@ -2166,7 +2166,21 @@ YbDdlModeOptional YbGetDdlMode(
 			/* Vacuum with analyze updates relation and attribute statistics */
 			is_version_increment = false;
 			is_breaking_change = false;
-			is_ddl = !(castNode(VacuumStmt, parsetree))->is_vacuumcmd;
+			VacuumStmt *vacuum_stmt = castNode(VacuumStmt, parsetree);
+			/* ANALYZE */
+			is_ddl = !vacuum_stmt->is_vacuumcmd;
+			ListCell *lc;
+			if (!is_ddl)
+			{
+				foreach (lc, vacuum_stmt->options)
+				{
+					DefElem *def_elem = lfirst_node(DefElem, lc);
+					/* VACUUM ANALYZE */
+					is_ddl |= (strcmp(def_elem->defname, "analyze") == 0);
+					if (is_ddl)
+						break;
+				}
+			}
 			break;
 
 		case T_RefreshMatViewStmt:
