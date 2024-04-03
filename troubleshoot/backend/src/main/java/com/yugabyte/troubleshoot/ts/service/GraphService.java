@@ -6,6 +6,7 @@ import static com.yugabyte.troubleshoot.ts.MetricsUtil.buildSummary;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.troubleshoot.ts.logs.LogsUtil;
 import com.yugabyte.troubleshoot.ts.models.*;
 import io.prometheus.client.Summary;
 import java.io.IOException;
@@ -106,7 +107,8 @@ public class GraphService {
               new ImmutablePair<>(
                   query,
                   metricQueryExecutor.submit(
-                      () -> source.getGraph(universeMetadata, universeDetails, query))));
+                      LogsUtil.wrapCallable(
+                          () -> source.getGraph(universeMetadata, universeDetails, query)))));
           sourceFound = true;
           break;
         }
