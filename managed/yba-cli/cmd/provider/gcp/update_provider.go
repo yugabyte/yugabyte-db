@@ -330,10 +330,10 @@ func init() {
 				formatter.GreenColor)))
 	updateGCPProviderCmd.Flags().String("yb-firewall-tags", "",
 		"[Optional] Update tags for firewall rules in GCP.")
-	createGCPProviderCmd.Flags().Bool("create-vpc", false,
+	updateGCPProviderCmd.Flags().Bool("create-vpc", false,
 		"[Optional] Creating a new VPC network in GCP (Beta Feature). "+
 			"Specify VPC name using --network.")
-	createGCPProviderCmd.Flags().Bool("use-host-vpc", false,
+	updateGCPProviderCmd.Flags().Bool("use-host-vpc", false,
 		"[Optional] Using VPC from YugabyteDB Anywhere Host. "+
 			"If set to false, specify an exsiting VPC using --network. "+
 			"Ignored if create-vpc is set.")
