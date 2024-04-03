@@ -372,16 +372,15 @@ PopulateGeospatialQueryState(IndexBsonGeospatialState *state,
 	const bson_value_t *queryValue = bson_iter_value(&queryDocIterator);
 	const ShapeOperator *shapeOperator = GetShapeOperatorByValue(queryValue, &points);
 	state->state.isSpherical = shapeOperator->isSpherical;
-	ShapeOperatorInfo *opInfo = NULL;
+	ShapeOperatorInfo *opInfo = palloc0(sizeof(ShapeOperatorInfo));
+	opInfo->queryStage = QueryStage_INDEX;
 
 	switch (strategy)
 	{
 		case BSON_INDEX_STRATEGY_DOLLAR_GEOWITHIN:
 		{
-			opInfo = palloc0(sizeof(ShapeOperatorInfo));
-			opInfo->queryStage = QueryStage_INDEX;
+			opInfo->queryOperatorType = QUERY_OPERATOR_GEOWITHIN;
 			state->state.geoSpatialDatum = shapeOperator->getShapeDatum(&points,
-																		QUERY_OPERATOR_GEOWITHIN,
 																		opInfo);
 
 			if (shapeOperator->op == GeospatialShapeOperator_CENTERSPHERE ||
@@ -404,8 +403,8 @@ PopulateGeospatialQueryState(IndexBsonGeospatialState *state,
 
 		case BSON_INDEX_STRATEGY_DOLLAR_GEOINTERSECTS:
 		{
+			opInfo->queryOperatorType = QUERY_OPERATOR_GEOINTERSECTS;
 			state->state.geoSpatialDatum = shapeOperator->getShapeDatum(&points,
-																		QUERY_OPERATOR_GEOINTERSECTS,
 																		opInfo);
 
 			break;

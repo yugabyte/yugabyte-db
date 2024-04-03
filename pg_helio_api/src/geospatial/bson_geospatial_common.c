@@ -299,30 +299,6 @@ BsonExtractGeographyStrict(const pgbson *document, const StringView *pathView)
 }
 
 
-/*
- * Extracts the geographies from the document at path `pathView` runtime evaluation
- * of queries
- *
- * Returns a single geography always, if there are multi key geographies then
- * collects all the geographies as a single `GeometryCollection`
- *
- * Returns NULL Datum in case no valid geographies can be formed
- */
-Datum
-BsonExtractGeographyRuntime(const pgbson *document, const StringView *pathView)
-{
-	GeospatialType type = GeospatialType_Geography;
-	GeospatialValidationLevel level = GeospatialValidationLevel_Runtime;
-	WKBGeometryType collectType = WKBGeometryType_GeometryCollection;
-
-	/*
-	 * For runtime the error ctxt is not used, we don't need to throw invalidation errors during runtime
-	 */
-	return BsonExtractGeospatialInternal(document, pathView, type, level, collectType,
-										 NULL);
-}
-
-
 /*==========================*/
 /* Private Helper Utilities */
 /*==========================*/

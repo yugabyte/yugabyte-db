@@ -1851,9 +1851,10 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 
 			ShapeOperatorInfo *opInfo = palloc0(sizeof(ShapeOperatorInfo));
 			opInfo->queryStage = QueryStage_RUNTIME;
+			opInfo->queryOperatorType = operator->operatorType;
 
 			/* Only Validate the shapeOperator */
-			shapeOperator->getShapeDatum(&shapesValue, operator->operatorType, opInfo);
+			shapeOperator->getShapeDatum(&shapesValue, opInfo);
 
 			Expr *geoWithinFuncExpr = CreateFuncExprForSimpleQueryOperator(
 				operatorDocIterator, context, operator, path);
@@ -1896,10 +1897,11 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 								"$geoIntersect not supported with provided geometry.")));
 			}
 
-			ShapeOperatorInfo *opInfo = NULL;
+			ShapeOperatorInfo *opInfo = palloc0(sizeof(ShapeOperatorInfo));
+			opInfo->queryOperatorType = operator->operatorType;
 
 			/* Validate the query at planning */
-			shapeOperator->getShapeDatum(&shapesValue, operator->operatorType, opInfo);
+			shapeOperator->getShapeDatum(&shapesValue, opInfo);
 
 			Expr *geoIntersectsFuncExpr = CreateFuncExprForSimpleQueryOperator(
 				operatorDocIterator, context, operator, path);

@@ -185,7 +185,6 @@ void BsonIterValidateGeographies(bson_iter_t *documentIter, const StringView *ke
 Datum BsonExtractGeometryStrict(const pgbson *document, const StringView *pathView);
 Datum BsonExtractGeographyStrict(const pgbson *document, const StringView *pathView);
 Datum BsonExtractGeometryRuntime(const pgbson *document, const StringView *pathView);
-Datum BsonExtractGeographyRuntime(const pgbson *document, const StringView *pathView);
 
 
 /*

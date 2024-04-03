@@ -34,17 +34,12 @@ static const ShapeOperator * GetShapeOperatorByName(const char *operatorName);
 static Datum GetLegacyPointDatum(double longitude, double latitude);
 
 /* Shape operators */
-static Datum BsonValueGetBox(const bson_value_t *value, MongoQueryOperatorType operator,
-							 ShapeOperatorInfo *opInfo);
-static Datum BsonValueGetPolygon(const bson_value_t *value, MongoQueryOperatorType
-								 operator, ShapeOperatorInfo *opInfo);
-static Datum BsonValueGetCenter(const bson_value_t *value, MongoQueryOperatorType
-								operator, ShapeOperatorInfo *opInfo);
+static Datum BsonValueGetBox(const bson_value_t *value, ShapeOperatorInfo *opInfo);
+static Datum BsonValueGetPolygon(const bson_value_t *value, ShapeOperatorInfo *opInfo);
+static Datum BsonValueGetCenter(const bson_value_t *value, ShapeOperatorInfo *opInfo);
 static Datum BsonValueGetCenterSphere(const bson_value_t *value,
-									  MongoQueryOperatorType operator,
 									  ShapeOperatorInfo *opInfo);
-static Datum BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType
-								  operator, ShapeOperatorInfo *opInfo);
+static Datum BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo);
 
 
 /*
@@ -202,8 +197,7 @@ GetShapeOperatorByName(const char *operatorName)
  * box as a geometry datum
  */
 static Datum
-BsonValueGetBox(const bson_value_t *shapePointValue, MongoQueryOperatorType operator,
-				ShapeOperatorInfo *opInfo)
+BsonValueGetBox(const bson_value_t *shapePointValue, ShapeOperatorInfo *opInfo)
 {
 	if (shapePointValue->value_type != BSON_TYPE_ARRAY &&
 		shapePointValue->value_type != BSON_TYPE_DOCUMENT)
@@ -315,8 +309,7 @@ BsonValueGetBox(const bson_value_t *shapePointValue, MongoQueryOperatorType oper
  * a closed ring
  */
 static Datum
-BsonValueGetPolygon(const bson_value_t *shapeValue, MongoQueryOperatorType operator,
-					ShapeOperatorInfo *opInfo)
+BsonValueGetPolygon(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 {
 	if (shapeValue->value_type != BSON_TYPE_ARRAY &&
 		shapeValue->value_type != BSON_TYPE_DOCUMENT)
@@ -457,8 +450,7 @@ BsonValueGetPolygon(const bson_value_t *shapeValue, MongoQueryOperatorType opera
  * a center point and a radius
  */
 static Datum
-BsonValueGetCenter(const bson_value_t *shapeValue, MongoQueryOperatorType operator,
-				   ShapeOperatorInfo *opInfo)
+BsonValueGetCenter(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 {
 	Assert(opInfo != NULL);
 
@@ -556,8 +548,7 @@ BsonValueGetCenter(const bson_value_t *shapeValue, MongoQueryOperatorType operat
  * geography.
  */
 static Datum
-BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType operator,
-					 ShapeOperatorInfo *opInfo)
+BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 {
 	if (value->value_type != BSON_TYPE_DOCUMENT && value->value_type != BSON_TYPE_ARRAY)
 	{
@@ -600,7 +591,7 @@ BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType operator,
 					errmsg("$geometry: could not extract a valid geo value")));
 	}
 
-	if (operator == QUERY_OPERATOR_GEOWITHIN &&
+	if (opInfo->queryOperatorType == QUERY_OPERATOR_GEOWITHIN &&
 		parseState.type != GeoJsonType_POLYGON && parseState.type !=
 		GeoJsonType_MULTIPOLYGON)
 	{
@@ -611,7 +602,7 @@ BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType operator,
 					errhint("$geoWithin not supported with provided geometry.")));
 	}
 
-	if (operator == QUERY_OPERATOR_GEOWITHIN &&
+	if (opInfo->queryOperatorType == QUERY_OPERATOR_GEOWITHIN &&
 		parseState.numOfRingsInPolygon > 1)
 	{
 		/* TODO: Fix polygon with holes geowithin comparision, for now we throw unsupported error because of
@@ -659,8 +650,7 @@ BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType operator,
  * geography.
  */
 static Datum
-BsonValueGetCenterSphere(const bson_value_t *shapeValue, MongoQueryOperatorType operator,
-						 ShapeOperatorInfo *opInfo)
+BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 {
 	Assert(opInfo != NULL);
 

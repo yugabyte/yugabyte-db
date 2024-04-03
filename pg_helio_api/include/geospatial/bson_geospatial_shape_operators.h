@@ -68,8 +68,7 @@ typedef struct ShapeOperatorInfo
 /*
  * Function prototype for getting the shape operators
  */
-typedef Datum (*BsonValueGetShapeDatum) (const bson_value_t *, MongoQueryOperatorType,
-										 ShapeOperatorInfo *);
+typedef Datum (*BsonValueGetShapeDatum) (const bson_value_t *, ShapeOperatorInfo *);
 
 /*
  * BsonValueGetShapeDatum takes a specific bson value and returns the

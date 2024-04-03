@@ -187,10 +187,8 @@ PopulateBsonDollarGeoWithinQueryState(RuntimeBsonGeospatialState *runtimeState,
 	runtimeState->opInfo->queryStage = QueryStage_RUNTIME;
 	runtimeState->opInfo->queryOperatorType = QUERY_OPERATOR_GEOWITHIN;
 	runtimeState->state.isSpherical = shapeOperator->isSpherical;
-	runtimeState->state.geoSpatialDatum = shapeOperator->getShapeDatum(&shapePointsValue,
-																	   QUERY_OPERATOR_GEOWITHIN,
-																	   runtimeState->
-																	   opInfo);
+	runtimeState->state.geoSpatialDatum =
+		shapeOperator->getShapeDatum(&shapePointsValue, runtimeState->opInfo);
 
 	/*
 	 * Postgis provides ST_Within function but that doesn't provide the same
@@ -224,10 +222,8 @@ PopulateBsonDollarGeoIntersectQueryState(RuntimeBsonGeospatialState *runtimeStat
 	runtimeState->opInfo->queryStage = QueryStage_RUNTIME;
 	runtimeState->opInfo->queryOperatorType = QUERY_OPERATOR_GEOINTERSECTS;
 	runtimeState->state.isSpherical = shapeOperator->isSpherical;
-	runtimeState->state.geoSpatialDatum = shapeOperator->getShapeDatum(&shapePointsValue,
-																	   QUERY_OPERATOR_GEOINTERSECTS,
-																	   runtimeState->
-																	   opInfo);
+	runtimeState->state.geoSpatialDatum =
+		shapeOperator->getShapeDatum(&shapePointsValue, runtimeState->opInfo);
 
 	runtimeState->postgisFuncFmgrInfo =
 		(FmgrInfo **) palloc0(PostgisFuncsForDollarGeo_MAX * sizeof(FmgrInfo *));
