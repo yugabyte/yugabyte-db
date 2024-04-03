@@ -83,6 +83,10 @@ Result<IsOperationDoneResult> XClusterClient::IsCreateXClusterReplicationDone(
     return StatusFromPB(resp.error().status());
   }
 
+  if (!resp.done()) {
+    return IsOperationDoneResult::NotDone();
+  }
+
   if (resp.has_replication_error()) {
     return IsOperationDoneResult::Done(StatusFromPB(resp.replication_error()));
   }
@@ -247,12 +251,16 @@ Result<IsOperationDoneResult> XClusterRemoteClient::IsSetupUniverseReplicationDo
     return StatusFromPB(resp.error().status());
   }
 
+  if (!resp.done()) {
+    return IsOperationDoneResult::NotDone();
+  }
+
   if (resp.has_replication_error()) {
     // IsSetupUniverseReplicationDoneRequestPB will contain an OK status on success.
     return IsOperationDoneResult::Done(StatusFromPB(resp.replication_error()));
   }
 
-  return resp.done() ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
+  return IsOperationDoneResult::Done();
 }
 
 Status XClusterRemoteClient::GetXClusterTableCheckpointInfos(

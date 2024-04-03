@@ -3570,7 +3570,7 @@ Status CatalogManager::ValidateTableAndCreateCdcStreams(
   l.Commit();
 
   GetTableSchemaResponsePB consumer_schema;
-  RETURN_NOT_OK(ValidateTableSchemaForXCluster(producer_info, setup_info, &consumer_schema));
+  RETURN_NOT_OK(ValidateTableSchemaForXCluster(*producer_info, setup_info, &consumer_schema));
 
   // If Bootstrap Id is passed in then it must be provided for all tables.
   const auto& producer_bootstrap_ids = setup_info.table_bootstrap_ids;
@@ -3610,42 +3610,39 @@ void CatalogManager::GetTablegroupSchemaCallback(
     }
   }
 
-  if (!s.ok()) {
-    MarkUniverseReplicationFailed(universe, s);
+  auto status =
+      GetTablegroupSchemaCallbackInternal(universe, *infos, producer_tablegroup_id, setup_info, s);
+  if (!status.ok()) {
     std::ostringstream oss;
     for (size_t i = 0; i < infos->size(); ++i) {
       oss << ((i == 0) ? "" : ", ") << (*infos)[i].table_id;
     }
-    LOG(ERROR) << "Error getting schema for tables: [ " << oss.str() << " ]: " << s;
-    return;
+    LOG(ERROR) << "Error processing for tables: [ " << oss.str()
+               << " ] for xCluster replication group " << replication_group_id << ": " << status;
+    MarkUniverseReplicationFailed(universe, status);
   }
+}
 
-  if (infos->empty()) {
-    LOG(WARNING) << "Received empty list of tables to validate: " << s;
-    return;
-  }
+Status CatalogManager::GetTablegroupSchemaCallbackInternal(
+    scoped_refptr<UniverseReplicationInfo>& universe, const std::vector<client::YBTableInfo>& infos,
+    const TablegroupId& producer_tablegroup_id, const SetupReplicationInfo& setup_info,
+    const Status& s) {
+  RETURN_NOT_OK(s);
+
+  SCHECK(!infos.empty(), IllegalState, Format("Tablegroup $0 is empty", producer_tablegroup_id));
 
   // validated_consumer_tables contains the table IDs corresponding to that
   // from the producer tables.
   std::unordered_set<TableId> validated_consumer_tables;
   ColocationSchemaVersions colocated_schema_versions;
-  colocated_schema_versions.reserve(infos->size());
-  for (const auto& info : *infos) {
+  colocated_schema_versions.reserve(infos.size());
+  for (const auto& info : infos) {
     // Validate each of the member table in the tablegroup.
     GetTableSchemaResponsePB resp;
-    Status table_status = ValidateTableSchemaForXCluster(
-        std::make_shared<client::YBTableInfo>(info), setup_info, &resp);
+    RETURN_NOT_OK(ValidateTableSchemaForXCluster(info, setup_info, &resp));
 
-    if (!table_status.ok()) {
-      MarkUniverseReplicationFailed(universe, table_status);
-      LOG(ERROR) << "Found error while validating table schema for table " << info.table_id << ": "
-                 << table_status;
-      return;
-    }
-
-    colocated_schema_versions.emplace_back(resp.schema().colocated_table_id().colocation_id(),
-                                           info.schema.version(),
-                                           resp.version());
+    colocated_schema_versions.emplace_back(
+        resp.schema().colocated_table_id().colocation_id(), info.schema.version(), resp.version());
     validated_consumer_tables.insert(resp.identifier().table_id());
   }
 
@@ -3657,23 +3654,16 @@ void CatalogManager::GetTablegroupSchemaCallback(
   {
     SharedLock lock(mutex_);
     const auto* tablegroup = tablegroup_manager_->FindByTable(*validated_consumer_tables.begin());
-    if (!tablegroup) {
-      std::string message = Format(
-          "No consumer tablegroup found for producer tablegroup: $0", producer_tablegroup_id);
-      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
-      LOG(ERROR) << message;
-      return;
-    }
+    SCHECK(
+        tablegroup, IllegalState,
+        Format("No consumer tablegroup found for producer tablegroup: $0", producer_tablegroup_id));
+
     consumer_tablegroup_id = tablegroup->id();
 
-    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
-    if (ns == nullptr) {
-      std::string message =
-          Format("Could not find namespace by namespace id $0", tablegroup->database_id());
-      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
-      LOG(ERROR) << message;
-      return;
-    }
+    auto ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
+    SCHECK(
+        ns, IllegalState,
+        Format("Could not find namespace by namespace id $0", tablegroup->database_id()));
     colocated_database = ns->colocated();
   }
 
@@ -3684,14 +3674,13 @@ void CatalogManager::GetTablegroupSchemaCallback(
     GetTablegroupSchemaRequestPB req;
     GetTablegroupSchemaResponsePB resp;
     req.mutable_tablegroup()->set_id(consumer_tablegroup_id);
-    Status status = GetTablegroupSchema(&req, &resp);
-    if (!status.ok() || resp.has_error()) {
-      std::string message =
-          Format("Error when getting consumer tablegroup schema: $0", consumer_tablegroup_id);
-      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
-      LOG(ERROR) << message;
-      return;
+    auto status = GetTablegroupSchema(&req, &resp);
+    if (status.ok() && resp.has_error()) {
+      status = StatusFromPB(resp.error().status());
     }
+    RETURN_NOT_OK_PREPEND(
+        status,
+        Format("Error when getting consumer tablegroup schema: $0", consumer_tablegroup_id));
 
     for (const auto& info : resp.get_table_schema_response_pbs()) {
       tables_in_consumer_tablegroup.insert(info.identifier().table_id());
@@ -3699,23 +3688,21 @@ void CatalogManager::GetTablegroupSchemaCallback(
   }
 
   if (validated_consumer_tables != tables_in_consumer_tablegroup) {
-    std::string message = Format(
-        "Mismatch between tables associated with producer tablegroup $0 and "
-        "tables in consumer tablegroup $1: ($2) vs ($3).",
-        producer_tablegroup_id, consumer_tablegroup_id, AsString(validated_consumer_tables),
-        AsString(tables_in_consumer_tablegroup));
-    MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
-    LOG(ERROR) << message;
-    return;
+    return STATUS(
+        IllegalState,
+        Format(
+            "Mismatch between tables associated with producer tablegroup $0 and "
+            "tables in consumer tablegroup $1: ($2) vs ($3).",
+            producer_tablegroup_id, consumer_tablegroup_id, AsString(validated_consumer_tables),
+            AsString(tables_in_consumer_tablegroup)));
   }
 
-  Status status = IsBootstrapRequiredOnProducer(
-      universe, producer_tablegroup_id, setup_info.table_bootstrap_ids);
-  if (!status.ok()) {
-    MarkUniverseReplicationFailed(universe, status);
-    LOG(ERROR) << "Found error while checking if bootstrap is required for table "
-               << producer_tablegroup_id << ": " << status;
-  }
+  RETURN_NOT_OK_PREPEND(
+      IsBootstrapRequiredOnProducer(
+          universe, producer_tablegroup_id, setup_info.table_bootstrap_ids),
+      Format(
+          "Found error while checking if bootstrap is required for table $0",
+          producer_tablegroup_id));
 
   TableId producer_parent_table_id;
   TableId consumer_parent_table_id;
@@ -3729,25 +3716,15 @@ void CatalogManager::GetTablegroupSchemaCallback(
 
   {
     SharedLock lock(mutex_);
-    if (xcluster_consumer_table_stream_ids_map_.contains(consumer_parent_table_id)) {
-      std::string message = "N:1 replication topology not supported";
-      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
-      LOG(ERROR) << message;
-      return;
-    }
+    SCHECK(
+        !xcluster_consumer_table_stream_ids_map_.contains(consumer_parent_table_id), IllegalState,
+        "N:1 replication topology not supported");
   }
 
-  status = AddValidatedTableAndCreateCdcStreams(
-      universe,
-      setup_info.table_bootstrap_ids,
-      producer_parent_table_id,
-      consumer_parent_table_id,
-      colocated_schema_versions);
-  if (!status.ok()) {
-    LOG(ERROR) << "Found error while adding validated table to system catalog: "
-               << producer_tablegroup_id << ": " << status;
-    return;
-  }
+  RETURN_NOT_OK(AddValidatedTableAndCreateCdcStreams(
+      universe, setup_info.table_bootstrap_ids, producer_parent_table_id, consumer_parent_table_id,
+      colocated_schema_versions));
+  return Status::OK();
 }
 
 void CatalogManager::GetColocatedTabletSchemaCallback(
@@ -3798,8 +3775,7 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     }
     // Validate each table, and get the parent colocated table id for the consumer.
     GetTableSchemaResponsePB resp;
-    Status table_status = ValidateTableSchemaForXCluster(
-        std::make_shared<client::YBTableInfo>(info), setup_info, &resp);
+    Status table_status = ValidateTableSchemaForXCluster(info, setup_info, &resp);
     if (!table_status.ok()) {
       MarkUniverseReplicationFailed(universe, table_status);
       LOG(ERROR) << "Found error while validating table schema for table " << info.table_id << ": "
@@ -6890,24 +6866,24 @@ Status CatalogManager::BumpVersionAndStoreClusterConfig(
 }
 
 Status CatalogManager::ValidateTableSchemaForXCluster(
-    const std::shared_ptr<client::YBTableInfo>& info, const SetupReplicationInfo& setup_info,
+    const client::YBTableInfo& info, const SetupReplicationInfo& setup_info,
     GetTableSchemaResponsePB* resp) {
-  bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
+  bool is_ysql_table = info.table_type == client::YBTableType::PGSQL_TABLE_TYPE;
   if (setup_info.transactional && !GetAtomicFlag(&FLAGS_TEST_allow_ycql_transactional_xcluster) &&
       !is_ysql_table) {
     return STATUS_FORMAT(
         NotSupported, "Transactional replication is not supported for non-YSQL tables: $0",
-        info->table_name.ToString());
+        info.table_name.ToString());
   }
 
   // Get corresponding table schema on local universe.
   GetTableSchemaRequestPB req;
 
   auto* table = req.mutable_table();
-  table->set_table_name(info->table_name.table_name());
-  table->mutable_namespace_()->set_name(info->table_name.namespace_name());
+  table->set_table_name(info.table_name.table_name());
+  table->mutable_namespace_()->set_name(info.table_name.namespace_name());
   table->mutable_namespace_()->set_database_type(
-      GetDatabaseTypeForTable(client::ClientToPBTableType(info->table_type)));
+      GetDatabaseTypeForTable(client::ClientToPBTableType(info.table_type)));
 
   // Since YSQL tables are not present in table map, we first need to list tables to get the table
   // ID and then get table schema.
@@ -6915,17 +6891,17 @@ Status CatalogManager::ValidateTableSchemaForXCluster(
   ListTablesRequestPB list_req;
   ListTablesResponsePB list_resp;
 
-  list_req.set_name_filter(info->table_name.table_name());
+  list_req.set_name_filter(info.table_name.table_name());
   Status status = ListTables(&list_req, &list_resp);
   SCHECK(
       status.ok() && !list_resp.has_error(), NotFound,
       Format("Error while listing table: $0", status.ToString()));
 
-  const auto& source_schema = client::internal::GetSchema(info->schema);
+  const auto& source_schema = client::internal::GetSchema(info.schema);
   for (const auto& t : list_resp.tables()) {
     // Check that table name and namespace both match.
-    if (t.name() != info->table_name.table_name() ||
-        t.namespace_().name() != info->table_name.namespace_name()) {
+    if (t.name() != info.table_name.table_name() ||
+        t.namespace_().name() != info.table_name.namespace_name()) {
       continue;
     }
 
@@ -6957,7 +6933,7 @@ Status CatalogManager::ValidateTableSchemaForXCluster(
     if (is_ysql_table && t.has_relation_type() && t.relation_type() == MATVIEW_TABLE_RELATION) {
       return STATUS_FORMAT(
           NotSupported, "Replication is not supported for materialized view: $0",
-          info->table_name.ToString());
+          info.table_name.ToString());
     }
 
     Schema consumer_schema;
@@ -6969,7 +6945,7 @@ Status CatalogManager::ValidateTableSchemaForXCluster(
         Format(
             "Source and target schemas don't match: "
             "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
-            info->table_id, resp->identifier().table_id(), info->schema.ToString(),
+            info.table_id, resp->identifier().table_id(), info.schema.ToString(),
             resp->schema().DebugString()));
     break;
   }
@@ -6977,19 +6953,19 @@ Status CatalogManager::ValidateTableSchemaForXCluster(
   SCHECK(
       table->has_table_id(), NotFound,
       Format(
-          "Could not find matching table for $0$1", info->table_name.ToString(),
+          "Could not find matching table for $0$1", info.table_name.ToString(),
           (is_ysql_table ? " pgschema_name: " + source_schema.SchemaName() : "")));
 
   // Still need to make map of table id to resp table id (to add to validated map)
   // For colocated tables, only add the parent table since we only added the parent table to the
   // original pb (we use the number of tables in the pb to determine when validation is done).
-  if (info->colocated) {
+  if (info.colocated) {
     // We require that colocated tables have the same colocation ID.
     //
     // Backward compatibility: tables created prior to #7378 use YSQL table OID as a colocation ID.
-    auto source_clc_id = info->schema.has_colocation_id()
-                             ? info->schema.colocation_id()
-                             : CHECK_RESULT(GetPgsqlTableOid(info->table_id));
+    auto source_clc_id = info.schema.has_colocation_id()
+                             ? info.schema.colocation_id()
+                             : CHECK_RESULT(GetPgsqlTableOid(info.table_id));
     auto target_clc_id = (resp->schema().has_colocated_table_id() &&
                           resp->schema().colocated_table_id().has_colocation_id())
                              ? resp->schema().colocated_table_id().colocation_id()
@@ -6999,7 +6975,7 @@ Status CatalogManager::ValidateTableSchemaForXCluster(
         Format(
             "Source and target colocation IDs don't match for colocated table: "
             "Source: $0, Target: $1, Source colocation ID: $2, Target colocation ID: $3",
-            info->table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
+            info.table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
   }
 
   {
