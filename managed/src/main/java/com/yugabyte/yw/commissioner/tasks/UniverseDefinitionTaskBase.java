@@ -2044,16 +2044,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       @Nullable Consumer<AnsibleConfigureServers.Params> installSoftwareParamsCustomizer,
       @Nullable Consumer<AnsibleConfigureServers.Params> gflagsParamsCustomizer) {
 
-    Set<NodeDetails> mergedNodes = new HashSet<>();
-    if (mastersToBeConfigured == tServersToBeConfigured) {
-      mergedNodes = mastersToBeConfigured;
-    } else if (mastersToBeConfigured == null) {
-      mergedNodes = tServersToBeConfigured;
-    } else if (tServersToBeConfigured == null) {
-      mergedNodes = mastersToBeConfigured;
-    } else {
-      Stream.of(mastersToBeConfigured, tServersToBeConfigured).forEach(mergedNodes::addAll);
-    }
+    Set<NodeDetails> mergedNodes =
+        Stream.of(mastersToBeConfigured, tServersToBeConfigured)
+            .filter(Objects::nonNull)
+            .flatMap(Set::stream)
+            .collect(Collectors.toSet());
 
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -2151,9 +2146,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         createCreateNodeTasks(
             universe, nodesToBeCreated, ignoreNodeStatus, setupServerParamsCustomizer);
 
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    Set<NodeDetails> nodesToConfigureMaster =
+        nodesToBeCreated.stream()
+            .filter(n -> n.isInPlacement(primaryCluster.uuid))
+            .collect(Collectors.toSet());
+
     return createConfigureNodeTasks(
         universe,
-        nodesToBeCreated,
+        nodesToConfigureMaster,
         nodesToBeCreated,
         isFallThrough,
         installSoftwareParamsCustomizer,
