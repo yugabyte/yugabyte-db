@@ -1042,6 +1042,7 @@ stmt:
 			| AlterRoleStmt
 			| AlterSeqStmt
 			| AlterTableStmt
+			| AlterTypeStmt
 			| BackfillIndexStmt
 			| CallStmt
 			| ClosePortalStmt
@@ -1140,7 +1141,6 @@ stmt:
 			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
-			| AlterTypeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
