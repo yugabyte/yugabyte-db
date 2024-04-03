@@ -33,6 +33,14 @@ type: docs
   </li>
 </ul>
 
+[Yugabyte Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver) is based on [DataStax Ruby Driver](https://github.com/datastax/ruby-driver) with additional [smart driver](../../smart-drivers-ycql/) features.
+
+{{< note title="YugabyteDB Managed" >}}
+
+To use the driver's partition-aware load balancing feature in a YugabyteDB Managed cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Managed](../../smart-drivers-ycql/#using-ycql-drivers-with-yugabytedb-managed).
+
+{{< /note >}}
+
 ## Install the YugabyteDB Ruby Driver for YCQL
 
 To install the [YugabyteDB Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver), run the following `gem install` command:
