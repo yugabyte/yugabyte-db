@@ -1465,6 +1465,8 @@ class PgClientServiceImpl::Impl {
       rpc::RpcContext* context) {
     if (req.fetch_tserver_states()) {
       GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
+      AddWaitStatesToResponse(
+          ash::SharedMemoryPgPerformTracker(), resp->mutable_tserver_wait_states());
     }
     if (req.fetch_flush_and_compaction_states()) {
       AddWaitStatesToResponse(
