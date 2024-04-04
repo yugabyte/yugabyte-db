@@ -11,8 +11,11 @@
 // under the License.
 //
 
+#include <gflags/gflags_declare.h>
 #include <gtest/gtest.h>
 #include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/master/load_balancer_mocked-test_base.h"
 #include "yb/tablet/tablet_types.pb.h"
@@ -36,6 +39,33 @@ TEST_F(LoadBalancerMockedTest, TestStartingTablet) {
   ASSERT_EQ(GetTotalOverreplication(), 0);
   ASSERT_EQ(GetTotalStartingTablets(), 1);
   ASSERT_EQ(GetTotalRunningTablets(), total_num_tablets_ - 1);
+}
+
+TEST_F(LoadBalancerMockedTest, TestPendingStepdown) {
+  PrepareTestStateSingleAz();
+
+  // Find a leader and follower to use for stepdown.
+  auto tablet_id = tablets_[0]->id();
+  TabletServerId old_leader_ts, new_leader_ts;
+  for (const auto& replica : *tablets_[0]->GetReplicaLocations()) {
+    if (replica.second.role == PeerRole::LEADER) {
+      old_leader_ts = replica.first;
+    } else {
+      new_leader_ts = replica.first;
+    }
+  }
+
+  // Add a pending stepdown for one of the tablets.
+  pending_stepdown_leader_tasks_[tablet_id] = new_leader_ts;
+
+  auto pending_tasks = ASSERT_RESULT(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(pending_tasks.stepdowns, 1);
+  const auto* table_state = cb_.GetTableState(kTableId);
+  const auto& tablet_meta = table_state->per_tablet_meta_.at(tablet_id);
+  ASSERT_EQ(tablet_meta.leader_uuid, new_leader_ts);
+
+  ASSERT_FALSE(table_state->per_ts_meta_.at(old_leader_ts).leaders.contains(tablet_id));
+  ASSERT_TRUE(table_state->per_ts_meta_.at(new_leader_ts).leaders.contains(tablet_id));
 }
 
 TEST_F(LoadBalancerMockedTest, TestNoPlacement) {
@@ -171,7 +201,7 @@ TEST_F(LoadBalancerMockedTest, TestOverReplication) {
   // Add a tablet server with proper placement and a tablet peer for all tablets. Now all tablets
   // should have 2 peers.
   // Using empty ts_uuid here since our mocked PendingTasksUnlocked only returns empty ts_uuids.
-  ts_descs_.push_back(SetupTS("", "a"));
+  ts_descs_.push_back(SetupTS("1111", "a"));
   for (auto tablet : tablets_) {
     AddRunningReplica(tablet.get(), ts_descs_[1]);
   }
@@ -202,7 +232,7 @@ TEST_F(LoadBalancerMockedTest, TestOverReplication) {
   // HandleAddReplicas fails because all the tablets have a pending add operation.
   pending_add_replica_tasks_.clear();
   for (const auto& tablet : tablets_) {
-    pending_add_replica_tasks_.push_back(tablet->id());
+    pending_add_replica_tasks_[tablet->id()] = "1111";
   }
 
   auto pending_tasks = ASSERT_RESULT(ResetLoadBalancerAndAnalyzeTablets());
@@ -226,7 +256,7 @@ TEST_F(LoadBalancerMockedTest, TestOverReplication) {
   // calling HandleRemoveReplicas fails because all the tablets have a pending remove operation.
   pending_remove_replica_tasks_.clear();
   for (const auto& tablet : tablets_) {
-    pending_remove_replica_tasks_.push_back(tablet->id());
+    pending_remove_replica_tasks_[tablet->id()] = "1111";
   }
   pending_tasks = ASSERT_RESULT(ResetLoadBalancerAndAnalyzeTablets());
   ASSERT_EQ(pending_tasks.removes, pending_remove_replica_tasks_.size());
