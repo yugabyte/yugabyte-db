@@ -1296,7 +1296,8 @@ CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 							  shardKeyHash, result);
 		}
 	}
-	else if (IsClusterVersionAtleastThis(1, 16, 0))
+	else if (IsClusterVersionAtleastThis(1, 14, 4) ||
+			 IsClusterVersionEqualToAndAtLeastPatch(1, 13, 2))
 	{
 		/* Otherwise, call the worker via worker update one */
 		CallUpdateWorkerForUpdateOne(collection, updateOneParams, shardKeyHash,

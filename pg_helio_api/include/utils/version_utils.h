@@ -14,6 +14,8 @@
 #define VERSION_UTILS_H
 
 bool IsClusterVersionAtleastThis(int major, int minor, int patch);
+
+bool IsClusterVersionEqualToAndAtLeastPatch(int major, int minor, int patch);
 void InvalidateVersionCache(void);
 
 #endif

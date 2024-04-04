@@ -849,7 +849,8 @@ ProcessInsertion(MongoCollection *collection,
 		list_free_deep(singleInsertList);
 		return insertResult;
 	}
-	else if (IsClusterVersionAtleastThis(1, 16, 0))
+	else if (IsClusterVersionAtleastThis(1, 14, 4) ||
+			 IsClusterVersionEqualToAndAtLeastPatch(1, 13, 2))
 	{
 		return CallInsertWorkerForInsertOne(collection, shardKeyHash, insertDoc,
 											transactionId);

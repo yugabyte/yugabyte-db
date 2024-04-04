@@ -3453,25 +3453,17 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$push"))
 		{
-			if (IsClusterVersionAtleastThis(1, 15, 0) || EnableGroupPushSupport)
-			{
-				char *fieldPath = "";
-				bool handleSingleValue = true;
-				repathArgs = AddArrayAggGroupAccumulator(query,
-														 &accumulatorElement.bsonValue,
-														 repathArgs,
-														 accumulatorText, parseState,
-														 identifiers,
-														 origEntry->expr,
-														 BsonArrayAggregateAllArgsFunctionOid(),
-														 fieldPath,
-														 handleSingleValue);
-			}
-			else
-			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
-								errmsg("Accumulator $push not implemented yet")));
-			}
+			char *fieldPath = "";
+			bool handleSingleValue = true;
+			repathArgs = AddArrayAggGroupAccumulator(query,
+													 &accumulatorElement.bsonValue,
+													 repathArgs,
+													 accumulatorText, parseState,
+													 identifiers,
+													 origEntry->expr,
+													 BsonArrayAggregateAllArgsFunctionOid(),
+													 fieldPath,
+													 handleSingleValue);
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$stdDevSamp"))
 		{

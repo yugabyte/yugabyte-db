@@ -719,7 +719,8 @@ CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 		DeleteOneInternalCore(collection->collectionId, shardKeyHash, deleteOneParams,
 							  transactionId, result);
 	}
-	else if (IsClusterVersionAtleastThis(1, 16, 0))
+	else if (IsClusterVersionAtleastThis(1, 14, 4) ||
+			 IsClusterVersionEqualToAndAtLeastPatch(1, 13, 2))
 	{
 		/*
 		 * If the cluster supports it, and we need to go remote, call the update worker

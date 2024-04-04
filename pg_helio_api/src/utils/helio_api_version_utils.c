@@ -24,6 +24,29 @@ ExtensionVersion CurrentVersion = { 0 };
 char *VersionRefreshQuery =
 	"SELECT regexp_split_to_array(extversion, '[-\\.]')::int4[] FROM pg_extension WHERE extname = 'pg_helio_api'";
 
+
+/*
+ * Returns true if the cluster version is exactly major.minor and >= patch
+ */
+bool
+IsClusterVersionEqualToAndAtLeastPatch(int major, int minor, int patch)
+{
+	RefreshCurrentVersion();
+
+	if (CurrentVersion.Major != major)
+	{
+		return false;
+	}
+	else if (CurrentVersion.Minor != minor)
+	{
+		return false;
+	}
+
+	/* Major and Minor are the expected ones, we should compare the patch version. */
+	return CurrentVersion.Patch >= patch;
+}
+
+
 /*
  * Returns true if the cluster version is >= given major.minor.patch version
  */
