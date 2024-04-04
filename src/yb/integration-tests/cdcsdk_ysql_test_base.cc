@@ -1531,8 +1531,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   }
 
   Result<GetConsistentChangesResponsePB> CDCSDKYsqlTest::GetConsistentChangesFromCDC(
-      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id) {
+      const xrepl::StreamId& stream_id, const uint64_t session_id) {
     GetConsistentChangesRequestPB change_req;
     GetConsistentChangesResponsePB final_resp;
     change_req.set_stream_id(stream_id.ToString());
@@ -1545,8 +1544,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           auto status =
               cdc_proxy_->GetConsistentChanges(change_req, &change_resp, &get_changes_rpc);
 
-          if (!status.ok()) {
-            return false;
+          if (status.ok() && !change_resp.has_error()) {
+            final_resp = change_resp;
+            return true;
           }
 
           if (status.ok() && change_resp.has_error()) {
@@ -1556,8 +1556,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
             }
           }
 
-          final_resp = change_resp;
-          return true;
+          return false;
         },
         MonoDelta::FromSeconds(kRpcTimeout), "GetConsistentChanges failed due to RPC timeout"));
 
@@ -1582,7 +1581,14 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           if (status.ok() && !update_resp.has_error()) {
             return true;
           }
-          LOG(WARNING) << StatusFromPB(update_resp.error().status()).ToString();
+
+          if (status.ok() && update_resp.has_error()) {
+            status = StatusFromPB(update_resp.error().status());
+            if (status.IsNotFound() || status.IsInvalidArgument()) {
+              RETURN_NOT_OK(status);
+            }
+          }
+
           return false;
         },
         MonoDelta::FromSeconds(kRpcTimeout), "UpdateRestartLSN failed due to RPC timeout"));
@@ -1907,7 +1913,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     if (init_virtual_wal) {
       Status s = InitVirtualWAL(stream_id, table_ids, session_id);
       if (!s.ok()) {
-        LOG(INFO) << "Error while trying to initialize virtual WAL";
+        LOG(ERROR) << "Error while trying to initialize virtual WAL";
         RETURN_NOT_OK(s);
       }
     }
@@ -1921,13 +1927,14 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           GetConsistentChangesResponsePB change_resp;
-          auto get_changes_result = GetConsistentChangesFromCDC(stream_id, table_ids, session_id);
+          auto get_changes_result = GetConsistentChangesFromCDC(stream_id, session_id);
 
           if (get_changes_result.ok()) {
             change_resp = *get_changes_result;
           } else {
             LOG(ERROR) << "Encountered error while calling GetConsistentChanges on stream: "
                        << stream_id << ", status: " << get_changes_result.status();
+            RETURN_NOT_OK(get_changes_result);
           }
 
           for (int i = 0; i < change_resp.cdc_sdk_proto_records_size(); i++) {
@@ -1959,7 +1966,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
               auto result =
                   UpdateAndPersistLSN(stream_id, confirmed_flush_lsn, restart_lsn, session_id);
               if (!result.ok()) {
-                LOG(WARNING) << "UpdateRestartLSN failed: " << result;
+                LOG(ERROR) << "UpdateRestartLSN failed: " << result;
+                RETURN_NOT_OK(result);
               }
             }
           }

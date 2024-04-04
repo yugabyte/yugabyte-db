@@ -417,19 +417,32 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   if (resp->cdc_sdk_proto_records_size() == 0) {
     VLOG(1) << "Sending empty response for GetConsistentChanges for stream_id: " << stream_id;
   } else {
-    VLOG(1) << "Sending non-empty GetConsistentChanges response for stream_id: " << stream_id
-            << " with total_records: " << resp->cdc_sdk_proto_records_size()
-            << ", total_txns: " << metadata.txn_ids.size() << ", min_txn_id: "
-            << ((metadata.min_txn_id == std::numeric_limits<uint32_t>::max()) ? 0
-                                                                              : metadata.min_txn_id)
-            << ", max_txn_id: " << metadata.max_txn_id << ", min_lsn: "
-            << (metadata.min_lsn == std::numeric_limits<uint64_t>::max() ? 0 : metadata.min_lsn)
-            << ", max_lsn: " << metadata.max_lsn
-            << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
-            << ", begin_records: " << metadata.begin_records
-            << ", commit_records: " << metadata.commit_records
-            << ", dml_records: " << metadata.dml_records
-            << ", ddl_records: " << metadata.ddl_records;
+    int64_t vwal_lag_in_ms = 0;
+    // VWAL lag is only calculated when the response contains a commit record. If there are
+    // multiple commit records in the same resposne, lag will be calculated for the last shipped
+    // commit.
+    if (metadata.commit_records > 0) {
+      auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
+      vwal_lag_in_ms = (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(
+                                last_shipped_commit.commit_record_unique_id->GetCommitTime()))) /
+                            1000;
+    }
+    VLOG(1)
+        << "Sending non-empty GetConsistentChanges response for stream_id: " << stream_id
+        << " with total_records: " << resp->cdc_sdk_proto_records_size()
+        << ", total_txns: " << metadata.txn_ids.size() << ", min_txn_id: "
+        << ((metadata.min_txn_id == std::numeric_limits<uint32_t>::max()) ? 0 : metadata.min_txn_id)
+        << ", max_txn_id: " << metadata.max_txn_id << ", min_lsn: "
+        << (metadata.min_lsn == std::numeric_limits<uint64_t>::max() ? 0 : metadata.min_lsn)
+        << ", max_lsn: " << metadata.max_lsn
+        << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
+        << ", begin_records: " << metadata.begin_records
+        << ", commit_records: " << metadata.commit_records
+        << ", dml_records: " << metadata.dml_records << ", ddl_records: " << metadata.ddl_records
+        << ", VWAL lag: " << (metadata.commit_records > 0 ? Format("$0 ms", vwal_lag_in_ms) : "-1")
+        << ", Number of unacked txns in VWAL: "
+        << (metadata.max_txn_id -
+            commit_meta_and_last_req_map_.begin()->second.record_metadata.commit_txn_id);
   }
 
   return Status::OK();
@@ -743,6 +756,14 @@ Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
     auto pos = commit_meta_and_last_req_map_.lower_bound(last_shipped_commit.commit_lsn);
     commit_meta_and_last_req_map_.erase(commit_meta_and_last_req_map_.begin(), pos);
   }
+
+  auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
+  auto lag_in_ms = (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(
+                       record_metadata.commit_record_unique_id->GetCommitTime()))) /
+                   1000;
+  VLOG(2) << "Replication Lag: " << Format("$0 ms", lag_in_ms)
+          << ", commit_lsn: " << record_metadata.commit_lsn
+          << ", commit_txn_id: " << record_metadata.commit_txn_id;
 
   RETURN_NOT_OK(UpdateSlotEntryInCDCState(stream_id, confirmed_flush_lsn, record_metadata));
   last_received_restart_lsn = restart_lsn_hint;
