@@ -6,7 +6,8 @@ description: Learn about the Key concepts in YugabyteDB
 headcontent: Glossary of key concepts
 image: fa-sharp fa-thin fa-arrows-to-circle
 aliases:
-  - /preview/architecture/concepts/universe/
+  - /preview/architecture/concepts
+  - /preview/architecture/concepts/universe
   - /preview/architecture/concepts/single-node/
 menu:
   preview:
@@ -103,7 +104,7 @@ When a tablet reaches a threshold size, it splits into 2 new [tablets](#tablet).
 
 ## TServer
 
-The [YB-TServer](./yb-tserver) service is responsible for maintaining and managing table data in the form of tablets, as well as dealing with all the queries. {{<link "yb-tserver">}}
+The [YB-TServer](../yb-tserver) service is responsible for maintaining and managing table data in the form of tablets, as well as dealing with all the queries. {{<link "yb-tserver">}}
 
 ## Universe
 

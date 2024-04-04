@@ -170,7 +170,7 @@ The [YugabyteDB Master Server](../../../architecture/concepts/yb-master/) (YB-Ma
 
 ### DocDB
 
-[DocDB](../../../architecture/layered-architecture/#docdb) is a distributed document store that serves as the YugabyteDB storage layer. It uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree-based key-value store.
+[DocDB](../../../architecture/docdb) is a distributed document store that serves as the YugabyteDB storage layer. It uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree-based key-value store.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
