@@ -129,6 +129,6 @@ func init() {
 	createS3StorageConfigurationCmd.MarkFlagsRequiredTogether("access-key-id", "secret-access-key")
 	createS3StorageConfigurationCmd.Flags().Bool("use-iam-instance-profile", false,
 		"[Optional] Use IAM Role from the YugabyteDB Anywhere Host. Configuration "+
-			"creation will fail on insufficient permissions on the host, defaults to false.")
+			"creation will fail on insufficient permissions on the host. (default false)")
 
 }

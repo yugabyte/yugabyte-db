@@ -401,6 +401,11 @@ func (plat Platform) Restart() error {
 	log.Info("Restarting YBA..")
 
 	if common.HasSudoAccess() {
+		// reload systemd daemon
+		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
+			return out.Error
+		}
+
 		out := shell.Run(common.Systemctl, "restart", "yb-platform.service")
 		if !out.SucceededOrLog() {
 			return out.Error

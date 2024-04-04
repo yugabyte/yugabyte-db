@@ -923,7 +923,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ObjectNode ybImage = Json.newObject().put("ybImage", "image_id");
     ObjectNode regions = Json.newObject().set("us-west-2", ybImage);
     ObjectNode details = Json.newObject().put("arch", "x86_64").set("regions", regions);
-    ObjectNode imageBundle = Json.newObject().put("name", "").set("details", details);
+    ObjectNode imageBundle = Json.newObject().put("name", "test-image").set("details", details);
     imageBundlesList.add(imageBundle);
     bodyJson.set("imageBundles", imageBundlesList);
     Image image = new Image();
@@ -946,7 +946,10 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             new PlatformServiceException(
                 BAD_REQUEST, "Security group extraction failed: Invalid SG ID"))
         .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, null)))
+        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, null)))
         .thenReturn(Arrays.asList(getTestSecurityGroup(24, 24, "vpc_id_new")))
+        .thenReturn(Arrays.asList(getTestSecurityGroup(24, 24, "vpc_id_new")))
+        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc_id")))
         .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc_id")));
 
     when(mockAWSCloudImpl.describeSubnetsOrBadRequest(any(), any()))
@@ -1011,22 +1014,17 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertBadRequestValidationResult(
         result,
         Util.convertStringToJson(
-            "{\"success\":false,\"error\":{"
-                + "\"REGION.us-west-2.VPC\": [\""
-                + "Vpc details extraction failed: Invalid VPC ID\"],"
-                + "\"REGION.us-west-2.DRY_RUN\":["
-                + "\"Dry run of AWS DescribeInstances failed: Invalid region\","
-                + "\"Dry run of AWS Security Group failed: Invalid region\","
-                + "\"Dry run of AWS DescribeImage failed: Invalid region\","
-                + "\"Dry run of AWS DescribeInstanceTypes failed: Invalid region\","
-                + "\"Dry run of AWS Key pair failed: Invalid region\","
-                + "\"Dry run of AWS DescribeVpc failed: Invalid region\","
-                + "\"Dry run of AWS DescribeSubnet failed: Invalid region\"],"
-                + "\"REGION.us-west-2.SECURITY_GROUP\":[\""
-                + "Security group extraction failed: Invalid SG ID\"],"
-                + "\"REGION.us-west-2.SUBNETS\":[\""
-                + "Subnet details extraction failed: Invalid Id\"],"
-                + "\"REGION.us-west-2.IMAGE\":[\"AMI details extraction failed: Not found\"],"
+            "{\"success\":false,\"error\":{\"REGION.us-west-2.VPC\": [\"Vpc details extraction"
+                + " failed: Invalid VPC ID\"],\"REGION.us-west-2.DRY_RUN\":[\"Dry run of AWS"
+                + " DescribeInstances failed: Invalid region\",\"Dry run of AWS Security Group"
+                + " failed: Invalid region\",\"Dry run of AWS DescribeImage failed: Invalid"
+                + " region\",\"Dry run of AWS DescribeInstanceTypes failed: Invalid region\",\"Dry"
+                + " run of AWS Key pair failed: Invalid region\",\"Dry run of AWS DescribeVpc"
+                + " failed: Invalid region\",\"Dry run of AWS DescribeSubnet failed: Invalid"
+                + " region\"],\"REGION.us-west-2.SECURITY_GROUP\":[\"Security group extraction"
+                + " failed: Invalid SG ID\"],\"REGION.us-west-2.SUBNETS\":[\"Subnet details"
+                + " extraction failed: Invalid Id\"],\"REGION.us-west-2.IMAGE.test-image\":[\"AMI"
+                + " details extraction failed: Not found\"],"
                 + "\"errorSource\":[\"providerValidation\"]}}"));
 
     result = assertPlatformException(() -> createProvider(bodyJson));
@@ -1037,10 +1035,11 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "\"REGION.us-west-2.SECURITY_GROUP\":[\"No vpc is attached to SG: sg_id\"],"
                 + "\"REGION.us-west-2.SUBNETS\":[\"Invalid AZ code for subnet: subnet-a\","
                 + "\"Please provide non-overlapping CIDR blocks subnets\"],"
-                + "\"REGION.us-west-2.IMAGE\":["
+                + "\"REGION.us-west-2.IMAGE.test-image\":["
                 + "\"random_arch arch on image image_id is not supported\","
                 + "\"random_device_type root device type on image image_id is not supported\","
                 + "\"windows platform on image image_id is not supported\"],"
+                + "\"SSH_PORT\":[\"22 is not open on security group sg_id\"],"
                 + "\"errorSource\":[\"providerValidation\"]}}"));
 
     image.setArchitecture("x86_64");
@@ -1054,7 +1053,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         Util.convertStringToJson(
             "{\"success\":false,\"error\":{"
                 + "\"REGION.us-west-2.SECURITY_GROUP\":["
-                + "\"22 is not open on security group sg_id\","
                 + "\"sg_id is not attached to vpc: vpc_id\"],"
                 + "\"REGION.us-west-2.SUBNETS\":[\"subnet-a is not associated with vpc_id\"],"
                 + "\"errorSource\":[\"providerValidation\"]}}"));

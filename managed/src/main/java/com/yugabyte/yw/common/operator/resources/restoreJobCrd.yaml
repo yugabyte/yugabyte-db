@@ -9,6 +9,9 @@ spec:
     plural: restorejobs
     singular: restorejob
     kind: RestoreJob
+    categories:
+      - all
+      - yugabyte
   versions:
     - name: v1alpha1
       subresources:

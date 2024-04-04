@@ -122,7 +122,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
         } finally {
           kubernetesStatus.updateYBUniverseStatus(
-              universe,
+              getUniverse(),
               taskParams().getKubernetesResourceDetails(),
               getTaskExecutor().getTaskType(getClass()).name(),
               getUserTaskUUID(),

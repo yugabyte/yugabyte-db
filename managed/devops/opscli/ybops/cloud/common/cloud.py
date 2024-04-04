@@ -27,6 +27,8 @@ from ybops.utils.remote_shell import (copy_to_tmp, wait_for_server, get_host_por
                                       RemoteShell)
 from ybops.common.exceptions import YBOpsRecoverableError
 from ybops.utils import remote_exec_command
+from cryptography import x509
+from cryptography.x509.oid import (NameOID, ExtensionOID)
 
 
 class InstanceState(str, Enum):
@@ -294,23 +296,43 @@ class AbstractCloud(AbstractCommandParser):
 
         return 3
 
+    def get_cert_fingerprints(self, remote_shell, remote_cert_path):
+        serials = []
+        # This command returns 'SHA1 Fingerprint=<value>' separated by new lines.
+        cmd = "bash -c \"while openssl x509 -fingerprint -noout 2>/dev/null;do :;done < '{}'\""
+        output = remote_shell.run_command(cmd.format(remote_cert_path))
+        for line in output.stdout.splitlines():
+            tokens = line.split('=')
+            if len(tokens) == 2:
+                logging.info("[app] Found fingerprint {} for {}"
+                             .format(tokens[1], remote_cert_path))
+                serials.append(tokens[1])
+        return set(serials)
+
     def append_new_root_cert(self, connect_options, root_cert_path,
                              certs_location, certs_dir):
         remote_shell = RemoteShell(connect_options)
         yb_root_cert_path = os.path.join(certs_dir, self.ROOT_CERT_NAME)
         yb_root_cert_new_path = os.path.join(certs_dir, self.ROOT_CERT_NEW_NAME)
-
         # Give write permissions to cert directory
         remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
+        # Delete the new destination cert file if it exists.
+        remote_shell.run_command("rm -f '{}'".format(yb_root_cert_new_path))
         # Copy the new root cert to ca_new.crt
         if certs_location == self.CERT_LOCATION_NODE:
             remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
                                                            yb_root_cert_new_path))
         if certs_location == self.CERT_LOCATION_PLATFORM:
             remote_shell.put_file(root_cert_path, yb_root_cert_new_path)
-        # Append new cert content to ca.crt
-        remote_shell.run_command(
-            "cat '{}' >> '{}'".format(yb_root_cert_new_path, yb_root_cert_path))
+        # Get the fingerprints of the certs.
+        new_fingerprints = self.get_cert_fingerprints(remote_shell, yb_root_cert_new_path)
+        current_fingerprints = self.get_cert_fingerprints(remote_shell, yb_root_cert_path)
+        if not new_fingerprints.issubset(current_fingerprints):
+            # Append new cert content to ca.crt.
+            remote_shell.run_command(
+                "cat '{}' >> '{}'".format(yb_root_cert_new_path, yb_root_cert_path))
+        else:
+            logging.info("Multi cert is already created")
         # Reset the write permissions
         remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
 
@@ -340,21 +362,29 @@ class AbstractCloud(AbstractCommandParser):
         logging.info("Verifying Subject for certs {}".format(node_crt_path))
 
         # Get readable text version of cert
-        cert_text = remote_shell.run_command(
-            "openssl x509 -noout -text -in {}".format(node_crt_path))
-        if "Certificate:" not in cert_text.stdout:
-            raise YBOpsRuntimeError("Unable to decode the node cert: {}.".format(node_crt_path))
-
+        cert_text = remote_shell.run_command("cat {}".format(node_crt_path)).stdout.encode('utf-8')
         # Extract commonName and subjectAltName from the cert text output
-        regex_out = re.findall(" Subject:.*CN=([\\S]*)$| (DNS|IP Address):([\\S]*?)(,|$)",
-                               cert_text.stdout, re.M)
-        # Hostname will be present in group 0 for CN and in group 1 and 2 for SAN
-        cn_entry = [x[0] for x in regex_out if x[0] != '']
-        san_entry = {(x[1], x[2]) for x in regex_out if x[0] == ''}
+        cert = x509.load_pem_x509_certificate(cert_text)
+        # Extract commonName (CN) and Subject Alternative Name (SAN) from the certificate
+        cn_entry = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+        # Extract Subject Alternative Name (SAN) from the certificate
+        san_entry = set()
+        try:
+            san = cert.extensions.get_extension_for_oid(
+                ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value
+            # Extract only DNS names, IP addresses from the SAN extension
+            san_entry_dns = san.get_values_for_type(x509.DNSName)
+            if san_entry_dns:
+                san_entry.update(("DNS", x) for x in san_entry_dns)
+            san_entry_ip = san.get_values_for_type(x509.IPAddress)
+            if san_entry_ip:
+                san_entry.update(("IP Address", str(x)) for x in san_entry_ip)
+        except x509.ExtensionNotFound:
+            pass
 
         # Create cert object following the below dictionary format
         # https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert
-        cert_cn = {'subject': ((('commonName', cn_entry[0] if len(cn_entry) > 0 else ''),),)}
+        cert_cn = {'subject': ((('commonName', cn_entry[0].value if len(cn_entry) > 0 else ''),),)}
         cert_san = {'subjectAltName': tuple(san_entry)}
 
         # Check if the provided hostname matches with either CN or SAN

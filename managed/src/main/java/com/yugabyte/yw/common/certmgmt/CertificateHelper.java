@@ -51,11 +51,12 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Calendar;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -91,6 +92,8 @@ import play.libs.Json;
 @Slf4j
 /* Helper class for Certificates */
 public class CertificateHelper {
+  public static final Pattern CERT_LABEL_PATTERN = Pattern.compile("(.*)~([0-9]+)(.*)");
+
   public static final String CERT_PATH = "%s/certs/%s/%s";
 
   public static final String ROOT_CERT = "root.crt";
@@ -162,23 +165,24 @@ public class CertificateHelper {
   }
 
   private static String generateUniqueRootCALabel(String nodePrefix, CertConfigType certType) {
-
-    // Default the cert label with node prefix.
-    // If cert with the label already exists append number
-
-    String certLabel = nodePrefix;
+    // Default the cert label is same as the node prefix.
+    // If cert with the label already exists, the next number starting from 1 is appended.
     List<CertificateInfo> certificateInfoList =
         CertificateInfo.getWhereLabelStartsWith(nodePrefix, certType);
-    if (!certificateInfoList.isEmpty()) {
-      certificateInfoList.sort(Comparator.comparing(a -> a.getLabel(), Comparator.reverseOrder()));
-      String[] labelArray = certificateInfoList.get(0).getLabel().split("~");
-      int lastCount = 0;
-      try {
-        lastCount = Integer.parseInt(labelArray[labelArray.length - 1]);
-      } catch (NumberFormatException ignored) {
+    int nextLabelNumber = certificateInfoList.size() > 0 ? 1 : 0;
+    for (CertificateInfo cInfo : certificateInfoList) {
+      Matcher matcher = CERT_LABEL_PATTERN.matcher(cInfo.getLabel());
+      if (matcher.find()) {
+        String number = matcher.group(2);
+        try {
+          nextLabelNumber = Math.max(Integer.parseInt(number) + 1, nextLabelNumber);
+        } catch (NumberFormatException ignored) {
+          log.error("Unable to parse {}", number);
+        }
       }
-      certLabel = nodePrefix + "~" + (++lastCount);
     }
+    String certLabel = nextLabelNumber == 0 ? nodePrefix : (nodePrefix + "~" + nextLabelNumber);
+    log.debug("New generated cert label - {}", certLabel);
     return certLabel;
   }
 

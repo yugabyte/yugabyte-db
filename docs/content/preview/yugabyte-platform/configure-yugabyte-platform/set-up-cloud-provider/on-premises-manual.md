@@ -39,11 +39,13 @@ Note that you need access to a user with sudo privileges in order to complete th
 
 For each node, perform the following:
 
+- [Verify the Python version installed on the node](#verify-the-python-version-installed-on-the-node)
 - [Set up time synchronization](#set-up-time-synchronization)
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
 - [Manually pre-provision the node](#pre-provision-nodes-manually)
 - [Install Prometheus Node Exporter](#install-prometheus-node-exporter)
-- [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
+- [Enable yugabyte user processes to run after logout](#enable-yugabyte-user-processes-to-run-after-logout)
+- [Install systemd-related database service unit files](#install-systemd-related-database-service-unit-files)
 - [Install the node agent](#install-node-agent)
 
 After you have provisioned the nodes, you can proceed to [Add instances to the on-prem provider](../on-premises-nodes/#add-instances).
@@ -51,6 +53,29 @@ After you have provisioned the nodes, you can proceed to [Add instances to the o
 {{<note title="Root-level systemd or cron">}}
 The following instructions use user-level systemd to provide the necessary access to system resources. Versions prior to v2.20 use root-level systemd or cron. If you have previously provisioned nodes for this provider using either root-level systemd or cron, you should use the same steps, as all nodes in a provider need to be provisioned in the same way. For instructions on provisioning using root-level systemd or cron, see the [instructions for v2.18](/v2.18/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 {{</note>}}
+
+## Verify the python version installed on the node
+
+Verify that Python 3.5-3.8 is installed on the node. v3.6 is recommended.
+
+In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
+
+```sh
+sudo alternatives --set python3 /usr/bin/python3.6
+sudo alternatives --display python3
+python3 -V
+```
+
+If you are using Python later than v3.6, install the [selinux](https://pypi.org/project/selinux/) package corresponding to your version of python. For example, using [pip](https://pip.pypa.io/en/stable/installation/), you can install as follows:
+
+```sh
+python3 -m pip install selinux
+```
+
+Refer to [Ansible playbook fails with libselinux-python aren't installed on RHEL8](https://access.redhat.com/solutions/5674911) for more information.
+
+If you are using Python later than v3.7, set the **Max Python Version (exclusive)** Global
+Configuration option to the python version. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 ## Set up time synchronization
 

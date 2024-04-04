@@ -20,9 +20,9 @@ public class OperatorWorkQueue {
   public static final int WORKQUEUE_CAPACITY = 1024;
   // For scheduled thread pool, this acts like max size of pool
   private static final int SCHEDULED_THREAD_POOL_SIZE = 5;
-  private static final int INITIAL_BACKOFF_TIME_SEC = 25;
-  private static final int RANDOM_RANGE_MIN = 30;
-  private static final int RANDOM_RANGE_MAX = 50;
+  private static final int INITIAL_BACKOFF_TIME_SEC = 15;
+  private static final int RANDOM_RANGE_MIN = 20;
+  private static final int RANDOM_RANGE_MAX = 30;
   private static final int MAX_BACKOFF_TIME_SEC = 1800;
 
   public static enum ResourceAction {

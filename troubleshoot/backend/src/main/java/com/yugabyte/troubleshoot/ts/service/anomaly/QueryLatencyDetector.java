@@ -27,7 +27,7 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
     this.pgStatStatementsQueryService = pgStatStatementsQueryService;
   }
 
-  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+  protected AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
     List<PgStatStatementsQuery> queries =
         pgStatStatementsQueryService.listByUniverseId(context.getUniverseUuid());
