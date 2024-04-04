@@ -72,7 +72,9 @@ delete_expired_rows_for_index(PG_FUNCTION_ARGS)
 	pgbson *indexKeyDocument = PG_GETARG_PGBSON(2);
 	pgbson *partialFilterDocument = PG_GETARG_MAYBE_NULL_PGBSON(3);
 	int64 currentTime = DatumGetInt64(PG_GETARG_DATUM(4));
-	int indexExpiryCutOffInMS = DatumGetInt32(PG_GETARG_DATUM(5)) * 1000;
+
+	/* TTL expireAfterSeconds is an int32 but we cast it as int64 to avoid overflow in milliseconds calculation */
+	int64 indexExpiryCutOffInMS = (int64) DatumGetInt32(PG_GETARG_DATUM(5)) * 1000L;
 	int ttlDeleteBatchSize = DatumGetInt32(PG_GETARG_DATUM(6));
 	uint64 shardId = DatumGetInt64(PG_GETARG_DATUM(7));
 
