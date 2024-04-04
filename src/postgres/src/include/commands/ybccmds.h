@@ -91,7 +91,8 @@ extern List* YBCPrepareAlterTable(List** subcmds,
 										   int subcmds_size,
 										   Oid relationId,
 										   YBCPgStatement *rollbackHandle,
-										   bool isPartitionOfAlteredTable);
+										   bool isPartitionOfAlteredTable,
+										   int rewriteState);
 
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 

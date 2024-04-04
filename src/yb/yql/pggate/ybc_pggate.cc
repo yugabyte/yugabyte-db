@@ -786,6 +786,11 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   return YBCStatusOK();
 }
 
+void YBCPgInvalidateTableCacheByRelfileNodeId(const YBCPgOid database_oid,
+                                              const YBCPgOid table_oid) {
+  pgapi->InvalidateTableCache(PgObjectId(database_oid, table_oid));
+}
+
 // Tablegroup Operations ---------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
@@ -987,6 +992,10 @@ YBCStatus YBCPgAlterTableSetTableId(
 
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecAlterTable(handle));
+}
+
+YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->AlterTableInvalidateTableCacheEntry(handle));
 }
 
 YBCStatus YBCPgNewDropTable(const YBCPgOid database_oid,
