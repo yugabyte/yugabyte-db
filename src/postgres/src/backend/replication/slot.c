@@ -390,6 +390,7 @@ retry:
 		 */
 		slot->data.catalog_xmin = yb_replication_slot->xmin;
 		slot->data.restart_lsn = yb_replication_slot->restart_lsn;
+		slot->data.yb_last_pub_refresh_time = yb_replication_slot->last_pub_refresh_time;
 
 		slot->data.yb_initial_record_commit_time_ht =
 			yb_replication_slot->record_id_commit_time_ht;

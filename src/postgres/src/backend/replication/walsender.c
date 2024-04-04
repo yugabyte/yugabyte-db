@@ -2942,6 +2942,7 @@ XLogSendLogical(void)
 	if (IsYugaByteEnabled())
 	{
 		yb_record = YBCReadRecord(logical_decoding_ctx->reader, logical_startptr,
+								  logical_decoding_ctx->options.yb_publication_names,
 								  &errm);
 
 		/*
