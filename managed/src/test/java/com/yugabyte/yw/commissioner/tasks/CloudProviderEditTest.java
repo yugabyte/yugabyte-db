@@ -480,7 +480,10 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertNotNull(provider.getLastValidationErrors());
     assertEquals(
         Json.parse("[\"AMI details extraction failed: Not found\"]"),
-        provider.getLastValidationErrors().get("error").get("data.REGION.us-west-1.IMAGE"));
+        provider
+            .getLastValidationErrors()
+            .get("error")
+            .get("data.REGION.us-west-1.IMAGE.test-image"));
     assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
     assertEquals("new name", provider.getName());
   }
