@@ -601,9 +601,9 @@ class NodeChecker():
         delta = expiry_date - datetime.now()
         days_till_expiry = delta.days
         metric = Metric.from_definition(metric_definition).add_value(days_till_expiry)
-        if days_till_expiry == 0:
+        if days_till_expiry >=0 and days_till_expiry < 30:
             return e.fill_and_return_entry(
-                ['{} certificate expires today'.format(cert_name)],
+                ['{} certificate will expire in {} days'.format(cert_name, days_till_expiry)],
                 has_error=True,
                 metrics=[metric])
         if days_till_expiry < 0:
