@@ -199,8 +199,18 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   // The range is exclusive of end i.e. [start, end)
   Status CDCSDKYsqlTest::WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
-      const vector<string>& optional_cols_name) {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      const vector<string>& optional_cols_name, pgwrapper::PGConn* conn) {
+    if (conn == nullptr) {
+      auto conn_obj = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      return WriteRowsWithConn(start, end, cluster, &conn_obj, optional_cols_name);
+    } else {
+      return WriteRowsWithConn(start, end, cluster, conn, optional_cols_name);
+    }
+  }
+
+  Status CDCSDKYsqlTest::WriteRowsWithConn(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
+      pgwrapper::PGConn* conn, const vector<string>& optional_cols_name) {
     LOG(INFO) << "Writing " << end - start << " row(s)";
 
     for (uint32_t i = start; i < end; ++i) {
@@ -215,20 +225,19 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         }
         columns_name << " )";
         columns_value << " )";
-        RETURN_NOT_OK(conn.ExecuteFormat(
+        RETURN_NOT_OK(conn->ExecuteFormat(
             "INSERT INTO $0 $1 VALUES $2", kTableName, columns_name.str(), columns_value.str()));
       } else {
-        RETURN_NOT_OK(conn.ExecuteFormat(
+        RETURN_NOT_OK(conn->ExecuteFormat(
             "INSERT INTO $0($1, $2) VALUES ($3, $4)", kTableName, kKeyColumnName, kValueColumnName,
             i, i + 1));
       }
     }
-
     int retry_count = 1;
     return WaitFor(
         [&]() -> Result<bool> {
           LOG(INFO) << "Retry : " << retry_count++;
-          auto rows = VERIFY_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+          auto rows = VERIFY_RESULT((conn->FetchRows<int32_t, int32_t>(Format(
               "SELECT $1, $2 FROM $0 WHERE $1 >= $3 AND $1 < $4", kTableName, kKeyColumnName,
               kValueColumnName, start, end))));
 
@@ -270,13 +279,28 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Status CDCSDKYsqlTest::WriteRowsHelper(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t num_cols,
-      const char* const table_name,  const vector<string>& optional_cols_name,
-      const bool transaction_enabled) {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      const char* const table_name, const vector<string>& optional_cols_name,
+      const bool transaction_enabled, pgwrapper::PGConn* conn) {
+    if (conn == nullptr) {
+      auto conn_obj = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      return WriteRowsHelperWithConn(
+          start, end, cluster, flag, &conn_obj, num_cols, table_name, optional_cols_name,
+          transaction_enabled);
+    } else {
+      return WriteRowsHelperWithConn(
+          start, end, cluster, flag, conn, num_cols, table_name, optional_cols_name,
+          transaction_enabled);
+    }
+  }
+
+  Status CDCSDKYsqlTest::WriteRowsHelperWithConn(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
+      pgwrapper::PGConn* conn, uint32_t num_cols, const char* const table_name,
+      const vector<string>& optional_cols_name, const bool transaction_enabled) {
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
     if (transaction_enabled) {
-      RETURN_NOT_OK(conn.Execute("BEGIN"));
+      RETURN_NOT_OK(conn->Execute("BEGIN"));
     }
 
     for (uint32_t i = start; i < end; ++i) {
@@ -291,7 +315,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         }
         columns_name << " )";
         columns_value << " )";
-        RETURN_NOT_OK(conn.ExecuteFormat(
+        RETURN_NOT_OK(conn->ExecuteFormat(
             "INSERT INTO $0 $1 VALUES $2", table_name, columns_name.str(), columns_value.str()));
       } else {
         uint32_t value = i;
@@ -303,15 +327,15 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
         std::string statement(statement_buff.str());
         statement.at(statement.size() - 1) = ')';
-        RETURN_NOT_OK(conn.ExecuteFormat(statement, table_name));
+        RETURN_NOT_OK(conn->ExecuteFormat(statement, table_name));
       }
     }
 
     if (transaction_enabled) {
       if (flag) {
-        RETURN_NOT_OK(conn.Execute("COMMIT"));
+        RETURN_NOT_OK(conn->Execute("COMMIT"));
       } else {
-        RETURN_NOT_OK(conn.Execute("ABORT"));
+        RETURN_NOT_OK(conn->Execute("ABORT"));
       }
     }
 
@@ -3779,19 +3803,22 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   void CDCSDKYsqlTest::PerformSingleAndMultiShardInserts(
       const int& num_batches, const int& inserts_per_batch, int apply_update_latency,
       const int& start_index) {
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
     for (int i = 0; i < num_batches; i++) {
       int multi_shard_inserts = inserts_per_batch / 2;
       int curr_start_id = start_index + i * inserts_per_batch;
 
-      ANNOTATE_UNPROTECTED_WRITE(
-          FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) = apply_update_latency;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) =
+          apply_update_latency;
       ASSERT_OK(WriteRowsHelper(
-          curr_start_id, curr_start_id + multi_shard_inserts, &test_cluster_, true));
+          curr_start_id, curr_start_id + multi_shard_inserts, &test_cluster_, true, 2, kTableName,
+          {}, true, &conn));
 
-      ANNOTATE_UNPROTECTED_WRITE(
-          FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) = 0;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) =
+          0;
       ASSERT_OK(WriteRows(
-          curr_start_id + multi_shard_inserts, curr_start_id + inserts_per_batch, &test_cluster_));
+          curr_start_id + multi_shard_inserts, curr_start_id + inserts_per_batch, &test_cluster_,
+          {}, &conn));
     }
   }
 

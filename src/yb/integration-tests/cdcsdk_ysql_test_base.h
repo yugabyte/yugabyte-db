@@ -200,6 +200,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   // The range is exclusive of end i.e. [start, end)
   Status WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
+      const vector<string>& optional_cols_name = {},
+      pgwrapper::PGConn* conn = nullptr);
+
+  Status WriteRowsWithConn(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
+      pgwrapper::PGConn* conn = nullptr,
       const vector<string>& optional_cols_name = {});
 
   // The range is exclusive of end i.e. [start, end)
@@ -212,7 +218,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status WriteRowsHelper(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t num_cols = 2,
       const char* const table_name = kTableName, const vector<string>& optional_cols_name = {},
-      const bool trasaction_enabled = true);
+      const bool trasaction_enabled = true, pgwrapper::PGConn* conn = nullptr);
+
+  Status WriteRowsHelperWithConn(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
+      pgwrapper::PGConn* conn, uint32_t num_cols = 2, const char* const table_name = kTableName,
+      const vector<string>& optional_cols_name = {}, const bool trasaction_enabled = true);
 
   Status CreateTableWithoutPK(PostgresMiniCluster* cluster);
 
