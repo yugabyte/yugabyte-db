@@ -720,17 +720,18 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
   // General cases.
   for (bool is_inclusive : { true, false }) {
     for (size_t idx = 0; idx < partitions.size(); ++idx) {
-      // Special case, tested seprately at the end.
-      if (idx == 0 && !is_inclusive) {
-        continue;
-      }
-
       auto check_key = [&partitions, &req, idx, is_inclusive](const std::string& key) -> Status {
-        SCHECK_FORMAT((idx > 0 || is_inclusive), IllegalState, "", "");
+        SCHECK(!key.empty(), IllegalState, "Invalid key");
         req.clear_upper_bound();
         req.mutable_upper_bound()->set_key(key);
         req.mutable_upper_bound()->set_is_inclusive(is_inclusive);
-        auto* expected = is_inclusive ? &partitions[idx] : &partitions[idx - 1];
+        auto* expected = &partitions[idx];
+        // If the key is the same as the lower partition bound and exclusive, the previous partition
+        // is the correct target.
+        if (!is_inclusive && *expected == key) {
+          SCHECK_GT(idx, 0, IllegalState, "Invalid partitions, first partition key must be empty");
+          expected = &partitions[idx - 1];
+        }
         auto result = VERIFY_RESULT_REF(TEST_FindPartitionKeyByUpperBound(partitions, req));
         SCHECK_EQ(*expected, result, IllegalState, Format(
             "idx = $0, is_inclusive = $1, upper_bound = \"$2\"",
@@ -745,12 +746,6 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
           PartitionSchema::DecodeMultiColumnHashValue(partitions[idx + 1]) :
           std::numeric_limits<decltype(start)>::max()) - 1;
 
-      // 0. Special case: upper bound is empty means upper bound matches first partition start.
-      if (key.empty()) {
-        ASSERT_EQ(idx, 0);
-        ASSERT_OK(check_key(key));
-      }
-
       // 1. Upper bound matches partition start.
       ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(start)));
 
@@ -762,21 +757,6 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
       ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(middle)));
     }
   }
-
-  // Special case: upper_bound is exclusive and points to the first partition.
-  // Generates crash in DEBUG and returns InvalidArgument for release builds.
-  req.clear_upper_bound();
-  req.mutable_upper_bound()->set_key(partitions.front());
-  req.mutable_upper_bound()->set_is_inclusive(false);
-#ifndef NDEBUG
-  ASSERT_DEATH({
-#endif
-  auto result = TEST_FindPartitionKeyByUpperBound(partitions, req);
-  ASSERT_NOK(result);
-  ASSERT_TRUE(result.status().IsInvalidArgument());
-#ifndef NDEBUG
-  }, ".*Upper bound must not be exclusive when it points to the first partition.*");
-#endif
 }
 
 TEST_F(ClientTest, TestListTables) {
