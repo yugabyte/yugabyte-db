@@ -294,7 +294,7 @@ public class TestPgBatch extends BasePgSQLTest {
       startSignal.await();
       String query = new String();
       if (explicitTransaction) {
-        query = "BEGIN TRANSACTION ISOLATION LEVEL " + isolationLevel.sql + ";";
+        s.execute("BEGIN TRANSACTION ISOLATION LEVEL " + isolationLevel.sql);
       } else {
         s.execute(
             "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL " + isolationLevel.sql);
@@ -306,10 +306,10 @@ public class TestPgBatch extends BasePgSQLTest {
       for (int i = 9; i < 12; i++) {
         query += String.format("UPDATE t SET v=2 WHERE k=%d;", i);
       }
-      if (explicitTransaction) {
-        query += "COMMIT;";
-      }
       s.execute(query);
+      if (explicitTransaction) {
+        s.execute("COMMIT");
+      }
 
       t.join();
       assertFalse(failureDetected.get());
@@ -318,32 +318,36 @@ public class TestPgBatch extends BasePgSQLTest {
         expected.add(new Row(i, 2));
       }
       assertRowSet(s, "SELECT * FROM t ORDER BY k", expected);
+      LOG.info("Parameters: extendedProtocol: " + extendedProtocol +
+          ", explicitTransaction: " + explicitTransaction +
+          ", isolationLevel: " + isolationLevel + " success!");
     } catch (PSQLException e) {
-      LOG.info(e.toString());
-      // In RR using the simple query protocol, we hit "Restart isn't possible because statement
-      // isn't one of SELECT/UPDATE/INSERT/DELETE" (due to the "command" being detected as "BEGIN"),
-      // and expect a PSQLException.
-      // In RR and RC using the extended query protocol, it executes as above, a batch statement
-      // after the first statement which can't be retried at the query layer.
+      LOG.info("Parameters: extendedProtocol: " + extendedProtocol +
+          ", explicitTransaction: " + explicitTransaction +
+          ", isolationLevel: " + isolationLevel + " error: " + e);
+
+      // In RR and RC:
+      // (1) If using the extended query protocol, it executes the multi-statement query as a batch
+      // statement for which non-first statements which can't be retried at the query layer.
+      // (2) If using the simple query protocol, retries are blocked due to the error mentioned
+      // below.
       assertNotEquals(isolationLevel, SR);
-      assertTrue(isolationLevel == RR || (isolationLevel == RC && extendedProtocol == true));
-      if (isolationLevel == RR) {
-        assertFalse(explicitTransaction == false && extendedProtocol == false);
+      if (extendedProtocol) {
+        assertTrue(e.toString().contains(
+            "could not serialize access due to concurrent update (query layer retries aren't " +
+            "supported when executing non-first statement in batch, will be unable to replay " +
+            "earlier commands)"));
+      } else {
+        assertTrue(e.toString().contains(
+            "could not serialize access due to concurrent update (query layer retries aren't " +
+            "supported for multi-statement queries issued via the simple query protocol, upvote " +
+            "github issue #21833 if you want this)"));
       }
       return;
     }
     // In SR, the query pauses on the docdb side until the conflicting transaction commits. Then the
     // transaction continues and succeeds.
-    // In RC, in the simple protocol only, in case of a transaction conflict, the entire query
-    // string is restarted, giving us correct results.
-    // In RR, in the simple protocol and where there is no explicit transaction, it's able to retry.
-    if (isolationLevel == RC) {
-      assertFalse(extendedProtocol);
-    }
-    if (isolationLevel == RR) {
-      assertFalse(extendedProtocol);
-      assertFalse(explicitTransaction);
-    }
+    assertEquals(isolationLevel, SR);
   }
 
   @Test
@@ -357,11 +361,8 @@ public class TestPgBatch extends BasePgSQLTest {
     testMultipleStatementsPerQueryHelper(true, true, RR);
     testMultipleStatementsPerQueryHelper(true, true, SR);
 
-    // TODO(Piyush): This test crashes in the debug build due to transaction name being null in the
-    // following line of postgres.c:
-    //  Assert(strcmp(GetCurrentTransactionName(), YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME) == 0);
-    // testMultipleStatementsPerQueryHelper(false, false, RC);
 
+    testMultipleStatementsPerQueryHelper(false, false, RC);
     testMultipleStatementsPerQueryHelper(false, false, RR);
     testMultipleStatementsPerQueryHelper(false, false, SR);
 
