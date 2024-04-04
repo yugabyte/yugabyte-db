@@ -26,7 +26,7 @@
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-#  SEGMENT_API_KEY = "EML32SZ7I5GK9nKD8WiTeNCNKsyAsmqv"
+  SEGMENT_API_KEY = "qIXhZn5Y8ZsOS9rOA8VMiysXZkMhfj2d"
 
 ################ REDIRECTS ################
 #
