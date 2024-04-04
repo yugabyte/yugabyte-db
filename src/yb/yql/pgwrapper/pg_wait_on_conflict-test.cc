@@ -859,7 +859,9 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupUpdateAndSelectForSha
     auto value = conn2.FetchRow<int32_t>("select v from t1 where k=1 for share");
     // Should detect the conflict and raise serializable error.
     ASSERT_NOK(value);
-    ASSERT_TRUE(value.status().message().Contains("All transparent retries exhausted"));
+    ASSERT_TRUE(value.status().message().Contains(
+        "could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 "
+        "are exhausted)"));
   });
 
   SleepFor(1s);
