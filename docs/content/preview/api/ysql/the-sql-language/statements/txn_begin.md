@@ -143,6 +143,14 @@ yugabyte=# SELECT * FROM sample; -- run in second shell.
 (2 rows)
 ```
 
+Start a `READ WRITE` transaction using `SERIALIZABLE` isolation level and making foreign keys `DEFERRABLE`:
+
+```plpgsql
+yugabyte=# BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ WRITE DEFERRABLE;
+yugabyte=# -- run queries
+yugabyte=# COMMIT;
+```
+
 ## See also
 
 - [`ABORT`](../txn_abort)
