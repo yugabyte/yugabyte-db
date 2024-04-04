@@ -896,11 +896,10 @@
             "timeTaken": "Time taken",
             "colocatedTables": "Colocated tables",
             "nonColocatedTables": "Non-colocated tables",
-            "targetClusterSizing": "Target cluster",
             "recommendedClusterSizing": "Recommended cluster"
           },
           "details": {
-            "table": "Table",
+            "tableIndex": "Table / Index",
             "objectType": "Object type",
             "rowCount": "Row count",
             "diskSize": "Disk size",
@@ -909,7 +908,7 @@
             "searchTableName": "Search table name"
           },
           "results": {
-            "table": "Table",
+            "tableIndex": "Table / Index",
             "objectType": "Object type",
             "decisionCheck": "Decision check",
             "colocated": "Colocated",

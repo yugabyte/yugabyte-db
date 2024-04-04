@@ -103,26 +103,15 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       timeTaken: "1h 30m",
       colocatedTables: 10,
       nonColocatedTables: 5,
-      targetClusterSizing: "No",
       recommendedClusterSizing: "4 vCPU, 16GB RAM, 100GB Disk, 3 Nodes",
     },
     {
       iteration: "2",
-      complexity: "Medium",
-      timeTaken: "2h 15m",
+      complexity: "Easy",
+      timeTaken: "1h 15m",
       colocatedTables: 8,
       nonColocatedTables: 7,
-      targetClusterSizing: "Yes",
-      recommendedClusterSizing: "-",
-    },
-    {
-      iteration: "3",
-      complexity: "Hard",
-      timeTaken: "3h 45m",
-      colocatedTables: 5,
-      nonColocatedTables: 10,
-      targetClusterSizing: "Yes",
-      recommendedClusterSizing: "-",
+      recommendedClusterSizing: "4 vCPU, 16GB RAM, 100GB Disk, 3 Nodes",
     },
   ];
 
@@ -163,14 +152,6 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
     {
       name: "nonColocatedTables",
       label: t("clusterDetail.voyager.planAndAssess.summary.nonColocatedTables"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "targetClusterSizing",
-      label: t("clusterDetail.voyager.planAndAssess.summary.targetClusterSizing"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -331,7 +312,6 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
             options={{
               pagination: true,
               onRowClick: (_, { dataIndex }) => {
-                console.log(migration.migration_phase)
                 if (dataIndex === 1 || dataIndex === 2) {
                   onStepChange?.(dataIndex);
                 }

@@ -37,28 +37,36 @@ export const MigrationAssessmentDetails: FC<MigrationAssessmentDetailsProps> = (
   const data = React.useMemo(
     () => [
       {
-        name: "Yugabyted",
-        object_type: "Variable",
-        rowCount: 6,
+        name: "Table_1",
+        object_type: "Table",
+        rowCount: 1000000,
         diskSize: "32 GB",
         readIops: "1000",
         writeIops: "1000",
       },
       {
-        name: "Northwind",
-        object_type: "Contraints",
-        rowCount: 2,
+        name: "Table_2",
+        object_type: "Table",
+        rowCount: 100000,
         diskSize: "16 GB",
         readIops: "1500",
         writeIops: "1000",
       },
       {
-        name: "Southwind",
-        object_type: "Data",
-        rowCount: 34,
+        name: "Index_1",
+        object_type: "Index",
+        rowCount: 200000,
         diskSize: "64 GB",
         readIops: "3000",
         writeIops: "3000",
+      },
+      {
+        name: "Index_2",
+        object_type: "Index",
+        rowCount: 100000,
+        diskSize: "16 GB",
+        readIops: "1500",
+        writeIops: "1000",
       },
     ],
     []
@@ -75,7 +83,7 @@ export const MigrationAssessmentDetails: FC<MigrationAssessmentDetailsProps> = (
   const detailsColumns = [
     {
       name: "name",
-      label: t("clusterDetail.voyager.planAndAssess.details.table"),
+      label: t("clusterDetail.voyager.planAndAssess.details.tableIndex"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),

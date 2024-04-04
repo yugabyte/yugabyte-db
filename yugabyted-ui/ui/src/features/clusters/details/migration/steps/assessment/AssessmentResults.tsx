@@ -37,25 +37,32 @@ export const MigrationAssessmentResults: FC<MigrationAssessmentResultsProps> = (
   const data = React.useMemo(
     () => [
       {
-        name: "Yugabyted",
-        object_type: "Variable",
-        decisionCheck: "Table row count",
+        name: "Table_1",
+        object_type: "Table",
+        decisionCheck: "Colocated max size bytes",
         colocated: "Yes",
-        splitPoints: "2",
+        splitPoints: "-",
       },
       {
-        name: "Northwind",
-        object_type: "Contraints",
-        decisionCheck: "Table row size",
+        name: "Table_2",
+        object_type: "Table",
+        decisionCheck: "Colocated max IOPS",
         colocated: "No",
-        splitPoints: "3",
+        splitPoints: "-",
       },
       {
-        name: "Southwind",
-        object_type: "Data",
-        decisionCheck: "Destination cluster size",
-        colocated: "Yes",
-        splitPoints: "1",
+        name: "Index_1",
+        object_type: "Index",
+        decisionCheck: "Colocated max IOPS",
+        colocated: "No",
+        splitPoints: "-",
+      },
+      {
+        name: "Index_2",
+        object_type: "Index",
+        decisionCheck: "Colocated max IOPS",
+        colocated: "No",
+        splitPoints: "-",
       },
     ],
     []
@@ -72,7 +79,7 @@ export const MigrationAssessmentResults: FC<MigrationAssessmentResultsProps> = (
   const resultsColumns = [
     {
       name: "name",
-      label: t("clusterDetail.voyager.planAndAssess.results.table"),
+      label: t("clusterDetail.voyager.planAndAssess.results.tableIndex"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
