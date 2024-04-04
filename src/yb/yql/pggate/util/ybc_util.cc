@@ -325,6 +325,10 @@ bool YBCIsTxnAbortedError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kAborted);
 }
 
+const char* YBCTxnErrCodeToString(uint16_t txn_errcode) {
+  return YBCPAllocStdString(ToString(TransactionErrorCode(txn_errcode)));
+}
+
 uint16_t YBCGetTxnConflictErrorCode() {
   return to_underlying(TransactionErrorCode::kConflict);
 }
