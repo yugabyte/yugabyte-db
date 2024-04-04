@@ -39,12 +39,12 @@ Note that you need access to a user with sudo privileges in order to complete th
 
 For each node, perform the following:
 
-- [Verify the python version installed on the node](#verify-the-python-version-installed-on-the-node)
+- [Verify the Python version installed on the node](#verify-the-python-version-installed-on-the-node)
 - [Set up time synchronization](#set-up-time-synchronization)
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
 - [Manually pre-provision the node](#pre-provision-nodes-manually)
 - [Install Prometheus Node Exporter](#install-prometheus-node-exporter)
-- [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
+- [Install systemd-related database service unit files](#install-systemd-related-database-service-unit-files)
 - [Install the node agent](#install-node-agent)
 
 After you have provisioned the nodes, you can proceed to [Add instances to the on-prem provider](../on-premises-nodes/#add-instances).
