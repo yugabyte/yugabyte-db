@@ -110,6 +110,7 @@ DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_uint32(cdcsdk_max_consistent_records);
 DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
+DECLARE_uint64(cdcsdk_publication_list_refresh_interval_micros);
 
 namespace yb {
 
@@ -158,6 +159,14 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     uint64_t record_id_commit_time = 0;
   };
 
+  struct CdcStateTableSlotRow {
+    uint64_t confirmed_flush_lsn = 0;
+    uint64_t restart_lsn = 0;
+    uint32_t xmin = 0;
+    HybridTime record_id_commit_time = HybridTime::kInvalid;
+    HybridTime last_pub_refresh_time = HybridTime::kInvalid;
+  };
+
   struct GetAllPendingChangesResponse {
     vector<CDCSDKProtoRecordPB> records;
     // The record count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN,
@@ -165,6 +174,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     int record_count[8];
     CDCSDKCheckpointPB checkpoint;
     int64 safe_hybrid_time = -1;
+    bool has_publication_refresh_indicator = false;
   };
 
   Result<string> GetUniverseId(PostgresMiniCluster* cluster);
@@ -522,6 +532,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetConsistentChangesResponsePB> GetConsistentChangesFromCDC(
       const xrepl::StreamId& stream_id, const uint64_t session_id = kVWALSessionId1);
 
+  Status UpdatePublicationTableList(
+      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
+      const uint64_t& session_id = kVWALSessionId1);
+
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
       const bool set_flag_to_a_smaller_value,
@@ -628,6 +642,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   // Read the cdc_state table
   Result<CdcStateTableRow> ReadFromCdcStateTable(
       const xrepl::StreamId stream_id, const std::string& tablet_id);
+
+  Result<CdcStateTableSlotRow> ReadSlotEntryFromStateTable(const xrepl::StreamId& stream_id);
 
   void VerifyExplicitCheckpointingOnTablets(
       const xrepl::StreamId& stream_id,

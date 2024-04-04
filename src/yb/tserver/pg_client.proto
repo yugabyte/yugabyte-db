@@ -522,6 +522,7 @@ message PgReplicationSlotInfoPB {
   // creation. The key for this map is table_oid and the value is replica identity for that table.
   map<uint32, PgReplicaIdentityPB> replica_identity_map = 8;
   uint64 record_id_commit_time_ht = 9;
+  uint64 last_pub_refresh_time = 10;
 }
 
 message PgListReplicationSlotsResponsePB {

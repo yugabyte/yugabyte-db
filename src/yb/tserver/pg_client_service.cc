@@ -1059,6 +1059,9 @@ class PgClientServiceImpl::Impl {
     std::unordered_map<
         xrepl::StreamId, std::pair<std::pair<uint64_t, uint64_t>, std::pair<uint32_t, uint64_t>>>
         stream_to_metadata;
+    // stream id -> last_pub_refresh_time
+    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_last_pub_refresh_time;
+
     if (!streams.empty()) {
       Status iteration_status;
       auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
@@ -1067,7 +1070,8 @@ class PgClientServiceImpl::Impl {
               .IncludeConfirmedFlushLSN()
               .IncludeRestartLSN()
               .IncludeXmin()
-              .IncludeRecordIdCommitTime(),
+              .IncludeRecordIdCommitTime()
+              .IncludeLastPubRefreshTime(),
           &iteration_status));
 
       for (auto entry_result : range_result) {
@@ -1084,10 +1088,12 @@ class PgClientServiceImpl::Impl {
           DCHECK(entry.restart_lsn.has_value());
           DCHECK(entry.xmin.has_value());
           DCHECK(entry.record_id_commit_time.has_value());
+          DCHECK(entry.last_pub_refresh_time.has_value());
 
           stream_to_metadata[stream_id] = std::make_pair(
               std::make_pair(*entry.confirmed_flush_lsn, *entry.restart_lsn),
               std::make_pair(*entry.xmin, *entry.record_id_commit_time));
+          stream_to_last_pub_refresh_time[stream_id] = *entry.last_pub_refresh_time;
           continue;
         }
 
@@ -1129,6 +1135,7 @@ class PgClientServiceImpl::Impl {
       replication_slot->set_restart_lsn(slot_metadata.first.second);
       replication_slot->set_xmin(slot_metadata.second.first);
       replication_slot->set_record_id_commit_time_ht(slot_metadata.second.second);
+      replication_slot->set_last_pub_refresh_time(stream_to_last_pub_refresh_time[*stream_id]);
     }
     return Status::OK();
   }
@@ -1172,9 +1179,10 @@ class PgClientServiceImpl::Impl {
     uint64_t restart_lsn = 0;
     uint32_t xmin = 0;
     uint64_t record_id_commit_time_ht;
+    uint64_t last_pub_refresh_time = 0;
     RETURN_NOT_OK(GetReplicationSlotInfoFromCDCState(
         stream_id, &is_slot_active, &confirmed_flush_lsn, &restart_lsn, &xmin,
-        &record_id_commit_time_ht));
+        &record_id_commit_time_ht, &last_pub_refresh_time));
     resp->mutable_replication_slot_info()->set_replication_slot_status(
         (is_slot_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
 
@@ -1190,6 +1198,7 @@ class PgClientServiceImpl::Impl {
     slot_info->set_restart_lsn(restart_lsn);
     slot_info->set_xmin(xmin);
     slot_info->set_record_id_commit_time_ht(record_id_commit_time_ht);
+    slot_info->set_last_pub_refresh_time(last_pub_refresh_time);
     return Status::OK();
   }
 
@@ -1208,9 +1217,10 @@ class PgClientServiceImpl::Impl {
     uint64_t restart_lsn;
     uint32_t xmin;
     uint64_t record_id_commit_time_ht;
+    uint64_t last_pub_refresh_time;
     RETURN_NOT_OK(GetReplicationSlotInfoFromCDCState(
         stream_id, &is_slot_active, &confirmed_flush_lsn, &restart_lsn, &xmin,
-        &record_id_commit_time_ht));
+        &record_id_commit_time_ht, &last_pub_refresh_time));
     resp->set_replication_slot_status(
         (is_slot_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
     return Status::OK();
@@ -1218,7 +1228,8 @@ class PgClientServiceImpl::Impl {
 
   Status GetReplicationSlotInfoFromCDCState(
       const xrepl::StreamId& stream_id, bool* active, uint64_t* confirmed_flush_lsn,
-      uint64_t* restart_lsn, uint32_t* xmin, uint64_t* record_id_commit_time_ht) {
+      uint64_t* restart_lsn, uint32_t* xmin, uint64_t* record_id_commit_time_ht,
+      uint64_t* last_pub_refresh_time) {
     // TODO(#19850): Fetch only the entries belonging to the stream_id from the table.
     Status iteration_status;
     auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
@@ -1227,7 +1238,8 @@ class PgClientServiceImpl::Impl {
             .IncludeConfirmedFlushLSN()
             .IncludeRestartLSN()
             .IncludeXmin()
-            .IncludeRecordIdCommitTime(),
+            .IncludeRecordIdCommitTime()
+            .IncludeLastPubRefreshTime(),
         &iteration_status));
 
     // Find the latest active time for the stream across all tablets.
@@ -1246,11 +1258,13 @@ class PgClientServiceImpl::Impl {
         DCHECK(entry.restart_lsn.has_value());
         DCHECK(entry.xmin.has_value());
         DCHECK(entry.record_id_commit_time.has_value());
+        DCHECK(entry.last_pub_refresh_time.has_value());
 
         *DCHECK_NOTNULL(confirmed_flush_lsn) = *entry.confirmed_flush_lsn;
         *DCHECK_NOTNULL(restart_lsn) = *entry.restart_lsn;
         *DCHECK_NOTNULL(xmin) = *entry.xmin;
         *DCHECK_NOTNULL(record_id_commit_time_ht) = *entry.record_id_commit_time;
+        *DCHECK_NOTNULL(last_pub_refresh_time) = *entry.last_pub_refresh_time;
         continue;
       }
 

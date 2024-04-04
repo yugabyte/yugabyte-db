@@ -238,6 +238,9 @@ class PgClient {
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
 
+  Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+
   Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
   Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(

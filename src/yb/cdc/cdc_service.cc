@@ -4586,5 +4586,58 @@ void CDCServiceImpl::UpdateAndPersistLSN(
   context.RespondSuccess();
 }
 
+void CDCServiceImpl::UpdatePublicationTableList(
+    const UpdatePublicationTableListRequestPB* req, UpdatePublicationTableListResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckOnline(req, resp, &context)) {
+    return;
+  }
+
+  VLOG(4) << "Received UpdatePublicationTableList request: " << req->DebugString();
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_session_id(),
+      STATUS(InvalidArgument, "Session ID is required for UpdatePublicationTableList"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_stream_id(),
+      STATUS(InvalidArgument, "Stream ID is required for UpdatePublicationTableList"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  auto session_id = req->session_id();
+  std::shared_ptr<CDCSDKVirtualWAL> virtual_wal;
+  {
+    SharedLock l(mutex_);
+    RPC_CHECK_AND_RETURN_ERROR(
+        session_virtual_wal_.contains(session_id),
+        STATUS_FORMAT(
+            NotFound, "Virtual WAL instance not found for the session_id: $0", session_id),
+        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
+    virtual_wal = session_virtual_wal_[session_id];
+  }
+
+  auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
+  HostPort hostport(context.local_address());
+  std::unordered_set<TableId> new_table_list;
+  for (const auto& table_id : req->table_id()) {
+    new_table_list.insert(table_id);
+  }
+
+  Status s = virtual_wal->UpdatePublicationTableListInternal(
+      stream_id, new_table_list, hostport, GetDeadline(context, client()));
+  if (!s.ok()) {
+    std::string error_msg =
+        Format("UpdatePublicationTableList failed for stream_id: $0", stream_id);
+    LOG(WARNING) << error_msg;
+    RPC_STATUS_RETURN_ERROR(
+        s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    return;
+  }
+
+  context.RespondSuccess();
+}
+
 }  // namespace cdc
 }  // namespace yb

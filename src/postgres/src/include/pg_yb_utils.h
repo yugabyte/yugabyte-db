@@ -1111,4 +1111,6 @@ extern void YbGetRedactedQueryString(const char* query, int query_len,
 extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
 										bool yb_copy_split_options,
 										bool is_truncate);
+
+extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 #endif /* PG_YB_UTILS_H */

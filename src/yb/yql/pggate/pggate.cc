@@ -2377,6 +2377,11 @@ Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
   return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids);
 }
 
+Result<cdc::UpdatePublicationTableListResponsePB> PgApiImpl::UpdatePublicationTableList(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+  return pg_session_->pg_client().UpdatePublicationTableList(stream_id, table_ids);
+}
+
 Result<cdc::DestroyVirtualWALForCDCResponsePB> PgApiImpl::DestroyVirtualWALForCDC() {
   return pg_session_->pg_client().DestroyVirtualWALForCDC();
 }

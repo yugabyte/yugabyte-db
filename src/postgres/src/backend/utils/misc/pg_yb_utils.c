@@ -4691,3 +4691,14 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 	if (yb_test_fail_table_rewrite_after_creation)
 		elog(ERROR, "Injecting error.");
 }
+
+void
+YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
+{
+	char read_time[50];
+
+	sprintf(read_time, "%llu ht", (unsigned long long) read_time_ht);
+	elog(DEBUG1, "Setting yb_read_time to %s ", read_time);
+	assign_yb_read_time(read_time, NULL);
+	YbRelationCacheInvalidate();
+}
