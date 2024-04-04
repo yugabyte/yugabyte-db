@@ -1046,6 +1046,16 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
   return pg_stmt->Exec();
 }
 
+Status PgApiImpl::AlterTableInvalidateTableCacheEntry(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  pg_stmt->InvalidateTableCacheEntry();
+  return Status::OK();
+}
+
 Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
                                bool if_exist,
                                PgStatement **handle) {
