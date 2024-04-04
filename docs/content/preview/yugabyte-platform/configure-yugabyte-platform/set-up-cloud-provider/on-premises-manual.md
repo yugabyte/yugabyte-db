@@ -44,6 +44,7 @@ For each node, perform the following:
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
 - [Manually pre-provision the node](#pre-provision-nodes-manually)
 - [Install Prometheus Node Exporter](#install-prometheus-node-exporter)
+- [Enable yugabyte user processes to run after logout](#enable-yugabyte-user-processes-to-run-after-logout)
 - [Install systemd-related database service unit files](#install-systemd-related-database-service-unit-files)
 - [Install the node agent](#install-node-agent)
 
