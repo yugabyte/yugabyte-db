@@ -23,6 +23,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.ParseException;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -191,6 +195,21 @@ public class ReleasesUtils {
             } catch (ParseException e) {
               log.warn("invalid date format", e);
             }
+          } else if (node.has("build_timestamp")) {
+            DateFormat df = DateFormat.getDateInstance();
+            try {
+              DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm:ss z");
+              LocalDateTime dateTime =
+                  LocalDateTime.parse(node.get("build_timestamp").asText(), formatter);
+              metadata.release_date = Date.from(dateTime.atZone(ZoneId.of("UTC")).toInstant());
+              log.debug(
+                  "using build timestamp {} as release date for {}",
+                  metadata.release_date,
+                  metadata.version);
+              // best effort parse.
+            } catch (DateTimeParseException e) {
+              log.warn("invalid date format", e);
+            }
           }
           if (node.has("release_notes")) {
             metadata.release_notes = node.get("release_notes").asText();
@@ -276,6 +295,10 @@ public class ReleasesUtils {
   }
 
   private boolean isHelmChart(String fileName) {
+    Pattern ybPackagePattern = Pattern.compile(YB_PACKAGE_REGEX);
+    if (ybPackagePattern.matcher(fileName).find()) {
+      return false;
+    }
     Pattern ybHelmChartPattern = Pattern.compile(YB_HELM_PACKAGE_REGEX);
     Matcher helmPackage = ybHelmChartPattern.matcher(fileName);
     return helmPackage.find();

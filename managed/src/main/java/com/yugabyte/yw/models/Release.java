@@ -15,8 +15,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
-import java.text.DateFormat;
-import java.text.ParseException;
+import java.time.DateTimeException;
+import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
@@ -98,10 +98,9 @@ public class Release extends Model {
     // Optional fields
     release.releaseTag = reqRelease.release_tag;
     if (reqRelease.release_date != null) {
-      DateFormat df = DateFormat.getDateInstance();
       try {
-        release.releaseDate = df.parse(reqRelease.release_date);
-      } catch (ParseException e) {
+        release.releaseDate = Date.from(Instant.ofEpochSecond(reqRelease.release_date));
+      } catch (IllegalArgumentException | DateTimeException e) {
         log.warn("unable to parse date format", e);
       }
     }
