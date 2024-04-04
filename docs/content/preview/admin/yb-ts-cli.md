@@ -82,7 +82,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
 
 ##### clear_server_metacache
 
-Clear all metacaches that are stored on a specified server. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
+Clear all metacaches that are stored on a specified server. Works on both YB-Master (port 9100) and YB-TServer (port 7100) processes.
 
 Metacache is a YBClient cache on a Tablet/Master server to find out which Tablet Server hosts which tablet. This cache can be stale in some cases, this 
 
