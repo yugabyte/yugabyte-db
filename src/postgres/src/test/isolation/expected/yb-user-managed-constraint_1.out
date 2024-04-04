@@ -20,7 +20,7 @@ step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
 step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1; <waiting ...>
 step s1_commit: COMMIT;
 step s2_update: <... completed>
-error in steps s1_commit s2_update: ERROR:  All transparent retries exhausted. could not serialize access due to concurrent update
+error in steps s1_commit s2_update: ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
 step s2_commit: COMMIT;
 step s1_select: select *, v1 + v2 from t;
 k              v1             v2             ?column?
