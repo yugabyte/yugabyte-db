@@ -238,7 +238,7 @@ DROP FUNCTION invert(x float8);
 
 create temp table i_table (f1 int);
 
--- psql will show only the last result in a multi-statement Query
+-- psql will show all results of a multi-statement Query
 SELECT 1\; SELECT 2\; SELECT 3;
 
 -- this implicitly commits:
