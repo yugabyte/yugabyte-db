@@ -6,10 +6,6 @@ type: docs
 showRightNav: true
 cascade:
   unversioned: true
-menu:
-  preview_releases:
-    identifier: ta-<num>
-    weight: 1
 rightNav:
   hideH2: true
 type: docs
