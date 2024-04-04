@@ -39,6 +39,7 @@ The following commands are available:
 
 * [are_tablets_running](#are-tablets-running)
 * [is_server_ready](#is-server-ready)
+* [clear_server_metacache](#clear-server-metacache0
 * [compact_all_tablets](#compact-all-tablets)
 * [compact_tablet](#compact-tablet)
 * [count_intents](#count-intents)
@@ -75,6 +76,21 @@ If all tablets have bootstrapped, returns "Tablet server is ready".
 
 ```sh
 yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
+##### clear_server_metacache
+
+Clear all metacaches that are stored on a specified server. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
+
+Metacache is a YBClient cache on a Tablet/Master server to find out which Tablet Server hosts which tablet. This cache can be stale in some cases, this 
+
+command is introduced for users to clear the metacache on a particular YB-TServer or YB-Master.
+
+**Syntax**
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] clear_server_metacache
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -272,21 +288,6 @@ yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
 ```
 
 * *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
-
-##### clear_server_metacache
-
-Clear all metacaches that are stored on a specified server. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
-
-Metacache is a YBClient cache on a Tablet/Master server to find out which Tablet Server hosts which tablet. This cache can be stale in some cases, this 
-
-command is introduced for users to clear the metacache on a particular YB-TServer or YB-Master.
-
-**Syntax**
-```sh
-yb-ts-cli [ --server_address=<host>:<port> ] clear_server_metacache
-```
-
-* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 ## Flags
 
