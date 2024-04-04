@@ -55,6 +55,7 @@ public class UniverseDetails extends Model implements ModelWithId<UUID> {
       private UUID uuid;
       private String clusterType;
       private UserIntent userIntent;
+      private PlacementInfo placementInfo;
     }
 
     @Data
