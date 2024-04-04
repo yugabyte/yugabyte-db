@@ -840,7 +840,8 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
     }
     if (state_->pending_stepdown_leader_tasks_[table_uuid].count(tablet_id) > 0) {
       const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
-      const auto& from_ts = tablet_meta.leader_uuid;
+      // The copy here is intentional: MoveLeader will change tablet_meta.leader_uuid to to_ts.
+      const auto from_ts = tablet_meta.leader_uuid;
       const auto& to_ts = state_->pending_stepdown_leader_tasks_[table_uuid][tablet_id];
       VLOG(3) << Format("Adding pending leader stepdown task for tablet $0 from TS $1 to TS $2",
           tablet_id, from_ts, to_ts);
@@ -1435,7 +1436,7 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
     *out_tablet_id = tablet_id;
     *out_from_ts = remove_candidate;
     // Do force leader stepdown, as we are either not the leader or we are allowed to step down.
-    RETURN_NOT_OK(RemoveReplica(tablet_id, remove_candidate));
+    RETURN_NOT_OK(RemoveReplica(*out_tablet_id, remove_candidate));
     return true;
   }
   return false;

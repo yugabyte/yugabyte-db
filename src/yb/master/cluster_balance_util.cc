@@ -722,6 +722,8 @@ Status PerTableLoadState::MoveLeader(const TabletId& tablet_id,
   SCHECK_FORMAT(initialized_, IllegalState,
       "PerTableLoadState not initialized before calling $0 for tablet $1", __func__, tablet_id);
 
+  SCHECK_NE(&per_tablet_meta_[tablet_id].leader_uuid, &from_ts, InvalidArgument,
+      "from_ts should not be a reference to the leader_uuid in per_tablet_meta_");
   if (per_tablet_meta_[tablet_id].leader_uuid != from_ts) {
     return STATUS_SUBSTITUTE(IllegalState, "Tablet $0 has leader $1, but $2 expected.",
                               tablet_id, per_tablet_meta_[tablet_id].leader_uuid, from_ts);
