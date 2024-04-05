@@ -2224,6 +2224,45 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return dumpEntitiesResponse.getTabletsByTserverAddress(currentNodeHP);
   }
 
+  /**
+   * Checks that no tablets are assigned on the current node, otherwise throws an error.
+   *
+   * @param universe the universe the current node is in.
+   * @param currentNode the current node we are checking the number of tablets against.
+   * @param error the error message to show when check fails.
+   */
+  public void checkNoTabletsOnNode(Universe universe, NodeDetails currentNode) {
+    Duration timeout =
+        confGetter.getConfForScope(universe, UniverseConfKeys.clusterMembershipCheckTimeout);
+    boolean result =
+        doWithExponentialTimeout(
+            4000 /* initialDelayMs */,
+            30000 /* maxDelaysMs */,
+            timeout.toMillis(),
+            () -> {
+              Set<String> tabletsOnServer = getTserverTablets(universe, currentNode);
+              log.debug(
+                  "Number of tablets on node {}'s tserver is {} tablets",
+                  currentNode.getNodeName(),
+                  tabletsOnServer.size());
+
+              if (!tabletsOnServer.isEmpty()) {
+                log.debug(
+                    "Expected 0 tablets on node {}. Got {} tablets. Example tablets {} ...",
+                    currentNode.getNodeName(),
+                    tabletsOnServer.size(),
+                    tabletsOnServer.stream().limit(20).collect(Collectors.toSet()));
+              }
+              return tabletsOnServer.isEmpty();
+            });
+    if (!result) {
+      throw new RuntimeException(
+          String.format(
+              "Timed out waiting for tablets on node %s to have 0 tablets",
+              currentNode.getNodeName()));
+    }
+  }
+
   /*
    * Checks whether or not the node has a master process in the universe quorum
    *

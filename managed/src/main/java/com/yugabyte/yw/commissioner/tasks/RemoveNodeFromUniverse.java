@@ -32,7 +32,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -276,22 +275,11 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
 
     if (!isTabletMovementAvailable()) {
       log.debug(
-          "Tablets have nowhere to move off of tserver on node: {}", currentNode.getNodeName());
-      Set<String> tabletsOnTserver = getTserverTablets(universe, currentNode);
-      log.debug(
-          "There are currently {} tablets assigned to tserver {}",
-          tabletsOnTserver.size(),
-          taskParams().nodeName);
-      if (tabletsOnTserver.size() != 0) {
-        throw new RuntimeException(
-            String.format(
-                "There is no place to move the tablets from this"
-                    + " tserver and there are still %d tablets assigned to it on node %s. "
-                    + "A healthy tserver should not be removed. Example tablet ids assigned: %s",
-                tabletsOnTserver.size(),
-                currentNode.getNodeName(),
-                tabletsOnTserver.stream().limit(10).collect(Collectors.toList()).toString()));
-      }
+          "Tablets have nowhere to move off of tserver on node: {}. Checking if there are still"
+              + " tablets assigned to it. A healthy tserver should not be removed.",
+          currentNode.getNodeName());
+      // TODO: Move this into a subtask.
+      checkNoTabletsOnNode(universe, currentNode);
     }
     log.debug("Pre-check succeeded");
   }
