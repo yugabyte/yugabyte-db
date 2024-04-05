@@ -185,7 +185,7 @@ To add your own machine images to the catalog:
 
 1. Click **Add Linux Version**.
 
-1. Provide a name for the Linux version. User will see this name when creating universes using this provider.
+1. Provide a name for the Linux version. You can see this name when creating universes using this provider.
 
 1. Enter the Machine Image ID to use for each [provider region](#regions).
 

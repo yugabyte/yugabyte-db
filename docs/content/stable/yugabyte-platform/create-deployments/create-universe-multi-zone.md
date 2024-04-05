@@ -54,27 +54,33 @@ To create a universe:
 
 ### Cloud Configuration
 
-Enter a name for the provider.
+Specify the provider and geolocations for the nodes in the universe:
 
-Choose the provider configuration to use to create the universe.
+- Enter a name for the universe.
 
-Select the regions in which to deploy nodes. The available regions will depend on the provider you selected.
+- Choose the [provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/) to use to create the universe.
 
-Specify the master placement for the YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
+- Select the regions in which to deploy nodes. The available regions will depend on the provider you selected.
 
-Enter the number of nodes to deploy in the universe. When you provide the value in the **Nodes** field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
+- Specify the master placement for the YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
 
-Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) for the universe.
+- Enter the number of nodes to deploy in the universe. When you provide the value in the **Nodes** field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
 
-Configure the availability zones where the nodes will be deployed by clicking **Add Zone**. Use the **Preferred** setting to set the [preferred zone or region](../../../explore/multi-region-deployments/synchronous-replication-yba/#preferred-region).
+- Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) for the universe.
+
+- Configure the availability zones where the nodes will be deployed by clicking **Add Zone**.
+
+- Use the **Preferred** setting to set the [preferred zone or region](../../../explore/multi-region-deployments/synchronous-replication-yba/#preferred-region).
 
 ### Instance Configuration
 
-Choose the **Linux version** to be provisioned on the nodes of the universe.
+Specify the instance to use for the universe nodes:
 
-Select the **Instance Type** to use for the nodes in the universe.
+- Choose the **Linux version** to be provisioned on the nodes of the universe.
 
-Specify the number and size of the storage volumes, and the storage type.
+- Select the **Instance Type** to use for the nodes in the universe.
+
+- Specify the number and size of the storage volumes, and the storage type.
 
 ### Security Configurations
 
