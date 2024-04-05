@@ -1288,8 +1288,17 @@ StartupReplicationSlots(void)
 			continue;
 		}
 
-		/* looks like a slot in a normal state, restore */
-		RestoreSlotFromDisk(replication_de->d_name);
+		/*
+		 * YB Note: We do not store the replication slot metadata on disk. This
+		 * directory is only used for storing spilled large txns by the
+		 * reorderbuffer. Our source of truth for replication slots is
+		 * yb-master, so we disable loading the slot from disk here.
+		 */
+		if (!YBIsEnabledInPostgresEnvVar())
+		{
+			/* looks like a slot in a normal state, restore */
+			RestoreSlotFromDisk(replication_de->d_name);
+		}
 	}
 	FreeDir(replication_dir);
 
