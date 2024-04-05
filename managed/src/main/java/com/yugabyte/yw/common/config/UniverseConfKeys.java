@@ -1004,6 +1004,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "and the node does not have any tablets assigned to it in the tserver quorum.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> clusterMembershipCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.cluster_membership.timeout",
+          ScopeType.UNIVERSE,
+          "Cluster membership check timeout",
+          "Controls the max time to check that there are no tablets assigned to the node",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> skipConfigBasedPreflightValidation =
       new ConfKeyInfo<>(
           "yb.backup.skip_config_based_preflight_validation",
