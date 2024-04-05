@@ -113,25 +113,25 @@ The [YB-TServer](../yb-tserver) service is responsible for maintaining and manag
 A YugabyteDB universe comprises one primary cluster and zero or more read replica clusters that collectively function as a resilient and scalable distributed database.
 
 {{<note>}}
-Sometimes the terms *universe* and *cluster* are used interchangeably. However, the two are not always equivalent, as a [Universe](#universe) can contain one or more [clusters](#cluster)
+Sometimes the terms *universe* and *cluster* are used interchangeably. However, the two are not always equivalent, as a universe can contain one or more [clusters](#cluster).
 {{</note>}}
 
 ## xCluster
 
-xCluster is the scheme of asynchronous replication between 2 [universes](#universe). Primary used for disaster recovery. YugabyteDB supports transactional xCluster {{<link "../docdb-replication/async-replication/">}}
+xCluster is a type of deployment where data is replicated asynchronously between two [universes](#universe) - a primary and a standby. The standby can be used for disaster recovery. YugabyteDB supports transactional xCluster {{<link "../docdb-replication/async-replication/">}}.
 
 ## YCQL
 
-Semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link "../../api/ycql">}}
+Semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link "../../api/ycql">}}
 
 ## YQL
 
-The YugabyteDB Query Layer (YQL) is the primary layer that provides interfaces for applications to interact with using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). {{<link "../query-layer">}}
+The YugabyteDB Query Layer (YQL) is the primary layer that provides interfaces for applications to interact with using client drivers. This layer deals with the API-specific aspects such as query/command compilation and the run-time (data type representations, built-in operations, and more). {{<link "../query-layer">}}
 
 ## YSQL
 
-Fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Note that YSQL reuses the native query layer of the PostgreSQL open source project. {{<link "../../api/ysql">}}
+Fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions, and referential integrity (such as foreign keys). Note that YSQL reuses the native query layer of the PostgreSQL open source project. {{<link "../../api/ysql">}}
 
 ## Zone
 
-Typically referred as Availability Zones or just AZ, zone is a datacenters or a group of colocated datacenters. Zone is the default fault domain in YugabyteDB.
+Typically referred as Availability Zones or just AZ, a zone is a datacenter or a group of colocated datacenters. Zone is the default [fault domain](#fault-domain) in YugabyteDB.

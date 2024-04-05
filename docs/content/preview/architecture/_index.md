@@ -23,7 +23,7 @@ Check out [Key concepts](./key-concepts) for a quick reference to many of the te
 
 ## Layered architecture
 
-In general, operations in YugabyteDB are split logically into 2 layers, the query layer and the storage layer. The query layer is responsible for handling user requests and sending the requests to the right data. The storage layer is responsible for optimally storing the data on disk, and manage replication and consistency.
+In general, operations in YugabyteDB are split logically into 2 layers, the query layer and the storage layer. The query layer is responsible for handling user requests and sending the requests to the right data. The storage layer is responsible for optimally storing the data on disk and managing replication and consistency.
 
 ![YugabyteDB Layered Architecture](/images/architecture/layered-architecture.png)
 
