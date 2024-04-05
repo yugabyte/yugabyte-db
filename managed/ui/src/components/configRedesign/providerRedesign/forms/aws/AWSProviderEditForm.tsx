@@ -93,7 +93,11 @@ import {
   hasNecessaryPerm,
   RbacValidator
 } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
@@ -110,7 +114,6 @@ export interface AWSProviderEditFormFieldValues {
   editAccessKey: boolean;
   editSSHKeypair: boolean;
   enableHostedZone: boolean;
-  useIMDSv2: boolean;
   hostedZoneId: string;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
@@ -527,24 +530,6 @@ export const AWSProviderEditForm = ({
                   />
                 </FormField>
               )}
-              <FormField>
-                <FieldLabel
-                  infoTitle="Use IMDSv2"
-                  infoContent="This should be turned on if the AMI requires Instance Metadata Service v2"
-                >
-                  Use IMDSv2
-                </FieldLabel>
-                <YBToggleField
-                  name="useIMDSv2"
-                  control={formMethods.control}
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AWS,
-                    'useIMDSv2',
-                    isFormDisabled,
-                    isProviderInUse
-                  )}
-                />
-              </FormField>
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -628,12 +613,14 @@ export const AWSProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AWS,
-                    'sshUser',
-                    isFormDisabled,
-                    isProviderInUse
-                  ) || isOsPatchingEnabled}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.AWS,
+                      'sshUser',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
@@ -644,12 +631,14 @@ export const AWSProviderEditForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AWS,
-                    'sshPort',
-                    isFormDisabled,
-                    isProviderInUse
-                  ) || isOsPatchingEnabled}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.AWS,
+                      'sshPort',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
@@ -884,7 +873,6 @@ const constructDefaultFormValues = (
   editAccessKey: false,
   editSSHKeypair: false,
   enableHostedZone: !!providerConfig.details.cloudInfo.aws.awsHostedZoneId,
-  useIMDSv2: !!providerConfig.details.cloudInfo.aws.useIMDSv2,
   hostedZoneId: providerConfig.details.cloudInfo.aws.awsHostedZoneId,
   ntpServers: providerConfig.details.ntpServers,
   ntpSetupType: getNtpSetupType(providerConfig),
@@ -964,8 +952,7 @@ const constructProviderPayload = async (
               ? formValues.secretAccessKey
               : providerConfig.details.cloudInfo.aws.awsAccessKeySecret
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
-          useIMDSv2: formValues.useIMDSv2
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
         }
       },
       ntpServers: formValues.ntpServers,

@@ -1604,6 +1604,9 @@
         "sshUserPlaceholder": "e.g. ubuntu",
         "sshPort": "SSH Port (Optional)",
         "sshPortPlaceholder": "e.g. 22",
+        "otherConfiguration": "Other Configurations",
+        "useIMDSv2": "Use IMDSv2",
+        "useIMDSv2Info": "This should be turned on if the Image bundle requires Instance Metadata Service v2",
         "menuActions": {
           "edit": "Edit",
           "delete": "Delete",
