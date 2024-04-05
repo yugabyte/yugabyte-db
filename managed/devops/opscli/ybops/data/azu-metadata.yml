@@ -96,6 +96,20 @@ regions:
     - '1'
     - '2'
     - '3'
+  israelcentral:
+    cidr_prefix: '10.47'
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
+    zones:
+    - '1'
+    - '2'
+    - '3'
+  italynorth:
+    cidr_prefix: '10.49'
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
+    zones:
+    - '1'
+    - '2'
+    - '3'
   japaneast:
     cidr_prefix: '10.18'
     image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
@@ -136,6 +150,20 @@ regions:
     - '1'
     - '2'
     - '3'
+  polandcentral:
+    cidr_prefix: '10.50'
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
+    zones:
+    - '1'
+    - '2'
+    - '3'
+  qatarcentral:
+    cidr_prefix: '10.48'
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
+    zones:
+    - '1'
+    - '2'
+    - '3'
   southafricanorth:
     cidr_prefix: '10.41'
     image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
@@ -161,6 +189,13 @@ regions:
     cidr_prefix: '10.33'
     image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
+  swedencentral:
+    cidr_prefix: '10.51'
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
+    zones:
+    - '1'
+    - '2'
+    - '3'
   switzerlandnorth:
     cidr_prefix: '10.43'
     image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501

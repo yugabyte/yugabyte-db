@@ -20,6 +20,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -267,12 +268,7 @@ Result<bool> ShouldAddTableToReplicationGroup(
     CatalogManager& catalog_manager) {
   const auto& table_pb = table_info.old_pb();
 
-  // Only user created YSQL tables should be automatically added to xCluster replication.
-  // xCluster DDL Repl: replicated_ddls is only used on the target, so don't replicate it either.
-  if (table_pb.colocated() || table_pb.table_type() != PGSQL_TABLE_TYPE ||
-      !catalog_manager.IsUserCreatedTable(table_info) ||
-      (table_pb.name() == xcluster::kDDLReplicatedTableName &&
-       table_pb.schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName)) {
+  if (!IsTableEligibleForXClusterReplication(table_info)) {
     return false;
   }
 
@@ -333,16 +329,23 @@ Result<bool> ShouldAddTableToReplicationGroup(
     }
   }
 
+  SCHECK(
+      !table_info.IsColocationParentTable(), IllegalState,
+      Format(
+          "Colocated parent tables can only be added during the initial xCluster replication "
+          "setup: $0",
+          table_info.ToString()));
+
   return true;
 }
 
 Result<NamespaceId> GetProducerNamespaceId(
     UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id) {
-  auto l = universe.LockForRead();
   SCHECK(
-      l->pb.has_db_scoped_info(), IllegalState, "Replication group $0 is not db-scoped",
+      universe.IsDbScoped(), IllegalState, "Replication group $0 is not db-scoped",
       universe.ToString());
 
+  auto l = universe.LockForRead();
   auto opt_namespace_id = GetProducerNamespaceIdInternal(l->pb, consumer_namespace_id);
   SCHECK_FORMAT(
       opt_namespace_id, NotFound, "Namespace $0 not found in replication group $1",
@@ -353,11 +356,10 @@ Result<NamespaceId> GetProducerNamespaceId(
 
 bool IncludesConsumerNamespace(
     UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id) {
-  auto l = universe.LockForRead();
-  if (!l->pb.has_db_scoped_info()) {
+  if (!universe.IsDbScoped()) {
     return false;
   }
-
+  auto l = universe.LockForRead();
   auto opt_namespace_id = GetProducerNamespaceIdInternal(l->pb, consumer_namespace_id);
   return opt_namespace_id.has_value();
 }

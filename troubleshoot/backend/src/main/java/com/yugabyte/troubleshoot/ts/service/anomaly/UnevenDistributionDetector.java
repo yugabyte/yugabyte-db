@@ -15,7 +15,7 @@ public abstract class UnevenDistributionDetector extends AnomalyDetectorBase {
 
   protected abstract String getGraphName();
 
-  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+  protected AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
 
     GraphResponse response = queryNodeMetric(context, getGraphName(), result);

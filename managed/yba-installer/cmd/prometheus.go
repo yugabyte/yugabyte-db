@@ -209,6 +209,11 @@ func (prom Prometheus) Restart() error {
 	log.Info("Restarting prometheus..")
 
 	if common.HasSudoAccess() {
+		// reload systemd daemon
+		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
+			return out.Error
+		}
+
 		if out := shell.Run(common.Systemctl, "restart", "prometheus"); !out.SucceededOrLog() {
 			return out.Error
 		}

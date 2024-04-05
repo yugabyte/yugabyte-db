@@ -216,6 +216,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // Used in Reactor-based stuck outbound call monitoring mechanism.
   void ForceCallExpiration(const OutboundCallPtr& call) ON_REACTOR_THREAD;
 
+  void ReportQueueTime(MonoDelta delta);
+
  private:
   // Marks the given call as failed and schedules destruction of the connection.
   void FailCallAndDestroyConnection(const OutboundDataPtr& outbound_data,

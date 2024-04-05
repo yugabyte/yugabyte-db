@@ -73,6 +73,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
     GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
     ArrayNode regionArrayJson = (ArrayNode) processedProvider.get("regions");
     ArrayNode imageBundleArrayJson = (ArrayNode) processedProvider.get("imageBundles");
+    boolean enableVMOSPatching = runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
 
     // Verify role bindings [if the SA has req permissions to manage instances]
     boolean validateNewVpcPerms = getVpcType(provider) == VPCType.NEW;
@@ -84,15 +85,19 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
     validateRegions(provider, apiClient, validationErrorsMap, regionArrayJson);
 
     // Validate imageBundles
-    validateImageBundles(provider, apiClient, validationErrorsMap, imageBundleArrayJson);
+    validateImageBundles(
+        provider, apiClient, validationErrorsMap, imageBundleArrayJson, enableVMOSPatching);
 
     // Validate if the keypair is an RSA keypair
     validatePrivateKeys(provider, processedProvider, validationErrorsMap);
 
     if (provider.getDetails() != null) {
-      // Verify if the ssh port is open
-      validateSshPort(provider, apiClient, validationErrorsMap, detailsJson);
-
+      if (!enableVMOSPatching && provider.getDetails().getSshPort() != null) {
+        // Verify if the ssh port is open
+        String jsonPath = detailsJson.get("sshPort").get("jsonPath").asText();
+        int sshPort = provider.getDetails().getSshPort();
+        validateSshPort(provider, apiClient, validationErrorsMap, sshPort, jsonPath);
+      }
       // Verify the existence of the tag to any of the firewall rules.
       validateFirewallTags(provider, apiClient, validationErrorsMap, cloudInfoJson);
 
@@ -234,7 +239,8 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       Provider provider,
       GCPProjectApiClient apiClient,
       SetMultimap<String, String> validationErrorsMap,
-      JsonNode imageBundleArrayJson) {
+      JsonNode imageBundleArrayJson,
+      boolean enableVMOSPatching) {
     List<ImageBundle> imageBundles = provider.getImageBundles();
     int imageInd = 0;
     for (ImageBundle imageBundle : imageBundles) {
@@ -247,6 +253,19 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
           imageBundleJson.get("details").get("globalYbImage").get("jsonPath").asText();
       try {
         apiClient.checkImageExistence(imageSelflink);
+      } catch (PlatformServiceException e) {
+        validationErrorsMap.put(jsonPath, e.getMessage());
+      }
+      try {
+        if (enableVMOSPatching) {
+          // Verify if the ssh port is open
+          if (imageBundle.getDetails().getSshPort() == null) {
+            continue;
+          }
+          int sshPort = imageBundle.getDetails().getSshPort();
+          jsonPath = imageBundleJson.get("details").get("sshPort").get("jsonPath").asText();
+          validateSshPort(provider, apiClient, validationErrorsMap, sshPort, jsonPath);
+        }
       } catch (PlatformServiceException e) {
         validationErrorsMap.put(jsonPath, e.getMessage());
       }
@@ -273,9 +292,9 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       Provider provider,
       GCPProjectApiClient apiClient,
       SetMultimap<String, String> validationErrorsMap,
-      JsonNode detailsJson) {
-    if (provider.getDetails().getSshPort() != null && getVpcType(provider) != VPCType.NEW) {
-      String jsonPath = detailsJson.get("sshPort").get("jsonPath").asText();
+      int sshPort,
+      String jsonPath) {
+    if (getVpcType(provider) != VPCType.NEW) {
       try {
         String vpcNetwork = getVpcNetwork(provider);
         String vpcProject = getVpcProject(provider);
@@ -302,12 +321,13 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
               policy,
               provider,
               networkSelfLink,
-              networkFirewallPolicyEnforcementOrder)) {
+              networkFirewallPolicyEnforcementOrder,
+              sshPort)) {
             errorMsg =
                 String.format(
                     "Connection(ssh) to host will fail at port %d as the port is not opened on any"
                         + " firewall",
-                    provider.getDetails().getSshPort());
+                    sshPort);
             validationErrorsMap.put(jsonPath, errorMsg);
           }
         } else {
@@ -317,12 +337,13 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
               policy,
               provider,
               networkSelfLink,
-              networkFirewallPolicyEnforcementOrder)) {
+              networkFirewallPolicyEnforcementOrder,
+              sshPort)) {
             errorMsg =
                 String.format(
                     "Connection(ssh) to host will fail at port %d as the port is not opened on any"
                         + " firewall",
-                    provider.getDetails().getSshPort());
+                    sshPort);
             validationErrorsMap.put(jsonPath, errorMsg);
           }
         }
@@ -416,7 +437,8 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       FirewallPolicy policy,
       Provider provider,
       String networkSelfLink,
-      String networkFirewallPolicyEnforcementOrder) {
+      String networkFirewallPolicyEnforcementOrder,
+      int sshPort) {
     if (!firewallRules.isEmpty()) {
       // If ybFirewallTags are not provided, "cluster-server" is the default tag that is added for
       // GCP instances.
@@ -432,7 +454,6 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
               .collect(Collectors.toList());
 
       if (!filteredRules.isEmpty()) {
-        int sshPort = provider.getDetails().getSshPort();
         for (Firewall firewallRule : filteredRules) {
           // Check if any rule explicitly denies sshPort/TCP
           if (firewallDeniedSshPort(firewallRule, sshPort)) {
@@ -449,7 +470,12 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
     }
     if (networkFirewallPolicyEnforcementOrder.equals(GCPUtil.ENFORCEMENT_AFTER_CLASSIC_FIREWALL)) {
       return checkSshPortFirewallPolicy(
-          firewallRules, policy, provider, networkSelfLink, networkFirewallPolicyEnforcementOrder);
+          firewallRules,
+          policy,
+          provider,
+          networkSelfLink,
+          networkFirewallPolicyEnforcementOrder,
+          sshPort);
     }
     return false;
   }
@@ -504,7 +530,8 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       FirewallPolicy policy,
       Provider provider,
       String networkSelfLink,
-      String networkFirewallPolicyEnforcementOrder) {
+      String networkFirewallPolicyEnforcementOrder,
+      int sshPort) {
     if (policy != null) {
       // Filter the rules of the firewall policy to select only the ingress rules that are enabled;
       // targetResources == null || contains networkurl
@@ -530,8 +557,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
                                   || config.getIpProtocol().equalsIgnoreCase("tcp"))
                               && (config.getPorts() == null
                                   || config.getPorts().isEmpty()
-                                  || isValidSshPort(
-                                      config.getPorts(), provider.getDetails().getSshPort())));
+                                  || isValidSshPort(config.getPorts(), sshPort)));
           if (ipPortMatched) {
             // If tcp/sshPort matched, return false if action is denied
             return !rule.getAction().equalsIgnoreCase("deny");
@@ -541,7 +567,12 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
     }
     if (networkFirewallPolicyEnforcementOrder.equals(GCPUtil.ENFORCEMENT_BEFORE_CLASSIC_FIREWALL)) {
       return checkSshPortFirewallRules(
-          firewallRules, policy, provider, networkSelfLink, networkFirewallPolicyEnforcementOrder);
+          firewallRules,
+          policy,
+          provider,
+          networkSelfLink,
+          networkFirewallPolicyEnforcementOrder,
+          sshPort);
     }
     return false;
   }

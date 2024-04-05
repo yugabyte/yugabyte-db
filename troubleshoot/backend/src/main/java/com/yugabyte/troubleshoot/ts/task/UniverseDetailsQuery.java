@@ -1,11 +1,16 @@
 package com.yugabyte.troubleshoot.ts.task;
 
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.*;
+
+import com.yugabyte.troubleshoot.ts.logs.LogsUtil;
 import com.yugabyte.troubleshoot.ts.models.UniverseDetails;
 import com.yugabyte.troubleshoot.ts.models.UniverseMetadata;
 import com.yugabyte.troubleshoot.ts.service.UniverseDetailsService;
 import com.yugabyte.troubleshoot.ts.service.UniverseMetadataService;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClient;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClientError;
+import io.prometheus.client.Summary;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,6 +29,9 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Profile("!test")
 public class UniverseDetailsQuery {
+  private static final Summary QUERY_TIME =
+      buildSummary(
+          "ts_universe_details_query_time_millis", "Universe details query time", LABEL_RESULT);
 
   private final Map<UUID, UniverseProgress> universesProcessStartTime = new ConcurrentHashMap<>();
   private final UniverseMetadataService universeMetadataService;
@@ -45,10 +53,16 @@ public class UniverseDetailsQuery {
   }
 
   @Scheduled(fixedDelayString = "${task.universe_details_query.period}")
-  public void processAllUniverses() {
+  public Map<UUID, UniverseProgress> processAllUniverses() {
+    return LogsUtil.callWithContext(this::processAllUniversesInternal);
+  }
+
+  private Map<UUID, UniverseProgress> processAllUniversesInternal() {
+    Map<UUID, UniverseProgress> result = new HashMap<>();
     for (UniverseMetadata universeMetadata : universeMetadataService.listAll()) {
       UniverseProgress progress = universesProcessStartTime.get(universeMetadata.getId());
       if (progress != null) {
+        result.put(universeMetadata.getId(), progress);
         long scheduledMillisAgo = System.currentTimeMillis() - progress.scheduleTimestamp;
         log.warn(
             "Universe {} is scheduled {} millis ago. Current status: {}",
@@ -60,17 +74,22 @@ public class UniverseDetailsQuery {
       UniverseProgress newProgress =
           new UniverseProgress().setScheduleTimestamp(System.currentTimeMillis());
       universesProcessStartTime.put(universeMetadata.getId(), newProgress);
+      result.put(universeMetadata.getId(), progress);
       try {
-        universeDetailsQueryExecutor.execute(() -> processUniverse(universeMetadata, newProgress));
+        universeDetailsQueryExecutor.execute(
+            LogsUtil.withUniverseId(
+                () -> processUniverse(universeMetadata, newProgress), universeMetadata.getId()));
       } catch (Exception e) {
         log.error("Failed to schedule universe " + universeMetadata.getId(), e);
         universesProcessStartTime.remove(universeMetadata.getId());
       }
     }
+    return result;
   }
 
   private void processUniverse(UniverseMetadata metadata, UniverseProgress progress) {
     log.info("Processing universe {}", metadata.getId());
+    long startTime = System.currentTimeMillis();
     try {
       progress.setInProgress(true);
       progress.setStartTimestamp(System.currentTimeMillis());
@@ -88,7 +107,9 @@ public class UniverseDetailsQuery {
             error.getStatusCode(),
             error.getError());
       }
+      QUERY_TIME.labels(RESULT_SUCCESS).observe(System.currentTimeMillis() - startTime);
     } catch (Exception e) {
+      QUERY_TIME.labels(RESULT_FAILURE).observe(System.currentTimeMillis() - startTime);
       log.error("Failed to get universe {} details", metadata.getId(), e);
     } finally {
       progress.setInProgress(false);
@@ -100,7 +121,7 @@ public class UniverseDetailsQuery {
 
   @Data
   @Accessors(chain = true)
-  private static class UniverseProgress {
+  public static class UniverseProgress {
     private volatile long scheduleTimestamp;
     private volatile long startTimestamp;
     private volatile boolean inProgress = false;
