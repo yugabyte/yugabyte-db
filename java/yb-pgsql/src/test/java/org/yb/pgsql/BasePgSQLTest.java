@@ -301,9 +301,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   @Before
-  public void initYBBackupUtil() {
+  public void initYBBackupUtil() throws Exception {
     YBBackupUtil.setMasterAddresses(masterAddresses);
     YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
+    YBBackupUtil.maybeStartYbControllers(miniCluster);
   }
 
   @Before
