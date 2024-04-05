@@ -31,6 +31,7 @@
 
 #include "yb/rpc/rpc.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
@@ -68,19 +69,15 @@ namespace master {
 class PollTransactionStatusBase {
  public:
   PollTransactionStatusBase(
-    const TransactionMetadata& transaction,
-    std::shared_future<client::YBClient*> client_future)
-    : transaction_(transaction),
-      client_future_(std::move(client_future)) {}
+      const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future);
 
   virtual ~PollTransactionStatusBase();
-
-  virtual std::shared_ptr<server::MonitoredTask> GetSharedFromThis() = 0;
 
  protected:
   Status VerifyTransaction();
   virtual void TransactionPending() = 0;
   virtual void FinishPollTransaction(Status s) = 0;
+  void Shutdown();
 
   TransactionMetadata transaction_;
 
@@ -90,6 +87,11 @@ class PollTransactionStatusBase {
 
   std::shared_future<client::YBClient*> client_future_;
   rpc::Rpcs rpcs_;
+  Synchronizer sync_;
+
+#ifndef NDEBUG
+  bool shutdown_ = false;
+#endif
 };
 
 class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
@@ -117,10 +119,6 @@ class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
 
   ~NamespaceVerificationTask() = default;
 
-  std::shared_ptr<server::MonitoredTask> GetSharedFromThis() override {
-    return shared_from_this();
-  }
-
   NamespaceVerificationTask(
     CatalogManager& catalog_manager,
     scoped_refptr<NamespaceInfo> ns,
@@ -137,6 +135,7 @@ class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
   Status ValidateRunnable() override;
   void FinishPollTransaction(Status s) override;
   Status CheckNsExists(Status status);
+  void TaskCompleted(const Status& status) override { Shutdown(); }
 
   SysCatalogTable& sys_catalog_;
   bool entry_exists_ = false;
@@ -168,10 +167,6 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
 
   ~TableSchemaVerificationTask() = default;
 
-  std::shared_ptr<server::MonitoredTask> GetSharedFromThis() override {
-    return shared_from_this();
-  }
-
   TableSchemaVerificationTask(
     CatalogManager& catalog_manager,
     scoped_refptr<TableInfo> table,
@@ -191,6 +186,7 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
   Status CompareSchema(Status s);
   Status FinishTask(Result<bool> is_committed);
   void FinishPollTransaction(Status s) override;
+  void TaskCompleted(const Status& status) override { Shutdown(); }
 
   SysCatalogTable& sys_catalog_;
   bool ddl_atomicity_enabled_;
