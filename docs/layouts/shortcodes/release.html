@@ -16,8 +16,13 @@
     {{- $build := "" -}}
     {{- if gt (len $parts) 1 -}} {{- $build = index $parts 1 -}} {{ $version = index $parts 0 -}}{{- end -}}
     {{- /* identify the base version eg 2.20 for 2.20.1.0 */ -}}
-    {{- $base := split $version "." -}}
-    {{- $base = printf "%s.%s" (index $base 0) (index $base 1) -}}
+    {{- $parts = split $version "." -}}
+    {{- $base := printf "%s.%s" (index $parts 0) (index $parts 1) -}}
+
+    {{- /* eg: 2.20.1.x/2.20.1+ --> 2.20.1 */ -}}
+    {{- if eq (len $parts) 3 -}}
+        {{- $version = printf "%s.0" $version -}}
+    {{- end -}}
     {{- if or (eq $product "ybdb") (eq $product "yba") -}}
         {{- if eq "all" (lower $version) -}}
         {{- /* link to the main release page in case of All */ -}}
