@@ -1,9 +1,9 @@
 ---
-title: Continuous availability
-headerTitle: Continuous availability
+title: Resiliency, high availability, and fault tolerance
+headerTitle: Resiliency, high availability, and fault tolerance
 linkTitle: Resilience
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
-headcontent: High availability, fault tolerance, and resilience
+headcontent:
 aliases:
   - /preview/explore/fault-tolerance/
   - /preview/explore/postgresql/fault-tolerance/
