@@ -14,6 +14,7 @@ import { MASTER_PLACEMENT_FIELD, PROVIDER_FIELD } from '../../../utils/constants
 interface MasterPlacementFieldProps {
   isPrimary: boolean;
   useK8CustomResources: boolean;
+  isEditMode: boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -31,7 +32,8 @@ const useStyles = makeStyles((theme) => ({
 
 export const MasterPlacementField = ({
   isPrimary,
-  useK8CustomResources
+  useK8CustomResources,
+  isEditMode
 }: MasterPlacementFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
@@ -45,14 +47,17 @@ export const MasterPlacementField = ({
   const provider = useWatch({ name: PROVIDER_FIELD });
 
   useEffect(() => {
-    if (!isPrimary) {
-      setValue(MASTER_PLACEMENT_FIELD, MasterPlacementMode.COLOCATED);
-    }
-    if (isPrimary && provider?.code === CloudType.kubernetes) {
-      setValue(
-        MASTER_PLACEMENT_FIELD,
-        useK8CustomResources ? MasterPlacementMode.DEDICATED : MasterPlacementMode.COLOCATED
-      );
+    if (!isEditMode) {
+      if (!isPrimary) {
+        setValue(MASTER_PLACEMENT_FIELD, MasterPlacementMode.COLOCATED);
+      } else if (provider?.code === CloudType.kubernetes) {
+        setValue(
+          MASTER_PLACEMENT_FIELD,
+          useK8CustomResources ? MasterPlacementMode.DEDICATED : MasterPlacementMode.COLOCATED
+        );
+      } else {
+        setValue(MASTER_PLACEMENT_FIELD, MasterPlacementMode.COLOCATED);
+      }
     }
   }, [isPrimary, provider]);
 

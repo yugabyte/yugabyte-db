@@ -83,6 +83,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
             <MasterPlacementField
               isPrimary={isPrimary}
               useK8CustomResources={useK8CustomResources}
+              isEditMode={isEditMode}
             />
           </Box>
         )}
