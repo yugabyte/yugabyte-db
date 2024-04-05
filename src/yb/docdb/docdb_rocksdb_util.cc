@@ -316,6 +316,28 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
       statistics ? statistics->IntentsDBStatistics() : nullptr);
 }
 
+BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
+    rocksdb::DB* intentsdb,
+    const TransactionStatusManager* status_manager,
+    const KeyBounds* docdb_key_bounds,
+    const Slice* iterate_upper_bound,
+    rocksdb::Statistics* statistics) {
+  auto min_running_ht = status_manager->MinRunningHybridTime();
+  if (min_running_ht == HybridTime::kMax) {
+    VLOG(4) << "No transactions running";
+    return {};
+  }
+  return CreateRocksDBIterator(
+      intentsdb,
+      docdb_key_bounds,
+      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+      boost::none /* user_key_for_filter */,
+      rocksdb::kDefaultQueryId,
+      CreateIntentHybridTimeFileFilter(min_running_ht),
+      iterate_upper_bound,
+      statistics);
+}
+
 namespace {
 
 std::mutex rocksdb_flags_mutex;
