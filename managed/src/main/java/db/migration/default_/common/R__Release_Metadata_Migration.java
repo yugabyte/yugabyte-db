@@ -2,6 +2,7 @@ package db.migration.default_.common;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.ebean.DB;
+import io.ebean.SqlRow;
 import jakarta.persistence.PersistenceException;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -25,10 +26,10 @@ public class R__Release_Metadata_Migration extends BaseJavaMigration {
     int codeChecksum = 82918231; // Change me if you want to force migration to run
     MurmurHash3 murmurHash3 = new MurmurHash3();
     try {
-      String jsonStr =
+      SqlRow row =
           DB.sqlQuery("SELECT value FROM yugaware_property WHERE name='SoftwareReleases'")
-              .findOne()
-              .getString("value");
+              .findOne();
+      String jsonStr = row == null ? "" : row.getString("value");
       return murmurHash3.stringHash(jsonStr, codeChecksum);
     } catch (PersistenceException e) {
       log.warn("failed to query yugaware property: " + e.getLocalizedMessage());
