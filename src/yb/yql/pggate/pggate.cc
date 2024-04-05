@@ -2029,7 +2029,7 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
         10s /* timeout */,
-        "catalog_version_table_in_perdb_mode is not set shared memory",
+        "catalog_version_table_in_perdb_mode is not set in shared memory",
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
     RETURN_NOT_OK_PREPEND(
