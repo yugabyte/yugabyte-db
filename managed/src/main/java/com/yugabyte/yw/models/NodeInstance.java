@@ -490,4 +490,18 @@ public class NodeInstance extends Model {
     List<NodeInstance> nodeList = NodeInstance.find.all();
     return nodeList.stream().anyMatch(x -> x.getDetails().ip.equals(ipAddress));
   }
+
+  public static List<NodeInstance> getByInstanceType(UUID providerUUID, String instanceTypeCode) {
+    // Retrieve all node instances for the given provider
+    List<NodeInstance> nodeInstances = listByProvider(providerUUID);
+
+    // filter node instances based on instanceTypeCode
+    List<NodeInstance> filteredInstances =
+        nodeInstances.stream()
+            .filter(nodeInstance -> nodeInstance.getInstanceTypeCode().equals(instanceTypeCode))
+            .collect(Collectors.toList());
+
+    // Return the filtered list of node instances
+    return filteredInstances;
+  }
 }
