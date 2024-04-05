@@ -1,6 +1,6 @@
 {
   "name": "@yugabytedb/troubleshoot-ui",
-  "version": "1.0.51",
+  "version": "1.0.53",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/types.d.ts",
