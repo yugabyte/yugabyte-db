@@ -75,6 +75,7 @@ public class ReleasesController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     CreateRelease reqRelease =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), CreateRelease.class);
+    // Validate the version/tag combo doesn't exist
     if (reqRelease.release_uuid == null) {
       log.trace("generating random release UUID as one was not provided");
       reqRelease.release_uuid = UUID.randomUUID();
