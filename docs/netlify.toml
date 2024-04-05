@@ -334,6 +334,10 @@
   to = "/preview/architecture/query-layer/"
 
 [[redirects]]
+  from = "/preview/architecture/concepts"
+  to = "/preview/architecture/key-concepts"
+
+[[redirects]]
   from = "/preview/architecture/docdb/replication/"
   to = "/preview/architecture/docdb-replication/"
 

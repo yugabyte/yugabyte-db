@@ -6,7 +6,6 @@ description: Learn about the Key concepts in YugabyteDB
 headcontent: Glossary of key concepts
 image: fa-sharp fa-thin fa-arrows-to-circle
 aliases:
-  - /preview/architecture/concepts
   - /preview/architecture/concepts/universe
   - /preview/architecture/concepts/single-node/
 menu:
@@ -36,9 +35,14 @@ DocDB is the underlying document storage engine of YugabyteDB and is built on to
 ## Fault domain
 
 A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link "../../../explore/fault-tolerance/#fault-domains">}}
+
+## Leader balancing
+
+YugabyteDB tries to keep the number of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load.
+
 ## Master server
 
-The [YB-Master](../yb-master/) service is responsible for keeping system metadata, coordinating system-wide operations, such as creating, altering, and dropping tables, as well as initiating maintenance operations such as load balancing. {{<link "yb-master">}}
+The [YB-Master](../yb-master/) service is responsible for keeping system metadata, coordinating system-wide operations, such as creating, altering, and dropping tables, as well as initiating maintenance operations such as load balancing. {{<link "../yb-master">}}
 
 {{<tip>}}
 The master server is also typically referred as just **master**.
@@ -46,7 +50,7 @@ The master server is also typically referred as just **master**.
 
 ## MVCC
 
-MVCC stands for Multiversion Concurrency Control. It is a concurrency control method used by YugabyteDB to provide access to data in a way that allows concurrent queries and updates without causing conflicts. {{<link "../../transactions/transactions-overview/#mvcc-using-hybrid-time">}}
+MVCC stands for Multiversion Concurrency Control. It is a concurrency control method used by YugabyteDB to provide access to data in a way that allows concurrent queries and updates without causing conflicts. {{<link "../transactions/transactions-overview/#mvcc-using-hybrid-time">}}
 
 ## Namespace
 
@@ -60,13 +64,9 @@ A namespace in YSQL is referred to as a database and is logically identical to a
 
 A node is a virtual machine, physical machine, or container on which YugabyteDB is deployed.
 
-## Leader balancing
-
-YugabyteDB tries to keep the number of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load.
-
 ## Primary cluster
 
-A primary cluster can perform both writes and reads. Replication between [nodes](#node) in a primary cluster is performed synchronously.
+A primary cluster can perform both writes and reads unlike a [read replica cluster](#read-replica-cluster) that performs only reads. There is only one primary cluster in an [universe](#universe). Replication between [nodes](#node) in a primary cluster is performed synchronously.
 
 ## Raft
 
@@ -74,13 +74,17 @@ Raft stands for Replication for availability and fault tolerance. This is the al
 
 ## Read replica cluster
 
-Read replica clusters can perform only reads; writes sent to read replica clusters get automatically rerouted to the [primary cluster](#primary-cluster) of the [universe](#universe). These clusters enable reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications.
+Read replica clusters are optional clusters that can be set up in conjunction with a [primary cluster](#primary-cluster) to perform only reads; writes sent to read replica clusters get automatically rerouted to the primary cluster of the [universe](#universe). These clusters enable reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications.
 
 Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, [nodes](#node) in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster. {{<link "../docdb-replication/read-replicas">}}
 
 ## Rebalancing
 
 Rebalancing is the process of keeping an even distribution of tablets across the [nodes](#node) in a cluster. {{<link "../../explore/linear-scalability/data-distribution/#rebalancing">}}
+
+## Region
+
+A region refers to a defined geographical area or location where a cloud provider's data centers and infrastructure are physically located. Typically a region consists of one or more [zones](#zone). Examples of regions include `us-east-1` (Northern Virginia), `eu-west-1` (Ireland), and `us-central1` (Iowa).
 
 ## Replication factor (RF)
 
@@ -106,7 +110,7 @@ When a tablet reaches a threshold size, it splits into 2 new [tablets](#tablet).
 
 ## TServer
 
-The [YB-TServer](../yb-tserver) service is responsible for maintaining and managing table data in the form of tablets, as well as dealing with all the queries. {{<link "yb-tserver">}}
+The [YB-TServer](../yb-tserver) service is responsible for maintaining and managing table data in the form of tablets, as well as dealing with all the queries. {{<link "../yb-tserver">}}
 
 ## Universe
 

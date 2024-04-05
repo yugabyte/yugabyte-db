@@ -18,7 +18,7 @@ YugabyteDB is a distributed database that seamlessly combines the principles of 
 Unlike traditional centralized databases, YugabyteDB is designed to manage and process data across multiple nodes or servers, ensuring resiliency, consistency, high availability, scalability, fault tolerance, and other [design goals](design-goals/).
 
 {{<tip>}}
-Check out [Key concepts](./key-concepts) for a quick reference to many of the terms used in this section.
+Check out YugabyteDB [key concepts](./concepts) for your quick reference.
 {{</tip>}}
 
 ## Layered architecture
