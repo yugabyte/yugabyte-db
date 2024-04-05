@@ -485,9 +485,27 @@ Status ReadPgAttributeWithReadTime(
 }
 } // namespace
 
+PollTransactionStatusBase::PollTransactionStatusBase(
+    const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future)
+    : transaction_(transaction), client_future_(std::move(client_future)) {
+  sync_.StatusCB(Status::OK());
+}
+
 PollTransactionStatusBase::~PollTransactionStatusBase() {
-  // Shutdown any outstanding RPCs.
+#ifndef NDEBUG
+  DCHECK(shutdown_) << "Shutdown not invoked";
+#endif
+}
+
+void PollTransactionStatusBase::Shutdown() {
   rpcs_.Shutdown();
+  // Shutdown times out after waiting a certain amount of time. The callback requires both this and
+  // the Rpcs to be valid, so wait for it to complete.
+  CHECK_OK(sync_.Wait());
+
+#ifndef NDEBUG
+  shutdown_ = true;
+#endif
 }
 
 Status PollTransactionStatusBase::VerifyTransaction() {
@@ -508,6 +526,7 @@ Status PollTransactionStatusBase::VerifyTransaction() {
     return STATUS_FORMAT(IllegalState,
         "Shutting down. Cannot send GetTransactionStatus: $0", transaction_);
   }
+
   // Prepare the rpc after checking if it is shutting down in case it returns because of
   // client is null and leave the reserved rpc as uninitialized.
   auto rpc_handle = rpcs_.Prepare();
@@ -517,19 +536,17 @@ Status PollTransactionStatusBase::VerifyTransaction() {
   }
   // We need to query the TransactionCoordinator here.  Can't use TransactionStatusResolver in
   // TransactionParticipant since this TransactionMetadata may not have any actual data flushed yet.
+  RETURN_NOT_OK(sync_.Wait());
+  sync_.Reset();
+  auto sync_cb = sync_.AsStdStatusCallback();
+  auto callback = [this, rpc_handle, user_cb = std::move(sync_cb)](
+                      Status status, const tserver::GetTransactionStatusResponsePB& resp) {
+    auto retained = rpcs_.Unregister(rpc_handle);
+    TransactionReceived(std::move(status), resp);
+    user_cb(Status::OK());
+  };
   *rpc_handle = client::GetTransactionStatus(
-    TransactionRpcDeadline(),
-    nullptr /* tablet */,
-    client,
-    &req,
-    [this, task_retained = std::weak_ptr<server::MonitoredTask>(GetSharedFromThis()), rpc_handle]
-        (Status status, const tserver::GetTransactionStatusResponsePB& resp) {
-      auto self_shared = task_retained.lock();
-      if (self_shared) {
-        auto retained = rpcs_.Unregister(rpc_handle);
-        TransactionReceived(std::move(status), resp);
-      }
-    });
+      TransactionRpcDeadline(), nullptr /* tablet */, client, &req, std::move(callback));
   (**rpc_handle).SendRpc();
   return Status::OK();
 }
