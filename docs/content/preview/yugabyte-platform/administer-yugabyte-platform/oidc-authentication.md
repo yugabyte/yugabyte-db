@@ -55,7 +55,7 @@ You can create an OIDC configuration as follows:
 
     - In the **Scope** field, enter your identity provider OIDC scope that is allowed to be requested. This field accepts a space-separated list of values. If left blank, all scopes will be considered.
     - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. This field accepts a case-sensitive custom configuration. Typically, this field is left blank.
-    - If you have an airgapped installation, provide an [OpenID Provider Configuration Document](https://openid.net/specs/openid-connect-discovery-1_0.html) for your provider; this contains the provider OIDC endpoints, supported claims, and other metadata. YugabyteDB Anywhere uses the metadata to discover the URLs to use for authentication and the authentication service's public signing keys.
+    - If you have an airgapped installation, provide an [OpenID Provider Configuration Document](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig) for your provider; this contains the provider OIDC endpoints, supported claims, and other metadata. YugabyteDB Anywhere uses the metadata to discover the URLs to use for authentication and the authentication service's public signing keys.
 
         Click **Configure OIDC Provider Metadata** and paste the OIDC configuration document from your identity provider (in JSON format) into the field.
 
