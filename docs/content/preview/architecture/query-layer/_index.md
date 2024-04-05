@@ -11,6 +11,7 @@ menu:
     identifier: architecture-query-layer
     parent: architecture
     weight: 500
+showRightNav: true
 type: indexpage
 ---
 
@@ -52,7 +53,7 @@ The reason for separating the initial parsing and the semantic analysis is to al
 
 ### Analyzer
 
-The created query tree is then analyzed, rewritten and transformed based on any rules stored in the system catalog.
+The created query tree is then analyzed, rewritten, and transformed based on any rules stored in the system catalog.
 
 Views are realized during this phase. Whenever a query against a view (that is, a virtual table) is made, the original query is rewritten to a query that accesses the base tables given in the view definition instead.
 

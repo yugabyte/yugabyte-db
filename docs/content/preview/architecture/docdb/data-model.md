@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-DocDB is a document-oriented data store that utilizes a key-value model for persisting and retrieving data. In this approach, data is stored as values associated with unique keys. Each row in a table is represented as a document in DocDB. The data store supports ordered operations on these documents, enabling efficient range queries and iterative access through keys. The keys themselves are designed to facilitate rapid lookups and optimized range scanning over the stored values.
+DocDB is a document-oriented data store that uses a key-value model for persisting and retrieving data. In this approach, data is stored as values associated with unique keys. Each row in a table is represented as a document in DocDB. The data store supports ordered operations on these documents, enabling efficient range queries and iterative access through keys. The keys themselves are designed to facilitate rapid lookups and optimized range scanning over the stored values.
 
 To better understand DocDB's architecture, let's examine how the keys and values are structured in the system.
 

@@ -31,7 +31,7 @@ Sometimes the term *cluster* is used interchangeably with the term *universe*. H
 
 ## DocDB
 
-DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized verison of [RocksDB](http://rocksdb.org/) {{<link "../docdb">}}
+DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized verison of [RocksDB](http://rocksdb.org/). {{<link "../docdb">}}
 
 ## Fault domain
 
@@ -41,7 +41,7 @@ A fault domain is a potential point of failure. Examples of fault domains would 
 The [YB-Master](../yb-master/) service is responsible for keeping system metadata, coordinating system-wide operations, such as creating, altering, and dropping tables, as well as initiating maintenance operations such as load balancing. {{<link "yb-master">}}
 
 {{<tip>}}
-The master server is also typically referred as just **master**
+The master server is also typically referred as just **master**.
 {{</tip>}}
 
 ## MVCC
@@ -52,7 +52,9 @@ MVCC stands for Multiversion Concurrency Control. It is a concurrency control me
 
 A namespace refers to a logical grouping or container for related database objects, such as tables, views, indexes, and other database constructs. Namespaces help organize and separate these objects, preventing naming conflicts and providing a way to control access and permissions.
 
-A namespace in YSQL is referred to as a database and is logically identical to a namespace in other RDBMS (such as PostgreSQL) and a namespace in YCQL is referred to as a keyspace and is logically identical to a keyspace in Apache Cassandra's CQL.
+A namespace in YSQL is referred to as a database and is logically identical to a namespace in other RDBMS (such as PostgreSQL).
+
+ A namespace in YCQL is referred to as a keyspace and is logically identical to a keyspace in Apache Cassandra's CQL.
 
 ## Node
 
@@ -60,7 +62,7 @@ A node is a virtual machine, physical machine, or container on which YugabyteDB 
 
 ## Leader balancing
 
-YugabyteDB tries to keep the no.of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load.
+YugabyteDB tries to keep the number of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load.
 
 ## Primary cluster
 
@@ -72,7 +74,7 @@ Raft stands for Replication for availability and fault tolerance. This is the al
 
 ## Read replica cluster
 
-Read replica clusters can perform only reads; writes sent to read replica clusters get automatically rerouted to the primary cluster of the [universe](#universe). These clusters enable reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications.
+Read replica clusters can perform only reads; writes sent to read replica clusters get automatically rerouted to the [primary cluster](#primary-cluster) of the [universe](#universe). These clusters enable reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications.
 
 Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, [nodes](#node) in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster. {{<link "../docdb-replication/read-replicas">}}
 

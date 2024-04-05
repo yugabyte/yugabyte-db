@@ -15,7 +15,7 @@ menu:
 type: indexpage
 ---
 
-DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized version of [RocksDB](http://rocksdb.org/), a [log-structured merge tree (LSM)](./lsm-sst)-based key-value store. Several enhancements and customizations have been done on top of the vanilla RocksDB to make DocDB highly performant and scalable. DocDB in essence manages multiple RocksDB instances which are created one per tablet.
+DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized version of [RocksDB](http://rocksdb.org/), a [log-structured merge tree (LSM)](./lsm-sst)-based key-value store. Several enhancements and customizations have been made on top of the vanilla RocksDB to make DocDB highly performant and scalable. DocDB in essence manages multiple RocksDB instances which are created one per tablet.
 
 ![DocDB Document Storage Layer](/images/architecture/docdb-rocksdb.png)
 
@@ -29,7 +29,7 @@ To understand more about how row data is stored as keys and values in DocDB, see
 
 ## Storage engine
 
-DocDB is a log-structured merge-tree (LSM) based storage engine. This design is optimized for high write throughput and efficient storage utilization. Data is stored in multiple SST (Sorted String Table) to store key-value data on disk. It is designed to be efficient for both sequential and random access patterns. DocDB periodically compacts data by merging and sorting multiple SST files into a smaller set of files. This process helps to maintain a consistent on-disk format and reclaim space from obsolete data.
+DocDB is a log-structured merge-tree (LSM) based storage engine. This design is optimized for high write throughput and efficient storage utilization. Data is stored in multiple SSTs (Sorted String Tables) to store key-value data on disk. It is designed to be efficient for both sequential and random access patterns. DocDB periodically compacts data by merging and sorting multiple SST files into a smaller set of files. This process helps to maintain a consistent on-disk format and reclaim space from obsolete data.
 
 {{<tip>}}
 To understand more about how LSM tree stores data in SSTs, see [LSM and SST](./lsm-sst).

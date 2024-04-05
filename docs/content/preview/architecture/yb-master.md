@@ -3,7 +3,7 @@ title: YB-Master service
 headerTitle: YB-Master service
 linkTitle: YB-Master
 description: Learn how the YB-Master service manages tablet metadata and coordinates cluster configuration changes.
-headcontent: Catalog information, tablet metadata and cluster coordination
+headcontent: Catalog information, tablet metadata, and cluster coordination
 image: fa-sharp fa-thin fa-chart-tree-map
 aliases:
   - /preview/architecture/concepts/yb-master/
@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-The YB-Master service keeps the system metadata and records, such as tables and location of their tablets, users and roles with their associated permissions, and so on.
+The YB-Master service keeps the system metadata and records, such as tables and the location of their tablets, users and roles with their associated permissions, and so on.
 
 The YB-Master service is also responsible for coordinating background operations, such as load-balancing or initiating replication of under-replicated data, as well as performing a variety of administrative operations such as creating, altering, and dropping tables.
 
@@ -27,7 +27,7 @@ The YB-Master performs a number of important operations within the system. Some 
 
 ## Administrative operations
 
-When one of these universe-wide operations is initiated, such as creating a new table, modifying an existing table, or dropping (deleting) a table or creating backups, the YB-Master ensures that the operation is successfully propagated and applied to all relevant tablets, regardless of the current state of the YB-TServer nodes hosting those tablets.
+When one of these universe-wide operations is initiated, such as creating a new table, modifying an existing table, dropping (deleting) a table, or creating backups, the YB-Master ensures that the operation is successfully propagated and applied to all relevant tablets, regardless of the current state of the YB-TServer nodes hosting those tablets.
 
 This guarantee is crucial because if a YB-TServer fails while such an operation is in progress, it cannot cause the operation to be only partially applied, leaving the database in an inconsistent state. The YB-Master makes sure the operation is either fully applied everywhere or not applied at all, maintaining data integrity.
 
@@ -53,18 +53,18 @@ By having the tablet-to-node mapping cached, the smart clients can communicate d
 
 ## Load balancing
 
-The YB-Master leader does the initial placement (at `CREATE TABLE` time) of tablets across YB-TServers to enforce any user-defined data placement constraints and ensure uniform load. In addition, during the lifetime of the universe, as nodes are added, fail or become decommissioned, it continues to balance the load and enforce data placement constraints automatically.
+The YB-Master leader places (at `CREATE TABLE` time) the tablets across YB-TServers to enforce any user-defined data placement constraints and ensure uniform load. In addition, during the lifetime of the universe, as nodes are added, fail, or become decommissioned, it continues to balance the load and enforce data placement constraints automatically.
 
 ## Leader balancing
 
-Aside from ensuring that the number of tablets served by each YB-TServer is balanced across the universe, the YB-Masters also ensures that each node has a symmetric number of tablet leaders across nodes. This is also done for the followers.
+Aside from ensuring that the number of tablets served by each YB-TServer is balanced across the universe, the YB-Masters also ensure that each node has a symmetric number of tablet leaders across nodes. This is also done for the followers.
 
-## Re-Replication of data
+## Re-replication of data
 
 The YB-Master receives regular "heartbeat" signals from all the YB-TServer nodes in the cluster. These heartbeats allow the YB-Master to monitor the liveness (active state) of each YB-TServer.
 
 If the YB-Master detects that a YB-TServer has failed (stopped sending heartbeats), it keeps track of how long the node has been in a failed state. If this failure duration exceeds a predetermined threshold, the YB-Master initiates a process to replace the failed node.
 
-Specifically, the YB-Master identifies replacement YB-TServer nodes and rereplicates (copy over) the tablet data from the failed node to these new nodes. This re-replication process ensures that the data remains available and redundant, even after a node failure.
+Specifically, the YB-Master identifies replacement YB-TServer nodes and re-replicates (copies) the tablet data from the failed node to the new nodes. This re-replication process ensures that the data remains available and redundant, even after a node failure.
 
-However, the YB-Master carefully throttles (limits) the rate of rereplication to avoid impacting the ongoing, regular operations of the database cluster. This throttling prevents the rereplication from overloading the system and affecting the performance of user queries and other foreground activities.
+However, the YB-Master carefully throttles (limits) the rate of re-replication to avoid impacting the ongoing, regular operations of the database cluster. This throttling prevents the re-replication from overloading the system and affecting the performance of user queries and other foreground activities.

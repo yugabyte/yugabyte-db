@@ -4,7 +4,7 @@ headerTitle: Architecture
 linkTitle: Architecture
 description: Learn about the YugabyteDB architecture, including query, transactions, sharding, replication, and storage layers.
 image: fa-sharp fa-thin fa-puzzle
-headcontent: Internals of query, transactions, sharding, replication, and storage layers.
+headcontent: Internals of query, transactions, sharding, replication, and storage layers
 menu:
   preview:
     identifier: architecture
@@ -18,7 +18,7 @@ YugabyteDB is a distributed database that seamlessly combines the principles of 
 Unlike traditional centralized databases, YugabyteDB is designed to manage and process data across multiple nodes or servers, ensuring resiliency, consistency, high availability, scalability, fault tolerance, and other [design goals](design-goals/).
 
 {{<tip>}}
-Check out YugabyteDB [key concepts](./key-concepts) for your quick reference.
+Check out [Key concepts](./key-concepts) for a quick reference to many of the terms used in this section.
 {{</tip>}}
 
 ## Layered architecture
@@ -29,7 +29,7 @@ In general, operations in YugabyteDB are split logically into 2 layers, the quer
 
 ## Query layer
 
-For operating (CRUD) on the data that is split and stored across multiple machines, YugabyteDB provides two APIs, YSQL and YCQL via the query layer that takes the user query, and sends or fetches data to and from the right set of tablets.
+For operating (CRUD) on the data that is split and stored across multiple machines, YugabyteDB provides two APIs, YSQL and YCQL. The query layer takes the user query submitted via the API and sends or fetches data to and from the right set of tablets.
 
 {{<tip>}}
 To understand how the query layer is designed, see [Query layer](query-layer/).
@@ -77,7 +77,7 @@ To understand how the core functionalities are implemented in YugabyteDB, see [C
 
 ## Master server
 
-The master service acts a catalog manager, cluster orchestrator and manages many background tasks.
+The master service acts a catalog manager and cluster orchestrator, and manages many background tasks.
 
 {{<tip>}}
 For more details, see [YB-Master](./yb-master).

@@ -13,9 +13,9 @@ menu:
 type: docs
 ---
 
-DocDB is built on a customized version of [RocksDB](http://rocksdb.org/), a [log-structured merge tree (LSM)](./lsm-sst)-based key-value store. Tremendous amount of optimizations have been done to make RocksDB work as a critical component of a scalable distributed database. Let us go over some of the significant changes done.
+DocDB is built on a customized version of [RocksDB](http://rocksdb.org/), a [log-structured merge tree (LSM)](./lsm-sst)-based key-value store. A tremendous number of optimizations have been implemented to make RocksDB work as a critical component of a scalable distributed database. Let's go over some of the most significant changes.
 
-## Efficient modelling of documents
+## Efficient modeling of documents
 
 The goal of one of the enhancements is to implement a flexible data model on top of a key-value store, as well as to implement efficient operations on this data model such as the following:
 
@@ -37,7 +37,7 @@ The mutations to records in the system are versioned using hybrid timestamps mai
 
 ## Load balancing across disks
 
-When multiple disks are available for storage, DocDB will distribute the SST and WAL files of various tablets of tables  evenly across the attached disks on a per-table basis. This load distribution (also known as striping), ensures that each disk handles an even amount of load for each table.
+When multiple disks are available for storage, DocDB will distribute the SST and WAL files of various tablets of tables  evenly across the attached disks on a per-table basis. This load distribution (also known as striping) ensures that each disk handles an even amount of load for each table.
 
 ## Backups and snapshots
 

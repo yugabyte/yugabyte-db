@@ -2357,7 +2357,7 @@ If specified, `des_ts_uuid` becomes the new leader. If the argument is empty (`"
 
 ### Rebalancing commands
 
-For information on YB-Master load balancing, see [Data placement and load balancing](../../architecture/yb-master#tablet-assignments)
+For information on YB-Master load balancing, see [Data placement and load balancing](../../architecture/yb-master/#tablet-assignments).
 
 For YB-Master load balancing flags, see [Load balancing flags](../../reference/configuration/yb-master/#load-balancing-flags).
 
