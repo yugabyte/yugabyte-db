@@ -2183,7 +2183,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *comma_separated_list_of_table_ids*: Comma-separated list of unique UUIDs associated with the table (`table_id`).
+* *comma_separated_list_of_table_ids*: Comma-separated list of unique UUIDs associated with the tables (`table_id`).
 
 **Example**
 
