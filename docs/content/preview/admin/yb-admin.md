@@ -426,40 +426,6 @@ template1.pg_inherits
 
 Triggers manual compaction on a table.
 
-**Syntax**
-
-```sh
-yb-admin \
-    -master_addresses <master-addresses> \
-    compact_table <keyspace> <table_name> \
-    [timeout_in_seconds] [ADD_INDEXES]
-```
-
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *keyspace*: Specifies the database `ysql.db-name` or keyspace `ycql.keyspace-name`.
-* *table_name*: Specifies the table name.
-* *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default value is `20`.
-* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
-
-**Example**
-
-```sh
-./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    compact_table ycql.kong test
-```
-
-```output
-Started compaction of table kong.test
-Compaction request id: 75c406c1d2964487985f9c852a8ef2a3
-Waiting for compaction...
-Compaction complete: SUCCESS
-```
-
-#### compact_table
-
-Triggers manual compaction on a table.
-
 **Syntax 1: Using table name**
 
 ```sh
@@ -689,8 +655,6 @@ yb-admin \
 Flushed [000033eb000030008000000000004002] tables.
 ```
 
----
-
 #### backfill_indexes_for_table
 
 Backfill all DEFERRED indexes in a YCQL table.
@@ -716,6 +680,8 @@ yb-admin \
 ```
 
 A new backfill job is created for all the `DEFERRED` indexes of the table. The command does not have any output.
+
+---
 
 ### Backup and snapshot commands
 
