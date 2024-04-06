@@ -10,12 +10,16 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
@@ -90,6 +94,11 @@ public class WaitForClockSync extends NodeTaskBase {
       return;
     }
 
+    if (!isChronycPresent(universe, node)) {
+      log.info("Skipping Clock Sync check as chronyc is not present on node {}.", node.nodeName);
+      return;
+    }
+
     // It ensures that the chrony service has started, and the last system clock offset is applied
     // such that the correction it needs is less than the time specified in
     // acceptable clock skew specified in the task params.
@@ -100,6 +109,31 @@ public class WaitForClockSync extends NodeTaskBase {
     waitUsingChronycTracking(universe, node);
 
     log.info("Completed {}", getName());
+  }
+
+  private boolean isChronycPresent(Universe universe, NodeDetails node) {
+    ShellResponse response =
+        nodeUniverseManager.runCommand(
+            node,
+            universe,
+            ImmutableList.of(
+                "command",
+                "-v",
+                "chronyc",
+                "||",
+                "echo",
+                "\"Error:",
+                "Chronyc",
+                "is",
+                "not",
+                "installed\""));
+    if (response.code != ERROR_CODE_SUCCESS) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, response.getMessage());
+    }
+    if (response.getMessage().contains("Error: Chronyc is not installed")) {
+      return false;
+    }
+    return true;
   }
 
   private void waitUsingChronycWaitSync(Universe universe, NodeDetails node) {
@@ -129,7 +163,7 @@ public class WaitForClockSync extends NodeTaskBase {
     String waitsyncOutput = waitsyncShellResponse.extractRunCommandOutput();
     String waitsyncLastTry = waitsyncOutput.substring(waitsyncOutput.lastIndexOf("\n") + 1);
     log.debug("chronyc waitsync output is {}", waitsyncOutput);
-    if (waitsyncShellResponse.getCode() == ShellResponse.ERROR_CODE_SUCCESS) {
+    if (waitsyncShellResponse.getCode() == ERROR_CODE_SUCCESS) {
       log.info("System clock is synchronized with the NTP server by chrony: {}", waitsyncLastTry);
     } else {
       String errorMessage =
