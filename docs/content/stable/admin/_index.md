@@ -21,6 +21,15 @@ YugabyteDB ships with a variety of tools to interact with, manage and configure 
 For information about [yugabyted](../reference/configuration/yugabyted/) and configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
 {{</note>}}
 
+{{<tip title="Values with hypen">}}
+For all the command line tools, when passing in an argument with values starting with a hyphen, eg., `-1`, add a double hyphen (`--`) at the end of other arguments followed by the argument name and value. This tells the binary to treat those arguments as positional eg., to specify `set_flag ysql_select_parallelism -1`, you need to do,
+
+```bash
+yb-ts-cli [other args] -- set_flag ysql_select_parallelism -1
+```
+
+{{</tip>}}
+
 ## Tools
 
 {{<index/block>}}
