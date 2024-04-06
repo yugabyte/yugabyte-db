@@ -111,24 +111,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       lenient().when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
-      when(mockNodeUniverseManager.runCommand(any(), any(), any()))
-          .thenReturn(
-              ShellResponse.create(
-                  ShellResponse.ERROR_CODE_SUCCESS,
-                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
-                      + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
-                      + "    Stratum         : 3\n"
-                      + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
-                      + "    System time     : 0.000000003 seconds slow of NTP time\n"
-                      + "    Last offset     : +0.000019514 seconds\n"
-                      + "    RMS offset      : 0.000011283 seconds\n"
-                      + "    Frequency       : 99.154 ppm slow\n"
-                      + "    Residual freq   : +0.009 ppm\n"
-                      + "    Skew            : 0.106 ppm\n"
-                      + "    Root delay      : 0.000162946 seconds\n"
-                      + "    Root dispersion : 0.000101734 seconds\n"
-                      + "    Update interval : 32.3 seconds\n"
-                      + "    Leap status     : Normal"));
+      mockClockSyncResponse(mockNodeUniverseManager);
       when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {
       fail();
