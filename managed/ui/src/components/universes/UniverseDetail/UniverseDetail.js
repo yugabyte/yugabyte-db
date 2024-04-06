@@ -138,6 +138,7 @@ class UniverseDetail extends Component {
         const primaryCluster = getPrimaryCluster(response.payload.data?.universeDetails?.clusters);
         const providerUUID = primaryCluster?.userIntent?.provider;
         this.props.fetchSupportedReleases(providerUUID);
+        this.props.fetchProviderRunTimeConfigs(providerUUID);
       });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {

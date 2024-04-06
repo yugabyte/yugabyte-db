@@ -19,6 +19,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/docdb-internal.h"
@@ -139,18 +140,9 @@ IntentAwareIterator::IntentAwareIterator(
           << ", txn_op_context: " << txn_op_context_;
 
   if (txn_op_context) {
-    if (txn_op_context.txn_status_manager->MinRunningHybridTime() != HybridTime::kMax) {
-      intent_iter_ = docdb::CreateRocksDBIterator(doc_db.intents,
-                                                  doc_db.key_bounds,
-                                                  docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-                                                  boost::none,
-                                                  rocksdb::kDefaultQueryId,
-                                                  nullptr /* file_filter */,
-                                                  &intent_upperbound_,
-                                                  intentsdb_statistics);
-    } else {
-      VLOG(4) << "No transactions running";
-    }
+    intent_iter_ = docdb::CreateIntentsIteratorWithHybridTimeFilter(
+        doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds, &intent_upperbound_,
+        intentsdb_statistics);
   }
   // WARNING: Is is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:

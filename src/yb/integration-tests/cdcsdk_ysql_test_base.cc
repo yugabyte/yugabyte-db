@@ -3849,7 +3849,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
       const std::vector<CDCSDKProtoRecordPB>& records) {
-    RowMessage_Op prev_op;
+    RowMessage_Op prev_op = RowMessage::UNKNOWN;
     uint64_t prev_commit_time = 0;
     std::string prev_docdb_txn_id = "";
     uint64_t prev_record_time = 0;

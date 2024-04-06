@@ -1337,4 +1337,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables validation for GCP Provider and returns the validation errors json if any",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static ConfKeyInfo<String> ldapSearchFilter =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_search_filter",
+          ScopeType.GLOBAL,
+          "LDAP Search Filter",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
 }

@@ -2807,7 +2807,7 @@ Status CatalogManager::DoRefreshTablespaceInfo(const LeaderEpoch& epoch) {
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
-                                           CowWriteLock<PersistentTableInfo>* l_ptr,
+                                           TableInfo::WriteLock* l_ptr,
                                            const IndexInfoPB& index_info,
                                            const LeaderEpoch& epoch,
                                            CreateTableResponsePB* resp) {
@@ -3807,7 +3807,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, find the table info
   scoped_refptr<TableInfo> indexed_table;
-  CowWriteLock<PersistentTableInfo> indexed_table_write_lock;
+  TableInfo::WriteLock indexed_table_write_lock;
   if (IsIndex(req)) {
     TRACE("Looking up indexed table");
     indexed_table = GetTableInfo(req.indexed_table_id());
@@ -6073,7 +6073,8 @@ Status CatalogManager::LaunchBackfillIndexForTable(
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
     const LeaderEpoch& epoch,
-    DeleteTableResponsePB* resp) {
+    DeleteTableResponsePB* resp,
+    std::map<TableId, DeletingTableData>* data_map_ptr) {
   LOG(INFO) << "MarkIndexInfoFromTableForDeletion table " << indexed_table_id
             << " index " << index_table_id << " multi_stage=" << multi_stage;
   // Lookup the indexed table and verify if it exists.
@@ -6094,11 +6095,13 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     resp_indexed_table->set_table_id(indexed_table_id);
   }
   if (multi_stage) {
+    RSTATUS_DCHECK(!data_map_ptr, InvalidArgument, "data_map_ptr is set");
     RETURN_NOT_OK(MultiStageAlterTable::UpdateIndexPermission(
         this, indexed_table,
         {{index_table_id, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING}}, epoch));
   } else {
-    RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id, epoch));
+    RSTATUS_DCHECK(data_map_ptr, InvalidArgument, "data_map_ptr is not set");
+    RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id, epoch, data_map_ptr));
   }
 
   // Actual Deletion of the index info will happen asynchronously after all the
@@ -6108,7 +6111,8 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
 }
 
 Status CatalogManager::DeleteIndexInfoFromTable(
-    const TableId& indexed_table_id, const TableId& index_table_id, const LeaderEpoch& epoch) {
+    const TableId& indexed_table_id, const TableId& index_table_id, const LeaderEpoch& epoch,
+    std::map<TableId, DeletingTableData>* data_map_ptr) {
   LOG(INFO) << "DeleteIndexInfoFromTable table " << indexed_table_id << " index " << index_table_id;
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
@@ -6117,7 +6121,15 @@ Status CatalogManager::DeleteIndexInfoFromTable(
     return Status::OK();
   }
   TRACE("Locking indexed table");
-  auto l = indexed_table->LockForWrite();
+  TableInfo::WriteLock indexed_table_write_lock;
+  TableInfo::WriteLock* l_ptr;
+  if (data_map_ptr) {
+    l_ptr = &(*data_map_ptr)[indexed_table_id].write_lock;
+  } else {
+    indexed_table_write_lock = indexed_table->LockForWrite();
+    l_ptr = &indexed_table_write_lock;
+  }
+  auto& l = *l_ptr;
   auto &indexed_table_data = *l.mutable_data();
 
   // Heed issue #6233.
@@ -6283,7 +6295,7 @@ Status CatalogManager::DeleteTable(
                              indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
     if (!is_pg_table && IsIndexBackfillEnabled(index_table_type, is_transactional)) {
       return MarkIndexInfoFromTableForDeletion(
-          indexed_table_id, table_id, /* multi_stage */ true, epoch, resp);
+          indexed_table_id, table_id, /* multi_stage */ true, epoch, resp, nullptr);
     }
 
     // If DDL Rollback is enabled, we will not delete the index now, but merely mark it for
@@ -6384,7 +6396,7 @@ Status CatalogManager::DeleteTableInternal(
   vector<DeletingTableData> tables;
   RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
                                     true /* update_indexed_table */, schedules_to_tables_map, epoch,
-                                    &tables, resp, rpc));
+                                    &tables, resp, rpc, nullptr));
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
@@ -6523,11 +6535,48 @@ Status CatalogManager::DeleteTableInternal(
   return Status::OK();
 }
 
+Status CatalogManager::DeleteTableInMemoryAcquireLocks(
+    const scoped_refptr<master::TableInfo>& table,
+    bool is_index_table,
+    bool update_indexed_table,
+    std::map<TableId, DeletingTableData>* data_map) {
+  data_map->emplace(table->id(), DeletingTableData{.table_info = table});
+  {
+    auto l = table->LockForRead();
+    if (is_index_table) {
+      auto indexed_table_id = GetIndexedTableId(l->pb);
+      auto indexed_table = GetTableInfo(indexed_table_id);
+      if (indexed_table && update_indexed_table) {
+        // We only need to lock indexed_table when we need to update it to
+        // indicate that this index is gone.
+        data_map->emplace(indexed_table_id, DeletingTableData{.table_info = indexed_table});
+      }
+    } else {
+      // For regular table, we need to lock all of its indexes.
+      TableIdentifierPB index_identifier;
+      for (const auto& index : l->pb.indexes()) {
+        index_identifier.set_table_id(index.table_id());
+        auto index_result = FindTable(index_identifier);
+        if (VERIFY_RESULT(DoesTableExist(index_result))) {
+          auto index_table = std::move(*index_result);
+          data_map->emplace(index.table_id(), DeletingTableData{.table_info = index_table});
+        }
+      }
+    }
+  }
+  // Lock the table and indexes in the order of their table_ids.
+  for (auto& it : *data_map) {
+    it.second.write_lock = it.second.table_info->LockForWrite();
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::DeleteTableInMemory(
     const TableIdentifierPB& table_identifier, const bool is_index_table,
     const bool update_indexed_table, const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
     const LeaderEpoch& epoch, vector<DeletingTableData>* tables, DeleteTableResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext* rpc,
+    std::map<TableId, DeletingTableData>* data_map_ptr) {
   // TODO(NIC): How to handle a DeleteTable request when the namespace is being deleted?
   const char* const object_type = is_index_table ? "index" : "table";
   const bool cascade_delete_index = is_index_table && !update_indexed_table;
@@ -6557,12 +6606,14 @@ Status CatalogManager::DeleteTableInMemory(
     RETURN_NOT_OK(WaitForTransactionTableVersionUpdateToPropagate());
   }
 
-  TRACE(Substitute("Locking $0", object_type));
-  auto data = DeletingTableData{
-      .table_info = table,
-      .write_lock = table->LockForWrite(),
-  };
-
+  std::map<TableId, DeletingTableData> data_map;
+  if (!data_map_ptr) {
+    TRACE(Substitute("Locking $0", object_type));
+    RETURN_NOT_OK(
+        DeleteTableInMemoryAcquireLocks(table, is_index_table, update_indexed_table, &data_map));
+    data_map_ptr = &data_map;
+  }
+  auto& data = (*data_map_ptr)[table->id()];
   auto& l = data.write_lock;
   // table_id for the requested table will be added to the end of the response.
   *resp->add_deleted_table_ids() = table->id();
@@ -6607,7 +6658,7 @@ Status CatalogManager::DeleteTableInMemory(
     const auto& indexed_table_id = GetIndexedTableId(l->pb);
     auto indexed_table = FindTableById(indexed_table_id);
     if (indexed_table.ok()) {
-      auto lock = (**indexed_table).LockForRead();
+      const auto& lock = (*data_map_ptr)[indexed_table_id].write_lock;
       ddl_log_entry = DdlLogEntry(
           now, indexed_table_id, lock->pb, Format("Drop index $0", l->name()));
     }
@@ -6635,11 +6686,12 @@ Status CatalogManager::DeleteTableInMemory(
       index_identifier.set_table_id(index.table_id());
       RETURN_NOT_OK(DeleteTableInMemory(
           index_identifier, true /* is_index_table */, false /* update_indexed_table */,
-          schedules_to_tables_map, epoch, tables, resp, rpc));
+          schedules_to_tables_map, epoch, tables, resp, rpc, data_map_ptr));
     }
   } else if (update_indexed_table) {
+    auto indexed_table_id = GetIndexedTableId(l->pb);
     s = MarkIndexInfoFromTableForDeletion(
-        GetIndexedTableId(l->pb), table->id(), /* multi_stage */ false, epoch, resp);
+        indexed_table_id, table->id(), /* multi_stage */ false, epoch, resp, data_map_ptr);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute("An error occurred while deleting index info: $0",
                                        s.ToString()));
@@ -11905,6 +11957,7 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
     tsinfo_pb->set_permanent_uuid(peer.permanent_uuid());
     CopyRegistration(peer, tsinfo_pb);
   }
+  locs_pb->set_raft_config_opid_index(cstate.config().opid_index());
   return Status::OK();
 }
 
@@ -12072,6 +12125,8 @@ Status CatalogManager::BuildLocationsForTablet(
     InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
     locs = tablet->GetReplicaLocations();
     locs_pb->set_stale(locs->empty());
+    locs_pb->set_raft_config_opid_index(
+        l_tablet->pb.committed_consensus_state().config().opid_index());
     if (partitions_only) {
       return Status::OK();
     }

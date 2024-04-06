@@ -23,7 +23,6 @@ export const NonEditableInUseProviderField: {
 } = {
   [ProviderCode.AWS]: [
     'enableHostedZone',
-    'useIMDSv2',
     'hostedZoneId',
     'vpcSetupType',
     'sshUser',

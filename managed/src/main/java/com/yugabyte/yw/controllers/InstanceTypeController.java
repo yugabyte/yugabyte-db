@@ -33,6 +33,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -277,6 +278,10 @@ public class InstanceTypeController extends AuthenticatedController {
       UUID customerUUID, UUID providerUUID, String instanceTypeCode, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     InstanceType instanceType = InstanceType.getOrBadRequest(provider.getUuid(), instanceTypeCode);
+    if (!NodeInstance.getByInstanceType(providerUUID, instanceTypeCode).isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot delete the Instance Type with existing Instances");
+    }
     instanceType.setActive(false);
     instanceType.save();
     auditService()

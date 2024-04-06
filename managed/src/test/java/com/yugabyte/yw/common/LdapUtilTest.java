@@ -1,6 +1,7 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -16,7 +17,9 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
+import static play.test.Helpers.contentAsString;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -45,6 +48,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.MockitoAnnotations;
+import play.libs.Json;
+import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
 public class LdapUtilTest extends FakeDBApplication {
@@ -114,6 +119,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 "",
                 "",
                 "",
+                "",
                 false,
                 "*",
                 SearchScope.SUBTREE,
@@ -154,6 +160,7 @@ public class LdapUtilTest extends FakeDBApplication {
                     false,
                     false,
                     false,
+                    "",
                     "",
                     "",
                     "",
@@ -199,6 +206,7 @@ public class LdapUtilTest extends FakeDBApplication {
                     "",
                     "",
                     "",
+                    "",
                     false,
                     "*",
                     SearchScope.SUBTREE,
@@ -236,6 +244,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "service_account",
                 "service_password",
+                "",
                 "",
                 false,
                 "*",
@@ -282,6 +291,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "service_account",
                 "service_password",
+                "",
                 "",
                 false,
                 "*",
@@ -333,6 +343,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "service_account",
                 "service_password",
+                "",
                 "",
                 false,
                 "*",
@@ -404,6 +415,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "service_account",
                 "service_password",
+                "",
                 "",
                 false,
                 "*",
@@ -488,6 +500,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 "service_account",
                 "service_password",
                 "",
+                "",
                 false,
                 "*",
                 SearchScope.SUBTREE,
@@ -541,6 +554,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 "service_account",
                 "service_password",
                 "search-attribute",
+                "",
                 false,
                 "*",
                 SearchScope.SUBTREE,
@@ -588,6 +602,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 "service_account",
                 "service_password",
                 "search-attribute",
+                "",
                 false,
                 "*",
                 SearchScope.SUBTREE,
@@ -634,6 +649,7 @@ public class LdapUtilTest extends FakeDBApplication {
   public void testAuthViaLDAPWithSearchAndBindWithoutServiceAccountAndSearchAttribute()
       throws Exception {
     setupTest();
+    // service account shoudl be configured
     assertThrows(
         PlatformServiceException.class,
         () ->
@@ -652,6 +668,7 @@ public class LdapUtilTest extends FakeDBApplication {
                     "",
                     "",
                     "",
+                    "search-filter",
                     false,
                     "*",
                     SearchScope.SUBTREE,
@@ -662,6 +679,43 @@ public class LdapUtilTest extends FakeDBApplication {
                     Role.ReadOnly,
                     TlsProtocol.TLSv1_2,
                     false)));
+
+    // either search attribute or filter should be configured
+    Result result =
+        assertPlatformException(
+            () ->
+                ldapUtil.authViaLDAP(
+                    "test-user",
+                    "password",
+                    new LdapUtil.LdapConfiguration(
+                        "ldapUrl",
+                        389,
+                        "base-dn",
+                        "",
+                        "cn=",
+                        false,
+                        false,
+                        true,
+                        "service-account",
+                        "password",
+                        "",
+                        "",
+                        false,
+                        "*",
+                        SearchScope.SUBTREE,
+                        "base-dn",
+                        "",
+                        false,
+                        false,
+                        Role.ReadOnly,
+                        TlsProtocol.TLSv1_2,
+                        false)));
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertValue(
+        resultJson,
+        "error",
+        "Service account and LDAP Search Attribute/Filter must be configured to use search and"
+            + " bind.");
   }
 
   @Test
@@ -717,6 +771,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "username",
                 "password",
+                "",
                 "",
                 false,
                 "(&(objectClass=*)("
@@ -774,6 +829,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 "username",
                 "password",
                 "",
+                "",
                 false,
                 "",
                 null,
@@ -810,6 +866,7 @@ public class LdapUtilTest extends FakeDBApplication {
                     false,
                     false,
                     false,
+                    "",
                     "",
                     "",
                     "",
