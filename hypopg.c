@@ -530,6 +530,7 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 				}
 			}
 
+			/* Check if we need to hide any existing index. */
 			hypo_hideIndexes(rel);
 		}
 

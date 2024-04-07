@@ -1729,8 +1729,8 @@ hypo_index_unhide(Oid indexid)
 }
 
 /*
- * Check rel and delete the same oid index as hypoHiddenIndexes
- * in rel->indexlist.
+ * Remove any existing index in the given relation list of indexes if they
+ * match an index that has been hidden.
  */
 void
 hypo_hideIndexes(RelOptInfo *rel)
