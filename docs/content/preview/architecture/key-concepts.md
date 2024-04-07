@@ -66,7 +66,7 @@ A node is a virtual machine, physical machine, or container on which YugabyteDB 
 
 ## Primary cluster
 
-A primary cluster can perform both writes and reads unlike a [read replica cluster](#read-replica-cluster) that performs only reads. There is only one primary cluster in an [universe](#universe). Replication between [nodes](#node) in a primary cluster is performed synchronously.
+A primary cluster can perform both writes and reads, unlike a [read replica cluster](#read-replica-cluster), which can only serve reads. A [universe](#universe) can have only one primary cluster. Replication between [nodes](#node) in a primary cluster is performed synchronously.
 
 ## Raft
 
