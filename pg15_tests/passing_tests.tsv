@@ -2,7 +2,7 @@ JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOn
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOnCurrentResourceWithoutCachedMetadata
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionBeforeAlterOnCurrentResource
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testMultipleDmlTransactionWithAlterOnCurrentResource
-JAVA	org.yb.pgsql.TestBatchCopyFrom#testNonTxnWriteSessionVariable
+JAVA	org.yb.pgsql.TestBatchCopyFrom
 JAVA	org.yb.pgsql.TestIndexBackfill#insertsWhileCreatingIndex
 JAVA	org.yb.pgsql.TestJWTAuth
 JAVA	org.yb.pgsql.TestPg15Regress
