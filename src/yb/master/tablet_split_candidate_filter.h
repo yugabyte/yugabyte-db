@@ -36,6 +36,11 @@ class TabletSplitCandidateFilterIf {
 
   virtual Status CanAddPartitionsToTable(
     size_t desired_partitions, const PlacementInfoPB& placement_info) = 0;
+
+  virtual Status CanSupportAdditionalTablet(
+      const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const = 0;
+
+  virtual void IncrementSplitBlockedByTabletLimitCounter() = 0;
 };
 
 }  // namespace master

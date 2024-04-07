@@ -2411,6 +2411,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_dead_;
 
   scoped_refptr<Counter> metric_create_table_too_many_tablets_;
+  scoped_refptr<Counter> metric_split_tablet_too_many_tablets_;
 
   friend class ClusterLoadBalancer;
 
@@ -2469,6 +2470,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status CanAddPartitionsToTable(
       size_t desired_partitions, const PlacementInfoPB& placement_info) override;
+
+  Status CanSupportAdditionalTablet(
+      const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const override;
+
+  void IncrementSplitBlockedByTabletLimitCounter() override;
 
  private:
   friend class SnapshotLoader;
@@ -2605,7 +2611,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);
 
   void InitializeGlobalLoadState(
-      TSDescriptorVector ts_descs, CMGlobalLoadState* state);
+      const TSDescriptorVector& ts_descs, CMGlobalLoadState* state);
 
   // Send a step down request for the sys catalog tablet to the specified master. If the step down
   // RPC response has an error, returns false. If the step down RPC is successful, returns true.
