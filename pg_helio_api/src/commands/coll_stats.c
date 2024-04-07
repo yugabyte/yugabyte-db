@@ -339,7 +339,7 @@ BuildResultData(Datum databaseName, Datum collectionName, CollStatsResult *resul
 	appendStringInfo(cmdStr,
 					 "SELECT success, result FROM run_command_on_all_nodes("
 					 "FORMAT($$ SELECT %s.coll_stats_worker(%%L, %%L, %d) $$, $1, $2))",
-					 ApiSchemaName, scale);
+					 ApiToApiInternalSchemaName, scale);
 
 	int numValues = 2;
 	Datum values[2] = { databaseName, collectionName };

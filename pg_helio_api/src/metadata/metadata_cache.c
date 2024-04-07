@@ -2295,7 +2295,7 @@ ApiCollStatsAggregationFunctionOid(void)
 
 	if (Cache.CollStatsAggregationFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiSchemaName),
+		List *functionNameList = list_make2(makeString(ApiToApiInternalSchemaName),
 											makeString("coll_stats_aggregation"));
 		Oid paramOids[3] = { TEXTOID, TEXTOID, BsonTypeId() };
 		bool missingOK = false;
