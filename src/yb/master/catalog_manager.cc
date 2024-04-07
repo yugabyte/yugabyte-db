@@ -584,6 +584,13 @@ METRIC_DEFINE_counter(cluster, create_table_too_many_tablets,
     "How many CreateTable requests have failed due to too many tablets", yb::MetricUnit::kRequests,
     "The number of CreateTable request errors due to attempting to create too many tablets.");
 
+METRIC_DEFINE_counter(
+    cluster, split_tablet_too_many_tablets,
+    "How many SplitTablet operations have failed because the cluster cannot host any more tablets",
+    yb::MetricUnit::kRequests,
+    "The number of SplitTablet operations failed because the cluster cannot host any more "
+    "tablets.");
+
 DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
                  "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
 
@@ -1062,6 +1069,8 @@ Status CatalogManager::Init() {
 
   metric_create_table_too_many_tablets_ =
       METRIC_create_table_too_many_tablets.Instantiate(master_->metric_entity_cluster());
+  metric_split_tablet_too_many_tablets_ =
+    METRIC_split_tablet_too_many_tablets.Instantiate(master_->metric_entity_cluster());
 
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(master_->cdc_state_client_future());
 
@@ -3758,6 +3767,15 @@ Status CatalogManager::CanAddPartitionsToTable(
     return STATUS(InvalidArgument, msg);
   }
   return Status::OK();
+}
+
+Status CatalogManager::CanSupportAdditionalTablet(
+    const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const {
+  return CanCreateTabletReplicas(1, replication_info, GetAllLiveNotBlacklistedTServers());
+}
+
+void CatalogManager::IncrementSplitBlockedByTabletLimitCounter() {
+  IncrementCounter(metric_split_tablet_too_many_tablets_);
 }
 
 // Create a new table.
@@ -13350,7 +13368,7 @@ void CatalogManager::InitializeTableLoadState(
 
 // TODO: consider unifying this code with the load balancer.
 void CatalogManager::InitializeGlobalLoadState(
-    TSDescriptorVector ts_descs, CMGlobalLoadState* state) {
+    const TSDescriptorVector& ts_descs, CMGlobalLoadState* state) {
   for (const auto& ts : ts_descs) {
     // Touch every tserver with 0 load.
     state->per_ts_replica_load_[ts->permanent_uuid()];
