@@ -50,7 +50,9 @@ public class TestYbAsh extends BasePgSQLTest {
     flagMap.put("ysql_yb_enable_ash", "true");
     flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(sampling_interval));
     flagMap.put("ysql_yb_ash_sample_size", String.valueOf(sample_size));
-    restartClusterWithFlags(Collections.emptyMap(), flagMap);
+    // flagMap.put("create_initial_sys_catalog_snapshot", "true");
+    Map<String, String> masterFlagMap = super.getMasterFlags();
+    restartClusterWithFlags(masterFlagMap, flagMap);
   }
 
   private void executePgSleep(Statement statement, long seconds) throws Exception {
@@ -155,10 +157,9 @@ public class TestYbAsh extends BasePgSQLTest {
       }
       statement.execute("TRUNCATE TABLE test_table2");
       statement.execute("DROP TABLE test_table2");
-      // TODO: remove wait_event_component='Postgres' once ASH metadata is propagated to
-      // TServer
+      // TODO: remove wait_event_component='YSQL' once all tserver RPCs are instrumented
       assertOneRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW + " WHERE query_id = 0 " +
-          "AND wait_event_component='Postgres'", 0);
+          "AND wait_event_component='YSQL'", 0);
     }
   }
 
@@ -213,9 +214,31 @@ public class TestYbAsh extends BasePgSQLTest {
         statement.execute(String.format("SELECT v FROM test_table WHERE k=%d", i));
       }
       int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
-          " WHERE wait_event_component='Postgres' AND wait_event_aux IS NOT NULL")
+          " WHERE wait_event_component='YSQL' AND wait_event_aux IS NOT NULL")
           .getLong(0).intValue();
       assertEquals(res, 0);
+    }
+  }
+
+  /**
+   * Verify that catalog requests are sampled
+   */
+  @Test
+  public void testCatalogRequests() throws Exception {
+    // Use small sampling interval so that we are more likely to catch catalog requests
+    setAshConfigAndRestartCluster(5, ASH_SAMPLE_SIZE);
+    int catalog_request_query_id = 5;
+    String catalog_read_wait_event = "CatalogRead";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
+      for (int i = 0; i < 100; ++i) {
+        statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
+        statement.execute(String.format("SELECT v FROM test_table WHERE k=%d", i));
+      }
+      int res1 = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE query_id = " + catalog_request_query_id + " OR " +
+          "wait_event = '" + catalog_read_wait_event + "'").getLong(0).intValue();
+      assertGreaterThan(res1, 0);
     }
   }
 }

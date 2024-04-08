@@ -151,8 +151,7 @@ struct ResponseReadyTraits<Result<rpc::CallData>> {
 };
 
 void AshMetadataToPB(const YBCPgAshConfig& ash_config, tserver::PgPerformOptionsPB* options) {
-  // Don't send ASH metadata if it's not set
-  if (!(*ash_config.yb_enable_ash) || !(*ash_config.is_metadata_set)) {
+  if (!(*ash_config.yb_enable_ash)) {
     return;
   }
 
