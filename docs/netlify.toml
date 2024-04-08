@@ -1276,6 +1276,7 @@
             https://www.google-analytics.com/
             https://www.yugabyte.com
             https://api.segment.io/
+            https://cdn.segment.com/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
