@@ -21,6 +21,10 @@ As described in [Write I/O path](../write-path/), the YugabyteDB smart client ca
 
 ## Read operation performed by tablet leader
 
+{{<tip>}}
+The leader of the tablet Raft group is responsible for handling the read requests and returning the result.
+{{</tip>}}
+
 Suppose there is a requirement to read the value where the primary key column `K` has a value `k` from table `T1`. The table `T1` has a key column `K` and a value column `V`. The following diagram depicts the read flow:
 
 ![Read path](/images/architecture/read_path_io.png)
