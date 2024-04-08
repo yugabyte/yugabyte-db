@@ -888,12 +888,6 @@ YBInitPostgresBackend(
 	}
 }
 
-bool
-YbGetCurrentSessionId(uint64_t *session_id)
-{
-	return YBCGetCurrentPgSessionId(session_id);
-}
-
 void
 YBOnPostgresBackendShutdown()
 {

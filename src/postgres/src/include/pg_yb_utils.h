@@ -290,8 +290,6 @@ extern void YBInitPostgresBackend(const char *program_name,
 								  const char *user_name,
 								  uint64_t *session_id);
 
-extern bool YbGetCurrentSessionId(uint64_t *session_id);
-
 /*
  * This should be called on all exit paths from the PostgreSQL backend process.
  * Only main PostgreSQL backend thread is expected to call this.
