@@ -34,8 +34,11 @@ JAVA	org.yb.pgsql.TestPgRegressBackfillIndex
 JAVA	org.yb.pgsql.TestPgRegressBufferingWithSQLErrors
 JAVA	org.yb.pgsql.TestPgRegressColocation
 JAVA	org.yb.pgsql.TestPgRegressContribFileFdw
+JAVA	org.yb.pgsql.TestPgRegressContribFuzzystrmatch
 JAVA	org.yb.pgsql.TestPgRegressContribPasswordCheck
 JAVA	org.yb.pgsql.TestPgRegressContribPgCrypto
+JAVA	org.yb.pgsql.TestPgRegressContribSpi
+JAVA	org.yb.pgsql.TestPgRegressContribTablefunc
 JAVA	org.yb.pgsql.TestPgRegressContribUuidOssp
 JAVA	org.yb.pgsql.TestPgRegressCursor#testPgRegressCursor
 JAVA	org.yb.pgsql.TestPgRegressDistinctPushdown

@@ -786,6 +786,10 @@ class PostgresBuilder(YbBuildToolBase):
             os.path.join(self.pg_build_root, 'contrib/file_fdw'),
             os.path.join(self.pg_build_root, 'contrib/postgres_fdw'),
             os.path.join(self.pg_build_root, 'contrib/passwordcheck'),
+            os.path.join(self.pg_build_root, 'contrib/fuzzystrmatch'),
+            os.path.join(self.pg_build_root, 'contrib/tablefunc'),
+            os.path.join(self.pg_build_root, 'contrib/spi'),
+            os.path.join(self.pg_build_root, 'contrib/sslinfo'),
             # YB_TODO: end
             third_party_extensions_dir,
         ]
