@@ -2321,11 +2321,12 @@ YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 
 	Bitmapset *columns = NULL;
 	ScanKey *keys = ybScan->keys;
+	const bool is_ioscan = ybScan->prepare_params.index_only_scan;
 	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
 	{
-		if (ybScan->prepare_params.index_only_scan ||
-			(ybScan->target_key_attnums[i] != InvalidAttrNumber &&
-			 keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL)))
+		if (is_ioscan ||
+			ybScan->target_key_attnums[i] == InvalidAttrNumber ||
+			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
 		{
 			int bms_idx = YBAttnumToBmsIndexWithMinAttr(
 				YBFirstLowInvalidAttributeNumber, keys[i]->sk_attno);
