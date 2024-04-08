@@ -59,9 +59,10 @@ class CloneStateManagerExternalFunctionsBase {
       const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
       CoarseTimePoint deadline, const LeaderEpoch& epoch) = 0;
 
-  virtual Result<SnapshotInfoPB> GenerateSnapshotInfoFromSchedule(
-    const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
-    CoarseTimePoint deadline) = 0;
+  virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+      GenerateSnapshotInfoFromSchedule(
+      const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
+      CoarseTimePoint deadline) = 0;
 
   virtual Status DoImportSnapshotMeta(
     const SnapshotInfoPB& snapshot_pb, const LeaderEpoch& epoch,
