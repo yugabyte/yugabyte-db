@@ -66,19 +66,20 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     checkUniverseVersion();
     String errorString = null;
-    Universe universe =
-        lockAndFreezeUniverseForUpdate(
-            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
-    // On retry, the current node may already be removed from the universe
-    //   but task may have failed after destroy subtask, hence need to find by taskParams.
-    Cluster taskParamsCluster = taskParams().getClusterByNodeName(taskParams().nodeName);
-    log.debug(
-        "Replacing node: {} in cluster: {} for universe: {}",
-        taskParams().nodeName,
-        taskParamsCluster.uuid,
-        universe.getUniverseUUID());
+    Universe universe = null;
 
     try {
+      universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
+      // On retry, the current node may already be removed from the universe
+      //   but task may have failed after destroy subtask, hence need to find by taskParams.
+      Cluster taskParamsCluster = taskParams().getClusterByNodeName(taskParams().nodeName);
+      log.debug(
+          "Replacing node: {} in cluster: {} for universe: {}",
+          taskParams().nodeName,
+          taskParamsCluster.uuid,
+          universe.getUniverseUUID());
       Set<NodeDetails> addedMasters = getAddedMasters();
       Set<NodeDetails> removedMasters = getRemovedMasters();
       boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();
@@ -123,6 +124,7 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
+      releaseReservedNodes();
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate(errorString);
