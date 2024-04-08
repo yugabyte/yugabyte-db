@@ -206,6 +206,9 @@ static volatile sig_atomic_t replication_active = false;
 static LogicalDecodingContext *logical_decoding_ctx = NULL;
 static XLogRecPtr logical_startptr = InvalidXLogRecPtr;
 
+/* Total time spent in the WalSndWriteData function in a batch of changes. */
+uint64_t YbWalSndTotalTimeInSendingMicros = 0;
+
 /* A sample associating a WAL location with the time it was written. */
 typedef struct
 {
@@ -262,6 +265,7 @@ static bool TransactionIdInRecentPast(TransactionId xid, uint32 epoch);
 
 static void XLogRead(char *buf, XLogRecPtr startptr, Size count);
 
+static void YbWalSndUpdateTotalTimeInSendingMicros(TimestampTz yb_start_time);
 
 /* Initialize walsender process before entering the main command loop */
 void
@@ -1311,6 +1315,11 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 {
 	TimestampTz now;
 
+	TimestampTz yb_start_time;
+
+	if (IsYugaByteEnabled())
+		yb_start_time = GetCurrentTimestamp();
+
 	/* output previously gathered data in a CopyData packet */
 	pq_putmessage_noblock('d', ctx->out->data, ctx->out->len);
 
@@ -1336,6 +1345,9 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 										  wal_sender_timeout / 2) &&
 		!pq_is_send_pending())
 	{
+		if (IsYugaByteEnabled())
+			YbWalSndUpdateTotalTimeInSendingMicros(yb_start_time);
+
 		return;
 	}
 
@@ -1392,8 +1404,22 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 			WalSndShutdown();
 	}
 
+	if (IsYugaByteEnabled())
+		YbWalSndUpdateTotalTimeInSendingMicros(yb_start_time);
+
 	/* reactivate latch so WalSndLoop knows to continue */
 	SetLatch(MyLatch);
+}
+
+static void
+YbWalSndUpdateTotalTimeInSendingMicros(TimestampTz yb_start_time)
+{
+	long secs;
+	int microsecs;
+
+	TimestampDifference(yb_start_time, GetCurrentTimestamp(), &secs,
+						&microsecs);
+	YbWalSndTotalTimeInSendingMicros += (secs * USECS_PER_SEC + microsecs);
 }
 
 /*
