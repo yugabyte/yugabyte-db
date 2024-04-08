@@ -23,8 +23,8 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/gutil/map-util.h"
-
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/clone/clone_state_entity.h"
@@ -61,11 +61,17 @@ MATCHER_P(CloneTabletRequestPBMatcher, expected, "CloneTabletRequestPBs did not 
   return pb_util::ArePBsEqual(arg, expected, nullptr /* diff_str */);
 }
 
-std::ostream& operator<<(std::ostream& os, const Result<SnapshotInfoPB>& res) {
+// This is needed for the mock of GenerateSnapshotInfoFromSchedule.
+std::ostream& operator<<(
+    std::ostream& os, const Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>& res) {
   if (!res.ok()) {
     os << res.status().ToString();
   } else {
-    os << res->ShortDebugString();
+    os << res->first.ShortDebugString();
+    os << "Not snapshotted tablets: ";
+    for (const auto& tablet_id : res->second) {
+      os << tablet_id << ", ";
+    }
   }
   return os;
 }
@@ -113,9 +119,10 @@ class CloneStateManagerTest : public YBTest {
          CoarseTimePoint deadline, const LeaderEpoch& epoch), (override));
 
     MOCK_METHOD(
-        Result<SnapshotInfoPB>, GenerateSnapshotInfoFromSchedule,
+        (Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>),
+        GenerateSnapshotInfoFromSchedule,
         (const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
-         CoarseTimePoint deadline), (override));
+        CoarseTimePoint deadline), (override));
 
     MOCK_METHOD(
         Status, DoImportSnapshotMeta,
@@ -238,8 +245,10 @@ class CloneStateManagerTest : public YBTest {
     return clone_state_manager_->GetCloneStateFromSourceNamespace(namespace_id);
   }
 
-  Status ScheduleCloneOps(const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch) {
-    return clone_state_manager_->ScheduleCloneOps(clone_state, epoch);
+  Status ScheduleCloneOps(
+      const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch,
+      const std::unordered_set<TabletId>& not_snapshotted_tablets) {
+    return clone_state_manager_->ScheduleCloneOps(clone_state, epoch, not_snapshotted_tablets);
   }
 
   MockExternalFunctions& MockFuncs() {
@@ -351,7 +360,7 @@ TEST_F(CloneStateManagerTest, ScheduleCloneOps) {
     EXPECT_CALL(MockFuncs(), ScheduleCloneTabletCall(
         source_tablets_[i], epoch, CloneTabletRequestPBMatcher(expected_req)));
   }
-  ASSERT_OK(ScheduleCloneOps(clone_state, epoch));
+  ASSERT_OK(ScheduleCloneOps(clone_state, epoch, {} /* not_snapshotted_tablets */));
 }
 
 TEST_F(CloneStateManagerTest, HandleCreatingStateAllTabletsCreating) {
