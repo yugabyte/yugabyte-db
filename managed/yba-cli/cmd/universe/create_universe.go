@@ -371,7 +371,7 @@ func init() {
 	createUniverseCmd.Flags().Bool("enable-volume-encryption", false,
 		"[Optional] Enable encryption for data stored on the tablet servers. (default false)")
 	createUniverseCmd.Flags().String("kms-config", "",
-		"[Optional] Key management service config. "+
+		"[Optional] Key management service config name. "+
 			formatter.Colorize("Required when enable-volume-encryption is set to true.",
 				formatter.GreenColor))
 
