@@ -166,6 +166,13 @@ SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeli
 
 SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline" }');
 
+-- EXPLAIN the counts
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline" }');
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": { "_id": { "$gt": "1" } } }');
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "non_existent_coll" }');
+
 -- distinct
 SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "aggregation_pipeline", "key": "_id" }');
 

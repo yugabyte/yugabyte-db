@@ -1355,6 +1355,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 	bson_value_t skip = { 0 };
 	pg_uuid_t *collectionUuid = NULL;
 
+	bool hasQueryModifier = false;
 	while (bson_iter_next(&countIterator))
 	{
 		StringView keyView = bson_iter_key_string_view(&countIterator);
@@ -1370,16 +1371,19 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 		{
 			EnsureTopLevelFieldType("query", &countIterator, BSON_TYPE_DOCUMENT);
 			filter = *value;
+			hasQueryModifier = true;
 		}
 		else if (StringViewEqualsCString(&keyView, "limit"))
 		{
 			/* Validation handled in the stage processing */
 			limit = *value;
+			hasQueryModifier = true;
 		}
 		else if (StringViewEqualsCString(&keyView, "skip"))
 		{
 			/* Validation handled in the stage processing */
 			skip = *value;
+			hasQueryModifier = true;
 		}
 		else if (StringViewEqualsCString(&keyView, "hint") ||
 				 StringViewEqualsCString(&keyView, "fields"))
@@ -1403,52 +1407,81 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, collectionUuid,
 										  &context);
 
-	/* First apply match */
-	if (filter.value_type != BSON_TYPE_EOD)
+	/*
+	 * the count() query which has no filter/skip/limit/etc can be done via an estimatedDocumentCount
+	 * per the mongo spec. In this case, we rewrite the query as a collStats aggregation query with
+	 * a project to make it the appropriate output.
+	 */
+	if (!hasQueryModifier && context.mongoCollection != NULL)
 	{
-		query = HandleMatch(&filter, query, &context);
+		/* Collection exists, get a collStats: { "count": {} } */
+		pgbson_writer collStatsWriter;
+		pgbson_writer countWriter;
+		PgbsonWriterInit(&collStatsWriter);
+		PgbsonWriterStartDocument(&collStatsWriter, "count", 5, &countWriter);
+		PgbsonWriterEndDocument(&collStatsWriter, &countWriter);
+		pgbson *collStatsSpec = PgbsonWriterGetPgbson(&collStatsWriter);
+		bson_value_t collStatsSpecValue = ConvertPgbsonToBsonValue(collStatsSpec);
+		query = HandleCollStats(&collStatsSpecValue, query, &context);
 		context.stageNum++;
-	}
 
-	/* Then do skip and then limit */
-	if (skip.value_type != BSON_TYPE_EOD)
-	{
-		query = HandleSkip(&skip, query, &context);
-		context.stageNum++;
-		context.requiresPersistentCursor = true;
+		/* Add a $project where the count field is written as 'n' */
+		pgbson_writer projectWriter;
+		PgbsonWriterInit(&projectWriter);
+		PgbsonWriterAppendUtf8(&projectWriter, "n", 1, "$count");
+		pgbson *projectSpec = PgbsonWriterGetPgbson(&projectWriter);
+		bson_value_t projectSpecValue = ConvertPgbsonToBsonValue(projectSpec);
+		query = HandleProject(&projectSpecValue, query, &context);
 	}
-
-	/* Count supports negative limit */
-	if (BsonValueIsNumber(&limit))
+	else
 	{
-		int64_t intValue = BsonValueAsInt64(&limit);
-		if (intValue < 0)
+		/* First apply match */
+		if (filter.value_type != BSON_TYPE_EOD)
 		{
-			limit.value.v_int64 = labs(intValue);
-			limit.value_type = BSON_TYPE_INT64;
+			query = HandleMatch(&filter, query, &context);
+			context.stageNum++;
 		}
-		else if (intValue == 0)
-		{
-			limit.value_type = BSON_TYPE_EOD;
-		}
-	}
 
-	if (limit.value_type != BSON_TYPE_EOD)
-	{
-		query = HandleLimit(&limit, query, &context);
-		context.stageNum++;
-		if (RequiresPersistentCursorLimit(&limit))
+		/* Then do skip and then limit */
+		if (skip.value_type != BSON_TYPE_EOD)
 		{
+			query = HandleSkip(&skip, query, &context);
+			context.stageNum++;
 			context.requiresPersistentCursor = true;
 		}
-	}
 
-	/* Now add a count stage that writes to the field "n" */
-	bson_value_t countValue = { 0 };
-	countValue.value_type = BSON_TYPE_UTF8;
-	countValue.value.v_utf8.len = 1;
-	countValue.value.v_utf8.str = "n";
-	query = HandleCount(&countValue, query, &context);
+		/* Count supports negative limit */
+		if (BsonValueIsNumber(&limit))
+		{
+			int64_t intValue = BsonValueAsInt64(&limit);
+			if (intValue < 0)
+			{
+				limit.value.v_int64 = labs(intValue);
+				limit.value_type = BSON_TYPE_INT64;
+			}
+			else if (intValue == 0)
+			{
+				limit.value_type = BSON_TYPE_EOD;
+			}
+		}
+
+		if (limit.value_type != BSON_TYPE_EOD)
+		{
+			query = HandleLimit(&limit, query, &context);
+			context.stageNum++;
+			if (RequiresPersistentCursorLimit(&limit))
+			{
+				context.requiresPersistentCursor = true;
+			}
+		}
+
+		/* Now add a count stage that writes to the field "n" */
+		bson_value_t countValue = { 0 };
+		countValue.value_type = BSON_TYPE_UTF8;
+		countValue.value.v_utf8.len = 1;
+		countValue.value.v_utf8.str = "n";
+		query = HandleCount(&countValue, query, &context);
+	}
 
 	/* Now add the "ok": 1 as an add fields stage. */
 	pgbson_writer addFieldsWriter;

@@ -635,6 +635,29 @@ SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeli
  { "n" : { "$numberInt" : "3" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
+-- EXPLAIN the counts
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline" }');
+                     QUERY PLAN                     
+----------------------------------------------------
+ Function Scan on coll_stats_aggregation collection
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": { "_id": { "$gt": "1" } } }');
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Index Scan using _id_ on documents_3500 collection
+         Index Cond: ((shard_key_value = '3500'::bigint) AND (object_id > '{ "" : "1" }'::bson))
+         Filter: (document @> '{ "_id" : "1" }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "non_existent_coll" }');
+                     QUERY PLAN                     
+----------------------------------------------------
+ Aggregate
+   ->  Function Scan on empty_data_table collection
+(2 rows)
+
 -- distinct
 SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "aggregation_pipeline", "key": "_id" }');
                                document                               

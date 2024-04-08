@@ -26,6 +26,7 @@
 #include "utils/version_utils.h"
 #include "commands/parse_error.h"
 #include "commands/coll_stats.h"
+#include "commands/commands_common.h"
 #include "commands/diagnostic_commands_common.h"
 
 extern int CollStatsCountPolicyThreshold;
@@ -240,7 +241,14 @@ command_coll_stats_aggregation(PG_FUNCTION_ARGS)
 	BuildResultData(databaseName, collectionName, &result, collection, storageScale);
 	if ((aggregateMode & CollStatsAggMode_Count) != 0)
 	{
-		PgbsonWriterAppendInt64(&writer, "count", 5, result.count);
+		if (result.count < INT32_MAX)
+		{
+			PgbsonWriterAppendInt32(&writer, "count", 5, (int32_t) result.count);
+		}
+		else
+		{
+			PgbsonWriterAppendInt64(&writer, "count", 5, result.count);
+		}
 	}
 
 	if ((aggregateMode & CollStatsAggMode_Storage) != 0)
@@ -335,18 +343,29 @@ static void
 BuildResultData(Datum databaseName, Datum collectionName, CollStatsResult *result,
 				MongoCollection *collection, int32 scale)
 {
-	StringInfo cmdStr = makeStringInfo();
-	appendStringInfo(cmdStr,
-					 "SELECT success, result FROM run_command_on_all_nodes("
-					 "FORMAT($$ SELECT %s.coll_stats_worker(%%L, %%L, %d) $$, $1, $2))",
-					 ApiToApiInternalSchemaName, scale);
+	List *workerBsons;
+	if (DefaultInlineWriteOperations)
+	{
+		Datum resultDatum = DirectFunctionCall3(command_coll_stats_worker,
+												databaseName, collectionName,
+												Int32GetDatum(scale));
+		workerBsons = list_make1(DatumGetPgBsonPacked(resultDatum));
+	}
+	else
+	{
+		StringInfo cmdStr = makeStringInfo();
+		appendStringInfo(cmdStr,
+						 "SELECT success, result FROM run_command_on_all_nodes("
+						 "FORMAT($$ SELECT %s.coll_stats_worker(%%L, %%L, %d) $$, $1, $2))",
+						 ApiToApiInternalSchemaName, scale);
 
-	int numValues = 2;
-	Datum values[2] = { databaseName, collectionName };
-	Oid types[2] = { TEXTOID, TEXTOID };
+		int numValues = 2;
+		Datum values[2] = { databaseName, collectionName };
+		Oid types[2] = { TEXTOID, TEXTOID };
 
-	List *workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types,
-													 numValues, "CollStats");
+		workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types,
+												   numValues, "CollStats");
+	}
 
 	/* Now that we have the worker BSON results, merge them to the final one */
 	MergeWorkerResults(result, collection, workerBsons, scale);
@@ -594,7 +613,22 @@ CollStatsWorker(void *fcinfoPointer)
 	/* First step, get the relevant shards on this node (We're already in the query worker) */
 	ArrayType *shardNames = NULL;
 	ArrayType *shardOids = NULL;
-	GetMongoCollectionShardOidsAndNames(collection, &shardOids, &shardNames);
+	if (DefaultInlineWriteOperations)
+	{
+		int singleShardCount = 1;
+		Datum resultDatums[1] = { ObjectIdGetDatum(collection->collectionId) };
+		Datum resultNames[1] = { CStringGetTextDatum(collection->shardTableName) };
+		shardOids = construct_array(resultDatums, singleShardCount, OIDOID,
+									sizeof(Oid), true,
+									TYPALIGN_INT);
+		shardNames = construct_array(resultNames, singleShardCount, TEXTOID, -1,
+									 false,
+									 TYPALIGN_INT);
+	}
+	else
+	{
+		GetMongoCollectionShardOidsAndNames(collection, &shardOids, &shardNames);
+	}
 
 	/* Next get the relation and table size */
 	pgbson_writer writer;
