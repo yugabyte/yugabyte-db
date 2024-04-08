@@ -2,7 +2,7 @@
    "name": "pgTAP",
    "abstract": "Unit testing for PostgreSQL",
    "description": "pgTAP is a suite of database functions that make it easy to write TAP-emitting unit tests in psql scripts or xUnit-style test functions.",
-   "version": "1.3.2",
+   "version": "1.3.3",
    "maintainer": [
       "David E. Wheeler <david@justatheory.com>",
       "pgTAP List <pgtap-users@pgfoundry.org>"

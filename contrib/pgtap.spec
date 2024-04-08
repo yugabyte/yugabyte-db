@@ -41,6 +41,9 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 %{_docdir}/pgsql/contrib/README.pgtap
 
 %changelog
+* Mon Apr 8 2024 David E. Wheeler <david@justatheory.com> 1.3.3-1
+- Update to 1.3.3
+
 * Sun Feb 4 2024 David E. Wheeler <david@justatheory.com> 1.3.2-1
 - Update to 1.3.2
 
