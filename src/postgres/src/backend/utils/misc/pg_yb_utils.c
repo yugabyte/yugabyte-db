@@ -4692,6 +4692,20 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 		elog(ERROR, "Injecting error.");
 }
 
+Relation
+YbGetRelationWithOverwrittenReplicaIdentity(Oid relid, char replident)
+{
+	Relation relation;
+	
+	relation = RelationIdGetRelation(relid);
+	if (!RelationIsValid(relation))
+		elog(ERROR, "could not open relation with OID %u", relid);
+
+	/* Overwrite the replica identity of the relation. */
+	relation->rd_rel->relreplident = replident;
+	return relation;
+}
+
 void
 YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 {
