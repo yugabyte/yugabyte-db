@@ -62,7 +62,7 @@ DEFINE_UNKNOWN_int32(log_max_seconds_to_retain, 24 * 3600, "Log files that are o
              "ignored. This flag is ignored if a log segment contains entries that haven't been"
              "flushed to RocksDB.");
 
-DEFINE_UNKNOWN_int64(log_stop_retaining_min_disk_mb, 100 * 1024, "Stop retaining logs if the space "
+DEFINE_UNKNOWN_int64(log_stop_retaining_min_disk_mb, 100, "Stop retaining logs if the space "
              "available for the logs falls below this limit. This flag is ignored if a log segment "
              "contains unflushed entries.");
 
@@ -275,7 +275,7 @@ bool LogReader::ViolatesMinSpacePolicy(const scoped_refptr<ReadableLogSegment>& 
   } else {
     uint64_t free_space = *free_space_result;
     if (free_space + *potential_reclaimed_space <
-            implicit_cast<size_t>(FLAGS_log_stop_retaining_min_disk_mb) * 1024) {
+            implicit_cast<size_t>(FLAGS_log_stop_retaining_min_disk_mb) * 1024 * 1024) {
       YB_LOG_EVERY_N_SECS(WARNING, 300)
           << "Segment " << segment->path() << " violates minimum free space policy "
           << "specified by log_stop_retaining_min_disk_mb: "
