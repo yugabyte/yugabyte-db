@@ -889,7 +889,6 @@ YBInitPostgresBackend(
 		callbacks.PgstatReportWaitStart = &yb_pgstat_report_wait_start;
 		YBCPgAshConfig ash_config;
 		ash_config.metadata = &MyProc->yb_ash_metadata;
-		ash_config.is_metadata_set = &MyProc->yb_is_ash_metadata_set;
 		ash_config.yb_enable_ash = &yb_enable_ash;
 		IpAddressToBytes(&ash_config);
 		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);

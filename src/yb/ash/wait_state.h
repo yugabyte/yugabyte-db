@@ -185,9 +185,10 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
 // fixed query-ids to identify these background tasks.
 YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForLogAppender, 1))
-  (kQueryIdForFlush)
-  (kQueryIdForCompaction)
-  (kQueryIdForRaftUpdateConsensus)
+  ((kQueryIdForFlush, 2))
+  ((kQueryIdForCompaction, 3))
+  ((kQueryIdForRaftUpdateConsensus, 4))
+  ((kQueryIdForCatalogRequests, 5))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
