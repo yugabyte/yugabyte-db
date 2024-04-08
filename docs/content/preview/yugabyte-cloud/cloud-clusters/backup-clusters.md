@@ -21,7 +21,7 @@ Full backups are a complete copy of the cluster. You can additionally schedule i
 
 - Faster - Incremental backups are much quicker as they deal with a smaller amount of data.
 - Reduced storage - Because only the delta from previous backup is captured, incremental backups consume less storage space compared to full backups.
-- Higher frequency - Incremental backups can be scheduled at smaller intervals (under 1 day), providing a lower recovery point objective (RPO).
+- Higher frequency - Incremental backups can be scheduled at smaller intervals (down to hourly), providing a lower recovery point objective (RPO).
 
 Back up and restore clusters, configure the scheduled backup policy, and review previous backups and restores using the cluster **Backups** tab.
 
