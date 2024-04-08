@@ -540,6 +540,11 @@ extern bool yb_explain_hide_non_deterministic_fields;
  */
 extern bool yb_enable_saop_pushdown;
 
+/*
+ * Enables the use of TOAST compression for the Postgres catcache.
+*/
+extern int yb_toast_catcache_threshold;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

@@ -377,7 +377,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
-    ASSERT_FALSE(resp.has_tablet_report_limit()); // No limit unless capability registered.
+    ASSERT_TRUE(resp.has_tablet_report_limit());
   }
 
   descs.clear();
@@ -388,11 +388,6 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
   ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
   ASSERT_EQ(ts_desc, descs[0]);
-
-  // Add capabilities in next registration.
-  auto cap = Capabilities();
-  *fake_reg.mutable_capabilities() =
-      google::protobuf::RepeatedField<CapabilityId>(cap.begin(), cap.end());
 
   // If the tablet server somehow lost the response to its registration RPC, it would
   // attempt to register again. In that case, we shouldn't reject it -- we should
@@ -407,7 +402,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
-    ASSERT_TRUE(resp.has_tablet_report_limit()); // Limit given, since TS capability registered.
+    ASSERT_TRUE(resp.has_tablet_report_limit());
   }
 
   // Now begin sending full tablet report

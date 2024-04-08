@@ -63,7 +63,6 @@
 
 #include "yb/tserver/tserver_fwd.h"
 
-#include "yb/util/capabilities.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/lockfree.h"
@@ -137,8 +136,6 @@ class RemoteTabletServer {
   // Returns the remote server's uuid.
   const std::string& permanent_uuid() const;
 
-  bool HasCapability(CapabilityId capability) const;
-
   bool IsLocalRegion() const;
 
   LocalityLevel LocalityLevelWith(const CloudInfoPB& cloud_info) const;
@@ -163,7 +160,6 @@ class RemoteTabletServer {
   ::yb::HostPort proxy_endpoint_;
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<EventStats> dns_resolve_stats_;
-  std::vector<CapabilityId> capabilities_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };

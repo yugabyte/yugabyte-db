@@ -412,7 +412,6 @@ DEFINE_RUNTIME_double(heartbeat_safe_deadline_ratio, .20,
     "When the heartbeat deadline has this percentage of time remaining, "
     "the master should halt tablet report processing so it can respond in time.");
 DECLARE_int32(heartbeat_rpc_timeout_ms);
-DECLARE_CAPABILITY(TabletReportLimit);
 
 DEFINE_test_flag(int32, num_missing_tablets, 0, "Simulates missing tablets in a table");
 
@@ -8722,8 +8721,8 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
     rpcs.clear();
 
     // 14. Check deadline. Need to exit before processing all batches if we're close to timing out.
-    if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit) &&
-        tablet_iter != reported_tablets.end()) {
+    if (tablet_iter != reported_tablets.end()) {
+
       // [TESTING] Inject latency before processing a batch to test deadline.
       if (PREDICT_FALSE(FLAGS_TEST_inject_latency_during_tablet_report_ms > 0)) {
         LOG(INFO) << "Sleeping in CatalogManager::ProcessTabletReport for "
@@ -11997,17 +11996,7 @@ Status CatalogManager::BuildLocationsForSystemTablet(
   // For system tables, the set of replicas is always the set of masters.
   consensus::ConsensusStatePB master_consensus;
   RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
-  const auto initial_size = locs_pb->replicas_size();
   RETURN_NOT_OK(ConsensusStateToTabletLocations(master_consensus, locs_pb));
-  const auto capabilities = Capabilities();
-  // Set capabilities of master node for all newly created system table locations.
-  for (auto i = locs_pb->mutable_replicas()->begin() + initial_size,
-            end = locs_pb->mutable_replicas()->end();
-       i != end;
-       ++i) {
-    *i->mutable_ts_info()->mutable_capabilities() =
-        google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
-  }
   return Status::OK();
 }
 
@@ -12186,7 +12175,6 @@ Status CatalogManager::BuildLocationsForTablet(
       out_ts_info->set_permanent_uuid(tsinfo_pb->tserver_instance().permanent_uuid());
       CopyRegistration(tsinfo_pb->registration().common(), out_ts_info);
       out_ts_info->set_placement_uuid(tsinfo_pb->registration().common().placement_uuid());
-      *out_ts_info->mutable_capabilities() = tsinfo_pb->registration().capabilities();
     }
   } else if (cstate.IsInitialized()) {
     // If the locations were not cached.

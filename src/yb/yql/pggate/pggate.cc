@@ -1753,7 +1753,7 @@ Status PgApiImpl::RetrieveYbctids(PgStatement *handle, const YBCPgExecParameters
         vec->emplace_back(s);
       }
 
-      if (consumed_bytes >= (size_t) exec_params->work_mem * 1024) {
+      if (consumed_bytes >= (size_t) exec_params->work_mem * 1024L) {
         *exceeded_work_mem = true;
         break;
       }

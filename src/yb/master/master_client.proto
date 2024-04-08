@@ -41,8 +41,8 @@ message TSInfoPB {
 
   optional bytes placement_uuid = 4;
 
-  // Capabilities of tablet server.
-  repeated fixed32 capabilities = 6;
+  // DEPRECATED Capabilities of tablet server.
+  reserved 6;
 }
 
 message TabletLocationsPB {

@@ -23,9 +23,6 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "useIMDSv2" : {
-          "type" : "boolean"
-        },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
           "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
@@ -5824,6 +5821,9 @@
         },
         "sshUser" : {
           "type" : "string"
+        },
+        "useIMDSv2" : {
+          "type" : "boolean"
         }
       },
       "type" : "object"
@@ -8030,6 +8030,9 @@
           "description" : "Node details (as a JSON object)",
           "example" : "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}",
           "type" : "string"
+        },
+        "inUse" : {
+          "type" : "boolean"
         },
         "instanceName" : {
           "description" : "The node instance's name",
