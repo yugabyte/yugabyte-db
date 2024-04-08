@@ -140,6 +140,10 @@ public class NodeConfig {
 
     REDIS_SERVER_RPC_PORT("Redis server rpc port is open"),
 
+    YB_HOME_DIR_CLEAN("Check if the home directory is clean"),
+
+    DATA_DIR_CLEAN("Check if the directory is clean"),
+
     YCQL_SERVER_HTTP_PORT("YCQL server http port is open"),
 
     YCQL_SERVER_RPC_PORT("YCQL server rpc port is open"),
