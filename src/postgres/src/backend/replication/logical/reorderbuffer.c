@@ -2281,6 +2281,9 @@ ReorderBufferCheckSerializeTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 	 */
 	if (txn->nentries_mem >= max_changes_in_memory)
 	{
+		if (IsYugaByteEnabled())
+			elog(DEBUG1, "Serializing txn %d to disk.", txn->xid);
+
 		ReorderBufferSerializeTXN(rb, txn);
 		Assert(txn->nentries_mem == 0);
 	}
