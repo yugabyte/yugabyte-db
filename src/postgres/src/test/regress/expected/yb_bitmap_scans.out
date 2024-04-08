@@ -250,6 +250,29 @@ NOTICE:  exceeded work_mem, switching to full table scan
  Storage Flush Requests: 0
 (16 rows)
 
+SET work_mem TO '4GB';
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or unique2 < 1000;
+                                                   QUERY PLAN
+----------------------------------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1  (cost=69.05..76.05 rows=100 width=16) (actual rows=6407 loops=1)
+   Storage Table Read Requests: 7
+   Storage Table Rows Scanned: 6407
+   ->  BitmapOr  (cost=69.05..69.05 rows=200 width=0) (actual rows=6407 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1  (cost=0.00..34.50 rows=100 width=0) (actual rows=6000 loops=1)
+               Index Cond: (unique1 < 6000)
+               Storage Index Read Requests: 6
+               Storage Index Rows Scanned: 6000
+         ->  Bitmap Index Scan on tenk1_unique2  (cost=0.00..34.50 rows=100 width=0) (actual rows=1000 loops=1)
+               Index Cond: (unique2 < 1000)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 1000
+ Storage Read Requests: 14
+ Storage Rows Scanned: 13407
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
 RESET work_mem;
 --
 -- test recheck condition and UPDATE

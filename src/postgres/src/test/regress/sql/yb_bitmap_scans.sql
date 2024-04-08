@@ -62,6 +62,10 @@ SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or un
 SET work_mem TO '100kB';
 /*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
 SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or unique2 < 1000;
+
+SET work_mem TO '4GB';
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or unique2 < 1000;
 RESET work_mem;
 
 --
