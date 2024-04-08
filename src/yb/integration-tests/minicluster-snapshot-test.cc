@@ -469,7 +469,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
   LOG(INFO) << Format(
       "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
   auto deadline = CoarseMonoClock::Now() + timeout;
-  master::SnapshotInfoPB snapshot_info_as_of_time = ASSERT_RESULT(
+  auto [snapshot_info_as_of_time, not_snapshotted_tablets] = ASSERT_RESULT(
       mini_cluster()->mini_master()->catalog_manager_impl().GenerateSnapshotInfoFromSchedule(
           schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
   // 6.
@@ -508,7 +508,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
   LOG(INFO) << Format(
       "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
   auto deadline = CoarseMonoClock::Now() + timeout;
-  master::SnapshotInfoPB snapshot_info_as_of_time = ASSERT_RESULT(
+  auto [snapshot_info_as_of_time, not_snapshotted_tablets] = ASSERT_RESULT(
       mini_cluster()->mini_master()->catalog_manager_impl().GenerateSnapshotInfoFromSchedule(
           schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
   // 6. Assert the output of 5 and 3 are the same.

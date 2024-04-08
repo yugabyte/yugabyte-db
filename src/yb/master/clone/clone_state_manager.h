@@ -96,7 +96,9 @@ class CloneStateManager {
 
   Status LoadCloneState(const std::string& id, const SysCloneStatePB& metadata);
 
-  Status ScheduleCloneOps(const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch);
+  Status ScheduleCloneOps(
+      const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch,
+      const std::unordered_set<TabletId>& not_snapshotted_tablets);
 
   Result<CloneStateInfoPtr> GetCloneStateFromSourceNamespace(const NamespaceId& namespace_id);
 

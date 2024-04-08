@@ -16,6 +16,7 @@
 #include <mutex>
 
 #include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/macros.h"
@@ -115,7 +116,7 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
     return catalog_manager_->DoCreateSnapshot(req, resp, deadline, epoch);
   }
 
-  Result<SnapshotInfoPB> GenerateSnapshotInfoFromSchedule(
+  Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>> GenerateSnapshotInfoFromSchedule(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) override {
     return catalog_manager_->GenerateSnapshotInfoFromSchedule(
@@ -215,14 +216,16 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
         InvalidArgument, "Expected source namespace identifier to have database type and name. "
         "Got: $0", source_namespace_identifier.ShortDebugString());
   }
+  auto source_namespace = VERIFY_RESULT(
+      external_funcs_->FindNamespace(source_namespace_identifier));
+  const auto& source_namespace_id = source_namespace->id();
+
   ListSnapshotSchedulesResponsePB resp;
   RETURN_NOT_OK(external_funcs_->ListSnapshotSchedules(&resp));
   auto snapshot_schedule_id = SnapshotScheduleId::Nil();
   for (const auto& schedule : resp.schedules()) {
     auto& tables = schedule.options().filter().tables().tables();
-    if (!tables.empty() &&
-        tables[0].namespace_().name() == source_namespace_identifier.name() &&
-        tables[0].namespace_().database_type() == source_namespace_identifier.database_type()) {
+    if (!tables.empty() && tables[0].namespace_().id() == source_namespace_id) {
       snapshot_schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
       break;
     }
@@ -233,10 +236,7 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
         source_namespace_identifier.name());
   }
 
-  auto source_namespace = VERIFY_RESULT(
-      external_funcs_->FindNamespace(source_namespace_identifier));
   auto seq_no = source_namespace->FetchAndIncrementCloneSeqNo();
-  const auto source_namespace_id = source_namespace->id();
 
   // Set up persisted clone state.
   auto clone_state = VERIFY_RESULT(CreateCloneState(seq_no, source_namespace, restore_time));
@@ -277,8 +277,9 @@ Status CloneStateManager::StartTabletsCloning(
     const HybridTime& restore_time, const std::string& target_namespace_name,
     CoarseTimePoint deadline, const LeaderEpoch& epoch) {
   // Export snapshot info.
-  auto snapshot_info = VERIFY_RESULT(external_funcs_->GenerateSnapshotInfoFromSchedule(
-      snapshot_schedule_id, restore_time, deadline));
+  auto [snapshot_info, not_snapshotted_tablets] = VERIFY_RESULT(
+      external_funcs_->GenerateSnapshotInfoFromSchedule(
+          snapshot_schedule_id, restore_time, deadline));
   auto source_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot_info.id()));
 
   // Import snapshot info.
@@ -322,7 +323,7 @@ Status CloneStateManager::StartTabletsCloning(
   RETURN_NOT_OK(UpdateCloneStateWithSnapshotInfo(
       clone_state, source_snapshot_id, target_snapshot_id, tables_data));
 
-  RETURN_NOT_OK(ScheduleCloneOps(clone_state, epoch));
+  RETURN_NOT_OK(ScheduleCloneOps(clone_state, epoch, not_snapshotted_tablets));
   return Status::OK();
 }
 
@@ -444,7 +445,8 @@ Status CloneStateManager::UpdateCloneStateWithSnapshotInfo(
 }
 
 Status CloneStateManager::ScheduleCloneOps(
-    const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch) {
+    const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch,
+    const std::unordered_set<TabletId>& not_snapshotted_tablets) {
   auto lock = clone_state->LockForRead();
   auto& pb = lock->pb;
   for (auto& tablet_data : pb.tablet_data()) {
@@ -452,10 +454,20 @@ Status CloneStateManager::ScheduleCloneOps(
         external_funcs_->GetTabletInfo(tablet_data.source_tablet_id()));
     auto target_tablet = VERIFY_RESULT(
         external_funcs_->GetTabletInfo(tablet_data.target_tablet_id()));
+    auto source_table = source_tablet->table();
     auto target_table = target_tablet->table();
+
+    // Don't need to worry about ordering here because these are both read locks.
+    auto source_table_lock = source_table->LockForRead();
     auto target_table_lock = target_table->LockForRead();
 
     tablet::CloneTabletRequestPB req;
+    if (not_snapshotted_tablets.contains(tablet_data.source_tablet_id())) {
+      RSTATUS_DCHECK(source_tablet->LockForRead()->pb.hide_hybrid_time() != 0, IllegalState,
+          Format("Expected not snapshotted tablet to be in HIDDEN state. Actual: $0",
+              source_table_lock->state_name()));
+      req.set_clone_from_active_rocksdb(true);
+    }
     req.set_tablet_id(tablet_data.source_tablet_id());
     req.set_target_tablet_id(tablet_data.target_tablet_id());
     req.set_source_snapshot_id(pb.source_snapshot_id().data(), pb.source_snapshot_id().size());

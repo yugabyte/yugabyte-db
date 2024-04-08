@@ -447,6 +447,33 @@ TEST_F(CloneFromScheduleTest, CloneWithNoSchedule) {
   ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Could not find snapshot schedule");
 }
 
+TEST_F(CloneFromScheduleTest, CloneAfterDrop) {
+  auto schedule_id = ASSERT_RESULT(
+    snapshot_util_->CreateSchedule(table_, kTableName.namespace_type(),
+                                   kTableName.namespace_name()));
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
+
+  ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 0 /* transaction */));
+  auto row_count = CountTableRows(table_);
+  auto ht = cluster_->mini_master()->master()->clock()->Now();
+
+  ASSERT_OK(client_->DeleteTable(kTableName));
+
+  master::CloneNamespaceRequestPB req;
+  master::NamespaceIdentifierPB source_namespace;
+  source_namespace.set_name(kTableName.namespace_name());
+  source_namespace.set_database_type(YQLDatabase::YQL_DATABASE_CQL);
+  *req.mutable_source_namespace() = source_namespace;
+  req.set_restore_ht(ht.ToUint64());
+  req.set_target_namespace_name("clone" /* target_namespace_name */);
+  ASSERT_OK(CloneAndWait(req));
+
+  YBTableName clone(YQL_DATABASE_CQL, "clone", kTableName.table_name());
+  TableHandle clone_handle;
+  ASSERT_OK(clone_handle.Open(clone, client_.get()));
+  ASSERT_EQ(CountTableRows(clone_handle), row_count);
+}
+
 TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
   const auto kInterval = 5s * kTimeMultiplier;
   const auto kRetention = kInterval * 2;
