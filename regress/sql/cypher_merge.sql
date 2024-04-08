@@ -723,10 +723,49 @@ SELECT * FROM cypher('issue_1691', $$MATCH ()-[e]->() DELETE e $$) AS (a agtype)
 SELECT * FROM cypher('issue_1691', $$MATCH (u) DELETE u $$) AS (a agtype);
 
 --
+-- Issue 1709 - MERGE creates incomplete vertices after the first one
+--              This is actually an issue with MERGE not using the correct command id
+--
+SELECT * FROM create_graph('issue_1709');
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) RETURN u $$) AS (u agtype);
+
+SELECT * FROM cypher('issue_1709', $$ UNWIND [{first: 'jon', last: 'snow'}, {first: 'ned', last: 'stark'}] AS map
+                                      MERGE (v:PERSON {first: map.first})
+                                      SET v=map
+                                      RETURN v $$) AS (v agtype);
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) RETURN u $$) AS (u agtype);
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) DELETE u $$) AS (a agtype);
+
+SELECT * FROM cypher('issue_1709', $$ UNWIND [{first: 'jon', last: 'snow'}, {first: 'ned', last: 'stark', middle: 'jim'}, {first: 'jane', last: 'doe'}, {first: 'ned', last: 'flanders'}, {first: 'wanda', last: 'cosmo'}] AS map
+                                      MERGE (v:PERSON {first: map.first})
+                                      SET v=map
+                                      RETURN v $$) AS (v agtype);
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) RETURN u $$) AS (u agtype);
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) DELETE u $$) AS (a agtype);
+
+SELECT * FROM cypher('issue_1709', $$ UNWIND [{first: 'jon', last: 'snow'}, {first: 'ned', last: 'stark'}] AS map
+                                      MERGE (u: PERSON {last: map.last})-[e:KNOWS]->(v:PERSON {first: map.first})
+                                      SET v=map
+                                      RETURN u,e,v $$) AS (u agtype, e agtype, v agtype);
+SELECT * FROM cypher('issue_1709', $$ MATCH (u)-[e]->(v) RETURN u,e,v $$) AS (u agtype, e agtype, v agtype);
+SELECT * FROM cypher('issue_1709', $$ MATCH ()-[e]->() DELETE e $$) AS (a agtype);
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) DELETE u $$) AS (a agtype);
+
+SELECT * FROM cypher('issue_1709', $$ UNWIND [{first: 'jon', last: 'snow'}, {first: 'ned', last: 'stark'}] AS map
+                                      MERGE (u: PERSON {last: map.last})-[e:KNOWS]->(v:PERSON {first: map.first})
+                                      SET u=map SET v=map
+                                      RETURN u,e,v $$) AS (u agtype, e agtype, v agtype);
+SELECT * FROM cypher('issue_1709', $$ MATCH (u)-[e]->(v) RETURN u,e,v $$) AS (u agtype, e agtype, v agtype);
+SELECT * FROM cypher('issue_1709', $$ MATCH ()-[e]->() DELETE e $$) AS (a agtype);
+-- clean up
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) DELETE u $$) AS (a agtype);
+
+--
 -- clean up graphs
 --
-SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
-SELECT * FROM cypher('issue_1630', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n) DETACH DELETE n $$) AS (a agtype);
+SELECT * FROM cypher('issue_1630', $$ MATCH (n) DETACH DELETE n $$) AS (a agtype);
+SELECT * FROM cypher('issue_1709', $$ MATCH (n) DETACH DELETE n $$) AS (a agtype);
 
 --
 -- delete graphs
@@ -734,6 +773,7 @@ SELECT * FROM cypher('issue_1630', $$MATCH (n) DETACH DELETE n $$) AS (a agtype)
 SELECT drop_graph('cypher_merge', true);
 SELECT drop_graph('issue_1630', true);
 SELECT drop_graph('issue_1691', true);
+SELECT drop_graph('issue_1709', true);
 
 --
 -- End

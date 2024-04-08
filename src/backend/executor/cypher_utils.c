@@ -231,8 +231,8 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
     }
 
     // Insert the tuple normally
-    table_tuple_insert(resultRelInfo->ri_RelationDesc, elemTupleSlot,
-                GetCurrentCommandId(true), 0, NULL);
+    table_tuple_insert(resultRelInfo->ri_RelationDesc, elemTupleSlot, cid, 0,
+                       NULL);
 
     // Insert index entries for the tuple
     if (resultRelInfo->ri_NumIndices > 0)

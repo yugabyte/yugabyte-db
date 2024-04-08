@@ -1530,14 +1530,139 @@ SELECT * FROM cypher('issue_1691', $$MATCH (u) DELETE u $$) AS (a agtype);
 (0 rows)
 
 --
--- clean up graphs
+-- Issue 1709 - MERGE creates incomplete vertices after the first one
+--              This is actually an issue with MERGE not using the correct command id
 --
-SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
+SELECT * FROM create_graph('issue_1709');
+NOTICE:  graph "issue_1709" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) RETURN u $$) AS (u agtype);
+ u 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1709', $$ UNWIND [{first: 'jon', last: 'snow'}, {first: 'ned', last: 'stark'}] AS map
+                                      MERGE (v:PERSON {first: map.first})
+                                      SET v=map
+                                      RETURN v $$) AS (v agtype);
+                                                  v                                                  
+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "PERSON", "properties": {"last": "snow", "first": "jon"}}::vertex
+ {"id": 844424930131970, "label": "PERSON", "properties": {"last": "stark", "first": "ned"}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) RETURN u $$) AS (u agtype);
+                                                  u                                                  
+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "PERSON", "properties": {"last": "snow", "first": "jon"}}::vertex
+ {"id": 844424930131970, "label": "PERSON", "properties": {"last": "stark", "first": "ned"}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) DELETE u $$) AS (a agtype);
  a 
 ---
 (0 rows)
 
-SELECT * FROM cypher('issue_1630', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
+SELECT * FROM cypher('issue_1709', $$ UNWIND [{first: 'jon', last: 'snow'}, {first: 'ned', last: 'stark', middle: 'jim'}, {first: 'jane', last: 'doe'}, {first: 'ned', last: 'flanders'}, {first: 'wanda', last: 'cosmo'}] AS map
+                                      MERGE (v:PERSON {first: map.first})
+                                      SET v=map
+                                      RETURN v $$) AS (v agtype);
+                                                          v                                                           
+----------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131971, "label": "PERSON", "properties": {"last": "snow", "first": "jon"}}::vertex
+ {"id": 844424930131972, "label": "PERSON", "properties": {"last": "stark", "first": "ned", "middle": "jim"}}::vertex
+ {"id": 844424930131973, "label": "PERSON", "properties": {"last": "doe", "first": "jane"}}::vertex
+ {"id": 844424930131972, "label": "PERSON", "properties": {"last": "flanders", "first": "ned"}}::vertex
+ {"id": 844424930131974, "label": "PERSON", "properties": {"last": "cosmo", "first": "wanda"}}::vertex
+(5 rows)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) RETURN u $$) AS (u agtype);
+                                                   u                                                    
+--------------------------------------------------------------------------------------------------------
+ {"id": 844424930131971, "label": "PERSON", "properties": {"last": "snow", "first": "jon"}}::vertex
+ {"id": 844424930131973, "label": "PERSON", "properties": {"last": "doe", "first": "jane"}}::vertex
+ {"id": 844424930131972, "label": "PERSON", "properties": {"last": "flanders", "first": "ned"}}::vertex
+ {"id": 844424930131974, "label": "PERSON", "properties": {"last": "cosmo", "first": "wanda"}}::vertex
+(4 rows)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) DELETE u $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1709', $$ UNWIND [{first: 'jon', last: 'snow'}, {first: 'ned', last: 'stark'}] AS map
+                                      MERGE (u: PERSON {last: map.last})-[e:KNOWS]->(v:PERSON {first: map.first})
+                                      SET v=map
+                                      RETURN u,e,v $$) AS (u agtype, e agtype, v agtype);
+                                          u                                          |                                                             e                                                              |                                                  v                                                  
+-------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131975, "label": "PERSON", "properties": {"last": "snow"}}::vertex  | {"id": 1125899906842625, "label": "KNOWS", "end_id": 844424930131976, "start_id": 844424930131975, "properties": {}}::edge | {"id": 844424930131976, "label": "PERSON", "properties": {"last": "snow", "first": "jon"}}::vertex
+ {"id": 844424930131977, "label": "PERSON", "properties": {"last": "stark"}}::vertex | {"id": 1125899906842626, "label": "KNOWS", "end_id": 844424930131978, "start_id": 844424930131977, "properties": {}}::edge | {"id": 844424930131978, "label": "PERSON", "properties": {"last": "stark", "first": "ned"}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH (u)-[e]->(v) RETURN u,e,v $$) AS (u agtype, e agtype, v agtype);
+                                          u                                          |                                                             e                                                              |                                                  v                                                  
+-------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131975, "label": "PERSON", "properties": {"last": "snow"}}::vertex  | {"id": 1125899906842625, "label": "KNOWS", "end_id": 844424930131976, "start_id": 844424930131975, "properties": {}}::edge | {"id": 844424930131976, "label": "PERSON", "properties": {"last": "snow", "first": "jon"}}::vertex
+ {"id": 844424930131977, "label": "PERSON", "properties": {"last": "stark"}}::vertex | {"id": 1125899906842626, "label": "KNOWS", "end_id": 844424930131978, "start_id": 844424930131977, "properties": {}}::edge | {"id": 844424930131978, "label": "PERSON", "properties": {"last": "stark", "first": "ned"}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH ()-[e]->() DELETE e $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) DELETE u $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1709', $$ UNWIND [{first: 'jon', last: 'snow'}, {first: 'ned', last: 'stark'}] AS map
+                                      MERGE (u: PERSON {last: map.last})-[e:KNOWS]->(v:PERSON {first: map.first})
+                                      SET u=map SET v=map
+                                      RETURN u,e,v $$) AS (u agtype, e agtype, v agtype);
+                                                  u                                                  |                                                             e                                                              |                                                  v                                                  
+-----------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131979, "label": "PERSON", "properties": {"last": "snow", "first": "jon"}}::vertex  | {"id": 1125899906842627, "label": "KNOWS", "end_id": 844424930131980, "start_id": 844424930131979, "properties": {}}::edge | {"id": 844424930131980, "label": "PERSON", "properties": {"last": "snow", "first": "jon"}}::vertex
+ {"id": 844424930131981, "label": "PERSON", "properties": {"last": "stark", "first": "ned"}}::vertex | {"id": 1125899906842628, "label": "KNOWS", "end_id": 844424930131982, "start_id": 844424930131981, "properties": {}}::edge | {"id": 844424930131982, "label": "PERSON", "properties": {"last": "stark", "first": "ned"}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH (u)-[e]->(v) RETURN u,e,v $$) AS (u agtype, e agtype, v agtype);
+                                                  u                                                  |                                                             e                                                              |                                                  v                                                  
+-----------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131979, "label": "PERSON", "properties": {"last": "snow", "first": "jon"}}::vertex  | {"id": 1125899906842627, "label": "KNOWS", "end_id": 844424930131980, "start_id": 844424930131979, "properties": {}}::edge | {"id": 844424930131980, "label": "PERSON", "properties": {"last": "snow", "first": "jon"}}::vertex
+ {"id": 844424930131981, "label": "PERSON", "properties": {"last": "stark", "first": "ned"}}::vertex | {"id": 1125899906842628, "label": "KNOWS", "end_id": 844424930131982, "start_id": 844424930131981, "properties": {}}::edge | {"id": 844424930131982, "label": "PERSON", "properties": {"last": "stark", "first": "ned"}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH ()-[e]->() DELETE e $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- clean up
+SELECT * FROM cypher('issue_1709', $$ MATCH (u) DELETE u $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--
+-- clean up graphs
+--
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1630', $$ MATCH (n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1709', $$ MATCH (n) DETACH DELETE n $$) AS (a agtype);
  a 
 ---
 (0 rows)
@@ -1590,6 +1715,18 @@ drop cascades to table issue_1691._ag_label_edge
 drop cascades to table issue_1691.knows
 drop cascades to table issue_1691."TEST"
 NOTICE:  graph "issue_1691" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('issue_1709', true);
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table issue_1709._ag_label_vertex
+drop cascades to table issue_1709._ag_label_edge
+drop cascades to table issue_1709."PERSON"
+drop cascades to table issue_1709."KNOWS"
+NOTICE:  graph "issue_1709" has been dropped
  drop_graph 
 ------------
  
