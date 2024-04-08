@@ -311,7 +311,7 @@
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/persistence/"
-  to = "/preview/architecture/docdb/persistence/"
+  to = "/preview/architecture/docdb/data-model"
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/sharding/"
@@ -319,7 +319,7 @@
 
 [[redirects]]
   from = "/preview/architecture/concepts/persistence/"
-  to = "/preview/architecture/docdb/persistence/"
+  to = "/preview/architecture/docdb/data-model/"
 
 [[redirects]]
   from = "/preview/architecture/concepts/replication/"
@@ -332,6 +332,10 @@
 [[redirects]]
   from = "/preview/architecture/concepts/yql/"
   to = "/preview/architecture/query-layer/"
+
+[[redirects]]
+  from = "/preview/architecture/concepts"
+  to = "/preview/architecture/key-concepts"
 
 [[redirects]]
   from = "/preview/architecture/docdb/replication/"
