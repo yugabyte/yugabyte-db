@@ -2189,7 +2189,7 @@ is_index_functional(Relation index)
 	foreach(indexpr_item, index->rd_indexprs)
 	{
 		Expr    *indexvar = (Expr *) lfirst(indexpr_item);
-		if (IsA(indexvar, FuncExpr))
+		if (IsA(indexvar, FuncExpr) || IsA(indexvar, OpExpr))
 		{
 			return true;
 		}
