@@ -856,7 +856,10 @@ public class NodeManager extends DevopsBase {
     List<String> subcommand = new ArrayList<>();
     String masterAddresses = taskParam.getMasterAddrsOverride();
     if (StringUtils.isBlank(masterAddresses)) {
-      masterAddresses = universe.getMasterAddresses();
+      // TODO This seems unused but keep the master addresses same as those ones set via GFlags.
+      masterAddresses =
+          universe.getMasterAddresses(
+              false /*mastersQueryable*/, config.getBoolean("yb.cloud.enabled"));
     }
     if (StringUtils.isBlank(masterAddresses)) {
       log.warn("No valid masters found during configure for {}.", taskParam.getUniverseUUID());
