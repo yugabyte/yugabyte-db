@@ -649,7 +649,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     try {
       Customer customer = Customer.getOrBadRequest(customerUUID);
       taskParams.isKubernetesOperatorControlled = true;
-      taskParams.isKubernetesOperatorControlled = true;
       taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
       taskParams.currentClusterType = ClusterType.PRIMARY;
       universeCRUDHandler.configure(customer, taskParams);

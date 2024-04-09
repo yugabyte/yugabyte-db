@@ -199,7 +199,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   @Override
   public void onDelete(Release release, boolean deletedFinalStateUnknown) {
-    log.info("Removing Release {}", release.getMetadata.getName());
+    log.info("Removing Release {}", release.getMetadata().getName());
     Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
     try {
       releaseManager.removeRelease(releasePair.getFirst());
@@ -207,7 +207,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     } catch (RuntimeException re) {
       log.error("Error in deleting release", re);
     }
-    log.info("Removed release {}", release.getMetadata.getName());
+    log.info("Removed release {}", release.getMetadata().getName());
   }
 
   @Override
