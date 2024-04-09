@@ -463,7 +463,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         return universe.getHostPortsString(
             universe.getNodes().stream().filter(n -> nodes.contains(n)).collect(Collectors.toSet()),
             ServerType.MASTER,
-            PortType.RPC);
+            PortType.RPC,
+            config.getBoolean("yb.cloud.enabled"));
       };
     }
 
