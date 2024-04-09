@@ -162,7 +162,7 @@ The default is `off`.
 
 ### pgaudit.log_rows
 
-Specifies that audit logging should include the rows retrieved or affected by a statement. When enabled the rows field will be included after the parameter field.
+Specifies that audit logging should include the number of rows retrieved or affected by a statement. When enabled the rows field will be included after the parameter field.
 
 The default is `off`.
 
