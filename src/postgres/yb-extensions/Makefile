@@ -1,12 +1,8 @@
 DIRS = \
-	hypopg \
-	orafce \
-	pgaudit \
-	pg_cron \
-	pg_hint_plan \
-	pg_stat_monitor \
-	pgvector \
-	postgresql-hll \
+	yb_pg_metrics \
+	yb_test_extension \
+	yb_xcluster_ddl_replication \
+	yb_ycql_utils \
 
 BUILDDIRS = $(DIRS:%=build-%)
 INSTALLDIRS = $(DIRS:%=install-%)

@@ -777,19 +777,19 @@ class PostgresBuilder(YbBuildToolBase):
 
         pg_compile_commands_paths = []
 
-        third_party_extensions_dir = os.path.join(self.pg_build_root, 'third-party-extensions')
+        external_extension_dirs = [os.path.join(self.pg_build_root, d) for d
+                                   in ('third-party-extensions', 'yb-extensions')]
         work_dirs = [
             self.pg_build_root,
             os.path.join(self.pg_build_root, 'contrib'),
-            third_party_extensions_dir
-        ]
+        ] + external_extension_dirs
 
         for work_dir in work_dirs:
             with WorkDirContext(work_dir):
                 self.write_debug_scripts(env_script_content)
 
                 make_cmd_suffix = []
-                if work_dir == third_party_extensions_dir:
+                if work_dir in external_extension_dirs:
                     make_cmd_suffix = ['PG_CONFIG=' + self.pg_config_path]
 
                 # Actually run Make.

@@ -11,7 +11,7 @@ import java.sql.Statement;
 import java.util.Map;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressPgStatMonitor extends BasePgSQLTest {
+public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
@@ -27,7 +27,7 @@ public class TestPgRegressPgStatMonitor extends BasePgSQLTest {
   @Test
   public void schedule() throws Exception {
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
-                              "postgres_build/contrib/pg_stat_monitor"),
+                              "postgres_build/third-party-extensions/pg_stat_monitor"),
                      "yb_schedule");
   }
 }
