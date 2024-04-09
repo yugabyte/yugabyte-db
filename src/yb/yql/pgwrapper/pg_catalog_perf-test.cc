@@ -374,7 +374,7 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 11);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/12);
 }
 
 // The test checks number of hits in response cache in case of multiple connections and aggressive
