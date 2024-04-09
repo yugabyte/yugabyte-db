@@ -62,6 +62,13 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
+    String softwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (CommonUtils.isAutoFlagSupported(softwareVersion)) {
+      // Verify auto flags compatibility.
+      taskParams().checkXClusterAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
+    }
     addBasicPrecheckTasks();
   }
 

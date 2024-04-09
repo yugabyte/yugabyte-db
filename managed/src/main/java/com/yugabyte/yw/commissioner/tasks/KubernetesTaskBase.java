@@ -753,7 +753,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             node,
             new HashSet<>(Arrays.asList(serverType)),
             SubTaskGroupType.ConfigureUniverse,
-            true,
+            false,
             softwareVersion);
         if (serverType == ServerType.TSERVER && !edit) {
           addLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);

@@ -74,6 +74,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    addBasicPrecheckTasks();
+  }
+
+  @Override
   public void run() {
     Throwable th = null;
     try {
@@ -85,7 +90,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       Universe universe =
           lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion, null /* Txn callback */);
-      addBasicPrecheckTasks();
 
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
