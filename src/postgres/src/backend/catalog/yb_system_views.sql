@@ -1319,7 +1319,7 @@ STRICT STABLE PARALLEL SAFE
 AS 'yb_is_database_colocated';
 
 CREATE OR REPLACE FUNCTION
-  yb_start_diagnostics (queryid int8)
+  yb_start_diagnostics (queryid int8, query_min_duration int8)
 RETURNS boolean
 LANGUAGE INTERNAL
 STABLE PARALLEL SAFE

@@ -1104,6 +1104,9 @@ typedef struct
 
 typedef struct MyValue
 {
+	//params.
+	int64	   query_min_duration;
+
 	char       query[2024];
 	TimestampTz start_time;
 	char 	   log_path[1024];
@@ -1146,8 +1149,8 @@ typedef struct MyValue
 	bool 		explain_printonce;
 	//for schema
 	char        schema_str[1024];
-	//for bind Variables
-	char        bind_variables[8024];
+	//lock
+	pthread_mutex_t 	mutex1;
 } MyValue;
 
 
@@ -1163,7 +1166,7 @@ extern bundleExplainPtr explainptr;
 
 typedef void (*bundleSchemaPtr)(int flag , List *rtable,MyValue *result);
 extern bundleSchemaPtr schemaptr;
-
+extern char    bind_variables[8024];
 
 extern HTAB *map;
 extern SharedStruct *sharedBundleStruct;

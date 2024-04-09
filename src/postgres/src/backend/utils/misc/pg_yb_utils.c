@@ -4527,8 +4527,8 @@ bundlePgssPtr bundleptr;
 bundleExplainPtr explainptr;
 bundleSchemaPtr schemaptr;
 SharedStruct *sharedBundleStruct = NULL;
-// ashSqlPtr csvToSqlptr;
 HTAB *map = NULL;
+char    bind_variables[8024]="";
 typedef struct {
     int64 key;
     MyValue value;
@@ -4687,6 +4687,9 @@ InitSharedStruct(void)
 }
 
 
+//-------------------------------------------------------------------------------------------------------------------------------
+//QUERY DIAGNOSTICS
+//-------------------------------------------------------------------------------------------------------------------------------
 Datum
 yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
 {
@@ -4694,6 +4697,9 @@ yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a speci
 	const char* timeStr = my_timestamptz_to_str(start);
 	bool is_queryid_null = PG_ARGISNULL(0);
 	int64 queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
+
+	bool is_query_min_duration_null = PG_ARGISNULL(1);
+	int64 query_min_duration = is_query_min_duration_null ? 1 : PG_GETARG_INT64(1);
 
 	//create shared variables struct
 	if(sharedBundleStruct == NULL)
@@ -4715,7 +4721,7 @@ yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a speci
 
 
 	//I am not handling the case when same queryid is called again.
-	MyValue value = {"", 0,"",0,0,0,0,
+	MyValue value = {query_min_duration,"", 0,"",0,0,0,0,
 	0,0,0,0,
 	0,0,0,0,0,0,
 	0,0,0,0,
@@ -4723,7 +4729,7 @@ yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a speci
 	0,0,0,
 	0,0,0,
 	0,"",false,"",
-	""};
+	PTHREAD_MUTEX_INITIALIZER};
 	
 	char *log_path_ptr = getPath(queryid,timeStr);
 	if(log_path_ptr == NULL) {
@@ -4752,7 +4758,7 @@ yb_finish_diagnostics(PG_FUNCTION_ARGS) //stops the bundle and prints all detail
 	MyValue* result = lookup_in_shared_hashtable(map, queryid);
 	if(!result){
 		ereport(LOG, (errmsg("Bundle has not been started for this query id")));
-		PG_RETURN_TEXT_P("LOG: Bundle has not been started for this query id");
+		PG_RETURN_TEXT_P(cstring_to_text("LOG: Bundle has not been started for this query id"));
 	}
 	
 	// if(!sharedBundleStruct->debuggingBundle){
@@ -4778,8 +4784,11 @@ yb_finish_diagnostics(PG_FUNCTION_ARGS) //stops the bundle and prints all detail
 	}
 	result->explain_printonce = false;
 
-	if(queryid == 0){
-		PG_RETURN_TEXT_P("NO QUERIES RUN IN THE DURATION");
+	if(result->queryid == 0){
+		// PG_RETURN_TEXT_P("NO QUERIES RUN IN THE DURATION");
+		char returnStr[100];
+		sprintf(returnStr,"NO QUERIES RUN IN THE DURATION");
+		PG_RETURN_TEXT_P(cstring_to_text(returnStr));
 	}
 
 	char returnStr[100];

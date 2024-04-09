@@ -468,7 +468,7 @@ format_params(ParamListInfo params)
     }
 
 	//insert a new line character in buf.data
-	appendStringInfoChar(&buf, '\n');
+	appendStringInfoChar(&buf, ' ');
 
     return buf.data;
 }
@@ -594,15 +594,6 @@ PortalStart(Portal portal, ParamListInfo params,
 
 				PopActiveSnapshot();
 
-				if(queryDesc){
-					if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
-						MyValue* result = lookup_in_shared_hashtable(map, queryDesc->plannedstmt->queryId);
-						if(result && params){
-							strcat(result->bind_variables, format_params(params));
-							strcat(result->bind_variables, "\n");
-						}	
-					}		
-				}
 				break;
 
 			case PORTAL_ONE_RETURNING:
@@ -620,14 +611,6 @@ PortalStart(Portal portal, ParamListInfo params,
 						ExecCleanTypeFromTL(pstmt->planTree->targetlist,
 											false);
 
-
-					if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
-						MyValue* result = lookup_in_shared_hashtable(map, pstmt->queryId);
-						if(result && params){
-							strcat(result->bind_variables, format_params(params));
-							strcat(result->bind_variables, "\n");
-						}	
-					}
 				}
 
 				/*
@@ -662,16 +645,18 @@ PortalStart(Portal portal, ParamListInfo params,
 			case PORTAL_MULTI_QUERY:
 				/* Need do nothing now */
 				{
-					PlannedStmt *pstmt = PortalGetPrimaryStmt(portal);
-					if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
-						MyValue* result = lookup_in_shared_hashtable(map, pstmt->queryId);
-						if(result && params){
-							strcat(result->bind_variables, format_params(params));
-						}	
-					}
 					portal->tupDesc = NULL;
 					break;
 				}
+		}
+
+
+		PlannedStmt *pstmt = PortalGetPrimaryStmt(portal);
+		if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
+			MyValue* result = lookup_in_shared_hashtable(map, pstmt->queryId);
+			if(result && params){
+				strcat(bind_variables, format_params(params));
+			}	
 		}
 	}
 	PG_CATCH();

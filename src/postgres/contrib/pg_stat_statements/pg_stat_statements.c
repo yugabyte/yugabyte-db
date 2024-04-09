@@ -59,6 +59,7 @@
 
 #include <inttypes.h>
 #include <math.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #include <stddef.h>
 #include <unistd.h>
@@ -3903,6 +3904,9 @@ bundlePgss(int flag, int64 queryId, const char *query, double total_time,
 
 		fclose(fptr);
 
+
+		
+
 	}
 	else
 	{ // within bundle
@@ -3913,6 +3917,25 @@ bundlePgss(int flag, int64 queryId, const char *query, double total_time,
 		strcpy(result->query,query);
 		result->calls += 1;
 		result->total_time += total_time;
+
+
+		if(total_time > 4){
+			char* total_time_str = (char*)palloc(20);
+			sprintf(total_time_str, "%.2f", total_time);
+			strcat(bind_variables, total_time_str);
+			strcat(bind_variables, "\n");
+
+			char* pgss_log_path_bind = (char*)palloc(strlen(result->log_path) + 30);
+			strcpy(pgss_log_path_bind, result->log_path);
+			strcat(pgss_log_path_bind, "bindVar.txt");
+			// pthread_mutex_lock(&result->mutex1);
+			FILE* fptr = fopen(pgss_log_path_bind, "a");
+			fprintf(fptr,"%s",bind_variables);
+			fclose(fptr);
+			// pthread_mutex_unlock(&result->mutex1);
+		}
+
+		bind_variables[0] = '\0';
 
 		if(result->calls == 1)
 		{
@@ -4005,14 +4028,6 @@ void fetchSchemaDetails(int flag ,List *rtable,MyValue *result)
 		strcat(pgss_log_path, "schema.txt");
 		FILE *fptr = fopen(pgss_log_path, "w");
 		fprintf(fptr,"%s",result->schema_str);
-		fclose(fptr);
-
-		// for bind variables
-		pgss_log_path = (char*)malloc(strlen(result->log_path) + 30);
-		strcpy(pgss_log_path, result->log_path);
-		strcat(pgss_log_path, "bindVar.txt");
-		fptr = fopen(pgss_log_path, "w");
-		fprintf(fptr,"%s",result->bind_variables);
 		fclose(fptr);
 	}
 	else if(strlen(result->schema_str) == 0){
