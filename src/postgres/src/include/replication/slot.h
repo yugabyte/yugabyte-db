@@ -17,6 +17,9 @@
 #include "storage/spin.h"
 #include "replication/walreceiver.h"
 
+/* YB includes. */
+#include "replication/walsender.h"
+
 /*
  * Behaviour of replication slots, upon release or crash.
  *
@@ -197,7 +200,8 @@ extern void ReplicationSlotsShmemInit(void);
 
 /* management of individual slots */
 extern void ReplicationSlotCreate(const char *name, bool db_specific,
-								  ReplicationSlotPersistency p, bool two_phase);
+								  ReplicationSlotPersistency p, bool two_phase,
+								  CRSSnapshotAction yb_snapshot_action);
 extern void ReplicationSlotPersist(void);
 extern void ReplicationSlotDrop(const char *name, bool nowait);
 

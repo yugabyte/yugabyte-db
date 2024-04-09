@@ -840,9 +840,10 @@ struct PersistentNamespaceInfo : public Persistent<
 // This object uses copy-on-write techniques similarly to TabletInfo.
 // Please see the TabletInfo class doc above for more information.
 class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
-                      public MetadataCowWrapper<PersistentNamespaceInfo> {
+                      public MetadataCowWrapper<PersistentNamespaceInfo>,
+                      public CatalogEntityWithTasks {
  public:
-  explicit NamespaceInfo(NamespaceId ns_id);
+  explicit NamespaceInfo(NamespaceId ns_id, scoped_refptr<TasksTracker> tasks_tracker);
 
   virtual const NamespaceId& id() const override { return namespace_id_; }
 

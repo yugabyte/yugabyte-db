@@ -244,8 +244,19 @@ public class PlatformReplicationManager {
         .collect(Collectors.toSet());
   }
 
+  public boolean testConnection(
+      HighAvailabilityConfig config, String address, boolean acceptAnyCertificate) {
+    boolean result =
+        replicationHelper.testConnection(
+            config, config.getClusterKey(), address, acceptAnyCertificate);
+    if (!result) {
+      log.error("Error testing connection to " + address);
+    }
+    return result;
+  }
+
   @VisibleForTesting
-  boolean sendBackup(PlatformInstance remoteInstance) {
+  public boolean sendBackup(PlatformInstance remoteInstance) {
     HighAvailabilityConfig config = remoteInstance.getConfig();
     String clusterKey = config.getClusterKey();
     boolean result =
@@ -305,7 +316,7 @@ public class PlatformReplicationManager {
                             // Send the platform backup to all followers.
                             Set<PlatformInstance> instancesToSync =
                                 remoteInstances.stream()
-                                    .filter(this::sendBackup)
+                                    .filter(instance -> sendBackup(instance))
                                     .collect(Collectors.toSet());
 
                             // Sync the HA cluster state to all followers that successfully received

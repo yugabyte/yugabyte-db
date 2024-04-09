@@ -672,6 +672,12 @@ func (pg Postgres) copyConfFiles() error {
 	// move conf files back to conf location
 	userName := viper.GetString("service_username")
 
+	// Clean the conf directory from previous installs before copying over again
+	err := common.RemoveAll(pg.ConfFileLocation)
+	if err != nil {
+		return fmt.Errorf("Error cleaning out %s: %w", pg.ConfFileLocation, err)
+	}
+
 	// Add trailing slash to handle dataDir being a symlink
 	findArgs := []string{pg.dataDir + "/", "-iname", "*.conf", "-exec", "cp", "{}",
 		pg.ConfFileLocation, "\\;"}
@@ -685,7 +691,7 @@ func (pg Postgres) copyConfFiles() error {
 		}
 	} else {
 		common.MkdirAllOrFail(pg.ConfFileLocation, 0775)
-		if out := shell.Run("find", findArgs...); !out.SucceededOrLog() {
+		if out := shell.RunShell("find", findArgs...); !out.SucceededOrLog() {
 			return fmt.Errorf("failed to move config files: %w", out.Error)
 		}
 	}

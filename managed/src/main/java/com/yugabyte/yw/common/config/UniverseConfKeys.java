@@ -1037,4 +1037,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the max time out when performing the CheckLeaderlessTablets subtask",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableYbcForUniverse =
+      new ConfKeyInfo<>(
+          "ybc.universe.enabled",
+          ScopeType.UNIVERSE,
+          "Enable YBC",
+          "Enable YBC for universes during software upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

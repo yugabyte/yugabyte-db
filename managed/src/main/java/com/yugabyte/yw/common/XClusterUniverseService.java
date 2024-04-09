@@ -314,7 +314,12 @@ public class XClusterUniverseService {
     Map<String, String> tableIdStreamIdMap;
     if (xClusterConfig != null) {
       tableIdStreamIdMap = xClusterConfig.getTableIdStreamIdMap(tableIds);
+      log.debug(
+          "Using existing stream id map with {} entries for {} tables " + "for isBootstrapRequired",
+          tableIdStreamIdMap.size(),
+          tableIds.size());
     } else {
+      log.debug("No stream ids available for isBootstrapRequired");
       tableIdStreamIdMap = new HashMap<>();
       tableIds.forEach(tableId -> tableIdStreamIdMap.put(tableId, null));
     }

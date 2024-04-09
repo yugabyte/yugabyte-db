@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -74,29 +75,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
         () -> {
           errors.clear();
           try {
-            ListMastersResponse listMastersResponse = ybClient.listMasters();
-            Set<String> masterIps =
-                listMastersResponse.getMasters().stream()
-                    .map(m -> m.getHost())
-                    .collect(Collectors.toSet());
-
-            errors.addAll(checkServers(masterIps, universe, UniverseTaskBase.ServerType.MASTER));
-
-            boolean hasLeader =
-                listMastersResponse.getMasters().stream()
-                    .filter(m -> m.isLeader())
-                    .findFirst()
-                    .isPresent();
-            if (!hasLeader) {
-              errors.add("No master leader!");
-            }
-            ListLiveTabletServersResponse liveTabletServersResponse =
-                ybClient.listLiveTabletServers();
-            Set<String> tserverIps =
-                liveTabletServersResponse.getTabletServers().stream()
-                    .map(ts -> ts.getPrivateAddress().getHost())
-                    .collect(Collectors.toSet());
-            errors.addAll(checkServers(tserverIps, universe, UniverseTaskBase.ServerType.TSERVER));
+            errors.addAll(checkCurrentServers(ybClient, universe, false));
           } catch (Exception e) {
             throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
           }
@@ -108,12 +87,38 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
     return errors;
   }
 
-  private Set<String> checkServers(
-      Set<String> currentIPs, Universe universe, UniverseTaskBase.ServerType serverType) {
+  public static List<String> checkCurrentServers(
+      YBClient ybClient, Universe universe, boolean strict) throws Exception {
+    List<String> errors = new ArrayList<>();
+    ListMastersResponse listMastersResponse = ybClient.listMasters();
+    Set<String> masterIps =
+        listMastersResponse.getMasters().stream().map(m -> m.getHost()).collect(Collectors.toSet());
+
+    errors.addAll(checkServers(masterIps, universe, UniverseTaskBase.ServerType.MASTER, strict));
+
+    boolean hasLeader =
+        listMastersResponse.getMasters().stream().filter(m -> m.isLeader()).findFirst().isPresent();
+    if (!hasLeader) {
+      errors.add("No master leader!");
+    }
+    ListLiveTabletServersResponse liveTabletServersResponse = ybClient.listLiveTabletServers();
+    Set<String> tserverIps =
+        liveTabletServersResponse.getTabletServers().stream()
+            .map(ts -> ts.getPrivateAddress().getHost())
+            .collect(Collectors.toSet());
+    errors.addAll(checkServers(tserverIps, universe, UniverseTaskBase.ServerType.TSERVER, strict));
+    return errors;
+  }
+
+  private static Set<String> checkServers(
+      Set<String> currentIPs,
+      Universe universe,
+      UniverseTaskBase.ServerType serverType,
+      boolean strict) {
     Set<String> errors = new HashSet<>();
     List<NodeDetails> neededServers =
         universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(this::isInActiveState)
+            .filter(CheckClusterConsistency::isInActiveState)
             .filter(
                 n -> serverType == UniverseTaskBase.ServerType.MASTER ? n.isMaster : n.isTserver)
             .collect(Collectors.toList());
@@ -139,10 +144,16 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
         }
       }
     }
+    if (strict) {
+      for (String expectedIP : expectedIPs) {
+        errors.add(
+            String.format("Expected, but not present %s: %s", serverType.name(), expectedIP));
+      }
+    }
     return errors;
   }
 
-  private boolean isInActiveState(NodeDetails nodeDetails) {
+  private static boolean isInActiveState(NodeDetails nodeDetails) {
     return nodeDetails.state != NodeDetails.NodeState.ToBeAdded
         && nodeDetails.state != NodeDetails.NodeState.Stopped
         && nodeDetails.state != NodeDetails.NodeState.Stopping

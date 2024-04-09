@@ -42,6 +42,7 @@
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/tablet/tablet.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -94,6 +95,10 @@ METRIC_DEFINE_gauge_uint64(tablet, history_cutoff_operations_inflight,
                            "History Cutoff Operations In Flight",
                            yb::MetricUnit::kOperations,
                            "Number of history cutoff operations currently in-flight");
+METRIC_DEFINE_gauge_uint64(tablet, clone_operations_inflight,
+                           "Clone Operations In Flight",
+                           yb::MetricUnit::kOperations,
+                           "Number of clone tablet operations currently in-flight");
 
 METRIC_DEFINE_counter(tablet, operation_memory_pressure_rejections,
                       "Operation Memory Pressure Rejections",
@@ -133,7 +138,8 @@ OperationTracker::Metrics::Metrics(const scoped_refptr<MetricEntity>& entity)
   INSTANTIATE(Empty, empty);
   INSTANTIATE(HistoryCutoff, history_cutoff);
   INSTANTIATE(ChangeAutoFlagsConfig, change_auto_flags_config);
-  static_assert(9== kElementsInOperationType, "Init metrics for all operation types");
+  INSTANTIATE(Clone, clone);
+  static_assert(kElementsInOperationType == 10, "Init metrics for all operation types");
 }
 #undef INSTANTIATE
 #undef GINIT
@@ -226,7 +232,7 @@ void OperationTracker::Release(OperationDriver* driver, OpIds* applied_op_ids) {
     notify = pending_operations_.empty();
   }
   if (notify) {
-    cond_.notify_all();
+    YB_PROFILE(cond_.notify_all());
   }
 
   if (mem_tracker_ && state.memory_footprint) {

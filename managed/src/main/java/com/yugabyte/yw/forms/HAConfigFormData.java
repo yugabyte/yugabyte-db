@@ -17,4 +17,7 @@ public class HAConfigFormData {
   @Constraints.MinLength(44)
   @Constraints.MaxLength(44)
   public String cluster_key;
+
+  // Default to disable cert validation
+  public boolean accept_any_certificate = true;
 }

@@ -104,7 +104,10 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
     // Create all the subtasks to delete the xCluster config and all the bootstrap ids related
     // to them if any.
     createDeleteXClusterConfigSubtasks(
-        xClusterConfig, false /* keepEntry */, taskParams().isForced());
+        xClusterConfig,
+        false /* keepEntry */,
+        taskParams().isForced(),
+        true /* deletePitrConfigs */);
 
     // Fetch all universes that are connected through xCluster config to source and
     // target universe.

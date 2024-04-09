@@ -39,3 +39,11 @@
         description: Server error
     security:
       - apiKeyAuth: []
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false

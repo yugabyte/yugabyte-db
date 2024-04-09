@@ -162,10 +162,7 @@ public class RBACController extends AuthenticatedController {
    * @param roleType
    * @return the list of roles and their information
    */
-  @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
-      runtimeConfig = newAuthzRuntimeFlagPath)
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.19.3.0")
   @ApiOperation(
       notes = "YbaApi Internal.",
       value = "List all the roles available",

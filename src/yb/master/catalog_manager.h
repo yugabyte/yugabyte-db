@@ -211,6 +211,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     NamespaceInfoMap& operator[](YQLDatabase db_type);
     const NamespaceInfoMap& operator[](YQLDatabase db_type) const;
     void clear();
+    std::vector<scoped_refptr<NamespaceInfo>> GetAll() const;
 
    private:
     std::array<NamespaceInfoMap, 4> typed_maps_;
@@ -688,6 +689,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
+  bool catalog_version_table_in_perdb_mode() const override {
+    return catalog_version_table_in_perdb_mode_;
+  }
 
   Status InitializeTransactionTablesConfig(int64_t term);
 
@@ -857,6 +861,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // been successfully loaded into memory. CatalogManager must be
   // initialized before calling this method.
   Status CheckIsLeaderAndReady() const override;
+
+  Status IsEpochValid(const LeaderEpoch& epoch) const;
+
+  auto GetValidateEpochFunc() const {
+    return std::bind(&CatalogManager::IsEpochValid, this, std::placeholders::_1);
+  }
 
   // Returns this CatalogManager's role in a consensus configuration. CatalogManager
   // must be initialized before calling this method.
@@ -1392,6 +1402,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   scoped_refptr<UniverseReplicationInfo> GetUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id);
 
+  std::vector<scoped_refptr<UniverseReplicationInfo>> GetAllUniverseReplications() const;
+
   // Checks if the universe is in an active state or has failed during setup.
   Status IsSetupUniverseReplicationDone(
       const IsSetupUniverseReplicationDoneRequestPB* req,
@@ -1558,6 +1570,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
       const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
       CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc);
+
+  auto GetTasksTracker() { return tasks_tracker_; }
+
+  void MarkUniverseForCleanup(const xcluster::ReplicationGroupId& replication_group_id)
+      EXCLUDES(mutex_);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2004,7 +2021,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Removes all tasks from jobs_tracker_ and tasks_tracker_.
   void ResetTasksTrackers();
   // Aborts all tasks belonging to 'tables' and waits for them to finish.
-  void AbortAndWaitForAllTasks(const std::vector<scoped_refptr<TableInfo>>& tables);
+  void AbortAndWaitForAllTasks() EXCLUDES(mutex_);
   void AbortAndWaitForAllTasksUnlocked() REQUIRES_SHARED(mutex_);
 
   // Can be used to create background_tasks_ field for this master.
@@ -3046,12 +3063,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void SchedulePostTabletCreationTasksForPendingTables(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
-  Result<xcluster::ReplicationGroupId> GetIndexesTableReplicationGroup(const TableInfo& index_info);
-
-  Status BootstrapTable(
-      const xcluster::ReplicationGroupId& replication_group_id, const TableInfo& index_info,
-      client::BootstrapProducerCallback callback);
-
   // Checks if the table is a consumer in an xCluster replication universe.
   bool IsTableXClusterConsumer(const TableInfo& table_info) const EXCLUDES(mutex_);
 
@@ -3206,6 +3217,20 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
   rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;
+
+  // For per-database catalog version mode upgrade support: when the gflag
+  // --ysql_enable_db_catalog_version_mode is true, whether the table
+  // pg_yb_catalog_version has been upgraded to have one row per database.
+  // During upgrade the binaries are installed first but before YSQL migration
+  // script is run pg_yb_catalog_version only has one row for template1.
+  // YB Note:
+  // (1) Each time we read the entire pg_yb_catalog_version table if the number
+  // of rows is > 1 we assume that the table has exactly one row per database.
+  // (2) This is only used to support per-database catalog version mode upgrade.
+  // Once set it is never reset back to false. It is an error to change
+  // pg_yb_catalog_version back to global catalog version mode when
+  // --ysql_enable_db_catalog_version_mode=true.
+  std::atomic<bool> catalog_version_table_in_perdb_mode_ = false;
 
   // mutex on heartbeat_pg_catalog_versions_cache_
   mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;

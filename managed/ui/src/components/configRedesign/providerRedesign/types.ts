@@ -250,6 +250,7 @@ interface AWSCloudInfoBase {
   awsAccessKeyID?: string;
   awsAccessKeySecret?: string;
   awsHostedZoneId?: string;
+  useIMDSv2: boolean;
 }
 type AWSCloudInfoMutation = AWSCloudInfoBase;
 interface AWSCloudInfo extends AWSCloudInfoBase {

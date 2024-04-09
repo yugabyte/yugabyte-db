@@ -166,6 +166,7 @@ class PgApiImpl {
 
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
+  Result<bool> CatalogVersionTableInPerdbMode();
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
 
@@ -733,6 +734,7 @@ class PgApiImpl {
   // Create Replication Slot.
   Status NewCreateReplicationSlot(const char *slot_name,
                                   const PgOid database_oid,
+                                  YBCPgReplicationSlotSnapshotAction snapshot_action,
                                   PgStatement **handle);
   Status ExecCreateReplicationSlot(PgStatement *handle);
 

@@ -172,6 +172,12 @@ typedef struct Port
 	bool 		yb_is_auth_passthrough_req;
 
 	/*
+	 * To be used during Authentication Passthrough (authentication of logical connections),
+	 * it identifies whether the logical connection is encrypted.
+	 */
+	bool 		yb_is_ssl_enabled_in_logical_conn;
+
+	/*
 	 * Authenticated identity.  The meaning of this identifier is dependent on
 	 * hba->auth_method; it is the identity (if any) that the user presented
 	 * during the authentication cycle, before they were assigned a database

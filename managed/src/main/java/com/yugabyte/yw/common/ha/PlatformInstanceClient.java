@@ -150,6 +150,15 @@ public class PlatformInstanceClient {
     }
   }
 
+  public boolean testConnection() {
+    try {
+      JsonNode response = this.makeRequest(this.controller.getHAConfigByClusterKey(), null);
+    } catch (Exception e) {
+      return false;
+    }
+    return true;
+  }
+
   private void maybeGenerateVersionMismatchEvent(JsonNode remoteVersion) {
     if (remoteVersion == null || remoteVersion.toString().isEmpty()) {
       return;

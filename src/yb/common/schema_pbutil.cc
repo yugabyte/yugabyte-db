@@ -88,7 +88,7 @@ void SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
 }
 
 Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
-  // Conver the columns.
+  // Convert the columns.
   std::vector<ColumnSchema> columns;
   std::vector<ColumnId> column_ids;
   RETURN_NOT_OK(ColumnPBsToColumnTuple(pb.columns(), &columns, &column_ids));

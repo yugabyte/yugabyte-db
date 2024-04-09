@@ -41,11 +41,11 @@ void MarkTableAsRunningIfHealthy(
 PostTabletCreateTaskBase::PostTabletCreateTaskBase(
     CatalogManager& catalog_manager, ThreadPool& async_task_pool, rpc::Messenger& messenger,
     TableInfoPtr table_info, const LeaderEpoch& epoch)
-    : MultiStepTableTask(
+    : MultiStepTableTaskBase(
           catalog_manager, async_task_pool, messenger, std::move(table_info), std::move(epoch)) {}
 
 Status PostTabletCreateTaskBase::ValidateRunnable() {
-  RETURN_NOT_OK(MultiStepTableTask::ValidateRunnable());
+  RETURN_NOT_OK(MultiStepTableTaskBase::ValidateRunnable());
 
   SCHECK(
       table_info_->IsPreparing(), IllegalState,

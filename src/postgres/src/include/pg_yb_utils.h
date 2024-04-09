@@ -931,6 +931,7 @@ void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
 
 uint64_t YbGetSharedCatalogVersion();
 uint32_t YbGetNumberOfDatabases();
+bool YbCatalogVersionTableInPerdbMode();
 
 /*
  * This function maps the user intended row-level lock policy i.e., "pg_wait_policy" of
@@ -1018,8 +1019,10 @@ OptSplit *YbGetSplitOptions(Relation rel);
 			YBCFreeStatus(_status); \
 			if (errstart(adjusted_elevel, TEXTDOMAIN)) \
 			{ \
-				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
-				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
+				Assert(msg_buf); \
+				yb_errmsg_from_status(msg_buf, msg_nargs, msg_args); \
+				if (detail_buf) \
+					yb_errdetail_from_status(detail_buf, detail_nargs, detail_args); \
 				yb_set_pallocd_error_file_and_func(filename, funcname); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
@@ -1071,14 +1074,6 @@ extern void** YbPtrListToArray(const List* str_list, size_t* length);
  * byte added to the end.
  */
 extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
-
-
-/*
- * If the tserver gflag --ysql_enable_db_catalog_version_mode is true
- * but the number of rows in pg_yb_catalog_version is 1, disallow a DDL
- * statement if it increments the catalog version.
- */
-extern void YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode);
 
 extern bool yb_use_tserver_key_auth;
 

@@ -75,6 +75,8 @@ message StreamEntryPB {
 
   // Mapping of colocation_id to producer/consumer schema versions
   map<uint32, SchemaVersionsPB> colocated_schema_versions = 7;
+
+  bool is_ddl_queue_table = 8;
 }
 
 message ProducerEntryPB {

@@ -611,13 +611,13 @@ public class UniverseCRUDHandler {
       UniverseDefinitionTaskParams.UserIntent userIntent =
           taskParams.getPrimaryCluster().userIntent;
 
-      if (taskParams.isEnableYbc()) {
-        Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      if (confGetter.getConfForScope(p, ProviderConfKeys.ybcEnabledForProvider)) {
         if (userIntent.providerType.equals(Common.CloudType.kubernetes)) {
-          if (confGetter.getConfForScope(p, ProviderConfKeys.enableYbcOnK8s)
-              && Util.compareYbVersions(
-                      userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
-                  >= 0) {
+          if (Util.compareYbVersions(
+                  userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
+              >= 0) {
+            taskParams.setEnableYbc(true);
             taskParams.setYbcSoftwareVersion(
                 StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
                     ? taskParams.getYbcSoftwareVersion()
@@ -638,11 +638,15 @@ public class UniverseCRUDHandler {
               "Ybc installation is skipped on VM universe with DB version lower than "
                   + confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion));
         } else {
+          taskParams.setEnableYbc(true);
           taskParams.setYbcSoftwareVersion(
               StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
                   ? taskParams.getYbcSoftwareVersion()
                   : ybcManager.getStableYbcVersion());
         }
+      } else {
+        taskParams.setEnableYbc(false);
+        taskParams.setYbcSoftwareVersion(null);
       }
 
       if (taskParams.isEnableYbc()) {

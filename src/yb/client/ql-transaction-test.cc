@@ -38,6 +38,7 @@
 #include "yb/tablet/transaction_coordinator.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/server_main_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -889,7 +890,7 @@ class QLTransactionTestWithDisabledCompactions : public QLTransactionTest {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ondisk_compression) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = -2; // kDbCacheSizeCacheDisabled;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = DB_CACHE_SIZE_CACHE_DISABLED;
     QLTransactionTest::SetUp();
   }
 };

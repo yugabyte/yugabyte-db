@@ -444,10 +444,24 @@ Status PgDropDBSequences::Exec() {
 
 PgCreateReplicationSlot::PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
                                                  const char *slot_name,
-                                                 PgOid database_oid)
+                                                 PgOid database_oid,
+                                                 YBCPgReplicationSlotSnapshotAction snapshot_action)
     : PgDdl(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);
+
+  switch (snapshot_action) {
+    case YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT:
+      req_.set_snapshot_action(
+          tserver::PgReplicationSlotSnapshotActionPB::REPLICATION_SLOT_NOEXPORT_SNAPSHOT);
+      break;
+    case YB_REPLICATION_SLOT_USE_SNAPSHOT:
+      req_.set_snapshot_action(
+          tserver::PgReplicationSlotSnapshotActionPB::REPLICATION_SLOT_USE_SNAPSHOT);
+      break;
+    default:
+      DCHECK(false) << "Unknown snapshot_action " << snapshot_action;
+  }
 }
 
 Status PgCreateReplicationSlot::Exec() {

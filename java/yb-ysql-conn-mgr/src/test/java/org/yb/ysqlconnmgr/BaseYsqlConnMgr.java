@@ -13,6 +13,10 @@
 
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.assertNotNull;
+
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -69,5 +73,27 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     // Wait for 1 sec before stoping the miniCluster so that Ysql Connection Manger can clean the
     // shared memory.
     Thread.sleep(1000);
+  }
+
+  boolean verifySessionParameterValue(Statement stmt, String param, String expectedValue)
+      throws Exception {
+    String query = String.format("SHOW %s", param);
+    LOG.info(String.format("Executing query `%s`", query));
+
+    ResultSet resultSet = stmt.executeQuery(query);
+    assertNotNull(resultSet);
+
+    if (!resultSet.next()) {
+      LOG.error("Got empty result for SHOW query");
+      return false;
+    }
+
+    if (!resultSet.getString(1).toLowerCase().equals(expectedValue.toLowerCase())) {
+      LOG.error("Expected value " + expectedValue + " is not same as the query result "
+          + resultSet.getString(1));
+      return false;
+    }
+
+    return true;
   }
 }

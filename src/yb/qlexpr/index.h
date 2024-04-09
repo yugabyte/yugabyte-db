@@ -34,6 +34,8 @@
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
+#include "yb/util/memory/arena_list.h"
+
 namespace yb::qlexpr {
 
 // A class to maintain the information of an index.
@@ -167,6 +169,7 @@ class IndexInfo {
 class IndexMap : public std::unordered_map<TableId, IndexInfo> {
  public:
   explicit IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
+  explicit IndexMap(const ArenaList<LWIndexInfoPB>& indexes);
   IndexMap() {}
 
   void FromPB(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);

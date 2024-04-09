@@ -313,6 +313,10 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
                         common_extra_flags.begin(),
                         common_extra_flags.end());
   }
+  // Given how little memory kDefaultMemoryLimitHardBytes provides, we will need to use more of
+  // our memory for per-tablet overhead.
+  opts_.extra_tserver_flags.insert(
+      opts_.extra_tserver_flags.begin(), "--tablet_overhead_size_percentage=30"s);
   AddExtraFlagsFromEnvVar("YB_EXTRA_MASTER_FLAGS", &opts_.extra_master_flags);
   AddExtraFlagsFromEnvVar("YB_EXTRA_TSERVER_FLAGS", &opts_.extra_tserver_flags);
 }
@@ -1867,13 +1871,16 @@ ExternalMaster* ExternalMiniCluster::GetLeaderMaster() {
   return master(0);
 }
 
-Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(const yb::TabletId& tablet_id) {
+Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(
+    const yb::TabletId& tablet_id, bool require_lease) {
   for (size_t i = 0; i < num_tablet_servers(); ++i) {
     auto tserver = tablet_server(i);
     if (tserver->IsProcessAlive() && !tserver->IsProcessPaused()) {
       auto tablets = VERIFY_RESULT(GetTablets(tserver));
       for (const auto& tablet : tablets) {
-        if (tablet.tablet_id() == tablet_id && tablet.is_leader()) {
+        if (tablet.tablet_id() == tablet_id &&
+            tablet.is_leader() &&
+            (!require_lease || tablet.has_leader_lease())) {
           return i;
         }
       }

@@ -56,7 +56,7 @@
   do { \
     std::vector<std::string> _missing_fields; \
     BOOST_PP_SEQ_FOR_EACH( \
-        INTERNAL_SCHECK_PB_FIELD_IS_SET, pb, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)) \
+        INTERNAL_SCHECK_PB_FIELD_IS_SET, (pb), BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)) \
     SCHECK_FORMAT( \
         _missing_fields.empty(), InvalidArgument, "Missing required arguments: $0", \
         _missing_fields); \

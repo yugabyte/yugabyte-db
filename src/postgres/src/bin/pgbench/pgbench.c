@@ -76,6 +76,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "yb/yql/pggate/ysql_bench_metrics_handler/ysql_bench_metrics_handler.h"
+
 #define ERRCODE_IN_FAILED_SQL_TRANSACTION  "25P02"
 #define ERRCODE_T_R_SERIALIZATION_FAILURE  "40001"
 #define ERRCODE_T_R_DEADLOCK_DETECTED  "40P01"
@@ -313,6 +315,10 @@ const char *pgport = NULL;
 const char *username = NULL;
 const char *dbName = NULL;
 uint32		batch_size = 1024;	/* Batch size used for a transaction */
+int             yb_metrics_bind_port = 8080; /* Port used by the metrics webserver */
+char            *yb_metrics_bind_address = "localhost"; /* Bind address used by the metrics webserver */
+bool            yb_metrics_arg_set = false; /* Is any metrics server arg set? */
+struct          WebserverWrapper *yb_metrics_webserver = NULL;
 
 /*
  * There're different types of restrictions for deciding that the current failed
@@ -485,6 +491,11 @@ typedef struct StatsData
  * another reference.
  */
 pg_time_usec_t epoch_shift;
+
+/*
+ * Prometheus metrics
+ */
+YsqlBenchMetricEntry *ysql_bench_metric_entry = NULL;
 
 /*
  * Struct to keep random state.
@@ -1084,6 +1095,10 @@ static int  errmsgImpl(const char *fmt,...) pg_attribute_printf(1, 2);
 static void errfinishImpl(int dummy,...);
 #endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
 
+/* New YB functions */
+static void YbInitMetricsWebserver(char *prog_name);
+static void YbStopMetricsWebserver();
+
 /* callback functions for our flex lexer */
 static const PsqlScanCallbacks pgbench_callbacks = {
 	NULL,						/* don't need get_variable functionality */
@@ -1166,6 +1181,9 @@ usage(void)
 		   "  --sampling-rate=NUM      fraction of transactions to log (e.g., 0.01 for 1%%)\n"
 		   "  --show-script=NAME       show builtin script code, then exit\n"
 		   "  --verbose-errors         print messages of all errors\n"
+		   "\nPrometheus metrics options:\n"
+		   "  --yb-metrics-bind-address=IP IP for webserver exporting prometheus metrics (default: localhost)\n"
+		   "  --yb-metrics-bind-port=NUM  Port for webserver exporting prometheus metrics (default: 8080)\n"
 		   "\nCommon options:\n"
 		   "  --batch-size=NUM         batch size for a transaction\n"
 		   "  -d, --debug              print debugging output\n"
@@ -7554,6 +7572,16 @@ printProgressReport(TState *threads, int64 test_start, pg_time_usec_t now,
 			"progress: %s, %.1f tps, lat %.3f ms stddev %.3f, " INT64_FORMAT " failed",
 			tbuf, tps, latency, stdev, failures);
 
+	if (ysql_bench_metric_entry)
+	{
+		ysql_bench_metric_entry->failure_count = errors;
+		ysql_bench_metric_entry->success_count = tps;
+		ysql_bench_metric_entry->average_latency = latency*1000;
+		ysql_bench_metric_entry->failure_count_sum += errors;
+		ysql_bench_metric_entry->success_count_sum += tps;
+		ysql_bench_metric_entry->latency_sum += latency*1000;
+	}
+
 	if (throttle_delay)
 	{
 		appendPQExpBuffer(&progress_buf, ", lag %.3f ms", lag);
@@ -7942,6 +7970,8 @@ main(int argc, char **argv)
 		{"failures-detailed", no_argument, NULL, 13},
 		{"max-tries", required_argument, NULL, 14},
 		{"verbose-errors", no_argument, NULL, 15},
+		{"yb-metrics-bind-address", required_argument, NULL, 16},
+		{"yb-metrics-bind-port", required_argument, NULL, 17},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -8300,6 +8330,24 @@ main(int argc, char **argv)
 			case 15:			/* verbose-errors */
 				benchmarking_option_set = true;
 				verbose_errors = true;
+				break;
+			case 16:				/* yb-metrics-bind-address */
+				yb_metrics_bind_address = pg_strdup(optarg);
+				yb_metrics_arg_set = true;
+				break;
+			case 17:			/* yb-metrics-bind-port */
+				{
+					int32		yb_metrics_bind_port_arg = atoi(optarg);
+
+					if (yb_metrics_bind_port_arg <= 0)
+					{
+						ereport(ELEVEL_FATAL,
+								(errmsg("invalid number of yb_metrics_bind_port_arg: \"%s\"\n",
+										optarg)));
+					}
+					yb_metrics_bind_port = (uint32) yb_metrics_bind_port_arg;
+				}
+				yb_metrics_arg_set = true;
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -8684,6 +8732,13 @@ main(int argc, char **argv)
 
 	/* wait for other threads and accumulate results */
 	initStats(&stats, 0);
+
+	/* Start metrics webserver if any metrics args are set */
+	if(yb_metrics_arg_set)
+	{
+		YbInitMetricsWebserver(argv[0]);
+	}
+
 	conn_total_duration = 0;
 
 	for (i = 0; i < nthreads; i++)
@@ -9404,4 +9459,46 @@ errfinishImpl(int dummy,...)
 
 	if (elevel >= ELEVEL_FATAL || error_during_reporting)
 		exit(1);
+}
+
+/*
+ * Initialize the metrics webserver
+ */
+static void
+YbInitMetricsWebserver(char *prog_name)
+{
+	InitGoogleLogging(prog_name);
+	ysql_bench_metric_entry = (YsqlBenchMetricEntry *) pg_malloc(sizeof(YsqlBenchMetricEntry));
+	ysql_bench_metric_entry->failure_count = 0;
+	ysql_bench_metric_entry->success_count = 0;
+	ysql_bench_metric_entry->average_latency = 0;
+	ysql_bench_metric_entry->failure_count_sum = 0;
+	ysql_bench_metric_entry->success_count_sum = 0;
+	ysql_bench_metric_entry->latency_sum = 0;
+	RegisterMetrics(ysql_bench_metric_entry, yb_metrics_bind_address);
+	yb_metrics_webserver = CreateWebserver(yb_metrics_bind_address, yb_metrics_bind_port);
+	int status = StartWebserver(yb_metrics_webserver);
+	if (status)
+	{
+		pg_free(ysql_bench_metric_entry);
+		exit(1);
+	}
+	else
+	{
+		atexit(YbStopMetricsWebserver);
+	}
+}
+
+static void
+YbStopMetricsWebserver()
+{
+	if (yb_metrics_webserver)
+	{
+		StopWebserver(yb_metrics_webserver);
+	}
+
+	if (ysql_bench_metric_entry)
+	{
+		pg_free(ysql_bench_metric_entry);
+	}
 }

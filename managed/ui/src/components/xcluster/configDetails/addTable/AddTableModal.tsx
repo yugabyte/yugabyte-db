@@ -417,7 +417,7 @@ const validateForm = async (
           if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
             warning.tableUUIDs = {
               title: 'Warning: You may need additional disk space.',
-              body: `Some selected tables require full copying. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
+              body: `Some selected tables require a full copy. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
             };
           }
         }
