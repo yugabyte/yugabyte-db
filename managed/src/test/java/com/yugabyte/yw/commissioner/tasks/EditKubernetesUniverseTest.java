@@ -116,7 +116,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     }
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "true");
     when(mockClient.getLeaderMasterHostAndPort())
         .thenReturn(HostAndPort.fromParts("1.2.3.0", 1234));
   }
@@ -159,6 +159,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_ADD_POD_TASKS =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
@@ -174,6 +175,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   private List<JsonNode> getExpectedAddPodTaskResults() {
     return ImmutableList.of(
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
@@ -188,6 +190,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_REMOVE_POD_TASKS =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -208,6 +211,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
         Json.toJson(ImmutableMap.of()),
@@ -221,21 +225,25 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_CHANGE_INSTANCE_TYPE_TASKS =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.UpdatePlacementInfo,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.CheckFollowerLag,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.CheckFollowerLag,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
@@ -251,14 +259,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
-        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
