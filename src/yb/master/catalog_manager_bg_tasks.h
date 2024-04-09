@@ -65,6 +65,7 @@ class CatalogManagerBgTasks final {
 
  private:
   void TryResumeBackfillForTables(const LeaderEpoch& epoch, std::unordered_set<TableId>* tables);
+  void ClearDeadTServerMetrics() const;
   void Run();
 
  private:
