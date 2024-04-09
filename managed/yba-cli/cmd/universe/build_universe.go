@@ -146,7 +146,7 @@ func buildClusters(
 	if err != nil {
 		return nil, err
 	}
-	if providerType != "kubernetes" {
+	if providerType == "kubernetes" {
 		dedicatedNodes = true
 	}
 

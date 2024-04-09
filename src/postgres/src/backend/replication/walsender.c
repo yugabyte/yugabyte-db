@@ -1053,7 +1053,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("CreateReplicationSlot is unavailable"),
 				 errdetail("yb_enable_replication_commands is false or a "
-				 		   "system upgrade is in progress")));
+						   "system upgrade is in progress")));
 
 	const char *snapshot_name = NULL;
 	char		xloc[MAXFNAMELEN];
@@ -1090,7 +1090,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 		ReplicationSlotCreate(cmd->slotname, false,
 							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT,
-							  false);
+							  false,
+							  snapshot_action);
 	}
 	else
 	{
@@ -1112,7 +1113,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			 */
 			ReplicationSlotCreate(cmd->slotname, true,
 								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
-								  two_phase);
+								  two_phase,
+								  snapshot_action);
 		}
 	}
 
@@ -1193,7 +1195,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 								 " its priority")));
 
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT,
-								  two_phase);
+								  two_phase,
+								  snapshot_action);
 
 			/*
 			 * Signal that we don't need the timeout mechanism. We're just

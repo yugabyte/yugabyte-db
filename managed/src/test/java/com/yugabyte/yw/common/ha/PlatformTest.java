@@ -110,6 +110,10 @@ public class PlatformTest extends FakeDBApplication {
     fakeApi = new FakeApi(app, localEBeanServer);
     clusterKey = createClusterKey();
     localConfigUUID = createHAConfig(fakeApi, clusterKey);
+    PlatformInstanceClient mockPlatformInstanceClient = mock(PlatformInstanceClient.class);
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
+        .thenReturn(mockPlatformInstanceClient);
+    when(mockPlatformInstanceClient.testConnection()).thenReturn(true);
     localInstance = createPlatformInstance(localConfigUUID, LOCAL_ACME_ORG, true, true);
     remoteInstance = createPlatformInstance(localConfigUUID, REMOTE_ACME_ORG, false, false);
     backupDir =
@@ -241,7 +245,7 @@ public class PlatformTest extends FakeDBApplication {
   }
 
   private void setupProxyingApiHelper(FakeApi remoteFakeApi, String clusterKey) {
-    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString()))
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
         .thenReturn(
             new PlatformInstanceClient(
                 mockApiHelper, clusterKey, REMOTE_ACME_ORG, mockConfigHelper));

@@ -220,9 +220,6 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   bool CheckWriteThrottlingOrRespond(
       double score, tablet::TabletPeer* tablet_peer, Resp* resp, rpc::RpcContext* context);
 
-  template <class Req, class Resp, class F>
-  void PerformAtLeader(const Req& req, Resp* resp, rpc::RpcContext* context, const F& f);
-
   Result<uint64_t> DoChecksum(const ChecksumRequestPB* req, CoarseTimePoint deadline);
 
   Status HandleUpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,
@@ -309,6 +306,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   void UpdateTransactionTablesVersion(
       const UpdateTransactionTablesVersionRequestPB* req,
       UpdateTransactionTablesVersionResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void CloneTablet(
+      const tablet::CloneTabletRequestPB* req,
+      CloneTabletResponsePB* resp,
       rpc::RpcContext context) override;
 
   void TestRetry(

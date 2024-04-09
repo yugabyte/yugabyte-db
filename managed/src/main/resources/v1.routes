@@ -633,3 +633,12 @@ DELETE /customers/:cUUID/telemetry_provider/:intUUID                           c
 # New Release APIs
 POST /customers/:cUUID/ybdb_release                                            com.yugabyte.yw.controllers.ReleasesController.create(cUUID: java.util.UUID, request: Request)
 GET /customers/:cUUID/ybdb_release                                             com.yugabyte.yw.controllers.ReleasesController.list(cUUID: java.util.UUID, request: Request)
+GET /customers/:cUUID/ybdb_release/:rUUID                                       com.yugabyte.yw.controllers.ReleasesController.get(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+DELETE /customers/:cUUID/ybdb_release/:rUUID                                    com.yugabyte.yw.controllers.ReleasesController.delete(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+PUT /customers/:cUUID/ybdb_release/:rUUID                                       com.yugabyte.yw.controllers.ReleasesController.update(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+# New Release Helper API
+POST /customers/:cUUID/ybdb_release/extract_metadata                           com.yugabyte.yw.controllers.ReleasesExtractMetadataController.extract_metadata(cUUID: java.util.UUID, request: Request)
+GET /customers/:cUUID/ybdb_release/extract_metadata/:rUUID                     com.yugabyte.yw.controllers.ReleasesExtractMetadataController.getMetadata(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+# Upload API
+POST /customers/:cUUID/ybdb_release/upload                                     com.yugabyte.yw.controllers.ReleasesUploadController.upload(cUUID: java.util.UUID, request: Request)
+GET /customers/:cUUID/ybdb_release/upload/:rUUID                               com.yugabyte.yw.controllers.ReleasesUploadController.get(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)

@@ -550,8 +550,11 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
-      detect_architecture
-      YB_COMPILER_TYPE=clang16
+      if [[ ${build_type} == "asan" ]]; then
+        YB_COMPILER_TYPE=clang16
+      else
+        YB_COMPILER_TYPE=clang17
+      fi
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi

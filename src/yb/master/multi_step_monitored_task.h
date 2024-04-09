@@ -14,7 +14,6 @@
 #pragma once
 
 #include "yb/master/leader_epoch.h"
-#include "yb/master/master_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/monitored_task.h"
 #include "yb/util/status_callback.h"
@@ -24,6 +23,9 @@ namespace yb {
 class ThreadPool;
 
 namespace master {
+
+class CatalogManager;
+class CatalogEntityWithTasks;
 
 // Tasks that contain multiple asynchronous steps.
 // - All steps run on the passed in async thread pool. Steps can be scheduled to run immediately or
@@ -76,7 +78,7 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
   // This is invoked when the task reaches a terminal state and before it is Unregistered. Status
   // will be OK if the task succeeded and not OK if it failed. Note: Do not invoke this directly. It
   // will be invoked when any step returns a bad status.
-  virtual void TaskCompleted(const Status& status) = 0;
+  virtual void TaskCompleted(const Status& status);
 
   // ==================================================================
   // Helper methods that derived class steps can invoke.
@@ -125,22 +127,24 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
   std::function<Status()> next_step_ GUARDED_BY(schedule_task_mutex_) = nullptr;
 };
 
-// A MultiStepMonitoredTask that is tied to a single Table and the master leader epoch.
-class MultiStepTableTask : public MultiStepMonitoredTask {
- public:
+// A MultiStepMonitoredTask that is tied to a single CatalogEntity object (ex: Table) and the master
+// leader epoch.
+class MultiStepCatalogEntityTask : public MultiStepMonitoredTask {
  protected:
-  MultiStepTableTask(
-      CatalogManager& catalog_manager, ThreadPool& async_task_pool, rpc::Messenger& messenger,
-      TableInfoPtr table_info, const LeaderEpoch& epoch);
+  MultiStepCatalogEntityTask(
+      std::function<Status(const LeaderEpoch& epoch)> validate_epoch_func,
+      ThreadPool& async_task_pool, rpc::Messenger& messenger,
+      CatalogEntityWithTasks& catalog_entity, const LeaderEpoch& epoch);
   Status ValidateRunnable() override;
 
-  CatalogManager& catalog_manager_;
   const LeaderEpoch epoch_;
-  const TableInfoPtr table_info_;
+  CatalogEntityWithTasks& catalog_entity_;
 
  private:
   Status RegisterTask() override;
   void UnregisterTask() override;
+
+  const std::function<Status(const LeaderEpoch& epoch)> validate_epoch_func_;
 };
 
 }  // namespace master

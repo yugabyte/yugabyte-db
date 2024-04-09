@@ -297,6 +297,12 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       if (!consensus_->split_parent_tablet_id().empty()) {
         rb_request_.set_split_parent_tablet_id(consensus_->split_parent_tablet_id());
       }
+
+      auto clone_source_info = consensus_->clone_source_info();
+      if (clone_source_info) {
+        rb_request_.set_clone_source_seq_no(clone_source_info->seq_no);
+        rb_request_.set_clone_source_tablet_id(clone_source_info->tablet_id);
+      }
     }
     if (!status.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Unable to generate remote bootstrap request for peer: "

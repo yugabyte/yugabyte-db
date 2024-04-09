@@ -1069,7 +1069,8 @@ void DeletedTableInfo::AddTabletsToMap(DeletedTabletMap* tablet_map) {
 // NamespaceInfo
 // ================================================================================================
 
-NamespaceInfo::NamespaceInfo(NamespaceId ns_id) : namespace_id_(std::move(ns_id)) {}
+NamespaceInfo::NamespaceInfo(NamespaceId ns_id, scoped_refptr<TasksTracker> tasks_tracker)
+    : CatalogEntityWithTasks(std::move(tasks_tracker)), namespace_id_(std::move(ns_id)) {}
 
 const NamespaceName NamespaceInfo::name() const {
   return LockForRead()->pb.name();

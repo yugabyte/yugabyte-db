@@ -121,13 +121,12 @@ typedef boost::multi_index_container<WaiterInfoEntry,
 
 // Specification used by the deadlock detector to interact with the transaction coordinator to abort
 // transactions or determine which transactions are no longer running.
-class TransactionAbortController {
+class TransactionStatusController {
  public:
-  virtual void Abort(const TransactionId& transaction_id, TransactionStatusCallback callback) = 0;
   virtual void RemoveInactiveTransactions(Waiters* waiters) = 0;
   virtual bool IsAnySubtxnActive(const TransactionId& transaction_id,
                                  const SubtxnSet& subtxn_set) = 0;
-  virtual ~TransactionAbortController() = default;
+  virtual ~TransactionStatusController() = default;
 };
 
 using DeadlockDetectorRpcCallback = std::function<void(const Status&)>;
@@ -169,7 +168,7 @@ class DeadlockDetector {
  public:
   DeadlockDetector(
       const std::shared_future<client::YBClient*>& client_future,
-      TransactionAbortController* controller,
+      TransactionStatusController* controller,
       const TabletId& status_tablet_id,
       const MetricEntityPtr& metrics);
 
@@ -188,10 +187,6 @@ class DeadlockDetector {
   void TriggerProbes();
 
   void Shutdown();
-
-  // Returns the deadlock status if the given transaction could have been involved in a deadlock.
-  // Returns Status::OK() in all other cases.
-  Status GetTransactionDeadlockStatus(const TransactionId& txn_id);
 
  private:
   class Impl;

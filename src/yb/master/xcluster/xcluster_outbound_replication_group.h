@@ -29,7 +29,8 @@ class XClusterRemoteClient;
 namespace master {
 
 class XClusterOutboundReplicationGroup
-    : public std::enable_shared_from_this<XClusterOutboundReplicationGroup> {
+    : public std::enable_shared_from_this<XClusterOutboundReplicationGroup>,
+      public CatalogEntityWithTasks {
  public:
   struct HelperFunctions {
     const std::function<Result<NamespaceId>(YQLDatabase, const NamespaceName&)>
@@ -54,7 +55,7 @@ class XClusterOutboundReplicationGroup
   explicit XClusterOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
       const SysXClusterOutboundReplicationGroupEntryPB& outbound_replication_group_pb,
-      HelperFunctions helper_functions);
+      HelperFunctions helper_functions, scoped_refptr<TasksTracker> tasks_tracker);
 
   virtual ~XClusterOutboundReplicationGroup() = default;
 

@@ -13,7 +13,6 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -56,6 +55,8 @@ public class GroupMappingController extends AuthenticatedController {
 
   @Inject TokenAuthenticator tokenAuthenticator;
   @Inject RuntimeConfGetter confGetter;
+
+  private final String oidcAutoCreateKey = "yb.security.oidc_enable_auto_create_users";
 
   /**
    * Lists the Role - Ldap Group Mapping
@@ -164,7 +165,10 @@ public class GroupMappingController extends AuthenticatedController {
     return PlatformResults.YBPSuccess.withMessage("LDAP Group Mapping Updated!");
   }
 
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.21.0.0")
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0",
+      runtimeConfig = oidcAutoCreateKey)
   @ApiOperation(
       value = "Set OIDC Mappings",
       response = Result.class,
@@ -188,7 +192,6 @@ public class GroupMappingController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result updateOidcMappings(UUID customerUUID, Http.Request request) {
-    verifyOidcAutoCreateKey();
     Customer.getOrBadRequest(customerUUID);
 
     OidcGroupToYbaRolesData data = parseJsonAndValidate(request, OidcGroupToYbaRolesData.class);
@@ -202,7 +205,8 @@ public class GroupMappingController extends AuthenticatedController {
     data.getOidcGroupToYbaRolesPairs()
         .forEach(
             rolePair -> {
-              String groupName = rolePair.getGroupName();
+              // make group name case insensitive
+              String groupName = rolePair.getGroupName().toLowerCase();
               OidcGroupToYbaRoles entity =
                   OidcGroupToYbaRoles.find.query().where().eq("group_name", groupName).findOne();
 
@@ -222,7 +226,10 @@ public class GroupMappingController extends AuthenticatedController {
     return PlatformResults.YBPSuccess.withMessage("OIDC Group Mapping Updated!");
   }
 
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.21.0.0")
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0",
+      runtimeConfig = oidcAutoCreateKey)
   @ApiOperation(
       value = "List OIDC Group Mappings",
       response = OidcGroupToYbaRolesData.class,
@@ -236,10 +243,6 @@ public class GroupMappingController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result listOidcMappings(UUID customerUUID) {
-    if (!confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "yb.security.oidc_enable_auto_create_users flag is not enabled.");
-    }
     Customer.getOrBadRequest(customerUUID);
 
     List<OidcGroupToYbaRoles> oidcMappings =
@@ -260,7 +263,10 @@ public class GroupMappingController extends AuthenticatedController {
     return PlatformResults.withData(result);
   }
 
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.21.0.0")
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0",
+      runtimeConfig = oidcAutoCreateKey)
   @ApiOperation(
       value = "Delete a OIDC group mapping",
       response = PlatformResults.YBPSuccess.class,
@@ -274,7 +280,6 @@ public class GroupMappingController extends AuthenticatedController {
   })
   @Transactional
   public Result deleteOidcGroupMapping(UUID customerUUID, String groupName, Http.Request request) {
-    verifyOidcAutoCreateKey();
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     if (!isSuperAdmin) {
       throw new PlatformServiceException(BAD_REQUEST, "Only SuperAdmin can delete group mappings!");
@@ -284,7 +289,7 @@ public class GroupMappingController extends AuthenticatedController {
             .query()
             .where()
             .eq("customer_uuid", customerUUID)
-            .eq("group_name", groupName)
+            .eq("group_name", groupName.toLowerCase())
             .findOne();
     if (entity == null) {
       throw new PlatformServiceException(NOT_FOUND, "No OIDC group found with name: " + groupName);
@@ -295,12 +300,5 @@ public class GroupMappingController extends AuthenticatedController {
         .createAuditEntry(
             request, Audit.TargetType.OIDCGroupMapping, groupName, Audit.ActionType.Delete);
     return PlatformResults.YBPSuccess.empty();
-  }
-
-  private void verifyOidcAutoCreateKey() {
-    if (!confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "yb.security.oidc_enable_auto_create_users flag is not enabled.");
-    }
   }
 }

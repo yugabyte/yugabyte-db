@@ -51,11 +51,6 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
   private final Tablespace[] tablespaces = generateTestTablespaces();
   private Connection[] connections;
 
-  @Override
-  public int getTestMethodTimeoutSec() {
-    return getPerfMaxRuntime(1500, 1700, 2000, 2000, 2000);
-  }
-
   private static void resetBgThreads(int previousBGWait) throws Exception {
     YBClient client = miniCluster.getClient();
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
@@ -64,6 +59,11 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
       assertTrue(
           client.setFlag(hp, "TEST_skip_placement_validation_createtable_api", "false", true));
     }
+  }
+
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return getPerfMaxRuntime(1500, 1700, 2000, 2000, 2000);
   }
 
   @After
@@ -264,18 +264,17 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
     verifyTablePlacement("validplacementtable", valid_ts);
   }
 
-  /** Helper class for running INSERT/UPDATE statements in a thread. */
-  public class DMLRunner extends Thread {
-    private final String insert_sql =
-        "INSERT INTO concurrent_test_tbl(k, v1, v2) " + "VALUES(%d, %d, %d)";
-    private final String update_sql = "UPDATE concurrent_test_tbl SET v1 = v1 + 1 WHERE v1 = %d";
-    private final Connection conn;
-    private final AtomicBoolean errorsDetected;
-    private final CyclicBarrier barrier;
-    private final int numStmtsPerThread;
-    private final int idx;
+  /**
+   * Base class for running DML and DDL statements concurrently.
+   */
+  public abstract class SQLRunner extends Thread {
+    protected final Connection conn;
+    protected final AtomicBoolean errorsDetected;
+    protected final CyclicBarrier barrier;
+    protected final int numStmtsPerThread;
+    protected int idx; // Only used by DMLRunner
 
-    public DMLRunner(
+    public SQLRunner(
         Connection conn,
         AtomicBoolean errorsDetected,
         CyclicBarrier barrier,
@@ -285,47 +284,90 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
       this.errorsDetected = errorsDetected;
       this.barrier = barrier;
       this.numStmtsPerThread = numStmtsPerThread;
-      this.idx = idx;
+      this.idx = idx; // This field is not used in DDLRunner
     }
 
     @Override
     public void run() {
-      try (Statement lstmt = conn.createStatement()) {
-        for (int item_idx = 0; !errorsDetected.get() && item_idx < numStmtsPerThread; ++item_idx) {
+      int item_idx = 0;
+      while (item_idx < numStmtsPerThread && !errorsDetected.get()) {
+        try (Statement lstmt = conn.createStatement()) {
           barrier.await();
-          lstmt.execute(
-              String.format(
-                  insert_sql,
-                  idx * 10000000L + item_idx,
-                  idx * 10000000L + item_idx + 1,
-                  idx * 10000000L + item_idx + 2));
-
-          lstmt.execute(String.format(update_sql, item_idx));
+          executeStatement(lstmt, item_idx);
+          item_idx++;
+        } catch (PSQLException e) {
+          handlePSQLException(e);
+        } catch (SQLException | InterruptedException | BrokenBarrierException e) {
+          logAndSetError(e);
         }
-      } catch (PSQLException e) {
-        // Since we are doing DDLs concurrently, we expect some of our DML statements s to fail
-        // due to conflicts. We can ignore these errors.
-        if (e.getMessage().contains("expired or aborted by a conflict: 40001")) {
-          LOG.info("DML thread: statement aborted due to conflict; ignoring");
-        } else {
-          LOG.info("DML thread: Unexpected error: ", e);
-          errorsDetected.set(true);
-        }
-      } catch (InterruptedException | BrokenBarrierException | SQLException e) {
-        LOG.info("DML thread: Unexpected error: ", e);
-        errorsDetected.set(true);
-      } finally {
-        barrier.reset();
       }
+    }
+
+    protected abstract void executeStatement(Statement lstmt, int item_idx) throws SQLException;
+
+    /**
+     * Handles PSQLExceptions by checking if the error is expected or unexpected. If the error is
+     * expected, the function logs the error and returns. If the error is unexpected, we set
+     * errorsDetected to true.
+     */
+    private void handlePSQLException(PSQLException e) {
+      List<String> expectedErrors =
+          Arrays.asList(
+              "expired or aborted by a conflict",
+              "Transaction aborted: kAborted",
+              "schema version mismatch for table");
+      if (expectedErrors.stream().anyMatch(error -> e.getMessage().contains(error))) {
+        LOG.info("SQL thread: encountered expected error %s, retrying", e);
+      } else {
+        logAndSetError(e);
+      }
+    }
+
+    protected void logAndSetError(Exception e) {
+      LOG.info("SQL thread: Unexpected error: ", e);
+      errorsDetected.set(true);
+      barrier.reset();
     }
   }
 
-  public class DDLRunner extends Thread {
-    private final Connection conn;
+  /** Helper class to run DML statements concurrently. */
+  public class DMLRunner extends SQLRunner {
+    private final String insert_sql =
+        "INSERT INTO concurrent_test_tbl(k, v1, v2) " + "VALUES(%d, %d, %d)";
+    private final String update_sql = "UPDATE concurrent_test_tbl SET v1 = v1 + 1 WHERE v1 = %d";
+
+    public DMLRunner(
+        Connection conn,
+        AtomicBoolean errorsDetected,
+        CyclicBarrier barrier,
+        int numStmtsPerThread,
+        int idx) {
+      super(conn, errorsDetected, barrier, numStmtsPerThread, idx);
+    }
+
+    @Override
+    protected void executeStatement(Statement lstmt, int item_idx) throws SQLException {
+      executeInsertStatement(lstmt, item_idx);
+      executeUpdateStatement(lstmt, item_idx);
+    }
+
+    private void executeInsertStatement(Statement lstmt, int item_idx) throws SQLException {
+      lstmt.execute(
+          String.format(
+              insert_sql,
+              idx * 10000000L + item_idx,
+              idx * 10000000L + item_idx + 1,
+              idx * 10000000L + item_idx + 2));
+    }
+
+    private void executeUpdateStatement(Statement lstmt, int item_idx) throws SQLException {
+      lstmt.execute(String.format(update_sql, item_idx));
+    }
+  }
+
+  /** Helper class to run DDL statements concurrently. */
+  public class DDLRunner extends SQLRunner {
     private final String sql;
-    private final AtomicBoolean errorsDetected;
-    private final CyclicBarrier barrier;
-    private final int numStmtsPerThread;
     private final Tablespace[] tablespaces;
 
     public DDLRunner(
@@ -335,32 +377,17 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
         CyclicBarrier barrier,
         int numStmtsPerThread,
         Tablespace[] tablespaces) {
-      this.conn = conn;
+      super(conn, errorsDetected, barrier, numStmtsPerThread, 0); // idx is not used here
       this.sql = sql;
-      this.errorsDetected = errorsDetected;
-      this.barrier = barrier;
-      this.numStmtsPerThread = numStmtsPerThread;
       this.tablespaces = tablespaces;
     }
 
-    /** Helper function for running DDL statements in a thread. */
     @Override
-    public void run() {
-      try (Statement lstmt = conn.createStatement()) {
-        for (int i = 0; i < numStmtsPerThread; ++i) {
-          barrier.await();
-
-          final int tablespaceIdx = i % tablespaces.length;
-          String sqlStmt = String.format(sql, tablespaces[tablespaceIdx].name);
-          LOG.info("DDL thread: Executing statement: " + sqlStmt);
-          lstmt.execute(sqlStmt);
-        }
-      } catch (SQLException | InterruptedException | BrokenBarrierException e) {
-        LOG.info("DDL thread: Unexpected error: ", e);
-        errorsDetected.set(true);
-      } finally {
-        barrier.reset();
-      }
+    protected void executeStatement(Statement lstmt, int item_idx) throws SQLException {
+      final int tablespaceIdx = item_idx % tablespaces.length;
+      String sqlStmt = String.format(sql, tablespaces[tablespaceIdx].name);
+      LOG.info("DDL thread: Executing statement: " + sqlStmt);
+      lstmt.execute(sqlStmt);
     }
   }
 }

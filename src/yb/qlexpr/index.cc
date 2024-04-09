@@ -16,6 +16,7 @@
 
 #include "yb/qlexpr/index.h"
 
+#include "yb/common/common.messages.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
 
@@ -275,6 +276,13 @@ size_t IndexInfo::DynamicMemoryUsage() const {
 
 IndexMap::IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {
   FromPB(indexes);
+}
+
+IndexMap::IndexMap(const ArenaList<LWIndexInfoPB>& indexes) {
+  clear();
+  for (const auto& index : indexes) {
+    emplace(index.table_id(), IndexInfo(index.ToGoogleProtobuf()));
+  }
 }
 
 void IndexMap::FromPB(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {

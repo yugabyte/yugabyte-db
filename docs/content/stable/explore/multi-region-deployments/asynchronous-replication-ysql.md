@@ -20,6 +20,7 @@ For more information, see the following:
 
 - [xCluster replication architecture](../../../architecture/docdb-replication/async-replication/)
 - [xCluster replication commands](../../../admin/yb-admin/#xcluster-replication-commands)
+- [xCluster replication limitations](../../../architecture/docdb-replication/async-replication/#limitations)
 - [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)
 
 ## Create two data centers

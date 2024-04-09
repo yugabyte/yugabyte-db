@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/master/multi_step_monitored_task.h"
+#include "yb/master/catalog_entity_tasks.h"
 
 namespace yb::master {
 
@@ -21,7 +21,7 @@ namespace yb::master {
 // created and marked as RUNNING. Once all tasks of this type complete, the table will be marked as
 // RUNNING, which completes the table creation workflow.
 // - Check MultiStepMonitoredTask for information about scheduling.
-class PostTabletCreateTaskBase : public MultiStepTableTask {
+class PostTabletCreateTaskBase : public MultiStepTableTaskBase {
  public:
   // Start all the tasks at once. Once the last task completes it will transition the table to
   // RUNNING state if healthy.

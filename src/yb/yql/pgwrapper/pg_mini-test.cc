@@ -119,7 +119,7 @@ namespace {
 
 Result<int64_t> GetCatalogVersion(PGConn* conn) {
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
-    const auto db_oid = VERIFY_RESULT(conn->FetchRow<int32>(Format(
+    const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
         "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
     return conn->FetchRow<PGUint64>(
         Format("SELECT current_version FROM pg_yb_catalog_version where db_oid = $0", db_oid));

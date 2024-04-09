@@ -524,7 +524,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       ch.qos.logback.classic.Logger rootLogger =
           (ch.qos.logback.classic.Logger)
               LoggerFactory.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
-      // rootLogger.detachAppender("ASYNCSTDOUT");
+      rootLogger.detachAppender("ASYNCSTDOUT");
 
       setPausePosition(0);
       UUID taskUuid = commissioner.submit(taskType, taskParams);

@@ -220,7 +220,22 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
             i, i + 1));
       }
     }
-    return Status::OK();
+
+    int retry_count = 1;
+    return WaitFor(
+        [&]() -> Result<bool> {
+          LOG(INFO) << "Retry : " << retry_count++;
+          auto rows = VERIFY_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+              "SELECT $1, $2 FROM $0 WHERE $1 >= $3 AND $1 < $4", kTableName, kKeyColumnName,
+              kValueColumnName, start, end))));
+
+          bool write_completed = true;
+          if (rows.size() != (end - start)) {
+            write_completed = false;
+          }
+          return write_completed;
+        },
+        MonoDelta::FromSeconds(60), "Waiting for write to be completed");
   }
 
   // The range is exclusive of end i.e. [start, end)
