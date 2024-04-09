@@ -122,13 +122,13 @@ typedef struct
 	ItemPointer tid;
 
 	/* object ID of the document */
-	pgbson *objectId;
+	Datum objectId;
 
 	/* old value of the document */
-	pgbson *originalDocument;
+	Datum originalDocument;
 
 	/* updated value of the document */
-	pgbson *updatedDocument;
+	Datum updatedDocument;
 } UpdateCandidate;
 
 
@@ -1609,7 +1609,7 @@ CallUpdateWorkerForUpdateOne(MongoCollection *collection,
 		ereport(ERROR, (errcode(MongoInternalError),
 						errmsg("update_worker should not return null")));
 	}
-	pgbson *resultPgbson = (pgbson *) DatumGetPointer(resultDatum[0]);
+	pgbson *resultPgbson = DatumGetPgBson(resultDatum[0]);
 
 	DeserializeUpdateResult(resultPgbson, result);
 }
@@ -2067,7 +2067,7 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 	result->resultDocument = NULL;
 	result->upsertedObjectId = NULL;
 
-	UpdateCandidate updateCandidate;
+	UpdateCandidate updateCandidate = { 0 };
 
 	bool getExistingDoc = updateOneParams->returnDocument != UPDATE_RETURNS_NONE ||
 						  updateOneParams->returnFields != NULL;
@@ -2131,12 +2131,13 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 	else
 	{
 		/* if NULL no update was performed */
-		if (updateCandidate.updatedDocument != NULL)
+		if (updateCandidate.updatedDocument != (Datum) 0)
 		{
+			pgbson *updatedPgbson = DatumGetPgBson(updateCandidate.updatedDocument);
 			int64 newShardKeyHash =
 				ComputeShardKeyHashForDocument(shardKeyBson,
 											   collectionId,
-											   updateCandidate.updatedDocument);
+											   updatedPgbson);
 
 			if (newShardKeyHash == shardKeyHash)
 			{
@@ -2146,7 +2147,7 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 				 */
 				result->isRowUpdated =
 					UpdateDocumentByTID(collectionId, shardKeyHash, updateCandidate.tid,
-										updateCandidate.updatedDocument);
+										updatedPgbson);
 
 				result->reinsertDocument = NULL;
 			}
@@ -2159,18 +2160,18 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 				result->isRowUpdated =
 					DeleteDocumentByTID(collectionId, shardKeyHash, updateCandidate.tid);
 
-				result->reinsertDocument = updateCandidate.updatedDocument;
+				result->reinsertDocument = updatedPgbson;
 			}
 
 			if (updateOneParams->returnDocument == UPDATE_RETURNS_NEW)
 			{
 				/* output of bson_update_document */
-				result->resultDocument = updateCandidate.updatedDocument;
+				result->resultDocument = updatedPgbson;
 			}
 			else if (updateOneParams->returnDocument == UPDATE_RETURNS_OLD)
 			{
 				/* input of bson_update_document */
-				result->resultDocument = updateCandidate.originalDocument;
+				result->resultDocument = DatumGetPgBson(updateCandidate.originalDocument);
 			}
 		}
 		else
@@ -2178,7 +2179,9 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 			/* No update was performed */
 			result->reinsertDocument = NULL;
 			result->updateSkipped = true;
-			result->resultDocument = updateCandidate.originalDocument;
+			result->resultDocument = updateCandidate.originalDocument == (Datum) 0 ?
+									 NULL :
+									 DatumGetPgBson(updateCandidate.originalDocument);
 		}
 	}
 
@@ -2335,7 +2338,7 @@ SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
 		typeLength = -1;
 		objectIdDatum = SPI_datumTransfer(objectIdDatum, typeByValue, typeLength);
 
-		updateCandidate->objectId = (pgbson *) DatumGetPointer(objectIdDatum);
+		updateCandidate->objectId = objectIdDatum;
 
 		columnNumber = 3;
 		Datum heapDatum = SPI_getbinval(SPI_tuptable->vals[rowIndex],
@@ -2357,7 +2360,7 @@ SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
 												  &isNull);
 		if (isNull)
 		{
-			updateCandidate->updatedDocument = NULL;
+			updateCandidate->updatedDocument = (Datum) 0;
 		}
 		else
 		{
@@ -2365,8 +2368,7 @@ SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
 			updatedDocumentDatum = SPI_datumTransfer(updatedDocumentDatum, typeByValue,
 													 typeLength);
 
-			updateCandidate->updatedDocument =
-				(pgbson *) DatumGetPointer(updatedDocumentDatum);
+			updateCandidate->updatedDocument = updatedDocumentDatum;
 		}
 
 		ReleaseTupleDesc(tupleDescriptor);
@@ -2383,12 +2385,11 @@ SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
 			originalDocumentDatum = SPI_datumTransfer(originalDocumentDatum,
 													  typeByValue, typeLength);
 
-			updateCandidate->originalDocument =
-				(pgbson *) DatumGetPointer(originalDocumentDatum);
+			updateCandidate->originalDocument = originalDocumentDatum;
 		}
 		else
 		{
-			updateCandidate->originalDocument = NULL;
+			updateCandidate->originalDocument = (Datum) 0;
 		}
 	}
 
