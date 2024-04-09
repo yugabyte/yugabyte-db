@@ -104,5 +104,6 @@ static inline bool _is_ag_node(Node *node, const char *extnodename)
 }
 
 #define is_ag_node(node, type) _is_ag_node((Node *)(node), CppAsString(type))
+#define get_ag_node_tag(node) ((ag_node_tag)(((ExtensibleNode *)(node))->extnodename))
 
 #endif

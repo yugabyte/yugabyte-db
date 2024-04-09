@@ -39,4 +39,13 @@ Query *cypher_parse_sub_analyze(Node *parseTree,
                                 CommonTableExpr *parentCTE,
                                 bool locked_from_parent,
                                 bool resolve_unknowns);
+
+typedef Query *(*transform_method)(cypher_parsestate *cpstate,
+                                   cypher_clause *clause);
+
+ParseNamespaceItem *transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
+                                                        transform_method transform,
+                                                        cypher_clause *clause,
+                                                        Alias *alias,
+                                                        bool add_rte_to_query);
 #endif

@@ -110,6 +110,7 @@ REGRESS = scan \
           graph_generation \
           name_validation \
           jsonb_operators \
+          list_comprehension \
           drop
 
 srcdir=`pwd`

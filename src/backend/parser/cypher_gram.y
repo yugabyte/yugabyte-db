@@ -118,6 +118,9 @@
 /* UNWIND clause */
 %type <node> unwind
 
+/* list comprehension */
+%type <node> list_comprehension
+
 /* SET and REMOVE clause */
 %type <node> set set_item remove remove_item
 %type <list> set_item_list remove_item_list
@@ -247,6 +250,18 @@ static bool is_A_Expr_a_comparison_operation(cypher_comparison_aexpr *a);
 static Node *build_comparison_expression(Node *left_grammar_node,
                                          Node *right_grammar_node,
                                          char *opr_name, int location);
+
+// list_comprehension
+static Node *verify_rule_as_list_comprehension(Node *expr, Node *expr2,
+                                               Node *where, Node *mapping_expr,
+                                               int var_loc, int expr_loc,
+                                               int where_loc, int mapping_loc);
+
+static Node *build_list_comprehension_node(ColumnRef *var_name, Node *expr,
+                                           Node *where, Node *mapping_expr,
+                                           int var_loc, int expr_loc,
+                                           int where_loc,int mapping_loc);
+
 %}
 %%
 
@@ -1029,6 +1044,8 @@ unwind:
 
             n = make_ag_node(cypher_unwind);
             n->target = res;
+            n->where = NULL;
+            n->collect = NULL;
             $$ = (Node *) n;
         }
 
@@ -2032,6 +2049,52 @@ list:
             n->elems = $2;
 
             $$ = (Node *)n;
+        }
+    | list_comprehension
+    ;
+
+/*
+ * This grammar rule is generic to some extent. It can
+ * evaluate to either IN operator or list comprehension.
+ * This avoids shift/reduce errors between the two rules.
+ */
+list_comprehension:
+    '[' expr IN expr ']'
+        {
+            Node *n = $2;
+            Node *result = NULL;
+            
+            /*
+             * If the first expr is a ColumnRef(variable), then the rule
+             * should evaluate as a list comprehension. Otherwise, it should
+             * evaluate as an IN operator.
+             */
+            if (nodeTag(n) == T_ColumnRef)
+            {
+                ColumnRef *cref = (ColumnRef *)n;
+                result = build_list_comprehension_node(cref, $4, NULL, NULL,
+                                                       @2, @4, 0, 0);
+            }
+            else
+            {
+                result = (Node *)makeSimpleA_Expr(AEXPR_IN, "=", n, $4, @3);
+            }
+            $$ = result;
+        }
+    | '[' expr IN expr WHERE expr ']'
+        {
+            $$ = verify_rule_as_list_comprehension($2, $4, $6, NULL,
+                                                   @2, @4, @6, 0);
+        }
+    | '[' expr IN expr '|' expr ']'
+        {
+            $$ = verify_rule_as_list_comprehension($2, $4, NULL, $6,
+                                                   @2, @4, 0, @6);
+        }
+    | '[' expr IN expr WHERE expr '|' expr ']'
+        {
+            $$ = verify_rule_as_list_comprehension($2, $4, $6, $8,
+                                                   @2, @4, @6, @8);
         }
     ;
 
@@ -3059,4 +3122,92 @@ static cypher_relationship *build_VLE_relation(List *left_arg,
                                     cr_location);
     /* return the VLE relation node */
     return cr;
+}
+
+// Helper function to verify that the rule is a list comprehension
+static Node *verify_rule_as_list_comprehension(Node *expr, Node *expr2,
+                                               Node *where, Node *mapping_expr,
+                                               int var_loc, int expr_loc,
+                                               int where_loc, int mapping_loc)
+{
+    Node *result = NULL;
+    
+    /*
+     * If the first expression is a ColumnRef, then we can build a
+     * list_comprehension node.
+     * Else its an invalid use of IN operator.
+     */
+    if (nodeTag(expr) == T_ColumnRef)
+    {
+        ColumnRef *cref = (ColumnRef *)expr;
+        result = build_list_comprehension_node(cref, expr2, where,
+                                               mapping_expr, var_loc,
+                                               expr_loc, where_loc,
+                                               mapping_loc);
+    }
+    else
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_SYNTAX_ERROR),
+                 errmsg("Syntax error at or near IN")));
+    }
+    return result;
+}
+
+/* helper function to build a list_comprehension grammar node */
+static Node *build_list_comprehension_node(ColumnRef *cref, Node *expr,
+                                           Node *where, Node *mapping_expr,
+                                           int var_loc, int expr_loc,
+                                           int where_loc, int mapping_loc)
+{
+    ResTarget *res = NULL;
+    cypher_unwind *unwind = NULL;
+    char *var_name = NULL;
+    String *val;
+
+    // Extract name from cref
+    val = linitial(cref->fields);
+
+    if (!IsA(val, String))
+    {
+        ereport(ERROR,
+                (errmsg_internal("unexpected Node for cypher_clause")));
+    }
+
+    var_name = val->sval;
+
+    /*
+     * Build the ResTarget node for the UNWIND variable var_name attached to
+     * expr.
+     */
+    res = makeNode(ResTarget);
+    res->name = var_name;
+    res->val = (Node *)expr;
+    res->location = expr_loc;
+
+    /* build the UNWIND node */
+    unwind = make_ag_node(cypher_unwind);
+    unwind->target = res;
+    unwind->where = where;
+
+    /* if there is a mapping function, add its arg to collect */
+    if (mapping_expr != NULL)
+    {
+        unwind->collect = make_function_expr(list_make1(makeString("collect")),
+                                             list_make1(mapping_expr),
+                                             mapping_loc);
+    }
+    /*
+     * Otherwise, we need to add in the ColumnRef of the variable var_name as
+     * the arg to collect instead. This implies that the RETURN variable is
+     * var_name.
+     */
+    else
+    {
+        unwind->collect = make_function_expr(list_make1(makeString("collect")),
+                                             list_make1(cref), mapping_loc);
+    }
+
+    /* return the UNWIND node */
+    return (Node *)unwind;
 }

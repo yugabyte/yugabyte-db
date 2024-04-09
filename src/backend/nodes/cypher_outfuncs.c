@@ -174,6 +174,7 @@ void out_cypher_unwind(StringInfo str, const ExtensibleNode *node)
     DEFINE_AG_NODE(cypher_unwind);
 
     WRITE_NODE_FIELD(target);
+    WRITE_NODE_FIELD(collect);
 }
 
 // serialization function for the cypher_delete ExtensibleNode.

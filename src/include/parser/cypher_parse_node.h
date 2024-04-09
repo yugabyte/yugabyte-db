@@ -50,6 +50,7 @@ typedef struct cypher_parsestate
      */
     bool exprHasAgg;
     bool p_opt_match;
+    bool p_list_comp;
 } cypher_parsestate;
 
 typedef struct errpos_ecb_state

@@ -26,4 +26,6 @@ TargetEntry *transform_cypher_item(cypher_parsestate *cpstate, Node *node,
 List *transform_cypher_item_list(cypher_parsestate *cpstate, List *item_list,
                                  List **groupClause, ParseExprKind expr_kind);
 
+bool has_a_cypher_list_comprehension_node(Node *expr);
+
 #endif
