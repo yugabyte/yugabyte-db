@@ -40,7 +40,7 @@ The **Regions** section on the cluster **Settings > Infrastructure** tab summari
 - You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{% support-cloud %}}.
 - To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
 - You can't change the [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) of a cluster after it is created.
-- You can't scale single node clusters (fault tolerance none), you can only increase disk size.
+- You can't change vCPUs on clusters with fault tolerance none, you can only increase disk size, or change IOPS (AWS only).
 - You can't scale Sandbox clusters.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
 - On AWS, you can't make further modifications to disk (size, IOPS) for six hours after changing either disk size or IOPS (this includes a scaling operation that increases the number of vCPUs, as this also increases disk size).
