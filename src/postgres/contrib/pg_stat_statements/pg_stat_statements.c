@@ -3919,7 +3919,7 @@ bundlePgss(int flag, int64 queryId, const char *query, double total_time,
 		result->total_time += total_time;
 
 
-		if(total_time > 4){
+		if(total_time > result->query_min_duration){
 			char* total_time_str = (char*)palloc(20);
 			sprintf(total_time_str, "%.2f", total_time);
 			strcat(bind_variables, total_time_str);
