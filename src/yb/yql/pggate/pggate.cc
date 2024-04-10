@@ -1332,6 +1332,10 @@ Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
 }
 
+Result<bool> PgApiImpl::DmlHasRegularTargets(PgStatement *handle) {
+  return down_cast<PgDml*>(handle)->has_regular_targets();
+}
+
 Result<bool> PgApiImpl::DmlHasSystemTargets(PgStatement *handle) {
   return down_cast<PgDml*>(handle)->has_system_targets();
 }

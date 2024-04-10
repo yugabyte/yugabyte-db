@@ -1210,6 +1210,10 @@ typedef struct Path
  * the query's WHERE or JOIN conditions.  An empty list implies a full
  * index scan.
  *
+ * 'yb_bitmap_idx_pushdowns' is a set of pushable clauses for a bitmap index scan.
+ * These are extracted during bitmap planning and allow pushdowns that are not
+ * possible to determine at a later stage.
+ *
  * 'indexquals' has the same structure as 'indexclauses', but it contains
  * the actual index qual conditions that can be used with the index.
  * In simple cases this is identical to 'indexclauses', but when special
@@ -1259,6 +1263,7 @@ typedef struct IndexPath
 	List	   *indexclauses;
 	List	   *indexquals;
 	List	   *indexqualcols;
+	List	   *yb_bitmap_idx_pushdowns;
 	List	   *indexorderbys;
 	List	   *indexorderbycols;
 	ScanDirection indexscandir;
