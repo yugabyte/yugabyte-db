@@ -69,6 +69,9 @@ DEFINE_test_flag(string, xcluster_simulated_lag_tablet_filter, "",
 DEFINE_test_flag(bool, cdc_skip_replication_poll, false,
                  "If true, polling will be skipped.");
 
+DEFINE_test_flag(bool, xcluster_simulate_get_changes_response_error, false,
+                 "Simulate xCluster GetChanges returning an error.");
+
 DEFINE_test_flag(bool, xcluster_disable_poller_term_check, false,
     "If true, the poller will not check the leader term.");
 
@@ -420,6 +423,7 @@ void XClusterPoller::HandleGetChangesResponse(
       // In case of errors, try polling again with backoff
       poll_failures_ =
           std::min(poll_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
+      xcluster_consumer_->IncrementPollFailureCount();
       return SchedulePoll();
     }
     // Recover slowly if we're congested.
@@ -432,11 +436,16 @@ void XClusterPoller::HandleGetChangesResponse(
 }
 
 Status XClusterPoller::ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp) {
+  if (PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_get_changes_response_error)) {
+    return STATUS(IllegalState, "Simulate get change failure for testing");
+  }
+
   if (!resp.has_error()) {
     SCHECK(
         resp.has_checkpoint(), NotFound, "XClusterPoller GetChanges failure: No checkpoint found");
     return Status::OK();
   }
+
   const auto& error_code = resp.error().code();
 
   LOG_WITH_PREFIX(WARNING) << "XClusterPoller GetChanges failure response: code=" << error_code
@@ -489,6 +498,7 @@ void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse res
     // Repeat the ApplyChanges step, with exponential backoff.
     apply_failures_ =
         std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
+    xcluster_consumer_->IncrementApplyFailureCount();
     ScheduleApplyChanges(std::move(response.get_changes_response));
     return;
   }
