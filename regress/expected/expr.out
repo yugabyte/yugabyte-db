@@ -19,6 +19,7 @@
 SET extra_float_digits = 0;
 LOAD 'age';
 SET search_path TO ag_catalog;
+SET force_parallel_mode TO regress;
 SELECT * FROM create_graph('expr');
 NOTICE:  graph "expr" has been created
  create_graph 
@@ -7263,7 +7264,7 @@ SELECT * FROM cypher('keys', $$MATCH (v) RETURN keys(v)$$) AS (vertex_keys agtyp
  ["age", "job", "name"]
 (4 rows)
 
-SELECT * FROM cypher('keys', $$MATCH ()-[e]-() RETURN keys(e)$$) AS (edge_keys agtype);
+SELECT * FROM cypher('keys', $$MATCH ()-[e]-() RETURN keys(e) ORDER BY e DESC $$) AS (edge_keys agtype);
  edge_keys 
 -----------
  []
