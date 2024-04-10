@@ -142,6 +142,8 @@ To accept the peering request, do the following:
 
 On the **Peering connections** page, note the **Peering connection ID**; you will use it when adding the route table entry.
 
+When finished, the status of the peering connection in YugabyteDB Managed changes to _Active_ if the connection is successful.
+
 ## Add the route table entry in AWS
 
 Add a route to the route table of the application VPC so that you can send and receive traffic across the peering connection.
@@ -159,7 +161,7 @@ To add a route table entry:
 1. Add the YugabyteDB Managed VPC CIDR address to the **Destination** column, and the Peering connection ID to the **Target** column.
 1. Click **Save changes**.
 
-When finished, the status of the peering connection in YugabyteDB Managed changes to _Active_ if the connection is successful.
+If your application runs in multiple subnets that use separate route tables, repeat these steps for all route tables associated with your application subnets.
 
 ## Deploy a cluster in the VPC
 
