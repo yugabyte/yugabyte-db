@@ -1087,6 +1087,8 @@ bool yb_test_fail_next_ddl = false;
 
 char *yb_test_block_index_phase = "";
 
+bool yb_silence_advisory_locks_not_supported_error = false;
+
 const char*
 YBDatumToString(Datum datum, Oid typid)
 {

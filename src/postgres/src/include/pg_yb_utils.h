@@ -528,6 +528,12 @@ extern bool yb_test_fail_next_ddl;
 extern char *yb_test_block_index_phase;
 
 /*
+ * GUC to allow user to silence the error saying that advisory locks are not
+ * supported.
+ */
+extern bool yb_silence_advisory_locks_not_supported_error;
+
+/*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.
  * Currently: yb_debug_log_docdb_requests.
