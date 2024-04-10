@@ -52,7 +52,7 @@ You can import the YugabyteDB PGX driver package by adding the following import 
 
 ```go
 import (
-  "github.com/yugabyte/pgx/v4"
+  "github.com/yugabyte/pgx/v5"
 )
 ```
 
@@ -185,16 +185,16 @@ The YugabyteDB PGX driver also provides pool APIs via the `pgxpool` package. You
 
 ```go
 import (
-  "github.com/yugabyte/pgx/tree/master/pgxpool"
+  "github.com/yugabyte/pgx/v5/pgxpool"
 )
 ```
 
 ### Establish a connection
 
-The primary way of establishing a connection is with `pgxpool.Connect()`.
+The primary way of establishing a connection is with `pgxpool.New()`.
 
 ```go
-pool, err := pgxpool.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+pool, err := pgxpool.New(context.Background(), os.Getenv("DATABASE_URL"))
 ```
 
 You can also provide configuration for the pool as follows:
@@ -208,7 +208,7 @@ config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
     // do something with every new connection
 }
 
-pool, err := pgxpool.ConnectConfig(context.Background(), config)
+pool, err := pgxpool.NewWithConfig(context.Background(), config)
 ```
 
 You can either `Acquire` a connection from the pool and execute queries on it, or use the Query API to directly execute SQLs on the pool.
@@ -230,7 +230,7 @@ _, err = conn.Exec(context.Background(), createStmt)
 rows, err := pool.Query(context.Background(), "SELECT name, age, language FROM employee WHERE id = 1")
 ```
 
-For more details, see the [pgxpool package](https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool) documentation.
+For more details, see the [pgxpool package](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) documentation.
 
 ## Configure SSL/TLS
 
