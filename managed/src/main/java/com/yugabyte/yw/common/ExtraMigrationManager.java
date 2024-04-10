@@ -93,7 +93,9 @@ public class ExtraMigrationManager extends DevopsBase {
 
   private void createArtifacts(ReleaseMetadata metadata, Release release) {
     // create helm artifact if necessary
-    if (metadata.chartPath != null && release.getKubernetesArtifact() == null) {
+    if (metadata.chartPath != null
+        && !metadata.chartPath.isEmpty()
+        && release.getKubernetesArtifact() == null) {
       ReleaseLocalFile rlf = ReleaseLocalFile.create(metadata.chartPath);
       release.addArtifact(
           ReleaseArtifact.create(

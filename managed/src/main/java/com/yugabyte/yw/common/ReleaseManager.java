@@ -643,17 +643,21 @@ public class ReleaseManager {
               .forEach(
                   p -> {
                     ReleasesUtils.ExtractedMetadata metadata = null;
-                    releasesUtils.metadataFromPath(p);
                     try {
+                      log.debug("checking local file {}", p.toString());
                       metadata = releasesUtils.metadataFromPath(p);
+                      String rawVersion = metadata.version.split("-")[0];
                       if (metadata.platform == ReleaseArtifact.Platform.KUBERNETES) {
-                        localReleaseNameValidation(metadata.version, null, p.toString());
+                        localReleaseNameValidation(rawVersion, null, p.toString());
                       } else {
-                        localReleaseNameValidation(metadata.version, p.toString(), null);
+                        localReleaseNameValidation(rawVersion, p.toString(), null);
                       }
                     } catch (RuntimeException e) {
                       log.error(
-                          "local release " + p.getFileName().toString() + " failed validation");
+                          "local release "
+                              + p.getFileName().toString()
+                              + " failed validation: "
+                              + e.getLocalizedMessage());
                       // continue forEach
                       return;
                     }
@@ -664,13 +668,15 @@ public class ReleaseManager {
                             metadata.platform,
                             metadata.architecture,
                             rlf.getFileUUID());
-                    Release release = Release.getByVersion(metadata.version);
+                    Release release = Release.getByVersion(metadata.version, metadata.releaseTag);
                     if (release == null) {
-                      release = Release.create(metadata.version, metadata.release_type);
+                      release =
+                          Release.create(
+                              metadata.version, metadata.release_type, metadata.releaseTag);
                     }
                     release.addArtifact(artifact);
                   });
-        } catch (IOException e) {
+        } catch (Exception e) {
           log.error("failed to read local releases", e);
         }
 
@@ -1152,7 +1158,10 @@ public class ReleaseManager {
       return Release.getAll().stream()
           .collect(
               Collectors.toMap(
-                  release -> release.getVersion(),
+                  release ->
+                      release.getReleaseTag() == null
+                          ? release.getVersion()
+                          : String.format("%s-%s", release.getVersion(), release.getReleaseTag()),
                   release -> releaseContainerFactory.newReleaseContainer(release)));
     } else {
       return getReleaseMetadata().entrySet().stream()
