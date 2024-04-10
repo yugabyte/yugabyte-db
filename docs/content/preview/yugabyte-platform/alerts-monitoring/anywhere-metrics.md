@@ -26,7 +26,7 @@ Use the time menu to change the range. To zoom in to view granular data points, 
 
 Click the refresh button to restore the default time range.
 
-You can also create custom queries and run it against any graph. To do this, from the **Metrics** page, click the Prometheus icon at the top right corner of any metrics graph, and paste your query in the query editor. For example, to view the per-table p99 latency metrics, you can run the following PromQL query which uses the `ql_read_latency_sum` and `ql_read_latency_count` functions as follows:
+You can also create custom queries and run it against any graph. To do this, from the **Metrics** page, click the Prometheus icon at the top right corner of any metrics graph, and paste your query in the Prometheus query editor. For example, to view the per-table p99 latency metrics, you can run the following PromQL query which uses the `ql_read_latency_sum` and `ql_read_latency_count` functions as follows:
 
 ```sql
 label_replace(
