@@ -26,7 +26,7 @@ The following page describes the following export commands:
 
 For offline migration, export data [dumps](../../../migrate/migrate-steps/#export-data) data of the source database in the `export-dir/data` directory on the machine where yb-voyager is running.
 
-For [live migration](../../../migrate/live-migrate/#export-data-from-source) (with [fall-forward](../../../migrate/live-fall-forward/#export-data-from-source) and [fall-back](../../../migrate/live-fall-back/#export-data-from-source)), the export data command is an alias of `export data from source` which [dumps](../../../migrate/live-migrate/#export-data) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
+For [live migration](../../../migrate/live-migrate/#export-data-from-source) (with [fall-forward](../../../migrate/live-fall-forward/#export-data-from-source) and [fall-back](../../../migrate/live-fall-back/#export-data-from-source)), the export data command is an alias of `export data from source` which [dumps](../../../migrate/live-migrate/#export-data-from-source) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
 
 ### Syntax
 
