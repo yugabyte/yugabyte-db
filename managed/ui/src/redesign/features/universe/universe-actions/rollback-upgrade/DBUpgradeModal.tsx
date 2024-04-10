@@ -31,7 +31,10 @@ import {
 import { DBUpgradeFormFields, UPGRADE_TYPE, DBUpgradePayload } from './utils/types';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 import { fetchLatestStableVersion, fetchCurrentLatestVersion } from './utils/helper';
-import { compareYBSoftwareVersions, isVersionStable } from '../../../../../utils/universeUtilsTyped';
+import {
+  compareYBSoftwareVersions,
+  isVersionStable
+} from '../../../../../utils/universeUtilsTyped';
 //Rbac
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
@@ -62,7 +65,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
   const { universeDetails, universeUUID } = universeData;
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
   const currentReleaseFromCluster = primaryCluster?.userIntent.ybSoftwareVersion;
-  let currentRelease: string = "";
+  let currentRelease: string = '';
   if (currentReleaseFromCluster !== null && currentReleaseFromCluster !== undefined) {
     currentRelease = currentReleaseFromCluster;
   }
@@ -79,45 +82,52 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
   )?.value;
   // By default skipVersionChecks is false
   // If runtime config flag is not accessible, assign false to the variable
-  const skipVersionChecks = (skipVersionChecksValue === undefined || skipVersionChecksValue === 'false') ? false : true;
-
+  const skipVersionChecks =
+    skipVersionChecksValue === undefined || skipVersionChecksValue === 'false' ? false : true;
 
   let finalOptions: Record<string, any>[] = [];
   const latestStableVersion = fetchLatestStableVersion(releases);
   const latestCurrentRelease = fetchCurrentLatestVersion(releases, currentRelease);
   const isCurrentReleaseStable = isVersionStable(currentRelease);
   // Add latest stable version when current release is stable or when skipVersionCheck is true
-  if (latestStableVersion && compareYBSoftwareVersions({
-    versionA: latestStableVersion.version,
-    versionB: currentRelease,
-    options: {
-      suppressFormatError: true
-    }
-  }) >= 0 &&
-    (isCurrentReleaseStable || skipVersionChecks))
+  if (
+    latestStableVersion &&
+    compareYBSoftwareVersions({
+      versionA: latestStableVersion.version,
+      versionB: currentRelease,
+      options: {
+        suppressFormatError: true
+      }
+    }) >= 0 &&
+    (isCurrentReleaseStable || skipVersionChecks)
+  )
     finalOptions = [latestStableVersion];
   if (latestCurrentRelease) finalOptions = [...finalOptions, latestCurrentRelease];
   let sortedVersions: string[];
-  const stableSortedVersions = Object.keys(releases).filter(
-    (release) => isVersionStable(release)).sort((versionA, versionB) =>
+  const stableSortedVersions = Object.keys(releases)
+    .filter((release) => isVersionStable(release))
+    .sort((versionA, versionB) =>
       compareYBSoftwareVersions({
         versionA: versionB,
         versionB: versionA,
         options: {
           suppressFormatError: true,
           requireOrdering: true
-        },
-      }));
-  const previewSortedVersions = Object.keys(releases).filter(
-    (release) => !isVersionStable(release)).sort((versionA, versionB) =>
+        }
+      })
+    );
+  const previewSortedVersions = Object.keys(releases)
+    .filter((release) => !isVersionStable(release))
+    .sort((versionA, versionB) =>
       compareYBSoftwareVersions({
         versionA: versionB,
         versionB: versionA,
         options: {
           suppressFormatError: true,
           requireOrdering: true
-        },
-      }));
+        }
+      })
+    );
   let currentReleaseIndex: number = 0;
   let versionsAboveCurrent: string[] = [];
   if (!skipVersionChecks) {
@@ -136,8 +146,9 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
         options: {
           suppressFormatError: true,
           requireOrdering: true
-        },
-      }));
+        }
+      })
+    );
     currentReleaseIndex = sortedVersions.indexOf(currentRelease ?? '');
     versionsAboveCurrent = sortedVersions;
   }
@@ -147,7 +158,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
       version: e,
       info: releases[e],
       series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
-        (isVersionStable(e)) ? '(Standard Term Support)' : '(Preview)'
+        isVersionStable(e) ? '(Stable)' : '(Preview)'
       }`
     }))
   ];
