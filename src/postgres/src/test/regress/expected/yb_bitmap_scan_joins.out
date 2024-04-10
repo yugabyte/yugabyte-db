@@ -727,8 +727,8 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
 INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 ON (( table3.v = table2.v ) OR ( table3.b = table2.a ) ) ) )
         ON (( table3.a >= table2.a ) AND (table3.a <> table2.b ) )
      WHERE ( table1.v = 'g' AND table1.v = 's' ) OR table1.a <= table2.b;
-                                               QUERY PLAN
----------------------------------------------------------------------------------------------------------
+                                                QUERY PLAN
+----------------------------------------------------------------------------------------------------------
  Nested Loop (actual rows=173 loops=1)
    ->  Nested Loop (actual rows=33 loops=1)
          ->  Seq Scan on test_join_filter table3 (actual rows=20 loops=1)
@@ -737,14 +737,13 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
                Filter: ((table3.a <> b) AND (((table3.v)::text = (v)::text) OR (table3.b = a)))
                Rows Removed by Filter: 9
    ->  YB Bitmap Table Scan on test_join_filter table1 (actual rows=5 loops=33)
-         Recheck Cond: ((((v)::text = 'g'::text) AND ((v)::text = 's'::text)) OR (a <= table2.b))
-         Rows Removed by Index Recheck: 1
+         Storage Recheck Cond: ((((v)::text = 'g'::text) AND ((v)::text = 's'::text)) OR (a <= table2.b))
          ->  BitmapOr (actual rows=6 loops=33)
                ->  Bitmap Index Scan on test_join_filter_v_idx (actual rows=1 loops=33)
                      Index Cond: (((v)::text = 'g'::text) AND ((v)::text = 's'::text))
                ->  Bitmap Index Scan on test_join_filter_a_idx (actual rows=5 loops=33)
                      Index Cond: (a <= table2.b)
-(15 rows)
+(14 rows)
 
 --
 -- Rescans where we don't need the actual rows
@@ -997,3 +996,7 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
  18
  20
 (4 rows)
+
+RESET yb_explain_hide_non_deterministic_fields;
+RESET enable_bitmapscan;
+RESET yb_prefer_bnl;

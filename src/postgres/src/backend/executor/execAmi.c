@@ -58,6 +58,7 @@
 #include "executor/nodeValuesscan.h"
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
+#include "executor/nodeYbBitmapIndexscan.h"
 #include "executor/nodeYbSeqscan.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/relation.h"
@@ -194,6 +195,11 @@ ExecReScan(PlanState *node)
 
 		case T_BitmapIndexScanState:
 			ExecReScanBitmapIndexScan((BitmapIndexScanState *) node);
+			break;
+
+
+		case T_YbBitmapIndexScanState:
+			ExecReScanYbBitmapIndexScan((YbBitmapIndexScanState *) node);
 			break;
 
 		case T_BitmapHeapScanState:
