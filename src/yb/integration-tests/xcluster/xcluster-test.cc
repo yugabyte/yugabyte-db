@@ -143,6 +143,7 @@ DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(TEST_xcluster_fail_snapshot_transfer);
 DECLARE_bool(TEST_xcluster_fail_restore_consumer_snapshot);
+DECLARE_bool(TEST_xcluster_simulate_get_changes_response_error);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 
@@ -2187,6 +2188,11 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
 
   ASSERT_OK(InsertRowsAndVerify(0, 5));
 
+  auto xcluster_consumer =
+      consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+
+  auto replication_error_count_before_alter =
+      xcluster_consumer->TEST_metric_replication_error_count()->value();
   // Alter the CQL Table on the Producer to Add a New Column.
   LOG(INFO) << "Alter the Producer.";
   {
@@ -2220,6 +2226,8 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
   // Verify that the replication status for the consumer table contains a schema mismatch error.
   ASSERT_OK(VerifyReplicationError(
       consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH));
+  ASSERT_GT(xcluster_consumer->TEST_metric_replication_error_count()->value(),
+      replication_error_count_before_alter);
 
   // Alter the CQL Table on the Consumer next to match.
   LOG(INFO) << "Alter the Consumer.";
@@ -3045,6 +3053,29 @@ TEST_P(XClusterTestWaitForReplicationDrain, TestBlockGetChanges) {
   ASSERT_OK(WaitForReplicationDrain());
 }
 
+TEST_P(XClusterTestWaitForReplicationDrain, TestConsumerPollFailureMetric) {
+  constexpr uint32_t kNumTables = 3;
+  constexpr uint32_t kNumTablets = 3;
+  constexpr int kRpcTimeoutShort = 30;
+
+  SetUpTablesAndReplication(kNumTables, kNumTablets);
+  ASSERT_OK(WaitForReplicationDrain());
+
+  auto xcluster_consumer =
+      consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+  ASSERT_EQ(xcluster_consumer->TEST_metric_apply_failure_count()->value(), 0);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_get_changes_response_error) = true;
+  for (uint32_t i = 0; i < producer_tables_.size(); i++) {
+    ASSERT_OK(InsertRowsInProducer(0, 50 * (i + 1), producer_tables_[i]));
+  }
+
+  ASSERT_OK(WaitForReplicationDrain(
+      /* expected_num_nondrained */ kNumTables * kNumTablets, kRpcTimeoutShort));
+
+  ASSERT_GE(xcluster_consumer->TEST_metric_poll_failure_count()->value(), kNumTables * kNumTablets);
+}
+
 TEST_P(XClusterTestWaitForReplicationDrain, TestWithTargetTime) {
   constexpr uint32_t kNumTables = 3;
   constexpr uint32_t kNumTablets = 3;
@@ -3669,6 +3700,10 @@ TEST_F_EX(XClusterTest, RandomFailuresAfterApply, XClusterTestTransactionalOnly)
   ASSERT_OK(txn->CommitFuture().get());
   ASSERT_OK(VerifyNumRecordsOnProducer(batch_count * kBatchSize));
   ASSERT_OK(VerifyRowsMatch());
+
+  auto xcluster_consumer =
+      consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+  ASSERT_GT(xcluster_consumer->TEST_metric_apply_failure_count()->value(), 0);
 }
 
 TEST_F_EX(XClusterTest, IsBootstrapRequired, XClusterTestNoParam) {
@@ -3846,6 +3881,8 @@ TEST_F_EX(XClusterTest, VerifyReplicationError, XClusterTestNoParam) {
 
   // Verify the error is cleared in the master.
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  ASSERT_EQ(2, xcluster_consumer->TEST_metric_replication_error_count()->value());
 }
 
 // Test deleting inbound replication group without performing source stream cleanup.
