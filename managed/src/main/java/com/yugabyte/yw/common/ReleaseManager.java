@@ -627,7 +627,9 @@ public class ReleaseManager {
     String ybReleasesPath = appConfig.getString(YB_RELEASES_PATH);
     if (ybReleasesPath != null && !ybReleasesPath.isEmpty()) {
       if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
-        String releasePath = appConfig.getString(YB_RELEASES_PATH);
+        Set<String> currentVersions =
+            Release.getAll().stream().map(r -> r.getVersion()).collect(Collectors.toSet());
+        copyReleasesFromDockerRelease(ybReleasesPath, currentVersions);
         List<ReleaseLocalFile> currentLocalFiles = ReleaseLocalFile.getLocalFiles();
         Set<String> currentFilePaths =
             Sets.newHashSet(
@@ -635,7 +637,7 @@ public class ReleaseManager {
                     .map(rlf -> rlf.getLocalFilePath())
                     .collect(Collectors.toList()));
         try {
-          Files.walk(Paths.get(releasePath))
+          Files.walk(Paths.get(ybReleasesPath))
               .filter(
                   getPackageFilter(
                       "glob:**yugabyte*{centos,alma,linux,el}*{x86_64,aarch64}.tar.gz"))
@@ -721,14 +723,7 @@ public class ReleaseManager {
 
     // Local copy pattern to account for the presence of characters prior to the file name itself.
     // (ensures that all local releases get imported prior to version checking).
-    Pattern ybPackagePatternCopy =
-        Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex));
-
-    Pattern ybHelmChartPatternCopy =
-        Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex));
-
-    copyFiles(ybReleasePath, ybReleasesPath, ybPackagePatternCopy, currentReleases.keySet());
-    copyFiles(ybHelmChartPath, ybReleasesPath, ybHelmChartPatternCopy, currentReleases.keySet());
+    copyReleasesFromDockerRelease(ybReleasesPath, currentReleases.keySet());
     Map<String, ReleaseMetadata> localReleases = getLocalReleases(ybReleasesPath);
     localReleases.keySet().removeAll(currentReleases.keySet());
     log.debug("Current releases: [ {} ]", currentReleases.keySet().toString());
@@ -1085,6 +1080,17 @@ public class ReleaseManager {
     Map<String, Object> currentReleases = getReleaseMetadata();
     currentReleases.put(version, newData);
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
+  }
+
+  private void copyReleasesFromDockerRelease(String destinationDir, Set<String> skipVersions) {
+    String ybReleasePath = appConfig.getString("yb.docker.release");
+    String ybHelmChartPath = appConfig.getString("yb.helm.packagePath");
+    Pattern ybPackagePatternCopy =
+        Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex));
+    Pattern ybHelmChartPatternCopy =
+        Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex));
+    copyFiles(ybReleasePath, destinationDir, ybPackagePatternCopy, skipVersions);
+    copyFiles(ybHelmChartPath, destinationDir, ybHelmChartPatternCopy, skipVersions);
   }
 
   /**
