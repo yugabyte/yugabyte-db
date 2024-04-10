@@ -626,7 +626,7 @@ public class GCPProjectApiClient {
       return reqPermissions;
     } catch (Exception e) {
       log.error("Error in testing permissions: ", e);
-      String errorMsg = "Error in testing permissions [check logs for more info]";
+      String errorMsg = "Error in testing permissions of the SA [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
   }
