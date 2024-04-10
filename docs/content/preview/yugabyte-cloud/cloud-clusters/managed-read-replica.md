@@ -40,6 +40,7 @@ Read replicas require the following:
 
 - Partition-by-region clusters do not support read replicas.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
+- Some scaling operations require a rolling restart or, in the case of read replicas with a replication factor of 1, downtime.
 
 ## Add or edit read replicas
 
