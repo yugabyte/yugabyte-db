@@ -2268,7 +2268,8 @@ YbTestGucFailIfStrEqual(char *actual, const char *expected)
 	}
 }
 
-static int YbGetNumberOfFunctionOutputColumns(Oid func_oid)
+int
+YbGetNumberOfFunctionOutputColumns(Oid func_oid)
 {
 	int ncols = 0; /* Equals to the number of OUT arguments. */
 
