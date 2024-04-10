@@ -5,6 +5,8 @@ INSERT INTO t (SELECT 1, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 -- Add one more distinct value to catch bugs that arise only with more than one distinct value.
 INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 
+SET yb_explain_hide_non_deterministic_fields = true;
+
 -- These tests illustrate some similarities and differences uniqkeys have with sortkeys.
 --
 -- Many of the differences arise from the fact that DISTINCT eliminates rows while
@@ -193,7 +195,6 @@ SELECT DISTINCT r1 FROM th;
 -- Avoid classifying hash columns as sortable.
 -- Guard rails meant to prevent DISTINCT logic from
 -- marking hash columns as sortable.
-SET yb_explain_hide_non_deterministic_fields = true;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1 FROM th ORDER BY h1;
 SELECT DISTINCT h1 FROM th ORDER BY h1;
 -- Once all the hash columns are set, range columns are returned in sorted order as usual.

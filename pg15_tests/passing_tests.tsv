@@ -38,6 +38,7 @@ JAVA	org.yb.pgsql.TestPgRegressContribPasswordCheck
 JAVA	org.yb.pgsql.TestPgRegressContribPgCrypto
 JAVA	org.yb.pgsql.TestPgRegressContribUuidOssp
 JAVA	org.yb.pgsql.TestPgRegressCursor#testPgRegressCursor
+JAVA	org.yb.pgsql.TestPgRegressDistinctPushdown
 JAVA	org.yb.pgsql.TestPgRegressGin
 JAVA	org.yb.pgsql.TestPgRegressHashInQueries
 JAVA	org.yb.pgsql.TestPgRegressJson
