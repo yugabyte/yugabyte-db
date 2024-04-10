@@ -46,6 +46,13 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
     return currentLag > 0 ? formatDuration(currentLag) : '0ms';
   };
 
+  const getStatus = (sID: string, label: string) => {
+    const streamResult = metricsQuery.find((m) => m.data?.streamID === sID);
+    if (!streamResult) return 'n/a';
+    const expiryTime = Number(_.last(streamResult?.data?.cdcsdk_expiry_time_mins?.data[0]?.y));
+    return expiryTime > 0 ? _.capitalize(label) : _.capitalize(SlotState.EXPIRED);
+  };
+
   const handleRowClick = (row: ReplicationSlot) => {
     browserHistory.push(`/universes/${universeUUID}/replication-slots/${row.streamID}`);
   };
@@ -90,14 +97,16 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
               width={'20%'}
               dataField="state"
               dataSort
-              dataFormat={(cell) => (
+              dataFormat={(cell, row) => (
                 <StatusBadge
                   statusType={
-                    [SlotState.INITIATED, SlotState.ACTIVE].includes(cell)
-                      ? Badge_Types.SUCCESS
+                    getStatus(row.streamID, cell) === _.capitalize(SlotState.EXPIRED)
+                      ? Badge_Types.EXPIRED
+                      : [SlotState.INITIATED, SlotState.ACTIVE].includes(cell)
+                      ? Badge_Types.EXPIRED
                       : Badge_Types.DELETED
                   }
-                  customLabel={_.capitalize(cell)}
+                  customLabel={getStatus(row.streamID, cell)}
                 />
               )}
             >

@@ -3,7 +3,8 @@ export enum SlotState {
   ACTIVE = 'ACTIVE',
   DELETING = 'DELETING',
   DELETED = 'DELETED',
-  DELETING_METADATA = 'DELETING_METADATA'
+  DELETING_METADATA = 'DELETING_METADATA',
+  EXPIRED = 'EXPIRED'
 }
 
 export interface ReplicationSlot {
