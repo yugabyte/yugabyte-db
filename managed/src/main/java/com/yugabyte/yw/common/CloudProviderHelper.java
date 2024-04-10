@@ -1006,6 +1006,10 @@ public class CloudProviderHelper {
         }
       }
     }
+    if (editProviderReq.getCode().equalsIgnoreCase("gcp")) {
+      maybeUpdateGCPProject(editProviderReq);
+    }
+    maybeUpdateVPC(editProviderReq);
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
     if (cloudAPI != null && !cloudAPI.isValidCreds(editProviderReq)) {
