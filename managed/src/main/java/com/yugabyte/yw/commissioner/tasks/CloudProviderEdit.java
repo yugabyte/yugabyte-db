@@ -251,7 +251,19 @@ public class CloudProviderEdit extends CloudTaskBase {
     }
     // Compare the cloudInfo properties.
     if (!provider.getDetails().getCloudInfo().equals(editProviderReq.getDetails().getCloudInfo())) {
+      // This field is deprecated and missing from the UI payload for edit provider
+      // operations. Need to manually restore the original value incase it was not
+      // null.
+      Boolean useIMDSv2 = null;
+      if (provider.getCloudCode().equals(CloudType.aws)
+          && provider.getDetails().getCloudInfo().getAws().useIMDSv2 != null) {
+        useIMDSv2 = provider.getDetails().getCloudInfo().getAws().useIMDSv2;
+      }
       provider.getDetails().setCloudInfo(editProviderReq.getDetails().getCloudInfo());
+      // Restore orignial value if it was not null and new value is null
+      if (useIMDSv2 != null && provider.getDetails().getCloudInfo().getAws().useIMDSv2 == null) {
+        provider.getDetails().getCloudInfo().getAws().setUseIMDSv2(useIMDSv2);
+      }
       if (provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
         cloudProviderHelper.updateKubeConfig(provider, providerConfig, true);
       } else {
