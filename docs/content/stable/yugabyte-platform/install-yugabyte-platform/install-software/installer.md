@@ -240,10 +240,6 @@ If you have high availability configured, you need to migrate your instances in 
 
 To migrate your installation from Replicated, do the following:
 
-1. If your Replicated installation is v2.18.5 or earlier, or v2.20.0, [upgrade your installation](../../../upgrade/upgrade-yp-replicated/) to v2.20.1.
-
-1. If you haven't already, [download and extract YBA Installer](#download-yba-installer).
-
 1. Optionally, configure the migration as follows:
 
     ```sh
