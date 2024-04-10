@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
+import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModelProperty;
@@ -38,6 +39,11 @@ public class AWSCloudInfo implements CloudInfoInterface {
   @JsonAlias("AWS_SECRET_ACCESS_KEY")
   @ApiModelProperty
   public String awsAccessKeySecret;
+
+  @YBADeprecated(sinceYBAVersion = "2.20.3", sinceDate = "2024-04-10")
+  @ApiModelProperty
+  @EditableInUseProvider(name = "IMDSv2 Required", allowed = false)
+  public Boolean useIMDSv2;
 
   @JsonAlias("HOSTED_ZONE_ID")
   @ApiModelProperty
