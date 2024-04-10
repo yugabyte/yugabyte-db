@@ -106,7 +106,7 @@ The peering connection is created with a status of _Pending_.
 
 ## Accept the peering request in AWS
 
-To complete a _Pending_ AWS peering connection, you need to sign in to AWS, accept the peering request, and add a routing table entry for the.
+To complete a _Pending_ AWS peering connection, you need to sign in to AWS, where you accept the peering request, and add a route table entry for the application VPC.
 
 {{< tip title="What you need" >}}
 The CIDR address of the YugabyteDB Managed VPC you are peering with.
@@ -130,20 +130,20 @@ To set DNS settings:
 
 To accept the peering request, do the following:
 
-1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select pending peering connection in the list; its status is _Pending acceptance_.
+1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select the pending peering connection in the list; its status is _Pending acceptance_.
 1. Click **Actions** and choose **Accept request** to display the **Accept VPC peering connection request** window.
 
     ![Accept peering in AWS](/images/yb-cloud/cloud-peer-aws-accept.png)
 
 1. Click **Accept request**.
 
-On the **Peering connections** page, note the **Peering connection ID**; you will use it when adding the routing table entry.
+On the **Peering connections** page, note the **Peering connection ID**; you will use it when adding the route table entry.
 
-**Tip** Click **Modify my route tables now** to navigate directly to [adding a route table entry](#add-the-routing-table-entry).
+**Tip**: Click **Modify my route tables now** to navigate directly to [adding a route table entry](#add-the-routing-table-entry).
 
 ### Add the routing table entry
 
-To add a routing table entry:
+To add a route table entry:
 
 1. On the AWS [Route Tables](https://console.aws.amazon.com/vpc/home?#RouteTables) page, select the route table associated with the subnet of the application VPC.
 1. Click **Actions** and choose **Edit routes** to display the **Edit routes** window.
