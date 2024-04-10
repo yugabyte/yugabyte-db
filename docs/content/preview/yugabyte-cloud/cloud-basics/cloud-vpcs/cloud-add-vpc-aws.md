@@ -137,11 +137,13 @@ To accept the peering request, do the following:
 
 1. Click **Accept request**.
 
+    **Tip**: After accepting the request, click **Modify my route tables now** to navigate directly to [adding a route table entry](#add-the-routing-table-entry).
+
 On the **Peering connections** page, note the **Peering connection ID**; you will use it when adding the route table entry.
 
-**Tip**: Click **Modify my route tables now** to navigate directly to [adding a route table entry](#add-the-routing-table-entry).
-
 ### Add the routing table entry
+
+Add a route to the route table of the application VPC so that you can send and receive traffic across the peering connection.
 
 To add a route table entry:
 
