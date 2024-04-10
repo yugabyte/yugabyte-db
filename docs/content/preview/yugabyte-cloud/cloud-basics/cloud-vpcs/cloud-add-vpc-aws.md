@@ -106,7 +106,7 @@ The peering connection is created with a status of _Pending_.
 
 ## Accept the peering request in AWS
 
-To complete a _Pending_ AWS peering connection, you need to sign in to AWS, accept the peering request, and add a routing table entry.
+To complete a _Pending_ AWS peering connection, you need to sign in to AWS, accept the peering request, and add a routing table entry for the.
 
 {{< tip title="What you need" >}}
 The CIDR address of the YugabyteDB Managed VPC you are peering with.
@@ -114,7 +114,7 @@ The CIDR address of the YugabyteDB Managed VPC you are peering with.
 **Where to find it**<br>The **VPC Details** sheet on the [VPCs page](../cloud-add-vpc/) or the **Peering Details** sheet on the [Peering Connections page](../cloud-add-peering/).
 {{< /tip >}}
 
-Sign in to your AWS account and navigate to the region hosting the VPC you want to peer.
+Sign in to your AWS account and navigate to the region hosting the application VPC you want to peer.
 
 ### DNS settings
 
@@ -122,7 +122,7 @@ Before accepting the request, ensure that the DNS hostnames and DNS resolution o
 
 To set DNS settings:
 
-1. On the AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page, select the VPC in the list.
+1. On the AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page, select the application VPC in the list.
 1. Click **Actions** and choose **Edit DNS hostnames** or **Edit DNS resolution**.
 1. Enable the **DNS hostnames** or **DNS resolution** option and click **Save changes**.
 
@@ -130,7 +130,7 @@ To set DNS settings:
 
 To accept the peering request, do the following:
 
-1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select the VPC in the list; its status is _Pending acceptance_.
+1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select pending peering connection in the list; its status is _Pending acceptance_.
 1. Click **Actions** and choose **Accept request** to display the **Accept VPC peering connection request** window.
 
     ![Accept peering in AWS](/images/yb-cloud/cloud-peer-aws-accept.png)
@@ -139,11 +139,13 @@ To accept the peering request, do the following:
 
 On the **Peering connections** page, note the **Peering connection ID**; you will use it when adding the routing table entry.
 
+**Tip** Click **Modify my route tables now** to navigate directly to [adding a route table entry](#add-the-routing-table-entry).
+
 ### Add the routing table entry
 
 To add a routing table entry:
 
-1. On the AWS [Route Tables](https://console.aws.amazon.com/vpc/home?#RouteTables) page, select the route table associated with the VPC peer.
+1. On the AWS [Route Tables](https://console.aws.amazon.com/vpc/home?#RouteTables) page, select the route table associated with the subnet of the application VPC.
 1. Click **Actions** and choose **Edit routes** to display the **Edit routes** window.
 
     ![Add routes in AWS](/images/yb-cloud/cloud-peer-aws-route.png)
