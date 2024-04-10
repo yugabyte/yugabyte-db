@@ -79,6 +79,9 @@ public class KubernetesInfo implements CloudInfoInterface {
   @EditableInUseProvider(name = "Kubernetes Pull Secret Name", allowed = false)
   private String kubernetesPullSecretName;
 
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  public boolean isKubernetesOperatorControlled = false;
+
   // Flag for identifying the legacy k8s providers created before release 2.18.
   @ApiModelProperty(hidden = true)
   private boolean legacyK8sProvider = true;
