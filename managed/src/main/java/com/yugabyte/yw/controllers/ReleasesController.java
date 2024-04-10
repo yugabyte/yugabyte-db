@@ -376,7 +376,7 @@ public class ReleasesController extends AuthenticatedController {
     resp.release_type = release.getReleaseType();
     resp.state = release.getState().toString();
     if (release.getReleaseDate() != null) {
-      resp.release_date = release.getReleaseDate().toInstant().getEpochSecond();
+      resp.release_date_msecs = release.getReleaseDate().toInstant().toEpochMilli();
     }
     resp.release_notes = release.getReleaseNotes();
     resp.release_tag = release.getReleaseTag();

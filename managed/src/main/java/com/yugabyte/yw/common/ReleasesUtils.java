@@ -22,8 +22,6 @@ import java.io.InputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.DateFormat;
-import java.text.ParseException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -195,30 +193,25 @@ public class ReleasesUtils {
           }
 
           // Populate optional sections if available.
+          String rawDate = null;
           if (node.has("release_date")) {
-            DateFormat df = DateFormat.getDateInstance();
-            try {
-              metadata.release_date = df.parse(node.get("release_date").asText());
-              // best effort parse.
-            } catch (ParseException e) {
-              log.warn("invalid date format", e);
-            }
+            rawDate = node.get("release_date").asText();
           } else if (node.has("build_timestamp")) {
-            DateFormat df = DateFormat.getDateInstance();
+            rawDate = node.get("build_timestamp").asText();
+            log.debug("using build timestamp {} as release date for {}", rawDate, metadata.version);
+          }
+          if (rawDate != null) {
             try {
               DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm:ss z");
-              LocalDateTime dateTime =
-                  LocalDateTime.parse(node.get("build_timestamp").asText(), formatter);
+              LocalDateTime dateTime = LocalDateTime.parse(rawDate, formatter);
               metadata.release_date = Date.from(dateTime.atZone(ZoneId.of("UTC")).toInstant());
-              log.debug(
-                  "using build timestamp {} as release date for {}",
-                  metadata.release_date,
-                  metadata.version);
               // best effort parse.
             } catch (DateTimeParseException e) {
               log.warn("invalid date format", e);
             }
           }
+
+          // and finally get the release notes if its available.
           if (node.has("release_notes")) {
             metadata.release_notes = node.get("release_notes").asText();
           }
