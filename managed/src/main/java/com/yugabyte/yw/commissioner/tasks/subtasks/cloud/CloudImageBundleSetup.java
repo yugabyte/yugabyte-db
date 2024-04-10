@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
@@ -284,6 +285,18 @@ public class CloudImageBundleSetup extends CloudTaskBase {
             (uuid, bundle) -> {
               imageBundleHandler.doDelete(provider.getUuid(), bundle.getUuid());
             });
+      }
+    }
+    // to be removed when we remove support for useIMDSv2 at provider level
+    if (provider.getCloudCode().equals(CloudType.aws)
+        && provider.getDetails().getCloudInfo() != null) {
+      if (BooleanUtils.isTrue(provider.getDetails().getCloudInfo().getAws().useIMDSv2)) {
+        for (ImageBundle bundle : ImageBundle.getAll(provider.getUuid())) {
+          ImageBundleDetails details = bundle.getDetails();
+          details.setUseIMDSv2(true);
+          bundle.setDetails(details);
+          bundle.save();
+        }
       }
     }
   }
