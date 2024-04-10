@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -27,30 +28,31 @@
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
 
 #include "yb/util/monotime.h"
 
 namespace yb {
 
+class MemTracker;
 class MetricEntity;
 
 namespace tserver {
 
 class PgResponseCache {
  public:
-  explicit PgResponseCache(MetricEntity* metric_entity);
+  PgResponseCache(
+      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity);
   ~PgResponseCache();
 
   struct Response {
     Response(
-        bool is_ok_status_, PgPerformResponsePB response_, std::vector<RefCntSlice> rows_data_)
-        : is_ok_status(is_ok_status_),
-          response(std::move(response_)),
+        PgPerformResponsePB response_, std::vector<RefCntSlice> rows_data_)
+        : response(std::move(response_)),
           rows_data(std::move(rows_data_)) {
       DCHECK_EQ(response.responses_size(), rows_data.size());
     }
 
-    bool is_ok_status;
     PgPerformResponsePB response;
     std::vector<RefCntSlice> rows_data;
   };
@@ -59,13 +61,12 @@ class PgResponseCache {
 
   Result<Setter> Get(
       PgPerformOptionsPB::CachingInfoPB* cache_info,
-      PgPerformResponsePB* response, rpc::Sidecars* sidecars,
-             CoarseTimePoint deadline);
+      PgPerformResponsePB* response, rpc::Sidecars* sidecars, CoarseTimePoint deadline);
 
  private:
   class Impl;
 
-  std::unique_ptr<Impl> impl_;
+  std::shared_ptr<Impl> impl_;
 
   DISALLOW_COPY_AND_ASSIGN(PgResponseCache);
 };
