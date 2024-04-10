@@ -379,7 +379,7 @@ func init() {
 		"[Optional] Enable IPV6 networking for connections between the DB Servers, supported "+
 			"only for Kubernetes universes (default false) ")
 	createUniverseCmd.Flags().String("yb-db-version", "",
-		"[Optional] YugabyteDB Software Version, defaults to the latest available version"+
+		"[Optional] YugabyteDB Software Version, defaults to the latest available version. "+
 			"Run \"yba yb-db-version list\" to find the latest version.")
 	createUniverseCmd.Flags().Bool("use-systemd", true,
 		"[Optional] Use SystemD.")
