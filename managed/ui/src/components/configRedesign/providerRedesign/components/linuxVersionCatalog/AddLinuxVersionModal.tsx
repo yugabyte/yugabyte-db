@@ -18,8 +18,10 @@ import {
   RadioGroupOrientation,
   YBInputField,
   YBModal,
-  YBRadioGroupField
+  YBRadioGroupField,
+  YBToggleField
 } from '../../../../../redesign/components';
+import { FieldLabel } from '../../forms/components/FieldLabel';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { CloudVendorRegionField } from '../../forms/configureRegion/ConfigureRegionModal';
 import { isNonEmptyObject } from '../../../../../utils/ObjectUtils';
@@ -116,7 +118,8 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
     defaultValues: {
       details: {
         arch: ArchitectureType.X86_64,
-        sshPort: 22
+        sshPort: 22,
+        ...(providerType === ProviderCode.AWS && { useIMDSv2: false })
       },
       ...editDetails
     },
@@ -271,6 +274,26 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             </Grid>
           </Grid>
         </div>
+
+        {providerType === ProviderCode.AWS && (
+          <div>
+            <Typography variant="body1">{t('form.otherConfiguration')}</Typography>
+            <Grid container spacing={3} alignItems="center">
+              <Grid item xs={3}>
+                <FieldLabel infoTitle={t('form.useIMDSv2')} infoContent={t('form.useIMDSv2Info')}>
+                  {t('form.useIMDSv2')}
+                </FieldLabel>
+              </Grid>
+              <Grid item xs={9}>
+                <YBToggleField
+                  name={'details.useIMDSv2'}
+                  control={formControl}
+                  disabled={isEditMode || isYBAManagedBundle}
+                />
+              </Grid>
+            </Grid>
+          </div>
+        )}
       </div>
     </YBModal>
   );

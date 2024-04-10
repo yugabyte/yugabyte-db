@@ -841,6 +841,7 @@ export interface ImageBundle {
     };
     sshUser: string;
     sshPort: number;
+    useIMDSv2?: boolean;
   };
   useAsDefault: boolean;
   metadata?: {
