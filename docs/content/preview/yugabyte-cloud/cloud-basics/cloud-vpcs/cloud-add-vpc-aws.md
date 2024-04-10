@@ -43,7 +43,7 @@ To peer VPCs that reside in AWS, you need to complete the following tasks:
 | **[Create the VPC](#create-a-vpc)** | Reserves a range of private IP addresses for the network.<br>You need to create a VPC for each region in multi-region clusters.<br>The status of the VPC is _Active_ when done. |
 | **[Create a peering connection](#create-a-peering-connection)** | Connects your VPC and the application VPC on the cloud provider network.<br>The status of the peering connection is _Pending_ when done. |
 | **[Accept the peering request<br>in AWS](#accept-the-peering-request-in-aws)** | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
-| **[Add the route table entry<br>in AWS](#add-the-route-table-entry-in-aws)** | Adds a route to the route table of the application VPC so that you can send and receive traffic across the peering connection.<br>The status of the peering connection is _Active_ when done. |
+| **[Add the route table entry<br>in AWS](#add-the-route-table-entry-in-aws)** | Adds a route to the route table of the application VPC so that you can send and receive traffic across the peering connection. |
 | **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
 | **[Add the application VPC to the IP allow list](#add-the-application-vpc-to-the-cluster-ip-allow-list)** | Allows the peered application VPC to connect to the cluster.<br>Add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster. |
 
