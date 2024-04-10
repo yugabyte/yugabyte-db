@@ -61,7 +61,9 @@ Create the `ysql_gorm` database in YugabyteDB by running the following `ysqlsh` 
 $ ./bin/ysqlsh -c "CREATE DATABASE ysql_gorm"
 ```
 
-Build and start the REST API server by running the following shell script.
+Build and start the REST API server by running the following shell script. The application uses `yugabytedb/pgx` driver, so load balance feature is enabled.
+
+Note: To use the upstream driver replace `github.com/yugabyte/gorm-yugabytedb` with `gorm.io/driver/postgres` in the application code.
 
 ```sh
 $ ./build-and-run.sh
