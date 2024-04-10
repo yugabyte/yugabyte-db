@@ -36,17 +36,18 @@ YugabyteDB Managed supports peering virtual private cloud (VPC) networks on AWS 
 
 Using YugabyteDB Managed, you can create a VPC on AWS, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on AWS.
 
-To peer VPCs in AWS, you need to complete the following tasks:
+To peer VPCs that reside in AWS, you need to complete the following tasks:
 
 | Task | Notes |
 | :--- | :--- |
 | **[Create the VPC](#create-a-vpc)** | Reserves a range of private IP addresses for the network.<br>You need to create a VPC for each region in multi-region clusters.<br>The status of the VPC is _Active_ when done. |
 | **[Create a peering connection](#create-a-peering-connection)** | Connects your VPC and the application VPC on the cloud provider network.<br>The status of the peering connection is _Pending_ when done. |
-| **[Accept the peering request in AWS](#accept-the-peering-request-in-aws)** | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
+| **[Accept the peering request<br>in AWS](#accept-the-peering-request-in-aws)** | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
+| **[Add the route table entry<br>in AWS](#add-the-route-table-entry-in-aws)** | Adds a route to the route table of the application VPC so that you can send and receive traffic across the peering connection.<br>The status of the peering connection is _Active_ when done. |
 | **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
 | **[Add the application VPC to the IP allow list](#add-the-application-vpc-to-the-cluster-ip-allow-list)** | Allows the peered application VPC to connect to the cluster.<br>Add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster. |
 
-With the exception of accepting the peering request in AWS, these tasks are performed in YugabyteDB Managed.
+With the exception of accepting the peering request and adding the route table entry in AWS, these tasks are performed in YugabyteDB Managed.
 
 For information on VPC peering in AWS, refer to [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html) in the AWS documentation.
 
@@ -106,7 +107,7 @@ The peering connection is created with a status of _Pending_.
 
 ## Accept the peering request in AWS
 
-To complete a _Pending_ AWS peering connection, you need to sign in to AWS, where you accept the peering request, and add a route table entry for the application VPC.
+To complete a _Pending_ AWS peering connection, you need to sign in to AWS, where you accept the peering request. After accepting the request, you will add a route table entry for the application VPC.
 
 {{< tip title="What you need" >}}
 The CIDR address of the YugabyteDB Managed VPC you are peering with.
@@ -137,13 +138,15 @@ To accept the peering request, do the following:
 
 1. Click **Accept request**.
 
-    **Tip**: After accepting the request, click **Modify my route tables now** to navigate directly to [adding a route table entry](#add-the-routing-table-entry).
+    **Tip**: After accepting the request, click **Modify my route tables now** to navigate directly to [adding a route table entry](#add-the-route-table-entry-in-aws).
 
 On the **Peering connections** page, note the **Peering connection ID**; you will use it when adding the route table entry.
 
-### Add the routing table entry
+## Add the route table entry in AWS
 
 Add a route to the route table of the application VPC so that you can send and receive traffic across the peering connection.
+
+Ensure you are signed in to your AWS account and navigate to the region hosting the application VPC being peered.
 
 To add a route table entry:
 
