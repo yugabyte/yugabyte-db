@@ -102,7 +102,8 @@ public class AutomatedMasterFailover {
             ybClientService.getClient(
                 universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
           List<String> errors =
-              CheckClusterConsistency.checkCurrentServers(ybClient, universe, false, cloudEnabled);
+              CheckClusterConsistency.checkCurrentServers(
+                  ybClient, universe, null, false, cloudEnabled);
           if (!errors.isEmpty()) {
             log.error(
                 "Skipping automated master failover for universe {} as the master view of YBA is"

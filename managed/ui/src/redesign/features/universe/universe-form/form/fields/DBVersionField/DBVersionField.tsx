@@ -49,7 +49,6 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
   const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
-
   const { data, isLoading } = useQuery(
     [QUERY_KEY.getDBVersions, isOsPatchingEnabled ? cpuArch : null],
     () => api.getDBVersions(true, isOsPatchingEnabled ? cpuArch : null),
@@ -58,7 +57,7 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
       onSuccess: (data) => {
         //pre-select first available db version
         const stableSorted: Record<string, string>[] = sortVersionStrings(
-          data?.filter(version => {
+          data?.filter((version) => {
             return isVersionStable(version.label);
           })
         );
@@ -83,26 +82,36 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
     });
   };
 
-  const stableDbVersions: Record<string, string>[] = data ? sortVersionStrings(
-    data?.filter(version => {
-      return isVersionStable(version.label);
-    })) : [];
-  const previewDbVersions: Record<string, string>[] = data ? sortVersionStrings(
-    data?.filter(version => {
-      return !isVersionStable(version.label);
-    })) : [];
+  const stableDbVersions: Record<string, string>[] = data
+    ? sortVersionStrings(
+        data?.filter((version) => {
+          return isVersionStable(version.label);
+        })
+      )
+    : [];
+  const previewDbVersions: Record<string, string>[] = data
+    ? sortVersionStrings(
+        data?.filter((version) => {
+          return !isVersionStable(version.label);
+        })
+      )
+    : [];
 
   // Display the Stable versions first, followed by the Preview versions
   const dbVersions: Record<string, any>[] = [
     ...stableDbVersions.map((stableDbVersion: Record<string, string>) => ({
       label: stableDbVersion.value,
       value: stableDbVersion.value,
-      series: `v${stableDbVersion.value.split('.')[0]}.${stableDbVersion.value.split('.')[1]} Series (Standard Term Support)`
+      series: `v${stableDbVersion.value.split('.')[0]}.${
+        stableDbVersion.value.split('.')[1]
+      } Series (Stable)`
     })),
     ...previewDbVersions.map((previewDbVersion: Record<string, string>) => ({
       label: previewDbVersion.value,
       value: previewDbVersion.value,
-      series: `v${previewDbVersion.value.split('.')[0]}.${previewDbVersion.value.split('.')[1]} Series (Preview)`
+      series: `v${previewDbVersion.value.split('.')[0]}.${
+        previewDbVersion.value.split('.')[1]
+      } Series (Preview)`
     }))
   ];
 
@@ -113,8 +122,8 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
       rules={{
         required: !disabled
           ? (t('universeForm.validation.required', {
-            field: t('universeForm.advancedConfig.dbVersion')
-          }) as string)
+              field: t('universeForm.advancedConfig.dbVersion')
+            }) as string)
           : ''
       }}
       render={({ field, fieldState }) => {

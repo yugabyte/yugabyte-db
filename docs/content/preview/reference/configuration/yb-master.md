@@ -351,7 +351,7 @@ Default: The default value in `2.18.1` is `-1` - feature is disabled by default.
 
 ## Load balancing flags
 
-For information on YB-Master load balancing, see [Data placement and load balancing](../../../architecture/concepts/yb-master/#data-placement-and-load-balancing).
+For information on YB-Master load balancing, see [Tablet assignments](../../../architecture/yb-master#tablet-assignments).
 
 For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
 

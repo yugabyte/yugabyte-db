@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "access/tuptoaster.h"
 #include "c.h"
 #include "postgres.h"
 #include "miscadmin.h"
@@ -490,17 +491,6 @@ YBIsWaitQueueEnabled()
 	return IsYugaByteEnabled() && cached_value;
 }
 
-bool
-YBSavepointsEnabled()
-{
-	static int cached_value = -1;
-	if (cached_value == -1)
-	{
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_pg_savepoints", true);
-	}
-	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
-}
-
 /*
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
@@ -943,15 +933,13 @@ YBCAbortTransaction()
 void
 YBCSetActiveSubTransaction(SubTransactionId id)
 {
-	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgSetActiveSubTransaction(id));
+	HandleYBStatus(YBCPgSetActiveSubTransaction(id));
 }
 
 void
 YBCRollbackToSubTransaction(SubTransactionId id)
 {
-	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgRollbackToSubTransaction(id));
+	HandleYBStatus(YBCPgRollbackToSubTransaction(id));
 }
 
 bool
@@ -1320,6 +1308,7 @@ int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool yb_prefer_bnl = false;
 bool yb_explain_hide_non_deterministic_fields = false;
 bool yb_enable_saop_pushdown = true;
+int yb_toast_catcache_threshold = -1;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.

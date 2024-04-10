@@ -151,6 +151,9 @@ public class UserTaskDetails {
     // Creating Table Backup
     CreatingTableBackup,
 
+    // Creating Universe Backup
+    CreatingUniverseBackup,
+
     // Restoring Table Backup
     RestoringTableBackup,
 

@@ -10,6 +10,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseLocalFile;
@@ -23,6 +24,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.ParseException;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -48,9 +53,13 @@ public class ReleasesUtils {
   public final String YB_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
   // We can see helm packages as either yugabyte-<version>.tgz or yugabyte-version-helm.tgz
-  public final String YB_HELM_PACKAGE_REGEX = "yugabyte-(?:ee-)?(.*?)(?:-helm)?.(?:tar.gz|tgz)";
+  public final String YB_HELM_PACKAGE_REGEX =
+      "yugabyte-(?:ee-)?(?:(?:(.*?)(?:-helm))|(\\d+\\.\\d+\\.\\d+)).(?:tar.gz|tgz)";
   // Match release form 2.16.1.2 and return 2.16 or 2024.1.0.0 and return 2024
   public final String YB_VERSION_TYPE_REGEX = "(2\\.\\d+|\\d\\d\\d\\d)";
+
+  public final String YB_TAG_REGEX =
+      "yugabyte-(?:ee-)?(?:.*)-(?!b\\d+)(.*)-(?:alma|centos|linux|el8|darwin)(?:.*).tar.gz";
 
   // The first version where YBDB must include a metadata.json file
   public final String YBDB_METADATA_REQUIRED_VERSION = "2024.1.0.0";
@@ -75,6 +84,7 @@ public class ReleasesUtils {
 
   public static class ExtractedMetadata {
     public String version;
+    public String releaseTag;
     public Release.YbType yb_type;
     public String sha256;
     public ReleaseArtifact.Platform platform;
@@ -101,6 +111,7 @@ public class ReleasesUtils {
           versionMetadataFromInputStream(
               new BufferedInputStream(new FileInputStream(releaseFilePath.toFile())));
       em.sha256 = sha256;
+      em.releaseTag = tagFromName(releaseFilePath.toString());
       return em;
     } catch (MetadataParseException e) {
       // Fallback to file name validation
@@ -124,6 +135,7 @@ public class ReleasesUtils {
       // Fallback to file name validation
       log.warn("falling back to file name metadata parsing for url " + url.toString(), e);
       ExtractedMetadata em = metadataFromName(url.getFile());
+      em.releaseTag = tagFromName(url.toString());
       return em;
     } catch (IOException e) {
       log.error("failed to open url " + url.toString());
@@ -140,7 +152,7 @@ public class ReleasesUtils {
       TarArchiveEntry entry;
       while ((entry = tarInput.getNextEntry()) != null) {
         if (entry.getName().endsWith("version_metadata.json")) {
-          log.debug("found version_metadata.json");
+          log.trace("found version_metadata.json");
           // We can reasonably assume that the version metadata json is small enough to read in
           // oneshot
           byte[] fileContent = new byte[(int) entry.getSize()];
@@ -191,6 +203,21 @@ public class ReleasesUtils {
             } catch (ParseException e) {
               log.warn("invalid date format", e);
             }
+          } else if (node.has("build_timestamp")) {
+            DateFormat df = DateFormat.getDateInstance();
+            try {
+              DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm:ss z");
+              LocalDateTime dateTime =
+                  LocalDateTime.parse(node.get("build_timestamp").asText(), formatter);
+              metadata.release_date = Date.from(dateTime.atZone(ZoneId.of("UTC")).toInstant());
+              log.debug(
+                  "using build timestamp {} as release date for {}",
+                  metadata.release_date,
+                  metadata.version);
+              // best effort parse.
+            } catch (DateTimeParseException e) {
+              log.warn("invalid date format", e);
+            }
           }
           if (node.has("release_notes")) {
             metadata.release_notes = node.get("release_notes").asText();
@@ -198,7 +225,7 @@ public class ReleasesUtils {
           return metadata;
         }
       } // end of while loop
-      log.error("No verison_metadata found in given input stream");
+      log.error("No version_metadata found in given input stream");
       throw new MetadataParseException("no version_metadata found");
     } catch (java.io.IOException e) {
       log.error("failed reading the local file", e);
@@ -230,7 +257,7 @@ public class ReleasesUtils {
         UUID dirUUID = UUID.fromString(uploadedDir.getName());
         if (ReleaseLocalFile.get(dirUUID) == null) {
           log.debug("deleting untracked local file " + dirUUID);
-          if (!uploadedDir.delete()) {
+          if (!FileUtils.deleteDirectory(uploadedDir)) {
             log.error("failed to delete " + uploadedDir.getAbsolutePath());
           }
           continue;
@@ -276,6 +303,10 @@ public class ReleasesUtils {
   }
 
   private boolean isHelmChart(String fileName) {
+    Pattern ybPackagePattern = Pattern.compile(YB_PACKAGE_REGEX);
+    if (ybPackagePattern.matcher(fileName).find()) {
+      return false;
+    }
     Pattern ybHelmChartPattern = Pattern.compile(YB_HELM_PACKAGE_REGEX);
     Matcher helmPackage = ybHelmChartPattern.matcher(fileName);
     return helmPackage.find();
@@ -295,7 +326,7 @@ public class ReleasesUtils {
       TarArchiveEntry entry;
       while ((entry = tarInput.getNextEntry()) != null) {
         if (entry.getName().endsWith("Chart.yaml") || entry.getName().endsWith("Chart.yml")) {
-          log.debug("Found Chart.yml");
+          log.trace("Found Chart.yml");
           // We can reasonably assume that the version metadata json is small enough to read in
           // oneshot
           byte[] fileContent = new byte[(int) entry.getSize()];
@@ -415,5 +446,14 @@ public class ReleasesUtils {
           "no 'version' key found config " + ConfigHelper.ConfigType.SoftwareVersion);
     }
     return (String) versionCfg.get("version");
+  }
+
+  private String tagFromName(String name) {
+    Pattern tagPattern = Pattern.compile(YB_TAG_REGEX);
+    Matcher tagMatch = tagPattern.matcher(name);
+    if (tagMatch.find()) {
+      return tagMatch.group(1);
+    }
+    return null;
   }
 }

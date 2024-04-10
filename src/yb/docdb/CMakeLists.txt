@@ -142,6 +142,7 @@ ADD_YB_TEST(scan_choices-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
+ADD_YB_TEST(usearch_vector_index-test)
 
 if(YB_BUILD_FUZZ_TARGETS)
   # A library with common code shared between DocDB fuzz tests.

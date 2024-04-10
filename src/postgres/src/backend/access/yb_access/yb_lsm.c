@@ -280,9 +280,21 @@ ybcinbulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	return NULL;
 }
 
+/*
+ * Post-VACUUM cleanup.
+ *
+ * Result: a palloc'd struct containing statistical info for VACUUM displays.
+ *
+ * YB: this function is based on btvacuumcleanup implementation.
+ * We only support ANALYZE and don't support VACUUM as of 04/05/2024.
+ */
 static IndexBulkDeleteResult *
 ybcinvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 {
+	/* No-op in ANALYZE ONLY mode */
+	if (info->analyze_only)
+		return stats;
+
 	YBC_LOG_WARNING("Unexpected index cleanup via vacuum");
 	return NULL;
 }
