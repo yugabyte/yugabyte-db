@@ -1131,12 +1131,19 @@ class PgClientServiceImpl::Impl {
       replication_slot->set_replication_slot_status(
           (is_stream_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
 
-      auto slot_metadata = stream_to_metadata[*stream_id];
-      replication_slot->set_confirmed_flush_lsn(slot_metadata.first.first);
-      replication_slot->set_restart_lsn(slot_metadata.first.second);
-      replication_slot->set_xmin(slot_metadata.second.first);
-      replication_slot->set_record_id_commit_time_ht(slot_metadata.second.second);
-      replication_slot->set_last_pub_refresh_time(stream_to_last_pub_refresh_time[*stream_id]);
+      if (stream_to_metadata.contains(*stream_id)) {
+        auto slot_metadata = stream_to_metadata[*stream_id];
+        replication_slot->set_confirmed_flush_lsn(slot_metadata.first.first);
+        replication_slot->set_restart_lsn(slot_metadata.first.second);
+        replication_slot->set_xmin(slot_metadata.second.first);
+        replication_slot->set_record_id_commit_time_ht(slot_metadata.second.second);
+        replication_slot->set_last_pub_refresh_time(stream_to_last_pub_refresh_time[*stream_id]);
+      } else {
+        // TODO(#21780): This should never happen, so make this a DCHECK. We can do that after every
+        // unit test that uses replication slots is updated to consistent snapshot stream.
+        LOG(WARNING) << "The CDC state table metadata entry was not found for stream_id: "
+                     << *stream_id << ", slot_name: " << replication_slot->slot_name();
+      }
     }
     return Status::OK();
   }
