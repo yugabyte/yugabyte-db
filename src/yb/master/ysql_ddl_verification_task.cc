@@ -53,6 +53,12 @@ DEFINE_test_flag(bool, skip_transaction_verification, false,
 DEFINE_test_flag(int32, ysql_ddl_transaction_verification_failure_percentage, 0,
     "Inject random failure in checking transaction status for DDL transactions");
 
+DEFINE_test_flag(bool, yb_test_table_rewrite_keep_old_table, false,
+    "Used together with the PG GUC yb_test_table_rewrite_keep_old_table in "
+    "some unit tests where we want to test schema version mismatch error on "
+    "concurrent DMLs. If the table is dropped too soon, we will just get a "
+    "table does not exist error instead.");
+
 using std::string;
 using std::vector;
 
@@ -263,6 +269,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
 
   qlexpr::QLTableRow row;
   bool table_found = false;
+  bool table_rewritten = false;
 
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     // One row found in pg_class matching the oid. Perform the check on the relfilenode column, if
@@ -272,17 +279,36 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
       const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
       if (relfilenode_col->uint32_value() != VERIFY_RESULT(table->GetPgRelfilenodeOid())) {
         table_found = false;
+        table_rewritten = true;
       }
     }
   }
 
-  // Table not found in pg_class. This can only happen in two cases: Table creation failed,
-  // or a table deletion went through successfully.
+  // Table not found in pg_class. This can only happen in three cases:
+  // * Table creation failed,
+  // * A table deletion went through successfully,
+  // * In some unit tests where --TEST_yb_test_table_rewrite_keep_old_table=true
+  //   is set on yb-master and PG GUC yb_test_table_rewrite_keep_old_table is true,
+  //   an ALTER TABLE statement that involves a table rewrite will not have
+  //   "contains_drop_table_op" set, therefore is_being_deleted_by_ysql_ddl_txn()
+  //   is false. If such an ALTER TABLE statement went through successfully, then
+  //   the old PG table is deleted from pg_class while the old DocDB table is kept
+  //   for testing purpose.
   if (!table_found) {
     *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
     if (l->is_being_deleted_by_ysql_ddl_txn()) {
       *result = true;
       return Status::OK();
+    }
+    if (FLAGS_TEST_yb_test_table_rewrite_keep_old_table) {
+      // If alter table resulted in a table rewrite and the old table is
+      // already deleted from PG catalog after the ddl transaction completes,
+      // then the ddl transaction must have committed because the old table
+      // should still exist if the ddl transaction aborted.
+      if (l->is_being_altered_by_ysql_ddl_txn() && table_rewritten) {
+        *result = true;
+        return Status::OK();
+      }
     }
     CHECK(l->is_being_created_by_ysql_ddl_txn())
         << table->ToString() << " " << l->pb.ysql_ddl_txn_verifier_state(0).ShortDebugString();
