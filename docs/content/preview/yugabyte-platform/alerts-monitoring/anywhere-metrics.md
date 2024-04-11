@@ -30,10 +30,10 @@ You can also create custom queries and run it against any graph. To do this, fro
 
 ```sql
 label_replace(
-   quantile_over_time(0.90, ((sum(rate(ql_read_latency_sum{node_prefix="<universe_name>", export_type="tserver_export", namespace_name!="system_platform"}[36s])) by (table_name))
+   quantile_over_time(0.99, ((sum(rate(ql_read_latency_sum{node_prefix="<universe_name>", export_type="tserver_export", namespace_name!="system_platform"}[36s])) by (table_name))
    /
    (sum(rate(ql_read_latency_count{node_prefix="<universe_name>", export_type="tserver_export", namespace_name!="system_platform"}[36s])) by (table_name)))[30s:])
-   , "quantile", "50", "table_name", "(.+)"
+   , "quantile", "99", "table_name", "(.+)"
 )
 ```
 
