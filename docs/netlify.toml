@@ -113,8 +113,8 @@
   to = "/preview/drivers-orms/"
 
 [[redirects]]
-  from = "/explore/fault-tolerance/"
-  to = "/preview/explore/fault-tolerance/"
+  from = "/explore/*"
+  to = "/preview/explore/:splat"
 
 [[redirects]]
   from = "/preview/explore/indexes-constraints/covering-index-ycql/"
@@ -340,6 +340,11 @@
   from = "/preview/architecture/concepts"
   to = "/preview/architecture/key-concepts"
 
+# from 404 report (referrer: ycombinator)
+[[redirects]]
+  from = "/preview/architecture/concepts/acknowledgements"
+  to = "/preview/architecture/key-concepts"
+
 [[redirects]]
   from = "/preview/architecture/docdb/replication/"
   to = "/preview/architecture/docdb-replication/"
@@ -557,6 +562,10 @@
   to = "/preview/releases/ybdb-releases/:splat"
 
 [[redirects]]
+  from = "/preview/releases/ybdb-release/*"
+  to = "/preview/releases/ybdb-releases/:splat"
+
+[[redirects]]
   from = "/preview/secure/authentication/client-authentication/"
   to = "/preview/secure/enable-authentication/ysql_hba_conf-configuration/"
 
@@ -748,6 +757,11 @@
 
 [[redirects]]
   from = "/preview/develop/build-apps/*"
+  to = "/preview/tutorials/build-apps/:splat"
+
+# from 404 report (referrer: youtube)
+[[redirects]]
+  from = "/preview/tutorials/build-and-learn/*"
   to = "/preview/tutorials/build-apps/:splat"
 
 [[redirects]]
