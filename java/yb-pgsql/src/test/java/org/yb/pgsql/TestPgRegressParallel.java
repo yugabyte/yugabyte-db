@@ -15,6 +15,7 @@ package org.yb.pgsql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import org.yb.util.BuildTypeUtil;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -29,5 +30,13 @@ public class TestPgRegressParallel extends BasePgSQLTest {
   @Test
   public void testPgRegressParallel() throws Exception {
     runPgRegressTest("yb_parallelquery_serial_schedule");
+  }
+
+  @Test
+  public void testPgRegressBigParallel() throws Exception {
+    // Long running test may timeout on poorly performing builds
+    if (BuildTypeUtil.isRelease()) {
+      runPgRegressTest("yb_big_parallelquery_serial_schedule");
+    }
   }
 }

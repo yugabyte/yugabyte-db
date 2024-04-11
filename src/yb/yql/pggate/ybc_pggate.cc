@@ -476,6 +476,7 @@ bool YBCGetCurrentPgSessionParallelData(YBCPgSessionParallelData* session_data) 
     session_data->session_id = pgapi->GetSessionId();
     session_data->txn_serial_no = pgapi->GetTxnSerialNo();
     session_data->read_time_serial_no = pgapi->GetReadTimeSerialNo();
+    session_data->active_sub_transaction_id = pgapi->GetActiveSubTransactionId();
     return true;
   }
   return false;
