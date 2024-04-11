@@ -1,5 +1,14 @@
+CREATE DATABASE pctest colocation = true;
+\c pctest
+
 -- large table to ensure multiple parallel ranges
-CREATE TABLE pcustomer(pc_id int primary key, pc_name text, pc_address text, pc_phone text, pc_email text, pc_acctbalance numeric(15,2));
+CREATE TABLE pcustomer (
+    pc_id int primary key,
+    pc_name text,
+    pc_address text,
+    pc_phone text,
+    pc_email text,
+    pc_acctbalance numeric(15,2)) WITH (colocation = true);
 INSERT INTO pcustomer
 SELECT i, -- pc_id
        'Customer #' || i::text, -- pc_name
@@ -34,5 +43,4 @@ SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
 COMMIT;
 
 DROP TABLE pcustomer;
-
 
