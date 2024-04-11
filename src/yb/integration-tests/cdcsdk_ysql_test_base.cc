@@ -2796,6 +2796,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets.size(), num_tablets);
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
     TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
     xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
@@ -2806,7 +2807,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     // Insert some records in transaction.
     ASSERT_OK(WriteRows(
         1 /* start */, 10 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, {kValue4ColumnName}));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, {kValue4ColumnName}, &conn));
     GetChangesResponsePB change_resp;
     change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
     uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
@@ -2868,6 +2869,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
     // Insert some records in transaction.
     ASSERT_OK(WriteRowsHelper(
@@ -2877,7 +2879,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
 
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName, &conn));
 
     GetChangesResponsePB change_resp;
     change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -2935,11 +2937,12 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets.size(), num_tablets);
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
     // Insert some records in transaction.
     ASSERT_OK(WriteRows(1 /* start */, 10 /* end */, &test_cluster_, {kValue2ColumnName}));
 
-    ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+    ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
     ASSERT_OK(WriteRows(11 /* start */, 20 /* end */, &test_cluster_));
 
     xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
@@ -2991,11 +2994,12 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
     // Insert some records in transaction.
     ASSERT_OK(WriteRows(
         1 /* start */, 11 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
-    ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+    ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
 
     GetChangesResponsePB change_resp;
     change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -3056,6 +3060,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
     // Insert some records in transaction.
     ASSERT_OK(WriteRowsHelper(
@@ -3064,7 +3069,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
-    ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+    ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
     GetChangesResponsePB change_resp;
     change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
     uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
@@ -3122,6 +3127,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets.size(), num_tablets);
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
 
     TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
     xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
@@ -3132,7 +3139,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     // Insert some records in transaction.
     ASSERT_OK(WriteRows(1 /* start */, 10 /* end */, &test_cluster_, {kValue2ColumnName}));
     ASSERT_OK(RenameColumn(
-        &test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, kValue3ColumnName));
+        &test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, kValue3ColumnName, &conn));
     GetChangesResponsePB change_resp;
     change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
     uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
@@ -3192,6 +3199,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
     // Insert some records in transaction.
     ASSERT_OK(WriteRowsHelper(
@@ -3200,7 +3208,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     ASSERT_OK(RenameColumn(
-        &test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, kValue3ColumnName));
+        &test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, kValue3ColumnName, &conn));
 
     GetChangesResponsePB change_resp;
     change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -3268,22 +3276,23 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets.size(), num_tablets);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
     // Insert some records in transaction.
     ASSERT_OK(WriteRows(1 /* start */, 6 /* end */, &test_cluster_, {kValue2ColumnName}));
 
     // Add a column
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
     ASSERT_OK(WriteRows(
         6 /* start */, 11 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
 
     // Drop one column
-    ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+    ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
     ASSERT_OK(WriteRows(11 /* start */, 16 /* end */, &test_cluster_, {kValue3ColumnName}));
 
     // Add the 2 columns
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName));
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName, &conn));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
     ASSERT_OK(WriteRows(
         16 /* start */, 21 /* end */, &test_cluster_,
         {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
@@ -3354,6 +3363,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
     ASSERT_OK(WriteRowsHelper(1 /* start */, 11 /* end */, &test_cluster_, true));
     // Call Getchanges
@@ -3386,7 +3396,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ValidateColumnCounts(change_resp, 2);
     ValidateInsertCounts(change_resp, 10);
 
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
     ASSERT_OK(WriteRowsHelper(
         21 /* start */, 31 /* end */, &test_cluster_, true, 3, kTableName, {kValue2ColumnName}));
     ASSERT_OK(WaitForFlushTables(
@@ -3401,7 +3411,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     // Add a new column and insert few more records.
     // Do LEADERship change.
     // Call Getchanges in the new leader.
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
     ASSERT_OK(WriteRows(31, 41, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
     GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
     if (first_leader_index == 0) {
@@ -3433,22 +3443,23 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets.size(), num_tablets);
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
     // Insert some records in transaction.
     ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_, {kValue2ColumnName}));
 
     // Add a column
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
     ASSERT_OK(WriteRows(
         101 /* start */, 201 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
 
     // Drop one column
-    ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+    ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
     ASSERT_OK(WriteRows(201 /* start */, 301 /* end */, &test_cluster_, {kValue3ColumnName}));
 
     // Add the 2 columns
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName));
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName, &conn));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
     ASSERT_OK(WriteRows(
         301 /* start */, 401 /* end */, &test_cluster_,
         {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
@@ -3508,6 +3519,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets.size(), num_tablets);
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
     // Create CDC stream.
     xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
@@ -3523,7 +3535,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     // Validate the columns and insert counts.
     ValidateColumnCounts(change_resp, 2);
 
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
     ASSERT_OK(WriteRowsHelper(
         101 /* start */, 201 /* end */, &test_cluster_, true, 3, kTableName, {kValue2ColumnName}));
     ASSERT_OK(WaitForFlushTables(
