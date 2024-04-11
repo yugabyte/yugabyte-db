@@ -720,6 +720,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       xrepl::StreamId stream_id, YBTableName table,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
       CDCSDKCheckpointPB checkpoint, GetChangesResponsePB* change_resp);
+
+  void TestTableIdAndPkInCDCRecords(bool colocated_db);
+
+  void VerifyTableIdAndPkInCDCRecords(
+      GetChangesResponsePB* resp, std::unordered_set<std::string>* record_primary_key,
+      std::unordered_set<std::string>* record_table_id);
 };
 
 }  // namespace cdc

@@ -4180,6 +4180,26 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_EQ(reads_snapshot, 100);
   }
 
+  void CDCSDKYsqlTest::VerifyTableIdAndPkInCDCRecords(
+      GetChangesResponsePB* resp, std::unordered_set<std::string>* record_primary_key,
+      std::unordered_set<std::string>* record_table_id) {
+    for (int i = 0; i < resp->cdc_sdk_proto_records_size(); i++) {
+      auto record = resp->cdc_sdk_proto_records(i);
+      if (IsDMLRecord(record)) {
+        ASSERT_TRUE(record.row_message().has_table_id());
+        ASSERT_TRUE(record.row_message().has_primary_key());
+        record_table_id->insert(record.row_message().table_id());
+        record_primary_key->insert(record.row_message().primary_key());
+      } else if (record.row_message().op() == RowMessage_Op_DDL) {
+        ASSERT_TRUE(record.row_message().has_table_id());
+        ASSERT_FALSE(record.row_message().has_primary_key());
+        record_table_id->insert(record.row_message().table_id());
+      } else {
+        ASSERT_FALSE(record.row_message().has_table_id());
+        ASSERT_FALSE(record.row_message().has_primary_key());
+      }
+    }
+  }
 
 } // namespace cdc
 } // namespace yb
