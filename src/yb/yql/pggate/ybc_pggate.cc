@@ -1180,6 +1180,10 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
+YBCStatus YBCPgDmlHasRegularTargets(YBCPgStatement handle, bool *has_targets) {
+  return ExtractValueFromResult(pgapi->DmlHasRegularTargets(handle), has_targets);
+}
+
 YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols) {
   return ExtractValueFromResult(pgapi->DmlHasSystemTargets(handle), has_system_cols);
 }

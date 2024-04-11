@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * nodeBitmapIndexscan.c
+ * nodeYbBitmapIndexscan.c
  *	  Routines to support bitmapped index scans of relations
  *
  * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
@@ -8,21 +8,21 @@
  *
  *
  * IDENTIFICATION
- *	  src/backend/executor/nodeBitmapIndexscan.c
+ *	  src/backend/executor/nodeYbBitmapIndexscan.c
  *
  *-------------------------------------------------------------------------
  */
 /*
  * INTERFACE ROUTINES
- *		MultiExecBitmapIndexScan	scans a relation using index.
- *		ExecInitBitmapIndexScan		creates and initializes state info.
- *		ExecReScanBitmapIndexScan	prepares to rescan the plan.
- *		ExecEndBitmapIndexScan		releases all storage.
+ *		MultiExecYbBitmapIndexScan	scans a relation using index.
+ *		ExecInitYbBitmapIndexScan		creates and initializes state info.
+ *		ExecReScanYbBitmapIndexScan	prepares to rescan the plan.
+ *		ExecEndYbBitmapIndexScan		releases all storage.
  */
 #include "postgres.h"
 
 #include "executor/execdebug.h"
-#include "executor/nodeBitmapIndexscan.h"
+#include "executor/nodeYbBitmapIndexscan.h"
 #include "executor/nodeIndexscan.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
@@ -32,26 +32,26 @@
 #include "access/relscan.h"
 
 /* ----------------------------------------------------------------
- *		ExecBitmapIndexScan
+ *		ExecYbBitmapIndexScan
  *
  *		stub for pro forma compliance
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
-ExecBitmapIndexScan(PlanState *pstate)
+ExecYbBitmapIndexScan(PlanState *pstate)
 {
-	elog(ERROR, "BitmapIndexScan node does not support ExecProcNode call convention");
+	elog(ERROR, "YbBitmapIndexScan node does not support ExecProcNode call convention");
 	return NULL;
 }
 
 /* ----------------------------------------------------------------
- *		MultiExecBitmapIndexScan(node)
+ *		MultiExecYbBitmapIndexScan(node)
  * ----------------------------------------------------------------
  */
 Node *
-MultiExecBitmapIndexScan(BitmapIndexScanState *node)
+MultiExecYbBitmapIndexScan(YbBitmapIndexScanState *node)
 {
-	TIDBitmap  *bitmap;
+	YbTIDBitmap *bitmap;
 	IndexScanDesc scandesc;
 	double		nTuples = 0;
 	bool		doscan;
@@ -88,16 +88,14 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	 */
 	if (node->biss_result)
 	{
+		Assert(IsA(node->biss_result, YbTIDBitmap));
 		bitmap = node->biss_result;
 
 		node->biss_result = NULL;	/* reset for next time */
 	}
 	else
 	{
-		/* XXX should we use less than work_mem for this? */
-		bitmap = tbm_create(work_mem * 1024L,
-							((BitmapIndexScan *) node->ss.ps.plan)->isshared
-								? node->ss.ps.state->es_query_dsa : NULL);
+		bitmap = yb_tbm_create(work_mem * 1024L);
 	}
 
 	/*
@@ -105,7 +103,7 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	 */
 	while (doscan)
 	{
-		nTuples += (double) index_getbitmap(scandesc, bitmap);
+		nTuples += (double) yb_index_getbitmap(scandesc, bitmap);
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -125,14 +123,14 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 }
 
 /* ----------------------------------------------------------------
- *		ExecReScanBitmapIndexScan(node)
+ *		ExecReScanYbBitmapIndexScan(node)
  *
  *		Recalculates the values of any scan keys whose value depends on
  *		information known at runtime, then rescans the indexed relation.
  * ----------------------------------------------------------------
  */
 void
-ExecReScanBitmapIndexScan(BitmapIndexScanState *node)
+ExecReScanYbBitmapIndexScan(YbBitmapIndexScanState *node)
 {
 	ExprContext *econtext = node->biss_RuntimeContext;
 
@@ -172,11 +170,11 @@ ExecReScanBitmapIndexScan(BitmapIndexScanState *node)
 }
 
 /* ----------------------------------------------------------------
- *		ExecEndBitmapIndexScan
+ *		ExecEndYbBitmapIndexScan
  * ----------------------------------------------------------------
  */
 void
-ExecEndBitmapIndexScan(BitmapIndexScanState *node)
+ExecEndYbBitmapIndexScan(YbBitmapIndexScanState *node)
 {
 	Relation	indexRelationDesc;
 	IndexScanDesc indexScanDesc;
@@ -195,6 +193,19 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 		FreeExprContext(node->biss_RuntimeContext, true);
 #endif
 
+	if (IsYugaByteEnabled())
+	{
+		if (indexScanDesc && indexScanDesc->yb_idx_pushdown)
+		{
+			pfree(indexScanDesc->yb_idx_pushdown);
+			indexScanDesc->yb_idx_pushdown = NULL;
+		}
+
+		Relation relation = node->ss.ss_currentRelation;
+		if (relation)
+			ExecCloseScanRelation(relation);
+	}
+
 	/*
 	 * close the index relation (no-op if we didn't open it)
 	 */
@@ -205,15 +216,15 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 }
 
 /* ----------------------------------------------------------------
- *		ExecInitBitmapIndexScan
+ *		ExecInitYbBitmapIndexScan
  *
  *		Initializes the index scan's state information.
  * ----------------------------------------------------------------
  */
-BitmapIndexScanState *
-ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
+YbBitmapIndexScanState *
+ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 {
-	BitmapIndexScanState *indexstate;
+	YbBitmapIndexScanState *indexstate;
 	bool		relistarget;
 
 	/* check for unsupported flags */
@@ -222,10 +233,10 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	/*
 	 * create state structure
 	 */
-	indexstate = makeNode(BitmapIndexScanState);
+	indexstate = makeNode(YbBitmapIndexScanState);
 	indexstate->ss.ps.plan = (Plan *) node;
 	indexstate->ss.ps.state = estate;
-	indexstate->ss.ps.ExecProcNode = ExecBitmapIndexScan;
+	indexstate->ss.ps.ExecProcNode = ExecYbBitmapIndexScan;
 
 	/* normally we don't make the result bitmap till runtime */
 	indexstate->biss_result = NULL;
@@ -322,6 +333,18 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 		index_beginscan_bitmap(indexstate->biss_RelationDesc,
 							   estate->es_snapshot,
 							   indexstate->biss_NumScanKeys);
+
+	if (IsYBRelation(indexstate->biss_RelationDesc))
+		indexstate->ss.ss_currentRelation =
+			ExecOpenScanRelation(estate, node->scan.scanrelid, eflags);
+
+	indexstate->biss_ScanDesc->heapRelation =
+		indexstate->ss.ss_currentRelation;
+	indexstate->biss_ScanDesc->yb_exec_params = &estate->yb_exec_params;
+	indexstate->biss_ScanDesc->fetch_ybctids_only = true;
+
+	indexstate->biss_ScanDesc->yb_idx_pushdown =
+		YbInstantiatePushdownParams(&node->yb_idx_pushdown, estate);
 
 	/*
 	 * If no run-time keys to calculate, go ahead and pass the scankeys to the

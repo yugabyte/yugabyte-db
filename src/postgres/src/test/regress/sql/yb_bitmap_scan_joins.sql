@@ -300,3 +300,7 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
 /*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+
+RESET yb_explain_hide_non_deterministic_fields;
+RESET enable_bitmapscan;
+RESET yb_prefer_bnl;

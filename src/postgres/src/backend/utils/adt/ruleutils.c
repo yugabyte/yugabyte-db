@@ -4822,6 +4822,8 @@ set_deparse_planstate(deparse_namespace *dpns, PlanState *ps)
 		dpns->index_tlist = ((IndexOnlyScan *) ps->plan)->indextlist;
 	else if (IsA(ps->plan, IndexScan))
 		dpns->index_tlist = ((IndexScan *) ps->plan)->indextlist;
+	else if (IsA(ps->plan, YbBitmapIndexScan))
+		dpns->index_tlist = ((YbBitmapIndexScan *) ps->plan)->indextlist;
 	else if (IsA(ps->plan, ForeignScan))
 		dpns->index_tlist = ((ForeignScan *) ps->plan)->fdw_scan_tlist;
 	else if (IsA(ps->plan, CustomScan))
@@ -7458,7 +7460,7 @@ find_param_referent(Param *param, deparse_context *context,
 			 * we've crawled up out of a subplan, this couldn't possibly be
 			 * the right match.
 			 */
-			if ((IsA(ps, NestLoopState) || 
+			if ((IsA(ps, NestLoopState) ||
 				 IsA(ps, YbBatchedNestLoopState)) &&
 				child_ps == innerPlanState(ps) &&
 				in_same_plan_level)
@@ -11597,7 +11599,7 @@ yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 		 */
 		Assert(HeapTupleIsValid(pg_rewrite_tuple));
 
-		Form_pg_rewrite rewrite_form = 
+		Form_pg_rewrite rewrite_form =
 			(Form_pg_rewrite) GETSTRUCT(pg_rewrite_tuple);
 		view_oid = rewrite_form->ev_class;
 
