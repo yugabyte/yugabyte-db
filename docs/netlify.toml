@@ -759,11 +759,6 @@
   from = "/preview/develop/build-apps/*"
   to = "/preview/tutorials/build-apps/:splat"
 
-# from 404 report (referrer: youtube)
-[[redirects]]
-  from = "/preview/tutorials/build-and-learn/*"
-  to = "/preview/tutorials/build-apps/:splat"
-
 [[redirects]]
   from = "/preview/quick-start/build-apps/*"
   to = "/preview/tutorials/build-apps/"
