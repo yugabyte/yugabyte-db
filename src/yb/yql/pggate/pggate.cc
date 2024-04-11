@@ -2332,6 +2332,10 @@ uint64_t PgApiImpl::GetTxnSerialNo() {
   return pg_txn_manager_->GetTxnSerialNo();
 }
 
+SubTransactionId PgApiImpl::GetActiveSubTransactionId() {
+  return pg_txn_manager_->GetActiveSubTransactionId();
+}
+
 void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
   pg_txn_manager_->RestoreSessionParallelData(session_data);
 }
