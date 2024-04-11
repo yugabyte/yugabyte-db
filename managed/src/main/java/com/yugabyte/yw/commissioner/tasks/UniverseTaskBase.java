@@ -2387,13 +2387,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected boolean nodeInMasterConfig(Universe universe, NodeDetails node) {
     String ip = node.cloudInfo.private_ip;
+    String secondary_ip = node.cloudInfo.secondary_private_ip;
     String masterAddresses = universe.getMasterAddresses();
 
     try (YBClient client =
         ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
       ListMastersResponse response = client.listMasters();
       List<ServerInfo> servers = response.getMasters();
-      return servers.stream().anyMatch(s -> s.getHost().equals(ip));
+      return servers.stream()
+          .anyMatch(s -> s.getHost().equals(ip) || s.getHost().equals(secondary_ip));
     } catch (Exception e) {
       String msg =
           String.format(
