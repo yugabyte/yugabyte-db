@@ -17,7 +17,6 @@
 
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/common_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
@@ -324,8 +323,9 @@ Status PgTruncateTable::Exec() {
 
 PgDropIndex::PgDropIndex(PgSession::ScopedRefPtr pg_session,
                          const PgObjectId& index_id,
-                         bool if_exist)
-    : PgDropTable(pg_session, index_id, if_exist) {
+                         bool if_exist,
+                         bool ddl_rollback_enabled)
+    : PgDropTable(pg_session, index_id, if_exist), ddl_rollback_enabled_(ddl_rollback_enabled) {
 }
 
 PgDropIndex::~PgDropIndex() {
@@ -340,7 +340,7 @@ Status PgDropIndex::Exec() {
 
     pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
     pg_session_->InvalidateTableCache(indexed_table_id,
-        YsqlDdlRollbackEnabled() ? InvalidateOnPgClient::kTrue : InvalidateOnPgClient::kFalse);
+        ddl_rollback_enabled_ ? InvalidateOnPgClient::kTrue : InvalidateOnPgClient::kFalse);
     return Status::OK();
   }
   return s;

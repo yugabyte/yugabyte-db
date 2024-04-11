@@ -1664,6 +1664,7 @@ YBCDropIndex(Relation index)
 		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(databaseId,
 				indexRelfileNodeId,
 				false, /* if_exists */
+				YbDdlRollbackEnabled(), /* ddl_rollback_enabled */
 				&handle),
 			&not_found);
 		if (not_found)
