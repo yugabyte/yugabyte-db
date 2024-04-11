@@ -4,7 +4,7 @@ headerTitle: Resilience
 linkTitle: Resilience
 description: Benchmark YugabyteDB's ability to withstand component failure.
 image: /images/section_icons/explore/high_performance.png
-headcontent: Benchmarking the ability to withstand component failure.
+headcontent: Benchmarking the ability to withstand component failure
 menu:
   preview:
     identifier: resilience
