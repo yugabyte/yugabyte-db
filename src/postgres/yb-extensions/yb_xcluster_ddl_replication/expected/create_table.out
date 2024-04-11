@@ -19,12 +19,12 @@ CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1
 -- Verify that info for unique constraint indexes are also captured.
 CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);
 SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
-                                                                       yb_data
------------------------------------------------------------------------------------------------------------------------------------------------------
- {"query": "CREATE TABLE foo(i int PRIMARY KEY);", "version": 1, "command_tag": "CREATE TABLE"}
- {"query": "CREATE TABLE manual_foo(i int PRIMARY KEY);", "version": 1, "command_tag": "CREATE TABLE", "manual_replication": true}
- {"query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;", "version": 1, "command_tag": "CREATE TABLE"}
- {"query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);", "version": 1, "command_tag": "CREATE TABLE"}
+                                                                                           yb_data
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE"}
+ {"user": "yugabyte", "query": "CREATE TABLE manual_foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "manual_replication": true}
+ {"user": "yugabyte", "query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;", "schema": "public", "version": 1, "command_tag": "CREATE TABLE"}
+ {"user": "yugabyte", "query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE"}
 (4 rows)
 
 SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY start_time;
