@@ -468,7 +468,7 @@ class Log : public RefCountedThreadSafe<Log> {
     return allocation_state_.load(std::memory_order_acquire);
   }
 
-  std::unique_ptr<LogEntryBatch> ReserveMarker(LogEntryTypePB type);
+  Result<std::unique_ptr<LogEntryBatch>> ReserveMarker(LogEntryTypePB type);
 
   // Returns WritableFileOptions for a new segment writable file.
   WritableFileOptions GetNewSegmentWritableFileOptions();
@@ -502,7 +502,7 @@ class Log : public RefCountedThreadSafe<Log> {
   //
   // WARNING: the caller _must_ call AsyncAppend() or else the log will "stall" and will never be
   // able to make forward progress.
-  std::unique_ptr<LogEntryBatch> Reserve(
+  Result<std::unique_ptr<LogEntryBatch>> Reserve(
       LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch);
 
   LogOptions options_;
