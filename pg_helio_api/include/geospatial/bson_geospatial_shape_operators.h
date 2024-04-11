@@ -102,12 +102,16 @@ typedef struct DollarCenterOperatorState
 {
 	ShapeOperatorState opState;
 
-	double radiusInRadians;
+	/* Input radius, in radians for $centerSphere and in 2d units for $center */
+	double radius;
 
+	/* Radius converted to meters */
 	double radiusInMeters;
 
+	/* Area of compliment geography for $centerSphere input in case of radius > (pi/2) */
 	Datum complimentArea;
 
+	/* Check if radius is infinite for $center or >= pi for $centerSphere */
 	bool isRadiusInfinite;
 }DollarCenterOperatorState;
 

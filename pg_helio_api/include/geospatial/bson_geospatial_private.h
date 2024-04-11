@@ -104,9 +104,6 @@
 /* Radius of earth in meters for spherical calculations */
 static const int32 RADIUS_OF_EARTH_M = 6378100;
 
-/* Value of π to convert between radians and meters */
-static const double PI = 3.14159265358979323846;
-
 
 /*
  * GeoJSON types specified by the GeoJSON standard

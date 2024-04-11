@@ -247,6 +247,11 @@ FillFmgrInfoForGeoWithin(const ShapeOperator *shapeOperator,
 		coverFunctionOid = PostgisGeographyDWithinFunctionId();
 		postgisFunc = Geography_DWithin;
 	}
+	else if (shapeOperator->op == GeospatialShapeOperator_CENTER)
+	{
+		coverFunctionOid = PostgisGeometryDWithinFunctionId();
+		postgisFunc = Geometry_DWithin;
+	}
 	else
 	{
 		coverFunctionOid = shapeOperator->isSpherical ?
@@ -449,32 +454,42 @@ CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *state,
 
 			return isMatched && !geographyIntersectsWithCompliment;
 		}
-		else if (state->opInfo->op == GeospatialShapeOperator_CENTER)
+		else if (state->opInfo->op == GeospatialShapeOperator_CENTER &&
+				 state->opInfo->opState != NULL)
 		{
 			GeospatialType type = state->geospatialType;
-			bytea *wkbBytea = WKBBufferGetByteaWithSRID(buffer);
-			Datum documentGeo = type == GeospatialType_Geometry ?
-								GetGeometryFromWKB(wkbBytea) :
-								GetGeographyFromWKB(wkbBytea);
 
-			pfree(wkbBytea);
-
-			if (state->opInfo->opState != NULL)
+			/* We should not land here, as $center is non-spherical type query */
+			if (type == GeospatialType_Geography)
 			{
-				DollarCenterOperatorState *centerState =
-					(DollarCenterOperatorState *) state->opInfo->opState;
-				if (centerState->isRadiusInfinite)
-				{
-					return true;
-				}
+				ereport(ERROR, (
+							errcode(MongoInternalError),
+							errmsg("Unexpected geographical type encountered in $center")
+							));
 			}
 
-			/* TODO: update this to match $centerSphere in using ST_DWITHIN */
-			return DatumGetBool(
-				FunctionCall2(
+			DollarCenterOperatorState *centerState =
+				(DollarCenterOperatorState *) state->opInfo->opState;
+			if (centerState->isRadiusInfinite)
+			{
+				return true;
+			}
+
+			bytea *wkbBytea = WKBBufferGetByteaWithSRID(buffer);
+			Datum documentGeo = GetGeometryFromWKB(wkbBytea);
+			pfree(wkbBytea);
+			Datum radiusArg = Float8GetDatum(centerState->radius);
+
+			/* Result from ST_DWITHIN */
+			bool isMatched = DatumGetBool(
+				FunctionCall3(
 					runtimeMatcher->runtimeFmgrStore[runtimeMatcher->runtimePostgisFunc],
 					runtimeMatcher->queryGeoDatum,
-					documentGeo));
+					documentGeo,
+					radiusArg));
+			pfree(DatumGetPointer(documentGeo));
+
+			return isMatched;
 		}
 	}
 

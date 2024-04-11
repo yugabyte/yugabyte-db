@@ -11,6 +11,7 @@
 #include "postgres.h"
 #include "utils/array.h"
 #include "utils/lsyscache.h"
+#include "utils/float.h"
 
 #include "utils/mongo_errors.h"
 #include "geospatial/bson_geospatial_common.h"
@@ -41,6 +42,8 @@ static Datum BsonValueGetCenterSphere(const bson_value_t *value,
 									  ShapeOperatorInfo *opInfo);
 static Datum BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo);
 
+/* Error margin for $center radius */
+static const double RADIUS_ERROR_MARGIN = 9e-15;
 
 /*
  * Shape operators that can be used by $geoWithin operator
@@ -520,6 +523,14 @@ BsonValueGetCenter(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 			}
 			{
 				radius = BsonValueAsDouble(value);
+
+				/*
+				 * This is to counter the effect of double precision error in postgres.
+				 * SELECT ST_DWITHIN('Point(5 52)'::geometry, 'Point(5 52.0001)'::geometry, 0.0001) returns false as postgres stores
+				 * 52.0001 as 52.00010000000000332 which makes it go beyond the radius and the result is a false negative.
+				 * Adding this error margin will adjust the radius to bring it in range with the padding added to the point coordinates.
+				 */
+				radius += RADIUS_ERROR_MARGIN;
 			}
 		}
 		index++;
@@ -536,10 +547,20 @@ BsonValueGetCenter(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 						errmsg("radius must be a non-negative number")));
 	}
 
-	/* Return geometry of the center with default SRID */
-	return DatumWithDefaultSRID(OidFunctionCall2(PostgisGeometryBufferFunctionId(),
-												 centerPoint,
-												 Float8GetDatum(radius)));
+	DollarCenterOperatorState *state = palloc0(sizeof(DollarCenterOperatorState));
+	state->isRadiusInfinite = false;
+	state->radius = radius;
+	opInfo->opState = (ShapeOperatorState *) state;
+
+	if (opInfo->queryStage == QueryStage_INDEX)
+	{
+		/* Return expanded geometry for index pushdown. */
+		return OidFunctionCall2(PostgisGeometryExpandFunctionId(),
+								centerPoint,
+								Float8GetDatum(radius));
+	}
+
+	return centerPoint;
 }
 
 
@@ -743,8 +764,8 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 	 * If it is greater than pi, that means whole earth is covered so we can consider radius to be infinite
 	 * and return matched for all valid docs.
 	 */
-	if (radius > (PI / 2) &&
-		radius < PI)
+	if (radius > (M_PI / 2) &&
+		radius < M_PI)
 	{
 		Point antipode;
 		if (point.x > 0)
@@ -765,7 +786,7 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 		WritePointToWKBBuffer(buffer, &antipode);
 		bytea *wkbBytea = WKBBufferGetByteaWithSRID(buffer);
 		Datum antipodeDatum = GetGeographyFromWKB(wkbBytea);
-		double complimentRadius = (PI - radius) * RADIUS_OF_EARTH_M;
+		double complimentRadius = (M_PI - radius) * RADIUS_OF_EARTH_M;
 		Datum complimentArea = DatumWithDefaultSRID(OidFunctionCall2(
 														PostgisGeographyBufferFunctionId(),
 														antipodeDatum,
@@ -777,7 +798,7 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 		pfree(wkbBytea);
 		pfree(DatumGetPointer(antipodeDatum));
 	}
-	else if (radius >= PI)
+	else if (radius >= M_PI)
 	{
 		state->isRadiusInfinite = true;
 		opInfo->opState = (ShapeOperatorState *) state;
@@ -796,7 +817,7 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 	DeepFreeWKB(buffer);
 
 	state->isRadiusInfinite = false;
-	state->radiusInRadians = radius;
+	state->radius = radius;
 
 	opInfo->opState = (ShapeOperatorState *) state;
 
