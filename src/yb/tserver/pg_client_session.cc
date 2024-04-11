@@ -1073,8 +1073,7 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
     }
   }
   auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();
-  if (!ddl_mode && xcluster_context_ &&
-      xcluster_context_->IsXClusterReadOnlyMode(options.namespace_id())) {
+  if (!ddl_mode && xcluster_context_ && xcluster_context_->IsReadOnlyMode(options.namespace_id())) {
     for (const auto& op : data->req.ops()) {
       if (op.has_write() && !op.write().is_backfill()) {
         // Only DDLs and index backfill is allowed in xcluster read only mode.

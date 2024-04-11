@@ -298,8 +298,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   PgMutationCounter& GetPgNodeLevelMutationCounter();
 
-  Result<cdc::XClusterRole> TEST_GetXClusterRole() const;
-
   Status ListMasterServers(const ListMasterServersRequestPB* req,
                            ListMasterServersResponsePB* resp) const;
 
