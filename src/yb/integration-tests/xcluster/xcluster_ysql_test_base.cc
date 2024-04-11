@@ -383,6 +383,36 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
       strings::Substitute("Unable to find table $0 in namespace $1", table_name, namespace_name));
 }
 
+Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster* cluster, const YBTableName& table_name) {
+  master::ListTablesRequestPB req;
+  master::ListTablesResponsePB resp;
+
+  req.set_name_filter(table_name.table_name());
+  req.mutable_namespace_()->set_name(table_name.namespace_name());
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  req.set_include_not_running(true);
+
+  master::MasterDdlProxy master_proxy(
+      &cluster->client_->proxy_cache(),
+      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  for (const auto& table : resp.tables()) {
+    if (table.pgschema_name() == table_name.pgschema_name() &&
+        table.state() != master::SysTablesEntryPB::DELETED) {
+      LOG(INFO) << "Found table in incorrect state: " << table.ShortDebugString();
+      return false;
+    }
+  }
+  return true;
+}
+
 Status XClusterYsqlTestBase::DropYsqlTable(
     Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
     const std::string& table_name, bool is_index) {

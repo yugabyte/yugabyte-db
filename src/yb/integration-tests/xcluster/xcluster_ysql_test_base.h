@@ -76,6 +76,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       bool verify_schema_name = false,
       bool exclude_system_tables = true);
 
+  Result<bool> IsTableDeleted(Cluster* cluster, const client::YBTableName& table_name);
+
   Status DropYsqlTable(
       Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
       const std::string& table_name, bool is_index = false);

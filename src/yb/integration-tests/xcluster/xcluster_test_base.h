@@ -87,6 +87,16 @@ class XClusterTestBase : public YBTest {
         .dbname = dbname
       }).Connect(simple_query_protocol);
     }
+
+    Result<pgwrapper::PGConn> ConnectToDB(
+        const std::string& dbname, const std::string& user, bool simple_query_protocol = false) {
+      return pgwrapper::PGConnBuilder({
+        .host = pg_host_port_.host(),
+        .port = pg_host_port_.port(),
+        .dbname = dbname,
+        .user = user
+      }).Connect(simple_query_protocol);
+    }
   };
 
   YB_STRONGLY_TYPED_BOOL(LeaderOnly);

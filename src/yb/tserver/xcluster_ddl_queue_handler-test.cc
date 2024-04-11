@@ -79,9 +79,7 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
     return rows_;
   }
 
-  Status ProcessDDLQuery(int64 start_time, int64 query_id, const std::string& query) override {
-    return Status::OK();
-  }
+  Status ProcessDDLQuery(const DDLQueryInfo& query_info) override { return Status::OK(); }
 };
 
 class XClusterDDLQueueHandlerMockedTest : public YBTest {
