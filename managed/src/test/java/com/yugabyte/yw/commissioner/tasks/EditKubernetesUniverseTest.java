@@ -73,6 +73,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   private EditKubernetesUniverse editUniverse;
 
   private Universe defaultUniverse;
+  private YBClient mockClient;
 
   private static final String NODE_PREFIX = "demo-universe";
   private static final String YB_SOFTWARE_VERSION = "1.0.0";
@@ -99,7 +100,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
     } catch (Exception e) {
     }
-    YBClient mockClient = mock(YBClient.class);
+    mockClient = mock(YBClient.class);
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     try {
@@ -190,6 +191,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.FreezeUniverse,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
+          TaskType.CheckNodeSafeToDelete,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
@@ -202,6 +204,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedRemovePodTaskResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -423,7 +426,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
     String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + "\"podIP\": \"1.2.3.0\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}},"
@@ -439,6 +442,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             + "\"}}]}";
     List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts("1.2.3.0", 7000));
+    setDumpEntitiesMock(defaultUniverse, "yb-tserver-2", false);
     factory
         .forUniverse(defaultUniverse)
         .setValue(UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear.getKey(), "1 ms");
