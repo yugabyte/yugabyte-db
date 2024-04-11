@@ -490,6 +490,9 @@ class CDCServiceImpl : public CDCServiceIf {
   bool ValidateAutoFlagsConfigVersion(
       const GetChangesRequestPB& req, GetChangesResponsePB& resp, rpc::RpcContext& context);
 
+  void LogGetChangesLagForCDCSDK(
+      const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp);
+
   rpc::Rpcs rpcs_;
 
   std::unique_ptr<CDCServiceContext> context_;
