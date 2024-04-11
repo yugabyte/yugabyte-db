@@ -79,7 +79,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
       version: e,
       info: releases[e],
       series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
-        e.split('.')[1] % 2 === 0 ? '(Standard Term Support)' : '(Preview)'
+        e.split('.')[1] % 2 === 0 ? '(Stable)' : '(Preview)'
       }`
     }))
   ];
