@@ -384,4 +384,9 @@ Status XClusterManager::MarkIndexBackfillCompleted(
   return XClusterSourceManager::MarkIndexBackfillCompleted(index_ids, epoch);
 }
 
+std::unordered_set<xcluster::ReplicationGroupId>
+XClusterManager::GetInboundTransactionalReplicationGroups() const {
+  return XClusterTargetManager::GetTransactionalReplicationGroups();
+}
+
 }  // namespace yb::master

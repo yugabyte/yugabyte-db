@@ -32,15 +32,15 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
   Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const override;
 
-  bool IsXClusterReadOnlyMode(const NamespaceId namespace_id) const override;
+  bool IsReadOnlyMode(const NamespaceId namespace_id) const override;
+
+  bool SafeTimeComputationRequired() const override;
+  bool SafeTimeComputationRequired(const NamespaceId namespace_id) const override;
 
   void UpdateSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
-  void SetDDLOnlyMode(bool is_xcluster_read_only_mode);
-
  private:
   XClusterSafeTimeMap safe_time_map_;
-  std::atomic<bool> read_only_mode_{false};
 };
 
 }  // namespace tserver

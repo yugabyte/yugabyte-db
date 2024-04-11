@@ -23,12 +23,9 @@ Result<std::optional<HybridTime>> TserverXClusterContext::GetSafeTime(
   return safe_time_map_.GetSafeTime(namespace_id);
 }
 
-bool TserverXClusterContext::IsXClusterReadOnlyMode(const NamespaceId namespace_id) const {
-  if (!read_only_mode_.load(std::memory_order_acquire)) {
-    return false;
-  }
-
-  // Only namespaces that are part of the safe time computation belong to xCluster replication.
+bool TserverXClusterContext::IsReadOnlyMode(const NamespaceId namespace_id) const {
+  // Namespaces that are part of the safe time belong to an inbound transactional xCluster
+  // replication.
   return safe_time_map_.HasNamespace(namespace_id);
 }
 
@@ -36,8 +33,13 @@ void TserverXClusterContext::UpdateSafeTime(const XClusterNamespaceToSafeTimePBM
   safe_time_map_.Update(safe_time_map);
 }
 
-void TserverXClusterContext::SetDDLOnlyMode(bool is_xcluster_read_only_mode) {
-  read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
+bool TserverXClusterContext::SafeTimeComputationRequired() const {
+  // If we have any namespaces with safe times, then we need to compute safe time.
+  return !safe_time_map_.empty();
+}
+
+bool TserverXClusterContext::SafeTimeComputationRequired(const NamespaceId namespace_id) const {
+  return safe_time_map_.HasNamespace(namespace_id);
 }
 
 }  // namespace yb::tserver

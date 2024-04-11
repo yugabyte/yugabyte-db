@@ -281,17 +281,18 @@ Result<bool> ShouldAddTableToReplicationGroup(
     return false;
   }
 
-  // Handle v1 API, transactional xcluster replication for indexes. If the indexed table is under
-  // replication then we need to add the index to replication as well.
-  if (!universe_pb.has_db_scoped_info() && !(universe_pb.transactional() && IsIndex(table_pb))) {
-    return false;
-  }
-
   if (universe_pb.has_db_scoped_info()) {
     if (!IncludesConsumerNamespace(universe, table_info.namespace_id())) {
       return false;
     }
   } else {
+    // Handle v1 API, transactional xcluster replication for indexes. If the indexed table is under
+    // replication then we need to add the index to replication as well.
+
+    if (!universe_pb.transactional() || !IsIndex(table_pb)) {
+      return false;
+    }
+
     const auto& indexed_table_id = GetIndexedTableId(table_pb);
     auto indexed_table_stream_ids =
         catalog_manager.GetXClusterConsumerStreamIdsForTable(indexed_table_id);
@@ -300,16 +301,11 @@ Result<bool> ShouldAddTableToReplicationGroup(
     }
   }
 
-  // Check if the table has already been added to this replication group.
+  // Skip if the table has already been added to this replication group.
   auto cluster_config = catalog_manager.ClusterConfig();
   {
     auto l = cluster_config->LockForRead();
     const auto& consumer_registry = l->pb.consumer_registry();
-    // Only add if we are in a transactional replication with STANDBY mode.
-    if (consumer_registry.role() != cdc::XClusterRole::STANDBY ||
-        !consumer_registry.transactional()) {
-      return false;
-    }
 
     auto producer_entry =
         FindOrNull(consumer_registry.producer_map(), universe.ReplicationGroupId().ToString());

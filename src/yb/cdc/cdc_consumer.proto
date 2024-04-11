@@ -90,6 +90,7 @@ message ProducerEntryPB {
   uint32 validated_auto_flags_config_version = 6; // [default = 0] implicit in proto3
 }
 
+// NOTE: Deprecated
 enum XClusterRole {
   ACTIVE = 0;
   STANDBY = 1;
@@ -100,7 +101,8 @@ message ConsumerRegistryPB {
   map<string, ProducerEntryPB> producer_map = 1;
   // Reserved for deprecated enable_replicate_transaction_status_table field.
   reserved 2;
-  XClusterRole role = 3;
-  // Does this replication group support consistent transactions.
-  bool transactional = 4;
+  // Cannot remove the field, since we need to support rollbacks.
+  XClusterRole DEPRECATED_role = 3;
+  // Cannot remove the field, since we need to support rollbacks.
+  bool DEPRECATED_transactional = 4;
 }

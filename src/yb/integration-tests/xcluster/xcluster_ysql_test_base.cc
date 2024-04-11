@@ -431,9 +431,9 @@ Status XClusterYsqlTestBase::DropYsqlTable(Cluster& cluster, const client::YBTab
       table_name.relation_type() == master::INDEX_TABLE_RELATION);
 }
 
-void XClusterYsqlTestBase::WriteWorkload(
+Status XClusterYsqlTestBase::WriteWorkload(
     const YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster) {
-  auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(table.namespace_name()));
   std::string table_name_str = GetCompleteTableName(table);
 
   LOG(INFO) << "Writing " << end - start << " inserts";
@@ -441,17 +441,19 @@ void XClusterYsqlTestBase::WriteWorkload(
   // Use a transaction if more than 1 row is to be inserted.
   const bool use_tran = end - start > 1;
   if (use_tran) {
-    EXPECT_OK(conn.ExecuteFormat("BEGIN"));
+    RETURN_NOT_OK(conn.ExecuteFormat("BEGIN"));
   }
 
   for (uint32_t i = start; i < end; i++) {
-    EXPECT_OK(
+    RETURN_NOT_OK(
         conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2)", table_name_str, kKeyColumnName, i));
   }
 
   if (use_tran) {
-    EXPECT_OK(conn.ExecuteFormat("COMMIT"));
+    RETURN_NOT_OK(conn.ExecuteFormat("COMMIT"));
   }
+
+  return Status::OK();
 }
 
 Result<pgwrapper::PGResultPtr> XClusterYsqlTestBase::ScanToStrings(
@@ -571,7 +573,7 @@ Result<std::vector<xrepl::StreamId>> XClusterYsqlTestBase::BootstrapCluster(
       &cluster->client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster->mini_cluster_->mini_tablet_server(0)->bound_rpc_addr()));
   RETURN_NOT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
-  CHECK(!resp.has_error());
+  CHECK(!resp.has_error()) << resp.error().DebugString();
 
   CHECK_EQ(resp.cdc_bootstrap_ids().size(), tables.size());
 

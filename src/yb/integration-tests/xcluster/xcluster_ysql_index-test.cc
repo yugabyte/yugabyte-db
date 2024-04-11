@@ -81,7 +81,6 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     master::GetUniverseReplicationResponsePB resp;
     ASSERT_OK(VerifyUniverseReplication(kReplicationGroupId, &resp));
     if (IsTransactional()) {
-      ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
       ASSERT_OK(WaitForValidSafeTimeOnAllTServers(namespace_id_));
     }
 
@@ -480,11 +479,6 @@ class XClusterDbScopedYsqlIndexTest : public XClusterYsqlIndexTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
     RETURN_NOT_OK(CheckpointReplicationGroup());
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
-    return Status::OK();
-  }
-
-  Status ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster) override {
-    // No-op for Db scoped repl groups.
     return Status::OK();
   }
 };

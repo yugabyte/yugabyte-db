@@ -62,7 +62,6 @@ class XClusterConsumerIf {
       master::TSHeartbeatRequestPB* req, bool needs_full_tablet_report) = 0;
   virtual std::vector<XClusterPollerStats> GetPollerStats() const = 0;
 
-  virtual cdc::XClusterRole TEST_GetXClusterRole() const = 0;
   virtual std::vector<TabletId> TEST_producer_tablets_running() const = 0;
   virtual uint32_t TEST_GetNumSuccessfulWriteRpcs() = 0;
   virtual std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers() const = 0;

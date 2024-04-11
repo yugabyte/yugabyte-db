@@ -1701,7 +1701,6 @@ TEST_F(XClusterTestTransactionalOnly, WithBootstrap) {
       producer_tables_, bootstrap_ids, {LeaderOnly::kTrue, Transactional::kTrue}));
   master::GetUniverseReplicationResponsePB verify_repl_resp;
   ASSERT_OK(VerifyUniverseReplication(&verify_repl_resp));
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
   // 6. Verify we got the rows from step 3 but not 1.
   ASSERT_OK(VerifyNumRecordsOnConsumer(batch_size));

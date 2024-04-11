@@ -4192,10 +4192,8 @@ Status CatalogManager::InitXClusterConsumer(
   auto transactional = universe_l->pb.transactional();
   if (!xcluster::IsAlterReplicationGroupId(replication_info.ReplicationGroupId())) {
     if (universe_l->pb.has_db_scoped_info()) {
-      consumer_registry->set_role(cdc::XClusterRole::STANDBY);
       DCHECK(transactional);
     }
-    consumer_registry->set_transactional(transactional);
   }
 
   for (const auto& stream_info : consumer_info) {
@@ -4403,10 +4401,6 @@ Status CatalogManager::DeleteUniverseReplication(
     auto it = replication_group_map->find(replication_group_id.ToString());
     if (it != replication_group_map->end()) {
       replication_group_map->erase(it);
-      if (l->pb.has_db_scoped_info()) {
-        consumer_registry->set_role(cdc::XClusterRole::ACTIVE);
-        consumer_registry->clear_transactional();
-      }
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
       RETURN_NOT_OK(CheckStatus(
           sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
@@ -4538,38 +4532,6 @@ Status CatalogManager::ChangeXClusterRole(
     rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing ChangeXClusterRole request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
-
-  auto new_role = req->role();
-  // Get the current role from the cluster config
-  auto cluster_config = ClusterConfig();
-  auto l = cluster_config->LockForWrite();
-  auto consumer_registry = l.mutable_data()->pb.mutable_consumer_registry();
-  auto current_role = consumer_registry->role();
-  if (current_role == new_role) {
-    return STATUS(
-        InvalidArgument, "New role must be different than existing role", req->ShortDebugString(),
-        MasterError(MasterErrorPB::INVALID_REQUEST));
-  }
-  if (new_role == cdc::XClusterRole::STANDBY) {
-    if (!consumer_registry->transactional()) {
-      return STATUS(
-          InvalidArgument,
-          "This replication group does not support xCluster roles. "
-          "Recreate the group with the transactional flag to enable STANDBY mode",
-          req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-    }
-  }
-  consumer_registry->set_role(new_role);
-  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-  // Commit the change to the consumer registry.
-  RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-      "updating cluster config in sys-catalog"));
-  l.Commit();
-
-  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
-
-  LOG(INFO) << "Successfully completed ChangeXClusterRole request from " << RequestorString(rpc);
   return Status::OK();
 }
 
