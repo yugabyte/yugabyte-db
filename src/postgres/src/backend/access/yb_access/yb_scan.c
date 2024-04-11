@@ -4321,7 +4321,7 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 		ppk->is_forward ? latest_key_size : 0 /* lower_bound_key_size */,
 		ppk->is_forward ? NULL : latest_key /* upper_bound_key */,
 		ppk->is_forward ? 0 : latest_key_size /* upper_bound_key_size */,
-		max_num_ranges, 1024 * 1024 /* range_size_bytes */, ppk->is_forward,
+		max_num_ranges,  yb_parallel_range_size, ppk->is_forward,
 		(ppk->key_data_capacity / 3) - sizeof(keylen_t) /* max_key_length */,
 		NULL /* current_tserver_ht */,
 		ppk_buffer_fetch_callback, &fkp));
@@ -4430,7 +4430,7 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 		NULL /* lower_bound_key */, 0 /* lower_bound_key_size */,
 		NULL /* upper_bound_key */, 0 /* upper_bound_key_size */,
 		YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE,
-		1024 * 1024 /* range_size_bytes */, is_forward,
+		yb_parallel_range_size, is_forward,
 		(ppk->key_data_capacity / 3) - sizeof(keylen_t),
 		ppk->used_ht_for_read ? NULL : &ppk->used_ht_for_read,
 		ppk_buffer_initialize_callback, ppk));

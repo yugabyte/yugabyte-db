@@ -18,8 +18,11 @@ INSERT INTO pctest1
 INSERT INTO pctest2
     SELECT i, 200 + i, i/5, i%10, 'Other value ' || i::text FROM generate_series(1, 200) i;
 
+-- set smaller parallel interval to produce more ranges
+set yb_parallel_range_size to 1024;
+
 -- enable parallel query for YB tables
-set yb_parallel_range_rows  to 1;
+set yb_parallel_range_rows to 1;
 set yb_enable_base_scans_cost_model to true;
 
 -- encourage use of parallel plans
