@@ -380,7 +380,7 @@ static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 static void ATRewriteCatalogs(List **wqueue,
 							  LOCKMODE lockmode,
 							  List **rollbackHandles,
-							  List **handles);
+							  List *volatile *handles);
 static void ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 		  AlterTableCmd *cmd, LOCKMODE lockmode);
 static void ATRewriteTables(AlterTableStmt *parsetree,
@@ -3963,7 +3963,7 @@ ATController(AlterTableStmt *parsetree,
 
 	/* Phase 2: update system catalogs */
 	List *rollbackHandles = NIL;
-	List *handles = NIL;
+	List *volatile handles = NIL;
 	PG_TRY();
 	{
 		/*
@@ -4336,7 +4336,7 @@ static void
 ATRewriteCatalogs(List **wqueue,
 				  LOCKMODE lockmode,
 				  List **rollbackHandles,
-				  List **handles)
+				  List *volatile *handles)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -19075,7 +19075,7 @@ static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
  */
 static void YbATInvalidateTableCacheAfterAlter(List *handles)
 {
-	if (YbDdlRollbackEnabled())
+	if (YbDdlRollbackEnabled() && handles)
 	{
 		/*
 		 * As part of DDL transaction verification, we may have incremented
