@@ -349,6 +349,8 @@ class PgApiImpl {
 
   Status ExecAlterTable(PgStatement *handle);
 
+  Status AlterTableInvalidateTableCacheEntry(PgStatement *handle);
+
   Status NewDropTable(const PgObjectId& table_id,
                       bool if_exist,
                       PgStatement **handle);
@@ -429,6 +431,8 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
+
+  Result<bool> DmlHasRegularTargets(PgStatement *handle);
 
   Result<bool> DmlHasSystemTargets(PgStatement *handle);
 

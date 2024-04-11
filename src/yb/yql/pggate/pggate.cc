@@ -1046,6 +1046,16 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
   return pg_stmt->Exec();
 }
 
+Status PgApiImpl::AlterTableInvalidateTableCacheEntry(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  pg_stmt->InvalidateTableCacheEntry();
+  return Status::OK();
+}
+
 Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
                                bool if_exist,
                                PgStatement **handle) {
@@ -1320,6 +1330,10 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
 
 Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
+}
+
+Result<bool> PgApiImpl::DmlHasRegularTargets(PgStatement *handle) {
+  return down_cast<PgDml*>(handle)->has_regular_targets();
 }
 
 Result<bool> PgApiImpl::DmlHasSystemTargets(PgStatement *handle) {
@@ -1743,7 +1757,7 @@ Status PgApiImpl::RetrieveYbctids(PgStatement *handle, const YBCPgExecParameters
         vec->emplace_back(s);
       }
 
-      if (consumed_bytes >= (size_t) exec_params->work_mem * 1024) {
+      if (consumed_bytes >= (size_t) exec_params->work_mem * 1024L) {
         *exceeded_work_mem = true;
         break;
       }
@@ -2029,7 +2043,7 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
         10s /* timeout */,
-        "catalog_version_table_in_perdb_mode is not set shared memory",
+        "catalog_version_table_in_perdb_mode is not set in shared memory",
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
     RETURN_NOT_OK_PREPEND(

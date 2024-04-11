@@ -114,6 +114,7 @@
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
 #include "executor/nodeYbBatchedNestloop.h"
+#include "executor/nodeYbBitmapIndexscan.h"
 #include "executor/nodeYbBitmapTablescan.h"
 #include "executor/nodeYbSeqscan.h"
 #include "nodes/nodeFuncs.h"
@@ -234,6 +235,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 
 		case T_BitmapIndexScan:
 			result = (PlanState *) ExecInitBitmapIndexScan((BitmapIndexScan *) node,
+														   estate, eflags);
+			break;
+
+		case T_YbBitmapIndexScan:
+			result = (PlanState *) ExecInitYbBitmapIndexScan((YbBitmapIndexScan *) node,
 														   estate, eflags);
 			break;
 
@@ -525,6 +531,11 @@ MultiExecProcNode(PlanState *node)
 			result = MultiExecBitmapIndexScan((BitmapIndexScanState *) node);
 			break;
 
+		case T_YbBitmapIndexScanState:
+			result = MultiExecYbBitmapIndexScan(
+				(YbBitmapIndexScanState *) node);
+			break;
+
 		case T_BitmapAndState:
 			result = MultiExecBitmapAnd((BitmapAndState *) node);
 			break;
@@ -653,6 +664,10 @@ ExecEndNode(PlanState *node)
 
 		case T_BitmapIndexScanState:
 			ExecEndBitmapIndexScan((BitmapIndexScanState *) node);
+			break;
+
+		case T_YbBitmapIndexScanState:
+			ExecEndYbBitmapIndexScan((YbBitmapIndexScanState *) node);
 			break;
 
 		case T_BitmapHeapScanState:

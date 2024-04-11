@@ -97,7 +97,7 @@ If the Prometheus directory is taking up a lot of space, you can reduce its size
 
 Affected releases: All
 
-Workaround: Reduce the Prometheus directory size by changing the metrics retention time and scrape interval [configuration options](../../install-yugabyte-platform/install-software/installer/#prometheus-configuration-options).
+Workaround: Reduce the Prometheus directory size by changing the metrics retention time and scrape interval [configuration options](../../../install-yugabyte-platform/install-software/installer/#prometheus-configuration-options).
 
 Perform the following steps:
 

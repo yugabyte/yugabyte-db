@@ -14,16 +14,19 @@
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
 
 [context.branch-deploy.environment]
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
 
 [context.production.environment]
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
 
 ################ REDIRECTS ################
 #
@@ -311,7 +314,7 @@
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/persistence/"
-  to = "/preview/architecture/docdb/persistence/"
+  to = "/preview/architecture/docdb/data-model"
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/sharding/"
@@ -319,7 +322,7 @@
 
 [[redirects]]
   from = "/preview/architecture/concepts/persistence/"
-  to = "/preview/architecture/docdb/persistence/"
+  to = "/preview/architecture/docdb/data-model/"
 
 [[redirects]]
   from = "/preview/architecture/concepts/replication/"
@@ -332,6 +335,10 @@
 [[redirects]]
   from = "/preview/architecture/concepts/yql/"
   to = "/preview/architecture/query-layer/"
+
+[[redirects]]
+  from = "/preview/architecture/concepts"
+  to = "/preview/architecture/key-concepts"
 
 [[redirects]]
   from = "/preview/architecture/docdb/replication/"
@@ -1272,6 +1279,8 @@
             https://umbcujcbe8-dsn.algolia.net/
             https://www.google-analytics.com/
             https://www.yugabyte.com
+            https://api.segment.io/
+            https://cdn.segment.com/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
@@ -1294,6 +1303,7 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com
+            https://cdn.segment.com/
         ;
 
         style-src 'self' 'unsafe-inline'

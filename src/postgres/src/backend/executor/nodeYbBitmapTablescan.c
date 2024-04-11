@@ -30,8 +30,7 @@
 
 
 static TupleTableSlot *YbBitmapTableNext(YbBitmapTableScanState *node);
-static HeapScanDesc CreateYbBitmapTableScanDesc(Relation currentRelation,
-												EState *estate);
+static HeapScanDesc CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate);
 
 /* ----------------------------------------------------------------
  *		YbBitmapTableNext
@@ -50,15 +49,9 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 	MemoryContext oldcontext;
 	YbScanDesc ybScan;
 
-	if (!node->ss.ss_currentScanDesc)
-		node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(
-			node->ss.ss_currentRelation,
-			node->ss.ps.state);
-
 	/*
 	 * extract necessary information from index scan node
 	 */
-	scandesc = node->ss.ss_currentScanDesc;
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;
 	ybtbm = node->ybtbm;
@@ -85,14 +78,17 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		node->skipped_tuples = 0;
 	}
 
+	if (!node->ss.ss_currentScanDesc)
+		node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(node);
+	scandesc = node->ss.ss_currentScanDesc;
+
 	ybScan = scandesc->ybscan;
 
 	/*
 	 * Special case: if we don't need the results (e.g. COUNT), just return as
 	 * many null values as we have ybctids.
 	 */
-	if (node->can_skip_fetch && !node->recheck_required &&
-		!node->work_mem_exceeded)
+	if (node->can_skip_fetch && !node->recheck_required && !node->work_mem_exceeded)
 	{
 		if (++node->skipped_tuples > yb_tbm_get_size(ybtbm))
 			return ExecClearTuple(slot);
@@ -103,8 +99,8 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 	}
 
 	/*
-	 * If the bitmaps have exceeded work_mem, just select everything from the
-	 * main table. We will filter it later.
+	 * If the bitmaps have exceeded work_mem just select everything from the
+	 * main table. The correct remote filters have already been applied.
 	 */
 	if (node->work_mem_exceeded && !ybScan->is_exec_done)
 	{
@@ -169,12 +165,23 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 			 * If we are using lossy info, we have to recheck the qual
 			 * conditions at every tuple.
 			 * Although ExecScan rechecks, it checks only node->qual, not
-			 * node->bitmapqualorig.
+			 * the index conditions
 			 */
-			if (node->recheck_required || node->work_mem_exceeded)
+			if (node->work_mem_exceeded)
 			{
 				econtext->ecxt_scantuple = slot;
-				if (!ExecQualAndReset(node->bitmapqualorig, econtext))
+				if (!ExecQualAndReset(node->fallback_local_quals, econtext))
+				{
+					/* Fails filter, so drop it and loop back for another */
+					InstrCountFiltered1(node, 1);
+					ExecClearTuple(slot);
+					continue;
+				}
+			}
+			else if (node->recheck_required)
+			{
+				econtext->ecxt_scantuple = slot;
+				if (!ExecQualAndReset(node->recheck_local_quals, econtext))
 				{
 					/* Fails recheck, so drop it and loop back for another */
 					InstrCountFiltered2(node, 1);
@@ -214,7 +221,7 @@ YbBitmapTableRecheck(YbBitmapTableScanState *node, TupleTableSlot *slot)
 
 	/* Does the tuple meet the original qual conditions? */
 	econtext->ecxt_scantuple = slot;
-	return ExecQualAndReset(node->bitmapqualorig, econtext);
+	return ExecQualAndReset(node->fallback_local_quals, econtext);
 }
 
 /* ----------------------------------------------------------------
@@ -232,11 +239,76 @@ ExecYbBitmapTableScan(PlanState *pstate)
 }
 
 static HeapScanDesc
-CreateYbBitmapTableScanDesc(Relation currentRelation, EState *estate)
+CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 {
-	HeapScanDesc scandesc = heap_beginscan_bm(currentRelation,
-											  estate->es_snapshot, 0, NULL);
-	scandesc->ybscan->exec_params = &estate->yb_exec_params;
+	YbScanDesc		ybScan;
+	PushdownExprs  *yb_pushdown;
+	HeapScanDesc	scandesc;
+	YbBitmapTableScan *plan = (YbBitmapTableScan *) scanstate->ss.ps.plan;
+	bool			has_targets;
+
+	yb_pushdown = YbInstantiatePushdownParams(
+			scanstate->work_mem_exceeded ? &plan->fallback_pushdown
+										 : &plan->rel_pushdown,
+			scanstate->ss.ps.state);
+
+	ybScan = ybcBeginScan(scanstate->ss.ss_currentRelation,
+						  NULL /* index */,
+						  false /* xs_want_itup */,
+						  0 /* nkeys */,
+						  NULL /* keys */,
+						  (Scan *) plan /* pg_scan_plan */,
+						  yb_pushdown /* rel_pushdown */,
+						  NULL /* idx_pushdown */,
+						  NULL /* aggrefs */,
+						  0 /* distinct_prefixlen */,
+						  &scanstate->ss.ps.state->yb_exec_params,
+						  true /* is_internal_scan */,
+						  false /* fetch_ybctids_only */);
+
+	if (yb_pushdown)
+		pfree(yb_pushdown);
+
+	/* Set up Postgres sys table scan description */
+	scandesc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
+	scandesc->rs_rd        = scanstate->ss.ss_currentRelation;
+	scandesc->rs_snapshot  = scanstate->ss.ps.state->es_snapshot;
+	scandesc->rs_temp_snap = false;
+	scandesc->rs_cblock    = InvalidBlockNumber;
+	scandesc->ybscan       = ybScan;
+
+	/*
+	 * We can potentially skip sending a request to the table if we do not need
+	 * any columns of the table, either for checking non-indexable quals or for
+	 * returning data.  This test is a bit simplistic, as it checks the
+	 * stronger condition that there's no qual or return tlist at all.  But in
+	 * most cases it's probably not worth working harder than that.
+	 *
+	 * The PG version of this test looked only at qual and tlist. In Yugabyte,
+	 * the target list from PGGate is more accurate and not much more work to
+	 * look at, so look at that instead.
+	 */
+	HandleYBStatus(YBCPgDmlHasRegularTargets(ybScan->handle, &has_targets));
+
+	scanstate->can_skip_fetch = (plan->scan.plan.qual == NIL &&
+								 plan->rel_pushdown.quals == NIL &&
+								 !has_targets && !scanstate->recheck_required);
+
+	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
+	{
+		PushdownExprs *recheck_pushdown = YbInstantiatePushdownParams(
+			&plan->recheck_pushdown,
+			scanstate->ss.ps.state);
+		if (recheck_pushdown)
+		{
+			YbDmlAppendQuals(recheck_pushdown->quals,
+							 true /* is_primary */, ybScan->handle);
+			YbDmlAppendColumnRefs(recheck_pushdown->colrefs,
+								  true /* is_primary */, ybScan->handle);
+			pfree(recheck_pushdown);
+		}
+	}
+
 	return scandesc;
 }
 
@@ -252,18 +324,15 @@ ExecReScanYbBitmapTableScan(YbBitmapTableScanState *node)
 	if (node->ss.ss_currentScanDesc)
 	{
 		YbScanDesc ybScan = (YbScanDesc) node->ss.ss_currentScanDesc->ybscan;
-		/* For rescan, end the previous scan. */
+		/*
+		 * For rescan, end the previous scan. Set the old scan to null so we
+		 * recreate it when we need to.
+		 */
 		ybc_free_ybscan(ybScan);
 		node->ss.ss_currentScanDesc->ybscan = NULL;
 		pfree(node->ss.ss_currentScanDesc);
+		node->ss.ss_currentScanDesc = NULL;
 	}
-
-	node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(
-		node->ss.ss_currentRelation,
-		node->ss.ps.state);
-
-	/* rescan to release any page pin */
-	heap_rescan(node->ss.ss_currentScanDesc, NULL);
 
 	/* release bitmaps and buffers if any */
 	if (node->ybtbmres)
@@ -353,7 +422,7 @@ YbBitmapTableScanState *
 ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 {
 	YbBitmapTableScanState *scanstate;
-	Relation	currentRelation;
+	Relation				currentRelation;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -376,18 +445,9 @@ ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 	scanstate->ybtbmiterator = NULL;
 	scanstate->ybtbmres = NULL;
 	scanstate->recheck_required = false;
+	scanstate->fallback_local_quals = NULL;
 	/* may be updated below */
 	scanstate->initialized = false;
-
-	/*
-	 * We can potentially skip fetching heap pages if we do not need any
-	 * columns of the table, either for checking non-indexable quals or for
-	 * returning data.  This test is a bit simplistic, as it checks the
-	 * stronger condition that there's no qual or return tlist at all.  But in
-	 * most cases it's probably not worth working harder than that.
-	 */
-	scanstate->can_skip_fetch = (node->scan.plan.qual == NIL &&
-								 node->scan.plan.targetlist == NIL);
 
 	/*
 	 * Miscellaneous initialization
@@ -417,7 +477,6 @@ ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  RelationGetDescr(currentRelation));
 
-
 	/*
 	 * Initialize result type and projection.
 	 */
@@ -429,8 +488,10 @@ ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 	 */
 	scanstate->ss.ps.qual =
 		ExecInitQual(node->scan.plan.qual, (PlanState *) scanstate);
-	scanstate->bitmapqualorig =
-		ExecInitQual(node->bitmapqualorig, (PlanState *) scanstate);
+	scanstate->recheck_local_quals =
+		ExecInitQual(node->recheck_local_quals, (PlanState *) scanstate);
+	scanstate->fallback_local_quals =
+		ExecInitQual(node->fallback_local_quals, (PlanState *) scanstate);
 
 	scanstate->ss.ss_currentRelation = currentRelation;
 

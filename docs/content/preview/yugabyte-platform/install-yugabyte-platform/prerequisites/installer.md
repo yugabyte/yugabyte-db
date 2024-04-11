@@ -16,7 +16,7 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
-| YBA Installer | yba-ctl CLI | You are performing a new installation.<br>You are ready to migrate from a Replicated installation. {{<badge/ea>}} |
+| YBA Installer | yba-ctl CLI | You are performing a new installation.<br>You are ready to migrate from a Replicated installation. |
 | Replicated | Docker containers | Your installation already uses Replicated. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
 
@@ -82,7 +82,7 @@ In addition, add the following commands to the sudoers file:
 /usr/bin/yba-ctl clean
 ./yba-ctl clean
 /usr/bin/yba-ctl createBackup
-./yba-ctl generate-config 
+./yba-ctl generate-config
 /usr/bin/yba-ctl help
 ./yba-ctl help
 ./yba-ctl install

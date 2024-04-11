@@ -66,7 +66,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/debug-util.h"
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
@@ -86,7 +86,7 @@ using namespace std::literals;
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::IsDebug(),
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::kIsDebug,
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,

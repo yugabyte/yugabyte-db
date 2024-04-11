@@ -42,6 +42,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.UniverseBackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -169,6 +170,42 @@ public class BackupHelper {
       throw new PlatformServiceException(
           BAD_REQUEST, "Incremental backup frequency should be lower than full backup frequency.");
     }
+  }
+
+  public UUID createUniverseBackupTask(UUID customerUUID, UniverseBackupRequestParams taskParams) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
+
+    if (universe
+        .getConfig()
+        .getOrDefault(Universe.TAKE_BACKUPS, "true")
+        .equalsIgnoreCase("false")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Taking backups on the universe is disabled");
+    }
+
+    if (universe.getUniverseDetails().updateInProgress) {
+      throw new PlatformServiceException(
+          CONFLICT,
+          String.format(
+              "Cannot run Backup task since the universe %s is currently in a locked state.",
+              taskParams.getUniverseUUID().toString()));
+    }
+
+    if (taskParams.storageConfigUUID == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
+    }
+
+    CustomerConfig customerConfig =
+        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+
+    if (!customerConfig.getState().equals(ConfigState.Active)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
+    }
+
+    return UUID.randomUUID();
+    // change to task response once tasks implementation complete
   }
 
   public UUID createBackupTask(UUID customerUUID, BackupRequestParams taskParams) {

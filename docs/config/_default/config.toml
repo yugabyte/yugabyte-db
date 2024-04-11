@@ -40,3 +40,7 @@ enableGitInfo = true
 
 [markup.goldmark.parser.attribute]
     block = true
+
+[security]
+  [security.funcs]
+    getenv = ['SEGMENT_API_KEY']

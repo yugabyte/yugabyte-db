@@ -206,6 +206,9 @@ static volatile sig_atomic_t replication_active = false;
 static LogicalDecodingContext *logical_decoding_ctx = NULL;
 static XLogRecPtr logical_startptr = InvalidXLogRecPtr;
 
+/* Total time spent in the WalSndWriteData function in a batch of changes. */
+uint64_t YbWalSndTotalTimeInSendingMicros = 0;
+
 /* A sample associating a WAL location with the time it was written. */
 typedef struct
 {
@@ -262,6 +265,7 @@ static bool TransactionIdInRecentPast(TransactionId xid, uint32 epoch);
 
 static void XLogRead(char *buf, XLogRecPtr startptr, Size count);
 
+static void YbWalSndUpdateTotalTimeInSendingMicros(TimestampTz yb_start_time);
 
 /* Initialize walsender process before entering the main command loop */
 void
@@ -846,12 +850,14 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 static void
 CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 {
-	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+	if (IsYugaByteEnabled() &&
+		(!yb_enable_replication_commands || !yb_enable_replica_identity))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("CreateReplicationSlot is unavailable"),
-				 errdetail("yb_enable_replication_commands is false or a "
-						   "system upgrade is in progress")));
+				 errdetail("Creation of replication slot is only allowed with "
+				 		   "ysql_yb_enable_replication_commands and "
+						   "ysql_yb_enable_replica_identity set to true.")));
 
 	const char *snapshot_name = NULL;
 	char		xloc[MAXFNAMELEN];
@@ -1177,6 +1183,16 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 
 	elog(DEBUG1, "StartLogicalReplication");
 
+	if (IsYugaByteEnabled() && (!yb_enable_replication_slot_consumption ||
+								!yb_enable_replica_identity))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("StartReplication is unavailable"),
+				 errdetail("StartReplication can only be called with "
+						   "ysql_TEST_enable_replication_slot_consumption "
+						   "and ysql_yb_enable_replica_identity set to "
+						   "true.")));
+
 	/* make sure that our requirements are still fulfilled */
 	CheckLogicalDecodingRequirements();
 
@@ -1299,6 +1315,11 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 {
 	TimestampTz now;
 
+	TimestampTz yb_start_time;
+
+	if (IsYugaByteEnabled())
+		yb_start_time = GetCurrentTimestamp();
+
 	/* output previously gathered data in a CopyData packet */
 	pq_putmessage_noblock('d', ctx->out->data, ctx->out->len);
 
@@ -1324,6 +1345,9 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 										  wal_sender_timeout / 2) &&
 		!pq_is_send_pending())
 	{
+		if (IsYugaByteEnabled())
+			YbWalSndUpdateTotalTimeInSendingMicros(yb_start_time);
+
 		return;
 	}
 
@@ -1380,8 +1404,22 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 			WalSndShutdown();
 	}
 
+	if (IsYugaByteEnabled())
+		YbWalSndUpdateTotalTimeInSendingMicros(yb_start_time);
+
 	/* reactivate latch so WalSndLoop knows to continue */
 	SetLatch(MyLatch);
+}
+
+static void
+YbWalSndUpdateTotalTimeInSendingMicros(TimestampTz yb_start_time)
+{
+	long secs;
+	int microsecs;
+
+	TimestampDifference(yb_start_time, GetCurrentTimestamp(), &secs,
+						&microsecs);
+	YbWalSndTotalTimeInSendingMicros += (secs * USECS_PER_SEC + microsecs);
 }
 
 /*
@@ -1694,14 +1732,6 @@ exec_replication_command(const char *cmd_string)
 
 		case T_StartReplicationCmd:
 			{
-				if (IsYugaByteEnabled()
-					&& !yb_enable_replication_slot_consumption)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("StartReplication is unavailable"),
-							 errdetail("yb_enable_replication_slot_consumption "
-									   "is false.")));
-
 				StartReplicationCmd *cmd = (StartReplicationCmd *) cmd_node;
 
 				PreventInTransactionBlock(true, "START_REPLICATION");

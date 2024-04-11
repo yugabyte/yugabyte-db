@@ -19,7 +19,7 @@ public class UpdateRelease {
 
   public List<Artifact> artifacts;
 
-  public String release_date;
+  public Long release_date;
   public String release_notes;
   public String release_tag;
   public String state;

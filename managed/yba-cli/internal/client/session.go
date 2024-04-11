@@ -21,6 +21,12 @@ func (a *AuthAPIClient) ApiLogin() ybaclient.SessionManagementApiApiApiLoginRequ
 	return a.APIClient.SessionManagementApi.ApiLogin(a.ctx)
 }
 
+// RegisterCustomer registers a YugabyteDB Anywhere customer
+func (a *AuthAPIClient) RegisterCustomer() (
+	ybaclient.SessionManagementApiApiRegisterCustomerRequest) {
+	return a.APIClient.SessionManagementApi.RegisterCustomer(a.ctx)
+}
+
 // GetSessionInfo fetches YugabyteDB Anywhere session info
 func (a *AuthAPIClient) GetSessionInfo() (
 	ybaclient.SessionManagementApiApiGetSessionInfoRequest) {

@@ -23,9 +23,6 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "useIMDSv2" : {
-          "type" : "boolean"
-        },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
           "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
@@ -5788,6 +5785,9 @@
         },
         "sshUser" : {
           "type" : "string"
+        },
+        "useIMDSv2" : {
+          "type" : "boolean"
         }
       },
       "type" : "object"
@@ -7986,6 +7986,9 @@
           "description" : "Node details (as a JSON object)",
           "example" : "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}",
           "type" : "string"
+        },
+        "inUse" : {
+          "type" : "boolean"
         },
         "instanceName" : {
           "description" : "The node instance's name",
@@ -13153,6 +13156,35 @@
         }
       },
       "required" : [ "customerUUID", "state", "universeUUID", "uuid" ],
+      "type" : "object"
+    },
+    "UniverseBackupRequestFormData" : {
+      "description" : "Universe Backup Form Data",
+      "properties" : {
+        "errorString" : {
+          "description" : "Error message",
+          "type" : "string"
+        },
+        "platformVersion" : {
+          "type" : "string"
+        },
+        "previousTaskUUID" : {
+          "description" : "Previous task UUID of a retry",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "storageConfigUUID" : {
+          "description" : "WARNING: This is a preview API that could change.Storage configuration UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "timeBeforeDelete" : {
+          "description" : "WARNING: This is a preview API that could change.Time before deleting the backup from storage, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "platformVersion", "storageConfigUUID" ],
       "type" : "object"
     },
     "UniverseConfigureTaskParams" : {
@@ -27536,6 +27568,58 @@
         } ],
         "summary" : "Validate a node instance",
         "tags" : [ "Node instances" ]
+      }
+    },
+    "/api/v1/customers/{customerUUID}/universes/{universeUUID}/universe_backup" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "Universe Backup",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "customerUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "universeUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Universe Backup data to be created",
+          "in" : "body",
+          "name" : "Backup Universe",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UniverseBackupRequestFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create a Universe Backup",
+        "tags" : [ "Backups" ]
       }
     },
     "/api/v1/grafana_dashboard" : {
