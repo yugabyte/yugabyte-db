@@ -17,6 +17,7 @@
 
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
@@ -338,7 +339,8 @@ Status PgDropIndex::Exec() {
     PgObjectId indexed_table_id(indexed_table_name.table_id());
 
     pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
-    pg_session_->InvalidateTableCache(indexed_table_id, InvalidateOnPgClient::kFalse);
+    pg_session_->InvalidateTableCache(indexed_table_id,
+        YsqlDdlRollbackEnabled() ? InvalidateOnPgClient::kTrue : InvalidateOnPgClient::kFalse);
     return Status::OK();
   }
   return s;
