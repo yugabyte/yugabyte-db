@@ -148,7 +148,7 @@ public class YbcLogsComponentTest extends FakeDBApplication {
         null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 
     // Check that the download function is called
-    verify(mockUniverseInfoHandler, times(1))
+    verify(mockUniverseInfoHandler, times(2))
         .downloadNodeFile(any(), any(), any(), any(), any(), any());
 
     // Check if the logs directory is created
