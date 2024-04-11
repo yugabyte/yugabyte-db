@@ -1224,9 +1224,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_1;"));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
   // Additional sleep before we make new inserts.
   SleepFor(MonoDelta::FromSeconds(5));
 
@@ -1284,9 +1281,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_1;"));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
 
   int expected_dml_records = 2 * num_batches * inserts_per_batch;
 
@@ -1357,6 +1351,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
   // Create CDC stream.
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
@@ -1371,7 +1366,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
 
   for (int nonkey_column_count = 2; nonkey_column_count < 15; ++nonkey_column_count) {
     std::string added_column_name = "value_" + std::to_string(nonkey_column_count);
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, added_column_name));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, added_column_name, &conn));
     ASSERT_OK(WriteRowsHelper(
         nonkey_column_count * 10 + 1 /* start */, nonkey_column_count * 10 + 11 /* end */,
         &test_cluster_, true, 3, kTableName, {added_column_name}));

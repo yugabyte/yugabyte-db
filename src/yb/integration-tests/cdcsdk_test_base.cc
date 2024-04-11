@@ -285,10 +285,9 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
 
 Status CDCSDKTestBase::AddColumn(
     PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
-    const std::string& add_column_name, const std::string& enum_suffix,
+    const std::string& add_column_name, pgwrapper::PGConn *conn, const std::string& enum_suffix,
     const std::string& schema_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-  RETURN_NOT_OK(conn.ExecuteFormat(
+  RETURN_NOT_OK(conn->ExecuteFormat(
       "ALTER TABLE $0.$1 ADD COLUMN $2 int", schema_name, table_name + enum_suffix,
       add_column_name));
   return Status::OK();
@@ -296,23 +295,19 @@ Status CDCSDKTestBase::AddColumn(
 
 Status CDCSDKTestBase::DropColumn(
     PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
-    const std::string& column_name, const std::string& enum_suffix,
+    const std::string& column_name, pgwrapper::PGConn *conn, const std::string& enum_suffix,
     const std::string& schema_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-  RETURN_NOT_OK(conn.ExecuteFormat(
+  RETURN_NOT_OK(conn->ExecuteFormat(
       "ALTER TABLE $0.$1 DROP COLUMN $2", schema_name, table_name + enum_suffix, column_name));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
+
   return Status::OK();
 }
 
 Status CDCSDKTestBase::RenameColumn(
     PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
     const std::string& old_column_name, const std::string& new_column_name,
-    const std::string& enum_suffix, const std::string& schema_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-  RETURN_NOT_OK(conn.ExecuteFormat(
+    pgwrapper::PGConn *conn, const std::string& enum_suffix, const std::string& schema_name) {
+  RETURN_NOT_OK(conn->ExecuteFormat(
       "ALTER TABLE $0.$1 RENAME COLUMN $2 TO $3", schema_name, table_name + enum_suffix,
       old_column_name, new_column_name));
   return Status::OK();

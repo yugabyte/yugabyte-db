@@ -423,7 +423,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   // Perform sql operations.
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 10 WHERE key = 2"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 5, 6)"));
 
@@ -448,10 +448,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
   uint32_t records_missed_by_stream_2 = 3;
 
   // Perform sql operations.
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 1 WHERE key = 4"));
 
   ExpectedRecord expected_records_3[] = {{0, 0}, {4, 1}};
@@ -5957,8 +5954,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithDropColumns)) {
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test1", kValue2ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test1", kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(10));
 
   // Call get changes.
@@ -6023,8 +6020,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddColumns)) {
           conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test2", kValue4ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test2", kValue4ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(30));
 
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -6108,9 +6105,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddAndDropColum
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(30));
 
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -6193,9 +6190,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
           conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
 
   // Call get changes.
   auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
@@ -6309,9 +6306,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
@@ -6433,9 +6430,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
 
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
@@ -7186,11 +7183,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
   ASSERT_OK(WriteRowsHelper(0, 30, &test_cluster_, true));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_2;"));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
 
   ASSERT_OK(WriteRowsHelper(30, 80, &test_cluster_, true));
 
@@ -7249,7 +7243,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
 
   // Fail the alter table ADD column, this will give us two CHANGE_METADATA_OPs
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
-  ASSERT_NOK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT;"));
+  ASSERT_NOK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
 
   // Perform a multi shard transaction, so that we get DMLs in between the two CHANGE_METADATA_OPs
   ASSERT_OK(conn.Execute("BEGIN;"));
@@ -7437,7 +7431,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
 
   // Fail the ALTER TABLE DROP column
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
-  ASSERT_NOK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_1;"));
+  ASSERT_NOK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValueColumnName, &conn));
 
   // Sleep to ensure that rollback has taken place
   SleepFor(MonoDelta::FromSeconds(10));
@@ -7446,7 +7440,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (6,1);"));
 
   // Perform a successful ALTER TABLE DROP COLUMN
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_1;"));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValueColumnName, &conn));
 
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(7,9));"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (10);"));

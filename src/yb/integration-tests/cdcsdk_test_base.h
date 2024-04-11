@@ -182,18 +182,20 @@ class CDCSDKTestBase : public YBTest {
   Status AddColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& add_column_name,
-      const std::string& enum_suffix = "", const std::string& schema_name = "public");
+      pgwrapper::PGConn *conn, const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
 
   Status DropColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& column_name,
-      const std::string& enum_suffix = "", const std::string& schema_name = "public");
+      pgwrapper::PGConn *conn, const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
 
   Status RenameColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& old_column_name,
-      const std::string& new_column_name, const std::string& enum_suffix = "",
-      const std::string& schema_name = "public");
+      const std::string& new_column_name, pgwrapper::PGConn *conn,
+      const std::string& enum_suffix = "", const std::string& schema_name = "public");
 
   Result<std::string> GetNamespaceId(const std::string& namespace_name);
 
