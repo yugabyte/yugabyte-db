@@ -32,6 +32,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 
+DECLARE_int32(are_nodes_safe_to_take_down_timeout_buffer_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(raft_heartbeat_interval_ms);
 
@@ -90,7 +91,8 @@ class AreNodesSafeToTakeDownItest : public YBTableTestBase {
       const vector<string>& tserver_uuids, const vector<string>& master_uuids) {
     auto status = client_->AreNodesSafeToTakeDown(tserver_uuids, master_uuids, kFollowerLagBoundMs);
     ASSERT_NOK(status);
-    ASSERT_TRUE(status.IsTimedOut());
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Timed out");
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "tablet(s) would be under-replicated");
   }
 
   const int kFollowerLagBoundMs = 1000;
@@ -124,7 +126,12 @@ TEST_F(AreNodesSafeToTakeDownItest, MasterUnresponsive) {
   SleepUntilLeaderElectionAndAtLeast(kFollowerLagBoundMs);
 
   // Should time out trying to remove one of the 2 remaining masters.
+  // We should return within the actual deadline so we can provide the client with a readable error.
+  auto expected_deadline = CoarseMonoClock::Now() + client_->default_admin_operation_timeout();
   AssertCallTimesOut({} /* tserver_uuids */, {good_master->uuid()});
+  ASSERT_GT(CoarseMonoClock::Now(),
+            expected_deadline - FLAGS_are_nodes_safe_to_take_down_timeout_buffer_ms * 1ms);
+  ASSERT_LT(CoarseMonoClock::Now(), expected_deadline);
 
   // Should be able to remove the bad master.
   ASSERT_OK(client_->AreNodesSafeToTakeDown({}, {bad_master->uuid()}, kFollowerLagBoundMs));
@@ -139,7 +146,12 @@ TEST_F(AreNodesSafeToTakeDownItest, TserverUnresponsive) {
 
   // Should time out waiting to hear from bad_tserver when trying to remove one of the 2 tservers
   // that are not being taken down.
+  // We should return within the actual deadline so we can provide the client with a readable error.
+  auto expected_deadline = CoarseMonoClock::Now() + client_->default_admin_operation_timeout();
   AssertCallTimesOut({good_tserver->uuid()}, {} /* master_uuids */);
+  ASSERT_GT(CoarseMonoClock::Now(),
+            expected_deadline - FLAGS_are_nodes_safe_to_take_down_timeout_buffer_ms * 1ms);
+  ASSERT_LT(CoarseMonoClock::Now(), expected_deadline);
 
   // Should be able to remove the bad tserver.
   ASSERT_OK(client_->AreNodesSafeToTakeDown({bad_tserver->uuid()}, {}, kFollowerLagBoundMs));
