@@ -1490,7 +1490,10 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	double		partial_rows = -1;
 
 	/* If appropriate, consider parallel append */
-	pa_subpaths_valid = enable_parallel_append && rel->consider_parallel;
+	if (IsYugaByteEnabled() && !yb_enable_parallel_append)
+		pa_subpaths_valid = false;
+	else
+		pa_subpaths_valid = enable_parallel_append && rel->consider_parallel;
 
 	/*
 	 * AppendPath generated for partitioned tables must record the RT indexes

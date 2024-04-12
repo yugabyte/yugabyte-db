@@ -141,6 +141,7 @@ extern PGDLLIMPORT bool yb_enable_geolocation_costing;
  * loop join plans.
  */
 extern PGDLLIMPORT bool yb_enable_batchednl;
+extern PGDLLIMPORT bool yb_enable_parallel_append;
 
 extern double clamp_row_est(double nrows);
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
