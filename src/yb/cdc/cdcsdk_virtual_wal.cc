@@ -26,6 +26,23 @@ namespace cdc {
 using RecordInfo = CDCSDKVirtualWAL::RecordInfo;
 using TabletRecordInfoPair = CDCSDKVirtualWAL::TabletRecordInfoPair;
 
+std::string CDCSDKVirtualWAL::GetChangesRequestInfo::ToString() const {
+  std::string result = Format("from_op_id: $0", from_op_id);
+  result += Format(", key: $0", key);
+  result += Format(", write_id: $0", write_id);
+  result += Format(", safe_hybrid_time: $0", safe_hybrid_time);
+  result += Format(", wal_segment_index: $0", wal_segment_index);
+
+  return result;
+}
+
+std::string CDCSDKVirtualWAL::LastSentGetChangesRequestInfo::ToString() const {
+  std::string result = Format("from_op_id: $0", from_op_id);
+  result += Format(", safe_hybrid_time: $0", safe_hybrid_time);
+
+  return result;
+}
+
 Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     const xrepl::StreamId& stream_id, const std::unordered_set<TableId>& table_list,
     const HostPort hostport, const CoarseTimePoint deadline) {
@@ -45,7 +62,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
   auto s = InitLSNAndTxnIDGenerators(stream_id);
   if (!s.ok()) {
     LOG(WARNING) << Format("Init LSN & TxnID generators failed for stream_id: $0", stream_id);
-    RETURN_NOT_OK(s);
+    RETURN_NOT_OK(s.CloneAndPrepend(Format("Init LSN & TxnID generators failed")));
   }
   return Status::OK();
 }
@@ -105,13 +122,13 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       info.safe_hybrid_time = checkpoint.snapshot_time();
       info.wal_segment_index = 0;
       tablet_next_req_map_[tablet_id] = info;
-      VLOG(2) << "Adding entry in checkpoint map for tablet_id: " << tablet_id
-              << " with cdc_sdk_checkpointt: " << checkpoint.DebugString();
+      VLOG(2) << "Adding entry in tablet_next_req map for tablet_id: " << tablet_id
+              << " with next getchanges_request_info: " << info.ToString();
     }
 
     if (!tablet_queues_.contains(tablet_id)) {
-      VLOG(2) << "Adding tablet queue for tablet_id: " << tablet_id;
       tablet_queues_[tablet_id] = std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>();
+      VLOG(2) << "Adding empty tablet queue for tablet_id: " << tablet_id;
     }
   }
 
@@ -177,6 +194,9 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(const xrepl::StreamId& stream
   last_shipped_commit.commit_txn_id = last_seen_txn_id_;
   last_shipped_commit.commit_record_unique_id = last_seen_unique_record_id_;
 
+  VLOG(2) << "LSN & txnID generator initialised with LSN: " << last_seen_lsn_
+          << ", txnID: " << last_seen_txn_id_ << ", commit_time: " << commit_time;
+
   return Status::OK();
 }
 
@@ -201,12 +221,13 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   for (const auto& entry : tablet_queues_) {
     auto s = AddRecordToVirtualWalPriorityQueue(entry.first, &sorted_records);
     if (!s.ok()) {
-      LOG(WARNING) << "Couldnt add entries to the VirtualWAL Queue for stream_id: " << stream_id
-                   << " and tablet_id: " << entry.first;
-      RETURN_NOT_OK(s);
+      LOG(INFO) << "Couldnt add entries to the VirtualWAL Queue for stream_id: " << stream_id
+                << " and tablet_id: " << entry.first;
+      RETURN_NOT_OK(s.CloneAndReplaceCode(Status::Code::kTryAgain));
     }
   }
 
+  GetConsistentChangesRespMetadata metadata;
   auto max_records = static_cast<int>(FLAGS_cdcsdk_max_consistent_records);
   while (resp->cdc_sdk_proto_records_size() < max_records && !sorted_records.empty() &&
          empty_tablet_queues.size() == 0) {
@@ -225,16 +246,49 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       row_message->set_pg_transaction_id(*txn_id_result);
       last_seen_unique_record_id_ = unique_id;
 
+      metadata.txn_ids.insert(row_message->pg_transaction_id());
+      metadata.min_txn_id = std::min(metadata.min_txn_id, row_message->pg_transaction_id());
+      metadata.max_txn_id = std::max(metadata.max_txn_id, row_message->pg_transaction_id());
+      metadata.min_lsn = std::min(metadata.min_lsn, row_message->pg_lsn());
+      metadata.max_lsn = std::max(metadata.max_lsn, row_message->pg_lsn());
+
       if (record->row_message().op() == RowMessage_Op_BEGIN) {
         RETURN_NOT_OK(AddEntryForBeginRecord({unique_id, record}));
+        metadata.begin_records++;
+        metadata.is_last_txn_fully_sent = false;
       } else if (record->row_message().op() == RowMessage_Op_COMMIT) {
         last_shipped_commit.commit_lsn = *lsn_result;
         last_shipped_commit.commit_txn_id = *txn_id_result;
         last_shipped_commit.commit_record_unique_id = unique_id;
+
+        metadata.commit_records++;
+        if (row_message->pg_transaction_id() == metadata.max_txn_id &&
+            !metadata.is_last_txn_fully_sent) {
+          metadata.is_last_txn_fully_sent = true;
+        }
+      } else {
+        // DML record
+        metadata.dml_records++;
       }
       auto records = resp->add_cdc_sdk_proto_records();
       records->CopyFrom(*record);
+    } else {
+      VLOG(2) << "Couldnt generate LSN & txnID for record: " << record->DebugString();
     }
+  }
+
+  if (resp->cdc_sdk_proto_records_size() == 0) {
+    VLOG(1) << "Sending empty response for GetConsistentChanges for stream_id: " << stream_id;
+  } else {
+    VLOG(1) << "Sending non-empty GetConsistentChanges response for stream_id: " << stream_id
+            << " with total_records: " << resp->cdc_sdk_proto_records_size()
+            << ", total_txns: " << metadata.txn_ids.size()
+            << ", min_txn_id: " << metadata.min_txn_id << ", max_txn_id: " << metadata.max_txn_id
+            << ", min_lsn: " << metadata.min_lsn << ", max_lsn: " << metadata.max_lsn
+            << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
+            << ", begin_records: " << metadata.begin_records
+            << ", commit_records: " << metadata.commit_records
+            << ", dml_records: " << metadata.dml_records;
   }
 
   return Status::OK();
@@ -472,6 +526,9 @@ Status CDCSDKVirtualWAL::AddEntryForBeginRecord(const RecordInfo& record_info) {
       std::unordered_map<TabletId, LastSentGetChangesRequestInfo>(tablet_last_sent_req_map_);
   DCHECK(commit_meta_and_last_req_map_.find(commit_lsn) == commit_meta_and_last_req_map_.end());
   commit_meta_and_last_req_map_[commit_lsn] = obj;
+  VLOG(2) << "Popped BEGIN record, adding an entry in commit_meta_map with commit_lsn: "
+          << commit_lsn << ", txn_id: " << last_shipped_commit.commit_txn_id
+          << ", commit_time: " << last_shipped_commit.commit_record_unique_id->GetCommitTime();
 
   return Status::OK();
 }
@@ -490,11 +547,16 @@ Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
   if (restart_lsn_hint < last_shipped_commit.commit_lsn) {
     RETURN_NOT_OK(TruncateMetaMap(restart_lsn_hint));
     record_metadata = commit_meta_and_last_req_map_.begin()->second.record_metadata;
+    VLOG(2) << "Restart_lsn " << restart_lsn_hint << " is less than last_shipped_commit lsn "
+            << last_shipped_commit.commit_lsn;
   } else {
     // Special case: restart_lsn >= last_shipped_commit.commit_lsn
     // Remove all entries < last_shipped_commit.commit_lsn. Incase the map becomes empty, we send
     // the from_cdc_sdk_checkpoint as the explicit checkpoint on the next GetChanges on all of the
     // empty tablet queues.
+    VLOG(2) << "Restart_lsn " << restart_lsn_hint
+            << " is greater than equal to last_shipped_commit lsn "
+            << last_shipped_commit.commit_lsn;
     auto pos = commit_meta_and_last_req_map_.lower_bound(last_shipped_commit.commit_lsn);
     commit_meta_and_last_req_map_.erase(commit_meta_and_last_req_map_.begin(), pos);
   }
@@ -547,6 +609,10 @@ Status CDCSDKVirtualWAL::UpdateSlotEntryInCDCState(
   entry.cdc_sdk_safe_time = entry.record_id_commit_time;
   // Doing an update instead of upsert since we expect an entry for the slot to already exist in
   // cdc_state.
+  VLOG(2) << "Updating slot entry in cdc_state with confirmed_flush_lsn: " << confirmed_flush_lsn
+          << ", restart_lsn: " << record_metadata.commit_lsn
+          << ", xmin: " << record_metadata.commit_txn_id
+          << ", commit_time: " << record_metadata.commit_record_unique_id->GetCommitTime();
   RETURN_NOT_OK(cdc_service_->cdc_state_table_->UpdateEntries({entry}));
 
   return Status::OK();
