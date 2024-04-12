@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
+import { find } from 'lodash';
+import { useSelector } from 'react-redux';
+import { useEffectOnce } from 'react-use';
 import { YBCheckBox } from '../../../common/forms/fields';
 import { Alert, DropdownButton, MenuItem } from 'react-bootstrap';
 import { CustomDateRangePicker } from '../DateRangePicker/DateRangePicker';
-import { useSelector } from 'react-redux';
-import { find } from 'lodash';
 import { convertToISODateString } from '../../../../redesign/helpers/DateUtils';
 import { UniverseState } from '../../helpers/universeHelpers';
 
@@ -14,6 +15,7 @@ const filterTypes = [
   { type: 'divider' },
   { label: 'Custom', type: 'custom', value: 'custom' }
 ];
+
 export const selectionOptions = [
   { label: 'All', value: 'All' },
   { label: 'Application logs', value: 'ApplicationLogs' },
@@ -73,6 +75,15 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
   const refs = useRef([]);
 
   const featureFlags = useSelector((state) => state.featureFlags);
+
+  useEffectOnce(() => {
+    const changedOptions = updateOptions(
+      selectedFilterType,
+      selectionOptionsValue,
+      setIsDateTypeCustom
+    );
+    onOptionsChange(changedOptions);
+  });
 
   if (
     (featureFlags.test.enableYbc || featureFlags.released.enableYbc) &&
