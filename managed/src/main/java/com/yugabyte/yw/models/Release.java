@@ -71,7 +71,7 @@ public class Release extends Model {
   public static final Finder<UUID, Release> find = new Finder<>(Release.class);
 
   public static Release create(String version, String releaseType) {
-    return create(UUID.randomUUID(), version, releaseType);
+    return create(UUID.randomUUID(), version, releaseType, null);
   }
 
   public static Release create(String version, String releaseType, String releaseTag) {
@@ -128,9 +128,9 @@ public class Release extends Model {
 
     // Optional fields
     release.releaseTag = encodeReleaseTag(reqRelease.release_tag);
-    if (reqRelease.release_date != null) {
+    if (reqRelease.release_date_msecs != null) {
       try {
-        release.releaseDate = Date.from(Instant.ofEpochSecond(reqRelease.release_date));
+        release.releaseDate = Date.from(Instant.ofEpochMilli(reqRelease.release_date_msecs));
       } catch (IllegalArgumentException | DateTimeException e) {
         log.warn("unable to parse date format", e);
       }

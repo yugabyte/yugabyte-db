@@ -23,7 +23,7 @@ public class CreateRelease {
 
   public List<Artifact> artifacts;
 
-  public Long release_date;
+  public Long release_date_msecs;
   public String release_notes;
   public String release_tag;
 
