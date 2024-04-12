@@ -95,7 +95,9 @@ public class CustomerTaskManager {
     this.commissioner = commissioner;
   }
 
+  // Invoked if the task is in incomplete state.
   private void setTaskError(TaskInfo taskInfo) {
+    taskInfo.setTaskState(TaskInfo.State.Failure);
     TaskError taskError = taskInfo.getTaskError();
     if (taskError == null) {
       taskError = new TaskError();
