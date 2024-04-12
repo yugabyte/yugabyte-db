@@ -25,8 +25,9 @@ public class ReleasesTest extends FakeDBApplication {
     assertEquals(foundRelease.getReleaseType(), createdRelease.getReleaseType());
 
     assertThrows(
-        PlatformServiceException.class, () -> Release.create(UUID.randomUUID(), "1.2.3", "LTS"));
-    Release release2 = Release.create(UUID.randomUUID(), "1.2.3", "LTS", "tag1");
+        PlatformServiceException.class,
+        () -> Release.create(UUID.randomUUID(), "1.2.3", "LTS", "tag1"));
+    Release release2 = Release.create(UUID.randomUUID(), "1.2.4", "LTS", "tag1");
     Release foundRelease2 = Release.get(release2.getReleaseUUID());
     assertEquals("tag1", foundRelease2.getReleaseTag());
   }
