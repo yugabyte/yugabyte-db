@@ -597,20 +597,18 @@ create table tab2_p3 partition of tab2 for values from (20) to (maxvalue);
 create index i_tab2_r2 on tab2 (r2 asc);
 SET yb_bnl_batch_size = 1024;
 explain (costs off) /*+ Leading((tab1 tab2)) IndexScan(tab2) NestLoop(tab1 tab2) */ select * from tab1 join tab2 on tab1.r1 = tab2.r2;
-                             QUERY PLAN
---------------------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Nested Loop
    Join Filter: (tab1.r1 = tab2_p1.r2)
    ->  Seq Scan on tab1
    ->  Materialize
-         ->  Gather
-               Workers Planned: 2
-               ->  Parallel Append
-                     ->  Index Scan using tab2_p1_r2_idx on tab2_p1
-                     ->  Index Scan using tab2_p2_r2_idx on tab2_p2
-                     ->  Index Scan using tab2_p3_r2_idx on tab2_p3
-                     ->  Index Scan using tab2_p0_r2_idx on tab2_p0
-(11 rows)
+         ->  Append
+               ->  Index Scan using tab2_p1_r2_idx on tab2_p1
+               ->  Index Scan using tab2_p2_r2_idx on tab2_p2
+               ->  Index Scan using tab2_p3_r2_idx on tab2_p3
+               ->  Index Scan using tab2_p0_r2_idx on tab2_p0
+(9 rows)
 
 drop table tab2;
 drop table tab1;

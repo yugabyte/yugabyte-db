@@ -194,6 +194,7 @@ bool		enable_parallel_hash = true;
 bool		enable_partition_pruning = true;
 bool		yb_enable_geolocation_costing = true;
 bool		yb_enable_batchednl = false;
+bool		yb_enable_parallel_append = false;
 
 extern int yb_bnl_batch_size;
 
@@ -6385,7 +6386,7 @@ estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 	ListCell 	*lc;
 	bool previous_column_had_lower_bound = false;
 	bool previous_column_had_upper_bound = false;
-	
+
 	Assert(*num_seeks == 0);
 	Assert(*num_nexts == 0);
 
@@ -6444,7 +6445,7 @@ estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 				else if (IsA(clause, ScalarArrayOpExpr))
 				{
 					ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
-					
+
 					clause_op = saop->opno;
 					other_operand = (Node *) lsecond(saop->args);
 
@@ -6795,7 +6796,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	num_seeks = 0;
 	num_nexts = 0;
 	estimate_seeks_nexts_in_index_scan(root, index, baserel, baserel_oid,
-									   index_conditions_on_each_column, 
+									   index_conditions_on_each_column,
 									   &num_seeks, &num_nexts);
 
 	/*
