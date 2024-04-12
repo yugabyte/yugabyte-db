@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
+import { find } from 'lodash';
+import { useSelector } from 'react-redux';
+import { useEffectOnce } from 'react-use';
 import { YBCheckBox } from '../../../common/forms/fields';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { CustomDateRangePicker } from '../DateRangePicker/DateRangePicker';
-import { useSelector } from 'react-redux';
-import { find } from 'lodash';
 import { convertToISODateString } from '../../../../redesign/helpers/DateUtils';
 
 const filterTypes = [
@@ -27,7 +28,7 @@ export const selectionOptions = [
 ];
 
 const YbcLogsOption = { label: 'YB-Controller logs', value: 'YbcLogs' };
-const K8sLogsOption = { label: 'Kubernetes Info', value: 'K8sInfo'};
+const K8sLogsOption = { label: 'Kubernetes Info', value: 'K8sInfo' };
 
 const getBackDateByDay = (day) => {
   return new Date(new Date().setDate(new Date().getDate() - day));
@@ -73,6 +74,15 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse }) => {
 
   const featureFlags = useSelector((state) => state.featureFlags);
 
+  useEffectOnce(() => {
+    const changedOptions = updateOptions(
+      selectedFilterType,
+      selectionOptionsValue,
+      setIsDateTypeCustom
+    );
+    onOptionsChange(changedOptions);
+  });
+
   if (
     (featureFlags.test.enableYbc || featureFlags.released.enableYbc) &&
     !find(selectionOptions, YbcLogsOption)
@@ -88,10 +98,7 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse }) => {
     onOptionsChange(changedOptions);
   }
 
-  if(
-    isK8sUniverse && 
-    !find(selectionOptions, K8sLogsOption)
-  ) {
+  if (isK8sUniverse && !find(selectionOptions, K8sLogsOption)) {
     selectionOptions.push(K8sLogsOption);
     selectionOptionsValue.push(true);
     const changedOptions = updateOptions(
