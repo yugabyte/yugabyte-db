@@ -319,9 +319,11 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       Status waiter_status, HybridTime resume_ht = HybridTime::kInvalid,
       CoarseTimePoint locking_deadline = GetWaitForRelockUnblockedKeysDeadline()) EXCLUDES(mutex_) {
     ADOPT_WAIT_STATE(wait_state);
+    SET_WAIT_STATUS(OnCpu_Active);
+    // ASH: This may later be set to ResolveConficts for another thread to pick up
+    // working on the wait-state.
+    ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state);
     TRACE_FUNC();
-    SET_WAIT_STATUS(OnCpu_Passive);
-    SCOPED_WAIT_STATUS(OnCpu_Active);
     auto& status = waiter_status;
     std::optional<UnlockedBatch> unlocked_copy = AtomicConsumeUnlockedBatch();
     if (!unlocked_copy) {
@@ -1307,6 +1309,7 @@ class WaitQueue::Impl {
     // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
     // See https://github.com/yugabyte/yugabyte-db/issues/13576
     TRACE_FUNC();
+    ASH_ENABLE_CONCURRENT_UPDATES();
     SET_WAIT_STATUS(ConflictResolution_WaitOnConflictingTxns);
     auto scoped_reporter = waiting_txn_registry_->Create();
     if (waiter_txn_id.IsNil()) {

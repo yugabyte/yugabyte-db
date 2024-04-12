@@ -32,8 +32,10 @@
 
 DECLARE_bool(ysql_yb_enable_ash);
 
+#define SET_WAIT_STATUS_TO_CODE(ptr, code) \
+  if ((ptr)) (ptr)->set_code(code, __PRETTY_FUNCTION__)
 #define SET_WAIT_STATUS_TO(ptr, code) \
-  if ((ptr)) (ptr)->set_code(BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
+  SET_WAIT_STATUS_TO_CODE(ptr, BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
 #define SET_WAIT_STATUS(code) \
   SET_WAIT_STATUS_TO(yb::ash::WaitStateInfo::CurrentWaitState(), code)
 
@@ -41,7 +43,14 @@ DECLARE_bool(ysql_yb_enable_ash);
   yb::ash::ScopedAdoptWaitState _scoped_state { (ptr) }
 
 #define SCOPED_WAIT_STATUS(code) \
-  yb::ash::ScopedWaitStatus _scoped_status(BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
+  yb::ash::ScopedWaitStatus _scoped_status( \
+      BOOST_PP_CAT(yb::ash::WaitStateCode::k, code), __PRETTY_FUNCTION__)
+
+#define ASH_ENABLE_CONCURRENT_UPDATES_FOR(ptr) \
+  yb::ash::EnableConcurrentUpdates(ptr)
+#define ASH_ENABLE_CONCURRENT_UPDATES() \
+  ASH_ENABLE_CONCURRENT_UPDATES_FOR(yb::ash::WaitStateInfo::CurrentWaitState())
+
 
 namespace yb {
 class Trace;
@@ -188,6 +197,7 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForCompaction, 3))
   ((kQueryIdForRaftUpdateConsensus, 4))
   ((kQueryIdForCatalogRequests, 5))
+  ((kQueryIdForLogBackgroundSync, 6))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -332,7 +342,7 @@ class WaitStateInfo {
   WaitStateInfo();
   virtual ~WaitStateInfo() = default;
 
-  void set_code(WaitStateCode c);
+  void set_code(WaitStateCode c, const char* location);
   WaitStateCode code() const;
   std::atomic<WaitStateCode>& mutable_code();
 
@@ -394,6 +404,13 @@ class WaitStateInfo {
     VTraceTo(nullptr, level, data);
   }
 
+  virtual std::string DumpTraceToString() {
+    return "n/a";
+  }
+
+  void EnableConcurrentUpdates();
+  bool IsConcurrentUpdatesEnabled();
+
  protected:
   void VTraceTo(Trace* trace, int level, GStringPiece data);
 
@@ -404,8 +421,11 @@ class WaitStateInfo {
   AshMetadata metadata_ GUARDED_BY(mutex_);
   AshAuxInfo aux_info_ GUARDED_BY(mutex_);
 
+  std::atomic_bool concurrent_updates_allowed_{false};
   std::atomic<uint8_t> TEST_num_sleeps_{0};
 };
+
+void EnableConcurrentUpdates(const WaitStateInfoPtr& ptr);
 
 // A helper to adopt a WaitState and revert to the previous WaitState based on RAII.
 // This should only be used on the stack (and thus created and destroyed
@@ -436,11 +456,13 @@ class ScopedAdoptWaitState {
 // be reverted back to the previous state.
 class ScopedWaitStatus {
  public:
-  explicit ScopedWaitStatus(WaitStateCode code);
+  ScopedWaitStatus(WaitStateCode code, const char* location);
   ~ScopedWaitStatus();
 
  private:
   const WaitStateCode code_;
+  // The location where the scoped wait state is created. Used for printing useful debug messages.
+  const char* location_;
   const WaitStateCode prev_code_;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedWaitStatus);

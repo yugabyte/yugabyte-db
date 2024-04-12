@@ -258,6 +258,7 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
   }
 
   TRACE_FUNC();
+  ASH_ENABLE_CONCURRENT_UPDATES();
   SET_WAIT_STATUS(OnCpu_Passive);
   context_->Submit(self.release()->PrepareSubmit(), term_);
   // Any further update to the wait-state for this RPC should happen based on

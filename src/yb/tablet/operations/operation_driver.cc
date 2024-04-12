@@ -175,6 +175,7 @@ void OperationDriver::ExecuteAsync() {
   ADOPT_TRACE(trace());
   TRACE_FUNC();
   ADOPT_WAIT_STATE(wait_state());
+  ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state());
   SCOPED_WAIT_STATUS(OnCpu_Active);
 
   auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
@@ -206,7 +207,7 @@ void OperationDriver::ExecuteAsync() {
 Status OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   ADOPT_TRACE(trace());
   ADOPT_WAIT_STATE(wait_state());
-  SCOPED_WAIT_STATUS(OnCpu_Active);
+  SET_WAIT_STATUS(OnCpu_Active);
   CHECK(!GetOpId().valid());
   op_id_copy_.store(op_id, boost::memory_order_release);
 
@@ -240,6 +241,8 @@ Status OperationDriver::PrepareAndStart(IsLeaderSide is_leader_side) {
   ADOPT_TRACE(trace());
   TRACE_FUNC();
   ADOPT_WAIT_STATE(wait_state());
+  ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state());
+  // ASH: Expect raft to update the wait state asynchronously.
   SCOPED_WAIT_STATUS(OnCpu_Active);
   TRACE_EVENT1("operation", "PrepareAndStart", "operation", this);
   VLOG_WITH_PREFIX(4) << "PrepareAndStart()";

@@ -416,10 +416,6 @@ class Log::Appender {
     return task_stream_->ToString();
   }
 
-  const yb::ash::WaitStateInfoPtr& wait_state() const {
-    return wait_state_;
-  }
-
  private:
   // Process the given log entry batch or does a sync if a null is passed.
   void ProcessBatch(LogEntryBatch* entry_batch);
@@ -471,6 +467,7 @@ Status Log::Appender::Init() {
 // fsync will eventually be called. [if there is a background thread executing DoSync in parallel,
 // it might OR might not flush the new dirty data in the current iteration due to race condition]
 void Log::Appender::ProcessBatch(LogEntryBatch* entry_batch) {
+  ADOPT_WAIT_STATE(wait_state_);
   // A callback function to TaskStream is expected to process the accumulated batch of entries.
   if (entry_batch == nullptr) {
     // Here, we do sync and call callbacks.
@@ -664,10 +661,21 @@ Log::Log(
       log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)),
       create_new_segment_at_start_(create_new_segment),
       new_segment_allocation_callback_(callback),
-      pre_log_rollover_callback_(pre_log_rollover_callback) {
+      pre_log_rollover_callback_(pre_log_rollover_callback),
+      background_synchronizer_wait_state_(
+          ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   set_wal_retention_secs(options_.retention_secs);
   if (table_metric_entity_ && tablet_metric_entity_) {
     metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
+  }
+  if (background_synchronizer_wait_state_) {
+    background_synchronizer_wait_state_->set_root_request_id(yb::Uuid::Generate());
+    background_synchronizer_wait_state_->set_query_id(
+        yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogBackgroundSync));
+    background_synchronizer_wait_state_->UpdateAuxInfo(
+        {.tablet_id = tablet_id_, .method = "RaftWAL"});
+    SET_WAIT_STATUS_TO(background_synchronizer_wait_state_, Idle);
+    yb::ash::RaftLogAppenderWaitStatesTracker().Track(background_synchronizer_wait_state_);
   }
 }
 
@@ -886,7 +894,6 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
 }
 
 Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
-  ADOPT_WAIT_STATE(appender_->wait_state());
   SCOPED_WAIT_STATUS(WAL_Append);
   if (!skip_wal_write) {
     RETURN_NOT_OK(entry_batch->Serialize());
@@ -1161,7 +1168,6 @@ Status Log::EnsureSegmentInitializedUnlocked() {
 // might not be necessary. We only call ::DoSync directly before we call ::CloseCurrentSegment
 Status Log::DoSync() {
   // Acquire the lock over active_segment_ to prevent segment rollover in the interim.
-  ADOPT_WAIT_STATE(appender_->wait_state());
   SCOPED_WAIT_STATUS(WAL_Sync);
   std::lock_guard lock(active_segment_mutex_);
   if (active_segment_->IsClosed()) {
@@ -1190,6 +1196,7 @@ Status Log::DoSync() {
 // have to use active_segment_sequence_number_ instead of fsync_task_in_queue_, in ::Sync(), to
 // determine if there is a pending fsync task corresponding to the current active segment.
 void Log::DoSyncAndResetTaskInQueue() {
+  ADOPT_WAIT_STATE(background_synchronizer_wait_state_);
   auto status = DoSync();
   if (!status.ok()) {
     // ensure that fsync gets called on the subsequent call to Log::Sync() function
@@ -1649,6 +1656,9 @@ Status Log::Close() {
     default:
       return STATUS(IllegalState, Substitute("Bad state for Close() $0", log_state_));
   }
+  if (background_synchronizer_wait_state_) {
+    yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
+  }
 }
 
 size_t Log::num_segments() const {
@@ -1929,7 +1939,6 @@ Status Log::SwitchToAllocatedSegment() {
   // Calling Sync() here is important because it ensures the file has a complete WAL header
   // on disk before renaming the file.
   {
-    ADOPT_WAIT_STATE(appender_->wait_state());
     SCOPED_WAIT_STATUS(WAL_Sync);
     RETURN_NOT_OK(new_segment->Sync());
   }
