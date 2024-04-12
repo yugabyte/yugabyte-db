@@ -132,8 +132,10 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
                 true /* deleteRootVolumes */,
                 false /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      } else {
+        createRemoveNodeAgentTasks(universe, currentNodeDetails, true /* isForceDelete */)
+            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       }
-
       // If the node fails in Adding state during ADD action, IP may not be available.
       // Check to make sure that the node IP is available.
       if (Util.getNodeIp(universe, currentNode) != null) {

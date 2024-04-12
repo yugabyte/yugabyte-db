@@ -211,7 +211,6 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
         && nodeDetails.state != NodeDetails.NodeState.Stopping
         && nodeDetails.state != NodeDetails.NodeState.Removed
         && nodeDetails.state != NodeDetails.NodeState.Removing
-        && nodeDetails.state != NodeDetails.NodeState.Terminated
         && nodeDetails.state != NodeDetails.NodeState.Terminating
         && nodeDetails.state != NodeDetails.NodeState.Decommissioned;
   }

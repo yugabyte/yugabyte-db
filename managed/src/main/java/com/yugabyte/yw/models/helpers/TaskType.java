@@ -944,7 +944,9 @@ public enum TaskType {
 
   CheckNodeReachable(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable.class),
 
-  WaitStartingFromTime(WaitStartingFromTime.class);
+  WaitStartingFromTime(WaitStartingFromTime.class),
+
+  RemoveNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent.class);
 
   private final Class<? extends ITask> taskClass;
 

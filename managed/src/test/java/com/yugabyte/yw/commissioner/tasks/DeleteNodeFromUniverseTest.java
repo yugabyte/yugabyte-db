@@ -58,7 +58,10 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> DELETE_NODE_TASK_SEQUENCE_WITHOUT_INSTANCE =
       ImmutableList.of(
-          TaskType.FreezeUniverse, TaskType.DeleteNode, TaskType.UniverseUpdateSucceeded);
+          TaskType.FreezeUniverse,
+          TaskType.RemoveNodeAgent,
+          TaskType.DeleteNode,
+          TaskType.UniverseUpdateSucceeded);
 
   @Override
   @Before
