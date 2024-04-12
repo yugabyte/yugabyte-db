@@ -69,6 +69,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYbc;
@@ -1771,6 +1772,35 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       subTaskGroup.addSubTask(task);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates a subtask to remove node agent locally. It is idempotent.
+   *
+   * @param universe the universe to which the nodes belong.
+   * @param nodes the nodes in the universe.
+   * @param isForceDelete if true, removal errors are ignored.
+   * @return the subtask group.
+   */
+  public SubTaskGroup createRemoveNodeAgentTasks(
+      Universe universe, Collection<NodeDetails> nodes, boolean isForceDelete) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup(RemoveNodeAgent.class.getSimpleName());
+    nodes =
+        filterUniverseNodes(
+            universe, nodes, n -> n.cloudInfo != null && n.cloudInfo.private_ip != null);
+    if (nodes.size() > 0) {
+      for (NodeDetails node : nodes) {
+        RemoveNodeAgent.Params params = new RemoveNodeAgent.Params();
+        params.setUniverseUUID(universe.getUniverseUUID());
+        params.isForceDelete = isForceDelete;
+        params.nodeName = node.getNodeName();
+        RemoveNodeAgent task = createTask(RemoveNodeAgent.class);
+        task.initialize(params);
+        subTaskGroup.addSubTask(task);
+      }
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
     return subTaskGroup;
   }
 
