@@ -21,8 +21,11 @@
 #include "yb/master/mini_master.h"
 #include "yb/util/backoff_waiter.h"
 
+DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+
 DECLARE_bool(TEST_enable_xcluster_api_v2);
 DECLARE_bool(TEST_xcluster_enable_ddl_replication);
+DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_log_queries);
 
 using namespace std::chrono_literals;
@@ -76,35 +79,35 @@ class XClusterDDLReplicationTest : public XClusterYsqlTestBase {
         "ALTER DATABASE $0 SET $1.replication_role = TARGET", namespace_name,
         xcluster::kDDLQueuePgSchemaName);
   }
+
+  void InsertRowsIntoProducerTableAndVerifyConsumer(
+      const client::YBTableName& producer_table_name) {
+    std::shared_ptr<client::YBTable> producer_table;
+    ASSERT_OK(producer_client()->OpenTable(producer_table_name, &producer_table));
+    ASSERT_OK(InsertRowsInProducer(0, 50, producer_table));
+
+    // Once the safe time advances, the target should have the new table and its rows.
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    auto consumer_table_name = ASSERT_RESULT(GetYsqlTable(
+        &consumer_cluster_, producer_table_name.namespace_name(),
+        producer_table_name.pgschema_name(), producer_table_name.table_name()));
+    std::shared_ptr<client::YBTable> consumer_table;
+    ASSERT_OK(consumer_client()->OpenTable(consumer_table_name, &consumer_table));
+
+    // Verify that universe was setup on consumer.
+    master::GetUniverseReplicationResponsePB resp;
+    ASSERT_OK(VerifyUniverseReplication(&resp));
+    ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
+    ASSERT_TRUE(std::any_of(
+        resp.entry().tables().begin(), resp.entry().tables().end(),
+        [&](const std::string& table) { return table == producer_table_name.table_id(); }));
+
+    ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+  }
 };
 
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
-  auto insert_into_producer_table_and_verify_consumer =
-      [&](const client::YBTableName& producer_table_name) {
-        std::shared_ptr<client::YBTable> producer_table;
-        ASSERT_OK(producer_client()->OpenTable(producer_table_name, &producer_table));
-        ASSERT_OK(InsertRowsInProducer(0, 50, producer_table));
-
-        // Once the safe time advances, the target should have the new table and its rows.
-        ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-        auto consumer_table_name = ASSERT_RESULT(GetYsqlTable(
-            &consumer_cluster_, producer_table_name.namespace_name(),
-            producer_table_name.pgschema_name(), producer_table_name.table_name()));
-        std::shared_ptr<client::YBTable> consumer_table;
-        ASSERT_OK(consumer_client()->OpenTable(consumer_table_name, &consumer_table));
-
-        // Verify that universe was setup on consumer.
-        master::GetUniverseReplicationResponsePB resp;
-        ASSERT_OK(VerifyUniverseReplication(&resp));
-        ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-        ASSERT_TRUE(std::any_of(
-            resp.entry().tables().begin(), resp.entry().tables().end(),
-            [&](const std::string& table) { return table == producer_table_name.table_id(); }));
-
-        ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
-      };
-
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(EnableDDLReplicationExtension());
   ASSERT_OK(CheckpointReplicationGroup());
@@ -113,7 +116,7 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
   // Create a simple table.
   auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
-  insert_into_producer_table_and_verify_consumer(producer_table_name);
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name);
 
   // Create a table in a new schema.
   const std::string kNewSchemaName = "new_schema";
@@ -133,7 +136,7 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
   auto producer_table_name_new_schema = ASSERT_RESULT(GetYsqlTable(
       &producer_cluster_, producer_table_name.namespace_name(), kNewSchemaName,
       producer_table_name.table_name()));
-  insert_into_producer_table_and_verify_consumer(producer_table_name_new_schema);
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_schema);
 
   // Create a table under a new user.
   const std::string kNewUserName = "new_user";
@@ -158,7 +161,48 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
   auto producer_table_name_new_user = ASSERT_RESULT(GetYsqlTable(
       &producer_cluster_, producer_table_name.namespace_name(), producer_table_name.pgschema_name(),
       producer_table_name_new_user_str));
-  insert_into_producer_table_and_verify_consumer(producer_table_name_new_user);
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_user);
+}
+
+TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
+  // Test that DDLs are only replicated exactly once.
+  const int kNumTablets = 3;
+
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(EnableDDLReplicationExtension());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Fail next DDL query and continue to process it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = true;
+
+  // Pause replication so we can accumulate a few DDLs.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
+  const int kNumTables = 3;
+  std::vector<client::YBTableName> producer_table_names;
+  for (int i = 0; i < kNumTables; ++i) {
+    producer_table_names.push_back(ASSERT_RESULT(CreateYsqlTable(
+        /*idx=*/i, kNumTablets, &producer_cluster_)));
+    // Wait for apply safe time to increase.
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_xcluster_consistent_wal_safe_time_frequency_ms));
+  }
+
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+
+  // Safe time should not advance.
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+
+  // Allow processing to continue.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  for (int i = 0; i < kNumTables; ++i) {
+    InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_names[i]);
+  }
 }
 
 }  // namespace yb

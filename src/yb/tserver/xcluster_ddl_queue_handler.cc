@@ -30,6 +30,10 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_log_queries, false,
     "Whether to log queries run by the XClusterDDLQueueHandler. "
     "Note that this could include sensitive information.");
 
+DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_end, false,
+    "Whether the ddl_queue handler should fail at the end of processing (this will cause it "
+    "to reprocess the current batch in a loop).");
+
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
       doc.HasMember(member_name), NotFound, \
@@ -65,6 +69,7 @@ const char* kDDLJsonSchema = "schema";
 const char* kDDLJsonUser = "user";
 const char* kDDLJsonManualReplication = "manual_replication";
 const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
+const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
 
 const std::unordered_set<std::string> kSupportedCommandTags{"CREATE TABLE", "DROP TABLE"};
 
@@ -136,6 +141,11 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
     const std::string& command_tag = doc[kDDLJsonCommandTag].GetString();
     const std::string& query = doc[kDDLJsonQuery].GetString();
 
+    // Need to reverify replicated_ddls if this DDL has already been processed.
+    if (VERIFY_RESULT(CheckIfAlreadyProcessed(start_time, query_id))) {
+      continue;
+    }
+
     if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonManualReplication, IsBool)) {
       // Just add to the replicated_ddls table.
       RETURN_NOT_OK(ProcessManualExecutionQuery({query, start_time, query_id}));
@@ -156,6 +166,9 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
     RETURN_NOT_OK(ProcessDDLQuery({query, start_time, query_id, schema, user}));
   }
 
+  if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) {
+    return STATUS(InternalError, "Failing due to xcluster_ddl_queue_handler_fail_at_end");
+  }
   applied_new_records_ = false;
   return Status::OK();
 }
@@ -198,6 +211,11 @@ Status XClusterDDLQueueHandler::RunAndLogQuery(const std::string& query) {
   return pg_conn_->Execute(query);
 }
 
+Result<bool> XClusterDDLQueueHandler::CheckIfAlreadyProcessed(int64 start_time, int64 query_id) {
+  return pg_conn_->FetchRow<bool>(
+      Format("EXECUTE $0($1, $2)", kDDLPrepStmtAlreadyProcessed, start_time, query_id));
+}
+
 Status XClusterDDLQueueHandler::InitPGConnection() {
   if (pg_conn_ && FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
     return Status::OK();
@@ -217,6 +235,11 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   query << "PREPARE " << kDDLPrepStmtManualInsert << "(bigint, bigint, text) AS "
         << "INSERT INTO " << xcluster::kDDLQueuePgSchemaName << "."
         << xcluster::kDDLReplicatedTableName << " VALUES ($1, $2, $3::jsonb);";
+  // Prepare replicated_ddls select query.
+  query << "PREPARE " << kDDLPrepStmtAlreadyProcessed << "(bigint, bigint) AS "
+        << "SELECT EXISTS(SELECT 1 FROM " << xcluster::kDDLQueuePgSchemaName << "."
+        << xcluster::kDDLReplicatedTableName << " WHERE " << xcluster::kDDLQueueStartTimeColumn
+        << " = $1 AND " << xcluster::kDDLQueueQueryIdColumn << " = $2);";
   RETURN_NOT_OK(pg_conn_->Execute(query.str()));
 
   return Status::OK();
@@ -233,6 +256,8 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
   RETURN_NOT_OK(
       pg_conn_->ExecuteFormat("SET yb_read_time = $0", apply_safe_time.GetPhysicalValueMicros()));
   // Select all rows that are in ddl_queue but not in replicated_ddls.
+  // Note that this is done at apply_safe_time and rows written to replicated_ddls are done at the
+  // time the DDL is rerun, so this does not filter out all rows (see kDDLPrepStmtAlreadyProcessed).
   auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
       "SELECT $0, $1, $2 FROM $3 "
       "WHERE ($0, $1) NOT IN (SELECT $0, $1 FROM $4) "
