@@ -330,17 +330,13 @@ CopyMultiInsertBufferFlush(CopyMultiInsertInfo *miinfo,
 	 * table_multi_insert may leak memory, so switch to short-lived memory
 	 * context before calling it.
 	 */
-	/* YB_TODO(review) Revisit later. */
 	oldcontext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-	if (IsYBRelation(resultRelInfo->ri_RelationDesc))
-		YBCTupleTableMultiInsert(resultRelInfo, slots, nused, estate);
-	else
-		table_multi_insert(resultRelInfo->ri_RelationDesc,
-						slots,
-						nused,
-						mycid,
-						ti_options,
-						buffer->bistate);
+	table_multi_insert(resultRelInfo->ri_RelationDesc,
+					   slots,
+					   nused,
+					   mycid,
+					   ti_options,
+					   buffer->bistate);
 	MemoryContextSwitchTo(oldcontext);
 
 	for (i = 0; i < nused; i++)

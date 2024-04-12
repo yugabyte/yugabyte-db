@@ -439,16 +439,6 @@ void YBCExecuteNonTxnInsertForDb(Oid dboid,
 							 YB_NON_TRANSACTIONAL);
 }
 
-/* YB_REVIEW(neil) Revisit later. */
-/* YB_TODO: Is there a better way to do multi tuple insert? */
-void
-YBCTupleTableMultiInsert(ResultRelInfo *resultRelInfo, TupleTableSlot **slots,
-						 int num, EState *estate)
-{
-	for (int i = 0; i < num; i++)
-		YBCTupleTableInsert(resultRelInfo, slots[i], estate);
-}
-
 void
 YBCTupleTableInsert(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
 					EState *estate)

@@ -51,10 +51,6 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
 											Datum ybbasectid,
 											bool ybctid_as_value);
 
-extern void YBCTupleTableMultiInsert(ResultRelInfo	 *resultRelInfo,
-									 TupleTableSlot **slots, int num,
-									 EState *estate);
-
 extern void YBCTupleTableInsert(ResultRelInfo  *resultRelInfo,
 								TupleTableSlot *slot, EState *estate);
 
