@@ -6719,7 +6719,9 @@ Status CatalogManager::DeleteTableInMemory(
 
   if (!hide_only) {
     // If table is being hidden we should not abort snapshot related tasks.
-    table->AbortTasks();
+    // Always ignore Table schema verification tasks since it may be the one that is initiating the
+    // deletes.
+    table->AbortTasks(/*tasks_to_ignore=*/{server::MonitoredTaskType::TableSchemaVerification});
   }
 
   // For regular (indexed) table, insert table info and lock in the front of the list. Else for
