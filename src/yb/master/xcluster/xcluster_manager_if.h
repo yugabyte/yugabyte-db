@@ -29,6 +29,10 @@ namespace rpc {
 class RpcContext;
 }  // namespace rpc
 
+namespace xcluster {
+YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
+}
+
 namespace master {
 
 class GetXClusterSafeTimeRequestPB;
@@ -53,6 +57,9 @@ class XClusterManagerIf {
   virtual Status PopulateXClusterStatusJson(JsonWriter& jw) const = 0;
 
   virtual void RunBgTasks(const LeaderEpoch& epoch) = 0;
+
+  virtual std::unordered_set<xcluster::ReplicationGroupId>
+  GetInboundTransactionalReplicationGroups() const = 0;
 
  protected:
   virtual ~XClusterManagerIf() = default;

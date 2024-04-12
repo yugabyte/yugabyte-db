@@ -82,7 +82,7 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   Status DropYsqlTable(Cluster& cluster, const client::YBTable& table);
 
-  static void WriteWorkload(
+  static Status WriteWorkload(
       const client::YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster);
 
   static Result<pgwrapper::PGResultPtr> ScanToStrings(

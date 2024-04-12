@@ -1110,14 +1110,6 @@ PgMutationCounter& TabletServer::GetPgNodeLevelMutationCounter() {
   return pg_node_level_mutation_counter_;
 }
 
-Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {
-  auto xcluster_consumer_ptr = GetXClusterConsumer();
-  if (!xcluster_consumer_ptr) {
-    return STATUS(Uninitialized, "XCluster consumer has not been initialized");
-  }
-  return xcluster_consumer_ptr->TEST_GetXClusterRole();
-}
-
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
     TabletServerServiceRpcMethodIndexes metric) {
   auto tablet_server_service = tablet_server_service_.lock();
@@ -1225,7 +1217,7 @@ Status TabletServer::CreateXClusterConsumer() {
     auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
     SCHECK(tablet_peer, NotFound, "Could not find tablet $0", tablet_id);
     return std::make_pair(
-        tablet_peer->tablet_metadata()->namespace_id(),
+        VERIFY_RESULT(tablet_peer->GetNamespaceId()),
         tablet_peer->tablet_metadata()->namespace_name());
   };
 
@@ -1250,8 +1242,6 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
       RETURN_NOT_OK(CreateXClusterConsumer());
       xcluster_consumer = GetXClusterConsumer();
     }
-
-    xcluster_context_->SetDDLOnlyMode(consumer_registry->role() != cdc::XClusterRole::ACTIVE);
   }
 
   if (xcluster_consumer) {

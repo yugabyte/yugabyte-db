@@ -211,8 +211,6 @@ class XClusterTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id, int num_expected_table);
 
-  virtual Status ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster = nullptr);
-
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled);
@@ -255,9 +253,12 @@ class XClusterTestBase : public YBTest {
   Status WaitForValidSafeTimeOnAllTServers(
       const NamespaceId& namespace_id, Cluster* cluster = nullptr,
       boost::optional<CoarseTimePoint> deadline = boost::none);
+  Status WaitForValidSafeTimeOnAllTServers(
+      const NamespaceId& namespace_id, MiniCluster& cluster,
+      boost::optional<CoarseTimePoint> deadline = boost::none);
 
-  Status WaitForRoleChangeToPropogateToAllTServers(
-      cdc::XClusterRole expected_xcluster_role, Cluster* cluster = nullptr,
+  Status WaitForReadOnlyModeOnAllTServers(
+      const NamespaceId& namespace_id, bool is_read_only = true, Cluster* cluster = nullptr,
       boost::optional<CoarseTimePoint> deadline = boost::none);
 
   Result<std::vector<xrepl::StreamId>> BootstrapProducer(

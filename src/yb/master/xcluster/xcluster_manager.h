@@ -142,6 +142,9 @@ class XClusterManager : public XClusterManagerIf,
   Status MarkIndexBackfillCompleted(
       const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) override;
 
+  std::unordered_set<xcluster::ReplicationGroupId> GetInboundTransactionalReplicationGroups()
+      const override;
+
  private:
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
