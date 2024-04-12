@@ -8053,12 +8053,12 @@ void CatalogManager::NotifyTabletDeleteFinished(
   shared_ptr<TSDescriptor> ts_desc;
   if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
     LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
-  } else if (!ts_desc->IsTabletDeletePending(tablet_id)) {
-    LOG(WARNING) << "Pending delete for tablet " << tablet_id << " in ts " << tserver_uuid
-                 << " doesn't exist";
   } else {
-    LOG(INFO) << "Clearing pending delete for tablet " << tablet_id << " in ts " << tserver_uuid;
-    ts_desc->ClearPendingTabletDelete(tablet_id);
+    auto num_removed = ts_desc->ClearPendingTabletDelete(tablet_id);
+    if (num_removed == 0) {
+      LOG(WARNING) << "Pending delete for tablet " << tablet_id << " in ts " << tserver_uuid
+                   << " doesn't exist";
+    }
   }
   if (task_state == server::MonitoredTaskState::kComplete) {
     CheckTableDeleted(table, epoch);

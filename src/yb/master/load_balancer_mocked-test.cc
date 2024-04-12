@@ -334,6 +334,42 @@ TEST_F(LoadBalancerMockedTest, TestWithBlacklist) {
   ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
 }
 
+TEST_F(LoadBalancerMockedTest, TestAddReplicaToTSWithPendingDelete) {
+  PrepareTestStateSingleAz();
+  auto underreplicated_tablet = tablets_[0];
+  auto pending_delete_tablet = tablets_[1];
+  auto destination_ts = ts_descs_[2];
+
+  RemoveReplica(underreplicated_tablet.get(), destination_ts);
+  destination_ts->AddPendingTabletDelete(pending_delete_tablet->id());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  std::string tablet_id, out_ts, to_ts;
+  auto replica_added = ASSERT_RESULT(HandleAddReplicas(&tablet_id, &out_ts, &to_ts));
+  EXPECT_TRUE(replica_added);
+  EXPECT_EQ(tablet_id, underreplicated_tablet->id());
+  EXPECT_EQ(out_ts, "");
+  EXPECT_EQ(to_ts, destination_ts->permanent_uuid());
+}
+
+// It's not clear how realistic this scenario is. The load balancer has checks in the addition
+// validation code for adding another tablet replica to a TS that already has that tablet in the
+// RUNNING, UNKNOWN, NOT_STARTED, or BOOTSTRAPPING states.
+TEST_F(LoadBalancerMockedTest, TestAddReplicaToTSWithPendingDeleteForSameTablet) {
+  PrepareTestStateSingleAz();
+  auto tablet = tablets_[0];
+  auto destination_ts = ts_descs_[2];
+
+  RemoveReplica(tablet.get(), destination_ts);
+  destination_ts->AddPendingTabletDelete(tablet->id());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  std::string tablet_id, out_ts, to_ts;
+  auto replica_added = ASSERT_RESULT(HandleAddReplicas(&tablet_id, &out_ts, &to_ts));
+  EXPECT_FALSE(replica_added);
+  EXPECT_EQ(tablet_id, "");
+  EXPECT_EQ(out_ts, "");
+  EXPECT_EQ(to_ts, "");
+}
+
 class LoadBalancerMockedCloudInfoSimilarityTest : public LoadBalancerMockedTest,
                                                   public testing::WithParamInterface<bool> {};
 INSTANTIATE_TEST_SUITE_P(, LoadBalancerMockedCloudInfoSimilarityTest, ::testing::Bool());
