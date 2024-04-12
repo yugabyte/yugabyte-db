@@ -181,7 +181,7 @@ Create a new database user, and assign the necessary user permissions.
 
     ```sql
     ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
-    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (PRIMARY KEY) COLUMNS;
+    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
     ```
 
   {{% /tab %}}
@@ -351,7 +351,7 @@ Create a new database user, and assign the necessary user permissions.
     begin
         rdsadmin.rdsadmin_util.alter_supplemental_logging(
             p_action => 'ADD',
-            p_type   => 'PRIMARY KEY');
+            p_type   => 'ALL');
     end;
     /
     ```
