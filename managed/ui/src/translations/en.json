@@ -964,6 +964,7 @@
           "createXClusterConfig": {
             "label": "Configure Replication",
             "tooltip": {
+              "universeUnavailable": "This universe is currently unavailable for setting up further xCluster replication configs.",
               "universeLinkedToTxnXCluster": "Another xCluster replication config cannot be configure as this universe is already participating in a transactional xCluster config."
             }
           },
