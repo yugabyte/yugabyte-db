@@ -18,14 +18,17 @@
 #include <utils/syscache.h>
 #include <utils/timestamp.h>
 #include <utils/array.h>
+#include <utils/float.h>
 #include <parser/parse_coerce.h>
 #include <catalog/pg_type.h>
 #include <funcapi.h>
 #include <lib/stringinfo.h>
 
 #include "aggregation/bson_project.h"
+#include "types/decimal128.h"
 #include "aggregation/bson_positional_query.h"
 #include "aggregation/bson_tree_write.h"
+#include "geospatial/bson_geospatial_geonear.h"
 #include "query/helio_bson_compare.h"
 #include "utils/mongo_errors.h"
 #include "metadata/metadata_cache.h"
@@ -139,6 +142,8 @@ static void PostProcessParseProjectNode(void *state, const StringView *path,
 										BsonPathNode *node,
 										bool *isExclusionIfNoInclusion,
 										bool *hasFieldsForIntermediate);
+static pgbson * ProjectGeonearDocument(const GeonearDistanceState *state,
+									   pgbson *document);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -152,6 +157,7 @@ PG_FUNCTION_INFO_V1(bson_dollar_replace_root);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_extract_filter_expression);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_project);
 PG_FUNCTION_INFO_V1(bson_dollar_facet_project);
+PG_FUNCTION_INFO_V1(bson_dollar_project_geonear);
 
 /*
  * bson_dollar_project performs a projection of one or more paths in a binary serialized bson for aggregation $project
@@ -252,6 +258,37 @@ bson_dollar_project_find(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_POINTER(ProjectDocumentWithState(document, state));
 	}
+}
+
+
+/*
+ * bson_dollar_project_geonear performs a projection for $geoNear aggregation stage
+ */
+Datum
+bson_dollar_project_geonear(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *geoNearQuery = PG_GETARG_PGBSON_PACKED(1);
+
+	const GeonearDistanceState *state;
+	int argPosition = 1;
+
+	SetCachedFunctionState(
+		state,
+		GeonearDistanceState,
+		argPosition,
+		BuildGeoNearDistanceState,
+		geoNearQuery);
+
+	if (state == NULL)
+	{
+		GeonearDistanceState projectionState;
+		memset(&projectionState, 0, sizeof(GeonearDistanceState));
+		BuildGeoNearDistanceState(&projectionState, geoNearQuery);
+		PG_RETURN_POINTER(ProjectGeonearDocument(&projectionState, document));
+	}
+
+	PG_RETURN_POINTER(ProjectGeonearDocument(state, document));
 }
 
 
@@ -1840,4 +1877,85 @@ PostProcessParseProjectNode(void *state, const StringView *path,
 
 	/* Presume inclusion otherwise */
 	context->hasInclusion = true;
+}
+
+
+/*
+ * Projects as per the rules of $geoNear aggregation stage from the cached state
+ */
+static pgbson *
+ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
+{
+	/*
+	 * Get the distance from document, either spherical or planar based on the state
+	 * convert it into radians if spherical distance is returned for legacy points
+	 */
+	float8 distance = GeonearDistanceFromDocument(state, document);
+
+	if (state->mode == DistanceMode_Radians)
+	{
+		distance = float8_div(distance, RADIUS_OF_EARTH_M);
+	}
+
+	distance = float8_mul(distance, state->distanceMultiplier);
+
+	bson_value_t distanceValue = {
+		.value.v_double = distance,
+		.value_type = BSON_TYPE_DOUBLE,
+	};
+
+	BsonIntermediatePathNode *root = MakeRootNode();
+	bool nodeCreated = false;
+	bool treatLeafDataAsConstant = true;
+
+	/*
+	 * Add location to the document first if distance and loc fields are same then loc field gets the priority
+	 * aggregation/sources/geonear/distancefield_and_includelocs.js
+	 */
+	if (state->includeLocs.length > 0 && state->includeLocs.string != NULL)
+	{
+		bson_iter_t iter;
+		PgbsonInitIteratorAtPath(document, state->key.string, &iter);
+
+		TraverseDottedPathAndGetOrAddField(
+			&state->includeLocs,
+			bson_iter_value(&iter),
+			root,
+			BsonDefaultCreateIntermediateNode,
+			BsonDefaultCreateLeafNode,
+			treatLeafDataAsConstant,
+			NULL,
+			&nodeCreated
+			);
+	}
+
+	/* Add distance field */
+	TraverseDottedPathAndGetOrAddField(
+		&state->distanceField,
+		&distanceValue,
+		root,
+		BsonDefaultCreateIntermediateNode,
+		BsonDefaultCreateLeafNode,
+		treatLeafDataAsConstant,
+		NULL,
+		&nodeCreated
+		);
+
+	/* Write the new fields to the document */
+	pgbson_writer writer;
+	bson_iter_t documentIterator;
+	PgbsonWriterInit(&writer);
+	PgbsonInitIterator(document, &documentIterator);
+	bool projectNonMatchingField = true;
+	ProjectDocumentState projectDocState = {
+		.isPositionalAlreadyEvaluated = false,
+		.parentDocument = document,
+		.pendingProjectionState = NULL
+	};
+
+	bool isInNestedArray = false;
+	TraverseObjectAndAppendToWriter(&documentIterator, root, &writer,
+									projectNonMatchingField,
+									&projectDocState, isInNestedArray);
+	return PgbsonWriterGetPgbson(&writer);
 }

@@ -30,6 +30,7 @@
 #include <utils/ruleutils.h>
 #include <utils/builtins.h>
 #include <catalog/pg_aggregate.h>
+#include <catalog/pg_operator.h>
 #include <catalog/pg_class.h>
 #include <parser/parsetree.h>
 #include <utils/array.h>
@@ -54,6 +55,8 @@
 #include "aggregation/bson_aggregation_pipeline_private.h"
 #include "vector/vector_common.h"
 #include "aggregation/bson_project.h"
+#include "geospatial/bson_geospatial_common.h"
+#include "geospatial/bson_geospatial_geonear.h"
 #include "utils/version_utils.h"
 
 /*
@@ -150,6 +153,8 @@ static Query * HandleUnwind(const bson_value_t *existingValue, Query *query,
 							AggregationPipelineBuildContext *context);
 static Query * HandleDistinct(const StringView *existingValue, Query *query,
 							  AggregationPipelineBuildContext *context);
+static Query * HandleGeoNear(const bson_value_t *existingValue, Query *query,
+							 AggregationPipelineBuildContext *context);
 
 static bool RequiresPersistentCursorFalse(const bson_value_t *pipelineValue);
 static bool RequiresPersistentCursorTrue(const bson_value_t *pipelineValue);
@@ -296,7 +301,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	},
 	{
 		.stage = "$geoNear",
-		.mutateFunc = NULL,
+		.mutateFunc = &HandleGeoNear,
 		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,
@@ -2389,6 +2394,174 @@ HandleDistinct(const StringView *distinctKey, Query *query,
 
 	firstEntry->expr = (Expr *) aggref;
 	query->hasAggs = true;
+	return query;
+}
+
+
+static Query *
+HandleGeoNear(const bson_value_t *existingValue, Query *query,
+			  AggregationPipelineBuildContext *context)
+{
+	ReportFeatureUsage(FEATURE_STAGE_GEONEAR);
+
+	EnsureGeospatialFeatureEnabled();
+
+	if (!IsClusterVersionAtleastThis(1, 16, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg(
+							"$geoNear is not supported yet.")));
+	}
+
+	if (context->stageNum != 0)
+	{
+		ereport(ERROR, (errcode(MongoLocation40603),
+						errmsg(
+							"$geoNear was not the first stage in the pipeline.")));
+	}
+
+	const pgbson *geoNearQueryDoc = PgbsonInitFromDocumentBsonValue(existingValue);
+	GeonearRequest *request = ParseGeonearRequest(geoNearQueryDoc);
+
+	List *quals = NIL;
+
+	/*
+	 * Create a $geoNear query of this form:
+	 *
+	 * For 2dsphere index:
+	 *		SELECT bson_dollar_project_geonear(document, <geoNearSpec>) AS document
+	 *		FROM <collection> WHERE bson_validate_geography(document, <geoNearSpec.key>) IS NOT NULL AND
+	 *      [optional] document <|-|> <geoNearSpec> <= maxDistance AND document <|-|> <geoNearSpec> >= minDistance
+	 *		ORDER BY bson_validate_geography(document, <geoNearSpec.key>) <|-|> <geoNearSpec>;
+	 *
+	 * For 2d index:
+	 *      SELECT bson_dollar_project_geonear(document, <geoNearSpec>) AS document
+	 *      FROM <collection> WHERE bson_validate_geometry(document, <geoNearSpec.key>) IS NOT NULL
+	 *      [optional] document <|-|> <geoNearSpec> <= maxDistance AND document <|-|> <geoNearSpec> >= minDistance
+	 *      ORDER BY bson_validate_geometry(document, <geoNearSpec.key>) <|-|> <geoNearSpec>;
+	 *
+	 * The <|-|> operator is a custom operator that compares the distance between two geometries/geographies
+	 * based on the geoNear requirements.
+	 *
+	 */
+	Const *keyConst = makeConst(TEXTOID, -1, InvalidOid, -1, CStringGetTextDatum(
+									request->key),
+								false, false);
+	Const *queryConst = makeConst(BsonTypeId(), -1, InvalidOid, -1, PointerGetDatum(
+									  geoNearQueryDoc),
+								  false, false);
+
+	/* GeoJSON point enforces 2dsphere index and legacy enforces 2d index usage */
+	Oid bsonValidateFunctionId = request->isGeoJsonPoint ?
+								 BsonValidateGeographyFunctionId() :
+								 BsonValidateGeometryFunctionId();
+
+	TargetEntry *firstEntry = linitial(query->targetList);
+	Var *docExpr = (Var *) firstEntry->expr;
+	Expr *validateExpr = (Expr *) makeFuncExpr(bsonValidateFunctionId,
+											   BsonTypeId(),
+											   list_make2((Expr *) docExpr,
+														  keyConst),
+											   InvalidOid,
+											   InvalidOid,
+											   COERCE_EXPLICIT_CALL);
+
+	/*
+	 * Add the geo index pfe to match to the index
+	 */
+	NullTest *nullTest = makeNode(NullTest);
+	nullTest->argisrow = false;
+	nullTest->nulltesttype = IS_NOT_NULL;
+	nullTest->arg = validateExpr;
+	quals = lappend(quals, nullTest);
+
+	/* Add $minDistance and $maxDistance checks
+	 * TODO: Make these index operators in next PR
+	 */
+	Oid geoNearDistanceOperatorId = BsonGeonearDistanceOperatorId();
+	if (request->minDistance != NULL || request->maxDistance != NULL)
+	{
+		Expr *distanceExpr = make_opclause(geoNearDistanceOperatorId, FLOAT8OID, false,
+										   (Expr *) docExpr, (Expr *) queryConst,
+										   InvalidOid, InvalidOid);
+		bool is2dSpherical = Is2dWithSphericalDistance(request);
+		if (request->minDistance != NULL)
+		{
+			float8 minDistance = is2dSpherical ?
+								 ConvertRadiansToMeters(*request->minDistance) :
+								 *request->minDistance;
+			Expr *minDistanceConst = (Expr *) MakeFloat8Const(minDistance);
+			Expr *minDistanceExpr = make_opclause(Float8GreaterThanEqualOperatorId(),
+												  BOOLOID, false,
+												  distanceExpr,
+												  minDistanceConst, InvalidOid,
+												  InvalidOid);
+			quals = lappend(quals, minDistanceExpr);
+		}
+
+		if (request->maxDistance != NULL)
+		{
+			float8 maxDistance = is2dSpherical ? ConvertRadiansToMeters(
+				*request->maxDistance) :
+								 *request->maxDistance;
+			Expr *maxDistanceConst = (Expr *) MakeFloat8Const(maxDistance);
+			Expr *maxDistanceExpr = make_opclause(Float8LessThanEqualOperatorId(),
+												  BOOLOID, false,
+												  distanceExpr,
+												  maxDistanceConst, InvalidOid,
+												  InvalidOid);
+			quals = lappend(quals, maxDistanceExpr);
+		}
+	}
+
+	/* Add any query filters available */
+	if (request->query.value_type != BSON_TYPE_EOD)
+	{
+		query = HandleMatch(&(request->query), query, context);
+		ValidateQueryOperatorsForGeoNear((Node *) query->jointree->quals, NULL);
+	}
+
+	RangeTblEntry *rte = linitial(query->rtable);
+	if (rte->rtekind != RTE_RELATION)
+	{
+		ereport(ERROR, (
+					errcode(MongoBadValue),
+					errmsg("$geoNear is only supported on collections.")));
+	}
+
+	if (query->jointree->quals != NULL)
+	{
+		quals = lappend(quals, query->jointree->quals);
+	}
+
+	query->jointree->quals = (Node *) make_ands_explicit(quals);
+
+	/* Add the sort clause and also add the expression in targetlist */
+	Expr *opExpr = make_opclause(geoNearDistanceOperatorId, FLOAT8OID, false,
+								 (Expr *) validateExpr,
+								 (Expr *) queryConst,
+								 InvalidOid, InvalidOid);
+
+	TargetEntry *tle = makeTargetEntry(opExpr, (firstEntry->resno) + 1, "distance", true);
+	tle->ressortgroupref = 1;
+	query->targetList = lappend(query->targetList, tle);
+
+	SortGroupClause *sortGroupClause = makeNode(SortGroupClause);
+	sortGroupClause->eqop = Float8LessOperator;
+	sortGroupClause->sortop = Float8LessOperator;
+	sortGroupClause->tleSortGroupRef = tle->ressortgroupref;
+	query->sortClause = lappend(query->sortClause, sortGroupClause);
+
+	/* Add the geoNear projection function */
+	FuncExpr *projectionExpr = makeFuncExpr(
+		BsonDollarProjectGeonearFunctionOid(), BsonTypeId(), list_make2(docExpr,
+																		queryConst),
+		InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	firstEntry->expr = (Expr *) projectionExpr;
+
+	context->requiresSubQueryAfterProject = true;
 	return query;
 }
 

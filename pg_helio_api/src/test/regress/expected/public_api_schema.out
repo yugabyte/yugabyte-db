@@ -81,6 +81,7 @@
  helio_api_catalog | bson_dollar_nin                              | boolean               | helio_core.bson, helio_core.bson                                                                                    | func
  helio_api_catalog | bson_dollar_project                          | helio_core.bson       | document helio_core.bson, pathspec helio_core.bson                                                                  | func
  helio_api_catalog | bson_dollar_project_find                     | helio_core.bson       | document helio_core.bson, pathspec helio_core.bson, queryspec helio_core.bson DEFAULT NULL::helio_core.bson         | func
+ helio_api_catalog | bson_dollar_project_geonear                  | helio_core.bson       | helio_core.bson, helio_core.bson                                                                                    | func
  helio_api_catalog | bson_dollar_regex                            | boolean               | helio_core.bson, helio_core.bson                                                                                    | func
  helio_api_catalog | bson_dollar_replace_root                     | helio_core.bson       | document helio_core.bson, pathspec helio_core.bson                                                                  | func
  helio_api_catalog | bson_dollar_set                              | helio_core.bson       | document helio_core.bson, pathspec helio_core.bson                                                                  | func
@@ -101,6 +102,15 @@
  helio_api_catalog | bson_firstn_lastn_final_on_sorted            | helio_core.bson       | bytea                                                                                                               | func
  helio_api_catalog | bson_firstn_transition                       | bytea                 | bytea, helio_core.bson, bigint, helio_core.bson[]                                                                   | func
  helio_api_catalog | bson_firstn_transition_on_sorted             | bytea                 | bytea, helio_core.bson, bigint                                                                                      | func
+ helio_api_catalog | bson_geonear_distance                        | double precision      | helio_core.bson, helio_core.bson                                                                                    | func
+ helio_api_catalog | bson_gist_geography_compress                 | internal              | internal                                                                                                            | func
+ helio_api_catalog | bson_gist_geography_consistent               | boolean               | internal, helio_core.bson, integer                                                                                  | func
+ helio_api_catalog | bson_gist_geography_distance                 | double precision      | internal, helio_core.bson, integer                                                                                  | func
+ helio_api_catalog | bson_gist_geography_options                  | void                  | internal                                                                                                            | func
+ helio_api_catalog | bson_gist_geometry_2d_compress               | internal              | internal                                                                                                            | func
+ helio_api_catalog | bson_gist_geometry_2d_options                | void                  | internal                                                                                                            | func
+ helio_api_catalog | bson_gist_geometry_consistent_2d             | boolean               | internal, helio_core.bson, integer                                                                                  | func
+ helio_api_catalog | bson_gist_geometry_distance_2d               | double precision      | internal, helio_core.bson, integer                                                                                  | func
  helio_api_catalog | bson_last_combine                            | bytea                 | bytea, bytea                                                                                                        | func
  helio_api_catalog | bson_last_transition                         | bytea                 | bytea, helio_core.bson, helio_core.bson[]                                                                           | func
  helio_api_catalog | bson_last_transition_on_sorted               | bytea                 | bytea, helio_core.bson                                                                                              | func
@@ -125,6 +135,8 @@
  helio_api_catalog | bson_sum_avg_transition                      | bytea                 | bytea, helio_core.bson                                                                                              | func
  helio_api_catalog | bson_sum_final                               | helio_core.bson       | bytea                                                                                                               | func
  helio_api_catalog | bson_true_match                              | boolean               | helio_core.bson                                                                                                     | func
+ helio_api_catalog | bson_validate_geography                      | helio_core.bson       | p_document helio_core.bson, p_keypath text                                                                          | func
+ helio_api_catalog | bson_validate_geometry                       | helio_core.bson       | p_document helio_core.bson, p_keypath text                                                                          | func
  helio_api_catalog | bsonaverage                                  | helio_core.bson       | helio_core.bson                                                                                                     | agg
  helio_api_catalog | bsonfirst                                    | helio_core.bson       | helio_core.bson, helio_core.bson[]                                                                                  | agg
  helio_api_catalog | bsonfirstn                                   | helio_core.bson       | helio_core.bson, bigint, helio_core.bson[]                                                                          | agg
@@ -150,7 +162,7 @@
  helio_api_catalog | gin_bson_wildcard_project_extract_value      | internal              | helio_core.bson, internal                                                                                           | func
  helio_api_catalog | gin_bson_wildcard_project_options            | void                  | internal                                                                                                            | func
  helio_api_catalog | query_match_support                          | internal              | internal                                                                                                            | func
-(112 rows)
+(124 rows)
 
 \df helio_data.*
                        List of functions

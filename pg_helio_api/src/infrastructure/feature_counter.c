@@ -232,6 +232,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_STAGE_CURRENTOP] = "current_op_agg",
 	[FEATURE_STAGE_DOCUMENTS] = "documents_agg",
 	[FEATURE_STAGE_FACET] = "facet",
+	[FEATURE_STAGE_GEONEAR] = "geo_near",
 	[FEATURE_STAGE_GRAPH_LOOKUP] = "graphLookup",
 	[FEATURE_STAGE_GROUP] = "group",
 	[FEATURE_STAGE_GROUP_ACC_FIRSTN] = "firstN_acc",

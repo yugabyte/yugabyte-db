@@ -19,6 +19,7 @@ API_CATALOG_SCHEMA_NAME=helio_api_catalog
 CORE_SCHEMA_NAME=helio_core
 API_DATA_SCHEMA_NAME=helio_data
 API_ADMIN_ROLE=helio_admin_role
+POSTGIS_SCHEMA_NAME=public
 EXTENSION_OBJECT_PREFIX=helio
 
 # compilation configuration

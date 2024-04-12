@@ -1352,7 +1352,9 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		rightQuery = AddBsonArrayAggFunction(rightQuery, &subPipelineContext, parseState,
 											 lookupArgs->lookupAs.string,
 											 lookupArgs->lookupAs.length,
-											 subPipelineContext.requiresSubQuery,
+											 subPipelineContext.requiresSubQuery ||
+											 subPipelineContext.
+											 requiresSubQueryAfterProject,
 											 aggrefptr);
 	}
 	else

@@ -35,12 +35,17 @@ ifneq ($(SKIP_API_SCHEMA),yes)
     $(error API_ADMIN_ROLE is not set)
     endif
 
+    ifndef POSTGIS_SCHEMA_NAME
+    $(error POSTGIS_SCHEMA_NAME is not set)
+    endif
+
     EXTENSION_SQL_ONLY_DEFINES = -D__API_CATALOG_SCHEMA__=$(API_CATALOG_SCHEMA_NAME) \
                                  -D__API_SCHEMA__=$(API_SCHEMA_NAME) \
                                  -D__API_SCHEMA_INTERNAL__=$(API_SCHEMA_INTERNAL_NAME) \
                                  -D__API_DATA_SCHEMA__=$(API_DATA_SCHEMA_NAME) \
                                  -D__API_ADMIN_ROLE_STR__=\'$(API_ADMIN_ROLE)\' \
-                                 -D__API_ADMIN_ROLE__=$(API_ADMIN_ROLE)
+                                 -D__API_ADMIN_ROLE__=$(API_ADMIN_ROLE) \
+                                 -D__POSTGIS_SCHEMA_NAME__=$(POSTGIS_SCHEMA_NAME)
 endif
 
 ifndef CORE_SCHEMA_NAME

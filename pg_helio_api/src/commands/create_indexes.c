@@ -2471,13 +2471,8 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 		if (indexKind == MongoIndexKind_2d)
 		{
 			ReportFeatureUsage(FEATURE_CREATE_INDEX_2D);
-			if (!EnableGeospatialSupport)
-			{
-				/* Safe guard against the helio_api.enableGeospatial GUC */
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("2d mongo index is not supported yet")));
-			}
-			else if (indexDefKey->has2dIndex)
+			EnsureGeospatialFeatureEnabled();
+			if (indexDefKey->has2dIndex)
 			{
 				/* Can't have more than one 2d index fields */
 				ereport(ERROR, (errcode(MongoLocation16800),
@@ -2501,13 +2496,8 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 		if (indexKind == MongoIndexKind_2dsphere)
 		{
 			ReportFeatureUsage(FEATURE_CREATE_INDEX_2DSPHERE);
-			if (!EnableGeospatialSupport)
-			{
-				/* Safe guard against the helio_api.enableGeospatial GUC */
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("2dsphere mongo index is not supported yet")));
-			}
-			else if (isWildcardKeyPath)
+			EnsureGeospatialFeatureEnabled();
+			if (isWildcardKeyPath)
 			{
 				ereport(ERROR, (errcode(MongoCannotCreateIndex),
 								errmsg(

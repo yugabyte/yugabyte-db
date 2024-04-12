@@ -919,7 +919,7 @@ ValidateQueryDocument(pgbson *queryDocument)
 		.inputType = MongoQueryOperatorInputType_Bson,
 		.simplifyOperators = false,
 		.coerceOperatorExprIfApplicable = false,
-		.requiredFilterPathNameHashSet = NULL
+		.requiredFilterPathNameHashSet = NULL,
 	};
 
 	CreateQualsFromQueryDocIterator(&queryDocIter, &context);
@@ -942,7 +942,7 @@ QueryDocumentsAreEquivalent(const pgbson *leftQueryDocument,
 		.inputType = MongoQueryOperatorInputType_Bson,
 		.simplifyOperators = false,
 		.coerceOperatorExprIfApplicable = false,
-		.requiredFilterPathNameHashSet = NULL
+		.requiredFilterPathNameHashSet = NULL,
 	};
 
 	List *leftDocumentQuals = CreateQualsFromQueryDocIterator(&leftDocumentIter,
@@ -956,7 +956,7 @@ QueryDocumentsAreEquivalent(const pgbson *leftQueryDocument,
 		.inputType = MongoQueryOperatorInputType_Bson,
 		.simplifyOperators = false,
 		.coerceOperatorExprIfApplicable = false,
-		.requiredFilterPathNameHashSet = NULL
+		.requiredFilterPathNameHashSet = NULL,
 	};
 
 	List *rightDocumentQuals = CreateQualsFromQueryDocIterator(&rightDocumentIter,
@@ -1831,12 +1831,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 
 		case QUERY_OPERATOR_GEOWITHIN:
 		{
-			if (!EnableGeospatialSupport)
-			{
-				/* Safe guard against the helio_api.enableGeospatial GUC */
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("Geospatial queries are not supported yet.")));
-			}
+			EnsureGeospatialFeatureEnabled();
 
 			if (!BSON_ITER_HOLDS_DOCUMENT(operatorDocIterator))
 			{
@@ -1864,12 +1859,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 
 		case QUERY_OPERATOR_GEOINTERSECTS:
 		{
-			if (!EnableGeospatialSupport)
-			{
-				/* Safe guard against the helio_api.enableGeospatial GUC */
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("Geospatial queries are not supported yet.")));
-			}
+			EnsureGeospatialFeatureEnabled();
 
 			if (!BSON_ITER_HOLDS_DOCUMENT(operatorDocIterator))
 			{

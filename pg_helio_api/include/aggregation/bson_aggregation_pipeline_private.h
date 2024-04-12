@@ -175,4 +175,12 @@ MakeBoolValueConst(bool value)
 }
 
 
+inline static Const *
+MakeFloat8Const(float8 floatValue)
+{
+	return makeConst(FLOAT8OID, -1, InvalidOid, sizeof(float8),
+					 Float8GetDatum(floatValue), false, true);
+}
+
+
 #endif

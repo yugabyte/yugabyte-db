@@ -18,6 +18,7 @@
 
 #include "utils/mongo_errors.h"
 #include "geospatial/bson_geospatial_common.h"
+#include "geospatial/bson_geospatial_geonear.h"
 #include "geospatial/bson_geospatial_shape_operators.h"
 #include "opclass/helio_gin_common.h"
 #include "opclass/helio_gin_index_mgmt.h"
@@ -31,6 +32,8 @@ extern int32 MaxSegmentVertices;
 /* Index strategy that Postgis uses for && bounding box overlap operator */
 #define POSTGIS_BOUNDING_BOX_OVERLAP_INDEX_STRATEGY 3
 
+/* Index strategy that Postgis uses for bounding box distance operators */
+#define POSTGIS_BOUNDING_BOX_DISTANCE_INDEX_STRATEGY 13
 
 /*
  * Defines the area of 2d cartesian plane that roughly corresponds to the hemisphere of earth
@@ -39,14 +42,17 @@ extern int32 MaxSegmentVertices;
 #define PLANE_2D_MAX_AREA_HEMISPHERE 32400
 
 /* The base query to segmentize bigger query regions into smaller regions */
-#define BaseGeoSubdivideQuery(shape) \
-	"SELECT postgis_public.ST_SUBDIVIDE(" \
-	"postgis_public.ST_SEGMENTIZE($1::postgis_public." shape \
-	", $2)::postgis_public.geometry, $3)" \
-	"::postgis_public." shape
+static inline const char *
+BaseGeoSubdivideQuery(const char *shape)
+{
+	StringInfo baseQuery = makeStringInfo();
+	appendStringInfo(baseQuery, "SELECT %s.ST_SUBDIVIDE(%s.ST_SEGMENTIZE($1::%s.%s"
+								", $2)::%s.geometry, $3)::%s.%s",
+					 PostgisSchemaName, PostgisSchemaName, PostgisSchemaName, shape,
+					 PostgisSchemaName, PostgisSchemaName, shape);
 
-static const char *GeographyDivideQuery = BaseGeoSubdivideQuery("geography");
-static const char *GeometryDivideQuery = BaseGeoSubdivideQuery("geometry");
+	return baseQuery->data;
+}
 
 
 /* Index specific geospatial state for queries */
@@ -107,6 +113,8 @@ static void PopulateGeospatialQueryState(IndexBsonGeospatialState *state,
 										 const pgbson *queryDoc,
 										 StrategyNumber strategy);
 static void SegmentizeQuery(IndexBsonGeospatialState *state);
+static float8 GeonearGISTDistanceWithState(PG_FUNCTION_ARGS, const
+										   GeonearDistanceState *state);
 
 
 /*
@@ -153,7 +161,7 @@ bson_gist_geometry_2d_options(PG_FUNCTION_ARGS)
 
 /*
  * bson_gist_geometry_2d_compress is another GIST index support function which determines
- * how the index keys are actually stored, this is wrapper around the postgis_public.geometry_gist_compress_2d
+ * how the index keys are actually stored, this is wrapper around the PostgisSchemaName.geometry_gist_compress_2d
  * which basically converts the geometry into box2df for storage as bounding boxes. We override this to implement
  * validations based on the 2d index's `min` and `max` options and do a range check here, if range check passes
  * then we call the underlying postgis compress method
@@ -221,13 +229,32 @@ bson_gist_geometry_2d_compress(PG_FUNCTION_ARGS)
 
 
 /*
- * bson_gist_geometry_distance_2d used to support order by and nearest neighbour queries with 2dindex
+ * bson_gist_geometry_distance_2d used to support order by and nearest neighbour queries with 2d index
  */
 Datum
 bson_gist_geometry_distance_2d(PG_FUNCTION_ARGS)
 {
-	/* TODO: Implement in future with operators that need this e.g. $near or $nearSphere */
-	PG_RETURN_FLOAT8(FLT_MAX);
+	pgbson *query = PG_GETARG_PGBSON(1);
+
+	const GeonearDistanceState *state;
+	int argPosition = 1;
+
+	SetCachedFunctionState(
+		state,
+		GeonearDistanceState,
+		argPosition,
+		BuildGeoNearDistanceState,
+		query);
+
+	if (state == NULL)
+	{
+		GeonearDistanceState distanceState;
+		memset(&distanceState, 0, sizeof(GeonearDistanceState));
+		BuildGeoNearDistanceState(&distanceState, query);
+		PG_RETURN_FLOAT8(GeonearGISTDistanceWithState(fcinfo, &distanceState));
+	}
+
+	PG_RETURN_FLOAT8(GeonearGISTDistanceWithState(fcinfo, state));
 }
 
 
@@ -462,7 +489,7 @@ bson_gist_geography_options(PG_FUNCTION_ARGS)
 
 /*
  * bson_gist_geography_compress is GIST index support function which determines
- * how the index keys are actually stored for 2dsphere index, this is wrapper around the postgis_public.geography_gist_compress
+ * how the index keys are actually stored for 2dsphere index, this is wrapper around the PostgisSchemaName.geography_gist_compress
  * which basically converts the geography into gidx for storage as bounding boxes. We override this to extract
  * geography from a given document at path which is part of the index options
  */
@@ -514,8 +541,27 @@ bson_gist_geography_compress(PG_FUNCTION_ARGS)
 Datum
 bson_gist_geography_distance(PG_FUNCTION_ARGS)
 {
-	/* TODO: Implement in future with operators that need this e.g. $near or $nearSphere */
-	PG_RETURN_FLOAT8(FLT_MAX);
+	pgbson *query = PG_GETARG_PGBSON(1);
+
+	const GeonearDistanceState *state;
+	int argPosition = 1;
+
+	SetCachedFunctionState(
+		state,
+		GeonearDistanceState,
+		argPosition,
+		BuildGeoNearDistanceState,
+		query);
+
+	if (state == NULL)
+	{
+		GeonearDistanceState distanceState;
+		memset(&distanceState, 0, sizeof(GeonearDistanceState));
+		BuildGeoNearDistanceState(&distanceState, query);
+		PG_RETURN_FLOAT8(GeonearGISTDistanceWithState(fcinfo, &distanceState));
+	}
+
+	PG_RETURN_FLOAT8(GeonearGISTDistanceWithState(fcinfo, state));
 }
 
 
@@ -739,8 +785,8 @@ SegmentizeQuery(IndexBsonGeospatialState *state)
 
 	char *argNulls = NULL;
 	bool readOnly = true;
-	const char *segmentizeQuery = isSpherical ? GeographyDivideQuery :
-								  GeometryDivideQuery;
+	const char *segmentizeQuery = isSpherical ? BaseGeoSubdivideQuery("geography") :
+								  BaseGeoSubdivideQuery("geometry");
 	if (SPI_execute_with_args(segmentizeQuery, nargs, argTypes, argValues, argNulls,
 							  readOnly, tupleCountLimit) != SPI_OK_SELECT)
 	{
@@ -775,4 +821,143 @@ SegmentizeQuery(IndexBsonGeospatialState *state)
 	ereport(DEBUG1, (errmsg("%s geo query segmentized into %d segments",
 							(isSpherical ? "geography" : "geometry"),
 							segmentsCount)));
+}
+
+
+/*
+ * Returns the distance between the document's bounding box and the reference point's bounding box for geonear
+ * distance is in:
+ *      meters: if reference point is GeoJSON or if reference point is legacy and spherical calculation is needed
+ *      cartesian distance: if reference point is legacy and spherical calculation is not needed
+ *
+ * For 2d indexes, Postgis uses the planar cartesian distance calculation always, so here for 2d indexes to support
+ * spherical distance calculation we get the distances by calling `geography_gist_distance` function which takes geographies and
+ * we create the geography from the 2d bounding box of geometry
+ */
+static float8
+GeonearGISTDistanceWithState(PG_FUNCTION_ARGS, const GeonearDistanceState *state)
+{
+	GISTENTRY *gistEntry = (GISTENTRY *) PG_GETARG_POINTER(0);
+	bool *recheck = (bool *) PG_GETARG_POINTER(4);
+	float8 distance = DBL_MAX;
+	bool isBoundingBoxPoint = false;
+	if (fcinfo->flinfo->fn_oid == BsonGistGeographyDistanceFunctionOid())
+	{
+		/* This infers that the we are using a 2dsphere index and want to use spherical distance, here the
+		 * GistEntry is a GIDX box already and we can calculate the spherical distances b/w boundig boxes straight
+		 * away.
+		 */
+		distance = DatumGetFloat8(OidFunctionCall5(
+									  PostgisGeographyGistDistanceFunctionId(),
+									  PointerGetDatum(gistEntry),
+									  state->referencePoint,
+									  Int32GetDatum(
+										  POSTGIS_BOUNDING_BOX_DISTANCE_INDEX_STRATEGY),
+									  PG_GETARG_DATUM(3),
+									  PG_GETARG_DATUM(4)));
+	}
+	else
+	{
+		/* We are using a 2d index here in this case
+		 */
+		if (state->mode == DistanceMode_Radians)
+		{
+			/*
+			 * there is a need to calculate spherical distances then we need a geography object out of
+			 * the bounding box and calculate spherical distance
+			 */
+			BSON_BOUNDING_BOXF *box = (BSON_BOUNDING_BOXF *) gistEntry->key;
+
+			/*
+			 * Make a copy of the bounding box so that we don't accidently modify the original bounding box
+			 * and make the max actual max between the 2, sometime because of precision issues of floats
+			 * 2 equal floats can have different representation and min can become max.
+			 * e.g. 3.1 can be represented as 3.09999991 or 3.100000001 etc
+			 */
+			BSON_BOUNDING_BOXF copyBox = {
+				.xMax = Max(box->xMax, box->xMin),
+				.xMin = Min(box->xMax, box->xMin),
+				.yMax = Max(box->yMax, box->yMin),
+				.yMin = Min(box->yMax, box->yMin)
+			};
+
+			if ((copyBox.xMax - copyBox.xMin <= FLT_EPSILON) &&
+				(copyBox.yMax - copyBox.yMin <= FLT_EPSILON))
+			{
+				isBoundingBoxPoint = true;
+			}
+
+			Point point;
+			memset(&point, 0, sizeof(Point));
+
+			StringInfo boxGeography = makeStringInfo();
+
+			if (isBoundingBoxPoint)
+			{
+				WriteHeaderToWKBBuffer(boxGeography, WKBGeometryType_Point);
+
+				point.x = copyBox.xMin;
+				point.y = copyBox.yMin;
+				WritePointToWKBBuffer(boxGeography, &point);
+			}
+			else
+			{
+				/* Write a polygon for the box */
+				WriteHeaderToWKBBuffer(boxGeography, WKBGeometryType_Polygon);
+				int32 numOfRings = 1;
+				int32 numOfPoints = 5;
+				appendBinaryStringInfoNT(boxGeography, (char *) &numOfRings,
+										 WKB_BYTE_SIZE_NUM);
+				appendBinaryStringInfoNT(boxGeography, (char *) &numOfPoints,
+										 WKB_BYTE_SIZE_NUM);
+
+				point.x = copyBox.xMin;
+				point.y = copyBox.yMin;
+				WritePointToWKBBuffer(boxGeography, &point);
+
+				point.y = copyBox.yMax;
+				WritePointToWKBBuffer(boxGeography, &point);
+
+				point.x = copyBox.xMax;
+				point.y = copyBox.yMax;
+				WritePointToWKBBuffer(boxGeography, &point);
+
+				point.y = copyBox.yMin;
+				WritePointToWKBBuffer(boxGeography, &point);
+
+				point.x = copyBox.xMin;
+				point.y = copyBox.yMin;
+				WritePointToWKBBuffer(boxGeography, &point);
+			}
+
+			bytea *wkbWithSRID = WKBBufferGetByteaWithSRID(boxGeography);
+			Datum geographyBox = GetGeographyFromWKB(wkbWithSRID);
+
+			distance = DatumGetFloat8(FunctionCall2(
+										  state->distanceFnInfo,
+										  geographyBox,
+										  state->referencePoint));
+		}
+		else
+		{
+			/* 2d cartesian plane distance between bounding box and referrence point */
+			distance = DatumGetFloat8(OidFunctionCall5(
+										  PostgisGeometryGistDistanceFunctionId(),
+										  PointerGetDatum(gistEntry),
+										  state->referencePoint,
+										  Int32GetDatum(
+											  POSTGIS_BOUNDING_BOX_DISTANCE_INDEX_STRATEGY),
+										  PG_GETARG_DATUM(3),
+										  PG_GETARG_DATUM(4)));
+		}
+	}
+
+	/* TODO: test performance with recheck, in case the document is a point then distance calculated should not be lossy
+	 * as bounding boxes are equivalent to the geographies/ geometries
+	 */
+	if (GIST_LEAF(gistEntry) && !isBoundingBoxPoint)
+	{
+		*recheck = true;
+	}
+	return distance;
 }

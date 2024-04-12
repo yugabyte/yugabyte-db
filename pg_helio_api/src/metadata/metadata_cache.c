@@ -39,7 +39,6 @@
 
 #define PG_EXTENSION_NAME_SCAN_NARGS 1
 
-#define POSTGIS_EXTENSION_SCHEMA "postgis_public"
 #define RUM_EXTENSION_SCHEMA "public"
 
 /*
@@ -91,6 +90,7 @@ PGDLLEXPORT char *FullBsonTypeName = "helio_core.bson";
 PGDLLEXPORT char *ApiExtensionName = "pg_helio_api";
 PGDLLEXPORT char *ApiCatalogSchemaName = "helio_api_catalog";
 PGDLLEXPORT char *ApiGucPrefix = "helio_api";
+PGDLLEXPORT char *PostgisSchemaName = "public";
 
 /* Schema functions migrated from a public API to an internal API schema
  * (e.g. from helio_api -> helio_api_internal)
@@ -439,6 +439,16 @@ typedef struct HelioApiOidCacheData
 	/* OID of the to_date postgres method which given a formatted text and string date gives you date object.*/
 	Oid PostgresToDateFunctionId;
 
+	/* OID of the float8 = float8 operator */
+	Oid Float8EqualOperatorId;
+
+	/* OID of the float8 <= float8 operator */
+	/* TODO: Remove this once geonear range operator is defined and this is not used */
+	Oid Float8LessThanEqualOperatorId;
+
+	/* OID of the float8 >= float8 operator */
+	Oid Float8GreaterThanEqualOperatorId;
+
 	/* OID of the array_append postgres function */
 	Oid PostgresArrayAppendFunctionOid;
 
@@ -625,6 +635,16 @@ typedef struct HelioApiOidCacheData
 	/* Postgis geometry array type id */
 	Oid GeometryArrayTypeId;
 
+	/* Oid of bson_gist_geography_distance function id */
+	Oid BsonGistGeographyDistanceFunctionOid;
+
+	/* Oid of <|-|> geonear distance operator id */
+	Oid BsonGeonearDistanceOperatorId;
+
+	/* Oid of bson_dollar_project_geonear function id*/
+	Oid BsonDollarProjectGeonearFunctionOid;
+
+	/* Oid of bson_dollar_geointersects function */
 	Oid BsonDollarGeoIntersectsFunctionOid;
 
 	/* Oid of bson_dollar_geowithin function */
@@ -704,6 +724,18 @@ typedef struct HelioApiOidCacheData
 
 	/* Oid of ST_DWithin (geography) Postgis function */
 	Oid PostgisGeographyDWithinFunctionId;
+
+	/* Oid of geometry_distance_centroid Postgis function */
+	Oid PostgisGeometryDistanceCentroidFunctionId;
+
+	/* Oid of geography_distance_knn Postgis function */
+	Oid PostgisGeographyDistanceKNNFunctionId;
+
+	/* Oid of gist distance support function for geometry */
+	Oid PostgisGeometryGistDistanceFunctionId;
+
+	/* Oid of gist distance support function for geography */
+	Oid PostgisGeographyGistDistanceFunctionId;
 
 	/* Oid of ST_DWithin (geometry) Postgis function */
 	Oid PostgisGeometryDWithinFunctionId;
@@ -1335,6 +1367,17 @@ BsonRangeMatchFunctionId(void)
 
 
 /*
+ * Returns the OID of  ApiCatalogSchemaName.<|-|> geoNear distance operator
+ */
+Oid
+BsonGeonearDistanceOperatorId(void)
+{
+	return GetBinaryOperatorId(&Cache.BsonGeonearDistanceOperatorId,
+							   BsonTypeId(), "<|-|>", BsonTypeId());
+}
+
+
+/*
  * Returns the OID of ApiCatalogSchemaName.bson_dollar_range Runtime operator #<>.
  */
 Oid
@@ -1954,6 +1997,69 @@ PostgresToDateFunctionId(void)
 	return GetPostgresInternalFunctionId(
 		&Cache.PostgresToDateFunctionId,
 		"to_date");
+}
+
+
+/*
+ * Returns the OID of float8 = float8 operator
+ */
+Oid
+Float8EqualOperatorId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.Float8EqualOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"),
+											makeString("="));
+
+		Cache.Float8EqualOperatorId =
+			OpernameGetOprid(operatorNameList, FLOAT8OID, FLOAT8OID);
+	}
+
+	return Cache.Float8EqualOperatorId;
+}
+
+
+/*
+ * Returns the OID of float8 <= float8 operator
+ */
+Oid
+Float8LessThanEqualOperatorId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.Float8LessThanEqualOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"),
+											makeString("<="));
+
+		Cache.Float8LessThanEqualOperatorId =
+			OpernameGetOprid(operatorNameList, FLOAT8OID, FLOAT8OID);
+	}
+
+	return Cache.Float8LessThanEqualOperatorId;
+}
+
+
+/*
+ * Returns the OID of float8 >= float8 operator
+ */
+Oid
+Float8GreaterThanEqualOperatorId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.Float8GreaterThanEqualOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"),
+											makeString(">="));
+
+		Cache.Float8GreaterThanEqualOperatorId =
+			OpernameGetOprid(operatorNameList, FLOAT8OID, FLOAT8OID);
+	}
+
+	return Cache.Float8GreaterThanEqualOperatorId;
 }
 
 
@@ -2895,7 +3001,7 @@ BsonArrowOperatorId(void)
 
 
 /*
- * GeometryTypeId returns the OID of the postgis_public.geometry type.
+ * GeometryTypeId returns the OID of the PostgisSchemaName.geometry type.
  */
 Oid
 GeometryTypeId(void)
@@ -2904,7 +3010,7 @@ GeometryTypeId(void)
 
 	if (Cache.GeometryTypeId == InvalidOid)
 	{
-		List *geometryTypeNameList = list_make2(makeString(POSTGIS_EXTENSION_SCHEMA),
+		List *geometryTypeNameList = list_make2(makeString(PostgisSchemaName),
 												makeString(
 													"geometry"));
 		TypeName *geometryTypeName = makeTypeNameFromNameList(geometryTypeNameList);
@@ -2925,7 +3031,7 @@ Box2dfTypeId(void)
 
 	if (Cache.Box2dfTypeId == InvalidOid)
 	{
-		List *typeNameList = list_make2(makeString(POSTGIS_EXTENSION_SCHEMA),
+		List *typeNameList = list_make2(makeString(PostgisSchemaName),
 										makeString("box2df"));
 		TypeName *typeName = makeTypeNameFromNameList(typeNameList);
 		Cache.Box2dfTypeId = typenameTypeId(NULL, typeName);
@@ -2936,7 +3042,7 @@ Box2dfTypeId(void)
 
 
 /*
- * GeographyTypeId returns the OID of the postgis_public.geography type.
+ * GeographyTypeId returns the OID of the PostgisSchemaName.geography type.
  */
 Oid
 GeographyTypeId(void)
@@ -2945,7 +3051,7 @@ GeographyTypeId(void)
 
 	if (Cache.GeographyTypeId == InvalidOid)
 	{
-		List *geographyTypeNameList = list_make2(makeString(POSTGIS_EXTENSION_SCHEMA),
+		List *geographyTypeNameList = list_make2(makeString(PostgisSchemaName),
 												 makeString(
 													 "geography"));
 		TypeName *geographyTypeName = makeTypeNameFromNameList(geographyTypeNameList);
@@ -2966,7 +3072,7 @@ GIDXTypeId(void)
 
 	if (Cache.GIDXTypeId == InvalidOid)
 	{
-		List *typeNameList = list_make2(makeString(POSTGIS_EXTENSION_SCHEMA),
+		List *typeNameList = list_make2(makeString(PostgisSchemaName),
 										makeString("gidx"));
 		TypeName *typeName = makeTypeNameFromNameList(typeNameList);
 		Cache.GIDXTypeId = typenameTypeId(NULL, typeName);
@@ -2977,7 +3083,7 @@ GIDXTypeId(void)
 
 
 /*
- * GeometryArrayTypeId returns the array type id of postgis_public.geometry type
+ * GeometryArrayTypeId returns the array type id of PostgisSchemaName.geometry type
  */
 Oid
 GeometryArrayTypeId(void)
@@ -3158,7 +3264,7 @@ BsonValidateGeographyFunctionId(void)
 
 
 /*
- * PostgisGeometryGistCompress2dFunctionId returns OID of postgis_public.geometry_gist_compress_2d
+ * PostgisGeometryGistCompress2dFunctionId returns OID of PostgisSchemaName.geometry_gist_compress_2d
  */
 Oid
 PostgisGeometryGistCompress2dFunctionId(void)
@@ -3168,13 +3274,13 @@ PostgisGeometryGistCompress2dFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryGistCompress2dFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "geometry_gist_compress_2d", nargs,
+		PostgisSchemaName, "geometry_gist_compress_2d", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisForcePolygonCWFunctionId returns OID of postgis_public.ST_ForcePolygonCW
+ * PostgisForcePolygonCWFunctionId returns OID of PostgisSchemaName.ST_ForcePolygonCW
  */
 Oid
 PostgisForcePolygonCWFunctionId(void)
@@ -3184,13 +3290,13 @@ PostgisForcePolygonCWFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisForcePolygonCWFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_forcepolygoncw", nargs,
+		PostgisSchemaName, "st_forcepolygoncw", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeometryAsBinaryFunctionId returns OID of postgis_public.ST_AsBinary
+ * PostgisGeometryAsBinaryFunctionId returns OID of PostgisSchemaName.ST_AsBinary
  */
 Oid
 PostgisGeometryAsBinaryFunctionId(void)
@@ -3200,7 +3306,7 @@ PostgisGeometryAsBinaryFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryAsBinaryFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_asbinary", nargs,
+		PostgisSchemaName, "st_asbinary", nargs,
 		argTypes, missingOk);
 }
 
@@ -3216,13 +3322,13 @@ PostgisGeographyGistCompressFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeographyGistCompressFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "geography_gist_compress", nargs,
+		PostgisSchemaName, "geography_gist_compress", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeometryGistConsistent2dFunctionId returns OID of postgis_public.geometry_gist_consistent_2d
+ * PostgisGeometryGistConsistent2dFunctionId returns OID of PostgisSchemaName.geometry_gist_consistent_2d
  */
 Oid
 PostgisGeometryGistConsistent2dFunctionId(void)
@@ -3232,13 +3338,13 @@ PostgisGeometryGistConsistent2dFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryGistConsistent2dFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "geometry_gist_consistent_2d", nargs,
+		PostgisSchemaName, "geometry_gist_consistent_2d", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeographyGistConsistentFunctionId returns OID of postgis_public.geography_gist_consistent
+ * PostgisGeographyGistConsistentFunctionId returns OID of PostgisSchemaName.geography_gist_consistent
  */
 Oid
 PostgisGeographyGistConsistentFunctionId(void)
@@ -3248,13 +3354,13 @@ PostgisGeographyGistConsistentFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeographyGistConsistentFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "geography_gist_consistent", nargs,
+		PostgisSchemaName, "geography_gist_consistent", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisMakeEnvelopeFunctionId returns the OID of the postgis_public.st_makeenvelope function.
+ * PostgisMakeEnvelopeFunctionId returns the OID of the PostgisSchemaName.st_makeenvelope function.
  */
 Oid
 PostgisMakeEnvelopeFunctionId(void)
@@ -3264,13 +3370,13 @@ PostgisMakeEnvelopeFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisMakeEnvelopeFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_makeenvelope", nargs,
+		PostgisSchemaName, "st_makeenvelope", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisMakePointFunctionId returns the OID of the postgis_public.st_makepoint function.
+ * PostgisMakePointFunctionId returns the OID of the PostgisSchemaName.st_makepoint function.
  */
 Oid
 PostgisMakePointFunctionId(void)
@@ -3280,13 +3386,13 @@ PostgisMakePointFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisMakePointFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_makepoint", nargs,
+		PostgisSchemaName, "st_makepoint", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeometryBufferFunctionId returns the OID of the postgis_public.st_buffer function for geometry.
+ * PostgisGeometryBufferFunctionId returns the OID of the PostgisSchemaName.st_buffer function for geometry.
  */
 Oid
 PostgisGeometryBufferFunctionId(void)
@@ -3296,13 +3402,13 @@ PostgisGeometryBufferFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryBufferFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_buffer", nargs,
+		PostgisSchemaName, "st_buffer", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeographyBufferFunctionId returns the OID of the postgis_public.st_buffer function for geography.
+ * PostgisGeographyBufferFunctionId returns the OID of the PostgisSchemaName.st_buffer function for geography.
  */
 Oid
 PostgisGeographyBufferFunctionId(void)
@@ -3312,13 +3418,13 @@ PostgisGeographyBufferFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeographyBufferFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_buffer", nargs,
+		PostgisSchemaName, "st_buffer", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisMakeLineFunctionId returns the OID of the postgis_public.st_makepolygon function.
+ * PostgisMakeLineFunctionId returns the OID of the PostgisSchemaName.st_makepolygon function.
  */
 Oid
 PostgisMakePolygonFunctionId(void)
@@ -3328,13 +3434,13 @@ PostgisMakePolygonFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisMakePolygonFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_makepolygon", nargs,
+		PostgisSchemaName, "st_makepolygon", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisMakeLineFunctionId returns the OID of the postgis_public.st_makeline function.
+ * PostgisMakeLineFunctionId returns the OID of the PostgisSchemaName.st_makeline function.
  */
 Oid
 PostgisMakeLineFunctionId(void)
@@ -3344,13 +3450,13 @@ PostgisMakeLineFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisMakeLineFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_makeline", nargs,
+		PostgisSchemaName, "st_makeline", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeographyFromWKBFunctionId returns the OID of the postgis_public.st_geogfromwkb function.
+ * PostgisGeographyFromWKBFunctionId returns the OID of the PostgisSchemaName.st_geogfromwkb function.
  * which converts the WKB to a geography
  */
 Oid
@@ -3361,13 +3467,13 @@ PostgisGeographyFromWKBFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeographyFromWKBFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_geogfromwkb", nargs,
+		PostgisSchemaName, "st_geogfromwkb", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeographyCoversFunctionId returns the OID of postgis_public.st_covers function.
+ * PostgisGeographyCoversFunctionId returns the OID of PostgisSchemaName.st_covers function.
  * Note this variant is only used for geographies
  */
 Oid
@@ -3379,13 +3485,13 @@ PostgisGeographyCoversFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeographyCoversFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_covers", nargs,
+		PostgisSchemaName, "st_covers", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeographyDWithinFunctionId returns the OID of postgis_public.st_dwithin function.
+ * PostgisGeographyDWithinFunctionId returns the OID of PostgisSchemaName.st_dwithin function.
  * Note this variant is only used for geographies
  */
 Oid
@@ -3397,13 +3503,109 @@ PostgisGeographyDWithinFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeographyDWithinFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_dwithin", nargs,
+		PostgisSchemaName, "st_dwithin", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeometryDWithinFunctionId returns the OID of postgis_public.st_dwithin function.
+ * PostgisGeometryDistanceCentroidFunctionId returns the OID of PostgisSchemaName.geometry_distance_centroid function.
+ */
+Oid
+PostgisGeometryDistanceCentroidFunctionId(void)
+{
+	int nargs = 2;
+	Oid argTypes[2] = { GeometryTypeId(), GeometryTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeometryDistanceCentroidFunctionId,
+		PostgisSchemaName, "geometry_distance_centroid", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisGeographyDistanceKNNFunctionId returns the OID of PostgisSchemaName.geography_distance_knn function.
+ */
+Oid
+PostgisGeographyDistanceKNNFunctionId(void)
+{
+	int nargs = 2;
+	Oid argTypes[2] = { GeographyTypeId(), GeographyTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeographyDistanceKNNFunctionId,
+		PostgisSchemaName, "geography_distance_knn", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * BsonGistGeographyDistanceFunctionOid returns the OID of bson_gist_geography_distance
+ */
+Oid
+BsonGistGeographyDistanceFunctionOid(void)
+{
+	int nargs = 3;
+	Oid argTypes[3] = { INTERNALOID, BsonTypeId(), INT4OID };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.BsonGistGeographyDistanceFunctionOid,
+		ApiCatalogSchemaName, "bson_gist_geography_distance", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * Returns oid of ApiCatalogSchemaName.bson_dollar_project_geonear function
+ */
+Oid
+BsonDollarProjectGeonearFunctionOid(void)
+{
+	int nargs = 2;
+	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.BsonDollarProjectGeonearFunctionOid,
+		ApiCatalogSchemaName, "bson_dollar_project_geonear", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisGeometryGistDistanceFunctionId returns OID of PostgisSchemaName.geometry_gist_distance_2d
+ */
+Oid
+PostgisGeometryGistDistanceFunctionId(void)
+{
+	int nargs = 3;
+	Oid argTypes[3] = { INTERNALOID, GeometryTypeId(), INT4OID };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeometryGistDistanceFunctionId,
+		PostgisSchemaName, "geometry_gist_distance_2d", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisGeographyGistDistanceFunctionId returns OID of PostgisSchemaName.geography_gist_distance
+ */
+Oid
+PostgisGeographyGistDistanceFunctionId(void)
+{
+	int nargs = 3;
+	Oid argTypes[3] = { INTERNALOID, GeographyTypeId(), INT4OID };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeographyGistDistanceFunctionId,
+		PostgisSchemaName, "geography_gist_distance", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisGeometryDWithinFunctionId returns the OID of PostgisSchemaName.st_dwithin function.
  * Note this variant is only used for geometries
  */
 Oid
@@ -3415,13 +3617,13 @@ PostgisGeometryDWithinFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryDWithinFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_dwithin", nargs,
+		PostgisSchemaName, "st_dwithin", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGIDXGeographyOverlapsFunctionId returns the OID of postgis_public.overlaps_geog function.
+ * PostgisGIDXGeographyOverlapsFunctionId returns the OID of PostgisSchemaName.overlaps_geog function.
  * which check gidx overlap between (gidx, geography)
  */
 Oid
@@ -3433,13 +3635,13 @@ PostgisGIDXGeographyOverlapsFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGIDXGeographyOverlapsFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "overlaps_geog", nargs,
+		PostgisSchemaName, "overlaps_geog", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisBox2dfGeometryOverlapsFunctionId returns the OID of postgis_public.overlaps_2d function.
+ * PostgisBox2dfGeometryOverlapsFunctionId returns the OID of PostgisSchemaName.overlaps_2d function.
  * which check box2df overlap between (box2df, geometry)
  */
 Oid
@@ -3450,13 +3652,13 @@ PostgisBox2dfGeometryOverlapsFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisBox2dfGeometryOverlapsFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "overlaps_2d", nargs,
+		PostgisSchemaName, "overlaps_2d", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeometryCoversFunctionId returns the OID of postgis_public.st_covers function.
+ * PostgisGeometryCoversFunctionId returns the OID of PostgisSchemaName.st_covers function.
  * Note this variant is only used for geometries
  */
 Oid
@@ -3468,13 +3670,13 @@ PostgisGeometryCoversFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryCoversFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_covers", nargs,
+		PostgisSchemaName, "st_covers", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisIntersectsFunctionId returns the OID of postgis_public.st_intersects function.
+ * PostgisIntersectsFunctionId returns the OID of PostgisSchemaName.st_intersects function.
  * Note this variant is only used for geographies
  */
 Oid
@@ -3486,13 +3688,13 @@ PostgisGeographyIntersectsFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeographyIntersectsFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_intersects", nargs,
+		PostgisSchemaName, "st_intersects", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeometryAreaFunctionId returns the OID of the postgis_public.st_area function.
+ * PostgisGeometryAreaFunctionId returns the OID of the PostgisSchemaName.st_area function.
  */
 Oid
 PostgisGeometryAreaFunctionId(void)
@@ -3502,13 +3704,13 @@ PostgisGeometryAreaFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryAreaFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_area", nargs,
+		PostgisSchemaName, "st_area", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeometryFromEWKBFunctionId returns the OID of the postgis_public.st_geomfromewkb function.
+ * PostgisGeometryFromEWKBFunctionId returns the OID of the PostgisSchemaName.st_geomfromewkb function.
  * which converts the EWKB to a geometry
  */
 Oid
@@ -3519,14 +3721,14 @@ PostgisGeometryFromEWKBFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryFromEWKBFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_geomfromewkb", nargs,
+		PostgisSchemaName, "st_geomfromewkb", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
  * PostgisGeometryAsGeography returns the OID of the geometry::geography Cast function
- * postgis_public.geography(geometry).
+ * PostgisSchemaName.geography(geometry).
  */
 Oid
 PostgisGeometryAsGeography(void)
@@ -3536,13 +3738,13 @@ PostgisGeometryAsGeography(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryAsGeography,
-		POSTGIS_EXTENSION_SCHEMA, "geography", nargs,
+		PostgisSchemaName, "geography", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeometryIsValidDetailFunctionId returns the OID of the postgis_public.st_isvaliddetail function.
+ * PostgisGeometryIsValidDetailFunctionId returns the OID of the PostgisSchemaName.st_isvaliddetail function.
  */
 Oid
 PostgisGeometryIsValidDetailFunctionId(void)
@@ -3552,13 +3754,13 @@ PostgisGeometryIsValidDetailFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryIsValidDetailFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_isvaliddetail", nargs,
+		PostgisSchemaName, "st_isvaliddetail", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisSetSRIDFunctionId returns the OID of the postgis_public.st_setsrid function.
+ * PostgisSetSRIDFunctionId returns the OID of the PostgisSchemaName.st_setsrid function.
  */
 Oid
 PostgisSetSRIDFunctionId(void)
@@ -3569,13 +3771,13 @@ PostgisSetSRIDFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisSetSRIDFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_setsrid", nargs,
+		PostgisSchemaName, "st_setsrid", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeometryExpandFunctionId returns the OID of the postgis_public.st_expand function.
+ * PostgisGeometryExpandFunctionId returns the OID of the PostgisSchemaName.st_expand function.
  */
 Oid
 PostgisGeometryExpandFunctionId(void)
@@ -3586,13 +3788,13 @@ PostgisGeometryExpandFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryExpandFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "st_expand", nargs,
+		PostgisSchemaName, "st_expand", nargs,
 		argTypes, missingOk);
 }
 
 
 /*
- * PostgisGeographyExpandFunctionId returns the OID of the postgis_public._st_expand function.
+ * PostgisGeographyExpandFunctionId returns the OID of the PostgisSchemaName._st_expand function.
  * Only expands the bounding box, the actual geography will remain unchanged.
  */
 Oid
@@ -3604,7 +3806,7 @@ PostgisGeographyExpandFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeographyExpandFunctionId,
-		POSTGIS_EXTENSION_SCHEMA, "_st_expand", nargs,
+		PostgisSchemaName, "_st_expand", nargs,
 		argTypes, missingOk);
 }
 
