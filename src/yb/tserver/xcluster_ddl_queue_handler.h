@@ -55,6 +55,8 @@ class XClusterDDLQueueHandler {
 
   virtual Status ProcessDDLQuery(const DDLQueryInfo& query_info);
 
+  virtual Result<bool> CheckIfAlreadyProcessed(int64 start_time, int64 query_id);
+
   Status ProcessManualExecutionQuery(const DDLQueryInfo& query_info);
 
   virtual Status InitPGConnection();

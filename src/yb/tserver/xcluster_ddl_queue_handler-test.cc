@@ -80,6 +80,8 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
   }
 
   Status ProcessDDLQuery(const DDLQueryInfo& query_info) override { return Status::OK(); }
+
+  Result<bool> CheckIfAlreadyProcessed(int64 start_time, int64 query_id) override { return false; };
 };
 
 class XClusterDDLQueueHandlerMockedTest : public YBTest {
