@@ -492,20 +492,19 @@ PollTransactionStatusBase::PollTransactionStatusBase(
 }
 
 PollTransactionStatusBase::~PollTransactionStatusBase() {
-#ifndef NDEBUG
+  std::lock_guard l(rpc_mutex_);
   DCHECK(shutdown_) << "Shutdown not invoked";
-#endif
 }
 
 void PollTransactionStatusBase::Shutdown() {
+  std::lock_guard l(rpc_mutex_);
+
   rpcs_.Shutdown();
   // Shutdown times out after waiting a certain amount of time. The callback requires both this and
   // the Rpcs to be valid, so wait for it to complete.
   CHECK_OK(sync_.Wait());
 
-#ifndef NDEBUG
   shutdown_ = true;
-#endif
 }
 
 Status PollTransactionStatusBase::VerifyTransaction() {
@@ -527,6 +526,14 @@ Status PollTransactionStatusBase::VerifyTransaction() {
         "Shutting down. Cannot send GetTransactionStatus: $0", transaction_);
   }
 
+  RETURN_NOT_OK(sync_.Wait());
+  sync_.Reset();
+
+  std::lock_guard l(rpc_mutex_);
+  SCHECK(
+      !shutdown_, IllegalState, "Task has been shut down. Cannot send GetTransactionStatus: $0",
+      transaction_);
+
   // Prepare the rpc after checking if it is shutting down in case it returns because of
   // client is null and leave the reserved rpc as uninitialized.
   auto rpc_handle = rpcs_.Prepare();
@@ -536,8 +543,6 @@ Status PollTransactionStatusBase::VerifyTransaction() {
   }
   // We need to query the TransactionCoordinator here.  Can't use TransactionStatusResolver in
   // TransactionParticipant since this TransactionMetadata may not have any actual data flushed yet.
-  RETURN_NOT_OK(sync_.Wait());
-  sync_.Reset();
   auto sync_cb = sync_.AsStdStatusCallback();
   auto callback = [this, rpc_handle, user_cb = std::move(sync_cb)](
                       Status status, const tserver::GetTransactionStatusResponsePB& resp) {
@@ -671,6 +676,16 @@ Status NamespaceVerificationTask::ValidateRunnable() {
   return Status::OK();
 }
 
+void NamespaceVerificationTask::TaskCompleted(const Status& status) {
+  MultiStepNamespaceTaskBase::TaskCompleted(status);
+  Shutdown();
+}
+
+void NamespaceVerificationTask::PerformAbort() {
+  MultiStepNamespaceTaskBase::PerformAbort();
+  Shutdown();
+}
+
 TableSchemaVerificationTask::TableSchemaVerificationTask(
     CatalogManager& catalog_manager, scoped_refptr<TableInfo> table,
     const TransactionMetadata& transaction, std::function<void(Result<bool>)> complete_callback,
@@ -786,6 +801,16 @@ Status TableSchemaVerificationTask::CompareSchema(Status txn_rpc_success) {
   // If the transaction was a success, we need to compare the schema of the table in PG catalog
   // with the schema in DocDB.
   return FinishTask(PgSchemaChecker(sys_catalog_, table_info_));
+}
+
+void TableSchemaVerificationTask::TaskCompleted(const Status& status) {
+  MultiStepTableTaskBase::TaskCompleted(status);
+  Shutdown();
+}
+
+void TableSchemaVerificationTask::PerformAbort() {
+  MultiStepTableTaskBase::PerformAbort();
+  Shutdown();
 }
 
 }  // namespace master
