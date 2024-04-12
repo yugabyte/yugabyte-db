@@ -4,7 +4,8 @@ package com.yugabyte.yw.rbac.enums;
 public enum SourceType {
   ENDPOINT("endpoint"),
   REQUEST_BODY("requestBody"),
-  DB("db");
+  DB("db"),
+  REQUEST_CONTEXT("requestContext");
 
   private final String type;
 

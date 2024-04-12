@@ -14523,6 +14523,22 @@
       },
       "type" : "object"
     },
+    "UserPasswordChangeFormData" : {
+      "description" : "User registration data. The API and UI use this to validate form data.",
+      "properties" : {
+        "currentPassword" : {
+          "description" : "Current Password",
+          "example" : "Test@1234",
+          "type" : "string"
+        },
+        "newPassword" : {
+          "description" : "New Password",
+          "example" : "Test@1234",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "UserProfileData" : {
       "description" : "User profile data. The API and UI use this to validate form data.",
       "properties" : {
@@ -22406,6 +22422,52 @@
         "tags" : [ "Release management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/reset_password" : {
+      "put" : {
+        "description" : "",
+        "operationId" : "resetUserPassword",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "User data containing the current, new password",
+          "in" : "body",
+          "name" : "Users",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UserPasswordChangeFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Reset the user's password",
+        "tags" : [ "User management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/restore" : {
       "post" : {
         "description" : "",
@@ -26901,58 +26963,6 @@
         } ],
         "summary" : "List a user's audit entries",
         "tags" : [ "Audit" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/users/{uUUID}/change_password" : {
-      "put" : {
-        "description" : "",
-        "operationId" : "updateUserPassword",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "User data containing the new password",
-          "in" : "body",
-          "name" : "Users",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/UserRegistrationData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Change a user's password",
-        "tags" : [ "User management" ]
       }
     },
     "/api/v1/customers/{cUUID}/users/{uUUID}/oidc_auth_token" : {
