@@ -40,6 +40,8 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
   private static final String TEST_DB_RECREATE_WITH_NO_PHY_CONN =
       "test_db_recreate_with_no_phy_conn";
   private static final String DB_PREFIX_CONCURRENCY_TEST = "test_db_concurrency";
+  private static final String TEST_DB_RENAME_DB_FAILS = "test_db_name_rename_fails";
+  private static final String TEST_DB_MOVE_DB_FAILS = "test_db_name_move_db_fails";
 
   private static final int NUM_THREADS_DB_CONCURRENCY_TESTING = 30;
   private static final int NUM_DB_CONCURRENCY_TESTING = 5;
@@ -62,17 +64,21 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
         Integer.toString(BasePgSQLTest.CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
   }
 
-  private void dropDatabase(String dbName, boolean shouldSucceed) {
+  private void executeDDL(String query, boolean shouldSucceed) {
     try (Connection conn = getConnectionBuilder()
             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
         Statement stmt = conn.createStatement()) {
-      stmt.execute("DROP DATABASE " + dbName);
-      assertTrue("Executed 'DROP DATABASE' query successfully, but it was expected to fail",
+      stmt.execute(query);
+      assertTrue("Executed '" + query +"' successfully, but it was expected to fail",
           shouldSucceed);
     } catch (Exception e) {
       LOG.info("Got exception", e);
-      assertFalse("DROP DATABASE query failed", shouldSucceed);
+      assertFalse(query + " query failed", shouldSucceed);
     }
+  }
+
+  private void dropDatabase(String dbName, boolean shouldSucceed) {
+    executeDDL("DROP DATABASE " + dbName, shouldSucceed);
   }
 
   private void createDb(String dbName) {
@@ -224,14 +230,12 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
     testRecreateDbWithPhysicalConnection();
   }
 
-  private void renameDb(String old_db, String new_db) {
-    try (Connection conn = getConnectionBuilder().connect();
-        Statement stmt = conn.createStatement()) {
-      stmt.execute("ALTER DATABASE " + old_db + " RENAME TO " + new_db);
-    } catch (Exception e) {
-      LOG.error("Got exception", e);
-      fail();
-    }
+  private void renameDb(String oldDb, String newDb, boolean shouldSucceed) {
+    executeDDL("ALTER DATABASE " + oldDb + " RENAME TO " + newDb, shouldSucceed);
+  }
+
+  private void renameDb(String oldDb, String newDb) {
+    renameDb(oldDb, newDb, true);
   }
 
   private void testConnectivityToDb(String dbName, boolean isAccessible, boolean checkDbName) {
@@ -385,5 +389,19 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
     BasePgSQLTest.waitForStatsToGetUpdated();
     testConcurrentDropDb(DB_PREFIX_CONCURRENCY_TEST,
         NUM_THREADS_DB_CONCURRENCY_TESTING, NUM_DB_CONCURRENCY_TESTING);
+  }
+
+  @Test
+  public void testRenameDbFails() throws SQLException, InterruptedException {
+    String newDb = TEST_DB_RENAME_DB_FAILS + "_new";
+    try (Connection conn = createAndConnectOnDb(TEST_DB_RENAME_DB_FAILS, 0)) {
+      renameDb(TEST_DB_RENAME_DB_FAILS, newDb, false);
+    }
+
+    BasePgSQLTest.waitForStatsToGetUpdated();
+    renameDb(TEST_DB_RENAME_DB_FAILS, newDb, true);
+
+    testConnectivityToDb(TEST_DB_RENAME_DB_FAILS, false, false);
+    testConnectivityToDb(newDb, true, true);
   }
 }
