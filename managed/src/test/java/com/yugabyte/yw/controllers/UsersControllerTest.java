@@ -3,10 +3,13 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
+import static org.junit.Assert.assertNotNull;
 import static play.mvc.Http.Status.*;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
@@ -20,11 +23,23 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.encryption.HashBuilder;
 import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
@@ -37,13 +52,30 @@ public class UsersControllerTest extends FakeDBApplication {
   private Customer customer1, customer2;
   private Users user1;
   private String authToken1;
+  private com.yugabyte.yw.models.rbac.Role role;
+  private ResourceDefinition rd1;
   private HashBuilder hashBuilder = new BcOpenBsdHasher();
+
+  Permission permission1 = new Permission(ResourceType.USER, Action.UPDATE_PROFILE);
 
   @Before
   public void setUp() {
     customer1 = ModelFactory.testCustomer("tc1", "Test Customer 1");
     customer2 = ModelFactory.testCustomer("tc2", "Test Customer 2");
     user1 = ModelFactory.testUser(customer1, "tc1@test.com");
+    role =
+        com.yugabyte.yw.models.rbac.Role.create(
+            customer1.getUuid(),
+            "FakeRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1)));
+    rd1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.USER)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(user1.getUuid())))
+            .build();
+
     authToken1 = user1.createAuthToken();
   }
 
@@ -248,32 +280,6 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("role", "Admin");
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
-        route(
-            fakeRequest(
-                    "PUT",
-                    String.format(
-                        "%s/%s/change_password",
-                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
-                .cookie(validCookie)
-                .bodyJson(params));
-    testUser1 = Users.get(testUser1.getUuid());
-    assertEquals(testUser1.getRole(), Role.Admin);
-    assertTrue(hashBuilder.isValid("new-Password1", testUser1.getPasswordHash()));
-    assertAuditEntry(1, customer1.getUuid());
-  }
-
-  @Test
-  public void testPasswordChangeInvalidPassword() throws IOException {
-    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
-    String authTokenTest = testUser1.createAuthToken();
-    assertEquals(testUser1.getRole(), Role.Admin);
-    ObjectNode params = Json.newObject();
-    params.put("email", "tc3@test.com");
-    params.put("password", "new-password");
-    params.put("confirmPassword", "new-password");
-    params.put("role", "Admin");
-    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
-    Result result =
         assertPlatformException(
             () ->
                 route(
@@ -284,7 +290,104 @@ public class UsersControllerTest extends FakeDBApplication {
                                 String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                         .cookie(validCookie)
                         .bodyJson(params)));
+    assertEquals(result.status(), MOVED_PERMANENTLY);
+    assertErrorResponse(
+        result, String.format("Moved to /customers/%s/reset_password", customer1.getUuid()));
+  }
+
+  @Test
+  public void testResetPassword() {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("currentPassword", "password");
+    params.put("newPassword", "Password#123");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT", String.format("/api/customers/%s/reset_password", customer1.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    testUser1 = Users.get(testUser1.getUuid());
+    assertOk(result);
+    assertAuditEntry(1, customer1.getUuid());
+    Users returnUser = Users.authWithPassword(testUser1.getEmail(), "Password#123");
+    assertNotNull(returnUser);
+  }
+
+  @Test
+  public void testResetPasswordForNonLocalUser() {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    testUser1.setUserType(Users.UserType.ldap);
+    testUser1.save();
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("currentPassword", "password");
+    params.put("newPassword", "Password#123");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format("/api/customers/%s/reset_password", customer1.getUuid()))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
     assertEquals(result.status(), BAD_REQUEST);
+    assertErrorResponse(result, "Reset password not supported for LDAP/OIDC users");
+  }
+
+  @Test
+  public void testResetPasswordWithNewRbac() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding.create(user1, RoleBindingType.Custom, role, rG);
+    String authTokenTest = user1.createAuthToken();
+    assertEquals(user1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("currentPassword", "password");
+    params.put("newPassword", "Password#123");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT", String.format("/api/customers/%s/reset_password", customer1.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    user1 = Users.get(user1.getUuid());
+    assertOk(result);
+    assertAuditEntry(1, customer1.getUuid());
+    Users returnUser = Users.authWithPassword(user1.getEmail(), "Password#123");
+    assertNotNull(returnUser);
+  }
+
+  @Test
+  public void testResetPasswordInvalidPassword() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("currentPassword", "password");
+    params.put("newPassword", "new-password");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format("/api/customers/%s/reset_password", customer1.getUuid()))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
+    assertEquals(result.status(), BAD_REQUEST);
+    assertErrorResponse(
+        result,
+        "Password should contain at least 1 upper case letters; Password should contain at least 1"
+            + " digits");
   }
 
   @Test
@@ -315,10 +418,8 @@ public class UsersControllerTest extends FakeDBApplication {
     assertEquals(testUser1.getRole(), Role.Admin);
     ObjectNode params = Json.newObject();
     params.put("email", "tc3@test.com");
-    params.put("password", "new-Password1!");
-    params.put("confirmPassword", "new-Password1!");
-    params.put("role", "ReadOnly");
     params.put("timezone", testTimezone2);
+    params.put("role", "Admin");
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
         route(
@@ -331,8 +432,6 @@ public class UsersControllerTest extends FakeDBApplication {
                 .bodyJson(params));
     testUser1 = Users.get(testUser1.getUuid());
     assertEquals(testUser1.getTimezone(), testTimezone2);
-    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.getPasswordHash()));
-    assertEquals(testUser1.getRole(), Role.ReadOnly);
     assertAuditEntry(1, customer1.getUuid());
   }
 
@@ -368,27 +467,25 @@ public class UsersControllerTest extends FakeDBApplication {
     testUser1.setTimezone(testTimezone1);
     String authTokenTest = testUser1.createAuthToken();
     assertEquals(testUser1.getRole(), Role.Admin);
+    UUID testUser1UUID = testUser1.getUuid();
     ObjectNode params = Json.newObject();
     params.put("email", "tc3@test.com");
-    params.put("password", "new-Password1!");
-    params.put("confirmPassword", "new-Password1!");
-    params.put("role", "ReadOnly");
     params.put("timezone", "");
+    params.put("role", "ReadOnly");
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
-        route(
-            fakeRequest(
-                    "PUT",
-                    String.format(
-                        "%s/%s/update_profile",
-                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
-                .cookie(validCookie)
-                .bodyJson(params));
-    testUser1 = Users.get(testUser1.getUuid());
-    assertEquals(testUser1.getTimezone(), "");
-    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.getPasswordHash()));
-    assertEquals(testUser1.getRole(), Role.ReadOnly);
-    assertAuditEntry(1, customer1.getUuid());
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format(
+                                "/api/customers/%s/users/%s/update_profile",
+                                customer1.getUuid(), testUser1UUID))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
+    assertEquals(result.status(), FORBIDDEN);
+    assertErrorResponse(result, "User cannot modify their own role privileges");
   }
 
   @Test
@@ -420,7 +517,7 @@ public class UsersControllerTest extends FakeDBApplication {
     Users resultTestUser1 = Users.get(testUser1.getUuid());
     assertEquals(resultTestUser1.getTimezone(), testTimezone1);
     assertEquals(resultTestUser1.getRole(), Role.Admin);
-    assertEquals(result.status(), BAD_REQUEST);
+    assertEquals(result.status(), FORBIDDEN);
   }
 
   @Test
@@ -437,16 +534,22 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("timezone", testTimezone1);
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
-        route(
-            fakeRequest(
-                    "PUT",
-                    String.format(
-                        "%s/%s/update_profile",
-                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
-                .cookie(validCookie)
-                .bodyJson(params));
-    testUser1 = Users.get(testUser1.getUuid());
-    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.getPasswordHash()));
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format(
+                                "%s/%s/update_profile",
+                                String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
+    assertEquals(result.status(), FORBIDDEN);
+    assertErrorResponse(
+        result,
+        String.format(
+            "API does not support password change. Use /customers/%s/reset_password",
+            customer1.getUuid()));
   }
 
   @Test
@@ -474,7 +577,12 @@ public class UsersControllerTest extends FakeDBApplication {
                                 String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                         .cookie(validCookie)
                         .bodyJson(params)));
-    assertEquals(result.status(), BAD_REQUEST);
+    assertEquals(result.status(), FORBIDDEN);
+    assertErrorResponse(
+        result,
+        String.format(
+            "API does not support password change. Use /customers/%s/reset_password",
+            customer1.getUuid()));
   }
 
   @Test
@@ -518,17 +626,22 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("timezone", testTimezone1);
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
-        route(
-            fakeRequest(
-                    "PUT",
-                    String.format(
-                        "%s/%s/update_profile",
-                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
-                .cookie(validCookie)
-                .bodyJson(params));
-    testUser1 = Users.get(testUser1.getUuid());
-    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.getPasswordHash()));
-    assertAuditEntry(1, customer1.getUuid());
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format(
+                                "%s/%s/update_profile",
+                                String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
+    assertEquals(result.status(), FORBIDDEN);
+    assertErrorResponse(
+        result,
+        String.format(
+            "API does not support password change. Use /customers/%s/reset_password",
+            customer1.getUuid()));
   }
 
   public void testUpdateUserProfileReadOnlyUserTZChange() throws IOException {
