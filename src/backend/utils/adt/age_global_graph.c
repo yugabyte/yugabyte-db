@@ -101,7 +101,7 @@ static bool insert_edge(GRAPH_global_context *ggctx, graphid edge_id,
                         graphid end_vertex_id, Oid edge_label_table_oid);
 static bool insert_vertex_edge(GRAPH_global_context *ggctx,
                                graphid start_vertex_id, graphid end_vertex_id,
-                               graphid edge_id);
+                               graphid edge_id, char *edge_label_name);
 static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
                                 Oid vertex_label_table_oid,
                                 Datum vertex_properties);
@@ -330,10 +330,11 @@ static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
  */
 static bool insert_vertex_edge(GRAPH_global_context *ggctx,
                                graphid start_vertex_id, graphid end_vertex_id,
-                               graphid edge_id)
+                               graphid edge_id, char *edge_label_name)
 {
     vertex_entry *value = NULL;
-    bool found = false;
+    bool start_found = false;
+    bool end_found = false;
     bool is_selfloop = false;
 
     /* is it a self loop */
@@ -342,39 +343,70 @@ static bool insert_vertex_edge(GRAPH_global_context *ggctx,
     /* search for the start vertex of the edge */
     value = (vertex_entry *)hash_search(ggctx->vertex_hashtable,
                                         (void *)&start_vertex_id, HASH_FIND,
-                                        &found);
-    /* vertices were preloaded so it must be there */
-    Assert(found);
-    if (!found)
-    {
-        return found;
-    }
+                                        &start_found);
 
-    /* if it is a self loop, add the edge to edges_self and we're done */
-    if (is_selfloop)
+    /*
+     * If we found the start_vertex_id and it is a self loop, add the edge to
+     * edges_self and we're done
+     */
+    if (start_found && is_selfloop)
     {
         value->edges_self = append_graphid(value->edges_self, edge_id);
-        return found;
+        return true;
     }
-
-    /* add the edge to the edges_out list of the start vertex */
-    value->edges_out = append_graphid(value->edges_out, edge_id);
+    /*
+     * Otherwise, if we found the start_vertex_id add the edge to the edges_out
+     * list of the start vertex
+     */
+    else if (start_found)
+    {
+        value->edges_out = append_graphid(value->edges_out, edge_id);
+    }
 
     /* search for the end vertex of the edge */
     value = (vertex_entry *)hash_search(ggctx->vertex_hashtable,
                                         (void *)&end_vertex_id, HASH_FIND,
-                                        &found);
-    /* vertices were preloaded so it must be there */
-    Assert(found);
-    if (!found)
+                                        &end_found);
+
+    /*
+     * If we found the start_vertex_id and the end_vertex_id add the edge to the
+     * edges_in list of the end vertex
+     */
+    if (start_found && end_found)
     {
-        return found;
+        value->edges_in = append_graphid(value->edges_in, edge_id);
+        return true;
+    }
+    /*
+     * Otherwise we need to generate the appropriate warning message about the
+     * dangling edge that we found.
+     */
+    else if (!start_found && end_found)
+    {
+        ereport(WARNING,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("edge: [id: %ld, start: %ld, end: %ld, label: %s] %s",
+                        edge_id, start_vertex_id, end_vertex_id,
+                        edge_label_name, "start vertex not found")));
+    }
+    else if (start_found && !end_found)
+    {
+        ereport(WARNING,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("edge: [id: %ld, start: %ld, end: %ld, label: %s] %s",
+                        edge_id, start_vertex_id, end_vertex_id,
+                        edge_label_name, "end vertex not found")));
+    }
+    else
+    {
+        ereport(WARNING,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("edge: [id: %ld, start: %ld, end: %ld, label: %s] %s",
+                        edge_id, start_vertex_id, end_vertex_id,
+                        edge_label_name, "start and end vertices not found")));
     }
 
-    /* add the edge to the edges_in list of the end vertex */
-    value->edges_in = append_graphid(value->edges_in, edge_id);
-
-    return found;
+    return false;
 }
 
 /* helper routine to load all vertices into the GRAPH global vertex hashtable */
@@ -430,7 +462,12 @@ static void load_vertex_hashtable(GRAPH_global_context *ggctx)
             bool inserted = false;
 
             /* something is wrong if this isn't true */
+            if (!HeapTupleIsValid(tuple))
+            {
+                elog(ERROR, "load_vertex_hashtable: !HeapTupleIsValid");
+            }
             Assert(HeapTupleIsValid(tuple));
+
             /* get the vertex id */
             vertex_id = DatumGetInt64(column_get_datum(tupdesc, tuple, 0, "id",
                                                        GRAPHIDOID, true));
@@ -533,7 +570,12 @@ static void load_edge_hashtable(GRAPH_global_context *ggctx)
             bool inserted = false;
 
             /* something is wrong if this isn't true */
+            if (!HeapTupleIsValid(tuple))
+            {
+                elog(ERROR, "load_edge_hashtable: !HeapTupleIsValid");
+            }
             Assert(HeapTupleIsValid(tuple));
+
             /* get the edge id */
             edge_id = DatumGetInt64(column_get_datum(tupdesc, tuple, 0, "id",
                                                      GRAPHIDOID, true));
@@ -568,11 +610,13 @@ static void load_edge_hashtable(GRAPH_global_context *ggctx)
 
             /* insert the edge into the start and end vertices edge lists */
             inserted = insert_vertex_edge(ggctx, edge_vertex_start_id,
-                                          edge_vertex_end_id, edge_id);
-            /* this insert must not fail */
+                                          edge_vertex_end_id, edge_id,
+                                          edge_label_name);
             if (!inserted)
             {
-                 elog(ERROR, "insert_vertex_edge: failed to insert");
+                 ereport(WARNING,
+                         (errcode(ERRCODE_DATA_EXCEPTION),
+                          errmsg("ignored malformed or dangling edge")));
             }
         }
 
