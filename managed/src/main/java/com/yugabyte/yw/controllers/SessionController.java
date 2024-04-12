@@ -697,10 +697,10 @@ public class SessionController extends AbstractPlatformController {
     boolean useNewAuthz =
         runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
 
+    // Sync all the built-in roles when a new customer is created.
+    R__Sync_System_Roles.syncSystemRoles();
+
     if (useNewAuthz) {
-      // Sync all the built-in roles when a new customer is created.
-      // After the Customer.create() step.
-      R__Sync_System_Roles.syncSystemRoles();
       Role newRbacRole = Role.get(cust.getUuid(), role.name());
 
       // Now add the role binding for the above user.
