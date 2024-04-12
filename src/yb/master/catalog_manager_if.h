@@ -30,6 +30,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/monitored_task.h"
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -55,12 +56,15 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
                               (kVisibleToClient) // All tables visible to the client
                );
 
+YB_STRONGLY_TYPED_BOOL(HideOnly);
+
 class CatalogManagerIf {
  public:
   virtual void CheckTableDeleted(const TableInfoPtr& table) = 0;
 
   virtual void NotifyTabletDeleteFinished(
-      const TabletServerId& tserver_uuid, const TableId& table_id, const TableInfoPtr& table) = 0;
+      const TabletServerId& tserver_uuid, const TabletId& tablet_id,
+      const TableInfoPtr& table, server::MonitoredTaskState task_state) = 0;
 
   virtual std::string GenerateId() = 0;
 

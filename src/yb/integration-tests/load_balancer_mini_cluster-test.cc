@@ -25,8 +25,11 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/master/cluster_balance.h"
+#include "yb/master/master.h"
 
 #include "yb/tools/yb-admin_client.h"
+
+#include "yb/server/monitored_task.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -42,6 +45,7 @@ DECLARE_int32(TEST_load_balancer_wait_after_count_pending_tasks_ms);
 DECLARE_bool(tserver_heartbeat_metrics_add_drive_data);
 DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_bool(TEST_fail_async_delete_replica_task);
 
 using namespace std::literals;
 
@@ -201,6 +205,26 @@ class LoadBalancerMiniClusterTest : public LoadBalancerMiniClusterTestBase {
 
   int num_tablets() override {
     return 4;
+  }
+
+  Status WaitForNoPendingDeletes() {
+    auto ts_descriptors = VERIFY_RESULT(
+        mini_cluster()->GetLeaderMiniMaster())->master()->ts_manager()->GetAllDescriptors();
+    return WaitFor([&]() -> Result<bool> {
+      for (const auto& ts : ts_descriptors) {
+        if (ts->HasTabletDeletePending()) {
+          return false;
+        }
+      }
+      return true;
+    }, kDefaultTimeout, "WaitForNoPendingDeletes");
+  }
+
+  void DeleteTableAsync() {
+    if (table_exists_) {
+      ASSERT_OK(client_->DeleteTable(table_name(), false /* wait */));
+      table_exists_ = false;
+    }
   }
 
   StatEmuEnv* emu_env;
@@ -477,6 +501,34 @@ TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDriveAware) {
   }
   ASSERT_TRUE(found);
 }
+
+TEST_F(LoadBalancerMiniClusterTest, ClearPendingDeletesOnFailure) {
+  // Make sure that deleting tablet task is failed/times out.
+  FLAGS_TEST_fail_async_delete_replica_task = true;
+  // Delete the table, async. The sync call will fail since the table will not get deleted.
+  DeleteTableAsync();
+  // This sleep currently functions to wait until all DeleteTablet RPCs have been sent out and have
+  // failed. Need a better condition here.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto& catalog_manager =
+        VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager();
+    auto recent_tasks = catalog_manager.GetRecentTasks();
+    auto num_delete_tasks = 0;
+    // Make sure that all deleted tasks triggered have failed and at least 1 delete has been
+    // triggered.
+    for (const auto& task : recent_tasks) {
+      if (task->type() == server::MonitoredTask::Type::ASYNC_DELETE_REPLICA) {
+        if (task->state() != server::MonitoredTaskState::kFailed) {
+          return false;
+        }
+        num_delete_tasks++;
+      }
+    }
+    return num_delete_tasks > 0;
+  }, kDefaultTimeout, "deleted tasks failed"));
+  ASSERT_OK(WaitForNoPendingDeletes());
+}
+
 
 } // namespace integration_tests
 } // namespace yb
