@@ -44,7 +44,8 @@
 #include <vector>
 
 #include <boost/atomic.hpp>
-#include "yb/util/logging.h"
+
+#include "yb/ash/wait_state_fwd.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/opid.h"
@@ -60,6 +61,7 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/promise.h"
@@ -663,6 +665,8 @@ class Log : public RefCountedThreadSafe<Log> {
   NewSegmentAllocationCallback new_segment_allocation_callback_;
 
   PreLogRolloverCallback pre_log_rollover_callback_;
+
+  const yb::ash::WaitStateInfoPtr background_synchronizer_wait_state_;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };
