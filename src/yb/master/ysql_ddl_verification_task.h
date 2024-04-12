@@ -89,9 +89,9 @@ class PollTransactionStatusBase {
   rpc::Rpcs rpcs_;
   Synchronizer sync_;
 
-#ifndef NDEBUG
-  bool shutdown_ = false;
-#endif
+  std::mutex rpc_mutex_;
+
+  bool shutdown_ GUARDED_BY(rpc_mutex_) = false;
 };
 
 class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
@@ -135,7 +135,8 @@ class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
   Status ValidateRunnable() override;
   void FinishPollTransaction(Status s) override;
   Status CheckNsExists(Status status);
-  void TaskCompleted(const Status& status) override { Shutdown(); }
+  void TaskCompleted(const Status& status) override;
+  void PerformAbort() override;
 
   SysCatalogTable& sys_catalog_;
   bool entry_exists_ = false;
@@ -186,7 +187,8 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
   Status CompareSchema(Status s);
   Status FinishTask(Result<bool> is_committed);
   void FinishPollTransaction(Status s) override;
-  void TaskCompleted(const Status& status) override { Shutdown(); }
+  void TaskCompleted(const Status& status) override;
+  void PerformAbort() override;
 
   SysCatalogTable& sys_catalog_;
   bool ddl_atomicity_enabled_;
