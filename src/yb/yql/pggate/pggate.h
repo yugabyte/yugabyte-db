@@ -752,6 +752,8 @@ class PgApiImpl {
 
   uint64_t GetTxnSerialNo();
 
+  SubTransactionId GetActiveSubTransactionId();
+
   void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
 
   //------------------------------------------------------------------------------------------------

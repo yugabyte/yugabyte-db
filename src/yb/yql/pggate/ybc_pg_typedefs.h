@@ -495,6 +495,7 @@ typedef struct PgSessionParallelData {
   uint64_t session_id;
   uint64_t txn_serial_no;
   uint64_t read_time_serial_no;
+  uint32_t active_sub_transaction_id;
 } YBCPgSessionParallelData;
 
 typedef struct PgJwtAuthOptions {
