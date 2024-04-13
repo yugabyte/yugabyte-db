@@ -104,7 +104,7 @@ public class ReleaseController extends AuthenticatedController {
       versionDataList.add(formData);
     }
 
-    if (confGetter.getGlobalConf(GlobalConfKeys.releasesRedesign)) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       LOG.warn("creating new style release with legacy api");
       versionDataList.forEach(
           data -> {
@@ -220,7 +220,7 @@ public class ReleaseController extends AuthenticatedController {
   public Result list(UUID customerUUID, Boolean includeMetadata, @Nullable String arch) {
     Customer.getOrBadRequest(customerUUID);
     Map<String, Object> filtered = null;
-    if (confGetter.getGlobalConf(GlobalConfKeys.releasesRedesign)) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       List<Release> releases = Release.getAll();
       filtered =
           releases.stream()
@@ -384,7 +384,7 @@ public class ReleaseController extends AuthenticatedController {
   })
   public Result delete(UUID customerUUID, String version, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    if (confGetter.getGlobalConf(GlobalConfKeys.releasesRedesign)) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       Release release = Release.getByVersion(version);
       if (release == null) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid Release version: " + version);
