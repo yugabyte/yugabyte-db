@@ -255,6 +255,9 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
 
   @Test
   public void testMemUsageOfQueryFromPgStatActivity() throws Exception {
+    Assume.assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
+        isTestRunningWithConnectionManager());
+
     // Skip test if the current yb instance is a sanitized build.
     // as the test checks o/p of columns in pg_stat_activity and not the
     // called function.
