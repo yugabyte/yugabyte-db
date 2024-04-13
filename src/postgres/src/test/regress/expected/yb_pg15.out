@@ -1080,3 +1080,30 @@ DETAIL:  Key (a, b)=(2502, 2503) is not present in table "fk_notpartitioned_pk".
 INSERT INTO fk_notpartitioned_pk (a,b) VALUES (2502, 2503);
 UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
 -- YB_TODO: end
+-- YB_TODO: begin: remove after tracking postgres_fdw
+CREATE EXTENSION postgres_fdw;
+CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
+DO $d$
+    BEGIN
+        EXECUTE $$CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
+            OPTIONS (dbname '$$||current_database()||$$',
+                     host '$$||current_setting('listen_addresses')||$$',
+                     port '$$||current_setting('port')||$$'
+            )$$;
+    END;
+$d$;
+CREATE USER MAPPING FOR public SERVER testserver1
+    OPTIONS (user 'value', password 'value');
+CREATE USER MAPPING FOR CURRENT_USER SERVER loopback;
+create table ctrtest (a int, b text) partition by list (a);
+create table loct1 (a int check (a in (1)), b text);
+create foreign table remp1 (a int check (a in (1)), b text) server loopback options (table_name 'loct1');
+alter table ctrtest attach partition remp1 for values in (1);
+copy ctrtest from stdin;
+select * from ctrtest;
+ a |  b  
+---+-----
+ 1 | foo
+(1 row)
+
+-- YB_TODO: end
