@@ -466,6 +466,10 @@ public class UserTaskDetails {
         title = "Creating Table Backup";
         description = "Creating backup for a table.";
         break;
+      case CreatingUniverseBackup:
+        title = "Creating Universe Backup";
+        description = "Creating backup for a Universe.";
+        break;
       case RestoringTableBackup:
         title = "Restoring Table Backup";
         description = "Restoring from a backup.";
