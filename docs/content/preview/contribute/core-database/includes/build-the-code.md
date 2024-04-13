@@ -27,7 +27,7 @@ If you get an error message such as
 > ValueError: Found no third-party release archives to download for OS type ubuntu20.04, compiler type matching gcc11, architecture x86_64, is_linuxbrew=False. See more details above.
 
 it means that there is no [third-party download](#opt-yb-build) available for that build configuration.
-Check the list output above that message for supported configurations.
+Check the output above that message for supported configurations.
 
 {{< /note >}}
 
