@@ -155,9 +155,8 @@ class ApiService {
     }
   };
 
-  getDBVersions = (includeMetadata: boolean = false, arch = null): Promise<string[] | Record<string, YBSoftwareMetadata>> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
-
+  getDBVersions = (includeMetadata: boolean = false, arch = null, isReleasesEnabled: boolean): Promise<string[] | Record<string, YBSoftwareMetadata>> => {
+    const requestUrl = isReleasesEnabled ? `${ROOT_URL}/customers/${this.getCustomerId()}/ybdb_release` : `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
     return axios.get<string[] | Record<string, YBSoftwareMetadata>>(requestUrl, {
       params: {
         includeMetadata,
