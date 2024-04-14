@@ -29,6 +29,7 @@ import {
 } from './dtos';
 import { QUERY_KEY, ReleasesAPI } from '../api';
 import { getImportedArchitectures } from '../helpers/utils';
+import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isEmptyString, isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 import UnChecked from '../../../../redesign/assets/checkbox/UnChecked.svg';
@@ -232,6 +233,16 @@ export const NewReleaseList = () => {
             </span>
           </>
         )}
+      </Box>
+    );
+  };
+
+  const formatDateMilliSecs = (cell: any, row: any) => {
+    return (
+      <Box className={helperClasses.biggerReleaseText}>
+        {row.release_date_msecs
+          ? ybFormatDate(row.release_date_msecs, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
+          : ''}
       </Box>
     );
   };
@@ -648,7 +659,8 @@ export const NewReleaseList = () => {
               <TableHeaderColumn
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
-                dataField={'release_date'}
+                dataFormat={formatDateMilliSecs}
+                // dataField={'release_date_msecs'}
                 dataSort
               >
                 {t('releases.releaseDate')}

@@ -6,7 +6,7 @@ export interface Releases {
   yb_type: string;
   artifacts: ReleaseArtifacts[];
   release_type: ReleaseType | string,
-  release_date: string;
+  release_date_msecs: number;
   release_notes: string;
   state: ReleaseState;
   universes: ReleaseUniverses[];
@@ -84,7 +84,7 @@ export interface ReleaseSpecificArtifact {
   platform: ReleasePlatform;
   architecture: ReleasePlatformArchitecture | string;
   signature: string;
-  release_date?: string;
+  release_date_msecs?: number;
   release_type?: string;
   release_notes?:string;
 }
@@ -101,7 +101,7 @@ export interface ReleaseFormFields {
   version?: string,
   architecture?: string | null,
   platform?: string,
-  releaseDate?: string;
+  releaseDate?: number;
   releaseNotes? : string;
   releaseType?: ReleaseType | string;
 }

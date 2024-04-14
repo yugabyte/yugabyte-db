@@ -72,11 +72,9 @@ export const YBFormatDate: FC<FormatDateProps> = ({ date, timeFormat }) => {
   return <>{formatDatetime(date, timeFormat, currentUserTimezone)}</>;
 };
 
-export const ybFormatDate = (
-  date: Date | string | number,
-  timeFormat = YBTimeFormats.YB_DEFAULT_TIMESTAMP
-) => {
-  return <YBFormatDate date={date} timeFormat={timeFormat} />;
+export const ybFormatDate = (date: Date | string | number, timeFormat?: YBTimeFormats) => {
+  const defaultFormat = timeFormat ?? YBTimeFormats.YB_DEFAULT_TIMESTAMP;
+  return <YBFormatDate date={date} timeFormat={defaultFormat} />;
 };
 
 export const dateStrToMoment = (str: string) => {
