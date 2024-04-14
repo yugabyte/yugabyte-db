@@ -344,13 +344,13 @@ export const AddReleaseModal = ({
     setValue('version', response.version);
     setValue('ybType', response.yb_type);
     setValue('releaseType', response.release_type);
-    setValue('releaseDate', response.release_date);
+    setValue('releaseDate', response.release_date_msecs);
     setValue('releaseNotes', response.release_notes);
 
     setUrlMetadata({
       version: response.version,
       releaseType: response.release_type,
-      releaseDate: response.release_date,
+      releaseDate: response.release_date_msecs,
       platform: response.platform,
       architecture: response.architecture
     });
@@ -440,7 +440,7 @@ export const AddReleaseModal = ({
           }
         ],
         release_type: formValues.releaseType ?? ReleaseType.PREVIEW,
-        release_date: formValues.releaseDate,
+        release_date_msecs: formValues.releaseDate,
         release_notes: formValues.releaseNotes
       };
       setIsSubmitting(true);
