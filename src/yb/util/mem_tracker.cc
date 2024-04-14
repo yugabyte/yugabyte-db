@@ -289,7 +289,8 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
                                                ConsumptionFunctor consumption_functor,
                                                MayExist may_exist,
                                                AddToParent add_to_parent,
-                                               CreateMetrics create_metrics) {
+                                               CreateMetrics create_metrics,
+                                               const std::string& metric_name) {
   std::lock_guard lock(child_trackers_mutex_);
   if (may_exist) {
     auto result = FindChildUnlocked(id);

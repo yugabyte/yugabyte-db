@@ -342,4 +342,23 @@ std::string TabletMemoryManager::LogPrefix(const tablet::TabletPeerPtr& peer) co
       peer->permanent_uuid());
 }
 
+int32_t GetDbBlockCacheNumShardBits() {
+  auto num_cache_shard_bits = FLAGS_db_block_cache_num_shard_bits;
+  if (num_cache_shard_bits < 0) {
+    const auto num_cores = base::NumCPUs();
+    if (num_cores <= 16) {
+      return rocksdb::kSharedLRUCacheDefaultNumShardBits;
+    }
+    num_cache_shard_bits = Bits::Log2Ceiling(num_cores);
+  }
+  if (num_cache_shard_bits > rocksdb::kSharedLRUCacheMaxNumShardBits) {
+    LOG(INFO) << Format(
+        "The value of db_block_cache_num_shard_bits is higher than the "
+        "maximum permissible value of $0. The value used will be $0.",
+        rocksdb::kSharedLRUCacheMaxNumShardBits);
+    return rocksdb::kSharedLRUCacheMaxNumShardBits;
+  }
+  return num_cache_shard_bits;
+}
+
 }  // namespace yb::tserver
