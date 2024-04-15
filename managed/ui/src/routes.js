@@ -134,7 +134,7 @@ axios.interceptors.response.use(
     //rbac is not loaded yet or it is enabled
     if (getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
 
-    const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
+    const isAllowedUrl = /.+\/(login|register|reset_password)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 401;
     if (isUnauthorised && !isAllowedUrl) {
       //redirect to users current page

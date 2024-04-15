@@ -383,35 +383,15 @@ export function updateProfileFailure(error) {
   };
 }
 
-export function updatePassword(user, values) {
+export function updatePassword(_user, values) {
   const cUUID = localStorage.getItem('customerId');
-  const userUUID = user.uuid;
   const data = {
-    ...values,
-    role: user.role
+    ...values
   };
-  const request = axios.put(
-    `${ROOT_URL}/customers/${cUUID}/users/${userUUID}/change_password`,
+  return axios.put(
+    `${ROOT_URL}/customers/${cUUID}/reset_password`,
     data
   );
-  return {
-    type: UPDATE_PROFILE,
-    payload: request
-  };
-}
-
-export function updatePasswordSuccess(response) {
-  return {
-    type: UPDATE_PROFILE_SUCCESS,
-    payload: response
-  };
-}
-
-export function updatePasswordFailure(error) {
-  return {
-    type: UPDATE_PROFILE_FAILURE,
-    payload: error
-  };
 }
 
 export function updateUserProfile(user, values) {
