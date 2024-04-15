@@ -466,7 +466,7 @@ generateCrdObjects := {
 
 downloadThirdPartyDeps := {
   ybLog("Downloading third-party dependencies...")
-  val status = Process("wget -qi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
+  val status = Process("wget -Nqi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
   status
 }
 
@@ -710,7 +710,7 @@ compileYbaCliBinary := {
   var fileList = Seq.empty[String]
 
   ybLog("Generating YBA CLI go binary.")
-  
+
   val (status1, fileList1) = makeYbaCliPackage("linux", "amd64", baseDirectory.value)
   completeFileList = fileList1
   status = status1
@@ -772,7 +772,7 @@ cleanYbaCliBinary := {
 def cleanYbaCliPackage(goos: String, goarch: String, directory: java.io.File): Int = {
   val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
   val status = Process("make clean", new File(directory + "/yba-cli/"), env: _*).!
-  
+
   status
 }
 
