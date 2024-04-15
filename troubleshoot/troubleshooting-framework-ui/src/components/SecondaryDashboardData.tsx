@@ -56,6 +56,7 @@ export interface SecondaryDashboardDataProps {
   graphParams: GraphQuery[] | null;
   timezone?: string;
   recommendationMetrics: any;
+  hostUrl?: string;
 }
 
 export const SecondaryDashboardData = ({
@@ -65,7 +66,8 @@ export const SecondaryDashboardData = ({
   graphParams,
   appName,
   timezone,
-  recommendationMetrics
+  recommendationMetrics,
+  hostUrl
 }: SecondaryDashboardDataProps) => {
   const classes = useHelperStyles();
   // Get default values to be populated on page
@@ -165,7 +167,7 @@ export const SecondaryDashboardData = ({
   ]);
 
   const fetchAnomalyGraphs = useMutation(
-    (params: any) => TroubleshootAPI.fetchGraphs(universeUuid, params),
+    (params: any) => TroubleshootAPI.fetchGraphs(universeUuid, params, hostUrl),
     {
       onSuccess: (graphData: GraphResponse[]) => {
         setGraphData(graphData);

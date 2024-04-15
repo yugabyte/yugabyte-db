@@ -15,6 +15,7 @@ interface TroubleshootAdvisorProps {
   universeUuid: string;
   appName: AppName;
   timezone?: string;
+  hostUrl?: string;
   onSelectedIssue?: (troubleshootUuid: string) => void;
 }
 
@@ -39,6 +40,7 @@ export const TroubleshootAdvisor = ({
   universeUuid,
   appName,
   timezone,
+  hostUrl,
   onSelectedIssue
 }: TroubleshootAdvisorProps) => {
   const helperClasses = useHelperStyles();
@@ -50,7 +52,7 @@ export const TroubleshootAdvisor = ({
 
   const { isLoading, isError, isIdle, refetch: anomaliesRefetch } = useQuery(
     [QUERY_KEY.fetchAnamolies, universeUuid],
-    () => TroubleshootAPI.fetchAnamolies(universeUuid, startDateTime, endDateTime),
+    () => TroubleshootAPI.fetchAnamolies(universeUuid, startDateTime, endDateTime, hostUrl),
     {
       enabled: anomalyList === null,
       onSuccess: (data: Anomaly[]) => {
