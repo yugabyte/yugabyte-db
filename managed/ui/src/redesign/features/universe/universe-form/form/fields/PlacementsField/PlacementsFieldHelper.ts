@@ -6,7 +6,7 @@ import { useWatch, useFormContext } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api, QUERY_KEY } from '../../../utils/api';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
-import { createErrorMessage, getUserIntent } from '../../../utils/helpers';
+import { createErrorMessage, getAsyncCluster, getUserIntent } from '../../../utils/helpers';
 import {
   Placement,
   Cluster,
@@ -37,6 +37,7 @@ import {
   SPOT_INSTANCE_FIELD
 } from '../../../utils/constants';
 import { CloudType } from '../../../../../../helpers/dtos';
+import { getPrimaryCluster } from '../../../utils/helpers';
 
 export const getPlacementsFromCluster = (
   cluster?: Cluster,
@@ -170,6 +171,7 @@ export const useNodePlacements = (featureFlags: Record<string, any>) => {
   const resetAZ = useWatch({ name: RESET_AZ_FIELD });
   const userAZSelected = useWatch({ name: USER_AZSELECTED_FIELD });
 
+  const cluster = clusterType === ClusterType.PRIMARY ? getPrimaryCluster(universeConfigureTemplate) : getAsyncCluster(universeConfigureTemplate);
   const prevPropsCombination = useRef({
     instanceType,
     regionList,
@@ -188,6 +190,7 @@ export const useNodePlacements = (featureFlags: Record<string, any>) => {
 
   let payload: any = {};
   const userIntent = {
+    ...cluster?.userIntent,
     ...getUserIntent({ formData: getValues() }, clusterType, featureFlags)
   };
 
