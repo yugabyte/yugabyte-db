@@ -39,6 +39,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -853,7 +854,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     List<NodeDetails> masterNodes = universe.getMasters();
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
       final String leaderMasterAddress = universe.getMasterLeaderHostText();
-      return sortMastersInRestartOrder(leaderMasterAddress, masterNodes);
+      return sortMastersInRestartOrder(universe, leaderMasterAddress, masterNodes);
     }
     return masterNodes;
   }
@@ -878,14 +879,25 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   // Find the master leader and move it to the end of the list.
   public static List<NodeDetails> sortMastersInRestartOrder(
-      String leaderMasterAddress, List<NodeDetails> nodes) {
+      Universe universe, String leaderMasterAddress, List<NodeDetails> nodes) {
     if (nodes.isEmpty()) {
       return nodes;
+    }
+    List<UUID> azs = sortAZs(universe.getUniverseDetails().getPrimaryCluster(), universe);
+    NodeDetails leader =
+        nodes.stream()
+            .filter(n -> leaderMasterAddress.equals(n.cloudInfo.private_ip))
+            .findFirst()
+            .orElse(null);
+    if (leader != null) {
+      azs.remove(leader.azUuid);
+      azs.add(leader.azUuid); // Adding at last position
     }
     return nodes.stream()
         .sorted(
             Comparator.<NodeDetails, Boolean>comparing(node -> node.state == NodeState.Live)
-                .thenComparing(node -> leaderMasterAddress.equals(node.cloudInfo.private_ip))
+                .thenComparing(node -> Objects.equals(node, leader))
+                .thenComparing(node -> azs.indexOf(node.azUuid))
                 .thenComparing(NodeDetails::getNodeIdx))
         .collect(Collectors.toList());
   }

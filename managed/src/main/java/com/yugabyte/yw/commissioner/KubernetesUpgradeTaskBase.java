@@ -99,7 +99,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     List<NodeDetails> masterNodes = universe.getMasters();
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
       final String leaderMasterAddress = universe.getMasterLeaderHostText();
-      return UpgradeTaskBase.sortMastersInRestartOrder(leaderMasterAddress, masterNodes);
+      return UpgradeTaskBase.sortMastersInRestartOrder(universe, leaderMasterAddress, masterNodes);
     }
     return masterNodes;
   }
