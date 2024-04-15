@@ -117,12 +117,14 @@ public class Release extends Model {
       throw new PlatformServiceException(
           BAD_REQUEST, "release with uuid " + release.releaseUUID + " already exists");
     }
-    if (Release.getByVersion(reqRelease.version, reqRelease.release_tag) != null) {
+    if (Release.getByVersion(reqRelease.version) != null) {
+      String tagError = "";
+      if (reqRelease.release_tag != null && !reqRelease.release_tag.isEmpty()) {
+        tagError = " with tag " + reqRelease.release_tag;
+      }
       throw new PlatformServiceException(
           BAD_REQUEST,
-          String.format(
-              "release version %s with tag %s already exists",
-              reqRelease.version, reqRelease.release_tag));
+          String.format("release version %s%s already exists", reqRelease.version, tagError));
     }
 
     // Required fields
