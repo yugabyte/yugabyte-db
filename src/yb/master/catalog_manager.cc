@@ -7885,9 +7885,9 @@ void CatalogManager::NotifyPrepareDeleteTransactionTabletFinished(
   DeleteTabletReplicas(tablet.get(), msg, hide_only, KeepData::kTrue);
 }
 
-void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid,
-                                                const TabletId& tablet_id,
-                                                const TableInfoPtr& table) {
+void CatalogManager::NotifyTabletDeleteFinished(
+    const TabletServerId& tserver_uuid, const TabletId& tablet_id, const TableInfoPtr& table,
+    server::MonitoredTaskState task_state) {
   shared_ptr<TSDescriptor> ts_desc;
   if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
     LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
@@ -7898,7 +7898,9 @@ void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uu
     LOG(INFO) << "Clearing pending delete for tablet " << tablet_id << " in ts " << tserver_uuid;
     ts_desc->ClearPendingTabletDelete(tablet_id);
   }
-  CheckTableDeleted(table);
+  if (task_state == server::MonitoredTaskState::kComplete) {
+    CheckTableDeleted(table);
+  }
 }
 
 bool CatalogManager::ReplicaMapDiffersFromConsensusState(const scoped_refptr<TabletInfo>& tablet,
@@ -8269,7 +8271,6 @@ Status CatalogManager::ProcessTabletReportBatch(
           master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
           TABLET_DATA_DELETED, boost::none,
           GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), msg));
-      ts_desc->AddPendingTabletDelete(tablet_id);
       continue;
     }
 
@@ -8305,7 +8306,6 @@ Status CatalogManager::ProcessTabletReportBatch(
           GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()),
           Substitute("$0 (current committed config index is $1)",
               delete_msg, prev_opid_index)));
-      ts_desc->AddPendingTabletDelete(tablet_id);
       continue;
     }
 
@@ -8332,7 +8332,6 @@ Status CatalogManager::ProcessTabletReportBatch(
           TABLET_DATA_DELETED, boost::none,
           GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), msg);
       task->set_hide_only(true);
-      ts_desc->AddPendingTabletDelete(tablet_id);
       rpcs->push_back(task);
     }
 
@@ -10995,10 +10994,6 @@ void CatalogManager::SendDeleteTabletRequest(
 
   auto status = ScheduleTask(call);
   WARN_NOT_OK(status, Substitute("Failed to send delete request for tablet $0", tablet_id));
-  // TODO(bogdan): does the pending delete semantics need to change?
-  if (status.ok()) {
-    ts_desc->AddPendingTabletDelete(tablet_id);
-  }
 }
 
 void CatalogManager::SendLeaderStepDownRequest(
@@ -12746,11 +12741,13 @@ scoped_refptr<TableInfo> CatalogManager::NewTableInfo(TableId id, bool colocated
 }
 
 Status CatalogManager::ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) {
+  RETURN_NOT_OK(task->BeforeSubmitToTaskPool());
   Status s = async_task_pool_->SubmitFunc([task]() {
       WARN_NOT_OK(task->Run(), "Failed task");
   });
   // If we are not able to enqueue, abort the task.
   if (!s.ok()) {
+    RETURN_NOT_OK(task->OnSubmitFailure());
     task->AbortAndReturnPrevState(s);
   }
   return s;
