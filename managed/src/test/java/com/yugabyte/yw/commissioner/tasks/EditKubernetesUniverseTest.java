@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
@@ -115,6 +116,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts("1.2.3.0", 1234));
   }
 
   private void setupUniverseSingleAZ(boolean setMasters) {
@@ -150,6 +153,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
+    setDumpEntitiesMock(defaultUniverse, "", false);
   }
 
   private static final List<TaskType> KUBERNETES_ADD_POD_TASKS =
@@ -438,7 +442,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     factory
         .forUniverse(defaultUniverse)
         .setValue(UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear.getKey(), "1 ms");
-
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
