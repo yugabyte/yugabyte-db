@@ -599,7 +599,11 @@
 
 [[redirects]]
   from = "/quick-start/run-sample-apps/"
-  to = "/preview/develop/realworld-apps/explore-sample-apps/"
+  to = "/preview/tutorials/"
+
+[[redirects]]
+  from = "/preview/develop/realworld-apps/*"
+  to = "/preview/tutorials/"
 
 [[redirects]]
   from = "/quick-start/test-redis/"
