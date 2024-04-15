@@ -402,8 +402,12 @@ void HandlePreParsedDollarBinarySize(pgbson *doc, void *arguments,
 									 ExpressionResult *expressionResult);
 void HandlePreParsedDollarCmp(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
+void HandlePreParsedDollarDateAdd(pgbson *doc, void *arguments,
+								  ExpressionResult *expressionResult);
 void HandlePreParsedDollarDateFromParts(pgbson *doc, void *arguments,
 										ExpressionResult *expressionResult);
+void HandlePreParsedDollarDateSubtract(pgbson *doc, void *arguments,
+									   ExpressionResult *expressionResult);
 void HandlePreParsedDollarDateTrunc(pgbson *doc, void *arguments,
 									ExpressionResult *expressionResult);
 void HandlePreParsedDollarEq(pgbson *doc, void *arguments,
@@ -462,8 +466,11 @@ void ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *dat
 void ParseDollarBsonSize(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarDateAdd(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarDateFromParts(const bson_value_t *argument,
 							  AggregationExpressionData *data);
+void ParseDollarDateSubtract(const bson_value_t *argument,
+							 AggregationExpressionData *data);
 void ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data);
@@ -576,6 +583,15 @@ inline static bool
 IsExpressionResultUndefined(const bson_value_t *value)
 {
 	return value->value_type == BSON_TYPE_UNDEFINED || value->value_type == BSON_TYPE_EOD;
+}
+
+
+/* Whether or not the expression result value is null or undefined */
+inline static bool
+IsExpressionResultNull(const bson_value_t *value)
+{
+	return value->value_type == BSON_TYPE_NULL || value->value_type ==
+		   BSON_TYPE_UNDEFINED;
 }
 
 

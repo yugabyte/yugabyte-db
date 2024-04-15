@@ -20,6 +20,7 @@
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "utils/mongo_errors.h"
+#include "utils/fmgrprotos.h"
 #include "metadata/metadata_cache.h"
 
 #define MILLISECONDS_IN_SECOND 1000L
@@ -58,8 +59,6 @@ typedef enum DatePart
 	DatePart_IsoDayOfWeek = 12,
 } DatePart;
 
-static const char *isoDateFormat = "IYYY-IW-ID";
-static const char *defaultTimezone = "UTC";
 
 /* Enum that defines possible units for dateTrunc */
 typedef enum DateTruncUnit
@@ -86,6 +85,37 @@ typedef enum WeekDay
 	WeekDay_Saturday = 6,
 	WeekDay_Sunday = 7
 }WeekDay;
+
+/* Enum which defines the possible units which mongo supports. */
+typedef enum DateUnit
+{
+	DateUnit_Invalid = 0,
+	DateUnit_Year = 1,
+	DateUnit_Quarter = 2,
+	DateUnit_Month = 3,
+	DateUnit_Week = 4,
+	DateUnit_Day = 5,
+	DateUnit_Hour = 6,
+	DateUnit_Minute = 7,
+	DateUnit_Second = 8,
+	DateUnit_Millisecond = 9
+} DateUnit;
+
+typedef struct DollarDateAddSubtract
+{
+	/* The date to truncate, specified in UTC */
+	AggregationExpressionData startDate;
+
+	/* The unit to add/subtract. Like second, year, month, etc */
+	AggregationExpressionData unit;
+
+	/* The amount to add/subtract. This is supposed to be long*/
+	AggregationExpressionData amount;
+
+	/* Optional: Timezone for the $dateTrunc calculation */
+	AggregationExpressionData timezone;
+} DollarDateAddSubtract;
+
 
 /* Struct that represents the parsed arguments to a $dateFromParts expression. */
 typedef struct DollarDateFromParts
@@ -167,11 +197,40 @@ static const char *weekDaysAbbreviated[7] = {
 	"mon", "tue", "wed", "thu", "fri", "sat", "sun"
 };
 
+static const char *dateUnitStr[9] = {
+	"year", "quarter", "month", "week", "day", "hour", "minute", "second", "millisecond"
+};
+
+/*
+ * Using these values in the rangeforDateUnit array
+ * The order is same as the enum DateUnit
+ * These values are extrapolated manually based on the behaviour of operator
+ */
+const int64 rangeforDateUnit[] = {
+	0,     /* DateUnit_Invalid, dummy value */
+	584942417L,     /* DateUnit_Year */
+	1754827251L,     /* DateUnit_Quarter */
+	7019309004L,     /* DateUnit_Month */
+	30500568905L,     /* DateUnit_Week */
+	213503982335L,     /* DateUnit_Day */
+	5124095576040L,     /* DateUnit_Hour */
+	307445734562400L,     /* DateUnit_Minute */
+	18446744073744000L,     /* DateUnit_Second */
+};
+
+static const char *isoDateFormat = "IYYY-IW-ID";
+static const char *defaultTimezone = "UTC";
+
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
 static Datum AddIntervalToTimestampWithPgTry(Datum timestamp, Datum interval,
 											 bool *isResultOverflow);
+static int GetAdjustHourWithTimezoneForDateAddSubtract(Datum startTimestamp, Datum
+													   timestampIntervalAdjusted,
+													   DateUnit unitEnum,
+													   ExtensionTimezone timezoneToApply);
 static inline bool isArgumentForDateTruncNull(bson_value_t *date, bson_value_t *unit,
 											  bson_value_t *binSize,
 											  bson_value_t *timezone,
@@ -185,10 +244,18 @@ static inline bool isValidUnitForDateBinOid(DateTruncUnit dateTruncUnit);
 static void HandleDatePartOperator(pgbson *doc, const bson_value_t *operatorValue,
 								   ExpressionResult *expressionResult,
 								   const char *operatorName, DatePart datePart);
+static inline bool isBsonValueDateTime(bson_type_t bsonType);
+static bool isAmountRangeValidForDateUnit(int64 amountVal, DateUnit unit);
 static bool ParseDatePartOperatorArgument(const bson_value_t *operatorValue,
 										  const char *operatorName,
 										  bson_value_t *dateExpression,
 										  bson_value_t *timezoneExpression);
+static void HandleCommonParseForDateAddSubtract(char *opName, bool isDateAdd, const
+												bson_value_t *argument,
+												AggregationExpressionData *data);
+static void HandleCommonPreParsedForDateAddSubtract(char *opName, bool isDateAdd,
+													pgbson *doc, void *arguments,
+													ExpressionResult *expressionResult);
 static void ParseInputDocumentForDateTrunc(const bson_value_t *inputArgument,
 										   bson_value_t *date, bson_value_t *unit,
 										   bson_value_t *binSize, bson_value_t *timezone,
@@ -200,6 +267,12 @@ static void ParseInputForDateFromParts(const bson_value_t *argument, bson_value_
 									   bson_value_t *hour, bson_value_t *minute,
 									   bson_value_t *second, bson_value_t *millisecond,
 									   bson_value_t *timezone, bool *isIsoWeekDate);
+static void ParseInputForDollarDateAddSubtract(const bson_value_t *inputArgument,
+											   char *opName,
+											   bson_value_t *startDate,
+											   bson_value_t *unit,
+											   bson_value_t *amount,
+											   bson_value_t *timezone);
 static ExtensionTimezone ParseTimezone(StringView timezone);
 static int64_t ParseUtcOffset(StringView offset);
 static int32_t DetermineUtcOffsetForEpochWithTimezone(int64_t unixEpoch,
@@ -207,8 +280,10 @@ static int32_t DetermineUtcOffsetForEpochWithTimezone(int64_t unixEpoch,
 static uint32_t GetDatePartFromPgTimestamp(Datum pgTimestamp, DatePart datePart);
 static inline int GetDayOfWeek(int year, int month, int day);
 static Datum GetIntervalFromBinSize(int64_t binSize, DateTruncUnit dateTruncUnit);
-static Datum GetIntervalFromDatePart(int64 year, int64 month, int64 week, int64 day, int64
-									 hour, int64 minute, int64 seconds, int64 millis);
+static Datum GetIntervalFromDatePart(int64 year, int64 month, int64 week, int64 day,
+									 int64 hour, int64 minute, int64 seconds, int64
+									 millis);
+static Datum GetIntervalFromDateUnitAndAmount(DateUnit unitEnum, int64 amount);
 static int GetIsoWeeksForYear(int64 year);
 static Datum GetPgTimestampAdjustedToTimezone(Datum timestamp, ExtensionTimezone
 											  timezoneToApply);
@@ -226,8 +301,7 @@ static void SetResultForDateFromParts(DollarDateFromPartsBsonValue *dateFromPart
 									  ExtensionTimezone timezoneToApply,
 									  bson_value_t *result);
 static void SetResultForDateFromIsoParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
-										 ExtensionTimezone
-										 timezoneToApply,
+										 ExtensionTimezone timezoneToApply,
 										 bson_value_t *result);
 static void SetResultValueForDateTruncFromDateBin(Datum pgTimestamp, Datum
 												  referenceTimestamp, ExtensionTimezone
@@ -267,6 +341,22 @@ static void ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *d
 static void ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey);
 static void ValidateInputForDateFromParts(
 	DollarDateFromPartsBsonValue *dateFromPartsValue, bool isIsoWeekDate);
+static void ValidateInputForDollarDateAddSubtract(char *opName, bool isDateAdd,
+												  bson_value_t *startDate,
+												  bson_value_t *unit,
+												  bson_value_t *amount,
+												  bson_value_t *timezone);
+static DateUnit GetDateUnitFromString(char *unit);
+static void SetResultForDollarDateAddSubtract(bson_value_t *startDate, DateUnit unitEum,
+											  int64 amount,
+											  ExtensionTimezone timezoneToApply,
+											  char *opName,
+											  bool isDateAdd,
+											  bson_value_t *result);
+static void SetResultForDollarDateSubtract(bson_value_t *startDate, DateUnit unitEum,
+										   int64 amount,
+										   ExtensionTimezone timezoneToApply,
+										   bson_value_t *result);
 
 /* These 3 methods are specialized for creating a date string. */
 static void WriteCharAndAdvanceBuffer(char **buffer, const char *end, char value);
@@ -3457,4 +3547,614 @@ SetResultValueForYearUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
 
 	result->value.v_datetime = GetUnixEpochFromPgTimestamp(
 		resultTimestampWithZoneAdjusted);
+}
+
+
+/*
+ * This function handles $dateAdd after parsing and gives the result as BSON_TYPE_DATETIME.
+ */
+void
+HandlePreParsedDollarDateAdd(pgbson *doc, void *arguments,
+							 ExpressionResult *expressionResult)
+{
+	char *opName = "$dateAdd";
+	bool isDateAdd = true;
+	HandleCommonPreParsedForDateAddSubtract(opName, isDateAdd, doc, arguments,
+											expressionResult);
+}
+
+
+/*
+ * This function parses the input given for $dateAdd.
+ * The input to the function $dateAdd is of the format  : {$dateAdd : {startDate: expression , unit: expression, amount: expression , timezone: expression}}
+ * The function parses the input and if input is not constant stores into a struct DollarDateAddSubtract.
+ */
+void
+ParseDollarDateAdd(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	char *opName = "$dateAdd";
+	bool isDateAdd = true;
+	HandleCommonParseForDateAddSubtract(opName, isDateAdd, argument, data);
+}
+
+
+/* This function tells if the timestamp supplied with the timezone for dateAdd needs to be adjusted.
+ * This returns 1 or -1 if needs to be adjusted which is the amount of hour to add or subtract from result timestamp.
+ * In case we do need need to adjust we return 0
+ * This takes into account that timezone is applied only above days unit i.e for day, week , month, etc.
+ * Also, it only adjusts the timezone with the DST offset if olson timezone is specified.
+ * Timezone is applied only when post adding interval we are entering DST or DST is ending as per mongo behaviour.
+ */
+static int
+GetAdjustHourWithTimezoneForDateAddSubtract(Datum startTimestamp, Datum
+											timestampIntervalAdjusted, DateUnit unitEnum,
+											ExtensionTimezone timezoneToApply)
+{
+	if (unitEnum >= DateUnit_Hour || timezoneToApply.isUtcOffset)
+	{
+		return 0;
+	}
+
+	Datum startTimestampZoneAdjusted = GetPgTimestampAdjustedToTimezone(startTimestamp,
+																		timezoneToApply);
+	Datum timestampIntervalWithTimezone = GetPgTimestampAdjustedToTimezone(
+		timestampIntervalAdjusted, timezoneToApply);
+
+	/* check if DST offset needs to be adjusted for result. */
+	int hourForStartTimestamp = GetDatePartFromPgTimestamp(startTimestampZoneAdjusted,
+														   DatePart_Hour);
+	int hourFortimestampInterval = GetDatePartFromPgTimestamp(
+		timestampIntervalWithTimezone, DatePart_Hour);
+
+	/* This will tell if there's a DST is applied. */
+	return (hourFortimestampInterval - hourForStartTimestamp);
+}
+
+
+/*
+ * This function given an input string value returns DateUnit enum corresponding to that str value.
+ */
+static DateUnit
+GetDateUnitFromString(char *unitStrValue)
+{
+	DateUnit unitEnum = DateUnit_Invalid;
+	for (int index = 0; index < (int) (sizeof(dateUnitStr) / sizeof(dateUnitStr[0]));
+		 index++)
+	{
+		if (strcmp(dateUnitStr[index], unitStrValue) == 0)
+		{
+			unitEnum = (DateUnit) (index + 1);
+		}
+	}
+	return unitEnum;
+}
+
+
+/*
+ * This function returns a datum interval taking in the date unit and amount.
+ * Interval is one of the postgres way of referencing time interval.
+ */
+static Datum
+GetIntervalFromDateUnitAndAmount(DateUnit unitEnum, int64 amount)
+{
+	int64 year = 0, month = 0, week = 0, day = 0, hour = 0, minute = 0, seconds = 0,
+		  millis = 0;
+	switch (unitEnum)
+	{
+		case DateUnit_Year:
+		{
+			year = amount;
+			break;
+		}
+
+		case DateUnit_Quarter:
+		{
+			month = amount * 3;
+			break;
+		}
+
+		case DateUnit_Month:
+		{
+			month = amount;
+			break;
+		}
+
+		case DateUnit_Week:
+		{
+			week = amount;
+			break;
+		}
+
+		case DateUnit_Day:
+		{
+			day = amount;
+			break;
+		}
+
+		case DateUnit_Hour:
+		{
+			hour = amount;
+			break;
+		}
+
+		case DateUnit_Minute:
+		{
+			minute = amount;
+			break;
+		}
+
+		case DateUnit_Second:
+		{
+			seconds = amount;
+			break;
+		}
+
+		case DateUnit_Millisecond:
+		{
+			millis = amount;
+			break;
+		}
+
+		default:
+		{
+			break;
+		}
+	}
+
+	return GetIntervalFromDatePart(year, month, week, day, hour, minute, seconds, millis);
+}
+
+
+/* This is a common parser function since the logic was same hence, extracted it and made it part of a common function */
+static void
+HandleCommonParseForDateAddSubtract(char *opName, bool isDateAdd, const
+									bson_value_t *argument,
+									AggregationExpressionData *data)
+{
+	bson_value_t startDate = { 0 }, unit = { 0 }, amount = { 0 }, timezone = { 0 };
+	ParseInputForDollarDateAddSubtract(argument, opName, &startDate, &unit, &amount,
+									   &timezone);
+
+	DollarDateAddSubtract *dateAddSubtractArgs = palloc0(sizeof(DollarDateAddSubtract));
+
+	ParseAggregationExpressionData(&dateAddSubtractArgs->startDate, &startDate);
+	ParseAggregationExpressionData(&dateAddSubtractArgs->unit, &unit);
+	ParseAggregationExpressionData(&dateAddSubtractArgs->amount, &amount);
+	ParseAggregationExpressionData(&dateAddSubtractArgs->timezone, &timezone);
+
+	/* This here is part of optimization as now we know if all inputs are constant */
+	if (IsAggregationExpressionConstant(&dateAddSubtractArgs->startDate) &&
+		IsAggregationExpressionConstant(&dateAddSubtractArgs->unit) &&
+		IsAggregationExpressionConstant(&dateAddSubtractArgs->amount) &&
+		IsAggregationExpressionConstant(&dateAddSubtractArgs->timezone))
+	{
+		bson_value_t result = { .value_type = BSON_TYPE_NULL };
+
+		/* If any part is null or undefined we return null. */
+		if (IsExpressionResultNullOrUndefined(&dateAddSubtractArgs->startDate.value) ||
+			IsExpressionResultNullOrUndefined(&dateAddSubtractArgs->unit.value) ||
+			IsExpressionResultNullOrUndefined(&dateAddSubtractArgs->amount.value) ||
+			IsExpressionResultNull(&dateAddSubtractArgs->timezone.value))
+		{
+			data->value = result;
+			data->kind = AggregationExpressionKind_Constant;
+			pfree(dateAddSubtractArgs);
+			return;
+		}
+
+		ValidateInputForDollarDateAddSubtract(opName, isDateAdd,
+											  &dateAddSubtractArgs->startDate.value,
+											  &dateAddSubtractArgs->unit.value,
+											  &dateAddSubtractArgs->amount.value,
+											  &dateAddSubtractArgs->timezone.value);
+
+		ExtensionTimezone timezoneToApply = {
+			.offsetInMs = 0,
+			.isUtcOffset = true,
+		};
+
+		if (dateAddSubtractArgs->timezone.value.value_type != BSON_TYPE_EOD)
+		{
+			StringView timezoneToParse = {
+				.string = dateAddSubtractArgs->timezone.value.value.v_utf8.str,
+				.length = dateAddSubtractArgs->timezone.value.value.v_utf8.len
+			};
+			timezoneToApply = ParseTimezone(timezoneToParse);
+		}
+
+		DateUnit unitEnum = GetDateUnitFromString(
+			dateAddSubtractArgs->unit.value.value.v_utf8.str);
+		if (!isDateAdd && unitEnum < DateUnit_Hour)
+		{
+			SetResultForDollarDateSubtract(&dateAddSubtractArgs->startDate.value,
+										   unitEnum,
+										   BsonValueAsInt64(
+											   &dateAddSubtractArgs->amount.value),
+										   timezoneToApply,
+										   &result);
+		}
+		else
+		{
+			SetResultForDollarDateAddSubtract(&dateAddSubtractArgs->startDate.value,
+											  unitEnum,
+											  BsonValueAsInt64(
+												  &dateAddSubtractArgs->amount.value),
+											  timezoneToApply,
+											  opName,
+											  isDateAdd,
+											  &result);
+		}
+		data->value = result;
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(dateAddSubtractArgs);
+	}
+	else
+	{
+		data->operator.arguments = dateAddSubtractArgs;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+/* This is a common function where we handle post parsing logic for dateAdd, dateSubtract. */
+static void
+HandleCommonPreParsedForDateAddSubtract(char *opName, bool isDateAdd, pgbson *doc,
+										void *arguments,
+										ExpressionResult *expressionResult)
+{
+	bson_value_t startDate = { 0 }, unit = { 0 }, amount = { 0 }, timezone = { 0 };
+
+	DollarDateAddSubtract *dateAddSubtractArguments = arguments;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&dateAddSubtractArguments->startDate, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	startDate = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateAddSubtractArguments->unit, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	unit = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateAddSubtractArguments->amount, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	amount = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateAddSubtractArguments->timezone, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	timezone = childExpression.value;
+
+	bson_value_t result = { .value_type = BSON_TYPE_NULL };
+
+	if (IsExpressionResultNullOrUndefined(&startDate) ||
+		IsExpressionResultNullOrUndefined(&unit) ||
+		IsExpressionResultNullOrUndefined(&amount) ||
+		IsExpressionResultNull(&timezone))
+	{
+		ExpressionResultSetValue(expressionResult, &result);
+		return;
+	}
+
+	ValidateInputForDollarDateAddSubtract(opName, isDateAdd, &startDate, &unit, &amount,
+										  &timezone);
+
+	ExtensionTimezone timezoneToApply = {
+		.offsetInMs = 0,
+		.isUtcOffset = true,
+	};
+
+	if (timezone.value_type != BSON_TYPE_EOD)
+	{
+		StringView timezoneToParse = {
+			.string = timezone.value.v_utf8.str,
+			.length = timezone.value.v_utf8.len
+		};
+		timezoneToApply = ParseTimezone(timezoneToParse);
+	}
+	DateUnit unitEnum = GetDateUnitFromString(unit.value.v_utf8.str);
+	if (!isDateAdd && unitEnum < DateUnit_Hour)
+	{
+		SetResultForDollarDateSubtract(&startDate, unitEnum, BsonValueAsInt64(&amount),
+									   timezoneToApply, &result);
+	}
+	else
+	{
+		SetResultForDollarDateAddSubtract(&startDate, unitEnum, BsonValueAsInt64(&amount),
+										  timezoneToApply, opName, isDateAdd, &result);
+	}
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function checks wheter dateUnit range and amount to add/substract is withing the specified limit for $dateAdd and $dateSubtract.
+ * This function checks before computing that if the amount values supplied can take the date to out of range.
+ */
+static bool
+isAmountRangeValidForDateUnit(int64 amountVal, DateUnit unit)
+{
+	/* Ensure the unit is within the expected range to avoid accessing out of bounds */
+	if (unit < DateUnit_Year)
+	{
+		return false; /* Invalid DateUnit value */
+	}
+
+	/* for unit millisecond we don't have any range */
+	if (unit > DateUnit_Second)
+	{
+		return true;
+	}
+
+	return (-rangeforDateUnit[unit] < amountVal) && (amountVal < rangeforDateUnit[unit]);
+}
+
+
+static inline bool
+isBsonValueDateTime(bson_type_t bsonType)
+{
+	if (bsonType == BSON_TYPE_DATE_TIME || bsonType == BSON_TYPE_TIMESTAMP || bsonType ==
+		BSON_TYPE_OID)
+	{
+		return true;
+	}
+
+	return false;
+}
+
+
+/*
+ * This function parses the given input document and extracts and sets the result in given bson_value_t types.
+ */
+static void
+ParseInputForDollarDateAddSubtract(const bson_value_t *inputArgument,
+								   char *opName,
+								   bson_value_t *startDate, bson_value_t *unit,
+								   bson_value_t *amount,
+								   bson_value_t *timezone)
+{
+	if (inputArgument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation5166400), errmsg(
+							"%s expects an object as its argument.found input type:%s",
+							opName, BsonValueToJsonForLogging(inputArgument)),
+						errhint(
+							"%s expects an object as its argument.found input type:%s",
+							opName, BsonTypeName(inputArgument->value_type))));
+	}
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(inputArgument, &docIter);
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "startDate") == 0)
+		{
+			*startDate = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "unit") == 0)
+		{
+			*unit = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "amount") == 0)
+		{
+			*amount = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "timezone") == 0)
+		{
+			*timezone = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation5166401), errmsg(
+								"Unrecognized argument to %s: %s. Expected arguments are startDate, unit, amount, and optionally timezone",
+								opName, key),
+							errhint(
+								"Unrecognized argument to %s: Expected arguments are startDate, unit, amount, and optionally timezone",
+								opName)));
+		}
+	}
+
+	if (startDate->value_type == BSON_TYPE_EOD || unit->value_type == BSON_TYPE_EOD ||
+		amount == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation5166402), errmsg(
+							"%s requires startDate, unit, and amount to be present",
+							opName),
+						errhint("%s requires startDate, unit, and amount to be present",
+								opName)));
+	}
+}
+
+
+/* This function does the final computation for the dateAdd and then stores the computed answer to result. */
+static void
+SetResultForDollarDateAddSubtract(bson_value_t *startDate, DateUnit unitEnum,
+								  int64 amount, ExtensionTimezone timezoneToApply,
+								  char *opName,
+								  bool isDateAdd,
+								  bson_value_t *result)
+{
+	result->value_type = BSON_TYPE_DATE_TIME;
+
+	/* Negating the amount as for date subtract we need to minus the amount. */
+	if (!isDateAdd)
+	{
+		amount *= -1;
+	}
+	int64 epochMs = BsonValueAsDateTime(startDate);
+	Datum startDateTimestamp = GetPgTimestampFromUnixEpoch(epochMs);
+	Datum interval = GetIntervalFromDateUnitAndAmount(unitEnum, amount);
+
+	bool isResultOverflow = false;
+	Datum resultTimestamp = AddIntervalToTimestampWithPgTry(startDateTimestamp, interval,
+															&isResultOverflow);
+
+	if (isResultOverflow)
+	{
+		ereport(ERROR, (errcode(MongoLocation5166406), errmsg(
+							"%s overflowed", opName),
+						errhint("%s overflowed", opName)));
+	}
+
+	int diffHour = GetAdjustHourWithTimezoneForDateAddSubtract(startDateTimestamp,
+															   resultTimestamp, unitEnum,
+															   timezoneToApply);
+
+	Datum resultEpoch = DirectFunctionCall2(timestamp_part,
+											CStringGetTextDatum("epoch"),
+											resultTimestamp);
+
+	int64 resultEpochMs = (int64) (DatumGetFloat8(resultEpoch) * 1000);
+
+	if (diffHour != 0)
+	{
+		resultEpochMs += (diffHour * 60 * 60 * MILLISECONDS_IN_SECOND);
+	}
+	result->value.v_datetime = resultEpochMs;
+}
+
+
+/* This is a function handling for $dateSubtract logic for last day handling and dst offset.
+ * This is applicable when unit is day or greater like week, month, quarter ,etc.
+ */
+static void
+SetResultForDollarDateSubtract(bson_value_t *startDate, DateUnit unitEnum,
+							   int64 amount,
+							   ExtensionTimezone timezoneToApply,
+							   bson_value_t *result)
+{
+	result->value_type = BSON_TYPE_DATE_TIME;
+	amount *= -1;
+	int64 epochMs = BsonValueAsDateTime(startDate);
+	Datum startDateTimestamp = GetPgTimestampFromEpochWithTimezone(epochMs,
+																   timezoneToApply);
+	Datum interval = GetIntervalFromDateUnitAndAmount(unitEnum, amount);
+
+	bool isResultOverflow = false;
+	Datum resultTimestamp = AddIntervalToTimestampWithPgTry(startDateTimestamp, interval,
+															&isResultOverflow);
+
+	if (isResultOverflow)
+	{
+		ereport(ERROR, (errcode(MongoLocation5166406), errmsg(
+							"$dateSubtract overflowed"),
+						errhint("$dateSubtract overflowed")));
+	}
+
+	Datum resultTimestampWithUTC = GetPgTimestampAdjustedToTimezone(resultTimestamp,
+																	timezoneToApply);
+	Datum resultEpoch = DirectFunctionCall2(timestamp_part,
+											CStringGetTextDatum("epoch"),
+											resultTimestampWithUTC);
+
+	int64 resultEpochMs = (int64) (DatumGetFloat8(resultEpoch) * 1000);
+	result->value.v_datetime = resultEpochMs;
+}
+
+
+/* This function validates the input given for each argument. */
+static void
+ValidateInputForDollarDateAddSubtract(char *opName, bool isDateAdd,
+									  bson_value_t *startDate, bson_value_t *unit,
+									  bson_value_t *amount, bson_value_t *timezone)
+{
+	if (!isBsonValueDateTime(startDate->value_type))
+	{
+		ereport(ERROR, (errcode(MongoLocation5166403), errmsg(
+							"%s requires startDate to be convertible to a date",
+							opName),
+						errhint("%s requires startDate to be convertible to a date",
+								opName)));
+	}
+
+	if (unit->value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(MongoLocation5166404), errmsg(
+							"%s expects string defining the time unit",
+							opName),
+						errhint("%s expects string defining the time unit",
+								opName)));
+	}
+	char *unitStrValue = unit->value.v_utf8.str;
+	DateUnit unitEnum = GetDateUnitFromString(unitStrValue);
+
+	if (unitEnum == DateUnit_Invalid)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+							"unknown time unit value: %s", unitStrValue),
+						errhint("unknown time unit value")));
+	}
+
+	if (!IsBsonValueFixedInteger(amount))
+	{
+		ereport(ERROR, (errcode(MongoLocation5166405), errmsg(
+							"%s expects integer amount of time units", opName),
+						errhint("%s expects integer amount of time units", opName)));
+	}
+
+	int64 amountVal = BsonValueAsInt64(amount);
+
+	if (!isDateAdd && amountVal == INT64_MIN)
+	{
+		ereport(ERROR, (errcode(MongoLocation6045000), errmsg(
+							"invalid %s 'amount' parameter value: %s %s", opName,
+							BsonValueToJsonForLogging(amount), unitStrValue),
+						errhint("invalid %s 'amount' parameter value: %s %s", opName,
+								BsonValueToJsonForLogging(amount), unitStrValue)));
+	}
+
+	if (!isAmountRangeValidForDateUnit(amountVal, unitEnum))
+	{
+		ereport(ERROR, (errcode(MongoLocation5976500), errmsg(
+							"invalid %s 'amount' parameter value: %s %s", opName,
+							BsonValueToJsonForLogging(amount), unitStrValue),
+						errhint("invalid %s 'amount' parameter value: %s %s", opName,
+								BsonValueToJsonForLogging(amount), unitStrValue)));
+	}
+
+	/* Since no , default value is set hence, need to check if not eod then it should be UTF8 */
+	if (timezone->value_type != BSON_TYPE_EOD && timezone->value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(MongoLocation40517), errmsg(
+							"timezone must evaluate to a string, found %s", BsonTypeName(
+								timezone->value_type)),
+						errhint("timezone must evaluate to a string, found %s",
+								BsonTypeName(timezone->value_type))));
+	}
+}
+
+
+/*
+ * This function handles $dateSubtract after parsing and gives the result as BSON_TYPE_DATETIME.
+ */
+void
+HandlePreParsedDollarDateSubtract(pgbson *doc, void *arguments,
+								  ExpressionResult *expressionResult)
+{
+	char *opName = "$dateSubtract";
+	bool isDateAdd = false;
+	HandleCommonPreParsedForDateAddSubtract(opName, isDateAdd, doc, arguments,
+											expressionResult);
+}
+
+
+/*
+ * This function parses the input given for $dateSubtract.
+ * The input to the function $dateSubtract is of the format  : {$dateSubtract : {startDate: expression , unit: expression, amount: expression , timezone: expression}}
+ * The function parses the input and if input is not constant stores into a struct DollarDateAddSubtract.
+ */
+void
+ParseDollarDateSubtract(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	char *opName = "$dateSubtract";
+	bool isDateAdd = false;
+	HandleCommonParseForDateAddSubtract(opName, isDateAdd, argument, data);
 }
