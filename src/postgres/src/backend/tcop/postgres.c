@@ -4802,7 +4802,6 @@ yb_get_sleep_usecs_on_txn_conflict(int attempt) {
 
 static void yb_maybe_sleep_on_txn_conflict(int attempt)
 {
-#ifdef YB_TODO
 	/* Rewrite this function */
 	if (!YBIsWaitQueueEnabled())
 	{
@@ -4817,7 +4816,6 @@ static void yb_maybe_sleep_on_txn_conflict(int attempt)
 		pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
 		pgstat_report_wait_end();
 	}
-#endif
 }
 
 /*

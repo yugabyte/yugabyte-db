@@ -459,20 +459,6 @@ typedef struct PgStat_StatTabEntry
 /* Postgres no longer uses the following structures. */
 
 /* ----------
- * Wait Events - Timeout
- *
- * Use this category when a process is waiting for a timeout to expire.
- * ----------
- */
-typedef enum
-{
-	WAIT_EVENT_BASE_BACKUP_THROTTLE = PG_WAIT_TIMEOUT,
-	WAIT_EVENT_PG_SLEEP,
-	WAIT_EVENT_RECOVERY_APPLY_DELAY,
-	WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF
-} WaitEventTimeout;
-
-/* ----------
  * Command type for progress reporting purposes
  * ----------
  */
