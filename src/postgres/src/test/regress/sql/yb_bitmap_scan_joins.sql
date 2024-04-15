@@ -284,20 +284,20 @@ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 
 --
 -- Semi Join
 --
-/*+ BitmapScan(joinb) */ EXPLAIN ANALYZE
+/*+ BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-/*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 
 --
 -- Anti Join
 --
-/*+ BitmapScan(joinb) */ EXPLAIN ANALYZE
+/*+ BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-/*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 
