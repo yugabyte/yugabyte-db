@@ -38,6 +38,11 @@ struct CatalogVersionInfo {
 
   // Shared memory array db_catalog_versions_ index of the slot allocated for the database.
   int32_t  shm_index;
+  // If the new version received in the tserver-master heartbeat response is older than
+  // current_version then increments this count. Otherwise, reset it. So a positive count indicates
+  // how many consecutive heartbeat responses have returned an older catalog version than what this
+  // tserver has already seen.
+  uint32_t new_version_ignored_count;
 };
 
 } // namespace yb::tserver
