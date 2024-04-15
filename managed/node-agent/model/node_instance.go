@@ -58,7 +58,7 @@ type AccessKeyInfo struct {
 	NodeExporterUser       string   `json:"nodeExporterUser"`
 	SetUpChrony            bool     `json:"setUpChrony"`
 	NtpServers             []string `json:"ntpServers"`
-	CreatetionDate         Date     `json:"creationDate"`
+	CreationDate           Date     `json:"creationDate"`
 	SkipProvisioning       bool     `json:"skipProvisioning"`
 }
 
@@ -78,8 +78,8 @@ func (keys AccessKeys) Len() int {
 func (keys AccessKeys) Less(i, j int) bool {
 	keyInfo1 := keys[i].KeyInfo
 	keyInfo2 := keys[j].KeyInfo
-	cTime1 := time.Time(keyInfo1.CreatetionDate)
-	cTime2 := time.Time(keyInfo2.CreatetionDate)
+	cTime1 := time.Time(keyInfo1.CreationDate)
+	cTime2 := time.Time(keyInfo2.CreationDate)
 	return cTime1.Before(cTime2)
 }
 

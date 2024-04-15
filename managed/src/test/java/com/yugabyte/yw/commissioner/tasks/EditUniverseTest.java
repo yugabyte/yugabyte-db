@@ -380,10 +380,16 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         TaskType.EditUniverse,
         taskParams);
     universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    taskParams = performShrink(universe);
+    // It may not be a master but works as long as it in the universe.
+    NodeDetails liveNode =
+        taskParams.nodeDetailsSet.stream()
+            .filter(n -> n.state != NodeState.ToBeRemoved)
+            .findFirst()
+            .get();
     setDumpEntitiesMock(universe, "", false);
     when(mockClient.getLeaderMasterHostAndPort())
-        .thenReturn(HostAndPort.fromHost(defaultUniverse.getMasters().get(0).cloudInfo.private_ip));
-    taskParams = performShrink(universe);
+        .thenReturn(HostAndPort.fromHost(liveNode.cloudInfo.private_ip));
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.Edit,
