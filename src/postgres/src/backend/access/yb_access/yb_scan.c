@@ -762,6 +762,12 @@ YbIsRowHeader(ScanKey key)
 	return key->sk_flags & SK_ROW_HEADER;
 }
 
+static bool
+YbIsRowMember(ScanKey key)
+{
+	return key->sk_flags & (SK_ROW_HEADER | SK_ROW_MEMBER);
+}
+
 /*
  * Is the condition never TRUE because of c {=|<|<=|>=|>} NULL, etc.?
  */
@@ -918,6 +924,13 @@ YbShouldPushdownScanPrimaryKey(YbScanPlan scan_plan, AttrNumber attnum,
 		 */
 		return key->sk_strategy == BTEqualStrategyNumber;
 	}
+
+	if (YbIsRowMember(key))
+	{
+		/* We'll recheck if this is a valid row comparison key later. */
+		return true;
+	}
+
 	/* No other operators are supported. */
 	return false;
 }
@@ -1113,7 +1126,8 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 
 static bool
 YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
-								int skey_index, bool is_for_precheck)
+						int skey_index, bool is_not_null[],
+						bool is_for_precheck)
 {
 	int last_att_no = YBFirstLowInvalidAttributeNumber;
 	Relation index = ybScan->index;
@@ -1275,6 +1289,10 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 
 			if (is_column_specified)
 			{
+				int att_idx = YBAttnumToBmsIndex(
+				ybScan->relation, subkeys[subkey_index]->sk_attno);
+				is_not_null[att_idx] = true;
+
 				subkey_index++;
 			}
 		}
@@ -1559,14 +1577,14 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 			!YbIsSearchArray(key))
 		{
 			bool needs_recheck =
-				YbBindRowComparisonKeys(ybScan, scan_plan, i, is_for_precheck);
+				YbBindRowComparisonKeys(ybScan, scan_plan, i,
+					is_not_null, is_for_precheck);
 			ybScan->all_ordinary_keys_bound &= !needs_recheck;
 			/*
 			 * Full primary-key RowComparison bindings don't interact
-			 * or interfere with other bindings to the same columns. They
-			 * just set the upper/lower bounds of the requested scan. We
-			 * can just continue looking at the next keys without recording this
-			 * key in the offsets array below.
+			 * or interfere too much with other bindings to the same columns.
+			 * They set the upper/lower bounds of the requested scan and also
+			 * apply IS NOT NULL filters on the bound LHS columns.
 			 */
 			continue;
 		}
