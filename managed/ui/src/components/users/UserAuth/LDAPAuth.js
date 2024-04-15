@@ -37,11 +37,14 @@ const VALIDATION_SCHEMA = Yup.object().shape({
     then: Yup.string().required('Password is Required'),
     otherwise: Yup.string()
   }),
-  ldap_search_attribute: Yup.string().when('use_search_and_bind', {
-    is: (use_search_and_bind) => use_search_and_bind === 'true',
-    then: Yup.string().required('Search Attribute is Required'),
-    otherwise: Yup.string()
-  }),
+  ldap_search_attribute: Yup.string().when(
+    ['use_search_and_bind', 'ldap_search_filter'],
+    {
+      is: (use_search_and_bind, ldap_search_filter) => use_search_and_bind === 'true' && (!ldap_search_filter || ldap_search_filter.trim() === ''),
+      then: Yup.string().required('Either Search Attribute or Search Filter is Required'),
+      otherwise: Yup.string()
+    }
+  ),
   ldap_group_member_of_attribute: Yup.string().when(
     ['ldap_group_use_query', 'ldap_group_use_role_mapping'],
     {
@@ -82,7 +85,8 @@ const VALIDATION_SCHEMA = Yup.object().shape({
     is: (ldap_security) => ['enable_ldaps', 'enable_ldap_start_tls'].includes(ldap_security),
     then: Yup.string().required('TLS Version is required'),
     otherwise: Yup.string()
-  })
+  }),
+  ldap_basedn: Yup.string().required('Base DN is Required')
 });
 
 const LDAP_PATH = 'yb.security.ldap';
@@ -204,6 +208,7 @@ export const LDAPAuth = (props) => {
     const splittedURL = values.ldap_url.split(':');
     const ldap_port = splittedURL[splittedURL.length - 1];
     const ldap_url = values.ldap_url.replace(`:${ldap_port}`, '');
+    const ldap_basedn = values.ldap_basedn;
     const security = values.ldap_security;
     const use_search_and_bind = values.use_search_and_bind;
     const ldap_group_use_role_mapping = values.ldap_group_use_role_mapping;
@@ -215,6 +220,7 @@ export const LDAPAuth = (props) => {
       ...values,
       ldap_url: ldap_url ?? '',
       ldap_port: ldap_port ?? '',
+      ldap_basedn: ldap_basedn ?? '',
       enable_ldaps: `${security === 'enable_ldaps'}`,
       enable_ldap_start_tls: `${security === 'enable_ldap_start_tls'}`,
       ldap_group_use_role_mapping: `${ldap_group_use_role_mapping}`
@@ -222,6 +228,7 @@ export const LDAPAuth = (props) => {
 
     if (use_search_and_bind === 'false') {
       transformedData.ldap_search_attribute = '';
+      transformedData.ldap_search_filter = '';
     }
 
     if (ldap_group_search_scope?.value) {
@@ -271,8 +278,8 @@ export const LDAPAuth = (props) => {
         enable_ldaps === 'true'
           ? 'enable_ldaps'
           : enable_ldap_start_tls === 'true'
-          ? 'enable_ldap_start_tls'
-          : 'unsecure';
+            ? 'enable_ldap_start_tls'
+            : 'unsecure';
       finalFormData = { ...finalFormData, ldap_security };
     }
 
@@ -295,18 +302,18 @@ export const LDAPAuth = (props) => {
         const keyName = `${LDAP_PATH}.${key}`;
         const value =
           isString(formValues[key]) &&
-          !['ldap_default_role', 'ldap_group_search_scope', 'ldap_tls_protocol'].includes(key)
+            !['ldap_default_role', 'ldap_group_search_scope', 'ldap_tls_protocol'].includes(key)
             ? `"${formValues[key]}"`
             : formValues[key];
         promiseArr.push(
           formValues[key] !== ''
             ? setRunTimeConfig({
-                key: keyName,
-                value
-              })
+              key: keyName,
+              value
+            })
             : deleteRunTimeConfig({
-                key: keyName
-              })
+              key: keyName
+            })
         );
       }
 
@@ -429,7 +436,7 @@ export const LDAPAuth = (props) => {
                   name="use_ldap"
                   input={{
                     value: ldapEnabled,
-                    onChange: () => {}
+                    onChange: () => { }
                   }}
                   isReadOnly={!showToggle}
                 />
@@ -558,57 +565,56 @@ export const LDAPAuth = (props) => {
                         {['enable_ldap_start_tls', 'enable_ldaps'].includes(
                           values?.ldap_security
                         ) && (
-                          <Row key="tls_protocol">
-                            <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                              <Row className="ua-field-row">
-                                <Col className="ua-label-c">
-                                  <div>
-                                    TLS Version &nbsp;
-                                    <YBInfoTip
-                                      customClass="ldap-info-popover"
-                                      title="TLS Protocol Version"
-                                      content="Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS"
-                                    >
-                                      <i className="fa fa-info-circle" />
-                                    </YBInfoTip>
-                                  </div>
-                                </Col>
-                                <Col lg={12} className="ua-field ua-radio-c">
-                                  <Row className="ua-radio-field-c">
-                                    {TLS_VERSIONS.map(({ label, value }) => (
-                                      <Col key={`tls-${value}`} className="ua-radio-field">
-                                        <Field
-                                          name={'ldap_tls_protocol'}
-                                          type="radio"
-                                          component="input"
-                                          value={value}
-                                          checked={`${value}` === `${values['ldap_tls_protocol']}`}
-                                          disabled={isDisabled}
-                                        />
-                                        &nbsp;&nbsp;{label}
-                                      </Col>
-                                    ))}
-                                  </Row>
-                                  <Row className="has-error">
-                                    {errors.ldap_security && (
-                                      <div className="help-block standard-error">
-                                        <span>{errors.ldap_security}</span>
-                                      </div>
-                                    )}
-                                  </Row>
-                                </Col>
-                              </Row>
-                            </Col>
-                          </Row>
-                        )}
+                            <Row key="tls_protocol">
+                              <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                                <Row className="ua-field-row">
+                                  <Col className="ua-label-c">
+                                    <div>
+                                      TLS Version &nbsp;
+                                      <YBInfoTip
+                                        customClass="ldap-info-popover"
+                                        title="TLS Protocol Version"
+                                        content="Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS"
+                                      >
+                                        <i className="fa fa-info-circle" />
+                                      </YBInfoTip>
+                                    </div>
+                                  </Col>
+                                  <Col lg={12} className="ua-field ua-radio-c">
+                                    <Row className="ua-radio-field-c">
+                                      {TLS_VERSIONS.map(({ label, value }) => (
+                                        <Col key={`tls-${value}`} className="ua-radio-field">
+                                          <Field
+                                            name={'ldap_tls_protocol'}
+                                            type="radio"
+                                            component="input"
+                                            value={value}
+                                            checked={`${value}` === `${values['ldap_tls_protocol']}`}
+                                            disabled={isDisabled}
+                                          />
+                                          &nbsp;&nbsp;{label}
+                                        </Col>
+                                      ))}
+                                    </Row>
+                                    <Row className="has-error">
+                                      {errors.ldap_security && (
+                                        <div className="help-block standard-error">
+                                          <span>{errors.ldap_security}</span>
+                                        </div>
+                                      )}
+                                    </Row>
+                                  </Col>
+                                </Row>
+                              </Col>
+                            </Row>
+                          )}
 
                         <Row key="ldap_basedn">
                           <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
                             <Row className="ua-field-row">
                               <Col className="ua-label-c">
                                 <div>
-                                  LDAP Base DN <br />
-                                  (Optional) &nbsp;
+                                  LDAP Base DN &nbsp;
                                   <YBInfoTip
                                     customClass="ldap-info-popover"
                                     title="LDAP Base DN"
@@ -721,7 +727,7 @@ export const LDAPAuth = (props) => {
                         </Row>
 
                         {values?.use_search_and_bind === 'true' && (
-                          <Row key="ldap_search_attribute">
+                          <><Row key="ldap_search_attribute">
                             <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
                               <Row className="ua-field-row">
                                 <Col className="ua-label-c">
@@ -741,11 +747,38 @@ export const LDAPAuth = (props) => {
                                     component={YBFormInput}
                                     disabled={isDisabled}
                                     className="ua-form-field"
+                                    placeholder="uid"
                                   />
                                 </Col>
                               </Row>
                             </Col>
                           </Row>
+                            <Row key="ldap_search_filter">
+                              <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                                <Row className="ua-field-row">
+                                  <Col className="ua-label-c">
+                                    <div>
+                                      Search Filter &nbsp;
+                                      <YBInfoTip
+                                        title="Search Filter"
+                                        content="Filter that will be used to narrow down the search for the user inside specific LDAP groups. Either search attribute or filter should be specified."
+                                      >
+                                        <i className="fa fa-info-circle" />
+                                      </YBInfoTip>
+                                    </div>
+                                  </Col>
+                                  <Col lg={12} className="ua-field">
+                                    <Field
+                                      name="ldap_search_filter"
+                                      component={YBFormInput}
+                                      disabled={isDisabled}
+                                      className="ua-form-field"
+                                      placeholder="(|(groupName=CN=group1,CN=Groups,DC=yugabyte,DC=com)(...))"
+                                    />
+                                  </Col>
+                                </Row>
+                              </Col>
+                            </Row></>
                         )}
                         <br />
                         <Row key="footer_banner-1">

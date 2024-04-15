@@ -103,6 +103,9 @@ typedef struct ReplicationSlotPersistentData
 	 * right after fetching the replication slot information.
 	 */
 	uint64_t yb_initial_record_commit_time_ht;
+
+	/* The last time at which a publication's table list was refreshed */
+	uint64_t yb_last_pub_refresh_time;
 } ReplicationSlotPersistentData;
 
 /*
@@ -230,5 +233,7 @@ extern void StartupReplicationSlots(void);
 extern void CheckPointReplicationSlots(void);
 
 extern void CheckSlotRequirements(void);
+
+extern char YBCGetReplicaIdentityForRelation(Oid relid);
 
 #endif							/* SLOT_H */

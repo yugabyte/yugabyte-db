@@ -1,5 +1,9 @@
 package com.yugabyte.troubleshoot.ts.service;
 
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.RESULT_SUCCESS;
+import static com.yugabyte.troubleshoot.ts.service.GraphService.DATA_RETRIEVAL_TIME;
+import static com.yugabyte.troubleshoot.ts.service.GraphService.QUERY_TIME;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.troubleshoot.ts.metric.client.PrometheusClient;
@@ -73,6 +77,7 @@ public class MetricGraphService implements GraphSourceIF {
   @Override
   public GraphResponse getGraph(
       UniverseMetadata universeMetadata, UniverseDetails universeDetails, GraphQuery query) {
+    Long startTime = System.currentTimeMillis();
     GraphResponse result = new GraphResponse();
     result.setSuccessful(true);
     String graphName = query.getName();
@@ -147,17 +152,27 @@ public class MetricGraphService implements GraphSourceIF {
       result.setData(data);
     }
 
+    QUERY_TIME
+        .labels(RESULT_SUCCESS, query.getName())
+        .observe(System.currentTimeMillis() - startTime);
     return result;
   }
 
   private MetricResponse getMetrics(
       UniverseMetadata universeMetadata, GraphQuery query, String queryExpression) {
+    Long queryStartTime = System.currentTimeMillis();
     MetricRangeQuery rangeQuery = new MetricRangeQuery();
     rangeQuery.setQuery(queryExpression);
     rangeQuery.setStart(query.getStart().atZone(ZoneOffset.UTC));
     rangeQuery.setEnd(query.getEnd().atZone(ZoneOffset.UTC));
     rangeQuery.setStep(Duration.ofSeconds(query.getStepSeconds()));
-    return prometheusClient.queryRange(universeMetadata.getMetricsUrl(), rangeQuery);
+    MetricResponse response =
+        prometheusClient.queryRange(universeMetadata.getMetricsUrl(), rangeQuery);
+
+    DATA_RETRIEVAL_TIME
+        .labels(query.getName())
+        .observe(System.currentTimeMillis() - queryStartTime);
+    return response;
   }
 
   private Map<String, String> getTopKQueries(GraphQuery query, MetricsGraphConfig config) {

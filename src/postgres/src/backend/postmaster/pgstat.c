@@ -3614,7 +3614,7 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 	if (wait_event_info == 0)
 	{
 		if (IsYugaByteEnabled() && yb_ash_enable_infra)
-			return "YSQLQuery";
+			return "Cpu";
 		return NULL;
 	}
 
@@ -3652,7 +3652,7 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 		default:
 			event_type = "???";
 			if (IsYugaByteEnabled() && yb_ash_enable_infra)
-				event_type = YBCGetWaitEventClass(wait_event_info);
+				event_type = YBCGetWaitEventType(wait_event_info);
 			break;
 	}
 

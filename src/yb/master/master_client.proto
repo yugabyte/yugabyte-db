@@ -41,8 +41,8 @@ message TSInfoPB {
 
   optional bytes placement_uuid = 4;
 
-  // Capabilities of tablet server.
-  repeated fixed32 capabilities = 6;
+  // DEPRECATED Capabilities of tablet server.
+  reserved 6;
 }
 
 message TabletLocationsPB {
@@ -86,6 +86,11 @@ message TabletLocationsPB {
 
   // Whether or not this tablet has been deleted.
   optional bool is_deleted = 14;
+
+  // OpId of Committed Raft Config sent back to a tablet server when it requests a meta-
+  // -cache refresh. This OpId helps the tablet server determine if its meta-cache entry
+  // is stale by comparing this against its current raft_config_opid_index
+  optional int64 raft_config_opid_index = 15;
 }
 
 message GetIndexBackfillProgressRequestPB {

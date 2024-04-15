@@ -38,20 +38,32 @@ Note that if another [locking operation](#locking-operations) is in progress, yo
 
 ### Locking operations
 
-The following operations lock the cluster and only one can happen at the same time:
+Cluster infrastructure operations lock the cluster while they are in progress, and only one can happen at the same time. Some operations also require a restart.
 
-- [backup and restore](backup-clusters/)
-- pause and resume
-- [scaling the cluster](configure-clusters/), including adding and removing nodes, increasing disk size, and changing IOPS
-- create, delete, and edit of [read replicas](managed-read-replica/)
-- any scheduled [maintenance](cloud-maintenance/), including database upgrades, certificate rotations, and cluster maintenance (a backup is run automatically before a database upgrade)
-- [configure metrics export](../cloud-monitor/metrics-export/) on the cluster
+| Locking Operation | Subtask | Restart |
+| :--- | :--- | :--- |
+| [Backup and restore](backup-clusters/) | | |
+| Pause and resume | | |
+| [Cluster Edit](configure-clusters/) | Add or remove nodes | |
+| [Cluster Edit](configure-clusters/) | Change vCPUs, increase disk size, or change IOPS | Yes |
+| [Read replica edit](managed-read-replica/) | Create or delete; add or remove nodes | |
+| [Read replica edit](managed-read-replica/) | Increase disk size, change IOPS | Yes |
+| [Configure metrics export](../cloud-monitor/metrics-export/) | | |
+| [Scheduled maintenance](cloud-maintenance/) | Database upgrades, certificate rotations, and cluster maintenance<br>(A backup is run automatically before a database upgrade) | Yes |
 
-In addition, on AWS, any disk modification (size or IOPS) blocks further disk modifications for six hours (this includes a scaling operation that increases the number of vCPUs, as this also increases disk size).
+Keep in mind the following:
 
-Your database will continue to function normally during infrastructure operations, but these operations can temporarily degrade application performance. You should schedule infrastructure operations during periods of low traffic.
+- For clusters with Node, Availability Zone, or Region fault tolerance, and read replicas with a replication factor greater than 1, restarts are rolling. Your database will continue to function normally during infrastructure operations, but these operations can temporarily degrade application performance.
 
-Make sure that you schedule maintenance and backups so that they do not conflict.
+- For clusters with fault tolerance of none, and read replicas with a replication factor of 1, restarts will result in downtime for the cluster or read replica.
+
+- You should schedule infrastructure operations during periods of low traffic.
+
+- On AWS, any disk modification (size or IOPS) blocks further disk modifications for six hours (this includes a scaling operation that increases the number of vCPUs, as this also increases disk size).
+
+- Make sure that you schedule maintenance and backups so that they do not conflict.
+
+&nbsp;
 
 {{<index/block>}}
 

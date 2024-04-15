@@ -51,7 +51,7 @@ AddTableToXClusterTargetTask::AddTableToXClusterTargetTask(
           std::move(epoch)),
       universe_(universe),
       xcluster_manager_(*catalog_manager.GetXClusterManager()) {
-  is_db_scoped_ = universe_->LockForRead()->pb.has_db_scoped_info();
+  is_db_scoped_ = universe_->IsDbScoped();
 }
 
 std::string AddTableToXClusterTargetTask::description() const {

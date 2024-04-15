@@ -196,6 +196,10 @@ DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
 
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
+DEFINE_RUNTIME_bool(enable_cdcsdk_lag_collection, false,
+    "When enabled, vlog containing the lag for the getchanges call as well as last commit record "
+    "in response will be printed.");
+
 METRIC_DEFINE_entity(xcluster);
 
 METRIC_DEFINE_entity(cdcsdk);
@@ -1809,10 +1813,15 @@ void CDCServiceImpl::GetChanges(
   }
 
   VLOG(1) << "T " << req->tablet_id() << " sending GetChanges response " << AsString(*resp);
+  if (record.GetSourceType() == CDCSDK && FLAGS_enable_cdcsdk_lag_collection) {
+    LogGetChangesLagForCDCSDK(stream_id, *resp);
+  }
+
+  const auto* error_data = status.ErrorData(CDCErrorTag::kCategory);
   RPC_STATUS_RETURN_ERROR(
       status,
       resp->mutable_error(),
-      status.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
+      error_data ? CDCErrorTag::Decode(error_data) : CDCErrorPB::UNKNOWN_ERROR,
       context);
   tablet_peer = context_->LookupTablet(req->tablet_id());
 
@@ -4586,5 +4595,94 @@ void CDCServiceImpl::UpdateAndPersistLSN(
   context.RespondSuccess();
 }
 
+void CDCServiceImpl::UpdatePublicationTableList(
+    const UpdatePublicationTableListRequestPB* req, UpdatePublicationTableListResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckOnline(req, resp, &context)) {
+    return;
+  }
+
+  VLOG(4) << "Received UpdatePublicationTableList request: " << req->DebugString();
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_session_id(),
+      STATUS(InvalidArgument, "Session ID is required for UpdatePublicationTableList"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_stream_id(),
+      STATUS(InvalidArgument, "Stream ID is required for UpdatePublicationTableList"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  auto session_id = req->session_id();
+  std::shared_ptr<CDCSDKVirtualWAL> virtual_wal;
+  {
+    SharedLock l(mutex_);
+    RPC_CHECK_AND_RETURN_ERROR(
+        session_virtual_wal_.contains(session_id),
+        STATUS_FORMAT(
+            NotFound, "Virtual WAL instance not found for the session_id: $0", session_id),
+        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
+    virtual_wal = session_virtual_wal_[session_id];
+  }
+
+  auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
+  HostPort hostport(context.local_address());
+  std::unordered_set<TableId> new_table_list;
+  for (const auto& table_id : req->table_id()) {
+    new_table_list.insert(table_id);
+  }
+
+  Status s = virtual_wal->UpdatePublicationTableListInternal(
+      stream_id, new_table_list, hostport, GetDeadline(context, client()));
+  if (!s.ok()) {
+    std::string error_msg =
+        Format("UpdatePublicationTableList failed for stream_id: $0", stream_id);
+    LOG(WARNING) << error_msg;
+    RPC_STATUS_RETURN_ERROR(
+        s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    return;
+  }
+
+  context.RespondSuccess();
+}
+
+void CDCServiceImpl::LogGetChangesLagForCDCSDK(
+    const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp) {
+  auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
+  int64_t getchanges_call_lag_in_ms = -1;
+  if (resp.safe_hybrid_time() != -1) {
+    getchanges_call_lag_in_ms =
+        current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(resp.safe_hybrid_time())) / 1000;
+  }
+
+  int64_t commit_time_lag_in_ms = -1;
+  uint64_t commit_record_ct = 0;
+  uint64_t safepoint_ct = 0;
+  // If there are no commit records in the response, we take the safepoint record's commit_time.
+  for (auto it = resp.cdc_sdk_proto_records().rbegin(); it != resp.cdc_sdk_proto_records().rend();
+       ++it) {
+    if (it->row_message().op() == RowMessage::SAFEPOINT) {
+      safepoint_ct = it->row_message().commit_time();
+    } else if (it->row_message().op() == RowMessage::COMMIT) {
+      commit_record_ct = it->row_message().commit_time();
+      break;
+    }
+  }
+
+  if (commit_record_ct > 0) {
+    commit_time_lag_in_ms =
+        (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(commit_record_ct))) / 1000;
+  } else if (safepoint_ct > 0) {
+    commit_time_lag_in_ms =
+        (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(safepoint_ct))) / 1000;
+  }
+
+  VLOG(3) << "stream_id: " << stream_id << ", GetChanges call lag: "
+          << ((getchanges_call_lag_in_ms != -1) ? Format("$0 ms", getchanges_call_lag_in_ms) : "-1")
+          << ", Commit time lag: "
+          << ((commit_time_lag_in_ms != -1) ? Format("$0 ms", commit_time_lag_in_ms) : "-1");
+}
 }  // namespace cdc
 }  // namespace yb

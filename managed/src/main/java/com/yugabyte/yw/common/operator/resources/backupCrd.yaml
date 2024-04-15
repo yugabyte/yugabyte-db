@@ -9,6 +9,9 @@ spec:
     plural: backups
     singular: backup
     kind: Backup
+    categories:
+      - all
+      - yugabyte
   versions:
     - name: v1alpha1
       subresources:

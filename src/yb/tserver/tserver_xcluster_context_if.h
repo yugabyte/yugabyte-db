@@ -29,7 +29,10 @@ class TserverXClusterContextIf {
 
   virtual Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const = 0;
 
-  virtual bool IsXClusterReadOnlyMode(const NamespaceId namespace_id) const = 0;
+  virtual bool IsReadOnlyMode(const NamespaceId namespace_id) const = 0;
+
+  virtual bool SafeTimeComputationRequired() const = 0;
+  virtual bool SafeTimeComputationRequired(const NamespaceId namespace_id) const = 0;
 };
 
 }  // namespace tserver

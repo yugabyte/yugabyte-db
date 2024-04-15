@@ -2920,10 +2920,6 @@ void MasterPathHandlers::HandleXCluster(
   }
 
   output << "<br><h3>Inbound ReplicationGroups</h3>\n";
-  output << "<pre class=\"prettyprint\">"
-         << "XClusterRole: " << xcluster_status.role
-         << "\ntransactional: " << BoolToString(xcluster_status.transactional) << "</pre>";
-  output << "</pre>";
 
   uint32 inbound_group_table_id = 0;
   for (const auto& inbound_replication_group : xcluster_status.inbound_replication_group_statuses) {

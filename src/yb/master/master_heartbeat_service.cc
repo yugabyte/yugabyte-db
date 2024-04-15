@@ -48,8 +48,6 @@ DEFINE_test_flag(bool, skip_processing_tablet_metadata, false,
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 
-DECLARE_CAPABILITY(TabletReportLimit);
-
 using namespace std::literals;
 
 namespace yb {
@@ -226,11 +224,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     }
 
     ts_desc->UpdateHeartbeat(req);
-
-    // Adjust the table report limit per heartbeat so this can be dynamically changed.
-    if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit)) {
-      resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
-    }
+    resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
     // Set the TServer metrics in TS Descriptor.
     if (req->has_metrics()) {

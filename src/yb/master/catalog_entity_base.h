@@ -135,7 +135,8 @@ class CatalogEntityWithTasks {
   // Returns true if no running tasks left.
   bool RemoveTask(const server::MonitoredTaskPtr& task) EXCLUDES(mutex_);
   // Abort all inflight tasks. New tasks can still be added.
-  void AbortTasks() EXCLUDES(mutex_);
+  void AbortTasks(const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore = {})
+      EXCLUDES(mutex_);
   // Abort all inflight tasks and prevent new tasks from being added.
   void AbortTasksAndClose() EXCLUDES(mutex_);
   // Wait for all inflight tasks to complete.
@@ -158,7 +159,9 @@ class CatalogEntityWithTasks {
   }
 
  private:
-  void AbortTasksAndCloseIfRequested(bool close) EXCLUDES(mutex_);
+  void AbortTasksAndCloseIfRequested(
+      bool close, const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore = {})
+      EXCLUDES(mutex_);
 
   scoped_refptr<TasksTracker> tasks_tracker_;
 

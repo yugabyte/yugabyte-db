@@ -53,6 +53,7 @@ import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -170,6 +171,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory;
   protected OperatorStatusUpdater mockOperatorStatusUpdater;
   protected CloudUtilFactory mockCloudUtilFactory;
+  protected ReleasesUtils mockReleasesUtils;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -209,6 +211,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
     mockCloudUtilFactory = mock(CloudUtilFactory.class);
+    mockReleasesUtils = mock(ReleasesUtils.class);
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
@@ -239,7 +242,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
     when(mockBaseTaskDependencies.getReleaseManager()).thenReturn(mockReleaseManager);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
-    releaseContainer = new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig);
+    releaseContainer =
+        new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
   }
 
@@ -377,7 +381,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         taskInfo = TaskInfo.getOrBadRequest(taskUUID);
         if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
-          if (taskInfo.getDetails() != null) {
+          if (taskInfo.getTaskParams() != null) {
             return taskInfo;
           }
         }
@@ -403,17 +407,17 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public static String getBriefTaskInfo(TaskInfo taskInfo) {
     StringBuilder sb = new StringBuilder();
     sb.append(taskInfo.getTaskType());
-    if (taskInfo.getDetails().has("nodeName")) {
+    if (taskInfo.getTaskParams().has("nodeName")) {
       sb.append("(");
-      sb.append(taskInfo.getDetails().get("nodeName").textValue());
-      if (taskInfo.getDetails().has("serverType")) {
-        sb.append(" ").append(taskInfo.getDetails().get("serverType").textValue());
+      sb.append(taskInfo.getTaskParams().get("nodeName").textValue());
+      if (taskInfo.getTaskParams().has("serverType")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("serverType").textValue());
       }
-      if (taskInfo.getDetails().has("process")) {
-        sb.append(" ").append(taskInfo.getDetails().get("process").textValue());
+      if (taskInfo.getTaskParams().has("process")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("process").textValue());
       }
-      if (taskInfo.getDetails().has("command")) {
-        sb.append(" ").append(taskInfo.getDetails().get("command").textValue());
+      if (taskInfo.getTaskParams().has("command")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("command").textValue());
       }
       sb.append(")");
     }
@@ -436,7 +440,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
         return false;
       }
-      Thread.sleep(100);
+      Thread.sleep(10);
       numRetries++;
     }
     throw new RuntimeException(
@@ -458,7 +462,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (commissioner.isTaskPaused(taskUuid)) {
         return;
       }
-      Thread.sleep(100);
+      Thread.sleep(10);
       numRetries++;
     }
     throw new RuntimeException(
@@ -489,7 +493,26 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       TaskType taskType,
       ITaskParams taskParams) {
     verifyTaskRetries(
-        customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true);
+        customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true, 1);
+  }
+
+  public void verifyTaskRetries(
+      Customer customer,
+      CustomerTask.TaskType customerTaskType,
+      TargetType targetType,
+      UUID targetUuid,
+      TaskType taskType,
+      ITaskParams taskParams,
+      boolean checkStrictOrdering) {
+    verifyTaskRetries(
+        customer,
+        customerTaskType,
+        targetType,
+        targetUuid,
+        taskType,
+        taskParams,
+        checkStrictOrdering,
+        1);
   }
 
   /** This method returns all the subtasks of a task. */
@@ -535,7 +558,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       UUID targetUuid,
       TaskType taskType,
       ITaskParams taskParams,
-      boolean checkStrictOrdering) {
+      boolean checkStrictOrdering,
+      int abortStep) {
     try {
 
       // Turning off logs for task retry tests as we're doing 194 retries in this test sometimes,
@@ -662,7 +686,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           }
           totalSubTaskCount = retryTaskTypes.size();
         }
-        pendingSubTaskCount--;
+        pendingSubTaskCount -= abortStep;
       }
     } catch (RuntimeException e) {
       throw e;
@@ -790,5 +814,28 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     shellResponse2.code = 0;
     when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
         .thenReturn(shellResponse2);
+  }
+
+  protected void mockClockSyncResponse(NodeUniverseManager nodeUniverseManager) {
+    when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+        .thenReturn(
+            ShellResponse.create(0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "/usr/bin/chronyc"))
+        .thenReturn(
+            ShellResponse.create(
+                ShellResponse.ERROR_CODE_SUCCESS,
+                ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
+                    + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
+                    + "    Stratum         : 3\n"
+                    + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
+                    + "    System time     : 0.000000003 seconds slow of NTP time\n"
+                    + "    Last offset     : +0.000019514 seconds\n"
+                    + "    RMS offset      : 0.000011283 seconds\n"
+                    + "    Frequency       : 99.154 ppm slow\n"
+                    + "    Residual freq   : +0.009 ppm\n"
+                    + "    Skew            : 0.106 ppm\n"
+                    + "    Root delay      : 0.000162946 seconds\n"
+                    + "    Root dispersion : 0.000101734 seconds\n"
+                    + "    Update interval : 32.3 seconds\n"
+                    + "    Leap status     : Normal"));
   }
 }

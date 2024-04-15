@@ -390,6 +390,7 @@ retry:
 		 */
 		slot->data.catalog_xmin = yb_replication_slot->xmin;
 		slot->data.restart_lsn = yb_replication_slot->restart_lsn;
+		slot->data.yb_last_pub_refresh_time = yb_replication_slot->last_pub_refresh_time;
 
 		slot->data.yb_initial_record_commit_time_ht =
 			yb_replication_slot->record_id_commit_time_ht;
@@ -431,6 +432,19 @@ retry:
 		slot->data.yb_replica_identities = replica_identities;
 
 		pfree(yb_replication_slot);
+
+		/*
+		 * In PG, this is done as part of the slot creation and it is used to
+		 * store the stream metadata, snapshots and serialized transactions
+		 * (reorderbuffer). We cannot do this as part of the creation as one can
+		 * start the streaming on a different node than where the slot is
+		 * created from. So this has to be done at the start of the streaming.
+		 *
+		 * We just need this directory to allow the reorder buffer to store
+		 * serialized transactions on disk. We do not store the stream metadata
+		 * or exported snapshots here.
+		 */
+		CreateSlotOnDisk(slot);
 		return;
 	}
 
@@ -1274,8 +1288,17 @@ StartupReplicationSlots(void)
 			continue;
 		}
 
-		/* looks like a slot in a normal state, restore */
-		RestoreSlotFromDisk(replication_de->d_name);
+		/*
+		 * YB Note: We do not store the replication slot metadata on disk. This
+		 * directory is only used for storing spilled large txns by the
+		 * reorderbuffer. Our source of truth for replication slots is
+		 * yb-master, so we disable loading the slot from disk here.
+		 */
+		if (!YBIsEnabledInPostgresEnvVar())
+		{
+			/* looks like a slot in a normal state, restore */
+			RestoreSlotFromDisk(replication_de->d_name);
+		}
 	}
 	FreeDir(replication_dir);
 
@@ -1329,9 +1352,25 @@ CreateSlotOnDisk(ReplicationSlot *slot)
 						tmppath)));
 	fsync_fname(tmppath, true);
 
-	/* Write the actual state file. */
-	slot->dirty = true;			/* signal that we really need to write */
-	SaveSlotToPath(slot, tmppath, ERROR);
+	/*
+	 * YB NOTE: We do not need to store the metadata here as yb-master is the
+	 * source of truth. This directory is just created so that the reorderbuffer
+	 * can store the serialized transaction to it.
+	 */
+	if (!IsYugaByteEnabled())
+	{
+		/* Write the actual state file. */
+		slot->dirty = true;			/* signal that we really need to write */
+		SaveSlotToPath(slot, tmppath, ERROR);
+	}
+
+	/*
+	 * Cleanup the directory if it was used previously. This isn't required in
+	 * PG as this function is called at the time of slot creation. In YB, this
+	 * is called as part of StartLogicalReplication, so we have to cleanup here.
+	 */
+	if (IsYugaByteEnabled() && stat(path, &st) == 0)
+		rmtree(path, true);
 
 	/* Rename the directory into place. */
 	if (rename(tmppath, path) != 0)
@@ -1686,4 +1725,20 @@ RestoreSlotFromDisk(const char *name)
 		ereport(PANIC,
 				(errmsg("too many replication slots active before shutdown"),
 				 errhint("Increase max_replication_slots and try again.")));
+}
+
+char
+YBCGetReplicaIdentityForRelation(Oid relid)
+{
+	Assert(MyReplicationSlot);
+	Assert(MyReplicationSlot->data.yb_replica_identities);
+
+	bool found;
+
+	YBCPgReplicaIdentityDescriptor *value =
+		hash_search(MyReplicationSlot->data.yb_replica_identities, &relid,
+					HASH_FIND, &found);
+
+	Assert(found);
+	return value->identity_type;
 }

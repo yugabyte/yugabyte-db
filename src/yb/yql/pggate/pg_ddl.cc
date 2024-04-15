@@ -323,8 +323,9 @@ Status PgTruncateTable::Exec() {
 
 PgDropIndex::PgDropIndex(PgSession::ScopedRefPtr pg_session,
                          const PgObjectId& index_id,
-                         bool if_exist)
-    : PgDropTable(pg_session, index_id, if_exist) {
+                         bool if_exist,
+                         bool ddl_rollback_enabled)
+    : PgDropTable(pg_session, index_id, if_exist), ddl_rollback_enabled_(ddl_rollback_enabled) {
 }
 
 PgDropIndex::~PgDropIndex() {
@@ -338,7 +339,8 @@ Status PgDropIndex::Exec() {
     PgObjectId indexed_table_id(indexed_table_name.table_id());
 
     pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
-    pg_session_->InvalidateTableCache(indexed_table_id, InvalidateOnPgClient::kFalse);
+    pg_session_->InvalidateTableCache(indexed_table_id,
+        ddl_rollback_enabled_ ? InvalidateOnPgClient::kTrue : InvalidateOnPgClient::kFalse);
     return Status::OK();
   }
   return s;
@@ -420,6 +422,11 @@ Status PgAlterTable::Exec() {
   pg_session_->InvalidateTableCache(
       PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kFalse);
   return Status::OK();
+}
+
+void PgAlterTable::InvalidateTableCacheEntry() {
+  pg_session_->InvalidateTableCache(
+      PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kTrue);
 }
 
 PgAlterTable::~PgAlterTable() {

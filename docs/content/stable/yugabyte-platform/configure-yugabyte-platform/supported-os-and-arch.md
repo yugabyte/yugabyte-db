@@ -24,9 +24,27 @@ YBA supports deploying YugabyteDB on a variety of [operating systems](../../../r
 
 ### Requirements for all OSes
 
-Python v3.6 or later is required. If you're using YBA to provision nodes in public clouds, be sure the custom AMI you plan to use has Python v3.6 or later installed.
+Verify that Python 3.5-3.8 is installed. v3.6 is recommended.
 
-For more information on requirements for nodes for use in on-premises provider configurations, refer to [Prepare nodes for on-premises deployment](../../install-yugabyte-platform/prepare-on-prem-nodes/).
+In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
+
+```sh
+sudo alternatives --set python3 /usr/bin/python3.6
+sudo alternatives --display python3
+python3 -V
+```
+
+If you are using Python later than v3.6, install the [selinux](https://pypi.org/project/selinux/) package corresponding to your version of python. For example, using [pip](https://pip.pypa.io/en/stable/installation/), you can install as follows:
+
+```sh
+python3 -m pip install selinux
+```
+
+Refer to [Ansible playbook fails with libselinux-python aren't installed on RHEL8](https://access.redhat.com/solutions/5674911) for more information.
+
+If you are using Python later than v3.7, set the **Max Python Version (exclusive)** Global Configuration option to the python version. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
+For more information on additional requirements for nodes for use in on-premises provider configurations, refer to [Manually provision on-premises nodes](../set-up-cloud-provider/on-premises-manual/).
 
 ### Oracle Linux and AlmaLinux notes
 

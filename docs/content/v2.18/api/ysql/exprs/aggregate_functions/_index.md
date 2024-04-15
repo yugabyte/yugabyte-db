@@ -100,7 +100,7 @@ The following list groups the thirty-seven aggregate functions in the same way t
 &#160;&#160;&#160;&#160;&#160;&#160;[`percent_rank()`](./function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#percent-rank)<br>
 &#160;&#160;&#160;&#160;&#160;&#160;[`cume_dist()`](./function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#cume-dist)
 
-### Aggregate functions case study—the "68–95–99.7" rule: [here](./case-study-the-6895997-rule/)
+### Aggregate functions case study—the "68–95–99.7" rule: [here](./case-study-the-68-95-997-rule/)
 
 Regard this section as an optional extra. It shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68%e2%80%9395%e2%80%9399.7_rule). This case-study focuses on just one part of the rule:
 

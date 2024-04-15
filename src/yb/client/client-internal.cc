@@ -1426,6 +1426,9 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
       resp.partition_schema(), internal::GetSchema(&info->schema), &info->partition_schema));
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
+  if (!resp.schema().pgschema_name().empty()) {
+    info->table_name.set_pgschema_name(resp.schema().pgschema_name());
+  }
   info->table_id = resp.identifier().table_id();
   info->table_type = VERIFY_RESULT(PBToClientTableType(resp.table_type()));
   info->index_map.FromPB(resp.indexes());

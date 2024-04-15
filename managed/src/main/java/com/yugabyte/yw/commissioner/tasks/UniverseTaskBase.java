@@ -351,7 +351,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CreateSupportBundle);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
-      ImmutableSet.of(TaskType.GFlagsUpgrade, TaskType.RestartUniverse, TaskType.VMImageUpgrade);
+      ImmutableSet.of(
+          TaskType.GFlagsUpgrade,
+          TaskType.RestartUniverse,
+          TaskType.VMImageUpgrade,
+          TaskType.GFlagsKubernetesUpgrade,
+          TaskType.KubernetesOverridesUpgrade,
+          TaskType.EditKubernetesUniverse /* Partially allowing this for resource spec changes */);
 
   private static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
       ImmutableSet.of(TaskType.RollbackKubernetesUpgrade, TaskType.RollbackUpgrade);
@@ -474,7 +480,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         return universe.getHostPortsString(
             universe.getNodes().stream().filter(n -> nodes.contains(n)).collect(Collectors.toSet()),
             ServerType.MASTER,
-            PortType.RPC);
+            PortType.RPC,
+            config.getBoolean("yb.cloud.enabled"));
       };
     }
 
@@ -548,6 +555,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
     }
     return true;
+  }
+
+  public static AllowedTasks getAllowedTasksOnFailure(TaskInfo placementModificationTaskInfo) {
+    TaskType lockedTaskType = placementModificationTaskInfo.getTaskType();
+    AllowedTasks.AllowedTasksBuilder builder =
+        AllowedTasks.builder().lockedTaskType(lockedTaskType);
+    if (PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
+      builder.restricted(true);
+      builder.taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
+      if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
+        builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
+      }
+      if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
+        switch (lockedTaskType) {
+          case EditKubernetesUniverse:
+            if (EditKubernetesUniverse.checkEditKubernetesRerunAllowed(
+                placementModificationTaskInfo)) {
+              builder.taskType(lockedTaskType);
+            }
+            break;
+          default:
+            builder.taskType(lockedTaskType);
+        }
+      }
+    }
+    return builder.build();
   }
 
   /**
@@ -2191,6 +2224,45 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return dumpEntitiesResponse.getTabletsByTserverAddress(currentNodeHP);
   }
 
+  /**
+   * Checks that no tablets are assigned on the current node, otherwise throws an error.
+   *
+   * @param universe the universe the current node is in.
+   * @param currentNode the current node we are checking the number of tablets against.
+   * @param error the error message to show when check fails.
+   */
+  public void checkNoTabletsOnNode(Universe universe, NodeDetails currentNode) {
+    Duration timeout =
+        confGetter.getConfForScope(universe, UniverseConfKeys.clusterMembershipCheckTimeout);
+    boolean result =
+        doWithExponentialTimeout(
+            4000 /* initialDelayMs */,
+            30000 /* maxDelaysMs */,
+            timeout.toMillis(),
+            () -> {
+              Set<String> tabletsOnServer = getTserverTablets(universe, currentNode);
+              log.debug(
+                  "Number of tablets on node {}'s tserver is {} tablets",
+                  currentNode.getNodeName(),
+                  tabletsOnServer.size());
+
+              if (!tabletsOnServer.isEmpty()) {
+                log.debug(
+                    "Expected 0 tablets on node {}. Got {} tablets. Example tablets {} ...",
+                    currentNode.getNodeName(),
+                    tabletsOnServer.size(),
+                    tabletsOnServer.stream().limit(20).collect(Collectors.toSet()));
+              }
+              return tabletsOnServer.isEmpty();
+            });
+    if (!result) {
+      throw new RuntimeException(
+          String.format(
+              "Timed out waiting for tablets on node %s to have 0 tablets",
+              currentNode.getNodeName()));
+    }
+  }
+
   /*
    * Checks whether or not the node has a master process in the universe quorum
    *
@@ -3285,7 +3357,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Save backupUUID to taskInfo of the CreateBackup task.
       try {
         TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
-        taskInfo.setDetails(mapper.valueToTree(backupRequestParams));
+        taskInfo.setTaskParams(mapper.valueToTree(backupRequestParams));
         taskInfo.save();
       } catch (Exception ex) {
         log.error(ex.getMessage());
@@ -3339,7 +3411,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     restoreParams.category = isYbc ? BackupCategory.YB_CONTROLLER : BackupCategory.YB_BACKUP_SCRIPT;
     // Update task params for this
     ObjectMapper mapper = new ObjectMapper();
-    taskInfo.setDetails(mapper.valueToTree(restoreParams));
+    taskInfo.setTaskParams(mapper.valueToTree(restoreParams));
     taskInfo.save();
   }
 

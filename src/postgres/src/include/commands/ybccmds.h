@@ -91,7 +91,8 @@ extern List* YBCPrepareAlterTable(List** subcmds,
 										   int subcmds_size,
 										   Oid relationId,
 										   YBCPgStatement *rollbackHandle,
-										   bool isPartitionOfAlteredTable);
+										   bool isPartitionOfAlteredTable,
+										   int rewriteState);
 
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
@@ -125,6 +126,10 @@ YBCGetReplicationSlot(const char *slot_name,
 extern void YBCDropReplicationSlot(const char *slot_name);
 
 extern void YBCInitVirtualWalForCDC(const char *stream_id,
+									Oid *relations,
+									size_t numrelations);
+
+extern void YBCUpdatePublicationTableList(const char *stream_id,
 									Oid *relations,
 									size_t numrelations);
 

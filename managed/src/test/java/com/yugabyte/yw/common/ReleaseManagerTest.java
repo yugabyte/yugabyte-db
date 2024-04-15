@@ -72,6 +72,8 @@ public class ReleaseManagerTest extends FakeDBApplication {
 
   @Mock ReleaseContainerFactory releaseContainerFactory;
 
+  @Mock ReleasesUtils mockReleasesUtils;
+
   @Before
   public void beforeTest() throws IOException {
     new File(TMP_STORAGE_PATH).mkdirs();
@@ -552,7 +554,8 @@ public class ReleaseManagerTest extends FakeDBApplication {
                 new ReleaseContainer(
                     (ReleaseManager.ReleaseMetadata) i.getArguments()[0],
                     mockCloudUtilFactory,
-                    appConfig));
+                    appConfig,
+                    mockReleasesUtils));
     ReleaseContainer release = releaseManager.getReleaseByVersion("0.0.1");
     assertThat(
         release.getMetadata().filePath,
@@ -577,7 +580,8 @@ public class ReleaseManagerTest extends FakeDBApplication {
                 new ReleaseContainer(
                     (ReleaseManager.ReleaseMetadata) i.getArguments()[0],
                     mockCloudUtilFactory,
-                    appConfig));
+                    appConfig,
+                    mockReleasesUtils));
     ReleaseContainer release = releaseManager.getReleaseByVersion("0.0.1");
     assertThat(
         release.getMetadata().filePath,
@@ -593,7 +597,8 @@ public class ReleaseManagerTest extends FakeDBApplication {
         ReleaseManager.ReleaseMetadata.fromLegacy(
             "0.0.0.1-b1", "/path/to/yyugabyte-0.0.0.1-b1.tar.gz");
     when(releaseContainerFactory.newReleaseContainer(metadata))
-        .thenReturn(new ReleaseContainer(metadata, mockCloudUtilFactory, appConfig));
+        .thenReturn(
+            new ReleaseContainer(metadata, mockCloudUtilFactory, appConfig, mockReleasesUtils));
     releaseManager.addReleaseWithMetadata("0.0.0.1-b1", metadata);
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
@@ -624,7 +629,8 @@ public class ReleaseManagerTest extends FakeDBApplication {
         .thenReturn(true);
     ReleaseMetadata metadata = ReleaseMetadata.create("99.99.99.99-b99");
     when(releaseContainerFactory.newReleaseContainer(metadata))
-        .thenReturn(new ReleaseContainer(metadata, mockCloudUtilFactory, appConfig));
+        .thenReturn(
+            new ReleaseContainer(metadata, mockCloudUtilFactory, appConfig, mockReleasesUtils));
     releaseManager.addReleaseWithMetadata("99.99.99.99-b99", metadata);
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
@@ -645,7 +651,8 @@ public class ReleaseManagerTest extends FakeDBApplication {
     when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.0.1-b1");
     when(releaseContainerFactory.newReleaseContainer(metadata))
-        .thenReturn(new ReleaseContainer(metadata, mockCloudUtilFactory, appConfig));
+        .thenReturn(
+            new ReleaseContainer(metadata, mockCloudUtilFactory, appConfig, mockReleasesUtils));
     metadata.s3 = new ReleaseMetadata.S3Location();
     metadata.s3.paths = new ReleaseMetadata.PackagePaths();
     metadata.s3.paths.x86_64 = "s3://foo";

@@ -381,3 +381,18 @@ REFRESH MATERIALIZED VIEW mv;
 -- concurrent refreshes should not bump catalog version.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
+
+-- Verify ANALYZE increments catalog version and is not a breaking change.
+CREATE TABLE analyze_table (t int);
+CREATE TABLE analyze_table2 (t int);
+INSERT INTO analyze_table select generate_series(1,100);
+INSERT INTO analyze_table2 select generate_series(1,100);
+ANALYZE analyze_table, analyze_table2;
+:display_catalog_version;
+SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relname = 'analyze_table2';
+SELECT min(t), max(t) FROM analyze_table;
+SELECT min(t), max(t) FROM analyze_table2;
+-- Without specifying tables, ANALYZE update statistics for all tables.
+-- Verify catalog version only bumps once.
+ANALYZE;
+:display_catalog_version;

@@ -490,6 +490,14 @@ typedef struct PgSessionTxnInfo {
   bool is_not_null;
 } YBCPgSessionTxnInfo;
 
+// Values to copy from main backend session into background workers
+typedef struct PgSessionParallelData {
+  uint64_t session_id;
+  uint64_t txn_serial_no;
+  uint64_t read_time_serial_no;
+  uint32_t active_sub_transaction_id;
+} YBCPgSessionParallelData;
+
 typedef struct PgJwtAuthOptions {
   char* jwks;
   char* matching_claim_key;
@@ -571,6 +579,7 @@ typedef struct PgReplicationSlotDescriptor {
   uint64_t record_id_commit_time_ht;
   YBCPgReplicaIdentityDescriptor *replica_identities;
   int replica_identities_count;
+  uint64_t last_pub_refresh_time;
 } YBCReplicationSlotDescriptor;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
@@ -617,6 +626,8 @@ typedef struct PgRowMessage {
 typedef struct PgChangeRecordBatch {
   int row_count;
   YBCPgRowMessage* rows;
+  bool needs_publication_table_list_refresh;
+  uint64_t publication_refresh_time;
 } YBCPgChangeRecordBatch;
 
 // A struct to store ASH metadata in PG's procarray

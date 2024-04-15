@@ -463,6 +463,11 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
       ysql_ddl_txn_verifier_state().contains_create_table_op();
   }
 
+  bool is_being_altered_by_ysql_ddl_txn() const {
+    return has_ysql_ddl_txn_verifier_state() &&
+      ysql_ddl_txn_verifier_state().contains_alter_table_op();
+  }
+
   std::vector<std::string> cols_marked_for_deletion() const {
     std::vector<std::string> columns;
     for (const auto& col : pb.schema().columns()) {
@@ -725,6 +730,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsColocatedDbParentTable() const;
   bool IsTablegroupParentTable() const;
   bool IsColocatedUserTable() const;
+  bool IsSequencesSystemTable() const;
 
   // Provides the ID of the tablespace that will be used to determine
   // where the tablets for this table should be placed when the table
@@ -1235,6 +1241,8 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
 
   // Get the Status of the last error from the current SetupUniverseReplication.
   Status GetSetupUniverseReplicationErrorStatus() const;
+
+  bool IsDbScoped() const;
 
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;

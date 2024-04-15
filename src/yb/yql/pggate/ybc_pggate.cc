@@ -471,12 +471,21 @@ YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options) 
   return ToYBCStatus(STATUS(InvalidArgument, "Identity match failed"));
 }
 
-bool YBCGetCurrentPgSessionId(uint64_t *session_id) {
+bool YBCGetCurrentPgSessionParallelData(YBCPgSessionParallelData* session_data) {
   if (pgapi) {
-    *session_id = pgapi->GetSessionId();
+    session_data->session_id = pgapi->GetSessionId();
+    session_data->txn_serial_no = pgapi->GetTxnSerialNo();
+    session_data->read_time_serial_no = pgapi->GetReadTimeSerialNo();
+    session_data->active_sub_transaction_id = pgapi->GetActiveSubTransactionId();
     return true;
   }
   return false;
+}
+
+void YBCRestorePgSessionParallelData(const YBCPgSessionParallelData* session_data) {
+  CHECK_NOTNULL(pgapi);
+  DCHECK_EQ(pgapi->GetSessionId(), session_data->session_id);
+  pgapi->RestoreSessionParallelData(session_data);
 }
 
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats) {
@@ -778,6 +787,11 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   return YBCStatusOK();
 }
 
+void YBCPgInvalidateTableCacheByRelfileNodeId(const YBCPgOid database_oid,
+                                              const YBCPgOid table_oid) {
+  pgapi->InvalidateTableCache(PgObjectId(database_oid, table_oid));
+}
+
 // Tablegroup Operations ---------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
@@ -981,6 +995,10 @@ YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecAlterTable(handle));
 }
 
+YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->AlterTableInvalidateTableCacheEntry(handle));
+}
+
 YBCStatus YBCPgNewDropTable(const YBCPgOid database_oid,
                             const YBCPgOid table_relfilenode_oid,
                             bool if_exist,
@@ -1134,9 +1152,10 @@ YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
 YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
                             const YBCPgOid index_oid,
                             bool if_exist,
+                            bool ddl_rollback_enabled,
                             YBCPgStatement *handle) {
   const PgObjectId index_id(database_oid, index_oid);
-  return ToYBCStatus(pgapi->NewDropIndex(index_id, if_exist, handle));
+  return ToYBCStatus(pgapi->NewDropIndex(index_id, if_exist, ddl_rollback_enabled, handle));
 }
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
@@ -1170,6 +1189,10 @@ YBCStatus YBCPgBackfillIndex(
 
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
+}
+
+YBCStatus YBCPgDmlHasRegularTargets(YBCPgStatement handle, bool *has_targets) {
+  return ExtractValueFromResult(pgapi->DmlHasRegularTargets(handle), has_targets);
 }
 
 YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols) {
@@ -1998,12 +2021,6 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   return ToYBCStatus(res.status());
 }
 
-uint64_t YBCPgGetReadTimeSerialNo() { return pgapi->GetReadTimeSerialNo(); }
-
-void YBCPgForceReadTimeSerialNo(uint64_t read_time_serial_no) {
-  pgapi->ForceReadTimeSerialNo(read_time_serial_no);
-}
-
 YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_relfilenode_oid,
     bool* is_object_part_of_xrepl) {
   auto res = pgapi->IsObjectPartOfXRepl(PgObjectId(database_oid, table_relfilenode_oid));
@@ -2107,6 +2124,7 @@ YBCStatus YBCPgListReplicationSlots(
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
+  VLOG(4) << "The ListReplicationSlots response: " << result->DebugString();
 
   const auto &replication_slots_info = result.get().replication_slots();
   *DCHECK_NOTNULL(numreplicationslots) = replication_slots_info.size();
@@ -2140,6 +2158,7 @@ YBCStatus YBCPgListReplicationSlots(
           .record_id_commit_time_ht = info.record_id_commit_time_ht(),
           .replica_identities = replica_identities,
           .replica_identities_count = replica_identities_count,
+          .last_pub_refresh_time = info.last_pub_refresh_time()
       };
       ++dest;
     }
@@ -2186,6 +2205,7 @@ YBCStatus YBCPgGetReplicationSlot(
       .record_id_commit_time_ht = slot_info.record_id_commit_time_ht(),
       .replica_identities = replica_identities,
       .replica_identities_count = replica_identities_count,
+      .last_pub_refresh_time = slot_info.last_pub_refresh_time()
   };
 
   return YBCStatusOK();
@@ -2266,6 +2286,24 @@ YBCStatus YBCPgInitVirtualWalForCDC(
   return YBCStatusOK();
 }
 
+YBCStatus YBCPgUpdatePublicationTableList(
+    const char* stream_id, const YBCPgOid database_oid, YBCPgOid* relations, size_t num_relations) {
+  std::vector<PgObjectId> tables;
+  tables.reserve(num_relations);
+
+  for (size_t i = 0; i < num_relations; i++) {
+    PgObjectId table_id(database_oid, relations[i]);
+    tables.push_back(std::move(table_id));
+  }
+
+  const auto result = pgapi->UpdatePublicationTableList(std::string(stream_id), tables);
+  if(!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  return YBCStatusOK();
+}
+
 YBCStatus YBCPgDestroyVirtualWalForCDC() {
   const auto result = pgapi->DestroyVirtualWALForCDC();
   if (!result.ok()) {
@@ -2308,13 +2346,16 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   auto row_count = resp.cdc_sdk_proto_records_size();
 
   // Used for logging a summary of the response received from the CDC service.
-  YBCPgXLogRecPtr min_resp_lsn = 0xFFFFFFFF;
+  YBCPgXLogRecPtr min_resp_lsn = 0xFFFFFFFFFFFFFFFF;
   YBCPgXLogRecPtr max_resp_lsn = 0;
-  uint32_t min_txn_id = 0xFFFF;
+  uint32_t min_txn_id = 0xFFFFFFFF;
   uint32_t max_txn_id = 0;
 
   auto resp_rows_pb = resp.cdc_sdk_proto_records();
   auto resp_rows = static_cast<YBCPgRowMessage *>(YBCPAlloc(sizeof(YBCPgRowMessage) * row_count));
+  bool needs_publication_table_list_refresh = resp.needs_publication_table_list_refresh();
+  uint64_t publication_refresh_time = resp.publication_refresh_time();
+
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
     auto row_message_pb = row_pb.row_message();
@@ -2435,11 +2476,17 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   new (*record_batch) YBCPgChangeRecordBatch{
       .row_count = row_count,
       .rows = resp_rows,
+      .needs_publication_table_list_refresh = needs_publication_table_list_refresh,
+      .publication_refresh_time = publication_refresh_time
   };
 
-  VLOG(1) << "Summary of the GetConsistentChangesResponsePB response\n"
-          << "min_txn_id: " << min_txn_id << ", max_txn_id: " << max_txn_id
-          << "min_lsn: " << min_resp_lsn << ", max_lsn: " << max_resp_lsn;
+  if (row_count > 0) {
+    VLOG(1) << "Summary of the GetConsistentChangesResponsePB response\n"
+            << "min_txn_id: " << min_txn_id << ", max_txn_id: " << max_txn_id
+            << ", min_lsn: " << min_resp_lsn << ", max_lsn: " << max_resp_lsn;
+  } else {
+    VLOG(1) << "Received 0 rows in GetConsistentChangesResponsePB response\n";
+  }
 
   return YBCStatusOK();
 }

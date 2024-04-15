@@ -29,7 +29,8 @@ import {
   ReleasePlatformButtonProps,
   ReleaseArchitectureButtonProps,
   Releases,
-  UrlArtifactStatus
+  UrlArtifactStatus,
+  ReleaseType
 } from '../dtos';
 import {
   IMPORT_METHOD_OPTIONS,
@@ -343,13 +344,13 @@ export const AddReleaseModal = ({
     setValue('version', response.version);
     setValue('ybType', response.yb_type);
     setValue('releaseType', response.release_type);
-    setValue('releaseDate', response.release_date);
+    setValue('releaseDate', response.release_date_msecs);
     setValue('releaseNotes', response.release_notes);
 
     setUrlMetadata({
       version: response.version,
       releaseType: response.release_type,
-      releaseDate: response.release_date,
+      releaseDate: response.release_date_msecs,
       platform: response.platform,
       architecture: response.architecture
     });
@@ -438,8 +439,8 @@ export const AddReleaseModal = ({
               formValues.platform === ReleasePlatform.KUBERNETES ? null : formValues.architecture
           }
         ],
-        release_type: formValues.releaseType ?? '',
-        release_date: formValues.releaseDate,
+        release_type: formValues.releaseType ?? ReleaseType.PREVIEW,
+        release_date_msecs: formValues.releaseDate,
         release_notes: formValues.releaseNotes
       };
       setIsSubmitting(true);
@@ -459,6 +460,7 @@ export const AddReleaseModal = ({
         architecture:
           formValues.platform === ReleasePlatform.KUBERNETES ? null : formValues.architecture
       });
+      newArchitecturePayload.release_type = formValues.releaseType ?? ReleaseType.PREVIEW;
       newArchitecturePayload.release_tag = formValues.releaseTag;
       setIsSubmitting(true);
       const artifactsLength = newArchitecturePayload.artifacts.length;

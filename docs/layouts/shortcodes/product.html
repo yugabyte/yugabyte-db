@@ -1,0 +1,31 @@
+{{- $products := split (.Get 0) "," -}}
+
+{{- /* get the page path to determine version */ -}}
+{{- $path := split $.Page.File.Dir "/" -}}
+{{- /* version is the first path of the path. eg: preview/stable/v2.12 ...*/ -}}
+{{- $version := index $path 0 -}}
+
+{{- /* map of products to links and display */ -}}
+{{- $prodmap := dict "ysql" (slice "api/ysql/" "YSQL")
+    "ycql" (slice "api/ycql/" "YCQL")
+    "voyager" (slice "yugabyte-voyager" "Voyager")
+    "yba" (slice "yugabyte-platform" "YB Anywhere")
+    "ybm" (slice "yugabyte-voyager" "YB Managed")
+    "cloud" (slice "yugabyte-voyager" "YB Managed")
+    "ybd" (slice "reference/configuration/yugabyted"  "yugabyted")
+    "ybdb" (slice ""  "YBDB")
+    "db" (slice ""  "YBDB")
+-}}
+{{- $numproducts := len $products -}}
+{{- $count := 0 -}}
+{{- range $p := $products -}}
+    {{- $p = trim (lower $p) " " -}}
+    {{- $count = add $count 1 -}}
+    {{- $info := index $prodmap  $p -}}
+    {{- /* for a specific add the link from the map with right display name */ -}}
+    <a href="{{printf "/%s/%s" $version (index $info 0)}}">{{index $info 1}}</a>
+    {{- /* don't add a comma to the last product */ -}}
+    {{- if ne $numproducts $count -}}
+        {{- print ", " }}
+    {{end -}}
+{{- end -}}

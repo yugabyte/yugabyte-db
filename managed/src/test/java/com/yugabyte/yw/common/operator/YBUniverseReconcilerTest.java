@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
@@ -100,6 +101,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
   YBUniverseReconciler ybUniverseReconciler;
+  OperatorUtils operatorUtils;
   Customer defaultCustomer;
   Universe defaultUniverse;
   Users defaultUsers;
@@ -121,8 +123,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     envVars = Mockito.mockStatic(KubernetesEnvironmentVariables.class);
     envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
     envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
-    OperatorUtils operatorUtils = new OperatorUtils(confGetterForOperatorUtils);
-    Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
+    operatorUtils = new OperatorUtils(confGetterForOperatorUtils);
+    // Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
     Mockito.when(
             confGetterForOperatorUtils.getGlobalConf(GlobalConfKeys.KubernetesOperatorCustomerUUID))
         .thenReturn("");
@@ -246,9 +248,11 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
     Universe universe = Universe.create(taskParams, defaultCustomer.getId());
-    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+    universe = ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+    taskParams = universe.getUniverseDetails();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
     TaskInfo taskInfo = new TaskInfo(TaskType.CreateKubernetesUniverse, null);
-    taskInfo.setDetails(Json.toJson(taskParams));
+    taskInfo.setTaskParams(Json.toJson(taskParams));
     taskInfo.setOwner("localhost");
     taskInfo.save();
     taskInfo.refresh();
@@ -271,9 +275,11 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
     Universe universe = Universe.create(taskParams, defaultCustomer.getId());
-    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+    universe = ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
     TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareKubernetesUpgrade, null);
-    taskInfo.setDetails(Json.toJson(taskParams));
+    taskParams = universe.getUniverseDetails();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskInfo.setTaskParams(Json.toJson(taskParams));
     taskInfo.setOwner("localhost");
     taskInfo.save();
     taskInfo.refresh();
@@ -325,7 +331,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
     ModelFactory.addNodesToUniverse(oldUniverse.getUniverseUUID(), 1);
     TaskInfo taskInfo = new TaskInfo(TaskType.CreateKubernetesUniverse, null);
-    taskInfo.setDetails(Json.toJson(taskParams));
+    taskInfo.setTaskParams(Json.toJson(taskParams));
     taskInfo.setTaskState(State.Failure);
     taskInfo.setOwner("localhost");
     taskInfo.save();
@@ -387,7 +393,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testMultipleSpecUpdatePickEditFirst() throws Exception {
+  public void testMultipleSpecUpdatePickOverrideBeforeEdit() throws Exception {
     String universeName = "test-multiple-spec-updates";
     YBUniverse ybUniverse = createYbUniverse(universeName);
     UniverseDefinitionTaskParams taskParams =
@@ -405,13 +411,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // Call edit
     ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
     // Verify update is called
-    ArgumentCaptor<UniverseDefinitionTaskParams> uDTCaptor =
-        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
-    Mockito.verify(universeCRUDHandler, Mockito.times(1))
-        .update(any(Customer.class), any(Universe.class), uDTCaptor.capture());
-    assertTrue(uDTCaptor.getValue().getPrimaryCluster().userIntent.deviceInfo.volumeSize == 20L);
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> uDTCaptor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .upgradeKubernetesOverrides(uDTCaptor.capture(), any(Customer.class), any(Universe.class));
+    assertTrue(uDTCaptor.getValue().universeOverrides.contains("bar"));
     // Verify upgrade handler is not called
-    Mockito.verifyNoInteractions(upgradeUniverseHandler);
+    Mockito.verifyNoInteractions(universeCRUDHandler);
   }
 
   @Test
@@ -426,7 +432,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             + "    limits:\n"
             + "      cpu: 4\n";
 
-    String overridesString = ybUniverseReconciler.getKubernetesOverridesString(overrides);
+    String overridesString = operatorUtils.getKubernetesOverridesString(overrides);
     assertEquals(expectedString, overridesString);
     assertTrue(overridesString.length() > 0);
   }
@@ -439,7 +445,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     additionalPropertiesMap.put("foo", "bar");
     overrides.setAdditionalProperties(additionalPropertiesMap);
 
-    String overridesString = ybUniverseReconciler.getKubernetesOverridesString(overrides);
+    String overridesString = operatorUtils.getKubernetesOverridesString(overrides);
     assertTrue(overridesString.length() > 0);
     assertTrue(overridesString.contains("foo") && overridesString.contains("bar"));
   }
@@ -452,7 +458,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
 
     Resource resource = new Resource();
     Limits limit = new Limits();
-    limit.setCpu(new IntOrString(new Integer(4)));
+    limit.setCpu(new IntOrString(Integer.valueOf(4)));
     Master masterResource = new Master();
     masterResource.setLimits(limit);
     resource.setMaster(masterResource);

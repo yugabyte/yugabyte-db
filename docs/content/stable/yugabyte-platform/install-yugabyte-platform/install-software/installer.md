@@ -50,7 +50,7 @@ You can also use YBA Installer to migrate an existing YBA software installed via
 
 -> To upgrade an installation of YBA that was installed using YBA Installer, refer to [Upgrade](#upgrade).
 
--> To migrate an installation from Replicated, refer to [Migrate from Replicated](#migrate-from-replicated). {{<badge/ea>}}
+-> To migrate an installation from Replicated, refer to [Migrate from Replicated](#migrate-from-replicated).
 
 -> For troubleshooting, refer to [Install and upgrade issues](../../../troubleshoot/install-upgrade-issues/installer/).
 
@@ -214,12 +214,6 @@ INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 The `install` command runs all [preflight checks](#run-preflight-checks) first, and then proceeds to do a full install, and then waits for YBA to start. After the install succeeds, you can immediately start using YBA.
 
 ## Migrate from Replicated
-
-{{< note >}}
-
-Migrating from Replicated using YBA Installer is in [Early Access](/preview/releases/versioning/#feature-availability).
-
-{{</note >}}
 
 {{< warning title="Replicated end of life" >}}
 
@@ -509,6 +503,7 @@ Http and Https proxy settings are described in the following table.
 | `maxConcurrency` | Maximum concurrent queries to be executed by Prometheus. |
 | `maxSamples` | Maximum number of samples that a single query can load into memory. |
 | `timeout` | The time threshold for inactivity after which Prometheus will be declared inactive. |
+| `retentionTime` | How long Prometheus retains the database metrics. |
 
 ### Configure PostgreSQL
 

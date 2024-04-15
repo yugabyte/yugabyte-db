@@ -840,7 +840,8 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
     }
     if (state_->pending_stepdown_leader_tasks_[table_uuid].count(tablet_id) > 0) {
       const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
-      const auto& from_ts = tablet_meta.leader_uuid;
+      // The copy here is intentional: MoveLeader will change tablet_meta.leader_uuid to to_ts.
+      const auto from_ts = tablet_meta.leader_uuid;
       const auto& to_ts = state_->pending_stepdown_leader_tasks_[table_uuid][tablet_id];
       VLOG(3) << Format("Adding pending leader stepdown task for tablet $0 from TS $1 to TS $2",
           tablet_id, from_ts, to_ts);
@@ -994,15 +995,12 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
   }
 
   // Finally, handle normal load balancing.
-  if (!VERIFY_RESULT(GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts))) {
-    if (VLOG_IS_ON(2)) {
+  auto move_made = VERIFY_RESULT(GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts));
+  if (!move_made && VLOG_IS_ON(2)) {
       VLOG(2) << "Cannot find any more tablets to move for this table, under current constraints. "
               << "Sorted load: " << GetSortedLoad();
-    }
-    return false;
   }
-
-  return true;
+  return move_made;
 }
 
 string ClusterLoadBalancer::GetSortedLoad() const {
@@ -1435,7 +1433,7 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
     *out_tablet_id = tablet_id;
     *out_from_ts = remove_candidate;
     // Do force leader stepdown, as we are either not the leader or we are allowed to step down.
-    RETURN_NOT_OK(RemoveReplica(tablet_id, remove_candidate));
+    RETURN_NOT_OK(RemoveReplica(*out_tablet_id, remove_candidate));
     return true;
   }
   return false;
@@ -1647,11 +1645,7 @@ void ClusterLoadBalancer::SetBlacklistAndPendingDeleteTS() {
     VLOG(1) << "Processing TS for blacklist: " << ts_desc->ToString();
     AddTSIfBlacklisted(ts_desc, l->pb.server_blacklist(), false /* leader_blacklist */);
     AddTSIfBlacklisted(ts_desc, l->pb.leader_blacklist(), true /* leader_blacklist */);
-    if (ts_desc->HasTabletDeletePending()) {
-      VLOG(1) << "TS " << ts_desc->permanent_uuid() << " has a delete pending, "
-              << "adding to global state of servers with pending deletes";
-      global_state_->servers_with_pending_deletes_.insert(ts_desc->permanent_uuid());
-    }
+    global_state_->pending_deletes_[ts_desc->permanent_uuid()] = ts_desc->TabletsPendingDeletion();
   }
 }
 

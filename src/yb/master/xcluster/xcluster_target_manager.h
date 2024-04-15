@@ -98,6 +98,8 @@ class XClusterTargetManager {
 
   Status PopulateXClusterStatusJson(JsonWriter& jw) const;
 
+  std::unordered_set<xcluster::ReplicationGroupId> GetTransactionalReplicationGroups() const;
+
  private:
   Master& master_;
   CatalogManager& catalog_manager_;

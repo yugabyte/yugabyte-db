@@ -29,6 +29,7 @@ import {
 } from './dtos';
 import { QUERY_KEY, ReleasesAPI } from '../api';
 import { getImportedArchitectures } from '../helpers/utils';
+import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isEmptyString, isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 import UnChecked from '../../../../redesign/assets/checkbox/UnChecked.svg';
@@ -219,7 +220,7 @@ export const NewReleaseList = () => {
                 className={clsx(helperClasses.releaseTagText, helperClasses.smallerReleaseText)}
               >
                 {row.release_tag.length > MAX_RELEASE_TAG_CHAR
-                  ? `${row.release_tag.substring(0, 10)}...`
+                  ? `${row.release_tag.substring(0, MAX_RELEASE_TAG_CHAR)}...`
                   : row.release_tag}
               </span>
             </Box>
@@ -232,6 +233,16 @@ export const NewReleaseList = () => {
             </span>
           </>
         )}
+      </Box>
+    );
+  };
+
+  const formatDateMilliSecs = (cell: any, row: any) => {
+    return (
+      <Box className={helperClasses.biggerReleaseText}>
+        {row.release_date_msecs
+          ? ybFormatDate(row.release_date_msecs, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
+          : ''}
       </Box>
     );
   };
@@ -365,14 +376,18 @@ export const NewReleaseList = () => {
         artifact.architecture === null
           ? EDIT_ACTIONS['kubernetes']
           : EDIT_ACTIONS[artifact.architecture!];
+      const isDisabled = row.universes?.length > 0 || row.state === ReleaseState.DISABLED;
       renderedItems.push(
         <MenuItem
           key={artifact.architecture}
           value={action}
           onClick={(e: any) => {
-            onActionClick(action, row);
+            if (!isDisabled) {
+              onActionClick(action, row);
+            }
             e.stopPropagation();
           }}
+          disabled={isDisabled}
           data-testid={`ReleaseList-Action${action}`}
         >
           {action}
@@ -381,6 +396,7 @@ export const NewReleaseList = () => {
     });
 
     for (const [key, value] of Object.entries(OTHER_ACTONS)) {
+      let disabled = false;
       if (row.state === ReleaseState.ACTIVE && value === OTHER_ACTONS.ENABLE_RELEASE) {
         continue;
       }
@@ -392,14 +408,24 @@ export const NewReleaseList = () => {
         renderedItems.push(<Divider />);
       }
 
+      if (
+        row.universes?.length > 0 &&
+        (value === OTHER_ACTONS.DISABLE_RELEASE || value === OTHER_ACTONS.DELETE_RELEASE)
+      ) {
+        disabled = true;
+      }
+
       renderedItems.push(
         <MenuItem
           key={key}
           value={value}
           onClick={(e: any) => {
-            onActionClick(value, row);
+            if (!disabled) {
+              onActionClick(value, row);
+            }
             e.stopPropagation();
           }}
+          disabled={disabled}
           data-testid={`ReleaseList-Action${value}`}
         >
           {value}
@@ -413,6 +439,7 @@ export const NewReleaseList = () => {
   const formatActionButtons = (cell: any, row: any) => {
     return (
       <DropdownButton
+        key={`release-list-actions-${row.release_uuid}`}
         title="Actions"
         id="release-list-actions"
         pullRight={false}
@@ -621,8 +648,9 @@ export const NewReleaseList = () => {
             >
               <TableHeaderColumn dataField={'release_uuid'} isKey={true} hidden={true} />
               <TableHeaderColumn
-                width="10%"
+                width="15%"
                 tdStyle={{ verticalAlign: 'middle' }}
+                dataField={'version'}
                 dataFormat={formatVersion}
                 dataSort
               >
@@ -631,7 +659,8 @@ export const NewReleaseList = () => {
               <TableHeaderColumn
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
-                dataField={'release_date'}
+                dataFormat={formatDateMilliSecs}
+                // dataField={'release_date_msecs'}
                 dataSort
               >
                 {t('releases.releaseDate')}
@@ -640,7 +669,6 @@ export const NewReleaseList = () => {
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatReleaseSupport}
-                dataSort
               >
                 {t('releases.releaseSupport')}
               </TableHeaderColumn>
@@ -648,12 +676,11 @@ export const NewReleaseList = () => {
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatUsage}
-                dataSort
               >
                 {t('releases.releaseUsage')}
               </TableHeaderColumn>
               <TableHeaderColumn
-                width="20%"
+                width="15%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatImportedArchitecture}
               >
@@ -663,6 +690,7 @@ export const NewReleaseList = () => {
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatDeploymentStatus}
+                dataField={'state'}
                 dataSort
               >
                 {t('releases.releaseDeployment')}

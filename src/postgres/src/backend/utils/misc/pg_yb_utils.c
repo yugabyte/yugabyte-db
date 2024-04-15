@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "access/tuptoaster.h"
 #include "c.h"
 #include "postgres.h"
 #include "miscadmin.h"
@@ -490,17 +491,6 @@ YBIsWaitQueueEnabled()
 	return IsYugaByteEnabled() && cached_value;
 }
 
-bool
-YBSavepointsEnabled()
-{
-	static int cached_value = -1;
-	if (cached_value == -1)
-	{
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_pg_savepoints", true);
-	}
-	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
-}
-
 /*
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
@@ -899,12 +889,6 @@ YBInitPostgresBackend(
 	}
 }
 
-bool
-YbGetCurrentSessionId(uint64_t *session_id)
-{
-	return YBCGetCurrentPgSessionId(session_id);
-}
-
 void
 YBOnPostgresBackendShutdown()
 {
@@ -949,15 +933,13 @@ YBCAbortTransaction()
 void
 YBCSetActiveSubTransaction(SubTransactionId id)
 {
-	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgSetActiveSubTransaction(id));
+	HandleYBStatus(YBCPgSetActiveSubTransaction(id));
 }
 
 void
 YBCRollbackToSubTransaction(SubTransactionId id)
 {
-	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgRollbackToSubTransaction(id));
+	HandleYBStatus(YBCPgRollbackToSubTransaction(id));
 }
 
 bool
@@ -1326,6 +1308,7 @@ int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool yb_prefer_bnl = false;
 bool yb_explain_hide_non_deterministic_fields = false;
 bool yb_enable_saop_pushdown = true;
+int yb_toast_catcache_threshold = -1;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -2041,6 +2024,12 @@ YbDdlModeOptional YbGetDdlMode(
 			is_version_increment = false;
 			is_breaking_change = false;
 			is_ddl = castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
+			/*
+			 * Increment catalog version for ANALYZE statement to force catalog cache refresh
+			 * to pick up latest table statistics.
+			 */
+			if (is_ddl && ddl_transaction_state.original_node_tag == T_VacuumStmt)
+				is_version_increment = true;
 			break;
 
 		case T_RefreshMatViewStmt:
@@ -2279,7 +2268,8 @@ YbTestGucFailIfStrEqual(char *actual, const char *expected)
 	}
 }
 
-static int YbGetNumberOfFunctionOutputColumns(Oid func_oid)
+int
+YbGetNumberOfFunctionOutputColumns(Oid func_oid)
 {
 	int ncols = 0; /* Equals to the number of OUT arguments. */
 
@@ -4595,4 +4585,29 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 
 	if (yb_test_fail_table_rewrite_after_creation)
 		elog(ERROR, "Injecting error.");
+}
+
+Relation
+YbGetRelationWithOverwrittenReplicaIdentity(Oid relid, char replident)
+{
+	Relation relation;
+	
+	relation = RelationIdGetRelation(relid);
+	if (!RelationIsValid(relation))
+		elog(ERROR, "could not open relation with OID %u", relid);
+
+	/* Overwrite the replica identity of the relation. */
+	relation->rd_rel->relreplident = replident;
+	return relation;
+}
+
+void
+YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
+{
+	char read_time[50];
+
+	sprintf(read_time, "%llu ht", (unsigned long long) read_time_ht);
+	elog(DEBUG1, "Setting yb_read_time to %s ", read_time);
+	assign_yb_read_time(read_time, NULL);
+	YbRelationCacheInvalidate();
 }

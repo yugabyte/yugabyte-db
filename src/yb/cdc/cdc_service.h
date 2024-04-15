@@ -158,6 +158,11 @@ class CDCServiceImpl : public CDCServiceIf {
       const UpdateAndPersistLSNRequestPB* req, UpdateAndPersistLSNResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void UpdatePublicationTableList(
+    const UpdatePublicationTableListRequestPB* req,
+    UpdatePublicationTableListResponsePB* resp, rpc::RpcContext context) override;
+
+
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const TabletStreamInfo& producer_tablet);
 
   // Update peers in other tablet servers about the latest minimum applied cdc index for a specific
@@ -484,6 +489,9 @@ class CDCServiceImpl : public CDCServiceIf {
   // when the config version does not match.
   bool ValidateAutoFlagsConfigVersion(
       const GetChangesRequestPB& req, GetChangesResponsePB& resp, rpc::RpcContext& context);
+
+  void LogGetChangesLagForCDCSDK(
+      const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp);
 
   rpc::Rpcs rpcs_;
 

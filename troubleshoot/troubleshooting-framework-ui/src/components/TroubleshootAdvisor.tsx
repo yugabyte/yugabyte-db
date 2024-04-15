@@ -23,8 +23,15 @@ const useStyles = makeStyles((theme) => ({
     color: '#1A44A5'
   },
   icon: {
-    height: '14px',
-    width: '14px'
+    height: '40px',
+    width: '40px'
+  },
+  loadingBox: {
+    position: 'fixed',
+    left: '50%',
+    top: '50%',
+    width: '100%',
+    height: '100%'
   }
 }));
 
@@ -63,10 +70,11 @@ export const TroubleshootAdvisor = ({
   };
 
   if (isLoading) {
-    // <Box className={helperClasses.recommendation}>
-    //   <YBErrorIndicator customErrorMessage={'Failed to fetch anomalies list, please try again.'} />
-    // </Box>;
-    return <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />;
+    return (
+      <Box className={classes.loadingBox}>
+        <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />
+      </Box>
+    );
   }
   if (isError || (isIdle && anomalyList === null)) {
     return (

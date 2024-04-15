@@ -437,8 +437,6 @@ class ClusterAdminClient {
 
   Status WaitForSetupUniverseReplicationToFinish(const std::string& replication_group_id);
 
-  Status ChangeXClusterRole(cdc::XClusterRole role);
-
   Status SetUniverseReplicationEnabled(const std::string& replication_group_id,
                                        bool is_enabled);
 

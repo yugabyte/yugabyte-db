@@ -433,7 +433,7 @@ EXPLAIN (COSTS OFF) SELECT (
 ) AS field1
 FROM
   aa AS table2;
--- Correlation of the same table 
+-- Correlation of the same table
 SELECT (
   SELECT
     COUNT(*)
@@ -469,4 +469,32 @@ select * from sample where b <= 2 and b >= 2;
 explain (costs off) select * from sample where b <= 3 and b <= 2 and b >= 2;
 select * from sample where b <= 3 and b <= 2 and b >= 2;
 
+drop table sample;
+
+-- GHI 21451 HASH Index on multiple expressions
+drop table IF EXISTS t1;
+create table t1 (c1 bigint, c2 jsonb, primary key ((c1)));
+insert into t1 (c1,c2) values (1,'{"c3":1,"c4":1}');
+insert into t1 (c1,c2) values (2,'{"c3":2,"c4":2}');
+create index t1_idx on t1 (((c2->>'c3'), (c2->>'c4')) hash);
+
+select * from t1;
+/*+IndexScan(t1 t1_idx)*/ explain (costs off) select * from t1 where (c2->>'c3') = '4';
+/*+IndexScan(t1 t1_idx)*/ select * from t1 where (c2->>'c3') = '4';
+/*+IndexScan(t1 t1_idx)*/ explain (costs off) select * from t1 where (c2->>'c4') = '4';
+/*+IndexScan(t1 t1_idx)*/ select * from t1 where (c2->>'c4') = '4';
+/*+IndexScan(t1 t1_idx)*/ explain (costs off) select * from t1 where (c2->>'c3') = '4' and (c2->>'c4') = '4';
+/*+IndexScan(t1 t1_idx)*/ select * from t1 where (c2->>'c3') = '4' and (c2->>'c4') = '4';
+
+drop table t1;
+
+create table sample(a int, primary key(a asc));
+insert into sample values (0);
+select * from sample where a = x'8000000000000000'::bigint;
+drop table sample;
+
+create table sample(a int2, primary key(a asc));
+insert into sample values (0);
+select * from sample where a = x'8000000000000000'::bigint;
+select * from sample where a = x'80000000'::int;
 drop table sample;

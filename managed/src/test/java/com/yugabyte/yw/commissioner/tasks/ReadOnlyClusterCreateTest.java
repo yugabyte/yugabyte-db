@@ -20,7 +20,6 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -63,27 +62,8 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
-      when(mockNodeUniverseManager.runCommand(any(), any(), any()))
-          .thenReturn(
-              ShellResponse.create(
-                  ShellResponse.ERROR_CODE_SUCCESS,
-                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
-                      + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
-                      + "    Stratum         : 3\n"
-                      + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
-                      + "    System time     : 0.000000003 seconds slow of NTP time\n"
-                      + "    Last offset     : +0.000019514 seconds\n"
-                      + "    RMS offset      : 0.000011283 seconds\n"
-                      + "    Frequency       : 99.154 ppm slow\n"
-                      + "    Residual freq   : +0.009 ppm\n"
-                      + "    Skew            : 0.106 ppm\n"
-                      + "    Root delay      : 0.000162946 seconds\n"
-                      + "    Root dispersion : 0.000101734 seconds\n"
-                      + "    Update interval : 32.3 seconds\n"
-                      + "    Leap status     : Normal"));
-
+      mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
-
       when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {
     }
@@ -159,7 +139,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = CLUSTER_CREATE_TASK_EXPECTED_RESULTS.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }

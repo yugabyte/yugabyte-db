@@ -26,7 +26,7 @@ public class ResponseRelease {
 
   public List<Artifact> artifacts;
 
-  public String release_date;
+  public Long release_date_msecs;
   public String release_notes;
   public String release_tag;
 

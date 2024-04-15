@@ -7,8 +7,6 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Set;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -44,19 +42,7 @@ public class CheckNodeSafeToDelete extends UniverseTaskBase {
     }
 
     // Validate there are no tablets assigned to this node.
-    Set<String> tabletsOnServer = getTserverTablets(universe, currentNode);
-    log.debug(
-        "Number of tablets on node {}'s tserver is {} tablets",
-        currentNode.getNodeName(),
-        tabletsOnServer.size());
-    if (tabletsOnServer.size() != 0) {
-      throw new RuntimeException(
-          String.format(
-              "Expected 0 tablets on node %s. Got %d tablets. Example tablets %s ...",
-              currentNode.getNodeName(),
-              tabletsOnServer.size(),
-              tabletsOnServer.stream().limit(20).collect(Collectors.toSet())));
-    }
+    checkNoTabletsOnNode(universe, currentNode);
 
     // Validate that current node's ip is not part of the master quorum.
     boolean isNodeInMasterConfig = nodeInMasterConfig(universe, currentNode);

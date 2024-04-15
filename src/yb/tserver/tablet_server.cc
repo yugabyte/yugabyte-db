@@ -890,14 +890,6 @@ void TabletServer::SetYsqlDBCatalogVersions(
       }
     } else {
       DCHECK_EQ(ysql_db_catalog_version_map_.size(), 1);
-      if (!catalog_version_table_in_perdb_mode_.has_value()) {
-        // We can initialize to false at most one time. Once set,
-        // catalog_version_table_in_perdb_mode_ can only go from false to
-        // true (i.e., from global mode to perdb mode).
-        LOG(INFO) << "set pg_yb_catalog_version table in global mode";
-        catalog_version_table_in_perdb_mode_ = false;
-        shared_object().SetCatalogVersionTableInPerdbMode(false);
-      }
     }
     bool row_inserted = it.second;
     bool row_updated = false;
@@ -984,6 +976,15 @@ void TabletServer::SetYsqlDBCatalogVersions(
         ysql_last_breaking_catalog_version_ = new_breaking_version;
       }
     }
+  }
+  if (!catalog_version_table_in_perdb_mode_.has_value() &&
+      ysql_db_catalog_version_map_.size() == 1) {
+    // We can initialize to false at most one time. Once set,
+    // catalog_version_table_in_perdb_mode_ can only go from false to
+    // true (i.e., from global mode to perdb mode).
+    LOG(INFO) << "set pg_yb_catalog_version table in global mode";
+    catalog_version_table_in_perdb_mode_ = false;
+    shared_object().SetCatalogVersionTableInPerdbMode(false);
   }
 
   // We only do full catalog report for now, remove entries that no longer exist.
@@ -1074,14 +1075,6 @@ void TabletServer::SetPublisher(rpc::Publisher service) {
 
 PgMutationCounter& TabletServer::GetPgNodeLevelMutationCounter() {
   return pg_node_level_mutation_counter_;
-}
-
-Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {
-  auto xcluster_consumer_ptr = GetXClusterConsumer();
-  if (!xcluster_consumer_ptr) {
-    return STATUS(Uninitialized, "XCluster consumer has not been initialized");
-  }
-  return xcluster_consumer_ptr->TEST_GetXClusterRole();
 }
 
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
@@ -1191,7 +1184,7 @@ Status TabletServer::CreateXClusterConsumer() {
     auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
     SCHECK(tablet_peer, NotFound, "Could not find tablet $0", tablet_id);
     return std::make_pair(
-        tablet_peer->tablet_metadata()->namespace_id(),
+        VERIFY_RESULT(tablet_peer->GetNamespaceId()),
         tablet_peer->tablet_metadata()->namespace_name());
   };
 
@@ -1216,8 +1209,6 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
       RETURN_NOT_OK(CreateXClusterConsumer());
       xcluster_consumer = GetXClusterConsumer();
     }
-
-    xcluster_context_->SetDDLOnlyMode(consumer_registry->role() != cdc::XClusterRole::ACTIVE);
   }
 
   if (xcluster_consumer) {

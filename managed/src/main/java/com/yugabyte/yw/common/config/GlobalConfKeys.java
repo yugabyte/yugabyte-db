@@ -1194,14 +1194,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows user to enter postgres hba rules and ident map rules in multiple rows",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> releasesRedesign =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.releases_redesign",
-          ScopeType.GLOBAL,
-          "Enable the option to view new releases page",
-          "Enable the option to view new releases page",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Duration> replicationFrequency =
       new ConfKeyInfo<>(
           "yb.ha.replication_frequency",
@@ -1337,4 +1329,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables validation for GCP Provider and returns the validation errors json if any",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static ConfKeyInfo<String> ldapSearchFilter =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_search_filter",
+          ScopeType.GLOBAL,
+          "LDAP Search Filter",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
 }

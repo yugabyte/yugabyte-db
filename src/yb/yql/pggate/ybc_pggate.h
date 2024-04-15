@@ -41,7 +41,9 @@ void YBCInterruptPgGate();
 
 //--------------------------------------------------------------------------------------------------
 // Environment and Session.
-bool YBCGetCurrentPgSessionId(uint64_t *session_id);
+bool YBCGetCurrentPgSessionParallelData(YBCPgSessionParallelData* session_data);
+
+void YBCRestorePgSessionParallelData(const YBCPgSessionParallelData* session_data);
 
 // Initialize a session to process statements that come from the same client connection.
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats);
@@ -322,6 +324,8 @@ YBCStatus YBCPgAlterTableSetTableId(
 
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
+YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle);
+
 YBCStatus YBCPgNewDropTable(YBCPgOid database_oid,
                             YBCPgOid table_relfilenode_oid,
                             bool if_exist,
@@ -403,6 +407,7 @@ YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             YBCPgOid index_relfilenode_oid,
                             bool if_exist,
+                            bool ddl_rollback_enabled,
                             YBCPgStatement *handle);
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
@@ -428,6 +433,8 @@ YBCStatus YBCPgBackfillIndex(
 // - SELECT target_expr1, target_expr2, ...
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
+
+YBCStatus YBCPgDmlHasRegularTargets(YBCPgStatement handle, bool *has_targets);
 
 // Check if any statement target is a system column reference.
 YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols);
@@ -799,10 +806,6 @@ YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
-uint64_t YBCPgGetReadTimeSerialNo();
-
-void YBCPgForceReadTimeSerialNo(uint64_t read_time_serial_no);
-
 YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_relfilenode_oid,
                                  bool* is_object_part_of_xrepl);
 
@@ -845,6 +848,9 @@ YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
 
 YBCStatus YBCPgInitVirtualWalForCDC(
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations);
+
+YBCStatus YBCPgUpdatePublicationTableList(
     const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations);
 
 YBCStatus YBCPgDestroyVirtualWalForCDC();

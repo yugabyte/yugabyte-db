@@ -17,7 +17,7 @@ public abstract class ThresholdExceedDetector extends AnomalyDetectorBase {
   protected abstract List<GraphWithThreshold> getGraphsWithThresholds(
       AnomalyDetectionContext context);
 
-  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+  protected AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
 
     List<GraphAnomaly> anomalies = new ArrayList<>();

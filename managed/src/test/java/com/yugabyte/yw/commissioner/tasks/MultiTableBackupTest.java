@@ -219,7 +219,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     backupTableParams.transactionalBackup = false;
     TaskInfo taskInfo = submitTask(backupTableParams);
     assertEquals(Failure, taskInfo.getTaskState());
-    String errMsg = taskInfo.getDetails().get("errorString").asText();
+    String errMsg = taskInfo.getTaskError().getMessage();
     assertThat(errMsg, containsString("Invalid Keyspace or no tables to backup"));
     verify(mockTableManager, times(0)).createBackup(any());
   }

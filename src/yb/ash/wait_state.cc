@@ -53,15 +53,15 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ash, false,
     "and various background activities. This does nothing if "
     "ysql_yb_enable_ash_infra is disabled.");
 
-DEFINE_test_flag(bool, export_wait_state_names, yb::IsDebug(),
+DEFINE_test_flag(bool, export_wait_state_names, yb::kIsDebug,
     "Exports wait-state name as a human understandable string.");
-DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::IsDebug(),
+DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::kIsDebug,
     "Add a trace line whenever the wait state code is updated.");
 DEFINE_test_flag(uint32, yb_ash_sleep_at_wait_state_ms, 0,
     "How long to sleep/delay when entering a particular wait state.");
 DEFINE_test_flag(uint32, yb_ash_wait_code_to_sleep_at, 0,
     "If enabled, add a sleep/delay when we enter the specified wait state.");
-DEFINE_test_flag(bool, export_ash_uuids_as_hex_strings, yb::IsDebug(),
+DEFINE_test_flag(bool, export_ash_uuids_as_hex_strings, yb::kIsDebug,
     "Exports wait-state name as a human understandable string.");
 DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
     " of the method tserver is running");
@@ -300,6 +300,107 @@ void WaitStateTracker::Untrack(const yb::ash::WaitStateInfoPtr& ptr) {
 std::vector<yb::ash::WaitStateInfoPtr> WaitStateTracker::GetWaitStates() const {
   std::lock_guard lock(mutex_);
   return {entries_.begin(), entries_.end()};
+}
+
+WaitStateType GetWaitStateType(WaitStateCode code) {
+  switch (code) {
+    case WaitStateCode::kUnused:
+    case WaitStateCode::kYSQLReserved:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kCatalogRead:
+    case WaitStateCode::kIndexRead:
+    case WaitStateCode::kStorageRead:
+    case WaitStateCode::kStorageFlush:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kOnCpu_Active:
+    case WaitStateCode::kOnCpu_Passive:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kIdle:
+    case WaitStateCode::kRpc_Done:
+    case WaitStateCode::kRpcs_WaitOnMutexInShutdown:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRetryableRequests_SaveToDisk:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kMVCC_WaitForSafeTime:
+    case WaitStateCode::kLockedBatchEntry_Lock:
+    case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kCreatingNewTablet:
+    case WaitStateCode::kSaveRaftGroupMetadataToDisk:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kTransactionStatusCache_DoGetCommitData:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kWriteSysCatalogSnapshotToDisk:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kConflictResolution_ResolveConficts:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRaft_WaitingForReplication:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kRaft_ApplyingEdits:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kWAL_Append:
+    case WaitStateCode::kWAL_Sync:
+    case WaitStateCode::kConsensusMeta_Flush:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kReplicaState_TakeUpdateLock:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRocksDB_ReadBlockFromFile:
+    case WaitStateCode::kRocksDB_OpenFile:
+    case WaitStateCode::kRocksDB_WriteToFile:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kRocksDB_Flush:
+    case WaitStateCode::kRocksDB_Compaction:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kRocksDB_PriorityThreadPoolTaskPaused:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRocksDB_CloseFile:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kRocksDB_RateLimiter:
+    case WaitStateCode::kRocksDB_WaitForSubcompaction:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRocksDB_NewIterator:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kYCQL_Parse:
+    case WaitStateCode::kYCQL_Read:
+    case WaitStateCode::kYCQL_Write:
+    case WaitStateCode::kYCQL_Analyze:
+    case WaitStateCode::kYCQL_Execute:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kYBClient_WaitingOnDocDB:
+    case WaitStateCode::kYBClient_LookingUpTablet:
+      return WaitStateType::kNetwork;
+  }
+  FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
 
 namespace {

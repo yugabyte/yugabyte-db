@@ -643,7 +643,7 @@ class BlockerData {
 
   std::vector<WaiterDataPtr> Signal(
       Result<TransactionStatusResult>&& txn_status_response, HybridTime now) {
-    VLOG(4) << "Signaling waiters "
+    VLOG_WITH_PREFIX(4) << "Signaling waiters "
             << (txn_status_response.ok() ?
                 txn_status_response->ToString() :
                 txn_status_response.status().ToString());
@@ -716,6 +716,13 @@ class BlockerData {
         [](const auto& lhs, const auto& rhs) {
       return lhs->ShouldResumeBefore(rhs);
     });
+    if (VLOG_IS_ON(4)) {
+      std::vector<std::string> waiters;
+      for (const auto& waiter : waiters_to_signal) {
+        waiters.push_back(waiter->id.ToString());
+      }
+      VLOG_WITH_PREFIX(4) << "Signaling waiters: " << boost::algorithm::join(waiters, ",");
+    }
     return waiters_to_signal;
   }
 
@@ -848,7 +855,12 @@ class BlockerData {
         << "</tr>" << std::endl;
   }
 
+
  private:
+  std::string LogPrefix() {
+    return Format("TxnId: $0 ", id_);
+  }
+
   const TransactionId id_;
   TabletId status_tablet_ GUARDED_BY(mutex_);;
   mutable rw_spinlock mutex_;
@@ -1169,6 +1181,8 @@ class WaitQueue::Impl {
       IntentProviderFunc intent_provider, WaitDoneCallback callback) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " request_id=" << request_id
+                                 << " txn_start_us=" << txn_start_us
+                                 << " request_start_us=" << request_start_us
                                  << " status_tablet_id=" << status_tablet_id;
     bool found_blockers = false;
     {
@@ -1224,6 +1238,8 @@ class WaitQueue::Impl {
     AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " request_id=" << request_id
+                                 << " txn_start_us=" << txn_start_us
+                                 << " request_start_us=" << request_start_us
                                  << " blockers=" << *blockers
                                  << " status_tablet_id=" << status_tablet_id;
 

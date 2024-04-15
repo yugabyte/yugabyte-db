@@ -421,6 +421,7 @@ message SysSecurityConfigEntryPB {
   // Roles configuration version. Every time a role gets created/deleted, or a permission gets
   // added/removed, we increase the version.
   optional uint64 roles_version = 1;
+  optional bool cassandra_user_created = 2 [default = false];
 }
 
 // Metadata about the YSQL catalog (current only version).

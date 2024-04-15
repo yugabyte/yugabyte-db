@@ -148,6 +148,21 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         " connections will share the same physical connection in a single threaded test if" +
         " no active transactions are there on the first connection";
 
+  protected static final String LESSER_PHYSICAL_CONNS =
+      "Skipping this test with Ysql Connection Manager as logical connections " +
+        "created are lesser than physical connections and the real maximum limit for creating " +
+        "connections is never reached";
+
+  protected static final String NO_PHYSICAL_CONN_ATTACHED =
+      "Skipping this test with Ysql Connection Manager as no physical connection "+
+        "is being assigned therefore no backend id present when logical connection is not " +
+        "executing any transaction";
+
+  protected static final String SAME_PHYSICAL_CONN_AFFECTING_DIFF_LOGICAL_CONNS_MEM =
+      "Skipping this test with Ysql Connection Manager as all 3 logical " +
+        "connections will be using same physical conn, due to which it will affect the memory " +
+        "allocated to connection1 by connection2";
+
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
   protected boolean startRedisProxy = false;

@@ -78,7 +78,10 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
-    addBasicPrecheckTasks();
+    if (isFirstTry()) {
+      checkLeaderlessTablets();
+      verifyClustersConsistency(Set.of(taskParams().nodeName));
+    }
   }
 
   public void run() {

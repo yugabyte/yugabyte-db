@@ -1597,6 +1597,7 @@ Result<std::vector<CDCSDKStreamInfo>> YBClient::ListCDCSDKStreams() {
 
   req.set_id_type(master::IdTypePB::NAMESPACE_ID);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, ListCDCStreams);
+  VLOG(4) << "The ListCDCStreamsResponsePB response: " << resp.DebugString();
 
   std::vector<CDCSDKStreamInfo> stream_infos;
   stream_infos.reserve(resp.streams_size());

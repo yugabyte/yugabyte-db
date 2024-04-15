@@ -4,7 +4,6 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleasesUtils.ExtractedMetadata;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
-import java.util.Date;
 import java.util.UUID;
 
 public class ResponseExtractMetadata {
@@ -15,7 +14,7 @@ public class ResponseExtractMetadata {
   public ReleaseArtifact.Platform platform;
   public Architecture architecture;
   public String release_type;
-  public Date release_date;
+  public Long release_date_msecs;
   public String release_notes;
 
   public static enum Status {
@@ -40,7 +39,9 @@ public class ResponseExtractMetadata {
     this.platform = metadata.platform;
     this.architecture = metadata.architecture;
     this.release_type = metadata.release_type;
-    this.release_date = metadata.release_date;
+    if (metadata.release_date != null) {
+      this.release_date_msecs = metadata.release_date.toInstant().toEpochMilli();
+    }
     this.release_notes = metadata.release_notes;
   }
 }

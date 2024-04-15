@@ -1046,6 +1046,16 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
   return pg_stmt->Exec();
 }
 
+Status PgApiImpl::AlterTableInvalidateTableCacheEntry(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  pg_stmt->InvalidateTableCacheEntry();
+  return Status::OK();
+}
+
 Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
                                bool if_exist,
                                PgStatement **handle) {
@@ -1244,11 +1254,12 @@ Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
 
 Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
                                bool if_exist,
+                               bool ddl_rollback_enabled,
                                PgStatement **handle) {
   SCHECK(pg_txn_manager_->IsDdlMode(),
          IllegalState,
          "Index is being dropped outside of DDL mode");
-  auto stmt = std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist);
+  auto stmt = std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist, ddl_rollback_enabled);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -1320,6 +1331,10 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
 
 Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
+}
+
+Result<bool> PgApiImpl::DmlHasRegularTargets(PgStatement *handle) {
+  return down_cast<PgDml*>(handle)->has_regular_targets();
 }
 
 Result<bool> PgApiImpl::DmlHasSystemTargets(PgStatement *handle) {
@@ -1743,7 +1758,7 @@ Status PgApiImpl::RetrieveYbctids(PgStatement *handle, const YBCPgExecParameters
         vec->emplace_back(s);
       }
 
-      if (consumed_bytes >= (size_t) exec_params->work_mem * 1024) {
+      if (consumed_bytes >= (size_t) exec_params->work_mem * 1024L) {
         *exceeded_work_mem = true;
         break;
       }
@@ -2029,7 +2044,7 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
         10s /* timeout */,
-        "catalog_version_table_in_perdb_mode is not set shared memory",
+        "catalog_version_table_in_perdb_mode is not set in shared memory",
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
     RETURN_NOT_OK_PREPEND(
@@ -2314,8 +2329,16 @@ uint64_t PgApiImpl::GetReadTimeSerialNo() {
   return pg_txn_manager_->GetReadTimeSerialNo();
 }
 
-void PgApiImpl::ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
-  pg_txn_manager_->ForceReadTimeSerialNo(read_time_serial_no);
+uint64_t PgApiImpl::GetTxnSerialNo() {
+  return pg_txn_manager_->GetTxnSerialNo();
+}
+
+SubTransactionId PgApiImpl::GetActiveSubTransactionId() {
+  return pg_txn_manager_->GetActiveSubTransactionId();
+}
+
+void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
+  pg_txn_manager_->RestoreSessionParallelData(session_data);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2352,6 +2375,11 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
 Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
   return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids);
+}
+
+Result<cdc::UpdatePublicationTableListResponsePB> PgApiImpl::UpdatePublicationTableList(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+  return pg_session_->pg_client().UpdatePublicationTableList(stream_id, table_ids);
 }
 
 Result<cdc::DestroyVirtualWALForCDCResponsePB> PgApiImpl::DestroyVirtualWALForCDC() {

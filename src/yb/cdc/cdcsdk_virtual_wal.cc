@@ -20,6 +20,10 @@ DEFINE_RUNTIME_uint32(
     "Controls the maximum number of records sent in GetConsistentChanges "
     "response");
 
+DEFINE_RUNTIME_uint64(
+    cdcsdk_publication_list_refresh_interval_micros, 300000000 /* 5 minutes */,
+    "Interval in micro seconds at which the table list in the publication will be refreshed");
+
 namespace yb {
 namespace cdc {
 
@@ -48,7 +52,6 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     const HostPort hostport, const CoarseTimePoint deadline) {
   DCHECK_EQ(publication_table_list_.size(), 0);
   for (const auto& table_id : table_list) {
-    publication_table_list_.insert(table_id);
     // TODO: Make parallel calls or introduce a batch GetTabletListToPoll API in CDC which takes a
     // list of tables and provide the information in one shot.
     auto s = GetTabletListAndCheckpoint(stream_id, table_id, hostport, deadline);
@@ -57,6 +60,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
           Format("Error fetching tablet list & checkpoints for table_id: $0", table_id));
       RETURN_NOT_OK(s);
     }
+    publication_table_list_.insert(table_id);
   }
 
   auto s = InitLSNAndTxnIDGenerators(stream_id);
@@ -64,6 +68,21 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     LOG(WARNING) << Format("Init LSN & TxnID generators failed for stream_id: $0", stream_id);
     RETURN_NOT_OK(s.CloneAndPrepend(Format("Init LSN & TxnID generators failed")));
   }
+
+  pub_refresh_interval = GetAtomicFlag(&FLAGS_cdcsdk_publication_list_refresh_interval_micros);
+
+  s = CreatePublicationRefreshTabletQueue();
+  if (!s.ok()) {
+    LOG(WARNING) << "Could not create Publication Refresh Tablet Queue";
+    RETURN_NOT_OK(s);
+  }
+
+  s = PushRecordToPublicationRefreshTabletQueue();
+  if (!s.ok()) {
+    LOG(WARNING) << "Could not push an entry to the Publication Refresh Tablet queue";
+    RETURN_NOT_OK(s);
+  }
+
   return Status::OK();
 }
 
@@ -254,10 +273,18 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(const xrepl::StreamId& stream
           "stream_id: $0",
           stream_id));
 
+  RSTATUS_DCHECK_GT(
+      *entry_opt->last_pub_refresh_time, 0, NotFound,
+      Format(
+          "Couldnt find last_pub_refresh_time on the slot's cdc_state entry for stream_id: $0",
+          stream_id));
+
   last_seen_lsn_ = *entry_opt->restart_lsn;
   last_received_restart_lsn = *entry_opt->restart_lsn;
 
   last_seen_txn_id_ = *entry_opt->xmin;
+
+  last_pub_refresh_time = *entry_opt->last_pub_refresh_time;
 
   auto commit_time = *entry_opt->record_id_commit_time;
   // Values from the slot's entry will be used to form a unique record ID corresponding to a COMMIT
@@ -266,13 +293,14 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(const xrepl::StreamId& stream
   TabletId commit_record_table_id = "";
   std::string commit_record_primary_key = "";
   last_seen_unique_record_id_ = std::make_shared<CDCSDKUniqueRecordID>(CDCSDKUniqueRecordID(
-      RowMessage::COMMIT, commit_time, commit_record_docdb_txn_id,
-      std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(),
-      commit_record_table_id, commit_record_primary_key));
+      false /* publication_refresh_record*/, RowMessage::COMMIT, commit_time,
+      commit_record_docdb_txn_id, std::numeric_limits<uint64_t>::max(),
+      std::numeric_limits<uint32_t>::max(), commit_record_table_id, commit_record_primary_key));
 
   last_shipped_commit.commit_lsn = last_seen_lsn_;
   last_shipped_commit.commit_txn_id = last_seen_txn_id_;
   last_shipped_commit.commit_record_unique_id = last_seen_unique_record_id_;
+  last_shipped_commit.last_pub_refresh_time = last_pub_refresh_time;
 
   VLOG(2) << "LSN & txnID generator initialised with LSN: " << last_seen_lsn_
           << ", txnID: " << last_seen_txn_id_ << ", commit_time: " << commit_time;
@@ -283,17 +311,26 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(const xrepl::StreamId& stream
 Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     const xrepl::StreamId& stream_id, GetConsistentChangesResponsePB* resp, HostPort hostport,
     CoarseTimePoint deadline) {
+  auto start_time = CoarseMonoClock::Now();
+  MicrosecondsInt64 time_in_get_changes_micros = 0;
+
   std::unordered_set<TabletId> tablet_to_poll_list;
   for (const auto& tablet_queue : tablet_queues_) {
     auto tablet_id = tablet_queue.first;
     auto records_queue = tablet_queue.second;
 
     if (records_queue.empty()) {
-      tablet_to_poll_list.insert(tablet_id);
+      if (tablet_id == kPublicationRefreshTabletID) {
+        RETURN_NOT_OK(PushRecordToPublicationRefreshTabletQueue());
+      } else {
+        tablet_to_poll_list.insert(tablet_id);
+      }
     }
   }
   if (!tablet_to_poll_list.empty()) {
+    auto curr_time_micros = GetCurrentTimeMicros();
     RETURN_NOT_OK(GetChangesInternal(stream_id, tablet_to_poll_list, hostport, deadline));
+    time_in_get_changes_micros = GetCurrentTimeMicros() - curr_time_micros;
   }
 
   TabletRecordPriorityQueue sorted_records;
@@ -356,6 +393,20 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       }
     }
 
+    // When a publication refresh record is popped from the priority queue, stop populating further
+    // records in the response. Set the fields 'needs_publication_table_list_refresh' and
+    // 'publication_refresh_time' and return the response.
+    if (unique_id->IsPublicationRefreshRecord()) {
+      last_pub_refresh_time = unique_id->GetCommitTime();
+      resp->set_needs_publication_table_list_refresh(true);
+      resp->set_publication_refresh_time(last_pub_refresh_time);
+      metadata.contains_publication_refresh_record = true;
+      VLOG(2) << "Notifying walsender to refresh publication list in the GetConsistentChanges "
+                 "response at commit_time: "
+              << last_pub_refresh_time;
+      break;
+    }
+
     auto row_message = record->mutable_row_message();
     auto lsn_result = GetRecordLSN(unique_id);
     auto txn_id_result = GetRecordTxnID(unique_id);
@@ -388,27 +439,50 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       metadata.min_lsn = std::min(metadata.min_lsn, row_message->pg_lsn());
       metadata.max_lsn = std::max(metadata.max_lsn, row_message->pg_lsn());
 
-      if (record->row_message().op() == RowMessage_Op_BEGIN) {
-        RETURN_NOT_OK(AddEntryForBeginRecord({unique_id, record}));
-        is_txn_in_progress = true;
-        metadata.begin_records++;
-        metadata.is_last_txn_fully_sent = false;
-      } else if (record->row_message().op() == RowMessage_Op_COMMIT) {
-        last_shipped_commit.commit_lsn = *lsn_result;
-        last_shipped_commit.commit_txn_id = *txn_id_result;
-        last_shipped_commit.commit_record_unique_id = unique_id;
-
-        ResetCommitDecisionVariables();
-
-        metadata.commit_records++;
-        if (row_message->pg_transaction_id() == metadata.max_txn_id &&
-            !metadata.is_last_txn_fully_sent) {
-          metadata.is_last_txn_fully_sent = true;
+      switch (record->row_message().op()) {
+        case RowMessage_Op_INSERT: {
+          metadata.insert_records++;
+          break;
         }
-      } else {
-        // DML record
-        metadata.dml_records++;
+        case RowMessage_Op_UPDATE: {
+          metadata.update_records++;
+          break;
+        }
+        case RowMessage_Op_DELETE: {
+          metadata.delete_records++;
+          break;
+        }
+        case RowMessage_Op_BEGIN: {
+          RETURN_NOT_OK(AddEntryForBeginRecord({unique_id, record}));
+          is_txn_in_progress = true;
+          metadata.begin_records++;
+          metadata.is_last_txn_fully_sent = false;
+          break;
+        }
+        case RowMessage_Op_COMMIT: {
+          last_shipped_commit.commit_lsn = *lsn_result;
+          last_shipped_commit.commit_txn_id = *txn_id_result;
+          last_shipped_commit.commit_record_unique_id = unique_id;
+          last_shipped_commit.last_pub_refresh_time = last_pub_refresh_time;
+
+          ResetCommitDecisionVariables();
+
+          metadata.commit_records++;
+          if (row_message->pg_transaction_id() == metadata.max_txn_id &&
+              !metadata.is_last_txn_fully_sent) {
+            metadata.is_last_txn_fully_sent = true;
+          }
+          break;
+        }
+
+        case RowMessage_Op_DDL: FALLTHROUGH_INTENDED;
+        case RowMessage_Op_TRUNCATE: FALLTHROUGH_INTENDED;
+        case RowMessage_Op_READ: FALLTHROUGH_INTENDED;
+        case RowMessage_Op_SAFEPOINT: FALLTHROUGH_INTENDED;
+        case RowMessage_Op_UNKNOWN:
+          break;
       }
+
       auto records = resp->add_cdc_sdk_proto_records();
       records->CopyFrom(*record);
     }
@@ -417,20 +491,44 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   if (resp->cdc_sdk_proto_records_size() == 0) {
     VLOG(1) << "Sending empty response for GetConsistentChanges for stream_id: " << stream_id;
   } else {
-    VLOG(1) << "Sending non-empty GetConsistentChanges response for stream_id: " << stream_id
-            << " with total_records: " << resp->cdc_sdk_proto_records_size()
-            << ", total_txns: " << metadata.txn_ids.size() << ", min_txn_id: "
-            << ((metadata.min_txn_id == std::numeric_limits<uint32_t>::max()) ? 0
-                                                                              : metadata.min_txn_id)
-            << ", max_txn_id: " << metadata.max_txn_id << ", min_lsn: "
-            << (metadata.min_lsn == std::numeric_limits<uint64_t>::max() ? 0 : metadata.min_lsn)
-            << ", max_lsn: " << metadata.max_lsn
-            << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
-            << ", begin_records: " << metadata.begin_records
-            << ", commit_records: " << metadata.commit_records
-            << ", dml_records: " << metadata.dml_records
-            << ", ddl_records: " << metadata.ddl_records;
+    int64_t vwal_lag_in_ms = 0;
+    // VWAL lag is only calculated when the response contains a commit record. If there are
+    // multiple commit records in the same resposne, lag will be calculated for the last shipped
+    // commit.
+    if (metadata.commit_records > 0) {
+      auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
+      vwal_lag_in_ms = (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(
+                                last_shipped_commit.commit_record_unique_id->GetCommitTime()))) /
+                            1000;
+    }
+    VLOG(1)
+        << "Sending non-empty GetConsistentChanges response for stream_id: " << stream_id
+        << " with total_records: " << resp->cdc_sdk_proto_records_size()
+        << ", total_txns: " << metadata.txn_ids.size() << ", min_txn_id: "
+        << ((metadata.min_txn_id == std::numeric_limits<uint32_t>::max()) ? 0 : metadata.min_txn_id)
+        << ", max_txn_id: " << metadata.max_txn_id << ", min_lsn: "
+        << (metadata.min_lsn == std::numeric_limits<uint64_t>::max() ? 0 : metadata.min_lsn)
+        << ", max_lsn: " << metadata.max_lsn
+        << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
+        << ", begin_records: " << metadata.begin_records
+        << ", commit_records: " << metadata.commit_records
+        << ", insert_records: " << metadata.insert_records
+        << ", update_records: " << metadata.update_records
+        << ", delete_records: " << metadata.delete_records
+        << ", ddl_records: " << metadata.ddl_records
+        << ", contains_publication_refresh_record: " << metadata.contains_publication_refresh_record
+        << ", VWAL lag: " << (metadata.commit_records > 0 ? Format("$0 ms", vwal_lag_in_ms) : "-1")
+        << ", Number of unacked txns in VWAL: "
+        << (metadata.max_txn_id -
+            commit_meta_and_last_req_map_.begin()->second.record_metadata.commit_txn_id);
   }
+
+  VLOG(1)
+      << "Total time spent in processing GetConsistentChanges (GetConsistentChangesInternal) is: "
+      << std::chrono::duration_cast<std::chrono::microseconds>(CoarseMonoClock::Now() - start_time)
+             .count()
+      << " microseconds, out of which the time spent in GetChangesInternal is: "
+      << time_in_get_changes_micros << " microseconds.";
 
   return Status::OK();
 }
@@ -604,9 +702,12 @@ Status CDCSDKVirtualWAL::AddRecordToVirtualWalPriorityQueue(
           InternalError, Format("Tablet queue is empty for tablet_id: $0", tablet_id));
     }
     auto record = tablet_queue->front();
-    bool result = CDCSDKUniqueRecordID::CanFormUniqueRecordId(record);
+    bool is_publication_refresh_record = (tablet_id == kPublicationRefreshTabletID);
+    bool result =
+        CDCSDKUniqueRecordID::CanFormUniqueRecordId(is_publication_refresh_record, record);
     if (result) {
-      auto unique_id = std::make_shared<CDCSDKUniqueRecordID>(CDCSDKUniqueRecordID(record));
+      auto unique_id = std::make_shared<CDCSDKUniqueRecordID>(
+          CDCSDKUniqueRecordID(is_publication_refresh_record, record));
       sorted_records->push({tablet_id, {unique_id, record}});
       break;
     } else {
@@ -744,6 +845,14 @@ Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
     commit_meta_and_last_req_map_.erase(commit_meta_and_last_req_map_.begin(), pos);
   }
 
+  auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
+  auto lag_in_ms = (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(
+                       record_metadata.commit_record_unique_id->GetCommitTime()))) /
+                   1000;
+  VLOG(2) << "Replication Lag: " << Format("$0 ms", lag_in_ms)
+          << ", commit_lsn: " << record_metadata.commit_lsn
+          << ", commit_txn_id: " << record_metadata.commit_txn_id;
+
   RETURN_NOT_OK(UpdateSlotEntryInCDCState(stream_id, confirmed_flush_lsn, record_metadata));
   last_received_restart_lsn = restart_lsn_hint;
 
@@ -790,6 +899,7 @@ Status CDCSDKVirtualWAL::UpdateSlotEntryInCDCState(
   entry.xmin = record_metadata.commit_txn_id;
   entry.record_id_commit_time = record_metadata.commit_record_unique_id->GetCommitTime();
   entry.cdc_sdk_safe_time = entry.record_id_commit_time;
+  entry.last_pub_refresh_time = record_metadata.last_pub_refresh_time;
   // Doing an update instead of upsert since we expect an entry for the slot to already exist in
   // cdc_state.
   VLOG(2) << "Updating slot entry in cdc_state with confirmed_flush_lsn: " << confirmed_flush_lsn
@@ -813,6 +923,111 @@ bool CDCSDKVirtualWAL::CompareCDCSDKProtoRecords::operator()(
   auto new_record_id = new_record.second.first;
 
   return old_record_id->HasHigherPriorityThan(new_record_id);
+}
+
+Status CDCSDKVirtualWAL::CreatePublicationRefreshTabletQueue() {
+  RSTATUS_DCHECK(
+      !tablet_queues_.contains(kPublicationRefreshTabletID), InternalError,
+      "Publication Refresh Tablet Queue already exists");
+  tablet_queues_[kPublicationRefreshTabletID] = std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>();
+
+  return Status::OK();
+}
+
+Status CDCSDKVirtualWAL::PushRecordToPublicationRefreshTabletQueue() {
+  auto publication_refresh_record = std::make_shared<CDCSDKProtoRecordPB>();
+  auto row_message = publication_refresh_record->mutable_row_message();
+  auto last_pub_refresh_time_hybrid = HybridTime(last_pub_refresh_time);
+  auto hybrid_sum = last_pub_refresh_time_hybrid.AddMicroseconds(pub_refresh_interval);
+  row_message->set_commit_time(hybrid_sum.ToUint64());
+  RSTATUS_DCHECK(
+      tablet_queues_[kPublicationRefreshTabletID].empty(), InternalError,
+      Format("Expected the Publication Refresh Tablet queue to be empty before inserting a record "
+             "to it, but it had $0 records"),
+      tablet_queues_[kPublicationRefreshTabletID].size());
+
+  std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>& tablet_queue =
+      tablet_queues_[kPublicationRefreshTabletID];
+  tablet_queue.push(publication_refresh_record);
+  return Status::OK();
+}
+
+std::vector<TabletId> CDCSDKVirtualWAL::GetTabletsForTable(const TableId& table_id) {
+  std::vector<TabletId> tablet_ids;
+  for (const auto& entry : tablet_id_to_table_id_map_) {
+    if (entry.second.contains(table_id)) {
+      tablet_ids.push_back(entry.first);
+    }
+  }
+  return tablet_ids;
+}
+
+Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
+    const xrepl::StreamId& stream_id, const std::unordered_set<TableId>& new_tables,
+    const HostPort hostport, const CoarseTimePoint deadline) {
+  std::unordered_set<TableId> tables_to_be_added;
+  std::unordered_set<TableId> tables_to_be_removed;
+
+  for (auto table_id : new_tables) {
+    if (!publication_table_list_.contains(table_id)) {
+      tables_to_be_added.insert(table_id);
+      VLOG(2) << "Table: " << table_id << "to be added to polling list";
+    }
+  }
+
+  for (auto table_id : publication_table_list_) {
+    if (!new_tables.contains(table_id)) {
+      tables_to_be_removed.insert(table_id);
+      VLOG(2) << "Table: " << table_id << "to be removed from polling list";
+    }
+  }
+
+  if (!tables_to_be_added.empty()) {
+    for (auto table_id : tables_to_be_added) {
+      // Initialize the tablet_queues_, tablet_id_to_table_id_map_, and tablet_next_req_map_
+      auto s = GetTabletListAndCheckpoint(stream_id, table_id, hostport, deadline);
+      if (!s.ok()) {
+        LOG(WARNING) << s.CloneAndPrepend(
+            Format("Error fetching tablet list & checkpoints for table_id: $0", table_id));
+        RETURN_NOT_OK(s);
+      }
+      publication_table_list_.insert(table_id);
+      VLOG(2) << "Table: " << table_id << " added to polling list";
+    }
+  }
+
+  if (!tables_to_be_removed.empty()) {
+    for (auto table_id : tables_to_be_removed) {
+      publication_table_list_.erase(table_id);
+      auto tablet_list = GetTabletsForTable(table_id);
+      for (auto tablet : tablet_list) {
+        if (tablet_id_to_table_id_map_.contains(tablet)) {
+          tablet_id_to_table_id_map_.erase(tablet);
+        }
+
+        if (tablet_next_req_map_.contains(tablet)) {
+          tablet_next_req_map_.erase(tablet);
+        }
+
+        if (tablet_queues_.contains(tablet)) {
+          tablet_queues_.erase(tablet);
+        }
+
+        if (tablet_last_sent_req_map_.contains(tablet)) {
+          tablet_last_sent_req_map_.erase(tablet);
+        }
+
+        for (auto& entry : commit_meta_and_last_req_map_) {
+          if (entry.second.last_sent_req_for_begin_map.contains(tablet)) {
+            entry.second.last_sent_req_for_begin_map.erase(tablet);
+          }
+        }
+      }
+      VLOG(2) << "Table: " << table_id << " removed from the polling list";
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace cdc

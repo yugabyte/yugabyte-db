@@ -48,6 +48,7 @@
 #include <memory>
 
 #include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 
 #if defined(__APPLE__)
 namespace walltime_internal {
@@ -259,4 +260,10 @@ void GetThreadUserAndSysCpuTimeMicros(MicrosecondsInt64 *user, MicrosecondsInt64
     *sys = usage.ru_stime.tv_sec * 1e6L + usage.ru_stime.tv_usec;
   }
 #endif
+}
+
+uint64_t FastClockNanos() {
+  timespec ts;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+  return ts.tv_sec * yb::MonoTime::kNanosecondsPerSecond + ts.tv_nsec;
 }
