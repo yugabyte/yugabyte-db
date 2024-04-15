@@ -263,7 +263,7 @@ func init() {
 			"Each region can be added using separate --region flags. "+
 			"Example: --region region-name=us-west1,shared-subnet=<shared-subnet-id>")
 
-	createGCPProviderCmd.Flags().String("ssh-user", "",
+	createGCPProviderCmd.Flags().String("ssh-user", "centos",
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createGCPProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port to access the YugabyteDB nodes.")

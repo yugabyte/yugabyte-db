@@ -252,7 +252,7 @@ func init() {
 			"Each zone needs to be added using a separate --zone flag. "+
 			"Example: --zone zone-name=westus2-1,region-name=westus2,subnet=<subnet-id>")
 
-	createAzureProviderCmd.Flags().String("ssh-user", "",
+	createAzureProviderCmd.Flags().String("ssh-user", "centos",
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createAzureProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port to access the YugabyteDB nodes.")
