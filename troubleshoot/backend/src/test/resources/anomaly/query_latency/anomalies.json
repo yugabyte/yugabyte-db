@@ -1,34 +1,42 @@
 [
   {
-    "uuid": null,
-    "metadataUuid": "ffac2c96-2db6-401d-a2e0-4f5767962cc2",
+    "affectedNodes": [
+      {
+        "name": "node2"
+      },
+      {
+        "name": "node1"
+      }
+    ],
+    "endTime": "2024-01-18T16:40:00Z",
+    "graphEndTime": "2024-01-18T19:00:00Z",
+    "graphStartTime": "2024-01-18T15:00:00Z",
+    "graphStepSeconds": 1200,
     "category": "SQL",
-    "type": "SQL_QUERY_LATENCY_INCREASE",
-    "title": "SQL query latency increase detected",
+    "defaultSettings": {
+      "aggregatedValueFunction": "AVG",
+      "returnAggregatedValue": false,
+      "splitCount": 0,
+      "splitMode": "NONE",
+      "splitType": "NONE"
+    },
     "mainGraphs": [
       {
-        "name": "query_latency",
-        "threshold": null,
         "filters": {
-          "universeUuid": [
-            "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
-          ],
           "queryId": [
             "100"
           ],
           "dbId": [
             "1234"
+          ],
+          "universeUuid": [
+            "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
           ]
-        }
+        },
+        "name": "query_latency"
       }
     ],
-    "defaultSettings": {
-      "splitMode": "NONE",
-      "splitType": "NONE",
-      "splitCount": 0,
-      "returnAggregatedValue": false,
-      "aggregatedValueFunction": "AVG"
-    },
+    "metadataUuid": "ffac2c96-2db6-401d-a2e0-4f5767962cc2",
     "rcaGuidelines": [
       {
         "possibleCause": "Load increase",
@@ -38,19 +46,18 @@
             "recommendation": "Check RPS graph for this query",
             "supportingGraphs": [
               {
-                "name": "query_rps",
-                "threshold": null,
                 "filters": {
-                  "universeUuid": [
-                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
-                  ],
                   "queryId": [
                     "100"
                   ],
                   "dbId": [
                     "1234"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "query_rps"
               }
             ]
           },
@@ -58,13 +65,12 @@
             "recommendation": "Check YSQL RPS graph",
             "supportingGraphs": [
               {
-                "name": "ysql_server_rpc_per_second",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "ysql_server_rpc_per_second"
               }
             ]
           }
@@ -78,25 +84,23 @@
             "recommendation": "Check Average Rows graph for the query",
             "supportingGraphs": [
               {
-                "name": "query_rows_avg",
-                "threshold": null,
                 "filters": {
-                  "universeUuid": [
-                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
-                  ],
                   "queryId": [
                     "100"
                   ],
                   "dbId": [
                     "1234"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "query_rows_avg"
               }
             ]
           },
           {
-            "recommendation": "Check Table SST/WAL size graphs for tables, referenced in the query",
-            "supportingGraphs": null
+            "recommendation": "Check Table SST/WAL size graphs for tables, referenced in the query"
           }
         ]
       },
@@ -105,8 +109,7 @@
         "possibleCauseDescription": "DB updated query execution plan based on the data statistics collected for requested tables",
         "troubleshootingRecommendations": [
           {
-            "recommendation": "Check query execution plan via EXPLAIN ANALYSE",
-            "supportingGraphs": null
+            "recommendation": "Check query execution plan via EXPLAIN ANALYSE"
           }
         ]
       },
@@ -118,13 +121,12 @@
             "recommendation": "Check RPC Queue Size graph",
             "supportingGraphs": [
               {
-                "name": "tserver_rpc_queue_size_tserver",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "tserver_rpc_queue_size_tserver"
               }
             ]
           }
@@ -138,40 +140,36 @@
             "recommendation": "Check CPU, Memory and Disk IOPS/throughput graphs",
             "supportingGraphs": [
               {
-                "name": "cpu_usage",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "cpu_usage"
               },
               {
-                "name": "disk_iops",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "disk_iops"
               },
               {
-                "name": "disk_bytes_per_second_per_node",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "disk_bytes_per_second_per_node"
               },
               {
-                "name": "lsm_rocksdb_memory_rejections",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "lsm_rocksdb_memory_rejections"
               }
             ]
           }
@@ -182,16 +180,13 @@
         "possibleCauseDescription": "Network latency between DB nodes increased, Disk IOPS/throughput degraded, Network partitioning or other outage",
         "troubleshootingRecommendations": [
           {
-            "recommendation": "Check network latency between the DB nodes",
-            "supportingGraphs": null
+            "recommendation": "Check network latency between the DB nodes"
           },
           {
-            "recommendation": "Check all DB nodes are up and running",
-            "supportingGraphs": null
+            "recommendation": "Check all DB nodes are up and running"
           },
           {
-            "recommendation": "Check Network graphs for anomaly",
-            "supportingGraphs": null
+            "recommendation": "Check Network graphs for anomaly"
           }
         ]
       },
@@ -203,69 +198,81 @@
             "recommendation": "Check Clock Skew graph",
             "supportingGraphs": [
               {
-                "name": "node_clock_skew",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "node_clock_skew"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various resons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph for this query",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "active_session_history"
               }
             ]
           }
         ]
       }
     ],
-    "universeUuid": "9ad06d1f-0355-4e3c-a42c-d052b38af7bc",
-    "affectedNodes": [
-      {
-        "name": "node2",
-        "uuid": null
-      },
-      {
-        "name": "node1",
-        "uuid": null
-      }
-    ],
-    "affectedTables": null,
-    "summary": "Latencies increased for query 'select * from some_table' in database 'yugabyte'",
-    "detectionTime": null,
+    "title": "SQL query latency increase detected",
+    "type": "SQL_QUERY_LATENCY_INCREASE",
     "startTime": "2024-01-18T15:40:00Z",
-    "endTime": "2024-01-18T16:40:00Z",
-    "graphStartTime": "2024-01-18T15:00:00Z",
-    "graphEndTime": "2024-01-18T19:00:00Z",
-    "graphStepSeconds": 1200
+    "summary": "Latencies increased for query 'select * from some_table' in database 'yugabyte'",
+    "universeUuid": "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
   },
   {
-    "uuid": null,
-    "metadataUuid": "ffac2c96-2db6-401d-a2e0-4f5767962cc2",
+    "affectedNodes": [
+      {
+        "name": "node3"
+      }
+    ],
+    "endTime": "2024-01-18T17:20:00Z",
+    "graphEndTime": "2024-01-18T19:00:00Z",
+    "graphStartTime": "2024-01-18T15:00:00Z",
+    "graphStepSeconds": 1200,
     "category": "SQL",
-    "type": "SQL_QUERY_LATENCY_INCREASE",
-    "title": "SQL query latency increase detected",
+    "defaultSettings": {
+      "aggregatedValueFunction": "AVG",
+      "returnAggregatedValue": false,
+      "splitCount": 0,
+      "splitMode": "NONE",
+      "splitType": "NONE"
+    },
     "mainGraphs": [
       {
-        "name": "query_latency",
-        "threshold": null,
         "filters": {
-          "universeUuid": [
-            "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
-          ],
           "queryId": [
             "100"
           ],
           "dbId": [
             "4321"
+          ],
+          "universeUuid": [
+            "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
           ]
-        }
+        },
+        "name": "query_latency"
       }
     ],
-    "defaultSettings": {
-      "splitMode": "NONE",
-      "splitType": "NONE",
-      "splitCount": 0,
-      "returnAggregatedValue": false,
-      "aggregatedValueFunction": "AVG"
-    },
+    "metadataUuid": "ffac2c96-2db6-401d-a2e0-4f5767962cc2",
     "rcaGuidelines": [
       {
         "possibleCause": "Load increase",
@@ -275,19 +282,18 @@
             "recommendation": "Check RPS graph for this query",
             "supportingGraphs": [
               {
-                "name": "query_rps",
-                "threshold": null,
                 "filters": {
-                  "universeUuid": [
-                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
-                  ],
                   "queryId": [
                     "100"
                   ],
                   "dbId": [
                     "4321"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "query_rps"
               }
             ]
           },
@@ -295,13 +301,12 @@
             "recommendation": "Check YSQL RPS graph",
             "supportingGraphs": [
               {
-                "name": "ysql_server_rpc_per_second",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "ysql_server_rpc_per_second"
               }
             ]
           }
@@ -315,25 +320,23 @@
             "recommendation": "Check Average Rows graph for the query",
             "supportingGraphs": [
               {
-                "name": "query_rows_avg",
-                "threshold": null,
                 "filters": {
-                  "universeUuid": [
-                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
-                  ],
                   "queryId": [
                     "100"
                   ],
                   "dbId": [
                     "4321"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "query_rows_avg"
               }
             ]
           },
           {
-            "recommendation": "Check Table SST/WAL size graphs for tables, referenced in the query",
-            "supportingGraphs": null
+            "recommendation": "Check Table SST/WAL size graphs for tables, referenced in the query"
           }
         ]
       },
@@ -342,8 +345,7 @@
         "possibleCauseDescription": "DB updated query execution plan based on the data statistics collected for requested tables",
         "troubleshootingRecommendations": [
           {
-            "recommendation": "Check query execution plan via EXPLAIN ANALYSE",
-            "supportingGraphs": null
+            "recommendation": "Check query execution plan via EXPLAIN ANALYSE"
           }
         ]
       },
@@ -355,13 +357,12 @@
             "recommendation": "Check RPC Queue Size graph",
             "supportingGraphs": [
               {
-                "name": "tserver_rpc_queue_size_tserver",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "tserver_rpc_queue_size_tserver"
               }
             ]
           }
@@ -375,40 +376,36 @@
             "recommendation": "Check CPU, Memory and Disk IOPS/throughput graphs",
             "supportingGraphs": [
               {
-                "name": "cpu_usage",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "cpu_usage"
               },
               {
-                "name": "disk_iops",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "disk_iops"
               },
               {
-                "name": "disk_bytes_per_second_per_node",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "disk_bytes_per_second_per_node"
               },
               {
-                "name": "lsm_rocksdb_memory_rejections",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "lsm_rocksdb_memory_rejections"
               }
             ]
           }
@@ -419,16 +416,13 @@
         "possibleCauseDescription": "Network latency between DB nodes increased, Disk IOPS/throughput degraded, Network partitioning or other outage",
         "troubleshootingRecommendations": [
           {
-            "recommendation": "Check network latency between the DB nodes",
-            "supportingGraphs": null
+            "recommendation": "Check network latency between the DB nodes"
           },
           {
-            "recommendation": "Check all DB nodes are up and running",
-            "supportingGraphs": null
+            "recommendation": "Check all DB nodes are up and running"
           },
           {
-            "recommendation": "Check Network graphs for anomaly",
-            "supportingGraphs": null
+            "recommendation": "Check Network graphs for anomaly"
           }
         ]
       },
@@ -440,33 +434,44 @@
             "recommendation": "Check Clock Skew graph",
             "supportingGraphs": [
               {
-                "name": "node_clock_skew",
-                "threshold": null,
                 "filters": {
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
-                }
+                },
+                "name": "node_clock_skew"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various resons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph for this query",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "active_session_history"
               }
             ]
           }
         ]
       }
     ],
-    "universeUuid": "9ad06d1f-0355-4e3c-a42c-d052b38af7bc",
-    "affectedNodes": [
-      {
-        "name": "node3",
-        "uuid": null
-      }
-    ],
-    "affectedTables": null,
-    "summary": "Latencies increased for query 'select * from some_table' in database 'postgres'",
-    "detectionTime": null,
+    "title": "SQL query latency increase detected",
+    "type": "SQL_QUERY_LATENCY_INCREASE",
     "startTime": "2024-01-18T16:20:00Z",
-    "endTime": "2024-01-18T17:20:00Z",
-    "graphStartTime": "2024-01-18T15:00:00Z",
-    "graphEndTime": "2024-01-18T19:00:00Z",
-    "graphStepSeconds": 1200
+    "summary": "Latencies increased for query 'select * from some_table' in database 'postgres'",
+    "universeUuid": "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
   }
 ]

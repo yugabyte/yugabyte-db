@@ -31,6 +31,28 @@ public class ThreadPoolConfig {
   }
 
   @Bean
+  public ThreadPoolTaskExecutor activeSessionHistoryQueryExecutor(
+      @Value("${task.active_session_history_query.threads}") int threads) {
+    ThreadPoolTaskExecutor taskExecutor = new ThreadPoolTaskExecutor();
+    taskExecutor.setCorePoolSize(threads);
+    taskExecutor.setMaxPoolSize(threads);
+    taskExecutor.setThreadNamePrefix("ash_query");
+    taskExecutor.initialize();
+    return taskExecutor;
+  }
+
+  @Bean
+  public ThreadPoolTaskExecutor activeSessionHistoryNodesQueryExecutor(
+      @Value("${task.active_session_history_nodes_query.threads}") int threads) {
+    ThreadPoolTaskExecutor taskExecutor = new ThreadPoolTaskExecutor();
+    taskExecutor.setCorePoolSize(threads);
+    taskExecutor.setMaxPoolSize(threads);
+    taskExecutor.setThreadNamePrefix("ash_nodes_query");
+    taskExecutor.initialize();
+    return taskExecutor;
+  }
+
+  @Bean
   public ThreadPoolTaskExecutor universeDetailsQueryExecutor(
       @Value("${task.universe_details_query.threads}") int threads) {
     ThreadPoolTaskExecutor taskExecutor = new ThreadPoolTaskExecutor();

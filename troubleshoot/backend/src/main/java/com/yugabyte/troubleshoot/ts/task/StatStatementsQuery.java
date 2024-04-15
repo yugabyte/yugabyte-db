@@ -1,5 +1,7 @@
 package com.yugabyte.troubleshoot.ts.task;
 
+import static com.yugabyte.troubleshoot.ts.CommonUtils.PG_TIMESTAMP_FORMAT;
+import static com.yugabyte.troubleshoot.ts.CommonUtils.SYSTEM_PLATFORM;
 import static com.yugabyte.troubleshoot.ts.MetricsUtil.*;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -21,9 +23,6 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
-import java.time.temporal.ChronoField;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
@@ -55,7 +54,7 @@ public class StatStatementsQuery {
   private static final Summary NODE_PROCESS_TIME =
       buildSummary(
           "ts_pss_query_node_process_time_millis",
-          "PG Stat Statements universe processing time",
+          "PG Stat Statements node processing time",
           LABEL_RESULT);
 
   public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT_2_18 =
@@ -63,8 +62,6 @@ public class StatStatementsQuery {
 
   /** YBDB versions above this threshold support latency histogram. */
   public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT = "2.19.1.0-b80";
-
-  static final String SYSTEM_PLATFORM = "system_platform";
 
   static final String PG_STAT_STATEMENTS_QUERY_PART1 =
       "select now() as timestamp, dbid, datname, queryid, query, calls, total_time, rows";
@@ -82,15 +79,6 @@ public class StatStatementsQuery {
   private static final String TOTAL_TIME = "total_time";
   private static final String ROWS = "rows";
   private static final String YB_LATENCY_HISTOGRAM = "yb_latency_histogram";
-
-  private static final DateTimeFormatter TIMESTAMP_FORMAT =
-      new DateTimeFormatterBuilder()
-          .append(DateTimeFormatter.ISO_LOCAL_DATE)
-          .appendLiteral('T')
-          .appendPattern("HH:mm:ss")
-          .appendFraction(ChronoField.NANO_OF_SECOND, 1, 9, true)
-          .appendPattern("xxx")
-          .toFormatter();
 
   final Map<UUID, UniverseProgress> universesProcessStartTime = new ConcurrentHashMap<>();
 
@@ -302,10 +290,10 @@ public class StatStatementsQuery {
         JsonNode previousStats = queryLastStats.get(key);
         if (previousStats != null) {
           Instant oldTimestamp =
-              OffsetDateTime.parse(previousStats.get(TIMESTAMP).textValue(), TIMESTAMP_FORMAT)
+              OffsetDateTime.parse(previousStats.get(TIMESTAMP).textValue(), PG_TIMESTAMP_FORMAT)
                   .toInstant();
           Instant newTimestamp =
-              OffsetDateTime.parse(statsJson.get(TIMESTAMP).textValue(), TIMESTAMP_FORMAT)
+              OffsetDateTime.parse(statsJson.get(TIMESTAMP).textValue(), PG_TIMESTAMP_FORMAT)
                   .toInstant();
           PgStatStatements statStatements =
               new PgStatStatements()

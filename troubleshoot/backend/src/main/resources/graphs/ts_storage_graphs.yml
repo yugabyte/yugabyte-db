@@ -10,6 +10,8 @@ query_latency:
     queryId:
       name: query_id
       type: type_int
+      defaultGroupBy: true
+      assumesGroupBy: ["dbId"]
     instanceName:
       name: node_name
   data_columns:
@@ -42,6 +44,8 @@ query_rps:
     queryId:
       name: query_id
       type: type_int
+      defaultGroupBy: true
+      assumesGroupBy: ["dbId"]
     instanceName:
       name: node_name
   data_columns:
@@ -61,9 +65,12 @@ query_rows_avg:
       type: type_uuid
     dbId:
       name: db_id
+      alwaysGroupBy: true
     queryId:
       name: query_id
       type: type_int
+      defaultGroupBy: true
+      assumesGroupBy: ["dbId"]
     instanceName:
       name: node_name
   data_columns:
@@ -71,5 +78,43 @@ query_rows_avg:
       alias: Rows
   layout:
     title: "Query Rows"
+    xaxis:
+      type: "date"
+
+active_session_history:
+  table: "active_session_history"
+  timestamp_column: "sample_time"
+  filter_columns:
+    universeUuid:
+      name: universe_id
+      type: type_uuid
+    queryId:
+      name: query_id
+      type: type_int
+    ysqlSessionId:
+      name: ysql_session_id
+      type: type_int
+    clientNodeIp:
+      name: client_node_ip
+    waitEventAux:
+      name: wait_event_aux
+    instanceName:
+      name: node_name
+    waitEventComponent:
+      name: wait_event_component
+    waitEventClass:
+      name: wait_event_class
+      assumesGroupBy: ["waitEventComponent"]
+    waitEvent:
+      name: wait_event
+      defaultGroupBy: true
+      assumesGroupBy: ["waitEventClass", "waitEventComponent"]
+  data_columns:
+    sample_weight:
+      alias: Samples
+      aggregation: sum
+  layout:
+    title: "ASH"
+    type: "ASH"
     xaxis:
       type: "date"
