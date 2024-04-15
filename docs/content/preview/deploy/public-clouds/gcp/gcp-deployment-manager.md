@@ -61,4 +61,4 @@ To deploy using Google Cloud Deployment Manager:
     $ gcloud deployment-manager deployments describe <your-deployment-name>
     ```
 
-The output includes the YugabyteDB Admin URL, JDBC URL, and YSQL, YCQL, and YEDIS connection strings. You can use the YugabyteDB Admin URL to access the Admin portal.
+The output includes the YugabyteDB Admin URL, JDBC URL, and YSQL, and YCQL connection strings. You can use the YugabyteDB Admin URL to access the Admin portal.

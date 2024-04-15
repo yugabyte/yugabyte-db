@@ -38,14 +38,14 @@ If the servers are running, yet they are not accessible from your client machine
 
 Typically, the endpoints are defined as follows:
 
-|      Description |                       URL |
-|------------------|---------------------------|
+|   Description    |            URL            |
+| ---------------- | ------------------------- |
 | Master Web Page  | `<node-ip>:7000`          |
 | TServer Web Page | `<node-ip>:9000`          |
-| Redis Metrics    | `<node-ip>:11000/metrics` |
-| YCQL Metrics      | `<node-ip>:12000/metrics` |
-| Redis Server     | `<node-ip>:6379`          |
-| YCQL Server       | `<node-ip>:9042`          |
+| YSQL Metrics     | `<node-ip>:13000/metrics` |
+| YCQL Metrics     | `<node-ip>:12000/metrics` |
+| YSQL Server      | `<node-ip>:5433`          |
+| YCQL Server      | `<node-ip>:9042`          |
 
 However, in some cases these endpoints may not be accessible, depending on the configuration on your physical machines or on your cloud provider account.
 
