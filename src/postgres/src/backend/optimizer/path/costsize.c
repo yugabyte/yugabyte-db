@@ -194,6 +194,7 @@ bool		enable_parallel_hash = true;
 bool		enable_partition_pruning = true;
 bool		yb_enable_geolocation_costing = true;
 bool		yb_enable_batchednl = false;
+bool		yb_enable_parallel_append = false;
 
 extern int yb_bnl_batch_size;
 
