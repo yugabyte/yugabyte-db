@@ -38,6 +38,7 @@ export interface SecondaryDashboardEntryProps {
   universeData: Universe | any;
   appName: AppName;
   timezone?: string;
+  hostUrl?: string;
   onSelectedIssue?: (troubleshootUuid: string | null) => void;
 }
 
@@ -48,6 +49,7 @@ export const SecondaryDashboardEntry = ({
   appName,
   timezone,
   hideHeader = false,
+  hostUrl,
   onSelectedIssue
 }: SecondaryDashboardEntryProps) => {
   const classes = useStyles();
@@ -58,7 +60,7 @@ export const SecondaryDashboardEntry = ({
 
   const { isLoading, isError, isIdle } = useQuery(
     [QUERY_KEY.fetchAnamolies, universeUuid],
-    () => TroubleshootAPI.fetchAnamoliesById(universeUuid, troubleshootUuid),
+    () => TroubleshootAPI.fetchAnamoliesById(universeUuid, troubleshootUuid, hostUrl),
     {
       onSuccess: (anomalyData: Anomaly) => {
         setUserSelectedAnomaly(anomalyData);
@@ -106,6 +108,7 @@ export const SecondaryDashboardEntry = ({
       )}
       {userSelectedAnomaly && (
         <SecondaryDashboardData
+          hostUrl={hostUrl}
           anomalyData={userSelectedAnomaly}
           universeData={universeData}
           universeUuid={universeUuid}
