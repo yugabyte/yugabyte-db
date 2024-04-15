@@ -17,6 +17,8 @@ To reduce costs on unused universes, you can pause or delete them.
 
 To pause a universe via the YugabyteDB Anywhere UI, navigate to **Universes**, select your universe, then click **Actions > Pause Universe**.
 
+Note that you can't pause universes created using an on-premises provider.
+
 You can't change the configuration, or read and write data to a paused universe. Alerts and backups are also stopped. Existing backups remain until they expire.
 
 Note that for public clouds, such as Amazon Web Services (AWS) and Google Cloud Platform (GCP), pausing a universe reduces costs for instance vCPU capacity, but disk and backup storage costs are not affected.
