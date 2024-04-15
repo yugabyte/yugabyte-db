@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.Future;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -93,16 +95,16 @@ public class GraphService {
     for (GraphQuery query : queries) {
 
       // Just in case it was not set in the query itself
-      Map<GraphFilter, List<String>> filtersWithUniverse = new HashMap<>();
+      Map<GraphLabel, List<String>> filtersWithUniverse = new HashMap<>();
       if (query.getFilters() != null) {
         filtersWithUniverse.putAll(query.getFilters());
       }
-      filtersWithUniverse.put(GraphFilter.universeUuid, ImmutableList.of(universeUuid.toString()));
+      filtersWithUniverse.put(GraphLabel.universeUuid, ImmutableList.of(universeUuid.toString()));
       query.setFilters(filtersWithUniverse);
       boolean sourceFound = false;
       for (GraphSourceIF source : sources) {
         if (source.supportsGraph(query.getName())) {
-          prepareQuery(query, source.minGraphStepSeconds(universeMetadata));
+          prepareQuery(query, source.minGraphStepSeconds(query, universeMetadata));
           futures.add(
               new ImmutablePair<>(
                   query,
@@ -126,6 +128,29 @@ public class GraphService {
       GraphQuery query = future.getKey();
       try {
         GraphResponse response = future.getValue().get();
+        if (query.isFillMissingPoints()) {
+          Set<Long> allTimestamps =
+              response.getData().stream()
+                  .flatMap(data -> data.getPoints().stream())
+                  .map(GraphPoint::getX)
+                  .collect(Collectors.toCollection(TreeSet::new));
+          response
+              .getData()
+              .forEach(
+                  graphData -> {
+                    Map<Long, GraphPoint> pointsByTimestamp =
+                        graphData.getPoints().stream()
+                            .collect(Collectors.toMap(GraphPoint::getX, Function.identity()));
+                    List<GraphPoint> newPoints =
+                        allTimestamps.stream()
+                            .map(
+                                ts ->
+                                    pointsByTimestamp.getOrDefault(
+                                        ts, new GraphPoint(ts, Double.NaN)))
+                            .toList();
+                    graphData.setPoints(newPoints);
+                  });
+        }
         if (query.isReplaceNaN()) {
           response
               .getData()

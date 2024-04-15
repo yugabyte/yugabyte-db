@@ -3,7 +3,7 @@ package com.yugabyte.troubleshoot.ts.models;
 import lombok.Getter;
 
 @Getter
-public enum GraphFilter {
+public enum GraphLabel {
   queryId(""),
   dbId(""),
   universeUuid("universe_uuid"),
@@ -19,11 +19,14 @@ public enum GraphFilter {
   dbName("namespace_name"),
   tableName("table_name"),
   tableId("table_id"),
-  mountPoint("mountpoint");
+  mountPoint("mountpoint"),
+  waitEventComponent(""),
+  waitEventClass(""),
+  waitEvent("");
 
   private final String metricLabel;
 
-  GraphFilter(String metricLabel) {
+  GraphLabel(String metricLabel) {
     this.metricLabel = metricLabel;
   }
 }

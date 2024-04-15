@@ -1,42 +1,12 @@
 [
   {
-    "name": "ysql_sql_latency",
-    "successful": true,
-    "errorMessage": null,
-    "layout": {
-      "title": "YSQL Op Latency (Avg)",
-      "xaxis": {
-        "type": "date",
-        "alias": {},
-        "ticksuffix": null,
-        "tickformat": null
-      },
-      "yaxis": {
-        "type": null,
-        "alias": {
-          "InsertStmt": "Insert",
-          "SelectStmt": "Select",
-          "UpdateStmt": "Update",
-          "DeleteStmt": "Delete"
-        },
-        "ticksuffix": "&nbsp;µs",
-        "tickformat": null
-      }
-    },
-    "stepSeconds": 120,
     "data": [
       {
-        "name": "Delete",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": "scatter",
         "labels": {
           "service_method": "DeleteStmt"
         },
+        "name": "Delete",
+        "type": "scatter",
         "x": [
           1706272080000,
           1706272200000,
@@ -245,17 +215,11 @@
         ]
       },
       {
-        "name": "Insert",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": "scatter",
         "labels": {
           "service_method": "InsertStmt"
         },
+        "name": "Insert",
+        "type": "scatter",
         "x": [
           1706272080000,
           1706272200000,
@@ -464,17 +428,11 @@
         ]
       },
       {
-        "name": "Select",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": "scatter",
         "labels": {
           "service_method": "SelectStmt"
         },
+        "name": "Select",
+        "type": "scatter",
         "x": [
           1706272080000,
           1706272200000,
@@ -683,17 +641,11 @@
         ]
       },
       {
-        "name": "Update",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": "scatter",
         "labels": {
           "service_method": "UpdateStmt"
         },
+        "name": "Update",
+        "type": "scatter",
         "x": [
           1706272080000,
           1706272200000,
@@ -901,6 +853,26 @@
           "0"
         ]
       }
-    ]
+    ],
+    "layout": {
+      "title": "YSQL Op Latency (Avg)",
+      "type": "COMMON",
+      "xaxis": {
+        "alias": {},
+        "type": "date"
+      },
+      "yaxis": {
+        "alias": {
+          "DeleteStmt": "Delete",
+          "InsertStmt": "Insert",
+          "SelectStmt": "Select",
+          "UpdateStmt": "Update"
+        },
+        "ticksuffix": "&nbsp;µs"
+      }
+    },
+    "name": "ysql_sql_latency",
+    "stepSeconds": 120,
+    "successful": true
   }
 ]

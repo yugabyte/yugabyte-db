@@ -1,5 +1,6 @@
 package com.yugabyte.troubleshoot.ts.controller;
 
+import static com.yugabyte.troubleshoot.ts.TestUtils.formatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
@@ -48,7 +49,7 @@ public class RuntimeConfigControllerTest {
             .andDo(print())
             .andExpect(status().isOk())
             .andReturn();
-    assertThat(result.getResponse().getContentAsString())
+    assertThat(formatJson(result.getResponse().getContentAsString()))
         .isEqualTo(
             objectMapper.writeValueAsString(ImmutableList.of(entries.get(0), entries.get(1))));
   }
@@ -65,7 +66,7 @@ public class RuntimeConfigControllerTest {
             .andDo(print())
             .andExpect(status().isOk())
             .andReturn();
-    assertThat(result.getResponse().getContentAsString())
+    assertThat(formatJson(result.getResponse().getContentAsString()))
         .isEqualTo(objectMapper.writeValueAsString(entries.get(0)));
   }
 
@@ -84,7 +85,7 @@ public class RuntimeConfigControllerTest {
             .andDo(print())
             .andExpect(status().isOk())
             .andReturn();
-    assertThat(result.getResponse().getContentAsString())
+    assertThat(formatJson(result.getResponse().getContentAsString()))
         .isEqualTo(objectMapper.writeValueAsString(updated));
   }
 

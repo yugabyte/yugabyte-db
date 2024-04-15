@@ -12,5 +12,5 @@ import lombok.extern.jackson.Jacksonized;
 public class GraphMetadata {
   String name;
   Double threshold;
-  Map<GraphFilter, List<String>> filters;
+  Map<GraphLabel, List<String>> filters;
 }

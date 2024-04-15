@@ -185,6 +185,24 @@
             ]
           }
         ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various resons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph for this query",
+            "supportingGraphs": [
+              {
+                "name": "active_session_history",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"],
+                  "queryId": ["3694949039461716331"]
+                }
+              }
+            ]
+          }
+        ]
       }
     ]
   },

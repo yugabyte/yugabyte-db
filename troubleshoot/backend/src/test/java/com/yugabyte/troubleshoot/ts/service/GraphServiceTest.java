@@ -11,6 +11,8 @@ import com.yugabyte.troubleshoot.ts.models.*;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Random;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.SneakyThrows;
@@ -36,6 +38,8 @@ public class GraphServiceTest {
 
   @Autowired PgStatStatementsService pgStatStatementsService;
 
+  @Autowired ActiveSessionHistoryService activeSessionHistoryService;
+
   @Autowired ObjectMapper objectMapper;
 
   @Autowired private RestTemplate prometheusClientTemplate;
@@ -55,8 +59,86 @@ public class GraphServiceTest {
     pgStatStatementsService.save(createStatements("node1", 2L, 30));
     pgStatStatementsService.save(createStatements("node2", 1L, 30));
     pgStatStatementsService.save(createStatements("node3", 1L, 30));
+    activeSessionHistoryService.save(
+        createAshEntries("node1", "TServer", "Consensus", "WAL_Sync", 1L, 50));
+    activeSessionHistoryService.save(
+        createAshEntries("node1", "YSQL", "YSQLQuery", "QueryProcessing", 200L, 30));
+    activeSessionHistoryService.save(
+        createAshEntries("node1", "YSQL", "TServerWait", "CatalogRead", 200L, 50));
+    activeSessionHistoryService.save(
+        createAshEntries("node2", "TServer", "Consensus", "WAL_Sync", 1L, 30));
+    activeSessionHistoryService.save(
+        createAshEntries("node2", "YSQL", "YSQLQuery", "QueryProcessing", 200L, 50));
+    activeSessionHistoryService.save(
+        createAshEntries("node2", "YSQL", "TServerWait", "CatalogRead", 300L, 50));
 
     server = MockRestServiceServer.createServer(prometheusClientTemplate);
+  }
+
+  @SneakyThrows
+  @Test
+  public void testOverallAshGraph() {
+    GraphQuery graphQuery = new GraphQuery();
+    graphQuery.setEnd(periodEnd);
+    graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
+    graphQuery.setName("active_session_history");
+    graphQuery.setSettings(new GraphSettings());
+
+    List<GraphResponse> response =
+        graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
+
+    String expectedResponseStr = CommonUtils.readResource("query/overall_ash_response.json");
+    JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
+
+    assertThat(actualResponse).isEqualTo(expectedResponse);
+  }
+
+  @SneakyThrows
+  @Test
+  public void testOutlierAshGraph() {
+    GraphQuery graphQuery = new GraphQuery();
+    graphQuery.setEnd(periodEnd);
+    graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
+    graphQuery.setName("active_session_history");
+    GraphSettings settings = new GraphSettings();
+    settings.setSplitMode(GraphSettings.SplitMode.TOP);
+    settings.setSplitType(GraphSettings.SplitType.NODE);
+    settings.setSplitCount(2);
+    settings.setReturnAggregatedValue(true);
+    graphQuery.setSettings(settings);
+
+    List<GraphResponse> response =
+        graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
+
+    String expectedResponseStr = CommonUtils.readResource("query/outlier_ash_response.json");
+    JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
+
+    assertThat(actualResponse).isEqualTo(expectedResponse);
+  }
+
+  @SneakyThrows
+  @Test
+  public void testQueryAshGraph() {
+    GraphQuery graphQuery = new GraphQuery();
+    graphQuery.setEnd(periodEnd);
+    graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
+    graphQuery.setName("active_session_history");
+    graphQuery.setFilters(ImmutableMap.of(GraphLabel.queryId, ImmutableList.of("200")));
+    graphQuery.setSettings(new GraphSettings());
+
+    List<GraphResponse> response =
+        graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
+
+    String expectedResponseStr = CommonUtils.readResource("query/overall_query_ash_response.json");
+    JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
+
+    assertThat(actualResponse).isEqualTo(expectedResponse);
   }
 
   @SneakyThrows
@@ -65,7 +147,7 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setFilters(ImmutableMap.of(GraphFilter.queryId, ImmutableList.of("1")));
+    graphQuery.setFilters(ImmutableMap.of(GraphLabel.queryId, ImmutableList.of("1")));
     graphQuery.setName("query_latency");
     graphQuery.setSettings(new GraphSettings());
 
@@ -73,8 +155,6 @@ public class GraphServiceTest {
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
 
     String expectedResponseStr = CommonUtils.readResource("query/overall_pss_response.json");
-    expectedResponseStr =
-        expectedResponseStr.replaceAll("<universe_uuid>", metadata.getId().toString());
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
     String actualResponseStr = objectMapper.writeValueAsString(response);
     JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
@@ -88,7 +168,7 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setFilters(ImmutableMap.of(GraphFilter.queryId, ImmutableList.of("1")));
+    graphQuery.setFilters(ImmutableMap.of(GraphLabel.queryId, ImmutableList.of("1")));
     graphQuery.setName("query_latency");
     GraphSettings settings = new GraphSettings();
     settings.setSplitMode(GraphSettings.SplitMode.TOP);
@@ -101,8 +181,6 @@ public class GraphServiceTest {
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
 
     String expectedResponseStr = CommonUtils.readResource("query/outlier_nodes_pss_response.json");
-    expectedResponseStr =
-        expectedResponseStr.replaceAll("<universe_uuid>", metadata.getId().toString());
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
     String actualResponseStr = objectMapper.writeValueAsString(response);
     JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
@@ -159,8 +237,8 @@ public class GraphServiceTest {
     graphQuery.setName("ysql_sql_latency");
     graphQuery.setFilters(
         ImmutableMap.of(
-            GraphFilter.regionCode, ImmutableList.of("us-west-1"),
-            GraphFilter.instanceType, ImmutableList.of("tserver")));
+            GraphLabel.regionCode, ImmutableList.of("us-west-1"),
+            GraphLabel.instanceType, ImmutableList.of("tserver")));
     graphQuery.setSettings(new GraphSettings());
 
     String expectedQuery =
@@ -206,8 +284,8 @@ public class GraphServiceTest {
     graphQuery.setName("ysql_sql_latency");
     graphQuery.setFilters(
         ImmutableMap.of(
-            GraphFilter.regionCode, ImmutableList.of("us-west-1"),
-            GraphFilter.instanceType, ImmutableList.of("tserver")));
+            GraphLabel.regionCode, ImmutableList.of("us-west-1"),
+            GraphLabel.instanceType, ImmutableList.of("tserver")));
     GraphSettings settings = new GraphSettings();
     settings.setSplitMode(GraphSettings.SplitMode.TOP);
     settings.setSplitType(GraphSettings.SplitType.NODE);
@@ -299,5 +377,51 @@ public class GraphServiceTest {
         .setP90Latency(value * 5)
         .setP99Latency(value * 6)
         .setMaxLatency(value * 7);
+  }
+
+  private List<ActiveSessionHistory> createAshEntries(
+      String nodeName,
+      String waitEventComponent,
+      String waitEventClass,
+      String waitEvent,
+      long queryId,
+      int count) {
+    return IntStream.range(0, count)
+        .mapToObj(
+            i ->
+                createAshEntry(
+                    Duration.ofMinutes(5 * i).toSeconds(),
+                    nodeName,
+                    waitEventComponent,
+                    waitEventClass,
+                    waitEvent,
+                    queryId,
+                    (double) i))
+        .collect(Collectors.toList());
+  }
+
+  private ActiveSessionHistory createAshEntry(
+      long beforeSeconds,
+      String nodeName,
+      String waitEventComponent,
+      String waitEventClass,
+      String waitEvent,
+      long queryId,
+      Double value) {
+    return new ActiveSessionHistory()
+        .setSampleTime(Instant.ofEpochSecond(periodEnd.getEpochSecond() - beforeSeconds))
+        .setUniverseId(metadata.getId())
+        .setNodeName(nodeName)
+        .setRootRequestId(UUID.randomUUID())
+        .setRpcRequestId(new Random().nextLong())
+        .setWaitEventComponent(waitEventComponent)
+        .setWaitEventClass(waitEventClass)
+        .setWaitEvent(waitEvent)
+        .setTopLevelNodeId(UUID.randomUUID())
+        .setQueryId(queryId)
+        .setYsqlSessionId(new Random().nextLong())
+        .setClientNodeIp("1.1.1.1")
+        .setWaitEventAux(String.valueOf(new Random().nextLong()))
+        .setSampleWeight(1);
   }
 }
