@@ -83,6 +83,11 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
   const onCancel = () => browserHistory.push(`/universes/${uuid}`);
 
   const onSubmit = async (formData: UniverseFormData) => {
+    const asyncCluster = getAsyncCluster(contextState.universeConfigureTemplate);
+    const asyncUserIntent = {
+      ...asyncCluster?.userIntent,
+      ...getUserIntent({ formData }, ClusterType.ASYNC, featureFlags)
+    };
     const configurePayload = {
       ...contextState.universeConfigureTemplate,
       clusterOperation: ClusterModes.EDIT,
@@ -91,7 +96,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
       clusters: [
         {
           ...getAsyncCluster(contextState.universeConfigureTemplate),
-          userIntent: getUserIntent({ formData }, ClusterType.ASYNC, featureFlags),
+          userIntent: asyncUserIntent,
           placementInfo: {
             cloudList: [
               {

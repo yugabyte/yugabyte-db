@@ -1,5 +1,5 @@
 import { FC, useContext } from 'react';
-import _ from 'lodash';
+import _, { get } from 'lodash';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
@@ -59,9 +59,15 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
   const onCancel = () => browserHistory.push(`/universes/${uuid}`);
 
   const onSubmit = async (formData: UniverseFormData) => {
-    const PRIMARY_CLUSTER = getPrimaryCluster(contextState.universeConfigureTemplate);
+    const primaryCluster = getPrimaryCluster(contextState.universeConfigureTemplate);
+    const ayncCluster = getAsyncCluster(contextState.universeConfigureTemplate);
+
+    const userIntent = {
+      ...ayncCluster?.userIntent,
+      ...getUserIntent({ formData }, ClusterType.ASYNC, featureFlags)
+    };
     const ASYNC_CLUSTER = {
-      userIntent: getUserIntent({ formData }, ClusterType.ASYNC, featureFlags),
+      userIntent: userIntent,
       clusterType: ClusterType.ASYNC,
       placementInfo: {
         cloudList: [
@@ -79,7 +85,7 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
       ...contextState.universeConfigureTemplate,
       clusterOperation: ClusterModes.CREATE,
       currentClusterType: ClusterType.ASYNC,
-      clusters: [{ ...PRIMARY_CLUSTER }]
+      clusters: [{ ...primaryCluster }]
     };
     configurePayload?.clusters.push({
       ...getAsyncCluster(contextState.universeConfigureTemplate),
@@ -98,7 +104,7 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
           ...node,
           cloudInfo: {
             ...node.cloudInfo,
-            assignPublicIP: !!PRIMARY_CLUSTER?.userIntent.assignPublicIP
+            assignPublicIP: !!primaryCluster?.userIntent.assignPublicIP
           }
         })),
       clusters: [
