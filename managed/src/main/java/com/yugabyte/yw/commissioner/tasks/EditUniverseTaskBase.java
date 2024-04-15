@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -113,7 +114,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
       boolean updateMasters,
-      boolean force) {
+      boolean forceDestroyServers) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
     log.info(
@@ -388,7 +389,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createDestroyServerTasks(
               universe,
               nodesToBeRemoved,
-              force /* isForceDelete */,
+              forceDestroyServers /* isForceDelete */,
               true /* deleteNode */,
               true /* deleteRootVolumes */,
               false /* skipDestroyPrecheck */)
@@ -396,7 +397,13 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
 
     if (!tserversToBeRemoved.isEmpty()) {
-      // Clear blacklisted tservers.
+      Duration sleepBeforeStart =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
+      if (sleepBeforeStart.compareTo(Duration.ZERO) > 0) {
+        createWaitForDurationSubtask(universe, sleepBeforeStart)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      }
       createModifyBlackListTask(
               null /* addNodes */,
               tserversToBeRemoved /* removeNodes */,

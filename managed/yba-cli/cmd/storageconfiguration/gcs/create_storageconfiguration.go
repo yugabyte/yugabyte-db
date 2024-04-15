@@ -121,6 +121,6 @@ func init() {
 	createGCSStorageConfigurationCmd.Flags().Bool("use-gcp-iam", false,
 		"[Optional] Use IAM Role from the YugabyteDB Anywhere Host. "+
 			"Supported for Kubernetes GKE clusters with workload identity. Configuration "+
-			"creation will fail on insufficient permissions on the host, defaults to false.")
+			"creation will fail on insufficient permissions on the host. (default false)")
 
 }

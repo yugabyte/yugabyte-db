@@ -66,6 +66,21 @@ class YBBackupTestNumTablets : public YBBackupTest {
   string default_db_ = "yugabyte";
 };
 
+class YBBackupTestColocatedTablesWithTablespaces : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.emplace_back(
+        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
+    options->extra_master_flags.emplace_back(
+        "--ysql_enable_colocated_tables_with_tablespaces=true");
+
+    options->extra_tserver_flags.emplace_back(
+        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_enable_colocated_tables_with_tablespaces=true");
+  }
+};
 // Test backup/restore on table with UNIQUE constraint when default number of tablets differs. When
 // creating the table, the default is 3; when restoring, the default is 2. Restore should restore
 // the unique constraint index as 3 tablets since the tablet snapshot files are already split into 3
@@ -903,6 +918,169 @@ TEST_F_EX(YBBackupTest,
             post_restore_split_points);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test backup/restore on a colocated database which has colocated tables with tablespaces.
+// (Colocated tables support tablespaces only if preview flag
+// ysql_enable_colocated_tables_with_tablespaces is enabled.)
+// Backup/Restore on such a database performed with --use_tablespaces option specified, will restore
+// the tables to the corresponding tablespaces.
+TEST_F(
+    YBBackupTestColocatedTablesWithTablespaces,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestBackupColocatedTablesWithTablespaces)) {
+  const string& backup_db_name = "backup_db";
+  const string& restore_db_name = "restore_db";
+
+  const std::string placement_info_1 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack1",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE TABLESPACE tsp1 WITH (replica_placement=" + placement_info_1 + ")",
+      "CREATE TABLESPACE"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
+  SetDbName(backup_db_name);
+
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t1 VALUES ($0)", i)));
+  }
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t2 VALUES ($0)", i)));
+  }
+
+  const string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace", backup_keyspace,
+       "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+
+  SetDbName(restore_db_name);
+
+  RunPsqlCommand("SELECT * FROM t1 ORDER BY a;", "a\n---\n 0\n 1\n 2\n(3 rows)");
+  RunPsqlCommand("SELECT * FROM t2 ORDER BY a;", "a\n---\n 0\n 1\n 2\n(3 rows)");
+  RunPsqlCommand(" \\d t1",
+  R"#(
+                    Table "public.t1"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t1_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp1", colocation: true
+    Tablespace: "tsp1"
+    Colocation: true
+  )#");
+  RunPsqlCommand(" \\d t2",
+  R"#(
+                    Table "public.t2"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t2_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp1", colocation: true
+    Tablespace: "tsp1"
+    Colocation: true
+  )#");
+}
+
+// Test backup/restore on a colocated database which has colocated tables with tablespaces.
+// If Backup & Restore is performed on a database with ysql_enable_colocated_tables_with_tablespaces
+// enabled without the --use-tablespaces flag then we restore the tables to the pg_default
+// tablespace.
+TEST_F(
+    YBBackupTestColocatedTablesWithTablespaces,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestBackupColocatedTablesWithoutTablespaces)) {
+  const string& backup_db_name = "backup_db";
+  const string& restore_db_name = "restore_db";
+
+  const std::string placement_info_1 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack1",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE TABLESPACE tsp1 WITH (replica_placement=" + placement_info_1 + ")",
+      "CREATE TABLESPACE"));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
+  SetDbName(backup_db_name);
+
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t1 VALUES ($0)", i)));
+  }
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t2 VALUES ($0)", i)));
+  }
+
+  const string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+
+  // Backup without using the --use_tablespaces flag must succeed
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", backup_keyspace,
+       "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+
+  SetDbName(restore_db_name);
+
+  RunPsqlCommand("SELECT * FROM t1 ORDER BY a;", "a\n---\n 0\n 1\n 2\n(3 rows)");
+  RunPsqlCommand("SELECT * FROM t2 ORDER BY a;", "a\n---\n 0\n 1\n 2\n(3 rows)");
+  RunPsqlCommand(" \\d t1",
+  R"#(
+                    Table "public.t1"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t1_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+    Colocation: true
+  )#");
+  RunPsqlCommand(" \\d t2",
+  R"#(
+                    Table "public.t2"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t2_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+    Colocation: true
+  )#");
 }
 
 class YBBackupPartitioningVersionTest : public YBBackupTest {
@@ -1780,34 +1958,35 @@ class YBBackupTestWithTableRewrite : public YBBackupTestWithPackedRowsAndColocat
 
   void SetUpTestData(const bool failedRewrite) {
     constexpr auto kRowCount = 5;
-    // Create table.
-    ASSERT_NO_FATALS(CreateTable(
-        Format("CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC))", kTable)));
-    // Insert some data.
-    ASSERT_NO_FATALS(InsertRows(
-        Format("INSERT INTO $0 (a, b) VALUES (generate_series(1, $1), generate_series(1, $1))",
-            kTable, kRowCount),
-        kRowCount));
-    // Create index.
-    ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX $0 ON $1 (b DESC)", kIndex, kTable)));
+    for (auto table_name : {kTable, kTable2}) {
+      // Create the table.
+      ASSERT_NO_FATALS(CreateTable(
+        Format("CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC))", table_name)));
+      // Insert some data.
+      ASSERT_NO_FATALS(InsertRows(Format(
+          "INSERT INTO $0 (a, b) VALUES (generate_series(1, $1), generate_series(1, $1))",
+          table_name, kRowCount), kRowCount));
+      // Create an index.
+      ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX $0 ON $1 (b DESC)",
+          table_name == kTable ? kIndex : "idx2", kTable)));
+    }
     // Create materialized view.
     ASSERT_NO_FATALS(RunPsqlCommand(
         Format("CREATE MATERIALIZED VIEW $0 AS SELECT * FROM $1", kMaterializedView, kTable),
         "SELECT 5"));
-    // Insert some more data.
+    // Insert some more data on the materialized view's base table.
     ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO $0 (a, b) VALUES (6, 6)", kTable)));
-    // Perform a rewrite operation on the table.
-    if (failedRewrite) {
-      ASSERT_NO_FATALS(RunPsqlCommand(
-          "SET yb_test_fail_table_rewrite_after_creation=true", "SET"));
-    }
-
     const auto setFailRewriteGuc = "SET yb_test_fail_table_rewrite_after_creation=true;";
 
+    // Perform a rewrite operations on a table.
     ASSERT_NO_FATALS(RunPsqlCommand(Format(
         "$0 ALTER TABLE $1 ADD COLUMN c SERIAL", failedRewrite ? setFailRewriteGuc : "", kTable),
         failedRewrite ? "SET" : "ALTER TABLE"));
-    // Perform a reindex operation on the index.
+    // Perform a truncate operation.
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format("$0 TRUNCATE TABLE $1", failedRewrite ? setFailRewriteGuc : "", kTable2),
+        failedRewrite ? "SET" : "TRUNCATE TABLE"));
+    // Perform a reindex operation on an index.
     ASSERT_NO_FATALS(RunPsqlCommand(
         Format("UPDATE pg_index SET indisvalid='f' WHERE indexrelid = '$0'::regclass", kIndex),
         "UPDATE 1"));
@@ -1832,9 +2011,10 @@ class YBBackupTestWithTableRewrite : public YBBackupTestWithPackedRowsAndColocat
     SetDbName(restore_db_name); // Connecting to the second DB.
   }
 
-  const std::string kTable = "test_table";
-  const std::string kIndex = "test_idx";
-  const std::string kMaterializedView = "test_mv";
+  const std::string kTable = "t1";
+  const std::string kTable2 = "t2";
+  const std::string kIndex = "idx1";
+  const std::string kMaterializedView = "mv";
 };
 
 INSTANTIATE_TEST_CASE_P(
@@ -1889,6 +2069,24 @@ TEST_P(YBBackupTestWithTableRewrite,
         (6 rows)
       )#"
   ));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0", kTable2),
+      R"#(
+         a | b
+        ---+---
+        (0 rows)
+      )#"
+  ));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 WHERE b = 2", kTable2),
+      R"#(
+         a | b
+        ---+---
+        (0 rows)
+      )#"
+  ));
 }
 
 // Test that backup and restore succeed after unsuccessful rewrite operations are executed
@@ -1900,12 +2098,10 @@ TEST_P(YBBackupTestWithTableRewrite,
   SetUpTestData(true /* failedRewrite */);
 
   // Verify that the orphaned DocDB tables created still exist.
-  vector<client::YBTableName> tables = ASSERT_RESULT(client_->ListTables(kTable));
-  ASSERT_EQ(tables.size(), 2);
-  tables = ASSERT_RESULT(client_->ListTables(kIndex));
-  ASSERT_EQ(tables.size(), 2);
-  tables = ASSERT_RESULT(client_->ListTables(kMaterializedView));
-  ASSERT_EQ(tables.size(), 2);
+  vector<client::YBTableName> tables;
+  for (auto table_name : {kTable, kTable2, kIndex, kMaterializedView}) {
+    ASSERT_EQ(ASSERT_RESULT(client_->ListTables(table_name)).size(), 2);
+  }
 
   BackupAndRestore();
   // Verify that we restored everything correctly.
@@ -1945,6 +2141,30 @@ TEST_P(YBBackupTestWithTableRewrite,
          4 | 4
          5 | 5
         (5 rows)
+      )#"
+  ));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0", kTable2),
+      R"#(
+         a | b
+        ---+---
+         1 | 1
+         2 | 2
+         3 | 3
+         4 | 4
+         5 | 5
+        (5 rows)
+      )#"
+  ));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 WHERE b = 2", kTable2),
+      R"#(
+         a | b
+        ---+---
+         2 | 2
+        (1 row)
       )#"
   ));
 }

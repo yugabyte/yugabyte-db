@@ -11,8 +11,10 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -29,6 +31,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -186,6 +189,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
+          TaskType.WaitForDuration,
           TaskType.ModifyBlackList,
           TaskType.KubernetesCommandExecutor,
           TaskType.UpdateUniverseIntent,
@@ -199,6 +203,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
@@ -281,7 +286,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       assertEquals(task, tasks.get(0).getTaskType());
       JsonNode expectedResults = resultList.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -430,6 +435,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             + "\"}}]}";
     List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear.getKey(), "1 ms");
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -616,5 +624,62 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.EditKubernetesUniverse,
         taskParams);
+  }
+
+  @Test
+  public void testCheckEditKubernetesRerunDisallowedVolumeSizeChange() throws IOException {
+    setupUniverseSingleAZ(true /*set masters */);
+    ObjectMapper mapper = new ObjectMapper();
+    UniverseDefinitionTaskParams taskParams =
+        mapper.readValue(
+            defaultUniverse.getUniverseDetailsJson(), UniverseDefinitionTaskParams.class);
+    taskParams.clusters.get(0).userIntent.deviceInfo.volumeSize =
+        150; /* Changed volume size 100 -> 150 */
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
+    taskInfo.setTaskParams(Json.toJson(taskParams));
+    boolean canRerun = EditKubernetesUniverse.checkEditKubernetesRerunAllowed(taskInfo);
+    assertFalse(canRerun);
+  }
+
+  @Test
+  public void testCheckEditKubernetesRerunDisallowedNumNodesChange() throws IOException {
+    setupUniverseSingleAZ(true /*set masters */);
+    ObjectMapper mapper = new ObjectMapper();
+    UniverseDefinitionTaskParams taskParams =
+        mapper.readValue(
+            defaultUniverse.getUniverseDetailsJson(), UniverseDefinitionTaskParams.class);
+    taskParams
+            .clusters
+            .get(0)
+            .placementInfo
+            .cloudList
+            .get(0)
+            .regionList
+            .get(0)
+            .azList
+            .get(0)
+            .numNodesInAZ +=
+        1; /* Changed num nodes */
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
+    taskInfo.setTaskParams(Json.toJson(taskParams));
+    boolean canRerun = EditKubernetesUniverse.checkEditKubernetesRerunAllowed(taskInfo);
+    assertFalse(canRerun);
+  }
+
+  @Test
+  public void testCheckEditKubernetesRerunAllowedResourceSpecChange() throws IOException {
+    setupUniverseSingleAZ(true /*set masters */);
+    ObjectMapper mapper = new ObjectMapper();
+    UniverseDefinitionTaskParams taskParams =
+        mapper.readValue(
+            defaultUniverse.getUniverseDetailsJson(), UniverseDefinitionTaskParams.class);
+    taskParams.clusters.get(0).userIntent.masterK8SNodeResourceSpec.memoryGib += 1.0;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
+    taskInfo.setTaskParams(Json.toJson(taskParams));
+    boolean canRerun = EditKubernetesUniverse.checkEditKubernetesRerunAllowed(taskInfo);
+    assertTrue(canRerun);
   }
 }

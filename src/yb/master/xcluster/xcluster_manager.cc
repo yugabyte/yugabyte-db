@@ -85,6 +85,10 @@ void XClusterManager::SysCatalogLoaded() {
   XClusterTargetManager::SysCatalogLoaded();
 }
 
+void XClusterManager::RunBgTasks(const LeaderEpoch& epoch) {
+  XClusterTargetManager::RunBgTasks(epoch);
+}
+
 void XClusterManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   if (on_disk_dump) {
     xcluster_config_->DumpState(out);
@@ -131,9 +135,19 @@ Result<uint32_t> XClusterManager::GetXClusterConfigVersion() const {
   return xcluster_config_->GetVersion();
 }
 
-Status XClusterManager::RemoveStreamFromXClusterConfig(
+Status XClusterManager::RemoveStreamsFromSysCatalog(
     const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams) {
-  return xcluster_config_->RemoveStreams(epoch, streams);
+  std::vector<CDCStreamInfo*> xcluster_streams;
+  std::copy_if(
+      streams.begin(), streams.end(), std::back_inserter(xcluster_streams),
+      [](const auto& stream) { return stream->IsXClusterStream(); });
+
+  if (xcluster_streams.empty()) {
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK(xcluster_config_->RemoveStreams(epoch, xcluster_streams));
+  return XClusterSourceManager::RemoveStreamsFromSysCatalog(xcluster_streams, epoch);
 }
 
 Status XClusterManager::PauseResumeXClusterProducerStreams(
@@ -364,4 +378,15 @@ std::vector<std::shared_ptr<PostTabletCreateTaskBase>> XClusterManager::GetPostT
 
   return result;
 }
+
+Status XClusterManager::MarkIndexBackfillCompleted(
+    const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) {
+  return XClusterSourceManager::MarkIndexBackfillCompleted(index_ids, epoch);
+}
+
+std::unordered_set<xcluster::ReplicationGroupId>
+XClusterManager::GetInboundTransactionalReplicationGroups() const {
+  return XClusterTargetManager::GetTransactionalReplicationGroups();
+}
+
 }  // namespace yb::master

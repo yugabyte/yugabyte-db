@@ -49,6 +49,7 @@ import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -256,7 +257,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     CertificateInfo.create(
         rootCA,
         defaultCustomer.getUuid(),
-        "test1",
+        "test1" + RandomStringUtils.randomAlphanumeric(8),
         new Date(),
         new Date(),
         "privateKey",
@@ -267,7 +268,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
       CertificateInfo.create(
           clientRootCA,
           defaultCustomer.getUuid(),
-          "test1",
+          "test1" + RandomStringUtils.randomAlphanumeric(8),
           new Date(),
           new Date(),
           "privateKey",
@@ -319,7 +320,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
       CertificateInfo.create(
           taskParams.rootCA,
           defaultCustomer.getUuid(),
-          "test1",
+          "test1" + RandomStringUtils.randomAlphanumeric(8),
           new Date(),
           new Date(),
           "privateKey",
@@ -331,7 +332,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
       CertificateInfo.create(
           taskParams.getClientRootCA(),
           defaultCustomer.getUuid(),
-          "test1",
+          "test1" + RandomStringUtils.randomAlphanumeric(8),
           new Date(),
           new Date(),
           "privateKey",
@@ -898,6 +899,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
     taskParams.expectedUniverseVersion = -1;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.CertsRotate,
@@ -905,6 +908,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.CertsRotate,
         taskParams,
-        false);
+        false,
+        2 /* Abort every 2 steps */);
   }
 }

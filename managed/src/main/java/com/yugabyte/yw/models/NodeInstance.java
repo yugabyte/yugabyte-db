@@ -11,6 +11,8 @@ import com.google.gdata.util.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
@@ -29,6 +31,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.Transient;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -116,6 +119,14 @@ public class NodeInstance extends Model {
   @Column(nullable = false)
   @ApiModelProperty(value = "The availability zone's UUID")
   private UUID zoneUuid;
+
+  @ApiModelProperty(
+      value =
+          "True if the node is in use  <b style=\"color:#ff0000\">Deprecated since "
+              + "YBA version 2024.1.0.0.</b> Use NodeInstance.state instead")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.1.0.0")
+  @Transient
+  private boolean inUse;
 
   @Column(nullable = false)
   @ApiModelProperty(value = "State of on-prem node", accessMode = READ_ONLY)
@@ -299,6 +310,11 @@ public class NodeInstance extends Model {
     return nodes.stream()
         .filter(n -> !inflightNodeUuids.contains(n.getNodeUuid()))
         .collect(Collectors.toList());
+  }
+
+  @JsonProperty("inUse")
+  public boolean getInUse() {
+    return isUsed();
   }
 
   @JsonIgnore
@@ -489,5 +505,19 @@ public class NodeInstance extends Model {
   public static boolean checkIpInUse(String ipAddress) {
     List<NodeInstance> nodeList = NodeInstance.find.all();
     return nodeList.stream().anyMatch(x -> x.getDetails().ip.equals(ipAddress));
+  }
+
+  public static List<NodeInstance> getByInstanceType(UUID providerUUID, String instanceTypeCode) {
+    // Retrieve all node instances for the given provider
+    List<NodeInstance> nodeInstances = listByProvider(providerUUID);
+
+    // filter node instances based on instanceTypeCode
+    List<NodeInstance> filteredInstances =
+        nodeInstances.stream()
+            .filter(nodeInstance -> nodeInstance.getInstanceTypeCode().equals(instanceTypeCode))
+            .collect(Collectors.toList());
+
+    // Return the filtered list of node instances
+    return filteredInstances;
   }
 }

@@ -19,6 +19,12 @@ On this page:
 
 ## Change log
 
+### February 28, 2024
+
+**Database**
+
+- Production track updated to 2.14.5.0.
+
 ### February 8, 2024
 
 **New Features**

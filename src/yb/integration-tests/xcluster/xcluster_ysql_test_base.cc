@@ -27,6 +27,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/thread.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -285,6 +286,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
       }
     }
   }
+  LOG_WITH_FUNC(INFO) << "Executing: " << query;
   RETURN_NOT_OK(conn.Execute(query));
 
   // Only check the schema name if it is set AND we created the table with a valid pgschema_name.
@@ -308,20 +310,24 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
 }
 
 Result<std::string> XClusterYsqlTestBase::GetUniverseId(Cluster* cluster) {
+  return VERIFY_RESULT(GetClusterConfig(*cluster)).cluster_uuid();
+}
+
+Result<master::SysClusterConfigEntryPB> XClusterYsqlTestBase::GetClusterConfig(Cluster& cluster) {
   master::GetMasterClusterConfigRequestPB req;
   master::GetMasterClusterConfigResponsePB resp;
 
   master::MasterClusterProxy master_proxy(
-      &cluster->client_->proxy_cache(),
-      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+      &cluster.client_->proxy_cache(),
+      VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   RETURN_NOT_OK(master_proxy.GetMasterClusterConfig(req, &resp, &rpc));
   if (resp.has_error()) {
-    return STATUS(IllegalState, "Error getting cluster config");
+    return StatusFromPB(resp.error().status());
   }
-  return resp.cluster_config().cluster_uuid();
+  return resp.cluster_config();
 }
 
 Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
@@ -377,22 +383,57 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
       strings::Substitute("Unable to find table $0 in namespace $1", table_name, namespace_name));
 }
 
+Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster* cluster, const YBTableName& table_name) {
+  master::ListTablesRequestPB req;
+  master::ListTablesResponsePB resp;
+
+  req.set_name_filter(table_name.table_name());
+  req.mutable_namespace_()->set_name(table_name.namespace_name());
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  req.set_include_not_running(true);
+
+  master::MasterDdlProxy master_proxy(
+      &cluster->client_->proxy_cache(),
+      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  for (const auto& table : resp.tables()) {
+    if (table.pgschema_name() == table_name.pgschema_name() &&
+        table.state() != master::SysTablesEntryPB::DELETED) {
+      LOG(INFO) << "Found table in incorrect state: " << table.ShortDebugString();
+      return false;
+    }
+  }
+  return true;
+}
+
 Status XClusterYsqlTestBase::DropYsqlTable(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& schema_name,
-    const std::string& table_name) {
+    Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
+    const std::string& table_name, bool is_index) {
   auto conn = EXPECT_RESULT(cluster->ConnectToDB(namespace_name));
-  std::string full_table_name =
+  auto full_table_name =
       schema_name.empty() ? table_name : Format("$0.$1", schema_name, table_name);
-  std::string query = Format("DROP TABLE $0", full_table_name, kKeyColumnName);
+  std::string query = Format("DROP $0 $1", is_index ? "INDEX" : "TABLE", full_table_name);
 
   return conn.Execute(query);
 }
 
-void XClusterYsqlTestBase::WriteWorkload(
+Status XClusterYsqlTestBase::DropYsqlTable(Cluster& cluster, const client::YBTable& table) {
+  const auto table_name = table.name();
+  return DropYsqlTable(
+      &cluster, table_name.namespace_name(), table_name.pgschema_name(), table_name.table_name(),
+      table_name.relation_type() == master::INDEX_TABLE_RELATION);
+}
+
+Status XClusterYsqlTestBase::WriteWorkload(
     const YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster) {
-  auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(table.namespace_name()));
   std::string table_name_str = GetCompleteTableName(table);
 
   LOG(INFO) << "Writing " << end - start << " inserts";
@@ -400,17 +441,19 @@ void XClusterYsqlTestBase::WriteWorkload(
   // Use a transaction if more than 1 row is to be inserted.
   const bool use_tran = end - start > 1;
   if (use_tran) {
-    EXPECT_OK(conn.ExecuteFormat("BEGIN"));
+    RETURN_NOT_OK(conn.ExecuteFormat("BEGIN"));
   }
 
   for (uint32_t i = start; i < end; i++) {
-    EXPECT_OK(
+    RETURN_NOT_OK(
         conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2)", table_name_str, kKeyColumnName, i));
   }
 
   if (use_tran) {
-    EXPECT_OK(conn.ExecuteFormat("COMMIT"));
+    RETURN_NOT_OK(conn.ExecuteFormat("COMMIT"));
   }
+
+  return Status::OK();
 }
 
 Result<pgwrapper::PGResultPtr> XClusterYsqlTestBase::ScanToStrings(
@@ -530,7 +573,7 @@ Result<std::vector<xrepl::StreamId>> XClusterYsqlTestBase::BootstrapCluster(
       &cluster->client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster->mini_cluster_->mini_tablet_server(0)->bound_rpc_addr()));
   RETURN_NOT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
-  CHECK(!resp.has_error());
+  CHECK(!resp.has_error()) << resp.error().DebugString();
 
   CHECK_EQ(resp.cdc_bootstrap_ids().size(), tables.size());
 
@@ -774,24 +817,56 @@ Status XClusterYsqlTestBase::SetUpWithParams(
     const std::vector<uint32_t>& num_consumer_tablets,
     const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
     uint32_t num_masters, const bool ranged_partitioned) {
-  RETURN_NOT_OK(Initialize(replication_factor, num_masters));
+  SetupParams params{
+      .num_consumer_tablets = num_consumer_tablets,
+      .num_producer_tablets = num_producer_tablets,
+      .replication_factor = replication_factor,
+      .num_masters = num_masters,
+      .ranged_partitioned = ranged_partitioned,
+      .is_colocated = false,
+  };
+
+  return SetUpClusters(params);
+}
+
+Status XClusterYsqlTestBase::SetUpClusters() {
+  static const SetupParams default_params;
+  return SetUpClusters(default_params); }
+
+Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
+  SCHECK(
+      !params.is_colocated || namespace_name != "yugabyte", IllegalState,
+      "yugabyte is a non colocated database. Set namespace_name to a different value");
+
+  RETURN_NOT_OK(Initialize(params.replication_factor, params.num_masters));
 
   SCHECK_EQ(
-      num_consumer_tablets.size(), num_producer_tablets.size(), IllegalState,
+      params.num_consumer_tablets.size(), params.num_producer_tablets.size(), IllegalState,
       Format(
           "Num consumer tables: $0 num producer tables: $1 must be equal.",
-          num_consumer_tablets.size(), num_producer_tablets.size()));
+          params.num_consumer_tablets.size(), params.num_producer_tablets.size()));
 
   RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-    const auto* num_tablets = &num_producer_tablets;
+    master::GetNamespaceInfoResponsePB resp;
+    auto namespace_status = cluster->client_->GetNamespaceInfo(
+        /*namespace_id=*/"", namespace_name, YQL_DATABASE_PGSQL, &resp);
+    if (!namespace_status.ok()) {
+      if (namespace_status.IsNotFound()) {
+        RETURN_NOT_OK(CreateDatabase(cluster, namespace_name, params.is_colocated));
+      } else {
+        return namespace_status;
+      }
+    }
+
+    const auto* num_tablets = &params.num_producer_tablets;
     if (cluster == &consumer_cluster_) {
-      num_tablets = &num_consumer_tablets;
+      num_tablets = &params.num_consumer_tablets;
     }
 
     for (uint32_t i = 0; i < num_tablets->size(); i++) {
       auto table_name = VERIFY_RESULT(CreateYsqlTable(
           i, num_tablets->at(i), cluster, boost::none /* tablegroup */, false /* colocated */,
-          ranged_partitioned));
+          params.ranged_partitioned));
       std::shared_ptr<client::YBTable> table;
       RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
       cluster->tables_.push_back(table);
@@ -823,12 +898,17 @@ Status XClusterYsqlTestBase::CheckpointReplicationGroup() {
   return Status::OK();
 }
 
-Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish() {
+Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish(
+    const std::string& target_master_addresses) {
   RETURN_NOT_OK(LoggedWaitFor(
-      [this]() {
-        return client::XClusterClient(*producer_client())
-            .IsCreateXClusterReplicationDone(
-                kReplicationGroupId, consumer_cluster()->GetMasterAddresses());
+      [this, &target_master_addresses]() -> Result<bool> {
+        auto result = VERIFY_RESULT(
+            client::XClusterClient(*producer_client())
+                .IsCreateXClusterReplicationDone(kReplicationGroupId, target_master_addresses));
+        if (!result.status().ok()) {
+          return result.status();
+        }
+        return result.done();
       },
       MonoDelta::FromSeconds(kRpcTimeout), __func__));
 
@@ -836,15 +916,19 @@ Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish() {
   return WaitForSafeTimeToAdvanceToNow();
 }
 
-Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint() {
+Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
+    const std::string& target_master_addresses) {
   RETURN_NOT_OK(SetupCertificates(kReplicationGroupId));
 
-  auto master_addr = consumer_cluster()->GetMasterAddresses();
+  auto master_addr = target_master_addresses;
+  if (master_addr.empty()) {
+    master_addr = consumer_cluster()->GetMasterAddresses();
+  }
 
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateXClusterReplication(kReplicationGroupId, master_addr));
 
-  return WaitForCreateReplicationToFinish();
+  return WaitForCreateReplicationToFinish(master_addr);
 }
 
 }  // namespace yb

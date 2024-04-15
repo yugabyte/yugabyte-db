@@ -178,7 +178,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& tablespace_oid,
                              bool is_matview,
                              const PgObjectId& pg_table_oid,
-                             const PgObjectId& old_relfilenode_oid)
+                             const PgObjectId& old_relfilenode_oid,
+                             bool is_truncate)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
   req_.set_database_name(database_name);
@@ -198,6 +199,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_is_matview(is_matview);
   pg_table_oid.ToPB(req_.mutable_pg_table_oid());
   old_relfilenode_oid.ToPB(req_.mutable_old_relfilenode_oid());
+  req_.set_is_truncate(is_truncate);
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   if (add_primary_key) {
@@ -321,8 +323,9 @@ Status PgTruncateTable::Exec() {
 
 PgDropIndex::PgDropIndex(PgSession::ScopedRefPtr pg_session,
                          const PgObjectId& index_id,
-                         bool if_exist)
-    : PgDropTable(pg_session, index_id, if_exist) {
+                         bool if_exist,
+                         bool ddl_rollback_enabled)
+    : PgDropTable(pg_session, index_id, if_exist), ddl_rollback_enabled_(ddl_rollback_enabled) {
 }
 
 PgDropIndex::~PgDropIndex() {
@@ -336,7 +339,8 @@ Status PgDropIndex::Exec() {
     PgObjectId indexed_table_id(indexed_table_name.table_id());
 
     pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
-    pg_session_->InvalidateTableCache(indexed_table_id, InvalidateOnPgClient::kFalse);
+    pg_session_->InvalidateTableCache(indexed_table_id,
+        ddl_rollback_enabled_ ? InvalidateOnPgClient::kTrue : InvalidateOnPgClient::kFalse);
     return Status::OK();
   }
   return s;
@@ -418,6 +422,11 @@ Status PgAlterTable::Exec() {
   pg_session_->InvalidateTableCache(
       PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kFalse);
   return Status::OK();
+}
+
+void PgAlterTable::InvalidateTableCacheEntry() {
+  pg_session_->InvalidateTableCache(
+      PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kTrue);
 }
 
 PgAlterTable::~PgAlterTable() {

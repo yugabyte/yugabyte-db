@@ -120,7 +120,7 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
         ReleaseManager.ReleaseMetadata.create("1.0.0")
             .withChartPath(TMP_CHART_PATH + "/uuct_yugabyte-1.0.0-helm.tar.gz");
     when(mockReleaseManager.getReleaseByVersion(any()))
-        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig));
+        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig, mockReleasesUtils));
     when(mockConfig.getString("yb.security.type")).thenReturn("");
     when(mockConfig.getString("yb.security.clientID")).thenReturn("");
     when(mockConfig.getString("yb.security.secret")).thenReturn("");

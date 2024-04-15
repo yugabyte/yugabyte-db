@@ -23,9 +23,6 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "useIMDSv2" : {
-          "type" : "boolean"
-        },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
           "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
@@ -681,7 +678,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "NEW_YSQL_TABLES_ADDED", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "CLOCK_SYNC_CHECK_FAILED", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "NEW_YSQL_TABLES_ADDED", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH" ],
           "type" : "string"
         },
         "thresholdUnit" : {
@@ -734,7 +731,7 @@
           "type" : "string"
         },
         "template" : {
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "NEW_YSQL_TABLES_ADDED", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "CLOCK_SYNC_CHECK_FAILED", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "NEW_YSQL_TABLES_ADDED", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH" ],
           "type" : "string"
         },
         "uuids" : {
@@ -895,7 +892,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "NEW_YSQL_TABLES_ADDED", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "CLOCK_SYNC_CHECK_FAILED", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "NEW_YSQL_TABLES_ADDED", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH" ],
           "type" : "string"
         },
         "thresholdConditionReadOnly" : {
@@ -3012,10 +3009,12 @@
     "BundleInfo" : {
       "properties" : {
         "sshPortOverride" : {
+          "description" : "sshPortOverride for the bundle. <b style=\"color:#ff0000\">Deprecated since YBA version 2.20.3.0.</b> Use imageBundles.details.sshUser instead.",
           "format" : "int32",
           "type" : "integer"
         },
         "sshUserOverride" : {
+          "description" : "sshUserOverride for the bundle. <b style=\"color:#ff0000\">Deprecated since YBA version 2.20.3.0.</b> Use imageBundles.details.sshUser instead.",
           "type" : "string"
         },
         "ybImage" : {
@@ -5815,6 +5814,16 @@
           },
           "description" : "Regions override for image bundle",
           "type" : "object"
+        },
+        "sshPort" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sshUser" : {
+          "type" : "string"
+        },
+        "useIMDSv2" : {
+          "type" : "boolean"
         }
       },
       "type" : "object"
@@ -6614,8 +6623,8 @@
           "type" : "integer"
         },
         "ldapSearchFilter" : {
-          "description" : "LDAP search filter to get the user entries",
-          "example" : "(objectclass=person)",
+          "description" : "LDAP search filter to get the user entries. This filter can also be used to search for the users based on their group memberships.",
+          "example" : "(objectclass=person), (&(objectclass=person)(|(groupName=CN=group1,CN=Groups,DC=example,DC=com)(groupName=CN=group2,CN=Groups,DC=example,DC=com)))",
           "type" : "string"
         },
         "ldapServer" : {
@@ -7595,7 +7604,7 @@
       "description" : "A node configuration.",
       "properties" : {
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "LOCALE_PRESENT", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "CHRONYC", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YCQL_SERVER_HTTP_PORT", "YCQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "LOCALE_PRESENT", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "CHRONYC", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YB_HOME_DIR_CLEAN", "DATA_DIR_CLEAN", "YCQL_SERVER_HTTP_PORT", "YCQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
         },
         "value" : {
@@ -8021,6 +8030,9 @@
           "description" : "Node details (as a JSON object)",
           "example" : "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}",
           "type" : "string"
+        },
+        "inUse" : {
+          "type" : "boolean"
         },
         "instanceName" : {
           "description" : "The node instance's name",
@@ -11942,11 +11954,17 @@
       "type" : "object"
     },
     "SubtaskData" : {
+      "description" : "Detailed subtask data",
       "properties" : {
         "creationTime" : {
           "description" : "Creation time (unix timestamp) of the task",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
+          "type" : "string"
+        },
+        "errorCode" : {
+          "description" : "WARNING: This is a preview API that could change. Subtask error code",
+          "enum" : [ "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED" ],
           "type" : "string"
         },
         "errorString" : {
@@ -13239,6 +13257,35 @@
         }
       },
       "required" : [ "customerUUID", "state", "universeUUID", "uuid" ],
+      "type" : "object"
+    },
+    "UniverseBackupRequestFormData" : {
+      "description" : "Universe Backup Form Data",
+      "properties" : {
+        "errorString" : {
+          "description" : "Error message",
+          "type" : "string"
+        },
+        "platformVersion" : {
+          "type" : "string"
+        },
+        "previousTaskUUID" : {
+          "description" : "Previous task UUID of a retry",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "storageConfigUUID" : {
+          "description" : "WARNING: This is a preview API that could change.Storage configuration UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "timeBeforeDelete" : {
+          "description" : "WARNING: This is a preview API that could change.Time before deleting the backup from storage, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "platformVersion", "storageConfigUUID" ],
       "type" : "object"
     },
     "UniverseConfigureTaskParams" : {
@@ -14626,6 +14673,22 @@
       },
       "type" : "object"
     },
+    "UserPasswordChangeFormData" : {
+      "description" : "User registration data. The API and UI use this to validate form data.",
+      "properties" : {
+        "currentPassword" : {
+          "description" : "Current Password",
+          "example" : "Test@1234",
+          "type" : "string"
+        },
+        "newPassword" : {
+          "description" : "New Password",
+          "example" : "Test@1234",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "UserProfileData" : {
       "description" : "User profile data. The API and UI use this to validate form data.",
       "properties" : {
@@ -15113,7 +15176,7 @@
           "type" : "boolean"
         },
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "LOCALE_PRESENT", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "CHRONYC", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YCQL_SERVER_HTTP_PORT", "YCQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "LOCALE_PRESENT", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "CHRONYC", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YB_HOME_DIR_CLEAN", "DATA_DIR_CLEAN", "YCQL_SERVER_HTTP_PORT", "YCQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
         },
         "value" : {
@@ -23186,6 +23249,52 @@
         "tags" : [ "Release management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/reset_password" : {
+      "put" : {
+        "description" : "",
+        "operationId" : "resetUserPassword",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "User data containing the current, new password",
+          "in" : "body",
+          "name" : "Users",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UserPasswordChangeFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Reset the user's password",
+        "tags" : [ "User management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/restore" : {
       "post" : {
         "description" : "",
@@ -28256,8 +28365,9 @@
     },
     "/api/v1/customers/{cUUID}/users/{uUUID}/change_password" : {
       "put" : {
-        "description" : "",
-        "operationId" : "updateUserPassword",
+        "deprecated" : true,
+        "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.1.0.0.</b></p>",
+        "operationId" : "changePassword",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -28284,25 +28394,19 @@
           }
         } ],
         "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
+          "default" : {
+            "description" : "successful operation"
           }
         },
         "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
+          "default" : {
+            "description" : "successful operation"
           }
         },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Change a user's password",
+        "summary" : "Change password - deprecated",
         "tags" : [ "User management" ]
       }
     },
@@ -28884,6 +28988,58 @@
         } ],
         "summary" : "Validate a node instance",
         "tags" : [ "Node instances" ]
+      }
+    },
+    "/api/v1/customers/{customerUUID}/universes/{universeUUID}/universe_backup" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "Universe Backup",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "customerUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "universeUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Universe Backup data to be created",
+          "in" : "body",
+          "name" : "Backup Universe",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UniverseBackupRequestFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create a Universe Backup",
+        "tags" : [ "Backups" ]
       }
     },
     "/api/v1/grafana_dashboard" : {

@@ -25,6 +25,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 
@@ -125,8 +126,6 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     ASSERT_OK(SetupUniverseReplication(
         {producer_table1_, producer_table2_}, {LeaderOnly::kTrue, Transactional::kTrue}));
 
-    ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
-
     master::ListCDCStreamsResponsePB stream_resp;
     ASSERT_OK(GetCDCStreamForTable(producer_table1_->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
@@ -146,8 +145,8 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
   virtual Status PreReplicationSetup() { return Status::OK(); }
 
-  void WriteWorkload(const client::YBTableName& table, uint32_t start, uint32_t end) {
-    super::WriteWorkload(table, start, end, &producer_cluster_);
+  Status WriteWorkload(const client::YBTableName& table, uint32_t start, uint32_t end) {
+    return super::WriteWorkload(table, start, end, &producer_cluster_);
   }
 
   virtual Status PostReplicationSetup() {
@@ -258,7 +257,7 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   uint32_t num_records_written = 0;
   StoreReadTimes();
 
-  WriteWorkload(producer_table1_->name(), 0, kNumRecordsPerBatch);
+  ASSERT_OK(WriteWorkload(producer_table1_->name(), 0, kNumRecordsPerBatch));
   num_records_written += kNumRecordsPerBatch;
 
   // Verify data is written on the consumer.
@@ -280,8 +279,8 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
 
   // Write a batch of 100 in one transaction in table1 and a single row without a transaction in
   // table2.
-  WriteWorkload(producer_table1_->name(), kNumRecordsPerBatch, 2 * kNumRecordsPerBatch);
-  WriteWorkload(producer_table2_->name(), 0, 1);
+  ASSERT_OK(WriteWorkload(producer_table1_->name(), kNumRecordsPerBatch, 2 * kNumRecordsPerBatch));
+  ASSERT_OK(WriteWorkload(producer_table2_->name(), 0, 1));
 
   // Verify none of the new rows in either table are visible.
   ASSERT_NOK(
@@ -401,7 +400,7 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
     bootstrap_ids_ = VERIFY_RESULT(BootstrapCluster(new_tables, &producer_cluster_));
 
     // 2. Write some rows transactonally.
-    WriteWorkload(producer_table1_->name(), 0, kNumRecordsPerBatch);
+    RETURN_NOT_OK(WriteWorkload(producer_table1_->name(), 0, kNumRecordsPerBatch));
 
     // 3. Run log GC on producer.
     RETURN_NOT_OK(producer_cluster()->FlushTablets());
@@ -434,7 +433,7 @@ TEST_F_EX(XClusterConsistencyTest, BootstrapTables, XClusterConsistencyTestWithB
   ASSERT_OK(ValidateConsumerRows(consumer_table1_->name(), kNumRecordsPerBatch));
 
   // 6. Write some more rows and ensure they get replicated.
-  WriteWorkload(producer_table1_->name(), kNumRecordsPerBatch, 2 * kNumRecordsPerBatch);
+  ASSERT_OK(WriteWorkload(producer_table1_->name(), kNumRecordsPerBatch, 2 * kNumRecordsPerBatch));
   ASSERT_OK(WaitForRowCount(consumer_table1_->name(), 2 * kNumRecordsPerBatch));
   ASSERT_OK(ValidateConsumerRows(consumer_table1_->name(), 2 * kNumRecordsPerBatch));
 }
@@ -495,7 +494,7 @@ class XClusterSingleClusterTest : public XClusterYsqlTestBase {
 TEST_F_EX(XClusterConsistencyTest, BootstrapAbortInFlightTxn, XClusterSingleClusterTest) {
   ASSERT_OK(TestAbortInFlightTxn());
 
-  WriteWorkload(producer_table_->name(), 0, 10, &producer_cluster_);
+  ASSERT_OK(WriteWorkload(producer_table_->name(), 0, 10, &producer_cluster_));
   auto count = ASSERT_RESULT(GetRowCount(producer_table_->name(), &producer_cluster_));
   ASSERT_EQ(count, 10);
 }

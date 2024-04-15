@@ -37,11 +37,20 @@ import { YBButton } from '../../../../common/forms/fields';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField } from '../../../../../redesign/components';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
-import { addItem, deleteItem, editItem, getIsFormDisabled, readFileAsText } from '../utils';
+import {
+  addItem,
+  deleteItem,
+  editItem,
+  getIsFormDisabled,
+  readFileAsText,
+  handleFormSubmitServerError,
+  UseProviderValidationEnabled
+} from '../utils';
 import { YBLoading } from '../../../../common/indicators';
 import { api, suggestedKubernetesConfigQueryKey } from '../../../../../redesign/helpers/api';
+import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { adaptSuggestedKubernetesConfig } from './utils';
-
+import { K8S_FORM_MAPPERS } from './constants';
 import {
   K8sAvailabilityZoneMutation,
   K8sPullSecretFile,
@@ -114,9 +123,14 @@ export const K8sProviderCreateForm = ({
     }
   );
 
+  const {
+    isLoading: isProviderValidationLoading,
+    isValidationEnabled
+  } = UseProviderValidationEnabled(CloudType.kubernetes);
   if (
-    enableSuggestedConfigFeature &&
-    (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)
+    (enableSuggestedConfigFeature &&
+      (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)) ||
+    isProviderValidationLoading
   ) {
     return <YBLoading />;
   }
@@ -238,7 +252,23 @@ export const K8sProviderCreateForm = ({
       toast.error('An error occured while reading the form input files.');
     }
     if (providerPayload) {
-      await createInfraProvider(providerPayload);
+      try {
+        await createInfraProvider(providerPayload, {
+          shouldValidate: isValidationEnabled,
+          ignoreValidationErrors: false,
+          mutateOptions: {
+            onError: (err) => {
+              handleFormSubmitServerError(
+                (err as any)?.response?.data,
+                formMethods,
+                K8S_FORM_MAPPERS
+              );
+            }
+          }
+        });
+      } catch (_) {
+        // Handled with `mutateOptions.onError`
+      }
     }
   };
 
@@ -383,6 +413,7 @@ export const K8sProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                errors={formMethods.formState.errors.regions as any}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>

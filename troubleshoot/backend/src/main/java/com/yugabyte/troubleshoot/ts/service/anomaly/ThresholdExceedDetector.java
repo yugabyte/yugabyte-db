@@ -14,15 +14,16 @@ public abstract class ThresholdExceedDetector extends AnomalyDetectorBase {
     super(graphService, metadataProvider, anomalyDetectionService);
   }
 
-  protected abstract List<GraphWithThreshold> getGraphsWithThresholds();
+  protected abstract List<GraphWithThreshold> getGraphsWithThresholds(
+      AnomalyDetectionContext context);
 
-  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+  protected AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
 
     List<GraphAnomaly> anomalies = new ArrayList<>();
     AnomalyDetectionContext.AnomalyDetectionContextBuilder contextWithUpdatedStep =
         context.toBuilder();
-    getGraphsWithThresholds()
+    getGraphsWithThresholds(context)
         .forEach(
             graphWithThreshold -> {
               GraphResponse response =
@@ -31,16 +32,18 @@ public abstract class ThresholdExceedDetector extends AnomalyDetectorBase {
                 return;
               }
 
-              long minAnomalySize =
-                  Math.max(response.getStepSeconds() * 1000, getMinAnomalySizeMillis());
+              long minAnomalyDurationMillis =
+                  Math.max(
+                      response.getStepSeconds() * 1000,
+                      context.getConfig().getDuration(getMinAnomalyDurationKey()).toMillis());
               contextWithUpdatedStep.stepSeconds(response.getStepSeconds());
               GraphAnomalyDetectionService.AnomalyDetectionSettings detectionSettings =
                   new GraphAnomalyDetectionService.AnomalyDetectionSettings()
-                      .setMinimalAnomalyDurationMillis(minAnomalySize);
+                      .setMinimalAnomalyDurationMillis(minAnomalyDurationMillis);
               detectionSettings
                   .getIncreaseDetectionSettings()
-                  .setWindowMinSize(minAnomalySize)
-                  .setWindowMaxSize(minAnomalySize * 2);
+                  .setWindowMinSize(minAnomalyDurationMillis)
+                  .setWindowMaxSize(minAnomalyDurationMillis * 2);
               detectionSettings
                   .getThresholdExceedSettings()
                   .setThreshold(graphWithThreshold.getThreshold());

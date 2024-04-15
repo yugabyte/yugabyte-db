@@ -280,3 +280,27 @@ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 
 SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
 /*+ Set(enable_bitmapscan false) */
 SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
+
+--
+-- Semi Join
+--
+/*+ BitmapScan(joinb) */ EXPLAIN ANALYZE
+SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+/*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
+SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+
+--
+-- Anti Join
+--
+/*+ BitmapScan(joinb) */ EXPLAIN ANALYZE
+SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+/*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
+SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+
+RESET yb_explain_hide_non_deterministic_fields;
+RESET enable_bitmapscan;
+RESET yb_prefer_bnl;

@@ -79,15 +79,12 @@ struct XClusterOutboundReplicationGroupStatus {
 };
 
 struct XClusterStatus {
-  std::string role;
-  bool transactional = false;
-
   std::vector<XClusterOutboundReplicationGroupStatus> outbound_replication_group_statuses;
   std::vector<XClusterOutboundTableStreamStatus> outbound_table_stream_statuses;
   std::vector<XClusterInboundReplicationGroupStatus> inbound_replication_group_statuses;
 
   bool IsEnabled() const {
-    return !role.empty() || !outbound_replication_group_statuses.empty() ||
+    return !outbound_replication_group_statuses.empty() ||
            !outbound_table_stream_statuses.empty() || !inbound_replication_group_statuses.empty();
   }
 };

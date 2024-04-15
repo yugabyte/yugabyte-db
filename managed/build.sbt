@@ -120,10 +120,19 @@ def commonSettings = Seq(
   scalaVersion := "2.13.12"
 )
 
+lazy val TestLocalProviderSuite = config("testLocalSuite") extend(Test)
+lazy val TestQuickSuite = config("testQuickSuite") extend(Test)
+lazy val TestRetrySuite = config("testRetrySuite") extend(Test)
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging, JavaAgent)
+  .configs(TestLocalProviderSuite, TestQuickSuite, TestRetrySuite)
   .disablePlugins(PlayLayoutPlugin)
   .settings(commonSettings)
+  .settings(
+    inConfig(TestLocalProviderSuite)(Defaults.testTasks),
+    inConfig(TestQuickSuite)(Defaults.testTasks),
+    inConfig(TestRetrySuite)(Defaults.testTasks)
+  )
   .settings(commands += Command.command("deflake") { state =>
     "test" :: "deflake" :: state
   })
@@ -457,7 +466,7 @@ generateCrdObjects := {
 
 downloadThirdPartyDeps := {
   ybLog("Downloading third-party dependencies...")
-  val status = Process("wget -qi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
+  val status = Process("wget -Nqi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
   status
 }
 
@@ -701,7 +710,7 @@ compileYbaCliBinary := {
   var fileList = Seq.empty[String]
 
   ybLog("Generating YBA CLI go binary.")
-  
+
   val (status1, fileList1) = makeYbaCliPackage("linux", "amd64", baseDirectory.value)
   completeFileList = fileList1
   status = status1
@@ -763,7 +772,7 @@ cleanYbaCliBinary := {
 def cleanYbaCliPackage(goos: String, goarch: String, directory: java.io.File): Int = {
   val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
   val status = Process("make clean", new File(directory + "/yba-cli/"), env: _*).!
-  
+
   status
 }
 
@@ -870,6 +879,12 @@ Universal / mappings ++= {
   }
 }
 
+// Copying 'support/thirdparty-dependencies.txt' into the YBA tarball at 'conf/thirdparty-dependencies.txt'.
+Universal / mappings ++= {
+  val tpdSourceFile = baseDirectory.value / "support" / "thirdparty-dependencies.txt"
+  Seq((tpdSourceFile, "conf/thirdparty-dependencies.txt"))
+}
+
 
 javaAgents += "io.kamon" % "kanela-agent" % "1.0.18"
 
@@ -889,8 +904,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.82-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b8"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.83-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
@@ -957,6 +972,34 @@ Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSiz
 
 Test / javaOptions += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testOptions += Tests.Filter(s =>
+  !s.contains("com.yugabyte.yw.commissioner.tasks.local")
+)
+
+lazy val testLocal = taskKey[Unit]("Runs local provider tests")
+lazy val testFast = taskKey[Unit]("Runs quick tests")
+lazy val testUpgradeRetry = taskKey[Unit]("Runs retry tests")
+
+def localTestSuiteFilter(name: String): Boolean = (name startsWith "com.yugabyte.yw.commissioner.tasks.local")
+def quickTestSuiteFilter(name: String): Boolean =
+  !(name.startsWith("com.yugabyte.yw.commissioner.tasks.local") ||
+    name.startsWith("com.yugabyte.yw.commissioner.tasks.upgrade"))
+def upgradeRetryTestSuiteFilter(name: String): Boolean = (name startsWith "com.yugabyte.yw.commissioner.tasks.upgrade")
+
+TestLocalProviderSuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestLocalProviderSuite / testOptions := Seq(Tests.Filter(localTestSuiteFilter))
+TestLocalProviderSuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testLocal := (TestLocalProviderSuite / test).value
+
+TestQuickSuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestQuickSuite / testOptions := Seq(Tests.Filter(quickTestSuiteFilter))
+TestQuickSuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testFast := (TestQuickSuite / test).value
+
+TestRetrySuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestRetrySuite / testOptions := Seq(Tests.Filter(upgradeRetryTestSuiteFilter))
+TestRetrySuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testUpgradeRetry := (TestRetrySuite / test).value
 
 // Skip packaging javadoc for now
 Compile / doc / sources := Seq()

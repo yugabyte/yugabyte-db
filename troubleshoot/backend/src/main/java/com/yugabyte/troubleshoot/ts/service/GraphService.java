@@ -1,9 +1,14 @@
 package com.yugabyte.troubleshoot.ts.service;
 
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.LABEL_RESULT;
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.buildSummary;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.troubleshoot.ts.logs.LogsUtil;
 import com.yugabyte.troubleshoot.ts.models.*;
+import io.prometheus.client.Summary;
 import java.io.IOException;
 import java.time.*;
 import java.util.*;
@@ -21,6 +26,16 @@ import org.yaml.snakeyaml.Yaml;
 @Slf4j
 @Service
 public class GraphService {
+
+  static String LABEL_GRAPH_NAME = "graph_name";
+
+  static final Summary QUERY_TIME =
+      buildSummary(
+          "ts_graph_query_time_millis", "Graph query time", LABEL_RESULT, LABEL_GRAPH_NAME);
+
+  static final Summary DATA_RETRIEVAL_TIME =
+      buildSummary(
+          "ts_graph_data_retrieval_time_millis", "Graph data retrieval time", LABEL_GRAPH_NAME);
 
   public static final Integer GRAPH_POINTS_DEFAULT = 100;
   private final ThreadPoolTaskExecutor metricQueryExecutor;
@@ -92,7 +107,8 @@ public class GraphService {
               new ImmutablePair<>(
                   query,
                   metricQueryExecutor.submit(
-                      () -> source.getGraph(universeMetadata, universeDetails, query))));
+                      LogsUtil.wrapCallable(
+                          () -> source.getGraph(universeMetadata, universeDetails, query)))));
           sourceFound = true;
           break;
         }

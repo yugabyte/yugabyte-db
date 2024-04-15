@@ -73,7 +73,7 @@ In the **SSH User** field, enter the name of the user that has SSH privileges on
 If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**) and [manually provision the instances](../on-premises-script/).
 
 {{< tip title="SSH access" >}}
-After you have provisioned and added the instances to the provider (including installing the [node agent](../../../../faq/yugabyte-platform/#node-agent)), YBA no longer requires SSH or sudo access to nodes.
+After you have provisioned and added the instances to the provider (including installing the [node agent](/preview/faq/yugabyte-platform/#node-agent)), YBA no longer requires SSH or sudo access to nodes.
 {{< /tip >}}
 
 In the **SSH Port** field, provide the port number of SSH client connections.
@@ -96,11 +96,11 @@ For manual provisioning, you are prompted to run a Python pre-provisioning scrip
 
 Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
 
-Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
+Enable **Install Node Exporter** if you want the Node Exporter installed. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
 
 The **Node Exporter User** field allows you to override the default `prometheus` user. This is helpful when the user is pre-provisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
 
-Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
+Use the **Node Exporter Port** field to specify the port number for the Node Exporter. The default value is 9300.
 
 **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
 

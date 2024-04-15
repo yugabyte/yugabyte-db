@@ -81,5 +81,9 @@ Result<std::shared_ptr<client::XClusterRemoteClient>> GetXClusterRemoteClient(
 Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
     const xcluster::ReplicationGroupId& replication_group_id, CatalogManager& catalog_manager);
 
+Status RemoveTablesFromReplicationGroup(
+    scoped_refptr<UniverseReplicationInfo> universe, const std::vector<TableId>& producer_table_ids,
+    CatalogManager& catalog_manager, const LeaderEpoch& epoch);
+
 }  // namespace master
 }  // namespace yb

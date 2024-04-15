@@ -88,6 +88,7 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "commands/ybccmds.h"
 #include "commands/yb_profile.h"
+#include "miscadmin.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -1032,6 +1033,9 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	int			nkeys;
 	SysScanDesc scan;
 	HeapTuple	tup;
+	ObjectAddress implicit_tablegroup;
+	bool		  is_colocated_tables_with_tablespace_enabled =
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 	/* DROP hook of the objects being removed */
 	InvokeObjectDropHookArg(object->classId, object->objectId,
@@ -1096,13 +1100,36 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	scan = systable_beginscan(*depRel, DependDependerIndexId, true,
 							  NULL, nkeys, key);
 
+	implicit_tablegroup.objectId = InvalidOid;
+
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
+		Form_pg_depend depform = (Form_pg_depend) GETSTRUCT(tup);
 		CatalogTupleDelete(*depRel, tup);
+
+		if (MyDatabaseColocated && depform->refclassid == YbTablegroupRelationId && 
+      !tablegroupHasDependents(depform->refobjid)) 
+    {
+			implicit_tablegroup.classId = depform->refclassid;
+			implicit_tablegroup.objectId = depform->refobjid;
+			implicit_tablegroup.objectSubId = depform->refobjsubid;
+		}
 	}
 
 	systable_endscan(scan);
 
+	/*
+	 * Check if implicit tablegroup has any more tables in it. 
+	 * If not delete it.
+	 */
+
+	if (is_colocated_tables_with_tablespace_enabled &&
+		OidIsValid(implicit_tablegroup.objectId))
+	{
+		deleteSharedDependencyRecordsFor(implicit_tablegroup.classId, implicit_tablegroup.objectId, 
+			implicit_tablegroup.objectSubId);
+		RemoveTablegroupById(implicit_tablegroup.objectId, true);
+	}
 	/*
 	 * Delete shared dependency references related to this object.  Again, if
 	 * subId = 0, remove records for sub-objects too.
@@ -1324,7 +1351,7 @@ doDeletion(const ObjectAddress *object, int flags)
 			break;
 
 		case OCLASS_TBLGROUP:
-			RemoveTablegroupById(object->objectId);
+			RemoveTablegroupById(object->objectId, false);
 			break;
 
 			/*

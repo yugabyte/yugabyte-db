@@ -128,13 +128,14 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         && nodesToBeRestarted != null
         && !nodesToBeRestarted.isEmpty()) {
       createCheckNodesAreSafeToTakeDownTask(
-          nodesToBeRestarted.mastersList.stream()
-              .map(t -> t.cloudInfo.private_ip)
-              .collect(Collectors.toList()),
-          nodesToBeRestarted.tserversList.stream()
-              .map(t -> t.cloudInfo.private_ip)
-              .collect(Collectors.toList()));
+          nodesToBeRestarted.mastersList,
+          nodesToBeRestarted.tserversList,
+          getTargetSoftwareVersion());
     }
+  }
+
+  protected String getTargetSoftwareVersion() {
+    return null;
   }
 
   @Override

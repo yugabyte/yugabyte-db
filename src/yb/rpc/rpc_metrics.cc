@@ -51,6 +51,11 @@ METRIC_DEFINE_counter(server, rpc_outbound_calls_stuck,
                       "Number of events where we detected an unreasonably long running outbound "
                       "RPC call.");
 
+
+METRIC_DEFINE_gauge_int64(server, rpc_busy_reactors, "The number of busy reactors.",
+                          yb::MetricUnit::kUnits,
+                          "The number of reactors doing some work at this time.");
+
 namespace yb {
 namespace rpc {
 
@@ -63,6 +68,7 @@ RpcMetrics::RpcMetrics(const scoped_refptr<MetricEntity>& metric_entity) {
     outbound_calls_alive = METRIC_rpc_outbound_calls_alive.Instantiate(metric_entity, 0);
     outbound_calls_created = METRIC_rpc_outbound_calls_created.Instantiate(metric_entity);
     outbound_calls_stuck = METRIC_rpc_outbound_calls_stuck.Instantiate(metric_entity);
+    busy_reactors = METRIC_rpc_busy_reactors.Instantiate(metric_entity, 0);
   }
 }
 

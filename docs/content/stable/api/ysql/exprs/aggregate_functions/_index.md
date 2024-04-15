@@ -103,6 +103,6 @@ There are four variants of the `GROUP BY` invocation style: `GROUP BY <column li
 
 ### Aggregate functions case study—the "68–95–99.7" rule
 
-**[Here](./case-study-the-6895997-rule/)**. Regard this section as an optional extra. It shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68%e2%80%9395%e2%80%9399.7_rule). This case-study focuses on just one part of the rule:
+**[Here](./case-study-the-68-95-997-rule/)**. Regard this section as an optional extra. It shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68%e2%80%9395%e2%80%9399.7_rule). This case-study focuses on just one part of the rule:
 
 > 68.27% of the values in a normal distribution lie within one standard deviation each side of the mean.

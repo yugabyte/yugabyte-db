@@ -74,11 +74,7 @@ namespace pgwrapper {
 
 class PgWaitQueuesTest : public PgMiniTestBase {
  protected:
-  static constexpr int kClientStatementTimeoutSeconds = 60;
-
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
-        "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_status_tablets) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_single_shard_waiter_retry_ms) = 10000;
@@ -88,7 +84,7 @@ class PgWaitQueuesTest : public PgMiniTestBase {
   }
 
   CoarseTimePoint GetDeadlockDetectedDeadline() const {
-    return CoarseMonoClock::Now() + (kClientStatementTimeoutSeconds * 1s) / 2;
+    return CoarseMonoClock::Now() + 5s;
   }
 
   Result<std::future<Status>> ExpectBlockedAsync(
@@ -902,11 +898,8 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupSelectForShareAndUpda
 }
 
 class PgWaitQueueContentionStressTest : public PgMiniTestBase {
-  static constexpr int kClientStatementTimeoutSeconds = 60;
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
-        "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_queue_poll_interval_ms) = 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transactions_status_poll_interval_ms) = 5;

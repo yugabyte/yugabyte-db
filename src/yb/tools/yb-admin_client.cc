@@ -79,7 +79,7 @@
 #include "yb/master/master_test.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/master_util.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -92,16 +92,16 @@
 
 #include "yb/encryption/encryption_util.h"
 
-#include "yb/util/debug-util.h"
 #include "yb/util/format.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/tostring.h"
 
 DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
@@ -4289,24 +4289,6 @@ Status ClusterAdminClient::AlterUniverseReplication(
   return Status::OK();
 }
 
-Status ClusterAdminClient::ChangeXClusterRole(cdc::XClusterRole role) {
-  master::ChangeXClusterRoleRequestPB req;
-  master::ChangeXClusterRoleResponsePB resp;
-  req.set_role(role);
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_replication_proxy_->ChangeXClusterRole(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-        cout << "Error changing role: " << resp.error().status().message() << endl;
-        return StatusFromPB(resp.error().status());
-  }
-
-  cout << "Changed role successfully" << endl;
-  return Status::OK();
-}
-
 Status ClusterAdminClient::SetUniverseReplicationEnabled(
     const std::string& replication_group_id, bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
@@ -4578,9 +4560,10 @@ Status ClusterAdminClient::WaitForCreateXClusterReplication(
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
 
   for (;;) {
-    if (VERIFY_RESULT(XClusterClient().IsCreateXClusterReplicationDone(
-            replication_group_id, target_master_addresses))) {
-      return Status::OK();
+    auto result = XClusterClient().IsCreateXClusterReplicationDone(
+        replication_group_id, target_master_addresses);
+    if (result && result->done()) {
+      return result->status();
     }
 
     std::this_thread::sleep_for(100ms);

@@ -5,6 +5,10 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.annotation.JsonValue;
 import io.ebean.annotation.DbEnumValue;
 
+// Any changes to HaConfigStates must also be reflected in:
+// - ui/src/components/ha/dtos.ts
+// - ui/src/translations/en.json
+
 public class HaConfigStates {
   public enum GlobalState {
     Unknown("Unknown"),

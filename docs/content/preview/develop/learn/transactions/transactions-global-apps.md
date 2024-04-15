@@ -41,7 +41,7 @@ COMMIT;
 
 This will read data from the closest follower or leader. As replicas may not be up-to-date with all updates, by design, this will return only stale data (the default staleness is 30 seconds). This is the case even if the read goes to a leader.
 
-You can change the staleness value using the following configuration parameter:
+You can change the staleness value using the following YSQL configuration parameter:
 
 ```plpgsql
 SET yb_follower_read_staleness_ms = 10000; -- 10s

@@ -142,7 +142,7 @@ FindOrDieNoPrint(Collection& collection,  // NOLINT
   return it->second;
 }
 
-#define FIND_OR_RESULT(collection, key) ({ \
+#define FIND_OR_STATUS(collection, key) ({ \
     Result<decltype(collection)::value_type::second_type> result = \
         STATUS_FORMAT(NotFound, "Map key not found: $0", key); \
     auto collection_it = collection.find(key); \

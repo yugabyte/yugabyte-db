@@ -70,6 +70,7 @@
 #include "yb/rpc/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/server/ycql_stat_provider.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_peer.h"
@@ -85,8 +86,10 @@
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/backup_service.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
@@ -307,7 +310,8 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-      master_config_index_(0) {
+      master_config_index_(0),
+      xcluster_context_(new TserverXClusterContext()) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -600,10 +604,8 @@ Status TabletServer::RegisterServices() {
       FLAGS_ts_remote_bootstrap_svc_queue_length, std::move(remote_bootstrap_service)));
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
-      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
-      messenger(), permanent_uuid(), &options(),
-      XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
-      &pg_node_level_mutation_counter_);
+      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
+      permanent_uuid(), &options(), xcluster_context_.get(), &pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
   RETURN_NOT_OK(RegisterService(FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
@@ -888,14 +890,6 @@ void TabletServer::SetYsqlDBCatalogVersions(
       }
     } else {
       DCHECK_EQ(ysql_db_catalog_version_map_.size(), 1);
-      if (!catalog_version_table_in_perdb_mode_.has_value()) {
-        // We can initialize to false at most one time. Once set,
-        // catalog_version_table_in_perdb_mode_ can only go from false to
-        // true (i.e., from global mode to perdb mode).
-        LOG(INFO) << "set pg_yb_catalog_version table in global mode";
-        catalog_version_table_in_perdb_mode_ = false;
-        shared_object().SetCatalogVersionTableInPerdbMode(false);
-      }
     }
     bool row_inserted = it.second;
     bool row_updated = false;
@@ -982,6 +976,15 @@ void TabletServer::SetYsqlDBCatalogVersions(
         ysql_last_breaking_catalog_version_ = new_breaking_version;
       }
     }
+  }
+  if (!catalog_version_table_in_perdb_mode_.has_value() &&
+      ysql_db_catalog_version_map_.size() == 1) {
+    // We can initialize to false at most one time. Once set,
+    // catalog_version_table_in_perdb_mode_ can only go from false to
+    // true (i.e., from global mode to perdb mode).
+    LOG(INFO) << "set pg_yb_catalog_version table in global mode";
+    catalog_version_table_in_perdb_mode_ = false;
+    shared_object().SetCatalogVersionTableInPerdbMode(false);
   }
 
   // We only do full catalog report for now, remove entries that no longer exist.
@@ -1070,24 +1073,8 @@ void TabletServer::SetPublisher(rpc::Publisher service) {
   publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
 }
 
-const XClusterSafeTimeMap& TabletServer::GetXClusterSafeTimeMap() const {
-  return xcluster_safe_time_map_;
-}
-
 PgMutationCounter& TabletServer::GetPgNodeLevelMutationCounter() {
   return pg_node_level_mutation_counter_;
-}
-
-void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
-  xcluster_safe_time_map_.Update(safe_time_map);
-}
-
-Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {
-  auto xcluster_consumer_ptr = GetXClusterConsumer();
-  if (!xcluster_consumer_ptr) {
-    return STATUS(Uninitialized, "XCluster consumer has not been initialized");
-  }
-  return xcluster_consumer_ptr->TEST_GetXClusterRole();
 }
 
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
@@ -1197,7 +1184,7 @@ Status TabletServer::CreateXClusterConsumer() {
     auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
     SCHECK(tablet_peer, NotFound, "Could not find tablet $0", tablet_id);
     return std::make_pair(
-        tablet_peer->tablet_metadata()->namespace_id(),
+        VERIFY_RESULT(tablet_peer->GetNamespaceId()),
         tablet_peer->tablet_metadata()->namespace_name());
   };
 
@@ -1209,6 +1196,8 @@ Status TabletServer::CreateXClusterConsumer() {
 
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     const master::TSHeartbeatResponsePB& resp) {
+  xcluster_context_->UpdateSafeTime(resp.xcluster_namespace_to_safe_time());
+
   auto* xcluster_consumer = GetXClusterConsumer();
 
   // Only create a xcluster consumer if consumer_registry is not null.
@@ -1220,8 +1209,6 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
       RETURN_NOT_OK(CreateXClusterConsumer());
       xcluster_consumer = GetXClusterConsumer();
     }
-
-    SetXClusterDDLOnlyMode(consumer_registry->role() != cdc::XClusterRole::ACTIVE);
   }
 
   if (xcluster_consumer) {
@@ -1351,13 +1338,25 @@ Status TabletServer::SetCDCServiceEnabled() {
   return Status::OK();
 }
 
-void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
-  xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
+const TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
+  return *xcluster_context_;
 }
 
-void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server) {
+void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server,
+      server::YCQLStatementStatsProvider* stmt_provider) {
   DCHECK_EQ(cql_server_.load(), nullptr);
+  DCHECK_EQ(cql_stmt_provider_.load(), nullptr);
+
   cql_server_.store(server);
+  cql_stmt_provider_.store(stmt_provider);
+}
+
+Status TabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+      tserver::PgYCQLStatementStatsResponsePB* resp) const {
+    auto* cql_stmt_provider = cql_stmt_provider_.load();
+    SCHECK_NOTNULL(cql_stmt_provider);
+    RETURN_NOT_OK(cql_stmt_provider->YCQLStatementStats(req, resp));
+    return Status::OK();
 }
 
 rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {

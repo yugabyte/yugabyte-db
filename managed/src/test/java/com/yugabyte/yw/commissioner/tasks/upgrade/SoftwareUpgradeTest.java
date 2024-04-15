@@ -756,12 +756,21 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testSoftwareUpgradeRetries() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.ybSoftwareVersion = OLD_VERSION;
+          univ.setUniverseDetails(details);
+        });
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.16.0.0-b1";
+    taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.expectedUniverseVersion = -1;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     taskParams.creatingUser = defaultUser;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     TestUtils.setFakeHttpContext(defaultUser);
     super.verifyTaskRetries(
         defaultCustomer,
@@ -836,19 +845,29 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     Set<String> configuredMasters =
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
-            .filter(t -> t.getDetails().get("type").asText().equals("Software"))
+            .filter(t -> t.getTaskParams().get("type").asText().equals("Software"))
             .filter(
-                t -> t.getDetails().get("properties").get("processType").asText().equals("MASTER"))
-            .map(t -> t.getDetails().get("nodeName").asText())
+                t ->
+                    t.getTaskParams()
+                        .get("properties")
+                        .get("processType")
+                        .asText()
+                        .equals("MASTER"))
+            .map(t -> t.getTaskParams().get("nodeName").asText())
             .collect(Collectors.toSet());
 
     Set<String> configuredTservers =
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
-            .filter(t -> t.getDetails().get("type").asText().equals("Software"))
+            .filter(t -> t.getTaskParams().get("type").asText().equals("Software"))
             .filter(
-                t -> t.getDetails().get("properties").get("processType").asText().equals("TSERVER"))
-            .map(t -> t.getDetails().get("nodeName").asText())
+                t ->
+                    t.getTaskParams()
+                        .get("properties")
+                        .get("processType")
+                        .asText()
+                        .equals("TSERVER"))
+            .map(t -> t.getTaskParams().get("nodeName").asText())
             .collect(Collectors.toSet());
 
     Set<String> expectedMasters =

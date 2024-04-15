@@ -73,7 +73,8 @@ public class ReleasesControllerTest extends FakeDBApplication {
     List<ReleaseArtifact> artifacts = foundRelease.getArtifacts();
     assertEquals(1, artifacts.size());
     assertEquals("http://download.yugabyte.com/my_release.tgz", artifacts.get(0).getPackageURL());
-    assertEquals("sha256:1234asdf", artifacts.get(0).getSha256());
+    assertEquals("1234asdf", artifacts.get(0).getSha256());
+    assertEquals("sha256:1234asdf", artifacts.get(0).getFormattedSha256());
     assertEquals(ReleaseArtifact.Platform.LINUX, artifacts.get(0).getPlatform());
     assertEquals(Architecture.x86_64, artifacts.get(0).getArchitecture());
   }
@@ -107,7 +108,8 @@ public class ReleasesControllerTest extends FakeDBApplication {
     List<ReleaseArtifact> artifacts = foundRelease.getArtifacts();
     assertEquals(1, artifacts.size());
     assertEquals("http://download.yugabyte.com/my_release.tgz", artifacts.get(0).getPackageURL());
-    assertEquals("sha256:1234asdf", artifacts.get(0).getSha256());
+    assertEquals("1234asdf", artifacts.get(0).getSha256());
+    assertEquals("sha256:1234asdf", artifacts.get(0).getFormattedSha256());
     assertEquals(ReleaseArtifact.Platform.KUBERNETES, artifacts.get(0).getPlatform());
     assertNull(artifacts.get(0).getArchitecture());
   }
@@ -263,6 +265,9 @@ public class ReleasesControllerTest extends FakeDBApplication {
   @Test
   public void testUpdateReleaseState() {
     Release r1 = Release.create("2.21.0.1", "STS");
+    r1.addArtifact(
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url"));
     String url =
         String.format(
             "/api/customers/%s/ybdb_release/%s",
@@ -273,6 +278,23 @@ public class ReleasesControllerTest extends FakeDBApplication {
     assertOk(result);
     Release found = Release.get(r1.getReleaseUUID());
     assertEquals(Release.ReleaseState.DISABLED, found.getState());
+  }
+
+  @Test
+  public void testIncompleteStateUpdate() {
+    Release r1 = Release.create("2.21.0.1", "STS");
+    r1.addArtifact(
+        ReleaseArtifact.create("sha256", ReleaseArtifact.Platform.KUBERNETES, null, "url"));
+    String url =
+        String.format(
+            "/api/customers/%s/ybdb_release/%s",
+            defaultCustomer.getUuid(), r1.getReleaseUUID().toString());
+    ObjectNode jsonBody = Json.newObject();
+    jsonBody.put("state", "ACTIVE");
+    Result result = assertPlatformException(() -> doPutRequest(url, jsonBody));
+    assertBadRequest(result, null);
+    Release found = Release.get(r1.getReleaseUUID());
+    assertEquals(Release.ReleaseState.INCOMPLETE, found.getState());
   }
 
   @Test
@@ -298,7 +320,8 @@ public class ReleasesControllerTest extends FakeDBApplication {
     Result result = doPutRequest(url, jsonBody);
     assertOk(result);
     ReleaseArtifact foundRA = ReleaseArtifact.get(ra1.getArtifactUUID());
-    assertEquals("sha256:new_sha256", foundRA.getSha256());
+    assertEquals("new_sha256", foundRA.getSha256());
+    assertEquals("sha256:new_sha256", foundRA.getFormattedSha256());
   }
 
   @Test

@@ -143,6 +143,8 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     taskParams.expectedUniverseVersion = -1;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.creatingUser = defaultUser;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     TestUtils.setFakeHttpContext(defaultUser);
     super.verifyTaskRetries(
         defaultCustomer,
@@ -202,7 +204,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     List<String> nodeNames = new ArrayList<>();
     for (TaskInfo subTask : subTasks) {
       if (subTask.getTaskType() == TaskType.RebootServer) {
-        nodeNames.add(subTask.getDetails().get("nodeName").textValue());
+        nodeNames.add(subTask.getTaskParams().get("nodeName").textValue());
       }
     }
     Assert.assertEquals(expected, nodeNames);

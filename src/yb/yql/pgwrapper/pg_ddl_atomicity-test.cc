@@ -60,6 +60,7 @@ DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
 
 namespace yb {
 namespace pgwrapper {
@@ -1483,16 +1484,25 @@ class PgLibPqTableRewrite:
  protected:
   void SetupTestData() {
     auto conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC))", kTable));
-    // Insert some data.
-    ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO $0 (a, b) VALUES (generate_series(1, 5), generate_series(1, 5))", kTable));
-    // Create index.
-    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (b DESC)", kIndex, kTable));
-    // Create materialized view.
+    for (auto table_name : {kTable, kTable2}) {
+      // Create the table.
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC))", table_name));
+      // Execute some rewrites so that the oid and relfilenode don't match.
+      ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTable));
+      ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD PRIMARY KEY (a ASC)", kTable));
+      // Insert some data.
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 (a, b) VALUES (generate_series(1, 5), generate_series(1, 5))",
+          table_name));
+      // Create an index.
+      ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (b DESC)",
+          table_name == kTable ? kIndex : "idx2", table_name));
+    }
+    // Create a materialized view.
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE MATERIALIZED VIEW $0 AS SELECT * FROM $1", kMaterializedView, kTable));
-    // Insert some more data.
+    // Insert some more data into the materialized view's base table.
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (a, b) VALUES (6, 6)", kTable));
     // Set the index as invalid (so that we can test reindex).
     ASSERT_OK(conn.ExecuteFormat(
@@ -1501,18 +1511,18 @@ class PgLibPqTableRewrite:
   Status WaitForDroppedTablesCleanup() {
     auto client = VERIFY_RESULT(cluster_->CreateClient());
     return LoggedWaitFor([this, &client]() -> Result<bool> {
-      auto num_tables = VERIFY_RESULT(client->ListTables(kTable)).size();
-      auto num_indexes = VERIFY_RESULT(client->ListTables(kIndex)).size();
-      auto num_matviews = VERIFY_RESULT(client->ListTables(kMaterializedView)).size();
-      LOG(INFO) << "Number of tables: " << num_tables << ", indexes: " << num_indexes
-                << ", materialized views: " << num_matviews;
-      return num_tables == 1 && num_indexes == 1 && num_matviews == 1;
+      for (auto table_name : {kTable, kTable2, kIndex, kMaterializedView}) {
+        if (VERIFY_RESULT(client->ListTables(table_name)).size() != 1) {
+          return false;
+        }
+      }
+      return true;
     }, MonoDelta::FromSeconds(60), "Verify that we dropped the stale DocDB tables");
   }
-
-  const std::string kTable = "test_table";
-  const std::string kIndex = "test_idx";
-  const std::string kMaterializedView = "test_mv";
+  const std::string kTable = "t1";
+  const std::string kTable2 = "t2";
+  const std::string kIndex = "idx1";
+  const std::string kMaterializedView = "mv";
 };
 
 INSTANTIATE_TEST_CASE_P(bool, PgLibPqTableRewrite,
@@ -1531,17 +1541,14 @@ TEST_P(PgLibPqTableRewrite,
   ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=true"));
   ASSERT_NOK(conn.ExecuteFormat("REINDEX INDEX $0", kIndex));
   ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c SERIAL", kTable));
-  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTable));
   ASSERT_NOK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kMaterializedView));
+  ASSERT_NOK(conn.ExecuteFormat("TRUNCATE $0", kTable2));
 
   // Verify that we created orphaned DocDB tables.
   const auto client = ASSERT_RESULT(cluster_->CreateClient());
-  vector<client::YBTableName> tables = ASSERT_RESULT(client->ListTables(kTable));
-  ASSERT_EQ(tables.size(), 3);
-  tables = ASSERT_RESULT(client->ListTables(kIndex));
-  ASSERT_EQ(tables.size(), 2);
-  tables = ASSERT_RESULT(client->ListTables(kMaterializedView));
-  ASSERT_EQ(tables.size(), 2);
+  for (auto table_name : {kTable, kTable2, kIndex, kMaterializedView}) {
+    ASSERT_EQ(ASSERT_RESULT(client->ListTables(table_name)).size(), 2);
+  }
 
   // Verify that we drop the new DocDB tables after failed rewrite operations.
   if (GetParam()) {
@@ -1562,6 +1569,12 @@ TEST_P(PgLibPqTableRewrite,
   rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
       "SELECT * FROM $0 ORDER BY a", kMaterializedView))));
   ASSERT_EQ(rows, (decltype(rows){{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}}));
+  rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+      "SELECT * FROM $0", kTable2))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}}));
+  rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+      "SELECT * FROM $0 WHERE b = 1", kTable2))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1}}));
 }
 
 // Test that orphaned tables left after successful rewrites are cleaned up.
@@ -1577,7 +1590,7 @@ TEST_P(PgLibPqTableRewrite,
   // Verify that we drop the old DocDB tables after successful rewrite operations.
   ASSERT_OK(WaitForDroppedTablesCleanup());
 
-  // Sanity check to ensure we can perform ALTERs on the rewritten table/materialized view.
+  // Sanity check to ensure we can perform ALTERs on the rewritten tables/materialized view.
   const auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN d int", kTable));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 RENAME COLUMN c TO c_serial", kTable));
@@ -1586,6 +1599,8 @@ TEST_P(PgLibPqTableRewrite,
       kMaterializedView));
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", kMaterializedView,
       {"ybrowid", "a_renamed", "b"}));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c int", kTable2));
+  ASSERT_OK(VerifySchema(client.get(), "yugabyte", kTable2, {"a", "b", "c"}));
 }
 
 class PgDdlAtomicityMiniClusterTest : public PgMiniTestBase {
@@ -1595,6 +1610,7 @@ class PgDdlAtomicityMiniClusterTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_rollback_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry) = true;
     pgwrapper::PgMiniTestBase::SetUp();
   }
 };
@@ -1645,5 +1661,31 @@ TEST_F(PgDdlAtomicityMiniClusterTest, TestWaitForRollbackWithMasterRestart) {
   ASSERT_EQ(columns[1].name(), "num");
 }
 
+// Test that the table cache is correctly invalidated after transaction verification
+// completes for an ALTER TABLE operation that performs a table scan.
+TEST_F(PgDdlAtomicityMiniClusterTest, TestTableCacheAfterTxnVerification) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (key INT PRIMARY KEY, value TEXT, num real, serialcol SERIAL) "
+      "PARTITION BY LIST(key)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test1 PARTITION OF test FOR VALUES IN (1)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test2 PARTITION OF test FOR VALUES IN (2, 3, 4)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1, 'value', 1.0), (2, 'value', 2.0)"));
+  ASSERT_OK(conn.TestFailDdl(
+    "ALTER TABLE test DROP COLUMN value, ADD CONSTRAINT check_num CHECK (num > 0)"));
+  // Ensure there is no schema version mismatch after a failed ALTER operation that performs
+  // a table scan.
+  ASSERT_OK(conn.Execute("INSERT INTO test2 VALUES (3, 'value', 3.0)"));
+  ASSERT_OK(conn.ExecuteFormat(
+    "ALTER TABLE test DROP COLUMN value, ADD CONSTRAINT check_num CHECK (num > 0)"));
+  // Ensure there is no schema version mismatch after a successful ALTER operation that performs
+  // a table scan.
+  ASSERT_OK(conn.Execute("INSERT INTO test2 VALUES (4, 4.0)"));
+  auto rows =
+      ASSERT_RESULT((conn.FetchRows<int32_t, float, int32_t>("SELECT * FROM test2 ORDER BY key")));
+  ASSERT_EQ(rows, (decltype(rows){{2, 2, 2}, {3, 3, 3}, {4, 4, 4}}));
+}
 } // namespace pgwrapper
 } // namespace yb

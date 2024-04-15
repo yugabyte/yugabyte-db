@@ -31,6 +31,7 @@
 
 #include "yb/rpc/rpc.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
@@ -68,10 +69,7 @@ namespace master {
 class PollTransactionStatusBase {
  public:
   PollTransactionStatusBase(
-    const TransactionMetadata& transaction,
-    std::shared_future<client::YBClient*> client_future)
-    : transaction_(transaction),
-      client_future_(std::move(client_future)) {}
+      const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future);
 
   virtual ~PollTransactionStatusBase();
 
@@ -79,6 +77,7 @@ class PollTransactionStatusBase {
   Status VerifyTransaction();
   virtual void TransactionPending() = 0;
   virtual void FinishPollTransaction(Status s) = 0;
+  void Shutdown();
 
   TransactionMetadata transaction_;
 
@@ -88,6 +87,11 @@ class PollTransactionStatusBase {
 
   std::shared_future<client::YBClient*> client_future_;
   rpc::Rpcs rpcs_;
+  Synchronizer sync_;
+
+  std::mutex rpc_mutex_;
+
+  bool shutdown_ GUARDED_BY(rpc_mutex_) = false;
 };
 
 class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
@@ -131,6 +135,8 @@ class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
   Status ValidateRunnable() override;
   void FinishPollTransaction(Status s) override;
   Status CheckNsExists(Status status);
+  void TaskCompleted(const Status& status) override;
+  void PerformAbort() override;
 
   SysCatalogTable& sys_catalog_;
   bool entry_exists_ = false;
@@ -181,6 +187,8 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
   Status CompareSchema(Status s);
   Status FinishTask(Result<bool> is_committed);
   void FinishPollTransaction(Status s) override;
+  void TaskCompleted(const Status& status) override;
+  void PerformAbort() override;
 
   SysCatalogTable& sys_catalog_;
   bool ddl_atomicity_enabled_;

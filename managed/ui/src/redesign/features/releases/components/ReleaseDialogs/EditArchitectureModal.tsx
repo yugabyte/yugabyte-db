@@ -170,10 +170,7 @@ export const EditArchitectureModal = ({
   const [errorHelperText, setErrorHelperText] = useState<string>('');
   const [reviewReleaseDetails, setReviewReleaseDetails] = useState<boolean>(false);
   const [releaseMetadatFetchError, setReleaseMetadatFetchError] = useState<boolean>(false);
-  const [releaseBasePart, setReleaseBasePart] = useState<string>('');
-  const [releaseFirstPart, setReleaseFirstPart] = useState<string>('');
-  const [releaseSecondPart, setReleaseSecondPart] = useState<string>('');
-  const [releaseThirdPart, setReleaseThirdPart] = useState<string>('');
+  const [releaseVersion, setReleaseVersion] = useState<string>('');
   const [deploymentType, setDeploymentType] = useState<any>(artifact?.platform);
   const [architecture, setArchitecure] = useState<any>(artifact?.architecture);
 
@@ -190,7 +187,7 @@ export const EditArchitectureModal = ({
       sha256: artifact?.sha256,
       architecture: artifact?.architecture,
       platform: artifact?.platform,
-      releaseDate: data?.release_date,
+      releaseDate: data?.release_date_msecs,
       releaseNotes: data?.release_notes,
       releaseType: data?.release_type
     },
@@ -217,7 +214,7 @@ export const EditArchitectureModal = ({
     setUrlMetadata({
       version: data?.version,
       releaseType: data?.release_type,
-      releaseDate: data?.release_date,
+      releaseDate: data?.release_date_msecs,
       platform: artifact?.platform,
       architecture: artifact?.architecture
     });
@@ -300,7 +297,7 @@ export const EditArchitectureModal = ({
     setUrlMetadata({
       version: response.version,
       releaseType: response.release_type,
-      releaseDate: response.release_date,
+      releaseDate: response.release_date_msecs,
       platform: response.platform,
       architecture: response.architecture
     });
@@ -311,12 +308,12 @@ export const EditArchitectureModal = ({
     (payload: any) => ReleasesAPI.updateReleaseMetadata(payload, payload.release_uuid!),
     {
       onSuccess: (response: any) => {
-        toast.success('Updated release artifacts successfully');
+        toast.success(t('releases.addReleaseModal.updateArtifactsSuccess'));
         onActionPerformed();
         onClose();
       },
       onError: () => {
-        toast.error('Failed to update release artifacts');
+        toast.error(t('releases.addReleaseModal.updateArtifactsFailure'));
       }
     }
   );
@@ -331,7 +328,7 @@ export const EditArchitectureModal = ({
       setValue('version', '');
       setIsMetadataLoading(false);
       setReleaseMetadatFetchError(true);
-      toast.error('Failed to extract metadata from URL');
+      toast.error(t('releases.addReleaseModal.extractMetadataUrlFailure'));
     }
   });
 
@@ -343,7 +340,7 @@ export const EditArchitectureModal = ({
         setReleaseMetadatFetchError(false);
         setIsMetadataLoading(false);
         setReleaseResponse(response);
-        toast.success('Extracted metadata from file successfully');
+        toast.success(t('releases.addReleaseModal.extractMetadataFileSuccess'));
       },
       onError: () => {
         setIsMetadataLoading(false);
@@ -353,7 +350,7 @@ export const EditArchitectureModal = ({
         setValue('platform', ReleasePlatform.LINUX);
         setValue('architecture', '');
         setValue('version', '');
-        toast.error('Failed to extract metadata from the file');
+        toast.error(t('releases.addReleaseModal.extractMetadataFileFailure'));
       }
     }
   );
@@ -371,7 +368,7 @@ export const EditArchitectureModal = ({
           setIsMetadataLoading(false);
           setReleaseResponse(response);
           setReleaseMetadatFetchError(false);
-          toast.success('Extracted metadata from URL successfully');
+          toast.success(t('releases.editArchitectureModal.extractMetadataUrlSuccess'));
         } else if (
           response.status === UrlArtifactStatus.RUNNING ||
           response.status === UrlArtifactStatus.WAITING
@@ -385,7 +382,7 @@ export const EditArchitectureModal = ({
           setValue('version', response.version);
           setValue('ybType', response.yb_type);
           setValue('sha256', response.sha256);
-          toast.error('Failed to extract metadata from URL');
+          toast.error(t('releases.addReleaseModal.extractMetadataUrlFailure'));
         }
       },
       onError: () => {
@@ -420,33 +417,18 @@ export const EditArchitectureModal = ({
         setIsFileUploaded(true);
         setPackageFileId(response.data.resourceUUID);
         setValue('version', '');
-        toast.success('Uploaded file successully');
+        toast.success(t('releases.addReleaseModal.uploadSuccess'));
       })
       .catch((error) => {
         setPackageFileId(undefined);
         setIsFileUploaded(false);
-        toast.error('Not able to upload file, please try again');
+        toast.error(t('releases.addReleaseModal.uploadFailure'));
       });
   });
 
-  const handleReleaseFirstPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseFirstPart(event.target.value);
-  };
-
-  const handleReleaseBasePart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseBasePart(event.target.value);
-  };
-
-  const handleReleaseSecondPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseSecondPart(event.target.value);
-  };
-
-  const handleReleaseThirdPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseThirdPart(event.target.value);
-    setValue(
-      'version',
-      releaseBasePart + releaseFirstPart + releaseSecondPart + event.target.value
-    );
+  const handleReleaseVersionPart = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setValue('version', event.target.value);
+    setReleaseVersion(event.target.value);
   };
 
   const handlePlatformSelect = (val: ReleasePlatformButtonProps) => {
@@ -726,14 +708,8 @@ export const EditArchitectureModal = ({
                   releaseMetadatFetchError={releaseMetadatFetchError}
                   deploymentType={deploymentType}
                   architecture={architecture}
-                  releaseBasePart={releaseBasePart}
-                  releaseFirstPart={releaseFirstPart}
-                  releaseSecondPart={releaseSecondPart}
-                  releaseThirdPart={releaseThirdPart}
-                  handleReleaseBasePart={handleReleaseBasePart}
-                  handleReleaseSecondPart={handleReleaseSecondPart}
-                  handleReleaseThirdPart={handleReleaseThirdPart}
-                  handleReleaseFirstPart={handleReleaseFirstPart}
+                  releaseVersion={releaseVersion}
+                  handleReleaseVersionPart={handleReleaseVersionPart}
                   handlePlatformSelect={handlePlatformSelect}
                   handleArchitectureSelect={handleArchitectureSelect}
                 />

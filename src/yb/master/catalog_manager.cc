@@ -412,7 +412,6 @@ DEFINE_RUNTIME_double(heartbeat_safe_deadline_ratio, .20,
     "When the heartbeat deadline has this percentage of time remaining, "
     "the master should halt tablet report processing so it can respond in time.");
 DECLARE_int32(heartbeat_rpc_timeout_ms);
-DECLARE_CAPABILITY(TabletReportLimit);
 
 DEFINE_test_flag(int32, num_missing_tablets, 0, "Simulates missing tablets in a table");
 
@@ -509,7 +508,8 @@ DEFINE_test_flag(bool, error_after_creating_single_split_tablet, false,
                  "after calling Upsert.");
 
 DEFINE_RUNTIME_bool(enable_delete_truncate_xcluster_replicated_table, false,
-            "When set, enables deleting/truncating tables currently in xCluster replication");
+            "When set, enables deleting/truncating YCQL tables currently in xCluster replication. "
+            "For YSQL tables, deletion is always allowed and TRUNCATE is always disallowed.");
 
 DEFINE_RUNTIME_bool(xcluster_wait_on_ddl_alter, true,
     "When xCluster replication sends a DDL change, wait for the user to enter a "
@@ -524,7 +524,9 @@ DEFINE_RUNTIME_bool(disable_truncate_table, false,
     "When enabled, truncate table will be disallowed");
 
 DEFINE_RUNTIME_bool(enable_truncate_on_pitr_table, false,
-    "When enabled, truncate table will be allowed on PITR tables");
+    "When enabled, truncate table will be allowed on PITR tables in YCQL. For PITR tables in YSQL, "
+    "truncate is always allowed by default, and it can be turned off by setting the "
+    "ysql_yb_enable_alter_table_rewrite autoflag to false.");
 
 DEFINE_test_flag(double, fault_crash_after_registering_split_children, 0.0,
                  "Crash after registering the children for a tablet split.");
@@ -581,6 +583,13 @@ METRIC_DEFINE_counter(cluster, create_table_too_many_tablets,
     "How many CreateTable requests have failed due to too many tablets", yb::MetricUnit::kRequests,
     "The number of CreateTable request errors due to attempting to create too many tablets.");
 
+METRIC_DEFINE_counter(
+    cluster, split_tablet_too_many_tablets,
+    "How many SplitTablet operations have failed because the cluster cannot host any more tablets",
+    yb::MetricUnit::kRequests,
+    "The number of SplitTablet operations failed because the cluster cannot host any more "
+    "tablets.");
+
 DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
                  "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
 
@@ -599,6 +608,8 @@ DEFINE_test_flag(bool, create_table_with_empty_namespace_name, false,
 
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
                  "Delay creating child tablets and upserting them to sys catalog");
+
+DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 
 DEFINE_NON_RUNTIME_bool(enable_heartbeat_pg_catalog_versions_cache, false,
     "Whether to enable the use of heartbeat catalog versions cache for the "
@@ -1059,6 +1070,8 @@ Status CatalogManager::Init() {
 
   metric_create_table_too_many_tablets_ =
       METRIC_create_table_too_many_tablets.Instantiate(master_->metric_entity_cluster());
+  metric_split_tablet_too_many_tablets_ =
+    METRIC_split_tablet_too_many_tablets.Instantiate(master_->metric_entity_cluster());
 
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(master_->cdc_state_client_future());
 
@@ -2804,7 +2817,7 @@ Status CatalogManager::DoRefreshTablespaceInfo(const LeaderEpoch& epoch) {
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
-                                           CowWriteLock<PersistentTableInfo>* l_ptr,
+                                           TableInfo::WriteLock* l_ptr,
                                            const IndexInfoPB& index_info,
                                            const LeaderEpoch& epoch,
                                            CreateTableResponsePB* resp) {
@@ -3757,6 +3770,15 @@ Status CatalogManager::CanAddPartitionsToTable(
   return Status::OK();
 }
 
+Status CatalogManager::CanSupportAdditionalTablet(
+    const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const {
+  return CanCreateTabletReplicas(1, replication_info, GetAllLiveNotBlacklistedTServers());
+}
+
+void CatalogManager::IncrementSplitBlockedByTabletLimitCounter() {
+  IncrementCounter(metric_split_tablet_too_many_tablets_);
+}
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -3782,12 +3804,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (!orig_req->old_rewrite_table_id().empty()) {
-    auto table_info = GetTableInfo(orig_req->old_rewrite_table_id());
+    auto table_id = orig_req->old_rewrite_table_id();
     SharedLock lock(mutex_);
-    SCHECK(
-        !IsTablePartOfXRepl(table_info->id()), NotSupported,
-        "cannot rewrite a table that is a part of CDC or XCluster replication."
-        " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
+    // Fail rewrites on tables that are part of CDC or XCluster replication, except for
+    // TRUNCATEs on CDC tables when FLAGS_enable_truncate_cdcsdk_table is enabled.
+    if (IsTablePartOfXClusterUnlocked(table_id) || (IsTablePartOfCDCSDK(table_id) &&
+        (!orig_req->is_truncate() || !FLAGS_enable_truncate_cdcsdk_table))) {
+      return STATUS(
+          NotSupported,
+          "cannot rewrite a table that is a part of CDC or XCluster replication."
+          " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
+    }
   }
 
   // Copy the request, so we can fill in some defaults.
@@ -3799,7 +3826,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, find the table info
   scoped_refptr<TableInfo> indexed_table;
-  CowWriteLock<PersistentTableInfo> indexed_table_write_lock;
+  TableInfo::WriteLock indexed_table_write_lock;
   if (IsIndex(req)) {
     TRACE("Looking up indexed table");
     indexed_table = GetTableInfo(req.indexed_table_id());
@@ -3840,11 +3867,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   SCHECK(!colocated || req.has_table_id(),
          InvalidArgument, "Colocated table should specify a table ID");
 
-  // Check if index is colocated and has a Tablespace specified.
+  // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
+  // specified for indexes on colocated tables.
   SCHECK(
-      !colocated || !IsIndex(req) || !req.has_tablespace_id(),
-      InvalidArgument,
-      "TABLESPACE is not supported for indexes on colocated tables.");
+      FLAGS_ysql_enable_colocated_tables_with_tablespaces || !colocated || !IsIndex(req) ||
+          !req.has_tablespace_id(),
+      InvalidArgument, "TABLESPACE is not supported for indexes on colocated tables.");
 
   // TODO: If this is a colocated index table, convert any hash partition columns into
   // range partition columns.
@@ -6065,7 +6093,8 @@ Status CatalogManager::LaunchBackfillIndexForTable(
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
     const LeaderEpoch& epoch,
-    DeleteTableResponsePB* resp) {
+    DeleteTableResponsePB* resp,
+    std::map<TableId, DeletingTableData>* data_map_ptr) {
   LOG(INFO) << "MarkIndexInfoFromTableForDeletion table " << indexed_table_id
             << " index " << index_table_id << " multi_stage=" << multi_stage;
   // Lookup the indexed table and verify if it exists.
@@ -6086,11 +6115,13 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     resp_indexed_table->set_table_id(indexed_table_id);
   }
   if (multi_stage) {
+    RSTATUS_DCHECK(!data_map_ptr, InvalidArgument, "data_map_ptr is set");
     RETURN_NOT_OK(MultiStageAlterTable::UpdateIndexPermission(
         this, indexed_table,
         {{index_table_id, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING}}, epoch));
   } else {
-    RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id, epoch));
+    RSTATUS_DCHECK(data_map_ptr, InvalidArgument, "data_map_ptr is not set");
+    RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id, epoch, data_map_ptr));
   }
 
   // Actual Deletion of the index info will happen asynchronously after all the
@@ -6100,7 +6131,8 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
 }
 
 Status CatalogManager::DeleteIndexInfoFromTable(
-    const TableId& indexed_table_id, const TableId& index_table_id, const LeaderEpoch& epoch) {
+    const TableId& indexed_table_id, const TableId& index_table_id, const LeaderEpoch& epoch,
+    std::map<TableId, DeletingTableData>* data_map_ptr) {
   LOG(INFO) << "DeleteIndexInfoFromTable table " << indexed_table_id << " index " << index_table_id;
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
@@ -6109,7 +6141,15 @@ Status CatalogManager::DeleteIndexInfoFromTable(
     return Status::OK();
   }
   TRACE("Locking indexed table");
-  auto l = indexed_table->LockForWrite();
+  TableInfo::WriteLock indexed_table_write_lock;
+  TableInfo::WriteLock* l_ptr;
+  if (data_map_ptr) {
+    l_ptr = &(*data_map_ptr)[indexed_table_id].write_lock;
+  } else {
+    indexed_table_write_lock = indexed_table->LockForWrite();
+    l_ptr = &indexed_table_write_lock;
+  }
+  auto& l = *l_ptr;
   auto &indexed_table_data = *l.mutable_data();
 
   // Heed issue #6233.
@@ -6275,7 +6315,7 @@ Status CatalogManager::DeleteTable(
                              indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
     if (!is_pg_table && IsIndexBackfillEnabled(index_table_type, is_transactional)) {
       return MarkIndexInfoFromTableForDeletion(
-          indexed_table_id, table_id, /* multi_stage */ true, epoch, resp);
+          indexed_table_id, table_id, /* multi_stage */ true, epoch, resp, nullptr);
     }
 
     // If DDL Rollback is enabled, we will not delete the index now, but merely mark it for
@@ -6376,32 +6416,29 @@ Status CatalogManager::DeleteTableInternal(
   vector<DeletingTableData> tables;
   RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
                                     true /* update_indexed_table */, schedules_to_tables_map, epoch,
-                                    &tables, resp, rpc));
+                                    &tables, resp, rpc, nullptr));
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   std::unordered_set<TableId> sys_table_ids;
   std::unordered_set<TableId> deleted_table_ids;
-  std::vector<TableId> deleted_index_ids;
   for (auto& table : tables) {
     deleted_table_ids.insert(table.table_info->id());
-    if (table.table_info->is_index()) {
-      deleted_index_ids.emplace_back(table.table_info->id());
-    }
     if (IsSystemTable(*table.table_info)) {
       sys_table_ids.insert(table.table_info->id());
     }
     table.write_lock.Commit();
   }
 
-  // Delete any CDC streams that are set up on this table, after releasing the Table lock.
-  TRACE("Deleting CDC streams on table");
+  bool TEST_fail = false;
+  TEST_SYNC_POINT_CALLBACK("DeleteTableInternal::FailAfterTableMarkedInSysCatalog", &TEST_fail);
+  SCHECK(!TEST_fail, IllegalState, "Failing for TESTING");
+
   // table_id for the requested table will be added to the end of the response.
   RSTATUS_DCHECK_GE(resp->deleted_table_ids_size(), 1, IllegalState,
       "DeleteTableInMemory expected to add the index id to resp");
 
-  RETURN_NOT_OK(DropXClusterStreamsOfTables(deleted_table_ids));
-  RETURN_NOT_OK(DeleteXReplStatesForIndexTables(deleted_index_ids));
+  RETURN_NOT_OK(xcluster_manager_->RemoveDroppedTablesOnConsumer(deleted_table_ids, epoch));
 
   if (PREDICT_FALSE(FLAGS_catalog_manager_inject_latency_in_delete_table_ms > 0)) {
     LOG(INFO) << "Sleeping in CatalogManager::DeleteTable for " <<
@@ -6518,11 +6555,48 @@ Status CatalogManager::DeleteTableInternal(
   return Status::OK();
 }
 
+Status CatalogManager::DeleteTableInMemoryAcquireLocks(
+    const scoped_refptr<master::TableInfo>& table,
+    bool is_index_table,
+    bool update_indexed_table,
+    std::map<TableId, DeletingTableData>* data_map) {
+  data_map->emplace(table->id(), DeletingTableData{.table_info = table});
+  {
+    auto l = table->LockForRead();
+    if (is_index_table) {
+      auto indexed_table_id = GetIndexedTableId(l->pb);
+      auto indexed_table = GetTableInfo(indexed_table_id);
+      if (indexed_table && update_indexed_table) {
+        // We only need to lock indexed_table when we need to update it to
+        // indicate that this index is gone.
+        data_map->emplace(indexed_table_id, DeletingTableData{.table_info = indexed_table});
+      }
+    } else {
+      // For regular table, we need to lock all of its indexes.
+      TableIdentifierPB index_identifier;
+      for (const auto& index : l->pb.indexes()) {
+        index_identifier.set_table_id(index.table_id());
+        auto index_result = FindTable(index_identifier);
+        if (VERIFY_RESULT(DoesTableExist(index_result))) {
+          auto index_table = std::move(*index_result);
+          data_map->emplace(index.table_id(), DeletingTableData{.table_info = index_table});
+        }
+      }
+    }
+  }
+  // Lock the table and indexes in the order of their table_ids.
+  for (auto& it : *data_map) {
+    it.second.write_lock = it.second.table_info->LockForWrite();
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::DeleteTableInMemory(
     const TableIdentifierPB& table_identifier, const bool is_index_table,
     const bool update_indexed_table, const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
     const LeaderEpoch& epoch, vector<DeletingTableData>* tables, DeleteTableResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext* rpc,
+    std::map<TableId, DeletingTableData>* data_map_ptr) {
   // TODO(NIC): How to handle a DeleteTable request when the namespace is being deleted?
   const char* const object_type = is_index_table ? "index" : "table";
   const bool cascade_delete_index = is_index_table && !update_indexed_table;
@@ -6552,12 +6626,14 @@ Status CatalogManager::DeleteTableInMemory(
     RETURN_NOT_OK(WaitForTransactionTableVersionUpdateToPropagate());
   }
 
-  TRACE(Substitute("Locking $0", object_type));
-  auto data = DeletingTableData{
-      .table_info = table,
-      .write_lock = table->LockForWrite(),
-  };
-
+  std::map<TableId, DeletingTableData> data_map;
+  if (!data_map_ptr) {
+    TRACE(Substitute("Locking $0", object_type));
+    RETURN_NOT_OK(
+        DeleteTableInMemoryAcquireLocks(table, is_index_table, update_indexed_table, &data_map));
+    data_map_ptr = &data_map;
+  }
+  auto& data = (*data_map_ptr)[table->id()];
   auto& l = data.write_lock;
   // table_id for the requested table will be added to the end of the response.
   *resp->add_deleted_table_ids() = table->id();
@@ -6602,7 +6678,7 @@ Status CatalogManager::DeleteTableInMemory(
     const auto& indexed_table_id = GetIndexedTableId(l->pb);
     auto indexed_table = FindTableById(indexed_table_id);
     if (indexed_table.ok()) {
-      auto lock = (**indexed_table).LockForRead();
+      const auto& lock = (*data_map_ptr)[indexed_table_id].write_lock;
       ddl_log_entry = DdlLogEntry(
           now, indexed_table_id, lock->pb, Format("Drop index $0", l->name()));
     }
@@ -6630,11 +6706,12 @@ Status CatalogManager::DeleteTableInMemory(
       index_identifier.set_table_id(index.table_id());
       RETURN_NOT_OK(DeleteTableInMemory(
           index_identifier, true /* is_index_table */, false /* update_indexed_table */,
-          schedules_to_tables_map, epoch, tables, resp, rpc));
+          schedules_to_tables_map, epoch, tables, resp, rpc, data_map_ptr));
     }
   } else if (update_indexed_table) {
+    auto indexed_table_id = GetIndexedTableId(l->pb);
     s = MarkIndexInfoFromTableForDeletion(
-        GetIndexedTableId(l->pb), table->id(), /* multi_stage */ false, epoch, resp);
+        indexed_table_id, table->id(), /* multi_stage */ false, epoch, resp, data_map_ptr);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute("An error occurred while deleting index info: $0",
                                        s.ToString()));
@@ -6645,7 +6722,9 @@ Status CatalogManager::DeleteTableInMemory(
 
   if (!hide_only) {
     // If table is being hidden we should not abort snapshot related tasks.
-    table->AbortTasks();
+    // Always ignore Table schema verification tasks since it may be the one that is initiating the
+    // deletes.
+    table->AbortTasks(/*tasks_to_ignore=*/{server::MonitoredTaskType::TableSchemaVerification});
   }
 
   // For regular (indexed) table, insert table info and lock in the front of the list. Else for
@@ -7450,10 +7529,8 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
   // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
-  if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-      resp->schema().pgschema_name().empty() &&
-      !table->is_system() &&
-      !IsSequencesSystemTable(*table) &&
+  if (l->table_type() == TableType::PGSQL_TABLE_TYPE && resp->schema().pgschema_name().empty() &&
+      !table->is_system() && !table->IsSequencesSystemTable() &&
       !table->IsColocationParentTable()) {
     SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock for schema name lookup");
@@ -7929,7 +8006,7 @@ bool CatalogManager::IsUserCreatedTable(const TableInfo& table) const {
 
 bool CatalogManager::IsUserCreatedTableUnlocked(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE || table.GetTableType() == YQL_TABLE_TYPE) {
-    if (!IsSystemTable(table) && !IsSequencesSystemTable(table) &&
+    if (!IsSystemTable(table) && !table.IsSequencesSystemTable() &&
         GetNamespaceNameUnlocked(table.namespace_id()) != kSystemNamespaceName &&
         !table.IsColocationParentTable()) {
       return true;
@@ -7954,30 +8031,6 @@ bool CatalogManager::IsUserIndex(const TableInfo& table) const {
 
 bool CatalogManager::IsUserIndexUnlocked(const TableInfo& table) const {
   return IsUserCreatedTableUnlocked(table) && !table.indexed_table_id().empty();
-}
-
-bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
-  if (table.GetTableType() == PGSQL_TABLE_TYPE && !table.IsColocationParentTable()) {
-    // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
-    if (!IsPgsqlId(table.namespace_id()) || !IsPgsqlId(table.id())) {
-      LOG(WARNING) << "Not PGSQL IDs " << table.namespace_id() << ", " << table.id();
-      return false;
-    }
-    Result<uint32_t> database_oid = GetPgsqlDatabaseOid(table.namespace_id());
-    if (!database_oid.ok()) {
-      LOG(WARNING) << "Invalid Namespace ID " << table.namespace_id();
-      return false;
-    }
-    Result<uint32_t> table_oid = GetPgsqlTableOid(table.id());
-    if (!table_oid.ok()) {
-      LOG(WARNING) << "Invalid Table ID " << table.id();
-      return false;
-    }
-    if (*database_oid == kPgSequencesDataDatabaseOid && *table_oid == kPgSequencesDataTableOid) {
-      return true;
-    }
-  }
-  return false;
 }
 
 bool CatalogManager::IsMatviewTable(const TableInfo& table) const {
@@ -8005,12 +8058,12 @@ void CatalogManager::NotifyTabletDeleteFinished(
   shared_ptr<TSDescriptor> ts_desc;
   if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
     LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
-  } else if (!ts_desc->IsTabletDeletePending(tablet_id)) {
-    LOG(WARNING) << "Pending delete for tablet " << tablet_id << " in ts " << tserver_uuid
-                 << " doesn't exist";
   } else {
-    LOG(INFO) << "Clearing pending delete for tablet " << tablet_id << " in ts " << tserver_uuid;
-    ts_desc->ClearPendingTabletDelete(tablet_id);
+    auto num_removed = ts_desc->ClearPendingTabletDelete(tablet_id);
+    if (num_removed == 0) {
+      LOG(WARNING) << "Pending delete for tablet " << tablet_id << " in ts " << tserver_uuid
+                   << " doesn't exist";
+    }
   }
   if (task_state == server::MonitoredTaskState::kComplete) {
     CheckTableDeleted(table, epoch);
@@ -8673,8 +8726,8 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
     rpcs.clear();
 
     // 14. Check deadline. Need to exit before processing all batches if we're close to timing out.
-    if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit) &&
-        tablet_iter != reported_tablets.end()) {
+    if (tablet_iter != reported_tablets.end()) {
+
       // [TESTING] Inject latency before processing a batch to test deadline.
       if (PREDICT_FALSE(FLAGS_TEST_inject_latency_during_tablet_report_ms > 0)) {
         LOG(INFO) << "Sleeping in CatalogManager::ProcessTabletReport for "
@@ -9696,16 +9749,10 @@ Status CatalogManager::DeleteYsqlDBTables(
   // Batch remove all relevant CDC streams, handle after releasing Table locks.
   TRACE("Deleting CDC streams on table");
   std::unordered_set<TableId> table_ids;
-  vector<TableId> index_list;
   for (auto& [table, _] : tables_and_locks) {
     table_ids.insert(table->id());
-    if (table->is_index()) {
-      index_list.push_back(table->id());
-    }
   }
-  RETURN_NOT_OK(DropXClusterStreamsOfTables(table_ids));
   RETURN_NOT_OK(DropCDCSDKStreams(table_ids));
-  RETURN_NOT_OK(DeleteXReplStatesForIndexTables(index_list));
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto& [table, _] : tables_and_locks) {
@@ -11932,6 +11979,7 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
     tsinfo_pb->set_permanent_uuid(peer.permanent_uuid());
     CopyRegistration(peer, tsinfo_pb);
   }
+  locs_pb->set_raft_config_opid_index(cstate.config().opid_index());
   return Status::OK();
 }
 
@@ -11953,17 +12001,7 @@ Status CatalogManager::BuildLocationsForSystemTablet(
   // For system tables, the set of replicas is always the set of masters.
   consensus::ConsensusStatePB master_consensus;
   RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
-  const auto initial_size = locs_pb->replicas_size();
   RETURN_NOT_OK(ConsensusStateToTabletLocations(master_consensus, locs_pb));
-  const auto capabilities = Capabilities();
-  // Set capabilities of master node for all newly created system table locations.
-  for (auto i = locs_pb->mutable_replicas()->begin() + initial_size,
-            end = locs_pb->mutable_replicas()->end();
-       i != end;
-       ++i) {
-    *i->mutable_ts_info()->mutable_capabilities() =
-        google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
-  }
   return Status::OK();
 }
 
@@ -12099,6 +12137,8 @@ Status CatalogManager::BuildLocationsForTablet(
     InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
     locs = tablet->GetReplicaLocations();
     locs_pb->set_stale(locs->empty());
+    locs_pb->set_raft_config_opid_index(
+        l_tablet->pb.committed_consensus_state().config().opid_index());
     if (partitions_only) {
       return Status::OK();
     }
@@ -12140,7 +12180,6 @@ Status CatalogManager::BuildLocationsForTablet(
       out_ts_info->set_permanent_uuid(tsinfo_pb->tserver_instance().permanent_uuid());
       CopyRegistration(tsinfo_pb->registration().common(), out_ts_info);
       out_ts_info->set_placement_uuid(tsinfo_pb->registration().common().placement_uuid());
-      *out_ts_info->mutable_capabilities() = tsinfo_pb->registration().capabilities();
     }
   } else if (cstate.IsInitialized()) {
     // If the locations were not cached.
@@ -12210,12 +12249,14 @@ Status CatalogManager::GetTableLocations(
   if (table->IsCreateInProgress()) {
     resp->set_creating(true);
   }
+  IncludeInactive include_inactive(req->has_include_inactive() && req->include_inactive());
 
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  if (!include_inactive) {
+    RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  }
 
   vector<scoped_refptr<TabletInfo>> tablets = table->GetTabletsInRange(req);
-  IncludeInactive include_inactive(req->has_include_inactive() && req->include_inactive());
   PartitionsOnly partitions_only(req->partitions_only());
   bool require_tablets_runnings = req->require_tablets_running();
 
@@ -13320,7 +13361,7 @@ void CatalogManager::InitializeTableLoadState(
 
 // TODO: consider unifying this code with the load balancer.
 void CatalogManager::InitializeGlobalLoadState(
-    TSDescriptorVector ts_descs, CMGlobalLoadState* state) {
+    const TSDescriptorVector& ts_descs, CMGlobalLoadState* state) {
   for (const auto& ts : ts_descs) {
     // Touch every tserver with 0 load.
     state->per_ts_replica_load_[ts->permanent_uuid()];
@@ -13832,6 +13873,8 @@ Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTableDr
   auto tablets_to_check = table_info.GetTablets(IncludeInactive::kFalse);
   RETURN_NOT_OK(snapshot_coordinator_.PopulateDeleteRetainerInfoForTableDrop(
       table_info, tablets_to_check, schedules_to_tables_map, retainer));
+
+  xcluster_manager_->PopulateTabletDeleteRetainerInfoForTableDrop(table_info, retainer);
 
   // xCluster and CDCSDK do not retain dropped tables.
 

@@ -251,6 +251,10 @@ class Log : public RefCountedThreadSafe<Log> {
   // readable segments. Note that this assumes there is already a valid active_segment_.
   Status AllocateSegmentAndRollOver();
 
+  // If active segment is not empty, forces the Log to allocate a new segment and roll over
+  // asynchronously and won't wait for wal rotation is actually done.
+  Status AsyncAllocateSegmentAndRollover();
+
   // When WAL restarts from a crash, instead of allocating a new segment, we try to reuse the
   // left in-progress segment as writable active_segment_. If return value is false, it means
   // we fail to reuse the segment because the size of the segment is too large.
@@ -339,6 +343,7 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
   FRIEND_TEST(LogTest, TestLogMetrics);
+  FRIEND_TEST(LogTest, AsyncRolloverMarker);
 
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
   FRIEND_TEST(cdc::CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace);
@@ -397,6 +402,7 @@ class Log : public RefCountedThreadSafe<Log> {
   Status PreAllocateNewSegment();
 
   // Returns the desired size for the next log segment to be created.
+  // If next_max_segment_size_ is specified, return it directly.
   uint64_t NextSegmentDesiredSize();
 
   // Writes serialized contents of 'entry' to the log. Called inside AppenderThread. If
@@ -462,7 +468,7 @@ class Log : public RefCountedThreadSafe<Log> {
     return allocation_state_.load(std::memory_order_acquire);
   }
 
-  std::unique_ptr<LogEntryBatch> ReserveMarker(LogEntryTypePB type);
+  Result<std::unique_ptr<LogEntryBatch>> ReserveMarker(LogEntryTypePB type);
 
   // Returns WritableFileOptions for a new segment writable file.
   WritableFileOptions GetNewSegmentWritableFileOptions();
@@ -496,7 +502,7 @@ class Log : public RefCountedThreadSafe<Log> {
   //
   // WARNING: the caller _must_ call AsyncAppend() or else the log will "stall" and will never be
   // able to make forward progress.
-  std::unique_ptr<LogEntryBatch> Reserve(
+  Result<std::unique_ptr<LogEntryBatch>> Reserve(
       LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch);
 
   LogOptions options_;
@@ -575,6 +581,10 @@ class Log : public RefCountedThreadSafe<Log> {
   // The maximum segment size we want for the current WAL segment, in bytes.  This value keeps
   // doubling (for each subsequent WAL segment) till it gets to max_segment_size_.
   uint64_t cur_max_segment_size_;
+
+  // The maximum segment size we want for the next WAL segment, in bytes. Use this value instead of
+  // doubling cur_max_segment_size_ if it's specifed.
+  std::optional<uint64_t> next_max_segment_size_;
 
   // Appender manages a TaskStream writing to the log. We will use one taskstream per tablet.
   std::unique_ptr<Appender> appender_;

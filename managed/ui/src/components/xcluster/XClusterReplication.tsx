@@ -98,7 +98,13 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
                 <YBTooltip
                   title={
                     shouldDisableCreateXClusterConfig
-                      ? t('actionButton.createXClusterConfig.tooltip.universeLinkedToTxnXCluster')
+                      ? universeHasTxnXCluster
+                        ? t('actionButton.createXClusterConfig.tooltip.universeLinkedToTxnXCluster')
+                        : UnavailableUniverseStates.includes(
+                            getUniverseStatus(universeQuery.data).state
+                          )
+                        ? t('actionButton.createXClusterConfig.tooltip.universeUnavailable')
+                        : ''
                       : ''
                   }
                   placement="top"

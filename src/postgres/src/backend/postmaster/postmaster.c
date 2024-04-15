@@ -4645,6 +4645,11 @@ BackendInitialize(Port *port)
 		init_ps_display(port->user_name, port->database_name, remote_ps_data,
 						update_process_title ? "authentication" : "");
 
+	if (YBIsEnabledInPostgresEnvVar() && am_walsender)
+		YBC_LOG_INFO("Started Walsender backend with pid: %d, user_name: %s, "
+					 "remote_ps_data: %s",
+					 getpid(), port->user_name, remote_ps_data);
+
 	/*
 	 * Disable the timeout, and prevent SIGTERM/SIGQUIT again.
 	 */

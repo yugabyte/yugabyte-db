@@ -31,6 +31,7 @@
 #include "access/rmgr.h"
 #include "access/transam.h"
 #include "access/twophase.h"
+#include "access/tuptoaster.h"
 #include "access/xact.h"
 #include "access/xlog_internal.h"
 #include "access/yb_scan.h"
@@ -222,6 +223,7 @@ static void assign_ysql_upgrade_mode(bool newval, void *extra);
 static bool check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source);
 static bool check_min_backoff(int *min_backoff_msecs, void **extra, GucSource source);
 static bool check_backoff_multiplier(double *multiplier, void **extra, GucSource source);
+static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
 static void check_reserved_prefixes(const char *varName);
 static List *reserved_class_prefix = NIL;
 
@@ -1097,6 +1099,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_batchednl,
 		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_enable_parallel_append", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of parallel append plans "
+						 "if YB is enabled."),
+			NULL
+		},
+		&yb_enable_parallel_append,
+		false,
 		NULL, NULL, NULL
 	},
 	{
@@ -2295,13 +2307,14 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"yb_enable_optimizer_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables use postgres selectivity model."),
+			gettext_noop("Enables use of the PostgreSQL selectivity estimation which utilizes "
+			"table statistics collected with ANALYZE. When disabled, a simpler heuristics based "
+			"selectivity estimation is used."),
 			NULL
 		},
 		&yb_enable_optimizer_statistics,
 		false,
 		NULL, NULL, NULL
-
 	},
 	{
 		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -4075,6 +4088,16 @@ static struct config_int ConfigureNamesInt[] =
 		&yb_ash_sample_size,
 		500, 0, INT_MAX,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_toast_catcache_threshold", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Size threshold in bytes for a catcache tuple to be compressed."),
+			NULL
+		},
+		&yb_toast_catcache_threshold,
+		-1, -1, INT_MAX,
+		yb_check_toast_catcache_threshold, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -12720,5 +12743,16 @@ check_backoff_multiplier(double *multiplier, void **extra, GucSource source)
 	}
 	return true;
 }
+
+static bool
+yb_check_toast_catcache_threshold(int *newVal, void **extra, GucSource source)
+{
+	if (*newVal != -1 && *newVal < 128) {
+		GUC_check_errdetail("must greater than or equal to 128 bytes, or -1 to disable.");
+		return false;
+	}
+	return true;
+}
+
 
 #include "guc-file.c"

@@ -158,6 +158,10 @@ public class ThirdPartyLoginHandler {
       } else {
         groups = idToken.getJWTClaimsSet().getStringListClaim("groups");
       }
+      // return if groups claim not found in token
+      if (groups == null) {
+        return roles;
+      }
       log.info("List of user's groups = {}", groups.toString());
 
       for (String group : groups) {
@@ -255,5 +259,12 @@ public class ThirdPartyLoginHandler {
             () ->
                 new PlatformServiceException(
                     Status.INTERNAL_SERVER_ERROR, "Unable to get profile"));
+  }
+
+  public ProfileManager<CommonProfile> getProfileManager(Request request) {
+    final PlayWebContext context = new PlayWebContext(request, sessionStore);
+    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
+
+    return profileManager;
   }
 }

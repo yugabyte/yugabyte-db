@@ -15,7 +15,6 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class QueryLatencyDetector extends AnomalyDetectorBase {
-  private static final int QUERY_BATCH_SIZE = 10;
 
   private final PgStatStatementsQueryService pgStatStatementsQueryService;
 
@@ -28,7 +27,7 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
     this.pgStatStatementsQueryService = pgStatStatementsQueryService;
   }
 
-  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+  protected AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
     List<PgStatStatementsQuery> queries =
         pgStatStatementsQueryService.listByUniverseId(context.getUniverseUuid());
@@ -37,7 +36,10 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
             .collect(Collectors.groupingBy(q -> q.getId().getDbId(), Collectors.toList()));
     queriesByDb.forEach(
         (dbId, dbQueries) -> {
-          for (List<PgStatStatementsQuery> batch : Lists.partition(dbQueries, QUERY_BATCH_SIZE)) {
+          for (List<PgStatStatementsQuery> batch :
+              Lists.partition(
+                  dbQueries,
+                  context.getConfig().getInt(RuntimeConfigKey.QUERY_LATENCY_BATCH_SIZE))) {
             result.merge(findAnomalies(context, dbId, batch));
           }
         });
@@ -88,14 +90,26 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
                 Collectors.groupingBy(
                     data -> data.getLabels().get(GraphFilter.queryId.name()), Collectors.toList()));
 
+    long minAnomalyDurationMillis =
+        Math.max(
+            response.getStepSeconds() * 1000,
+            context.getConfig().getDuration(getMinAnomalyDurationKey()).toMillis());
+    double minAnomalyValue =
+        context.getConfig().getDouble(RuntimeConfigKey.QUERY_LATENCY_MIN_ANOMALY_VALUE);
+    double baselinePointsRation =
+        context.getConfig().getDouble(RuntimeConfigKey.QUERY_LATENCY_BASELINE_POINTS_RATIO);
+    double thresholdRatio =
+        context.getConfig().getDouble(RuntimeConfigKey.QUERY_LATENCY_THRESHOLD_RATIO);
     GraphAnomalyDetectionService.AnomalyDetectionSettings detectionSettings =
         new GraphAnomalyDetectionService.AnomalyDetectionSettings()
-            .setMinimalAnomalyDurationMillis(getMinAnomalySizeMillis());
-    long minAnomalySize = Math.max(response.getStepSeconds() * 1000, getMinAnomalySizeMillis());
+            .setMinimalAnomalyDurationMillis(minAnomalyDurationMillis)
+            .setMinimalAnomalyValue(minAnomalyValue);
     detectionSettings
         .getIncreaseDetectionSettings()
-        .setWindowMinSize(minAnomalySize)
-        .setWindowMaxSize(minAnomalySize * 2);
+        .setBaselinePointsRatio(baselinePointsRation)
+        .setThresholdRatio(thresholdRatio)
+        .setWindowMinSize(minAnomalyDurationMillis)
+        .setWindowMaxSize(minAnomalyDurationMillis * 2);
 
     AnomalyDetectionContext contextWithUpdatedStep =
         context.toBuilder().stepSeconds(response.getStepSeconds()).build();
@@ -150,6 +164,11 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
             + customContext.getQuery().getDbName()
             + "'");
     return builder;
+  }
+
+  @Override
+  protected RuntimeConfigKey getMinAnomalyDurationKey() {
+    return RuntimeConfigKey.QUERY_LATENCY_MIN_ANOMALY_DURATION;
   }
 
   @Data

@@ -2,12 +2,13 @@ import { useQuery } from 'react-query';
 import clsx from 'clsx';
 import { Typography } from '@material-ui/core';
 
-import { AlertName, XClusterTableStatus } from './constants';
+import { XClusterTableStatus } from './constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { getAlertConfigurations } from '../../actions/universe';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { alertConfigQueryKey } from '../../redesign/helpers/api';
 import { getStrictestReplicationLagAlertThreshold } from './ReplicationUtils';
+import { AlertTemplate } from '../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import { usePillStyles } from '../../redesign/styles/styles';
 
@@ -24,7 +25,7 @@ export const XClusterTableStatusLabel = ({
 }: XClusterTableStatusProps) => {
   const classes = usePillStyles();
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: sourceUniverseUuid
   };
   const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>

@@ -161,6 +161,16 @@ def main() -> int:
     version_number = match.group(1)
     build_type = args.build_type
 
+    # The minimum YBA version required by this build.  If there is no min_yba_version.txt then
+    # default to 0.0.0 (yba uses semvar).
+    path_to_yba_min_version_file = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)), "..", "..", "min_yba_version.txt")
+    if os.path.isfile(path_to_yba_min_version_file):
+        with open(path_to_yba_min_version_file) as version_file:
+            min_yba_version = version_file.read().strip()
+    else:
+        min_yba_version = '0.0.0.0'
+
     # Add the Jenkins build ID
     build_id = os.getenv("BUILD_ID", "")
     # This will be replaced by the release process.
@@ -191,7 +201,8 @@ def main() -> int:
             "version_number": version_number,
             "build_number": build_number,
             "platform": os_platform,
-            "architecture": architecture
+            "architecture": architecture,
+            "minimum_yba_version": min_yba_version
             }
 
     # Record our glibc version.  This doesn't apply to mac/darwin.

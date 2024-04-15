@@ -1,10 +1,12 @@
 package com.yugabyte.troubleshoot.ts.service.anomaly;
 
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.buildSummary;
+
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
-import java.time.Duration;
+import io.prometheus.client.Summary;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -15,7 +17,11 @@ import org.apache.commons.lang3.tuple.Pair;
 
 public abstract class AnomalyDetectorBase implements AnomalyDetector {
 
-  private static final long MIN_ANOMALY_SIZE_MILLIS = Duration.ofMinutes(5).toMillis();
+  private static String ANOMALY_TYPE = "anomaly_type";
+
+  static final Summary DETECTION_FULL_TIME =
+      buildSummary(
+          "ts_anomaly_detection_full_time_millis", "Graph data retrieval time", ANOMALY_TYPE);
 
   protected final GraphService graphService;
   protected final AnomalyMetadataProvider metadataProvider;
@@ -30,6 +36,18 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
     this.metadataProvider = metadataProvider;
     this.anomalyDetectionService = anomalyDetectionService;
   }
+
+  @Override
+  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+    long startTime = System.currentTimeMillis();
+    AnomalyDetectionResult result = findAnomaliesInternal(context);
+    DETECTION_FULL_TIME
+        .labels(getAnomalyType().name())
+        .observe(System.currentTimeMillis() - startTime);
+    return result;
+  }
+
+  protected abstract AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context);
 
   protected Pair<Instant, Instant> calculateGraphStartEndTime(
       AnomalyDetectionContext context, Instant anomalyStartTime, Instant anomalyEndTime) {
@@ -116,10 +134,6 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
       filters.put(GraphFilter.universeUuid, ImmutableList.of(context.getUniverseUuid().toString()));
     }
     return metadataBuilder.filters(filters).build();
-  }
-
-  protected long getMinAnomalySizeMillis() {
-    return MIN_ANOMALY_SIZE_MILLIS;
   }
 
   protected List<List<GraphData>> groupGraphLines(List<GraphData> lines) {
@@ -236,4 +250,6 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
           result.getAnomalies().add(anomalyBuilder.build());
         });
   }
+
+  protected abstract RuntimeConfigKey getMinAnomalyDurationKey();
 }

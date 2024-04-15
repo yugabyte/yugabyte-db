@@ -63,6 +63,7 @@ static const char* const kCDCSDKConfirmedFlushLSN = "confirmed_flush_lsn";
 static const char* const kCDCSDKRestartLSN = "restart_lsn";
 static const char* const kCDCSDKXmin = "xmin";
 static const char* const kCDCSDKRecordIdCommitTime = "record_id_commit_time";
+static const char* const kCDCSDKLastPubRefreshTime = "last_pub_refresh_time";
 
 namespace {
 const client::YBTableName kCdcStateYBTableName(
@@ -161,6 +162,11 @@ void SerializeEntry(
           get_map_value_pb(), kCDCSDKRecordIdCommitTime, AsString(*entry.record_id_commit_time));
     }
 
+    if (entry.last_pub_refresh_time) {
+      client::AddMapEntryToColumn(
+          get_map_value_pb(), kCDCSDKLastPubRefreshTime, AsString(*entry.last_pub_refresh_time));
+    }
+
   } else {
     if (entry.active_time) {
       client::UpdateMapUpsertKeyValue(
@@ -197,6 +203,12 @@ void SerializeEntry(
       client::UpdateMapUpsertKeyValue(
           req, cdc_table->ColumnId(kCdcData), kCDCSDKRecordIdCommitTime,
           AsString(*entry.record_id_commit_time));
+    }
+
+    if (entry.last_pub_refresh_time) {
+      client::UpdateMapUpsertKeyValue(
+          req, cdc_table->ColumnId(kCdcData), kCDCSDKLastPubRefreshTime,
+          AsString(*entry.last_pub_refresh_time));
     }
   }
 }
@@ -249,6 +261,12 @@ Status DeserializeColumn(
         VERIFY_PARSE_COLUMN(GetIntValueFromMap<uint64_t>(map_value, kCDCSDKRecordIdCommitTime));
     if (record_id_commit_time_result) {
       entry->record_id_commit_time = *record_id_commit_time_result;
+    }
+
+    auto last_pub_refresh_time_result =
+        VERIFY_PARSE_COLUMN(GetIntValueFromMap<uint64_t>(map_value, kCDCSDKLastPubRefreshTime));
+    if (last_pub_refresh_time_result) {
+      entry->last_pub_refresh_time = *last_pub_refresh_time_result;
     }
   }
 
@@ -335,6 +353,10 @@ std::string CDCStateTableEntry::ToString() const {
 
   if (record_id_commit_time) {
     result += Format(", RecordIdCommitTime: $0", *record_id_commit_time);
+  }
+
+  if (last_pub_refresh_time) {
+    result += Format(", LastPubRefreshTime: $0", *last_pub_refresh_time);
   }
 
   return result;
@@ -485,11 +507,13 @@ Status CDCStateTable::WriteEntriesAsync(
   }
 
   session->Apply(std::move(ops));
-  session->FlushAsync([callback = std::move(callback)](client::FlushStatus* flush_status) {
+  session->FlushAsync([session_holder = session,
+                       callback = std::move(callback)](client::FlushStatus* flush_status) mutable {
     for (auto& error : flush_status->errors) {
       LOG_WITH_FUNC(WARNING) << "Flush of operation " << error->failed_op().ToString()
                              << " failed: " << error->status();
     }
+    session_holder = {};
     callback(std::move(flush_status->status));
   });
   return Status::OK();
@@ -665,6 +689,10 @@ CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeXmin() {
 }
 
 CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeRecordIdCommitTime() {
+  return std::move(IncludeData());
+}
+
+CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeLastPubRefreshTime() {
   return std::move(IncludeData());
 }
 

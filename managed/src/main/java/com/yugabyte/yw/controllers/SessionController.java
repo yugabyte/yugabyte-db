@@ -25,6 +25,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.RefetchOIDCAccessToken;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -83,6 +84,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
+import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.oidc.profile.OidcProfileDefinition;
 import org.pac4j.play.java.Secure;
 import org.slf4j.Logger;
@@ -133,6 +135,8 @@ public class SessionController extends AbstractPlatformController {
   @Inject private RuntimeConfGetter confGetter;
 
   @Inject private RoleBindingUtil roleBindingUtil;
+
+  @Inject private RefetchOIDCAccessToken refreshAccessToken;
 
   private final ApiHelper apiHelper;
 
@@ -437,7 +441,13 @@ public class SessionController extends AbstractPlatformController {
 
     try {
       // Persist the JWT auth token in case of successful login.
-      CommonProfile profile = thirdPartyLoginHandler.getProfile(request);
+      ProfileManager<CommonProfile> profileManager =
+          thirdPartyLoginHandler.getProfileManager(request);
+      CommonProfile profile = profileManager.get(true).get();
+      String refreshTokenEndpoint = confGetter.getGlobalConf(GlobalConfKeys.ybSecuritySecret);
+      if (profile.containsAttribute("refresh_token") && refreshTokenEndpoint != null) {
+        refreshAccessToken.start(profileManager, user);
+      }
       if (profile.containsAttribute("id_token")) {
         user.setOidcJwtAuthToken((String) profile.getAttribute("id_token"));
         user.save();
@@ -697,10 +707,10 @@ public class SessionController extends AbstractPlatformController {
     boolean useNewAuthz =
         runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
 
+    // Sync all the built-in roles when a new customer is created.
+    R__Sync_System_Roles.syncSystemRoles();
+
     if (useNewAuthz) {
-      // Sync all the built-in roles when a new customer is created.
-      // After the Customer.create() step.
-      R__Sync_System_Roles.syncSystemRoles();
       Role newRbacRole = Role.get(cust.getUuid(), role.name());
 
       // Now add the role binding for the above user.
@@ -751,6 +761,7 @@ public class SessionController extends AbstractPlatformController {
   public Result logout() {
     Users user = CommonUtils.getUserFromContext();
     if (user != null) {
+      refreshAccessToken.stop(user);
       user.deleteAuthToken();
     }
     return YBPSuccess.empty().discardingCookie(AUTH_TOKEN);

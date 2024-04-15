@@ -579,7 +579,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         ReleaseManager.ReleaseMetadata.create(ybVersion)
             .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
     when(mockReleaseManager.getReleaseByVersion(ybVersion))
-        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig));
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
     createTempFile(
         TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
 
@@ -684,7 +685,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-1.0.0.0-helm.tar.gz")
             .withFilePath("/opt/yugabyte/releases/1.0.0.0/yb-1.0.0.0-x86_64-linux.tar.gz");
     when(mockReleaseManager.getReleaseByVersion("1.0.0.0"))
-        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig));
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
     createTempFile(TMP_CHART_PATH, "ucctb_yugabyte-1.0.0.0-helm.tar.gz", "Sample helm chart data");
     createTempFile(
         "/opt/yugabyte/releases/1.0.0.0", "yb-1.0.0.0-x86_64-linux.tar.gz", "Sample package data");
@@ -784,7 +786,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     ReleaseContainer release =
-        new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockRuntimeConfig);
+        new ReleaseContainer(
+            releaseMetadata, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils);
     when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();

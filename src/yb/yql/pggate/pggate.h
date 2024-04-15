@@ -313,6 +313,7 @@ class PgApiImpl {
                         bool is_matview,
                         const PgObjectId& pg_table_oid,
                         const PgObjectId& old_relfilenode_oid,
+                        bool is_truncate,
                         PgStatement **handle);
 
   Status CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
@@ -347,6 +348,8 @@ class PgApiImpl {
   Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
 
   Status ExecAlterTable(PgStatement *handle);
+
+  Status AlterTableInvalidateTableCacheEntry(PgStatement *handle);
 
   Status NewDropTable(const PgObjectId& table_id,
                       bool if_exist,
@@ -404,6 +407,7 @@ class PgApiImpl {
 
   Status NewDropIndex(const PgObjectId& index_id,
                       bool if_exist,
+                      bool ddl_rollback_enabled,
                       PgStatement **handle);
 
   Status ExecPostponedDdlStmt(PgStatement *handle);
@@ -428,6 +432,8 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
+
+  Result<bool> DmlHasRegularTargets(PgStatement *handle);
 
   Result<bool> DmlHasSystemTargets(PgStatement *handle);
 
@@ -744,7 +750,11 @@ class PgApiImpl {
 
   uint64_t GetReadTimeSerialNo();
 
-  void ForceReadTimeSerialNo(uint64_t read_time_serial_no);
+  uint64_t GetTxnSerialNo();
+
+  SubTransactionId GetActiveSubTransactionId();
+
+  void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
 
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.
@@ -765,6 +775,9 @@ class PgApiImpl {
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
 
+  Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+
   Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
   Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
@@ -778,6 +791,7 @@ class PgApiImpl {
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
 
+  Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
  private:

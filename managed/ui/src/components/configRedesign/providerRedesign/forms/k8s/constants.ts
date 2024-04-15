@@ -36,3 +36,15 @@ export const KUBERNETES_PROVIDER_OPTIONS = {
 
 export const QUAY_IMAGE_REGISTRY = 'quay.io/yugabyte/yugabyte';
 export const REDHAT_IMAGE_REGISTRY = 'registry.connect.redhat.com/yugabytedb/yugabyte';
+
+export const K8S_FORM_MAPPERS = {
+  '$.name': 'providerName',
+  '$.details.cloudInfo.kubernetes.kubernetesImageRegistry': 'kubernetesImageRegistry',
+  '$.details.cloudInfo.kubernetes.kubernetesProvider': 'kubernetesProvider',
+  '$.details.cloudInfo.kubernetes.kubeConfigName': 'kubeConfigName',
+  '$.details.cloudInfo.kubernetes.kubeConfigContent': 'kubeConfigContent',
+  '$.details.cloudInfo.kubernetes.kubernetesPullSecretContent': 'kubernetesPullSecretContent',
+  '$.details.cloudInfo.kubernetes.kubernetesPullSecretName': 'kubernetesPullSecretName',
+  '$.details.airGapInstall': 'dbNodePublicInternetAccess',
+  '$.regions': 'regions'
+};

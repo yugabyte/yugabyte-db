@@ -79,6 +79,7 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
   // will be OK if the task succeeded and not OK if it failed. Note: Do not invoke this directly. It
   // will be invoked when any step returns a bad status.
   virtual void TaskCompleted(const Status& status);
+  virtual void PerformAbort();
 
   // ==================================================================
   // Helper methods that derived class steps can invoke.

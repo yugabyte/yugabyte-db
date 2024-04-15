@@ -17,7 +17,7 @@ const (
 		"\t{{.FirewallTags}}"
 
 	// Region provides header for GCP Region Cloud Info
-	Region = "table {{.InstanceTemplate}}\t.{{.YbImage}}"
+	Region = "table {{.InstanceTemplate}}\t{{.YbImage}}"
 
 	projectHeader          = "GCE Project"
 	vpcTypeHeader          = "VPC Type"

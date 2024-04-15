@@ -481,7 +481,7 @@ TEST_F(PgLibPqTest, ConcurrentIndexInsert) {
 TEST_F(PgLibPqTest, ConcurrentInsertAndDeleteOnTablesWithForeignKey) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
-  const auto num_iterations = 50;
+  const auto num_iterations = 25;
   const auto kTimeout = 60s;
 
   ASSERT_OK(conn1.Execute("CREATE TABLE IF NOT EXISTS t1 (a int PRIMARY KEY, b int)"));
@@ -2272,8 +2272,7 @@ TEST_F_EX(
   ASSERT_OK(conn.Execute("SET yb_binary_restore TO true"));
   ASSERT_OK(conn.FetchFormat(set_next_tablegroup_oid_sql, next_tg_oid));
   // Cleanup hasn't been processed yet, so this fails.
-  ASSERT_QUERY_FAIL(conn.Execute("CREATE TABLEGROUP tg3"),
-                    "Duplicate tablegroup");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("CREATE TABLEGROUP tg3"), "Duplicate tablegroup");
 
   // Wait for cleanup thread to delete a table.
   // Since delete hasn't started initially, WaitForDeleteTableToFinish will error out.

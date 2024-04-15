@@ -2,12 +2,9 @@ package com.yugabyte.troubleshoot.ts.service.anomaly;
 
 import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
-import java.time.Duration;
 import java.util.*;
 
 public abstract class UnevenDistributionDetector extends AnomalyDetectorBase {
-
-  private static final long MIN_ANOMALY_SIZE_MILLIS = Duration.ofMinutes(5).toMillis();
 
   protected UnevenDistributionDetector(
       GraphService graphService,
@@ -16,15 +13,9 @@ public abstract class UnevenDistributionDetector extends AnomalyDetectorBase {
     super(graphService, metadataProvider, anomalyDetectionService);
   }
 
-  protected abstract double getMinAnomalyValue();
-
-  protected long getMinAnomalySizeMillis() {
-    return MIN_ANOMALY_SIZE_MILLIS;
-  }
-
   protected abstract String getGraphName();
 
-  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+  protected AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
 
     GraphResponse response = queryNodeMetric(context, getGraphName(), result);
@@ -35,15 +26,21 @@ public abstract class UnevenDistributionDetector extends AnomalyDetectorBase {
     AnomalyDetectionContext contextWithUpdatedStep =
         context.toBuilder().stepSeconds(response.getStepSeconds()).build();
 
-    long minAnomalySize = Math.max(response.getStepSeconds() * 1000, getMinAnomalySizeMillis());
+    long minAnomalyDurationMillis =
+        Math.max(
+            response.getStepSeconds() * 1000,
+            context.getConfig().getDuration(getMinAnomalyDurationKey()).toMillis());
+    double minAnomalyValue = context.getConfig().getDouble(getMinAnomalyValueKey());
+    double thresholdRatio = context.getConfig().getDouble(getThresholdRatioKey());
     GraphAnomalyDetectionService.AnomalyDetectionSettings detectionSettings =
         new GraphAnomalyDetectionService.AnomalyDetectionSettings()
-            .setMinimalAnomalyDurationMillis(minAnomalySize)
-            .setMinimalAnomalyValue(getMinAnomalyValue());
+            .setMinimalAnomalyDurationMillis(minAnomalyDurationMillis)
+            .setMinimalAnomalyValue(minAnomalyValue);
     detectionSettings
         .getIncreaseDetectionSettings()
-        .setWindowMinSize(minAnomalySize)
-        .setWindowMaxSize(minAnomalySize * 2);
+        .setThresholdRatio(thresholdRatio)
+        .setWindowMinSize(minAnomalyDurationMillis)
+        .setWindowMaxSize(minAnomalyDurationMillis * 2);
 
     List<List<GraphData>> groupedLines = groupGraphLines(response.getData());
 
@@ -58,4 +55,8 @@ public abstract class UnevenDistributionDetector extends AnomalyDetectorBase {
 
     return result;
   }
+
+  protected abstract RuntimeConfigKey getMinAnomalyValueKey();
+
+  protected abstract RuntimeConfigKey getThresholdRatioKey();
 }

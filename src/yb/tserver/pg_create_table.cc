@@ -132,7 +132,8 @@ Status PgCreateTable::Exec(
                 .table_id(PgObjectId::GetYbTableIdFromPB(req_.table_id()))
                 .schema(&schema)
                 .is_colocated_via_database(req_.is_colocated_via_database())
-                .is_matview(req_.is_matview());
+                .is_matview(req_.is_matview())
+                .is_truncate(req_.is_truncate());
   if (req_.is_pg_catalog_table()) {
     table_creator->is_pg_catalog_table();
   }
@@ -198,9 +199,6 @@ Status PgCreateTable::Exec(
         return Status::OK();
       }
       return STATUS(InvalidArgument, "Duplicate table");
-    }
-    if (s.IsNotFound()) {
-      return STATUS(InvalidArgument, "Database not found", table_name_.namespace_name());
     }
     return STATUS_FORMAT(
         InvalidArgument, "Invalid table definition: $0",

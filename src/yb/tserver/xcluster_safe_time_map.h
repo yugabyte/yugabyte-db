@@ -37,14 +37,19 @@ class XClusterSafeTimeMap {
   Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const
       EXCLUDES(xcluster_safe_time_map_mutex_);
 
+  bool HasNamespace(const NamespaceId& namespace_id) const;
+
   void Update(XClusterNamespaceToSafeTimePBMap safe_time_map)
       EXCLUDES(xcluster_safe_time_map_mutex_);
+
+  bool empty() const { return empty_.load(std::memory_order_acquire); }
 
  private:
   mutable rw_spinlock xcluster_safe_time_map_mutex_;
   bool map_initialized_ GUARDED_BY(xcluster_safe_time_map_mutex_);
   XClusterNamespaceToSafeTimePBMap xcluster_safe_time_map_
       GUARDED_BY(xcluster_safe_time_map_mutex_);
+  std::atomic<bool> empty_ = false;
 };
 
 }  // namespace yb

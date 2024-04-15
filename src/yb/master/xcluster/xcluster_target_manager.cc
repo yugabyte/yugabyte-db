@@ -16,7 +16,6 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
@@ -24,6 +23,8 @@
 
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/status.h"
 
 namespace yb::master {
@@ -49,7 +50,10 @@ Status XClusterTargetManager::Init() {
   return Status::OK();
 }
 
-void XClusterTargetManager::Clear() { xcluster_safe_time_info_.Clear(); }
+void XClusterTargetManager::Clear() {
+  xcluster_safe_time_info_.Clear();
+  removed_deleted_tables_from_replication_ = false;
+}
 
 Status XClusterTargetManager::RunLoaders() {
   RETURN_NOT_OK(
@@ -194,15 +198,121 @@ XClusterTargetManager::GetPostTabletCreateTasks(
   return tasks;
 }
 
-template <typename PBList>
-std::string PBListAsString(const PBList& pb, const char* delim = ",") {
-  std::stringstream errors;
-  for (int i = 0; i < pb.size(); i++) {
-    errors << (i ? delim : "") << pb.Get(i).ShortDebugString();
+Status XClusterTargetManager::WaitForSetupUniverseReplicationToFinish(
+    const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline) {
+  return Wait(
+      [&]() -> Result<bool> {
+        auto is_operation_done =
+            VERIFY_RESULT(IsSetupUniverseReplicationDone(replication_group_id, catalog_manager_));
+
+        if (is_operation_done.done()) {
+          RETURN_NOT_OK(is_operation_done.status());
+          return true;
+        }
+
+        return false;
+      },
+      deadline,
+      Format("Waiting for SetupUniverseReplication of $0 to finish", replication_group_id),
+      MonoDelta::FromMilliseconds(200));
+}
+
+Status XClusterTargetManager::RemoveDroppedTablesOnConsumer(
+    const std::unordered_set<TabletId>& table_ids, const LeaderEpoch& epoch) {
+  auto table_stream_map = catalog_manager_.GetXClusterConsumerTableStreams();
+  if (table_stream_map.empty()) {
+    return Status::OK();
   }
 
-  return errors.str();
+  std::map<xcluster::ReplicationGroupId, std::vector<TableId>> replication_group_producer_tables;
+  {
+    auto cluster_config = catalog_manager_.ClusterConfig();
+    auto l = cluster_config->LockForRead();
+    auto& replication_group_map = l->pb.consumer_registry().producer_map();
+
+    for (auto& table_id : table_ids) {
+      auto stream_ids = FindOrNull(table_stream_map, table_id);
+      if (!stream_ids) {
+        continue;
+      }
+
+      for (const auto& [replication_group_id, stream_id] : *stream_ids) {
+        // Fetch the stream entry so we can update the mappings.
+        auto producer_entry = FindOrNull(replication_group_map, replication_group_id.ToString());
+        // If we can't find the entries, then the stream has been deleted.
+        if (!producer_entry) {
+          LOG(WARNING) << "Unable to find the producer entry for universe " << replication_group_id;
+          continue;
+        }
+        auto stream_entry = FindOrNull(producer_entry->stream_map(), stream_id.ToString());
+        if (!stream_entry) {
+          LOG(WARNING) << "Unable to find the producer entry for universe " << replication_group_id
+                       << ", stream " << stream_id;
+          continue;
+        }
+        replication_group_producer_tables[replication_group_id].push_back(
+            stream_entry->producer_table_id());
+      }
+    }
+  }
+
+  for (auto& [replication_group_id, producer_tables] : replication_group_producer_tables) {
+    LOG(INFO) << "Removing dropped tables " << yb::ToString(table_ids)
+              << " from xcluster replication " << replication_group_id;
+
+    auto replication_group = catalog_manager_.GetUniverseReplication(replication_group_id);
+    if (!replication_group) {
+      VLOG(1) << "Replication group " << replication_group_id << " not found";
+      continue;
+    }
+
+    RETURN_NOT_OK(RemoveTablesFromReplicationGroup(
+        replication_group, producer_tables, catalog_manager_, epoch));
+    RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(
+        replication_group_id, CoarseMonoClock::TimePoint::max()));
+  }
+
+  return Status::OK();
 }
+
+void XClusterTargetManager::RunBgTasks(const LeaderEpoch& epoch) {
+  WARN_NOT_OK(
+      RemoveDroppedTablesFromReplication(epoch),
+      "Failed to remove dropped tables from consumer replication groups");
+}
+
+Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch) {
+  if (removed_deleted_tables_from_replication_) {
+    return Status::OK();
+  }
+
+  std::unordered_set<TabletId> tables_to_remove;
+  auto table_stream_map = catalog_manager_.GetXClusterConsumerTableStreams();
+  for (const auto& [table_id, _] : table_stream_map) {
+    auto table_info = catalog_manager_.GetTableInfo(table_id);
+    if (!table_info || !table_info->LockForRead()->visible_to_client()) {
+      tables_to_remove.insert(table_id);
+      continue;
+    }
+  }
+
+  RETURN_NOT_OK(RemoveDroppedTablesOnConsumer(tables_to_remove, epoch));
+
+  removed_deleted_tables_from_replication_ = true;
+  return Status::OK();
+}
+
+namespace {
+template <typename PBList>
+std::string PBListAsString(const PBList& pb, const char* delim = ",") {
+  std::stringstream ostream;
+  for (int i = 0; i < pb.size(); i++) {
+    ostream << (i ? delim : "") << pb.Get(i).ShortDebugString();
+  }
+
+  return ostream.str();
+}
+}  // namespace
 
 Status XClusterTargetManager::PopulateXClusterStatus(XClusterStatus& xcluster_status) const {
   GetReplicationStatusResponsePB replication_status;
@@ -224,8 +334,6 @@ Status XClusterTargetManager::PopulateXClusterStatus(XClusterStatus& xcluster_st
   SysClusterConfigEntryPB cluster_config;
   RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config));
   const auto& consumer_registry = cluster_config.consumer_registry();
-  xcluster_status.role = XClusterRole_Name(consumer_registry.role());
-  xcluster_status.transactional = consumer_registry.transactional();
 
   const auto replication_infos = catalog_manager_.GetAllXClusterUniverseReplicationInfos();
 
@@ -321,4 +429,16 @@ Status XClusterTargetManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
 
   return Status::OK();
 }
+
+std::unordered_set<xcluster::ReplicationGroupId>
+XClusterTargetManager::GetTransactionalReplicationGroups() const {
+  std::unordered_set<xcluster::ReplicationGroupId> result;
+  for (const auto& replication_info : catalog_manager_.GetAllXClusterUniverseReplicationInfos()) {
+    if (replication_info.transactional()) {
+      result.insert(xcluster::ReplicationGroupId(replication_info.replication_group_id()));
+    }
+  }
+  return result;
+}
+
 }  // namespace yb::master

@@ -95,7 +95,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static final boolean ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_DEFAULT = false;
   public static final Boolean TRANSACTION_SOURCE_UNIVERSE_ROLE_ACTIVE_DEFAULT = true;
   public static final Boolean TRANSACTION_TARGET_UNIVERSE_ROLE_ACTIVE_DEFAULT = true;
-  public static final String ENABLE_PG_SAVEPOINTS_GFLAG_NAME = "enable_pg_savepoints";
   public static final String MINIMUN_VERSION_TRANSACTIONAL_XCLUSTER_SUPPORT = "2.18.1.0-b1";
   public static final int LOGICAL_CLOCK_NUM_BITS_IN_HYBRID_CLOCK = 12;
   public static final String TXN_XCLUSTER_SAFETIME_LAG_NAME = "consumer_safe_time_lag";

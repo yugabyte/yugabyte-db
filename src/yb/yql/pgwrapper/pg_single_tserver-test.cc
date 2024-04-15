@@ -605,7 +605,7 @@ TEST_F_EX(
 
   // Since each DEFERRABLE waits for max_clock_skew_usec, set it to a low value to avoid a
   // very large test time.
-  SetAtomicFlag(2 * 1000, &FLAGS_max_clock_skew_usec);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 2000;
 
   constexpr auto kReadNumIterations = 1000u;
   auto read_conn = ASSERT_RESULT(Connect());

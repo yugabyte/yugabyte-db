@@ -844,10 +844,11 @@ export interface ImageBundle {
     regions: {
       [key: string]: {
         ybImage: string;
-        sshUserOverride: string;
-        sshPortOverride: number;
       };
     };
+    sshUser: string;
+    sshPort: number;
+    useIMDSv2?: boolean;
   };
   useAsDefault: boolean;
   metadata?: {

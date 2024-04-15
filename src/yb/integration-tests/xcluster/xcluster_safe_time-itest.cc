@@ -35,6 +35,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/tsan_util.h"
@@ -113,8 +114,6 @@ class XClusterSafeTimeTest : public XClusterTestBase {
     ASSERT_OK(VerifyUniverseReplication(kReplicationGroupId, &resp));
     ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
     ASSERT_EQ(resp.entry().tables_size(), 1);
-
-    ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
     // Initial wait is higher as it may need to wait for the create the table to complete.
     const client::YBTableName safe_time_table_name(
@@ -242,16 +241,7 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
   auto ht_4 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_4));
 
-  // 6. Make sure safe time is cleaned up when we switch to ACTIVE role.
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
-  ASSERT_OK(WaitForNotFoundSafeTime());
-
-  // 7.  Make sure safe time is reset when we switch back to STANDBY role.
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
-  auto ht_5 = GetProducerSafeTime();
-  ASSERT_OK(WaitForSafeTime(ht_5));
-
-  // 8.  Make sure safe time is cleaned up when we delete replication.
+  // 6.  Make sure safe time is cleaned up when we delete replication.
   ASSERT_OK(DeleteUniverseReplication());
   ASSERT_OK(VerifyUniverseReplicationDeleted(
       consumer_cluster(),

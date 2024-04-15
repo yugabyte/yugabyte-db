@@ -1009,14 +1009,6 @@ Result<TableKeyRangesWithHt> PgSession::GetTableKeyRanges(
       max_key_length, pg_txn_manager_->GetReadTimeSerialNo());
 }
 
-uint64_t PgSession::GetReadTimeSerialNo() {
-  return pg_txn_manager_->GetReadTimeSerialNo();
-}
-
-void PgSession::ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
-  pg_txn_manager_->ForceReadTimeSerialNo(read_time_serial_no);
-}
-
 Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlots() {
   return pg_client_.ListReplicationSlots();
 }
@@ -1028,6 +1020,10 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
   return {wait_starter_, wait_event};
+}
+
+Result<tserver::PgYCQLStatementStatsResponsePB> PgSession::YCQLStatementStats() {
+  return pg_client_.YCQLStatementStats();
 }
 
 Result<tserver::PgActiveSessionHistoryResponsePB> PgSession::ActiveSessionHistory() {

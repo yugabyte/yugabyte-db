@@ -31,7 +31,8 @@ import {
   formatUuidForXCluster,
   getTablesForBootstrapping,
   getXClusterConfigTableType,
-  parseFloatIfDefined
+  parseFloatIfDefined,
+  shouldAutoIncludeIndexTables
 } from '../../ReplicationUtils';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import { CurrentFormStep } from './CurrentFormStep';
@@ -119,7 +120,11 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
         ? api.updateTablesInDr(props.drConfigUuid, {
             tables: formValues.tableUuids
           })
-        : editXClusterConfigTables(xClusterConfig.uuid, formValues.tableUuids, bootstrapParams);
+        : editXClusterConfigTables(xClusterConfig.uuid, {
+            tables: formValues.tableUuids,
+            autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfig),
+            bootstrapParams: bootstrapParams
+          });
     },
     {
       onSuccess: (response) => {
@@ -274,43 +279,48 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           let bootstrapTableUuids: string[] | null = null;
           const hasSelectionError = false;
 
-          try {
-            bootstrapTableUuids = await getTablesForBootstrapping(
-              formValues.tableUuids,
-              sourceUniverseUuid,
-              targetUniverseUuid,
-              sourceUniverseTables,
-              xClusterConfig.type
-            );
-          } catch (error: any) {
-            toast.error(
-              <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
-                <div className={toastStyles.toastMessage}>
-                  <i className="fa fa-exclamation-circle" />
-                  <Typography variant="body2" component="span">
-                    {t('error.failedToFetchIsBootstrapRequired.title', {
+          const tableUuidsToAdd = formValues.tableUuids.filter(
+            (tableUuid) => !props.xClusterConfig.tables.includes(tableUuid)
+          );
+          if (tableUuidsToAdd.length) {
+            try {
+              bootstrapTableUuids = await getTablesForBootstrapping(
+                tableUuidsToAdd,
+                sourceUniverseUuid,
+                targetUniverseUuid,
+                sourceUniverseTables,
+                xClusterConfig.type
+              );
+            } catch (error: any) {
+              toast.error(
+                <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+                  <div className={toastStyles.toastMessage}>
+                    <i className="fa fa-exclamation-circle" />
+                    <Typography variant="body2" component="span">
+                      {t('error.failedToFetchIsBootstrapRequired.title', {
+                        keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                      })}
+                    </Typography>
+                  </div>
+                  <Typography variant="body2" component="div">
+                    {t('error.failedToFetchIsBootstrapRequired.body', {
                       keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
                     })}
                   </Typography>
-                </div>
-                <Typography variant="body2" component="div">
-                  {t('error.failedToFetchIsBootstrapRequired.body', {
-                    keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
-                  })}
-                </Typography>
-                <Typography variant="body2" component="div">
-                  {error.message}
-                </Typography>
-              </Box>
-            );
-            setSelectionWarning({
-              title: t('error.failedToFetchIsBootstrapRequired.title', {
-                keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
-              }),
-              body: t('error.failedToFetchIsBootstrapRequired.body', {
-                keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
-              })
-            });
+                  <Typography variant="body2" component="div">
+                    {error.message}
+                  </Typography>
+                </Box>
+              );
+              setSelectionWarning({
+                title: t('error.failedToFetchIsBootstrapRequired.title', {
+                  keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                }),
+                body: t('error.failedToFetchIsBootstrapRequired.body', {
+                  keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                })
+              });
+            }
           }
 
           if (bootstrapTableUuids?.length && bootstrapTableUuids?.length > 0) {
@@ -454,7 +464,8 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
             sourceUniverseUUID: sourceUniverseUuid,
             tableType: xClusterConfigTableType,
             targetUniverseUUID: targetUniverseUuid,
-            xClusterConfigUUID: xClusterConfig.uuid
+            xClusterConfigUUID: xClusterConfig.uuid,
+            isTransactionalConfig: xClusterConfig.type === XClusterConfigType.TXN
           }}
         />
       </FormProvider>

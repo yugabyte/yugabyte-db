@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
+import static org.junit.Assume.*;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -63,6 +64,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testSequencesSimple() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1");
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
@@ -100,6 +102,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testSequencesWithCache() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CACHE 100");
       // Use only half of the cached values.
@@ -121,6 +124,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testSequencesWithLowerThanDefaultCacheAndIncrement() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CACHE 50 INCREMENT 3");
       for (int i = 1; i <= 21; i+=3) {
@@ -142,6 +146,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testSequencesWithHigherThanDefaultCacheAndIncrement() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement();
         Connection connection2 = getConnectionWithNewCache();
         Statement statement2 = connection2.createStatement()) {
@@ -215,6 +220,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testSequenceWithMaxValueAndCache() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 MAXVALUE 5 CACHE 10");
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
@@ -490,6 +496,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testCurrval() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1");
       statement.execute("SELECT nextval('s1')");
@@ -519,6 +526,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testLastvalInAnotherSessionFails() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1");
       statement.execute("SELECT nextval('s1')");
@@ -602,6 +610,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testCycleOnDifferentConnection() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement();
         Connection connection2 = getConnectionWithNewCache();
         Statement statement2 = connection2.createStatement()) {
@@ -822,6 +831,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testNextValAsDefaultValueInTable() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CACHE 120");
       statement.execute("CREATE TABLE t(k int NOT NULL DEFAULT nextval('s1'), v int)");
@@ -923,6 +933,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testAlterSequence() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement();
         Statement statement2 = getConnectionWithNewCache().createStatement()) {
 
@@ -1079,6 +1090,8 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   //------------------------------------------------------------------------------------------------
   @Test
   public void testAlterSequenceCache() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
     // is fixed one statement can be used here as its cache will be cleared.
     try (Statement statement = connection.createStatement();
@@ -1125,6 +1138,8 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testAlterSequenceMaxvalue() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
     // is fixed one statement can be used here as its cache will be cleared.
     try (Statement statement = connection.createStatement();
@@ -1175,6 +1190,8 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testAlterSequenceMinvalue() throws Exception {
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
     // is fixed one statement can be used here as its cache will be cleared.
     try (Statement statement = connection.createStatement();

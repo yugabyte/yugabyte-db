@@ -136,7 +136,11 @@ set(CONSENSUS_SRCS
   retryable_requests.cc)
 
 ADD_YB_LIBRARY(consensus SRCS ${CONSENSUS_SRCS})
+
 add_dependencies(consensus gen_src_yb_rpc_any_proto)
+add_dependencies(consensus cdc_service_proto)
+add_dependencies(consensus gen_src_yb_master_master_client_proto)
+add_dependencies(consensus gen_src_yb_master_master_types_proto)
 
 target_link_libraries(consensus
   consensus_error

@@ -131,25 +131,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
       when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
-      when(mockNodeUniverseManager.runCommand(any(), any(), any()))
-          .thenReturn(
-              ShellResponse.create(
-                  ShellResponse.ERROR_CODE_SUCCESS,
-                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
-                      + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
-                      + "    Stratum         : 3\n"
-                      + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
-                      + "    System time     : 0.000000003 seconds slow of NTP time\n"
-                      + "    Last offset     : +0.000019514 seconds\n"
-                      + "    RMS offset      : 0.000011283 seconds\n"
-                      + "    Frequency       : 99.154 ppm slow\n"
-                      + "    Residual freq   : +0.009 ppm\n"
-                      + "    Skew            : 0.106 ppm\n"
-                      + "    Root delay      : 0.000162946 seconds\n"
-                      + "    Root dispersion : 0.000101734 seconds\n"
-                      + "    Update interval : 32.3 seconds\n"
-                      + "    Leap status     : Normal"));
-
+      mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
     } catch (Exception e) {
       fail();
@@ -238,7 +220,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
     taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
-    taskParams = Json.fromJson(taskInfo.getDetails(), UniverseDefinitionTaskParams.class);
+    taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
     taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
     // Retry the task.
     taskInfo = submitTask(taskParams);
@@ -259,7 +241,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
     taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
-    taskParams = Json.fromJson(taskInfo.getDetails(), UniverseDefinitionTaskParams.class);
+    taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
     taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
     primaryCluster.userIntent.enableYCQL = true;
     primaryCluster.userIntent.enableYCQLAuth = true;
@@ -335,7 +317,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         (int)
             taskInfo.getSubTasks().stream()
                 .filter(t -> t.getTaskType() == TaskType.AnsibleClusterServerCtl)
-                .map(t -> t.getDetails())
+                .map(t -> t.getTaskParams())
                 .filter(t -> t.has("process") && t.get("process").asText().equals("tserver"))
                 .filter(t -> t.has("command") && t.get("command").asText().equals("start"))
                 .count();

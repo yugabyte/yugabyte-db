@@ -92,6 +92,8 @@ class PgDml : public PgStatement {
   // key, or neither.
   Result<YBCPgColumnInfo> GetColumnInfo(int attr_num) const;
 
+  bool has_regular_targets() const;
+
   bool has_aggregate_targets() const;
 
   bool has_system_targets() const;
@@ -190,6 +192,7 @@ class PgDml : public PgStatement {
   // - "targets_" are either selected or returned expressions by DML statements.
   PgTable target_;
   std::vector<PgFetchedTarget*> targets_;
+  bool has_regular_targets_ = false;
   bool has_aggregate_targets_ = false;
   bool has_system_targets_ = false;
 

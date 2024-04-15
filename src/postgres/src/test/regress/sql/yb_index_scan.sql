@@ -384,6 +384,15 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int
 SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,'ab'::text,5) AND (r1, r2, r3) <= (1,'abcd'::text,5) ORDER BY r1 ASC, r2 ASC, r3 ASC;
 DROP TABLE pk_range_int_text;
 
+CREATE TABLE null_test(a int, b int);
+CREATE INDEX ON null_test(a asc, b asc);
+INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
+EXPLAIN (COSTS OFF) SELECT * FROM null_test WHERE (a,b) >= (9, 8);
+SELECT * FROM null_test WHERE (a,b) >= (9, 8);
+EXPLAIN (COSTS OFF) SELECT * FROM null_test WHERE (a,b) <= (9, 8);
+SELECT * FROM null_test WHERE (a,b) <= (9, 8);
+DROP TABLE null_test;
+
 -- make sure row comparisons don't operate on hash keys yet
 CREATE TABLE pk_hash_range_int (h int, r1 int, r2 int, r3 int, PRIMARY KEY(h hash, r1 asc, r2 asc, r3 asc));
 INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
@@ -433,7 +442,7 @@ EXPLAIN (COSTS OFF) SELECT (
 ) AS field1
 FROM
   aa AS table2;
--- Correlation of the same table 
+-- Correlation of the same table
 SELECT (
   SELECT
     COUNT(*)
@@ -469,4 +478,32 @@ select * from sample where b <= 2 and b >= 2;
 explain (costs off) select * from sample where b <= 3 and b <= 2 and b >= 2;
 select * from sample where b <= 3 and b <= 2 and b >= 2;
 
+drop table sample;
+
+-- GHI 21451 HASH Index on multiple expressions
+drop table IF EXISTS t1;
+create table t1 (c1 bigint, c2 jsonb, primary key ((c1)));
+insert into t1 (c1,c2) values (1,'{"c3":1,"c4":1}');
+insert into t1 (c1,c2) values (2,'{"c3":2,"c4":2}');
+create index t1_idx on t1 (((c2->>'c3'), (c2->>'c4')) hash);
+
+select * from t1;
+/*+IndexScan(t1 t1_idx)*/ explain (costs off) select * from t1 where (c2->>'c3') = '4';
+/*+IndexScan(t1 t1_idx)*/ select * from t1 where (c2->>'c3') = '4';
+/*+IndexScan(t1 t1_idx)*/ explain (costs off) select * from t1 where (c2->>'c4') = '4';
+/*+IndexScan(t1 t1_idx)*/ select * from t1 where (c2->>'c4') = '4';
+/*+IndexScan(t1 t1_idx)*/ explain (costs off) select * from t1 where (c2->>'c3') = '4' and (c2->>'c4') = '4';
+/*+IndexScan(t1 t1_idx)*/ select * from t1 where (c2->>'c3') = '4' and (c2->>'c4') = '4';
+
+drop table t1;
+
+create table sample(a int, primary key(a asc));
+insert into sample values (0);
+select * from sample where a = x'8000000000000000'::bigint;
+drop table sample;
+
+create table sample(a int2, primary key(a asc));
+insert into sample values (0);
+select * from sample where a = x'8000000000000000'::bigint;
+select * from sample where a = x'80000000'::int;
 drop table sample;

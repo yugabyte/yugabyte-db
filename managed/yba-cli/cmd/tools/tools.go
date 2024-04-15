@@ -69,8 +69,8 @@ func init() {
 	ToolsCmd.AddCommand(generateDocsCmd)
 
 	generateDocsCmd.Flags().SortFlags = false
-	generateDocsCmd.Flags().String("format", "",
-		fmt.Sprintf("[Optional] Documentation output format (%s) .(Default markdown)",
+	generateDocsCmd.Flags().String("format", "markdown",
+		fmt.Sprintf("[Optional] Documentation output format (%s).",
 			strings.Join(documentationFormat, ",")))
 	viper.BindPFlag("format", generateDocsCmd.Flags().Lookup("format"))
 	viper.SetDefault("format", "markdown")

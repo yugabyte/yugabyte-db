@@ -83,8 +83,7 @@ DEFINE_test_flag(double, simulated_failure_to_send_call_probability, 0.0,
     "being closed.");
 
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 namespace {
 
@@ -168,7 +167,7 @@ std::string Connection::ReasonNotIdle() const {
   return reason;
 }
 
-void Connection::Shutdown(const Status& provided_status) {
+bool Connection::Shutdown(const Status& provided_status) {
   if (provided_status.ok()) {
     LOG_WITH_PREFIX(DFATAL)
         << "Connection shutdown called with an OK status, replacing with an error:\n"
@@ -187,11 +186,11 @@ void Connection::Shutdown(const Status& provided_status) {
       // Perform this compare-and-set when holding outbound_data_queue_mtx_ so that
       // ShutdownStatus() would retrieve the correct status.
       if (shutdown_initiated_.exchange(true, std::memory_order_release)) {
-        LOG_WITH_PREFIX(WARNING)
+        LOG_WITH_PREFIX(DFATAL)
             << "Connection shutdown invoked multiple times. Previously with status "
             << shutdown_status_ << " and now with status " << provided_status
             << ", completed=" << shutdown_completed() << ". Skipping repeated shutdown.";
-        return;
+        return false;
       }
 
       outbound_data_being_processed = std::move(outbound_data_to_process_);
@@ -226,6 +225,7 @@ void Connection::Shutdown(const Status& provided_status) {
   // TODO(bogdan): re-enable once we decide how to control verbose logs better...
   // LOG_WITH_PREFIX(INFO) << "Connection::Shutdown completed, status: " << status;
   shutdown_completed_.store(true, std::memory_order_release);
+  return true;
 }
 
 Status Connection::OutboundQueued() {
@@ -258,11 +258,9 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
         "now: $0, deadline: $1, timeout: $2", now, ToStringRelativeToNow(deadline, now), timeout);
     if (now > deadline) {
       auto passed = reactor_->cur_time() - current_last_activity_time;
-      reactor_->DestroyConnection(
-          this,
-          STATUS_EC_FORMAT(NetworkError, NetworkError(NetworkErrorCode::kConnectFailed),
-                           "Connect timeout $0, passed: $1, timeout: $2",
-                           ToString(), passed, timeout));
+      Destroy(STATUS_EC_FORMAT(
+          NetworkError, NetworkError(NetworkErrorCode::kConnectFailed),
+          "Connect timeout $0, passed: $1, timeout: $2", ToString(), passed, timeout));
       return;
     }
   }
@@ -585,7 +583,8 @@ Status Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
     UniqueLock outbound_data_queue_lock(outbound_data_queue_mtx_);
     if (!shutdown_status_.ok()) {
       auto task = MakeFunctorReactorTaskWithAbort(
-          std::bind(&OutboundData::Transferred, outbound_data, _2, /* conn */ nullptr),
+          std::bind(
+              &OutboundData::Transferred, outbound_data, shutdown_status_, /* conn */ nullptr),
           SOURCE_LOCATION());
       outbound_data_queue_lock.unlock();
       responses_queued_after_shutdown_.fetch_add(1, std::memory_order_acq_rel);
@@ -714,5 +713,10 @@ std::string Connection::LogPrefix() const {
   return ToString() + ": ";
 }
 
-}  // namespace rpc
-}  // namespace yb
+void Connection::ReportQueueTime(MonoDelta delta) {
+  if (handler_latency_outbound_transfer_) {
+    handler_latency_outbound_transfer_->Increment(delta.ToNanoseconds());
+  }
+}
+
+}  // namespace yb::rpc

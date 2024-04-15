@@ -89,7 +89,7 @@ bool Base64Decode(const std::string& in, std::string* out);
 // inspects each character in turn, and copies them all to *out; use
 // judiciously.
 template<class Stream>
-void EscapeForHtml(Stream* in, std::stringstream* out) {
+void EscapeForHtml(Stream* in, std::ostream* out) {
   DCHECK(out != nullptr);
   for (auto itr = std::istreambuf_iterator<typename Stream::char_type>(*in);
        itr != std::istreambuf_iterator<typename Stream::char_type>();
@@ -110,7 +110,7 @@ void EscapeForHtml(Stream* in, std::stringstream* out) {
   }
 }
 
-void EscapeForHtml(const std::string& in, std::stringstream* out);
+void EscapeForHtml(const std::string& in, std::ostream* out);
 
 // Same as above, but returns a string.
 std::string EscapeForHtmlToString(const std::string& in);

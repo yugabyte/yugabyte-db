@@ -167,7 +167,7 @@ private=true
     begin
         rdsadmin.rdsadmin_util.alter_supplemental_logging(
             p_action => 'ADD',
-            p_type   => 'PRIMARY KEY');
+            p_type   => 'ALL');
     end;
     /
     ```

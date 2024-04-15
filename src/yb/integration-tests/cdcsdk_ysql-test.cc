@@ -423,7 +423,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   // Perform sql operations.
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 10 WHERE key = 2"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 5, 6)"));
 
@@ -448,10 +448,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
   uint32_t records_missed_by_stream_2 = 3;
 
   // Perform sql operations.
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 1 WHERE key = 4"));
 
   ExpectedRecord expected_records_3[] = {{0, 0}, {4, 1}};
@@ -1003,22 +1000,21 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeCDCStreamDelet
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   DropTable(&test_cluster_, kTableName);
 
-  // Drop table will trigger the background thread to start the stream metadata cleanup, here
-  // test case wait for the metadata cleanup to finish by the background thread.
+  // Drop table will trigger the background thread to start the stream metadata update.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         while (true) {
           auto resp = GetDBStreamInfo(stream_id);
-          if (resp.ok() && resp->has_error()) {
+          if (resp.ok() && !resp->has_error() && resp->table_info_size() == 0) {
             return true;
           }
           continue;
         }
         return false;
       },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata update."));
   // Deleting the created DB Stream ID.
-  ASSERT_EQ(DeleteCDCStream(stream_id), false);
+  ASSERT_EQ(DeleteCDCStream(stream_id), /*force_delete=*/ true);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTable)) {
@@ -1178,49 +1174,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTableAndMast
   LOG(INFO) << "tablets found: " << AsString(tablets_found)
             << ", expected tablets: " << AsString(expected_tablet_ids);
   ASSERT_EQ(expected_tablet_ids, tablets_found);
-}
-
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStreamDelete)) {
-  // Setup cluster.
-  ASSERT_OK(SetUpWithParams(1, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
-
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
-
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-
-  RpcController rpc;
-  CreateCDCStreamRequestPB create_req;
-  CreateCDCStreamResponsePB create_resp;
-
-  create_req.set_table_id(table_id);
-  create_req.set_source_type(XCLUSTER);
-  ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
-  // Drop table on YSQL tables deletes associated xCluster streams.
-  DropTable(&test_cluster_, kTableName);
-
-  // Wait for bg thread to cleanup entries from cdc_state.
-  CDCStateTable cdc_state_table(test_client());
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        Status s;
-        for (auto row_result : VERIFY_RESULT(cdc_state_table.GetTableRange(
-                 CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
-          RETURN_NOT_OK(row_result);
-          auto& row = *row_result;
-          if (row.key.stream_id.ToString() == create_resp.stream_id()) {
-            return false;
-          }
-        }
-        RETURN_NOT_OK(s);
-        return true;
-      },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
-
-  // This should fail now as the stream is deleted.
-  ASSERT_EQ(
-      DeleteCDCStream(ASSERT_RESULT(xrepl::StreamId::FromString(create_resp.stream_id()))), false);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRestart)) {
@@ -2681,6 +2634,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 10;
+
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
 
@@ -3010,8 +2964,6 @@ TEST_F(CDCSDKYsqlTest, TestGetTabletListToPollForCDCWithConsistentSnapshot) {
 }
 
 // Here creating a single table inside a namespace and a CDC stream on top of the namespace.
-// Deleting the table should clean every thing from master cache as well as the system
-// catalog.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupAndDropTable)) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -3030,13 +2982,17 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupAndDropT
       [&]() -> Result<bool> {
         while (true) {
           auto get_resp = GetDBStreamInfo(stream_id);
-          // Wait until the background thread cleanup up the stream-id.
-          if (get_resp.ok() && get_resp->has_error() && get_resp->table_info_size() == 0) {
-            return true;
+          if (!get_resp.ok()) {
+            continue;
           }
+          if (get_resp->has_error()) {
+            LOG(INFO) << "GetDBStreamInfo response = " << get_resp.ToString();
+            RETURN_NOT_OK(StatusFromPB(get_resp->error().status()));
+          }
+          return (get_resp->table_info_size() == 0);
         }
       },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata update."));
 }
 
 // Here we are creating multiple tables and a CDC stream on the same namespace.
@@ -3266,7 +3222,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDrop
           }
           // stream-1 is associated with a single table, so as part of table drop, stream-1 should
           // be cleaned and wait until the background thread is done with cleanup.
-          if (idx == 1 && false == get_resp->has_error()) {
+          if (idx == 1 && get_resp->table_info_size() > 0) {
             continue;
           }
           // stream-2 is associated with both tables, so dropping one table, should not clean the
@@ -5191,6 +5147,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // We want to force every GetChanges to update the cdc_state table.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // When replica identity is enabled, it takes precedence over what is passed in the command, so we
+  // disable it here since we want to use the record type syntax (see PG_FULL below).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
 
   const uint32_t num_tservers = 3;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
@@ -5532,6 +5491,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetricUnchangedOnEmp
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExpiredStreamWithCompaction)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // When replica identity is enabled, it takes precedence over what is passed in the command, so we
+  // disable it here since we want to use the record type syntax (see PG_FULL below).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
+
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -5991,8 +5954,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithDropColumns)) {
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test1", kValue2ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test1", kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(10));
 
   // Call get changes.
@@ -6057,8 +6020,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddColumns)) {
           conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test2", kValue4ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test2", kValue4ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(30));
 
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -6142,9 +6105,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddAndDropColum
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(30));
 
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -6227,9 +6190,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
           conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
 
   // Call get changes.
   auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
@@ -6343,9 +6306,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
@@ -6467,9 +6430,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
 
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
@@ -7220,11 +7183,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
   ASSERT_OK(WriteRowsHelper(0, 30, &test_cluster_, true));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_2;"));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
 
   ASSERT_OK(WriteRowsHelper(30, 80, &test_cluster_, true));
 
@@ -7283,7 +7243,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
 
   // Fail the alter table ADD column, this will give us two CHANGE_METADATA_OPs
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
-  ASSERT_NOK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT;"));
+  ASSERT_NOK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
 
   // Perform a multi shard transaction, so that we get DMLs in between the two CHANGE_METADATA_OPs
   ASSERT_OK(conn.Execute("BEGIN;"));
@@ -7471,7 +7431,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
 
   // Fail the ALTER TABLE DROP column
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
-  ASSERT_NOK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_1;"));
+  ASSERT_NOK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValueColumnName, &conn));
 
   // Sleep to ensure that rollback has taken place
   SleepFor(MonoDelta::FromSeconds(10));
@@ -7480,7 +7440,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (6,1);"));
 
   // Perform a successful ALTER TABLE DROP COLUMN
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_1;"));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValueColumnName, &conn));
 
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(7,9));"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (10);"));
@@ -7542,32 +7502,35 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().index(), checkpoint_resp.checkpoint().op_id().index());
 }
 
-TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
+TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
+  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
   ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
-  // Verify alter primary key, column type operations are disallowed on the table.
+  // Verify rewrite operations are disallowed on the table.
   auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
   res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
   res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(
-      res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  res = conn.ExecuteFormat("TRUNCATE $0", kTableName);
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  // Truncate should be allowed if enable_truncate_cdcsdk_table is set.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = true;
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {
-  FLAGS_catalog_manager_bg_task_wait_ms = 50000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 50000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto old_table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "old_table"));
 

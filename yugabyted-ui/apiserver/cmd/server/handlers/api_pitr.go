@@ -27,6 +27,7 @@ func (c *Container) GetPITRConfigurations(ctx echo.Context) error {
                                                          pitrConfigResult.Error)
         return ctx.String(http.StatusInternalServerError, errorMessage)
     }
+    c.logger.Infof("Successfully fetched and parsed PITR configuration")
     var response models.PITRScheduleInfo
     activeSchedules := false
     for i := len(pitrConfigResult.Config.Schedules) - 1; i >= 0; i-- {

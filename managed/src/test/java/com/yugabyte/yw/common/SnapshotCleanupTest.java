@@ -144,7 +144,7 @@ public class SnapshotCleanupTest extends FakeDBApplication {
     BackupRequestParams bParams = new BackupRequestParams();
     bParams.backupUUID = backup.getBackupUUID();
     bParams.setUniverseUUID(testUniverse.getUniverseUUID());
-    taskInfo.setDetails(Json.toJson(bParams));
+    taskInfo.setTaskParams(Json.toJson(bParams));
     taskInfo.setOwner("unknown");
     taskInfo.save();
 

@@ -158,6 +158,11 @@ class CDCServiceImpl : public CDCServiceIf {
       const UpdateAndPersistLSNRequestPB* req, UpdateAndPersistLSNResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void UpdatePublicationTableList(
+    const UpdatePublicationTableListRequestPB* req,
+    UpdatePublicationTableListResponsePB* resp, rpc::RpcContext context) override;
+
+
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const TabletStreamInfo& producer_tablet);
 
   // Update peers in other tablet servers about the latest minimum applied cdc index for a specific
@@ -436,7 +441,8 @@ class CDCServiceImpl : public CDCServiceIf {
       std::unordered_set<TabletId>* tablet_ids_with_max_checkpoint);
 
   Result<bool> CheckBeforeImageActive(
-      const TabletId& tablet_id, const StreamMetadata& stream_metadata);
+      const TabletId& tablet_id, const StreamMetadata& stream_metadata,
+      const tablet::TabletPeerPtr& tablet_peer);
 
   Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id = "",
@@ -483,6 +489,9 @@ class CDCServiceImpl : public CDCServiceIf {
   // when the config version does not match.
   bool ValidateAutoFlagsConfigVersion(
       const GetChangesRequestPB& req, GetChangesResponsePB& resp, rpc::RpcContext& context);
+
+  void LogGetChangesLagForCDCSDK(
+      const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp);
 
   rpc::Rpcs rpcs_;
 

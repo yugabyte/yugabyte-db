@@ -129,6 +129,7 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
@@ -181,18 +182,20 @@ class CDCSDKTestBase : public YBTest {
   Status AddColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& add_column_name,
-      const std::string& enum_suffix = "", const std::string& schema_name = "public");
+      pgwrapper::PGConn *conn, const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
 
   Status DropColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& column_name,
-      const std::string& enum_suffix = "", const std::string& schema_name = "public");
+      pgwrapper::PGConn *conn, const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
 
   Status RenameColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& old_column_name,
-      const std::string& new_column_name, const std::string& enum_suffix = "",
-      const std::string& schema_name = "public");
+      const std::string& new_column_name, pgwrapper::PGConn *conn,
+      const std::string& enum_suffix = "", const std::string& schema_name = "public");
 
   Result<std::string> GetNamespaceId(const std::string& namespace_name);
 

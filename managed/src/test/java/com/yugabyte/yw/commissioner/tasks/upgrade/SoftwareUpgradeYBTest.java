@@ -608,6 +608,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     taskParams.creatingUser = defaultUser;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     TestUtils.setFakeHttpContext(defaultUser);
     super.verifyTaskRetries(
         defaultCustomer,
@@ -692,19 +694,29 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     Set<String> configuredMasters =
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
-            .filter(t -> t.getDetails().get("type").asText().equals("Software"))
+            .filter(t -> t.getTaskParams().get("type").asText().equals("Software"))
             .filter(
-                t -> t.getDetails().get("properties").get("processType").asText().equals("MASTER"))
-            .map(t -> t.getDetails().get("nodeName").asText())
+                t ->
+                    t.getTaskParams()
+                        .get("properties")
+                        .get("processType")
+                        .asText()
+                        .equals("MASTER"))
+            .map(t -> t.getTaskParams().get("nodeName").asText())
             .collect(Collectors.toSet());
 
     Set<String> configuredTservers =
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
-            .filter(t -> t.getDetails().get("type").asText().equals("Software"))
+            .filter(t -> t.getTaskParams().get("type").asText().equals("Software"))
             .filter(
-                t -> t.getDetails().get("properties").get("processType").asText().equals("TSERVER"))
-            .map(t -> t.getDetails().get("nodeName").asText())
+                t ->
+                    t.getTaskParams()
+                        .get("properties")
+                        .get("processType")
+                        .asText()
+                        .equals("TSERVER"))
+            .map(t -> t.getTaskParams().get("nodeName").asText())
             .collect(Collectors.toSet());
 
     Set<String> expectedMasters =

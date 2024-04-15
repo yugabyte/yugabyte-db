@@ -40,6 +40,7 @@ Read replicas require the following:
 
 - Partition-by-region clusters do not support read replicas.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
+- Some scaling operations require a rolling restart or, in the case of read replicas with a replication factor of 1, downtime.
 
 ## Add or edit read replicas
 
@@ -57,7 +58,9 @@ To add or edit read-replicas:
 
     **VPC** - Choose the VPC in which to deploy the nodes. You need to create VPCs before deploying a replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
-    **Replication Factor** - Enter the number of copies of your data. Replication factor refers to the number of copies of your data in your read replica. This ensures the availability of your read replica in case of node outages. This is independent of the of the fault tolerance of the primary cluster, and does not contribute to failover.
+    **Replication Factor** - Enter the number of copies of your data. Replication factor refers to the number of copies of your data in your read replica. This is independent of the of the fault tolerance of the primary cluster, and does not contribute to failover.
+
+    To ensure the availability of your read replica in case of node outages, set the replication factor greater than 1. Read replicas with a replication factor of 1 are subject to downtime if there is a node outage, and during [infrastructure operations](../#locking-operations) that require a restart.
 
     **Nodes** - Choose the number of nodes to deploy in the region. The number of nodes can't be less than the replication factor.
 
