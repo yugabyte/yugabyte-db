@@ -5011,12 +5011,11 @@ PostgresMain(int argc, char *argv[],
 	 * *MyProcPort, because ConnCreate() allocated that space with malloc()
 	 * ... else we'd need to copy the Port data first.  Also, subsidiary data
 	 * such as the username isn't lost either; see ProcessStartupPacket().
-	 * PostmasterContext is required in case of connections created by
+	 * YB note: PostmasterContext is required in case of connections created by
 	 * Ysql Connection Manager for `Authentication Passthrough`, so it shouldn't
 	 * be deleted in this case.
 	 */
-	if(!(YbIsClientYsqlConnMgr())
-		&& PostmasterContext)
+	if (PostmasterContext && !YbIsClientYsqlConnMgr())
 	{
 		MemoryContextDelete(PostmasterContext);
 		PostmasterContext = NULL;

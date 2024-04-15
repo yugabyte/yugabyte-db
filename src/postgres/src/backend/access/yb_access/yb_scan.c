@@ -3849,8 +3849,7 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
  * tuple is allocated in the slot's memory context.
  */
 void
-ybFetchNext(YBCPgStatement handle,
-			TupleTableSlot *slot, Oid relid)
+ybFetchNext(YBCPgStatement handle, TupleTableSlot *slot, Oid relid)
 {
 	TupleDesc	tupdesc = slot->tts_tupleDescriptor;
 	Datum	   *values = slot->tts_values;
