@@ -191,7 +191,7 @@ func buildClusters(
 		if len(masterInstanceTypeList) > 0 {
 			masterInstanceType = masterInstanceTypeList[0]
 		}
-		masterDeviceInfo, err = buildMasterDeviceInfo(cmd, providerType, onpremInstanceTypeDefault)
+		masterDeviceInfo, err = buildMasterDeviceInfo(cmd, providerType, masterInstanceType, onpremInstanceTypeDefault)
 		if err != nil {
 			return nil, err
 		}
@@ -295,7 +295,7 @@ func buildClusters(
 
 	logrus.Info("Using preferred regions: ", preferredRegions, "\n")
 
-	deviceInfo, err := buildDeviceInfo(cmd, providerType, noOfClusters, onpremInstanceTypeDefault)
+	deviceInfo, err := buildDeviceInfo(cmd, providerType, noOfClusters, instanceTypes, onpremInstanceTypeDefault)
 	if err != nil {
 		return nil, err
 	}
@@ -347,11 +347,6 @@ func buildClusters(
 		return nil, err
 	}
 
-	enableVolumeEncryption, err := cmd.Flags().GetBool("enable-volume-encryption")
-	if err != nil {
-		return nil, err
-	}
-
 	ybSoftwareVersion, err := cmd.Flags().GetString("yb-db-version")
 	if err != nil {
 		return nil, err
@@ -398,6 +393,9 @@ func buildClusters(
 		}
 		idKey := r[0].GetIdKey()
 		accessKeyCode = idKey.GetKeyCode()
+		logrus.Info("Using access key: ",
+			formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
+	} else if len(accessKeyCode) > 0 {
 		logrus.Info("Using access key: ",
 			formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
 	}
@@ -516,7 +514,6 @@ func buildClusters(
 
 				EnableClientToNodeEncrypt: util.GetBoolPointer(enableCtoN),
 				EnableNodeToNodeEncrypt:   util.GetBoolPointer(enableNtoN),
-				EnableVolumeEncryption:    util.GetBoolPointer(enableVolumeEncryption),
 
 				UseSystemd:        util.GetBoolPointer(useSystemD),
 				YbSoftwareVersion: util.GetStringPointer(ybSoftwareVersion),
@@ -578,6 +575,7 @@ func buildDeviceInfo(
 	cmd *cobra.Command,
 	providerType string,
 	noOfClusters int,
+	instanceTypes []string,
 	onpremInstanceTypeDefault ybaclient.InstanceTypeResp) (
 	deviceInfos []*ybaclient.DeviceInfo,
 	err error,
@@ -695,6 +693,9 @@ func buildDeviceInfo(
 		}
 		if i == storageTypeLen {
 			storageTypeDefault := setDefaultStorageTypes(providerType, onpremVolumeDefault)
+			if providerType == util.AWSProviderType && util.AwsInstanceTypesWithEphemeralStorageOnly(instanceTypes[i]) {
+				storageTypeDefault = ""
+			}
 			storageType = append(storageType, storageTypeDefault)
 			storageTypeLen = storageTypeLen + 1
 		}
@@ -715,6 +716,7 @@ func buildDeviceInfo(
 func buildMasterDeviceInfo(
 	cmd *cobra.Command,
 	providerType string,
+	instanceType string,
 	onpremInstanceTypeDefault ybaclient.InstanceTypeResp) (
 	deviceInfos *ybaclient.DeviceInfo,
 	err error,
@@ -780,7 +782,11 @@ func buildMasterDeviceInfo(
 
 	if len(storageType) == 0 {
 		storageType = setDefaultStorageTypes(providerType, onpremVolumeDefault)
+		if providerType == util.AWSProviderType && util.AwsInstanceTypesWithEphemeralStorageOnly(instanceType) {
+			storageType = ""
+		}
 	}
+
 	if len(storageClass) == 0 {
 		storageClass = "standard"
 
