@@ -69,6 +69,23 @@ public enum AlertTemplate {
           .defaultThresholdUnit(MILLISECOND)
           .build()),
 
+  CLOCK_SYNC_CHECK_FAILED(
+      "Clock Sync Check Failure",
+      "Clock Sync check failed on DB node(s)",
+      "count by (universe_uuid) (last_over_time(yb_node_clock_skew_check"
+          + "{node_prefix=\"__nodePrefix__\"}[1m]) < 1) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "Clock sync check failed on {{ $value | printf \"%.0f\" }} nodes(s)"
+          + " for universe '{{ $labels.source_name }}'.",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("instance(s)")
+          .build()),
+
   MEMORY_CONSUMPTION(
       "Memory Consumption",
       "Average node memory consumption percentage for 10 minutes is above threshold",

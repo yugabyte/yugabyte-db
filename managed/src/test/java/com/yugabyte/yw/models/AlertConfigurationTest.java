@@ -117,7 +117,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
           .put(
               CLOCK_SKEW,
               "Max clock skew for universe 'Test Universe'"
-                  + " is above 500 ms. Current value is 501 ms")
+                  + " is above 250 ms. Current value is 251 ms")
           .put(
               MEMORY_CONSUMPTION,
               "Average memory usage for universe 'Test Universe'"
