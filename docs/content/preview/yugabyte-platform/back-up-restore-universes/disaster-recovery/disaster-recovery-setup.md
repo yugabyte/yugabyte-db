@@ -90,11 +90,13 @@ After DR is set up, the **xCluster Disaster Recovery** tab displays the DR statu
 
 ### Metrics
 
-In addition, you can monitor the following metrics on the **Metrics** tab:
+In addition, you can monitor the following metrics on the **xCluster Disaster Recovery > Metrics** tab:
 
 - Async Replication Lag
 
     The network lag in microseconds between any two communicating nodes.
+
+    If you have [set an alert for replication lag](#set-up-replication-lag-alerts), you can also display the alert threshold.
 
 - Consumer Safe Time Lag
 
@@ -146,15 +148,22 @@ The **xCluster Disaster Recovery** tab also lists all the tables in replication 
 
 Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost.
 
-To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag.
+To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.
 
 To create an alert:
 
 1. Navigate to **Admin > Alert Configurations > Alert Policies**.
 1. Click **Create Alert Policy** and choose **Universe Alert**.
 1. Set **Policy Template** to **Replication Lag**.
+1. Enter a name and description for the alert policy.
 1. Set **Target** to **Selected Universes** and select the DR primary.
 1. Set the conditions for the alert.
+
+    - Enter a duration threshold. The alert is triggered when the lag exceeds the threshold for the specified duration.
+    - Set the **Severity** option to Severe.
+    - Set the **Condition** option to Greater Than.
+    - Set the threshold to an acceptable value for your deployment. The default threshold is 3 minutes (180000ms).
+
 1. Click **Save** when you are done.
 
 When DR is set up, YugabyteDB automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from DR primary's databases under replication, but are not yet added or dropped from the YugabyteDB Anywhere DR configuration.

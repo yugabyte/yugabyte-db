@@ -74,23 +74,30 @@ You can set up xCluster replication as follows:
 
       Optionally, specify the number of parallel threads that can run during the copy operation. The greater number would result in a more significant decrease of the backup and restore time, but put more pressure on the universes.
 
-      Clicking **Create Full Copy and Enable Replication** starts the process of setting up replication. Tables that do not need to be copied are set up for replication first, followed by tables that need to be copied.
+1. Click **Create Full Copy and Enable Replication** to start the process of setting up replication. Tables that do not need to be copied are set up for replication first, followed by tables that need to be copied.
 
-    You can view the progress on xCluster tasks by navigating to **Universes**, selecting the source universe, and then selecting **Tasks**.
+You can view the progress of xCluster tasks by navigating to **Universes**, selecting the source universe, and then selecting **Tasks**.
 
 ### Set up replication lag alerts
 
 Replication lag measures how far behind in time the target lags the source.
 
-To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag.
+To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. Note that for the alert lag threshold to be displayed in the [xCluster Replication details](#view-manage-and-monitor-replication), the alert Severity and Condition must be Severe and Greater Than respectively.
 
 To create an alert:
 
 1. Navigate to **Admin > Alert Configurations > Alert Policies**.
 1. Click **Create Alert Policy** and choose **Universe Alert**.
 1. Set **Policy Template** to **Replication Lag**.
-1. Set **Target** to **Selected Universes** and select the source.
+1. Enter a name and description for the alert policy.
+1. Set **Target** to **Selected Universes** and select the DR primary.
 1. Set the conditions for the alert.
+
+    - Enter a duration threshold. The alert is triggered when the lag exceeds the threshold for the specified duration.
+    - Set the **Severity** option to Severe.
+    - Set the **Condition** option to Greater Than.
+    - Set the threshold to an acceptable value for your deployment. The default threshold is 3 minutes (180000ms).
+
 1. Click **Save** when you are done.
 
 When xCluster replication is set up, YugabyteDB automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from source databases under replication, but are not yet added or dropped from the xCluster replication configuration.
