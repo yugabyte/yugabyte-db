@@ -1086,7 +1086,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		}
 	}
 
-	bool needs_recheck = !can_pushdown;
+	bool needs_recheck = !can_pushdown || !index->rd_index->indisprimary;
 
 	if (can_pushdown)
 	{
@@ -3137,3 +3137,4 @@ ybFetchNext(YBCPgStatement handle,
 
 	return slot;
 }
+
