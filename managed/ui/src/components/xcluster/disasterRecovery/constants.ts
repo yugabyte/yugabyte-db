@@ -33,3 +33,5 @@ export const DOCS_URL_ACTIVE_ACTIVE_SINGLE_MASTER =
   'https://docs.yugabyte.com/preview/yugabyte-platform/back-up-restore-universes/disaster-recovery/';
 export const DOCS_URL_DR_REPLICA_SELECTION_LIMITATIONS =
   'https://docs.yugabyte.com/preview/yugabyte-platform/back-up-restore-universes/disaster-recovery/disaster-recovery-setup/#prerequisites';
+export const DOCS_URL_SET_UP_REPLICATION_LAG_ALERT =
+  'https://docs.yugabyte.com/stable/yugabyte-platform/back-up-restore-universes/disaster-recovery/disaster-recovery-setup/#set-up-replication-lag-alerts';
