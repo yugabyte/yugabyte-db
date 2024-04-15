@@ -30,7 +30,6 @@
 
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(TEST_export_wait_state_names);
-DECLARE_bool(TEST_export_ash_uuids_as_hex_strings);
 
 #define SET_WAIT_STATUS_TO(ptr, code) \
   if ((ptr)) (ptr)->set_code(BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
@@ -232,22 +231,14 @@ struct AshMetadata {
   }
 
   template <class PB>
-  void ToPB(PB* pb, bool use_hex) const {
+  void ToPB(PB* pb) const {
     if (!root_request_id.IsNil()) {
-      if (use_hex) {
-        pb->set_root_request_id(root_request_id.ToHexString());
-      } else {
-        root_request_id.ToBytes(pb->mutable_root_request_id());
-      }
+      root_request_id.ToBytes(pb->mutable_root_request_id());
     } else {
       pb->clear_root_request_id();
     }
     if (!yql_endpoint_tserver_uuid.IsNil()) {
-      if (use_hex) {
-        pb->set_yql_endpoint_tserver_uuid(yql_endpoint_tserver_uuid.ToHexString());
-      } else {
-        yql_endpoint_tserver_uuid.ToBytes(pb->mutable_yql_endpoint_tserver_uuid());
-      }
+      yql_endpoint_tserver_uuid.ToBytes(pb->mutable_yql_endpoint_tserver_uuid());
     } else {
       pb->clear_yql_endpoint_tserver_uuid();
     }
@@ -274,18 +265,10 @@ struct AshMetadata {
   }
 
   template <class PB>
-  void ToPB(PB* pb) const {
-    bool use_hex = GetAtomicFlag(&FLAGS_TEST_export_ash_uuids_as_hex_strings);
-    ToPB(pb, use_hex);
-  }
-
-  template <class PB>
-  static AshMetadata FromPB(const PB& pb, bool use_hex) {
+  static AshMetadata FromPB(const PB& pb) {
     Uuid root_request_id = Uuid::Nil();
     if (pb.has_root_request_id()) {
-      Result<Uuid> result =
-          (use_hex ? Uuid::FromHexString(pb.root_request_id())
-                   : Uuid::FromSlice(pb.root_request_id()));
+      Result<Uuid> result = Uuid::FromSlice(pb.root_request_id());
       WARN_NOT_OK(result, "Could not decode uuid from protobuf.");
       if (result.ok()) {
         root_request_id = *result;
@@ -293,9 +276,7 @@ struct AshMetadata {
     }
     Uuid yql_endpoint_tserver_uuid = Uuid::Nil();
     if (pb.has_yql_endpoint_tserver_uuid()) {
-      Result<Uuid> result =
-          (use_hex ? Uuid::FromHexString(pb.yql_endpoint_tserver_uuid())
-                   : Uuid::FromSlice(pb.yql_endpoint_tserver_uuid()));
+      Result<Uuid> result = Uuid::FromSlice(pb.yql_endpoint_tserver_uuid());
       WARN_NOT_OK(result, "Could not decode uuid from protobuf.");
       if (result.ok()) {
         yql_endpoint_tserver_uuid = *result;
@@ -360,36 +341,23 @@ class WaitStateInfo {
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
 
   template <class PB>
-  static void UpdateMetadataFromPB(const PB& pb, bool use_hex) {
+  static void UpdateMetadataFromPB(const PB& pb) {
     const auto& wait_state = CurrentWaitState();
     if (wait_state) {
-      wait_state->UpdateMetadata(AshMetadata::FromPB(pb, use_hex));
+      wait_state->UpdateMetadata(AshMetadata::FromPB(pb));
     }
   }
 
   template <class PB>
-  static void UpdateMetadataFromPB(const PB& pb) {
-    bool use_hex = GetAtomicFlag(&FLAGS_TEST_export_ash_uuids_as_hex_strings);
-    UpdateMetadataFromPB(pb, use_hex);
-  }
-
-  template <class PB>
-  void MetadataToPB(PB* pb, bool use_hex) EXCLUDES(mutex_) {
-    std::lock_guard lock(mutex_);
-    metadata_.ToPB(pb, use_hex);
-  }
-
-  template <class PB>
   void MetadataToPB(PB* pb) EXCLUDES(mutex_) {
-    bool use_hex = GetAtomicFlag(&FLAGS_TEST_export_ash_uuids_as_hex_strings);
-    MetadataToPB(pb, use_hex);
+    std::lock_guard lock(mutex_);
+    metadata_.ToPB(pb);
   }
 
   template <class PB>
   void ToPB(PB* pb) EXCLUDES(mutex_) {
-    bool use_hex = GetAtomicFlag(&FLAGS_TEST_export_ash_uuids_as_hex_strings);
     std::lock_guard lock(mutex_);
-    metadata_.ToPB(pb->mutable_metadata(), use_hex);
+    metadata_.ToPB(pb->mutable_metadata());
     WaitStateCode code = this->code();
     pb->set_wait_status_code(yb::to_underlying(code));
     if (FLAGS_TEST_export_wait_state_names) {
