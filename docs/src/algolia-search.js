@@ -66,6 +66,11 @@ import algoliasearch from 'algoliasearch';
    * Show Message when Search is empty.
    */
   function emptySearch() {
+    const searchSummary = document.querySelector('#search-summary');
+    if (searchSummary) {
+      searchSummary.innerHTML = '';
+    }
+
     document.querySelector('.search-result').style.display = 'none';
   }
 
