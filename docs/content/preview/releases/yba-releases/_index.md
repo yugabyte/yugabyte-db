@@ -32,18 +32,16 @@ YugabyteDB Anywhere (YBA) is a control plane for deploying and managing Yugabyte
 
 ### Supported versions
 
-The current stable version of YBA always supports the two most recent LTS release series, and any intervening STS releases that are still under support. This provides a span of support of approximately 2 years.
+The version of YBA should always be the same as or greater than the versions of YugabyteDB it is being used to manage. If you want to deploy a version of YugabyteDB that is later than the version of YBA you have installed, first upgrade YBA.
 
-Every major version of YBA supports the equivalent version of YugabyteDB and earlier.
+Every version of YBA supports the two preceding LTS release series, and any intervening STS releases of YugabyteDB. This provides a span of support of approximately 2 years.
 
-The following table shows the compatibility between versions of YBA and YugabyteDB.
+YBA v2.20.x supports the following YugabyteDB release series:
 
-| YBA version | Supported YugabyteDB Release Series |
-| :--- | :--- |
-| 2024.1 (Upcoming) | v2024.1 (STS Upcoming)<br>[v2.20](/preview/releases/release-notes/v2.20/) (LTS)<br>[v2.18](/preview/releases/release-notes/v2.18/) (STS)<br>[v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
-| 2.20.x | [v2.20](/preview/releases/release-notes/v2.20/) (LTS)<br>[v2.18](/preview/releases/release-notes/v2.18/) (STS)<br>[v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
-| 2.18.x | [v2.18](/preview/releases/release-notes/v2.18/) (STS)<br>[v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
-| 2.14.x | [v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
+- [v2.20.x](/preview/releases/release-notes/v2.20/) (LTS)
+- [v2.18.x](/preview/releases/release-notes/v2.18/) (STS)
+- [v2.16.x](/preview/releases/release-notes/v2.16/) (STS)
+- [v2.14.x](/preview/releases/release-notes/v2.14/) (LTS)
 
 Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
 
