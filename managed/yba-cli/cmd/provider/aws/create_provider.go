@@ -235,7 +235,7 @@ func init() {
 			"Example: --zone zone-name=us-west-2a,region-name=us-west-2,subnet=<subnet-id>"+
 			" --zone zone-name=us-west-2b,region-name=us-west-2,subnet=<subnet-id>")
 
-	createAWSProviderCmd.Flags().String("ssh-user", "",
+	createAWSProviderCmd.Flags().String("ssh-user", "ec2-user",
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createAWSProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port to access the YugabyteDB nodes.")

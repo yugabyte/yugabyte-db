@@ -86,6 +86,10 @@ var createUniverseCmd = &cobra.Command{
 			for _, c := range certs {
 				if strings.Compare(c.GetLabel(), clientRootCA) == 0 {
 					certUUID = c.GetUuid()
+					logrus.Info("Using certificate: ",
+						fmt.Sprintf("%s %s",
+							clientRootCA,
+							formatter.Colorize(certUUID, formatter.GreenColor)), "\n")
 				}
 			}
 		}
@@ -118,6 +122,10 @@ var createUniverseCmd = &cobra.Command{
 						configUUID := metadata["configUUID"]
 						if configUUID != nil {
 							kmsConfigUUID = configUUID.(string)
+							logrus.Info("Using kms config: ",
+								fmt.Sprintf("%s %s",
+									kmsConfigName,
+									formatter.Colorize(kmsConfigUUID, formatter.GreenColor)), "\n")
 						}
 					}
 				}
@@ -430,16 +438,4 @@ func init() {
 		"[Optional] YSQL Server HTTP Port.")
 	createUniverseCmd.Flags().Int("ysql-server-rpc-port", 5433,
 		"[Optional] YSQL Server RPC Port.")
-
-	setDefaults()
-}
-
-func setDefaults() {
-	viper.SetDefault("dedicated-nodes", false)
-	viper.SetDefault("use-systemd", true)
-	viper.SetDefault("enable-ysql", true)
-	viper.SetDefault("enable-ycql", true)
-	viper.SetDefault("enable-volume-encryption", false)
-	viper.SetDefault("enable-node-to-node-encrypt", true)
-	viper.SetDefault("enable-client-to-node-encrypt", true)
 }
