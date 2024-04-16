@@ -32,13 +32,15 @@ YugabyteDB Anywhere (YBA) is a control plane for deploying and managing Yugabyte
 
 ### Supported versions
 
-The current version of YBA always supports the two most recent LTS release series, and any intervening STS releases that are still under support. This provides a span of support of approximately 2 years.
+The current stable version of YBA always supports the two most recent LTS release series, and any intervening STS releases that are still under support. This provides a span of support of approximately 2 years.
+
+Every major version of YBA supports the equivalent version of YugabyteDB and earlier.
 
 The following table shows the compatibility between versions of YBA and YugabyteDB.
 
 | YBA version | Supported YugabyteDB Release Series |
 | :--- | :--- |
-| 2024.1 (Upcoming) | v2024.1 (Upcoming)<br>[v2.20](/preview/releases/release-notes/v2.20/) (LTS) |
+| 2024.1 (Upcoming) | v2024.1 (STS Upcoming)<br>[v2.20](/preview/releases/release-notes/v2.20/) (LTS)<br>[v2.18](/preview/releases/release-notes/v2.18/) (STS)<br>[v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
 | 2.20.x | [v2.20](/preview/releases/release-notes/v2.20/) (LTS)<br>[v2.18](/preview/releases/release-notes/v2.18/) (STS)<br>[v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
 | 2.18.x | [v2.18](/preview/releases/release-notes/v2.18/) (STS)<br>[v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
 | 2.14.x | [v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
@@ -46,7 +48,7 @@ The following table shows the compatibility between versions of YBA and Yugabyte
 Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
 
 {{< warning title="YugabyteDB v2.14 and v2.18 End of Maintenance" >}}
-v2.14 and v2.18 will reach end of maintenance in mid-2024. If you are running universes on these release series, you should consider upgrading those universes to the next LTS release series (v2.20). The next stable version of YBA (v2024.1) will not support the v2.14 or v2.18 release series of YugabyteDB.
+v2.14 and v2.18 will reach end of maintenance in mid-2024. If you are running universes on these release series, you should consider upgrading those universes to the next LTS release series (v2.20).
 {{< /warning >}}
 
 For information on managing YugabyteDB releases and upgrading universes using YBA, refer to [Upgrade the YugabyteDB software](../../yugabyte-platform/manage-deployments/upgrade-software/).
