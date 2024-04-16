@@ -17,21 +17,27 @@ yba [flags]
 ### Options
 
 ```
-  -a, --apiKey string      YugabyteDB Anywhere api key
-      --config string      config file, default is $HOME/.yba-cli.yaml
-      --debug              use debug mode, same as --logLevel debug
+  -a, --apiToken string    YugabyteDB Anywhere api token.
+      --config string      Config file, defaults to $HOME/.yba-cli.yaml
+      --debug              Use debug mode, same as --logLevel debug.
+      --disable-color      Disable colors in output. (default false)
   -h, --help               help for yba
-  -H, --host string        YugabyteDB Anywhere Host, default to http://localhost:9000
-  -l, --logLevel string    select the desired log level format, default to info
-      --no-color           disable colors in output , default to false
-  -o, --output string      select the desired output format (table, json, pretty), default to table
-      --timeout duration   wait command timeout,example: 5m, 1h. (default 168h0m0s)
-      --wait               wait until the task is completed, otherwise it will exit immediately, default to true
+  -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
+  -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
+  -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
+      --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
+      --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
 ```
 
 ### SEE ALSO
 
 * [yba auth](yba_auth.md)	 - Authenticate yba cli
 * [yba completion](yba_completion.md)	 - Generate the autocompletion script for the specified shell
+* [yba login](yba_login.md)	 - Authenticate yba cli using email and password
 * [yba provider](yba_provider.md)	 - Manage YugabyteDB Anywhere providers
+* [yba register](yba_register.md)	 - Register a YugabyteDB Anywhere customer using yba cli
+* [yba storage-config](yba_storage-config.md)	 - Manage YugabyteDB Anywhere storage configurations
+* [yba task](yba_task.md)	 - Manage YugabyteDB Anywhere tasks
+* [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
+* [yba yb-db-version](yba_yb-db-version.md)	 - Manage YugabyteDB version release
 

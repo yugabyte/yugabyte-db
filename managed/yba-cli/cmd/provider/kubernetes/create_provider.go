@@ -21,6 +21,13 @@ var createK8sProviderCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a Kubernetes YugabyteDB Anywhere provider",
 	Long:  "Create a Kubernetes provider in YugabyteDB Anywhere",
+	Example: `yba provider k8s create -n <provider-name> --type gke \
+	--pull-secret-file <pull-secret-file-path> \
+	--region region-name=us-west1 \
+	--zone zone-name=us-west1-b,region-name=us-west1,storage-class=<storage-class>,\
+	overrirdes-file-path=<overrirdes-file-path> \
+	--zone zone-name=us-west1-a,region-name=us-west1,storage-class=<storage-class> \
+	--zone zone-name=us-west1-c,region-name=us-west1,storage-class=<storage-class>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
