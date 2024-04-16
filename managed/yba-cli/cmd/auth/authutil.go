@@ -28,14 +28,15 @@ func authWriteConfigFile(r ybaclient.SessionInfo) {
 			if err != nil {
 				logrus.Fatalf(
 					formatter.Colorize(
-						"Error when writing new config file: %v\n"+err.Error(),
+						"Error when writing new config file: "+err.Error()+".\n"+
+							"In case of permission errors, please run yba with --config flag to set the path.\n",
 						formatter.RedColor))
 
 			}
 		} else {
 			logrus.Fatalf(
 				formatter.Colorize(
-					"Error when writing config file: %v\n"+err.Error(), formatter.RedColor))
+					"Error when writing config file: "+err.Error()+".\n", formatter.RedColor))
 		}
 	}
 	configFileUsed := viper.GetViper().ConfigFileUsed()
