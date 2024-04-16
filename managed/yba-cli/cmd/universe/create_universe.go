@@ -236,7 +236,7 @@ func init() {
 		"[Optional] Number of nodes in the cluster. Provide no of nodes for each cluster "+
 			"as a separate flag. \"--num-nodes 3 --num-nodes 5\" "+
 			"OR \"--num-nodes 3,5\" "+
-			"refers to 3 nodes in the Primary cluster and 3 nodes in the Read Replica cluster"+
+			"refers to 3 nodes in the Primary cluster and 5 nodes in the Read Replica cluster"+
 			". First flag always corresponds to"+
 			" the primry cluster.")
 	createUniverseCmd.Flags().StringArray("regions", []string{},
