@@ -632,6 +632,25 @@ TEST_F(ClientTest, TestPointThenRangeLookup) {
   ASSERT_EQ(tablets.size(), kNumTabletsPerTable);
 }
 
+// Test sanity checks in FindPartitionStartIndex
+TEST_F(ClientTest, TestBadKeyRanges) {
+  std::vector<std::string> partition_starts;
+  const std::string low_key = "1111";
+  const std::string high_key = "9999";
+  // Empty partitions
+  ASSERT_DEATH({
+    FindPartitionStartIndex(partition_starts, low_key);
+  }, "Invalid table partition list");
+  // Non-empty first key
+  partition_starts.emplace_back("5555");
+  ASSERT_DEATH({
+    FindPartitionStartIndex(partition_starts, low_key);
+  }, "Invalid table partition list");
+  ASSERT_DEATH({
+    FindPartitionStartIndex(partition_starts, high_key);
+  }, "Invalid table partition list");
+}
+
 TEST_F(ClientTest, TestKeyRangeFiltering) {
   ASSERT_NO_FATALS(CreateTable(kTable3Name, 8, &client_table3_));
 
