@@ -205,6 +205,12 @@ static void pg_decode_truncate_v2(LogicalDecodingContext *ctx,
 #endif
 #endif
 
+#if PG_VERSION_NUM >= 150000 && PG_VERSION_NUM < 160000
+static void update_replication_progress(LogicalDecodingContext *ctx, bool skipped_xact);
+#elif PG_VERSION_NUM >= 100000 && PG_VERSION_NUM < 150000
+static void update_replication_progress(LogicalDecodingContext *ctx);
+#endif
+
 void
 _PG_init(void)
 {
@@ -902,9 +908,39 @@ pg_decode_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 {
 	JsonDecodingData *data = ctx->output_plugin_private;
 
-#if PG_VERSION_NUM >= 150000
-    OutputPluginUpdateProgress(ctx, false);
-#elif PG_VERSION_NUM >= 100000
+	/*
+	 * Some older minor versions from back branches (10 to 14) calls
+	 * OutputPluginUpdateProgress(). That's before the fix
+	 * f95d53eded55ecbf037f6416ced6af29a2c3caca. After that,
+	 * update_replication_progress() function is used for back branches. In
+	 * version 15, update_replication_progress() changes the signature to
+	 * support skipped transactions. In version 16,
+	 * OutputPluginUpdateProgress() is back because a proper fix was added into
+	 * logical decoding.
+	 */
+#if PG_VERSION_NUM >= 160000
+	OutputPluginUpdateProgress(ctx, false);		/* XXX change 2nd param when skipped empty transaction is supported */
+#elif PG_VERSION_NUM >= 150000 && PG_VERSION_NUM < 160000
+	update_replication_progress(ctx, false);	/* XXX change 2nd param when skipped empty transaction is supported */
+#elif PG_VERSION_NUM >= 140004 && PG_VERSION_NUM < 150000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 130008 && PG_VERSION_NUM < 140000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 120012 && PG_VERSION_NUM < 130000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 110017 && PG_VERSION_NUM < 120000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 100022 && PG_VERSION_NUM < 110000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 140000 && PG_VERSION_NUM < 140004
+	OutputPluginUpdateProgress(ctx);
+#elif PG_VERSION_NUM >= 130000 && PG_VERSION_NUM < 130008
+	OutputPluginUpdateProgress(ctx);
+#elif PG_VERSION_NUM >= 120000 && PG_VERSION_NUM < 120012
+	OutputPluginUpdateProgress(ctx);
+#elif PG_VERSION_NUM >= 110000 && PG_VERSION_NUM < 110017
+	OutputPluginUpdateProgress(ctx);
+#elif PG_VERSION_NUM >= 100000 && PG_VERSION_NUM < 100022
 	OutputPluginUpdateProgress(ctx);
 #endif
 
@@ -1627,6 +1663,20 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				 Relation relation, ReorderBufferChange *change)
 {
 	JsonDecodingData *data = ctx->output_plugin_private;
+
+#if PG_VERSION_NUM >= 150000 && PG_VERSION_NUM < 160000
+	update_replication_progress(ctx, false);
+#elif PG_VERSION_NUM >= 140004 && PG_VERSION_NUM < 150000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 130008 && PG_VERSION_NUM < 140000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 120012 && PG_VERSION_NUM < 130000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 110017 && PG_VERSION_NUM < 120000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 100022 && PG_VERSION_NUM < 110000
+	update_replication_progress(ctx);
+#endif
 
 	if (data->format_version == 2)
 		pg_decode_change_v2(ctx, txn, relation, change);
@@ -2442,6 +2492,20 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 {
 	JsonDecodingData *data = ctx->output_plugin_private;
 
+#if PG_VERSION_NUM >= 150000 && PG_VERSION_NUM < 160000
+	update_replication_progress(ctx, false);
+#elif PG_VERSION_NUM >= 140004 && PG_VERSION_NUM < 150000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 130008 && PG_VERSION_NUM < 140000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 120012 && PG_VERSION_NUM < 130000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 110017 && PG_VERSION_NUM < 120000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 100022 && PG_VERSION_NUM < 110000
+	update_replication_progress(ctx);
+#endif
+
 	/* Filter message prefixes, if available */
 	if (list_length(data->filter_msg_prefixes) > 0)
 	{
@@ -2650,6 +2714,22 @@ static void pg_decode_truncate(LogicalDecodingContext *ctx,
 					ReorderBufferChange *change)
 {
 	JsonDecodingData *data = ctx->output_plugin_private;
+
+	/*
+	 * For back branches (10 to 15), update_replication_progress() should be called here.
+	 * FIXME call OutputPluginUpdateProgress() for old minor versions?
+	 */
+#if PG_VERSION_NUM >= 150000 && PG_VERSION_NUM < 160000
+	update_replication_progress(ctx, false);
+#elif PG_VERSION_NUM >= 140004 && PG_VERSION_NUM < 150000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 130008 && PG_VERSION_NUM < 140000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 120012 && PG_VERSION_NUM < 130000
+	update_replication_progress(ctx);
+#elif PG_VERSION_NUM >= 110017 && PG_VERSION_NUM < 120000
+	update_replication_progress(ctx);
+#endif
 
 	if (data->format_version == 2)
 		pg_decode_truncate_v2(ctx, txn, n, relations, change);
@@ -3114,3 +3194,65 @@ split_string_to_oid_list(char *rawstring, char separator, List **sl)
 
 	return true;
 }
+
+/*
+ * Try to update progress and send a keepalive message if too many changes were
+ * processed.
+ *
+ * For a large transaction, if we don't send any change to the downstream for a
+ * long time (exceeds the wal_receiver_timeout of standby) then it can timeout.
+ * This can happen when all or most of the changes are not published.
+ *
+ * Copied from Postgres commit f95d53eded55ecbf037f6416ced6af29a2c3caca
+ */
+#if PG_VERSION_NUM >= 150000 && PG_VERSION_NUM < 160000
+static void
+update_replication_progress(LogicalDecodingContext *ctx, bool skipped_xact)
+{
+	static int	changes_count = 0;
+
+	/*
+	 * We don't want to try sending a keepalive message after processing each
+	 * change as that can have overhead. Tests revealed that there is no
+	 * noticeable overhead in doing it after continuously processing 100 or so
+	 * changes.
+	 */
+#define CHANGES_THRESHOLD 100
+
+	/*
+	 * If we are at the end of transaction LSN, update progress tracking.
+	 * Otherwise, after continuously processing CHANGES_THRESHOLD changes, we
+	 * try to send a keepalive message if required.
+	 */
+	if (ctx->end_xact || ++changes_count >= CHANGES_THRESHOLD)
+	{
+		OutputPluginUpdateProgress(ctx, skipped_xact);
+		changes_count = 0;
+	}
+}
+#elif PG_VERSION_NUM >= 100000 && PG_VERSION_NUM < 150000
+static void
+update_replication_progress(LogicalDecodingContext *ctx)
+{
+	static int	changes_count = 0;
+
+	/*
+	 * We don't want to try sending a keepalive message after processing each
+	 * change as that can have overhead. Tests revealed that there is no
+	 * noticeable overhead in doing it after continuously processing 100 or so
+	 * changes.
+	 */
+#define CHANGES_THRESHOLD 100
+
+	/*
+	 * If we are at the end of transaction LSN, update progress tracking.
+	 * Otherwise, after continuously processing CHANGES_THRESHOLD changes, we
+	 * try to send a keepalive message if required.
+	 */
+	if (ctx->end_xact || ++changes_count >= CHANGES_THRESHOLD)
+	{
+		OutputPluginUpdateProgress(ctx);
+		changes_count = 0;
+	}
+}
+#endif
