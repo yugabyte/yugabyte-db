@@ -155,6 +155,7 @@ PG_FUNCTION_INFO_V1(bson_dollar_set);
 PG_FUNCTION_INFO_V1(bson_dollar_unset);
 PG_FUNCTION_INFO_V1(bson_dollar_replace_root);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_extract_filter_expression);
+PG_FUNCTION_INFO_V1(bson_dollar_lookup_extract_filter_array);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_project);
 PG_FUNCTION_INFO_V1(bson_dollar_facet_project);
 PG_FUNCTION_INFO_V1(bson_dollar_project_geonear);
@@ -577,6 +578,44 @@ bson_dollar_lookup_extract_filter_expression(PG_FUNCTION_ARGS)
 	PgbsonToSinglePgbsonElement(filterExpressionSpec, &pgbsonElement);
 
 	PG_RETURN_POINTER(BsonLookUpGetFilterExpression(document, &pgbsonElement));
+}
+
+
+/*
+ * This is similar to lookup_extract_filter_expression but it returns a bson[] instead of a
+ * bson document with the array paths.
+ */
+Datum
+bson_dollar_lookup_extract_filter_array(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *filterExpressionSpec = PG_GETARG_PGBSON(1);
+
+	pgbsonelement pgbsonElement;
+	PgbsonToSinglePgbsonElement(filterExpressionSpec, &pgbsonElement);
+
+	pgbson *result = BsonLookUpGetFilterExpression(document, &pgbsonElement);
+	pgbsonelement element;
+	PgbsonToSinglePgbsonElement(result, &element);
+
+	int count = BsonDocumentValueCountKeys(&element.bsonValue);
+
+	Datum *inArray = palloc(sizeof(Datum) * count);
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(&element.bsonValue, &arrayIter);
+	count = 0;
+	while (bson_iter_next(&arrayIter))
+	{
+		inArray[count] = PointerGetDatum(BsonValueToDocumentPgbson(bson_iter_value(
+																	   &arrayIter)));
+		count++;
+	}
+
+	ArrayType *resultVal = construct_array(inArray, count, BsonTypeId(), -1, false,
+										   TYPALIGN_INT);
+	pfree(result);
+	PG_RETURN_ARRAYTYPE_P(resultVal);
 }
 
 

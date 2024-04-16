@@ -436,6 +436,7 @@ PG_FUNCTION_INFO_V1(bson_dollar_mod);
 PG_FUNCTION_INFO_V1(bson_dollar_expr);
 PG_FUNCTION_INFO_V1(bson_dollar_text);
 PG_FUNCTION_INFO_V1(bson_dollar_range);
+PG_FUNCTION_INFO_V1(bson_dollar_lookup_join_filter);
 
 PG_FUNCTION_INFO_V1(bson_value_dollar_eq);
 PG_FUNCTION_INFO_V1(bson_value_dollar_gt);
@@ -1178,6 +1179,18 @@ bson_dollar_in(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_BOOL(state.traverseState.compareResult == CompareResult_Match);
 	}
+}
+
+
+/*
+ * The runtime implementation of this is identical to $in. so we just make a direct function call
+ * to the function - We just have a tail end argument of the index path so that we can do index
+ * pushdown for $lookup scenarios.
+ */
+Datum
+bson_dollar_lookup_join_filter(PG_FUNCTION_ARGS)
+{
+	return bson_dollar_in(fcinfo);
 }
 
 

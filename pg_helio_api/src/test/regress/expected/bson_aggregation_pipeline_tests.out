@@ -969,23 +969,21 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
-                                                                                         QUERY PLAN                                                                                          
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                           QUERY PLAN                                                                                                            
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop Left Join
    Output: bson_dollar_add_fields(collection.document, (SubPlan 1))
-   ->  ProjectSet
-         Output: collection.document, bson_dollar_lookup_extract_filter_expression(collection.document, '{ "sku" : "item" }'::bson)
-         ->  Bitmap Heap Scan on helio_data.documents_3501 collection
-               Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
-               Recheck Cond: (collection.shard_key_value = '3501'::bigint)
-               ->  Bitmap Index Scan on _id_
-                     Index Cond: (collection.shard_key_value = '3501'::bigint)
+   ->  Bitmap Heap Scan on helio_data.documents_3501 collection
+         Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
+         Recheck Cond: (collection.shard_key_value = '3501'::bigint)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '3501'::bigint)
    ->  Aggregate
          Output: COALESCE(bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::bson)
          ->  Bitmap Heap Scan on helio_data.documents_3502 collection_0_1
                Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
                Recheck Cond: (collection_0_1.shard_key_value = '3502'::bigint)
-               Filter: (collection_0_1.document @*= (bson_dollar_lookup_extract_filter_expression(collection.document, '{ "sku" : "item" }'::bson)))
+               Filter: helio_api_internal.bson_dollar_lookup_join_filter(collection_0_1.document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "sku" : "item" }'::bson), 'sku'::text)
                ->  Bitmap Index Scan on _id_
                      Index Cond: (collection_0_1.shard_key_value = '3502'::bigint)
    SubPlan 1
@@ -996,7 +994,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                  ->  Function Scan on helio_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
                        Output: lookup_subpipeline_substage_0.lookup_unwind
                        Function Call: bson_lookup_unwind((COALESCE(bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::bson)), 'matched_docs'::text)
-(25 rows)
+(23 rows)
 
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "coll_dne", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');

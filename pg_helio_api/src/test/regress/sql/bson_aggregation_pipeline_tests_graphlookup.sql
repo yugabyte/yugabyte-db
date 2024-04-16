@@ -2,7 +2,6 @@ SET search_path TO helio_api,helio_core;
 
 SET helio_api.next_collection_id TO 9200;
 SET helio_api.next_collection_index_id TO 9200;
-set helio_api.enableGraphLookupAggregation to on;
 
 SELECT helio_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 1, "name" : "Dev" }');
 SELECT helio_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 2, "name" : "Eliot", "reportsTo" : "Dev" }');

@@ -14,6 +14,7 @@
 #include <miscadmin.h>
 #include <fmgr.h>
 #include <nodes/nodes.h>
+#include <utils/builtins.h>
 #include <catalog/pg_type.h>
 #include <nodes/pathnodes.h>
 #include <nodes/supportnodes.h>
@@ -72,6 +73,7 @@ static IndexPath * OptimizeIndexPathForFilters(IndexPath *indexPath,
 /* Top level exports */
 /* --------------------------------------------------------- */
 PG_FUNCTION_INFO_V1(dollar_support);
+PG_FUNCTION_INFO_V1(bson_dollar_lookup_filter_support);
 
 /*
  * Handles the Support functions for the dollar logical operators.
@@ -107,6 +109,69 @@ dollar_support(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_POINTER(responseNodes);
+}
+
+
+/*
+ * Support function for index pushdown for $lookup join
+ * filters. This is needed and can't use the regular index filters
+ * since those use a Const value and require Const values to push down
+ * to extract the index paths. So we use a 3rd argument which provides
+ * the index path and use that to push down to the appropriate index.
+ */
+Datum
+bson_dollar_lookup_filter_support(PG_FUNCTION_ARGS)
+{
+	Node *supportRequest = (Node *) PG_GETARG_POINTER(0);
+	if (IsA(supportRequest, SupportRequestIndexCondition))
+	{
+		SupportRequestIndexCondition *req =
+			(SupportRequestIndexCondition *) supportRequest;
+
+		/* This is the lookup join function. We can't use regular support functions
+		 * since they need Consts and Lookup is an expression. So we use a 3rd arg for
+		 * the index path.
+		 */
+		if (req->funcid == BsonDollarLookupJoinFilterFunctionOid() &&
+			IsA(req->node, FuncExpr))
+		{
+			FuncExpr *funcExpr = (FuncExpr *) req->node;
+			if (list_length(funcExpr->args) == 3)
+			{
+				Node *thirdNode = lthird(funcExpr->args);
+				if (!IsA(thirdNode, Const))
+				{
+					PG_RETURN_POINTER(NULL);
+				}
+
+				Const *thirdConst = (Const *) thirdNode;
+				text *path = DatumGetTextPP(thirdConst->constvalue);
+				StringView pathView = CreateStringViewFromText(path);
+
+				const MongoIndexOperatorInfo *operator =
+					GetMongoIndexOperatorInfoByPostgresFuncId(BsonInMatchFunctionId());
+
+				bytea *options = req->index->opclassoptions[req->indexcol];
+				if (options == NULL)
+				{
+					PG_RETURN_POINTER(NULL);
+				}
+
+				if (!ValidateIndexForQualifierPathForDollarIn(options, &pathView))
+				{
+					PG_RETURN_POINTER(NULL);
+				}
+
+				/* Construct a $in @*= operator OpExpr */
+				Expr *finalExpression =
+					(Expr *) GetOpExprClauseFromIndexOperator(operator, funcExpr->args,
+															  options);
+				PG_RETURN_POINTER(list_make1(finalExpression));
+			}
+		}
+	}
+
+	PG_RETURN_POINTER(NULL);
 }
 
 

@@ -66,6 +66,10 @@ bool DefaultInlineWriteOperations = true;
 #define DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES false
 bool UseLocalExecutionShardQueries = DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES;
 
+
+#define DEFAULT_LOOKUP_USE_LEGACY_EXTRACT_FUNCTIONS false
+bool LookupUseLegacyExtractFunctions = DEFAULT_LOOKUP_USE_LEGACY_EXTRACT_FUNCTIONS;
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -216,9 +220,6 @@ int32 MaxSegmentVertices = DEFAULT_MAX_SEGMENT_VERTICES;
 
 #define DEFAULT_MAX_INDEXES_PER_COLLECTION 64
 int32 MaxIndexesPerCollection = DEFAULT_MAX_INDEXES_PER_COLLECTION;
-
-#define DEFAULT_ENABLE_GRAPH_LOOKUP true
-bool EnableGraphLookup = DEFAULT_ENABLE_GRAPH_LOOKUP;
 
 #define DEFAULT_ENABLE_PUSH_SUPPORT false
 bool EnableGroupPushSupport = DEFAULT_ENABLE_PUSH_SUPPORT;
@@ -568,12 +569,6 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableGraphLookupAggregation",
-		gettext_noop("Feature flag for the graph lookup aggregation stage"),
-		NULL, &EnableGraphLookup, DEFAULT_ENABLE_GRAPH_LOOKUP, PGC_USERSET, 0,
-		NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
 		"helio_api.enableGroupPushSupport",
 		gettext_noop("Feature flag for the group push support"), NULL,
 		&EnableGroupPushSupport, DEFAULT_ENABLE_PUSH_SUPPORT, PGC_USERSET, 0,
@@ -584,6 +579,14 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Determines whether or not to push local shard queries to the shard directly."),
 		NULL, &UseLocalExecutionShardQueries, DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.lookupUseLegacyExtractFunction",
+		gettext_noop(
+			"Determines whether to use the legacy extract function if set to true."),
+		NULL, &LookupUseLegacyExtractFunctions,
+		DEFAULT_LOOKUP_USE_LEGACY_EXTRACT_FUNCTIONS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 

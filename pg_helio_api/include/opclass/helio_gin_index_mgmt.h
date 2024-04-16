@@ -163,6 +163,8 @@ typedef struct
 bool ValidateIndexForQualifierValue(bytea *indexOptions, Datum queryValue,
 									BsonIndexStrategy
 									strategy);
+bool ValidateIndexForQualifierPathForDollarIn(bytea *indexOptions, const
+											  StringView *queryPath);
 
 Size FillSinglePathSpec(const char *prefix, void *buffer);
 void ValidateSinglePathSpec(const char *prefix);

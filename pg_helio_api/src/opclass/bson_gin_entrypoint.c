@@ -799,6 +799,94 @@ ValidateIndexForQualifierValue(bytea *indexOptions, Datum queryValue, BsonIndexS
 
 
 /*
+ * checks if a path can be pushed to an index given the options for a $in type query.
+ */
+bool
+ValidateIndexForQualifierPathForDollarIn(bytea *indexOptions, const StringView *queryPath)
+{
+	if (indexOptions == NULL)
+	{
+		ereport(ERROR, errmsg(
+					"Unexpected - Must have valid index options to use the index"));
+	}
+
+	BsonGinIndexOptionsBase *options = (BsonGinIndexOptionsBase *) indexOptions;
+
+	IndexTraverseOption traverse = IndexTraverse_Invalid;
+	switch (options->type)
+	{
+		case IndexOptionsType_Text:
+		{
+			/* Should not be called for text */
+			traverse = IndexTraverse_Invalid;
+			break;
+		}
+
+		case IndexOptionsType_2d:
+		case IndexOptionsType_2dsphere:
+		{
+			/* $in can't be pushed to 2d/2dsphere */
+			traverse = IndexTraverse_Invalid;
+			break;
+		}
+
+		case IndexOptionsType_SinglePath:
+		{
+			BsonGinSinglePathOptions *singlePathOptions =
+				(BsonGinSinglePathOptions *) indexOptions;
+
+			if (singlePathOptions->isWildcard)
+			{
+				if (StringViewEndsWith(queryPath, '.'))
+				{
+					ereport(ERROR, (errcode(MongoDottedFieldName), errmsg(
+										"FieldPath must not end with a '.'.")));
+				}
+			}
+
+			traverse = GetSinglePathIndexTraverseOption(options,
+														queryPath->string,
+														queryPath->length,
+														BSON_TYPE_EOD);
+			break;
+		}
+
+		case IndexOptionsType_Hashed:
+		{
+			/* Hash index only supports $eq today */
+			traverse = GetHashIndexTraverseOption(options,
+												  queryPath->string,
+												  queryPath->length);
+			break;
+		}
+
+		case IndexOptionsType_Wildcard:
+		{
+			traverse = GetWildcardProjectionPathIndexTraverseOption(options,
+																	queryPath->string,
+																	queryPath->length,
+																	BSON_TYPE_EOD);
+			break;
+		}
+
+		case IndexOptionsType_UniqueShardKey:
+		{
+			traverse = IndexTraverse_Invalid;
+			break;
+		}
+
+		default:
+		{
+			ereport(ERROR, (errmsg("Unrecognized index options type %d", options->type)));
+			break;
+		}
+	}
+
+	return traverse == IndexTraverse_Match;
+}
+
+
+/*
  * Given an opaque index options returns the index
  * term metadata for the index if applicable.
  */

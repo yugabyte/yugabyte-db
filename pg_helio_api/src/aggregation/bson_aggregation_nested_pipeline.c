@@ -32,6 +32,7 @@
 #include <catalog/pg_aggregate.h>
 #include <catalog/pg_class.h>
 #include <rewrite/rewriteSearchCycle.h>
+#include <utils/version_utils.h>
 
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
@@ -48,7 +49,7 @@
 const int MaximumLookupPipelineDepth = 20;
 
 /* Graph lookup feature flag */
-extern bool EnableGraphLookup;
+extern bool LookupUseLegacyExtractFunctions;
 
 /*
  * Struct having parsed view of the
@@ -309,13 +310,6 @@ HandleGraphLookup(const bson_value_t *existingValue, Query *query,
 	GraphLookupArgs graphArgs;
 	memset(&graphArgs, 0, sizeof(GraphLookupArgs));
 	ParseGraphLookupStage(existingValue, &graphArgs);
-
-	if (!EnableGraphLookup)
-	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
-						errmsg("aggregation stage $graphLookup not supported yet."),
-						errhint("aggregation stage $graphLookup not supported yet.")));
-	}
 
 	return ProcessGraphLookupCore(query, context, &graphArgs);
 }
@@ -1020,7 +1014,7 @@ CreateCteSelectQuery(CommonTableExpr *baseCte, const char *prefix, int stageNum,
 		Var *newQueryOutput = makeVar(rtIndex, tle->resno, BsonTypeId(), -1,
 									  InvalidOid, 0);
 		bool resJunk = false;
-		TargetEntry *upperEntry = makeTargetEntry((Expr *) newQueryOutput, 1,
+		TargetEntry *upperEntry = makeTargetEntry((Expr *) newQueryOutput, tle->resno,
 												  tle->resname,
 												  resJunk);
 		upperTargetList = lappend(upperTargetList, upperEntry);
@@ -1366,22 +1360,75 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 												 &subPipelineContext);
 		}
 
+		bool isLegacyExtractFunction = !IsClusterVersionAtleastThis(1, 16, 0) ||
+									   LookupUseLegacyExtractFunctions;
+
+		/* Do not turn on the fast version if we're still using the legacy extract function
+		 * TODO: This can be removed once 1.16 fully deploys with this.
+		 */
+		bool canProcessForeignFieldAsDocumentId = StringViewEquals(
+			&lookupArgs->foreignField,
+			&IdFieldStringView) &&
+												  !isLegacyExtractFunction &&
+												  !isRightQueryAgnostic;
+
+		/* We can apply the optimization on this based on object_id if and only if
+		 * The right table is pointing directly to an actual table (not a view)
+		 * and we're an unsharded collection - or a view that just does a "filter"
+		 * match.
+		 */
+		if (canProcessForeignFieldAsDocumentId &&
+			list_length(rightQuery->rtable) == 1 &&
+			list_length(rightQuery->targetList) == 1 &&
+			subPipelineContext.mongoCollection != NULL &&
+			subPipelineContext.mongoCollection->shardKey == NULL)
+		{
+			RangeTblEntry *entry = linitial(rightQuery->rtable);
+			TargetEntry *firstEntry = linitial(rightQuery->targetList);
+
+			/* Add the document object_id projector as well, if there is no projection on the document && it's a base table
+			 * in the case of projections we can't be sure something like { "_id": "abc" } has been added
+			 */
+			if (entry->rtekind == RTE_RELATION && IsA(firstEntry->expr, Var))
+			{
+				/* Add the object_id targetEntry */
+				Var *objectIdVar = makeVar(1, MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
+										   BsonTypeId(), -1, InvalidOid, 0);
+				TargetEntry *objectEntry = makeTargetEntry((Expr *) objectIdVar,
+														   list_length(
+															   rightQuery->targetList) +
+														   1, "objectId", false);
+				rightQuery->targetList = lappend(rightQuery->targetList, objectEntry);
+			}
+			else
+			{
+				canProcessForeignFieldAsDocumentId = false;
+			}
+		}
+
 		CommonTableExpr *rightTableExpr = makeNode(CommonTableExpr);
 		rightTableExpr->ctename = "lookup_right_query";
 		rightTableExpr->ctequery = (Node *) rightQuery;
 
 		rightQuery = CreateCteSelectQuery(rightTableExpr, "lookup_right_query",
 										  context->nestedPipelineLevel, 0);
+
 		RangeTblEntry *rightRteCte = linitial(rightQuery->rtable);
 
 		/* If the nested pipeline can be sent down to the nested right query */
 		if (canInlineInnerPipeline && !isRightQueryAgnostic)
 		{
+			Query *originalRightQuery = rightQuery;
 			rightQuery = MutateQueryWithPipeline(rightQuery, &lookupArgs->pipeline,
 												 &subPipelineContext);
 			if (subPipelineContext.requiresSubQuery)
 			{
 				rightQuery = MigrateQueryToSubQuery(rightQuery, &subPipelineContext);
+			}
+
+			if (originalRightQuery != rightQuery)
+			{
+				canProcessForeignFieldAsDocumentId = false;
 			}
 		}
 
@@ -1399,19 +1446,34 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		/* Create the bson_dollar_lookup_extract_filter_expression(document, 'filter') */
 		List *extractFilterArgs = list_make2(currentEntry->expr, MakeBsonConst(
 												 filterBson));
-		FuncExpr *projectorFunc = makeFuncExpr(
-			BsonLookupExtractFilterExpressionFunctionOid(), BsonTypeId(),
-			extractFilterArgs,
-			InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 
-		/* Mark it as an SRF */
-		projectorFunc->funcretset = true;
+		FuncExpr *projectorFunc;
+		if (canProcessForeignFieldAsDocumentId)
+		{
+			projectorFunc = makeFuncExpr(
+				BsonLookupExtractFilterArrayFunctionOid(), get_array_type(BsonTypeId()),
+				extractFilterArgs,
+				InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+		}
+		else
+		{
+			Oid extractFunctionOid = isLegacyExtractFunction ?
+									 BsonLookupExtractFilterExpressionFunctionOid() :
+									 HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid();
+
+			projectorFunc = makeFuncExpr(
+				extractFunctionOid, BsonTypeId(),
+				extractFilterArgs,
+				InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+			projectorFunc->funcretset = isLegacyExtractFunction;
+			leftQuery->hasTargetSRFs = isLegacyExtractFunction;
+		}
+
 		AttrNumber newProjectorAttrNum = list_length(leftQuery->targetList) + 1;
 		TargetEntry *extractFilterProjector = makeTargetEntry((Expr *) projectorFunc,
 															  newProjectorAttrNum,
 															  "lookup_filter", false);
 		leftQuery->targetList = lappend(leftQuery->targetList, extractFilterProjector);
-		leftQuery->hasTargetSRFs = true;
 
 		/* now on the right query, add a filter referencing this projector */
 		List *rightQuals = NIL;
@@ -1422,19 +1484,53 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 
 		/* add the WHERE bson_dollar_in(t2.document, t1.match) */
 		TargetEntry *currentRightEntry = linitial(rightQuery->targetList);
-
-		int levelsUp = 1;
-		Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum, BsonTypeId(), -1,
-								InvalidOid, levelsUp);
-
 		Var *rightVar = (Var *) currentRightEntry->expr;
+		int matchLevelsUp = 1;
+		Node *inClause;
+		if (canProcessForeignFieldAsDocumentId &&
+			list_length(rightQuery->targetList) == 2)
+		{
+			TargetEntry *rightObjectIdEntry = (TargetEntry *) lsecond(
+				rightQuery->targetList);
+			rightQuery->targetList = list_make1(currentRightEntry);
 
-		List *inArgs = list_make2(copyObject(rightVar), matchVar);
-		FuncExpr *inClause = makeFuncExpr(BsonInMatchFunctionId(), BOOLOID, inArgs,
-										  InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+			ScalarArrayOpExpr *inOperator = makeNode(ScalarArrayOpExpr);
+			inOperator->useOr = true;
+			inOperator->opno = BsonEqualOperatorId();
+			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum,
+									get_array_type(BsonTypeId()), -1,
+									InvalidOid, matchLevelsUp);
+			List *inArgs = list_make2(copyObject(rightObjectIdEntry->expr), matchVar);
+			inOperator->args = inArgs;
+			inClause = (Node *) inOperator;
+		}
+		else if (isLegacyExtractFunction)
+		{
+			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum, BsonTypeId(),
+									-1,
+									InvalidOid, matchLevelsUp);
+			List *inArgs = list_make2(copyObject(rightVar), matchVar);
+			inClause = (Node *) makeFuncExpr(BsonInMatchFunctionId(), BOOLOID, inArgs,
+											 InvalidOid, InvalidOid,
+											 COERCE_EXPLICIT_CALL);
+		}
+		else
+		{
+			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum, BsonTypeId(),
+									-1,
+									InvalidOid, matchLevelsUp);
+			Const *textConst = MakeTextConst(lookupArgs->foreignField.string,
+											 lookupArgs->foreignField.length);
+			List *inArgs = list_make3(copyObject(rightVar), matchVar, textConst);
+			inClause = (Node *) makeFuncExpr(BsonDollarLookupJoinFilterFunctionOid(),
+											 BOOLOID, inArgs,
+											 InvalidOid, InvalidOid,
+											 COERCE_EXPLICIT_CALL);
+		}
+
 		if (rightQuals == NIL)
 		{
-			rightQuery->jointree->quals = (Node *) inClause;
+			rightQuery->jointree->quals = inClause;
 		}
 		else
 		{

@@ -64,6 +64,9 @@ static Oid GetCoreBinaryOperatorId(Oid *operatorId, Oid leftTypeOid, char *opera
 								   Oid rightTypeOid);
 static Oid GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 									   Oid leftTypeOid, Oid rightTypeOid);
+static Oid GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId,
+													char *operatorName,
+													Oid leftTypeOid, Oid rightTypeOid);
 static Oid GetBinaryOperatorFunctionIdMissingOk(Oid *operatorFuncId, char *operatorName,
 												Oid leftTypeOid, Oid rightTypeOid,
 												const char *releaseName);
@@ -613,6 +616,15 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the bson_dollar_lookup_extract_filter_expression function */
 	Oid ApiCatalogBsonLookupExtractFilterExpressionOid;
+
+	/* OID of the bson_dollar_lookup_extract_filter_array function */
+	Oid ApiCatalogBsonLookupExtractFilterArrayOid;
+
+	/* OID of the helio_api_internal.bson_dollar_lookup_extract_filter_expression function */
+	Oid HelioInternalBsonLookupExtractFilterExpressionOid;
+
+	/* OID of helio_api_internal.bson_dollar_lookup_join_filter function */
+	Oid BsonDollarLookupJoinFilterFunctionOid;
 
 	/* OID of the bson_lookup_unwind function */
 	Oid BsonLookupUnwindFunctionOid;
@@ -2886,6 +2898,46 @@ BsonLookupExtractFilterExpressionFunctionOid(void)
 
 
 Oid
+BsonLookupExtractFilterArrayFunctionOid(void)
+{
+	return GetHelioInternalBinaryOperatorFunctionId(
+		&Cache.ApiCatalogBsonLookupExtractFilterArrayOid,
+		"bson_dollar_lookup_extract_filter_array",
+		BsonTypeId(), BsonTypeId());
+}
+
+
+Oid
+HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid(void)
+{
+	return GetHelioInternalBinaryOperatorFunctionId(
+		&Cache.HelioInternalBsonLookupExtractFilterExpressionOid,
+		"bson_dollar_lookup_extract_filter_expression",
+		BsonTypeId(), BsonTypeId());
+}
+
+
+Oid
+BsonDollarLookupJoinFilterFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.BsonDollarLookupJoinFilterFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString("bson_dollar_lookup_join_filter"));
+		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), TEXTOID };
+		bool missingOK = false;
+
+		Cache.BsonDollarLookupJoinFilterFunctionOid =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return Cache.BsonDollarLookupJoinFilterFunctionOid;
+}
+
+
+Oid
 BsonLookupUnwindFunctionOid(void)
 {
 	return GetBinaryOperatorFunctionId(&Cache.BsonLookupUnwindFunctionOid,
@@ -4410,6 +4462,27 @@ GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 	if (*operatorFuncId == InvalidOid)
 	{
 		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+											makeString(operatorName));
+		Oid paramOids[2] = { leftTypeOid, rightTypeOid };
+		bool missingOK = false;
+
+		*operatorFuncId =
+			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+	}
+
+	return *operatorFuncId;
+}
+
+
+static Oid
+GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
+										 Oid leftTypeOid, Oid rightTypeOid)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (*operatorFuncId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
 											makeString(operatorName));
 		Oid paramOids[2] = { leftTypeOid, rightTypeOid };
 		bool missingOK = false;
