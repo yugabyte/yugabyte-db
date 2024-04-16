@@ -20,6 +20,17 @@ Try again by running the build script with less concurrency, for example, `-j1`.
 
 {{< /note >}}
 
+{{< note title="Note" >}}
+
+If you get an error message such as
+
+> ValueError: Found no third-party release archives to download for OS type ubuntu20.04, compiler type matching gcc11, architecture x86_64, is_linuxbrew=False. See more details above.
+
+it means that there is no [third-party download](#opt-yb-build) available for that build configuration.
+Check the output that precedes the message for supported configurations.
+
+{{< /note >}}
+
 For more details about building and testing, refer to [Build and test][build-and-test].
 
 [repo]: https://github.com/yugabyte/yugabyte-db
