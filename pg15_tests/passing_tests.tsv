@@ -45,6 +45,7 @@ JAVA	org.yb.pgsql.TestPgRegressContribTablefunc
 JAVA	org.yb.pgsql.TestPgRegressContribUuidOssp
 JAVA	org.yb.pgsql.TestPgRegressCursor#testPgRegressCursor
 JAVA	org.yb.pgsql.TestPgRegressDistinctPushdown
+JAVA	org.yb.pgsql.TestPgRegressFeatureDatabase
 JAVA	org.yb.pgsql.TestPgRegressGin
 JAVA	org.yb.pgsql.TestPgRegressHashInQueries
 JAVA	org.yb.pgsql.TestPgRegressJson
