@@ -13578,7 +13578,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
 
   snapshot_coordinator_.SysCatalogLoaded(state.epoch.leader_term);
 
-  xcluster_manager_->SysCatalogLoaded();
+  xcluster_manager_->SysCatalogLoaded(state.epoch);
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
 }
 

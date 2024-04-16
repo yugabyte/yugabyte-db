@@ -111,6 +111,8 @@ class XClusterOutboundReplicationGroup
 
   bool HasNamespace(const NamespaceId& namespace_id) const EXCLUDES(mutex_);
 
+  void StartPostLoadTasks(const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
  private:
   friend class XClusterOutboundReplicationGroupMocked;
   friend class AddTableToXClusterSourceTask;
