@@ -2494,9 +2494,9 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_enable_ddl_atomicity_infra", PGC_SUSET, DEVELOPER_OPTIONS,
-			NULL,
 			gettext_noop("Used along side with yb_ddl_rollback_enabled to control "
 						 "whether DDL atomicity is enabled."),
+			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_ddl_atomicity_infra,
