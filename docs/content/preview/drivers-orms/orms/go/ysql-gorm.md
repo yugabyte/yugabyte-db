@@ -61,9 +61,9 @@ Create the `ysql_gorm` database in YugabyteDB by running the following `ysqlsh` 
 $ ./bin/ysqlsh -c "CREATE DATABASE ysql_gorm"
 ```
 
-Build and start the REST API server by running the following shell script. The application uses `yugabytedb/pgx` driver, so load balance feature is enabled.
+Build and start the REST API server by running the following shell script. The application uses the [YugabyteDB smart driver for Go](https://github.com/yugabyte/pgx), which provides the connection load balancing feature.
 
-Note: To use the upstream driver replace `github.com/yugabyte/gorm-yugabytedb` with `gorm.io/driver/postgres` in the application code.
+Note: The application also works with the upstream Go driver (jackc/pgx). To use it, replace `github.com/yugabyte/gorm-yugabytedb` with `gorm.io/driver/postgres` in the application code.
 
 ```sh
 $ ./build-and-run.sh
