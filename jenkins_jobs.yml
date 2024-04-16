@@ -20,18 +20,17 @@ jobs:
     build_type: debug
     release_artifact: false
 
-# YB_TODO: build failure "ld.lld: error: duplicate symbol: fsync_fname"
-#  - os: alma8
-#    compiler: clang17
-#    build_type: release
-#    build_opts: YB_LINKING_TYPE=full-lto
-#    release_artifact: true
-#
-#  - os: alma8
-#    compiler: clang17
-#    build_type: release
-#    architecture: aarch64
-#    release_artifact: true
+  - os: alma8
+    compiler: clang17
+    build_type: release
+    build_opts: YB_LINKING_TYPE=full-lto
+    release_artifact: true
+
+  - os: alma8
+    compiler: clang17
+    build_type: release
+    architecture: aarch64
+    release_artifact: true
 
 # YB_TODO: remove this job as in 37b0080f2b7108662e4525899848bcaba24efc40.
   - os: alma8
