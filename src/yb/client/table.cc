@@ -324,12 +324,14 @@ size_t YBTable::DynamicMemoryUsage() const {
 size_t FindPartitionStartIndex(const TablePartitionList& partitions,
                                std::string_view partition_key,
                                size_t group_by) {
-  auto it = std::lower_bound(partitions.begin(), partitions.end(), partition_key);
-  if (it == partitions.end() || *it > partition_key) {
-    CHECK(it != partitions.begin()) << "Could not find partition start while looking for "
-        << partition_key << " in " << yb::ToString(partitions);
-    --it;
-  }
+  CHECK(!partitions.empty()) << "Invalid table partition list <empty list>";
+  CHECK(partitions.begin()->empty()) << "Invalid table partition list " << AsString(partitions)
+                                     << ", the first partition key is expected to be empty";
+  // Looking for the highest "partitions" entry less or equal the partition_key.
+  // The upper_bound returns the next entry, which would be strictly greater than partition_key, or
+  // partitions.end(), if partition_key is greater than them all. In both cases we just decrement
+  // the found iterator by one to get the correct answer.
+  auto it = std::upper_bound(partitions.begin() + 1, partitions.end(), partition_key) - 1;
   return group_by <= 1 ? it - partitions.begin() :
                          (it - partitions.begin()) / group_by * group_by;
 }
