@@ -20,7 +20,7 @@
 #include "catalog/pg_type.h"
 
 #include "replication/logical.h"
-#if	PG_VERSION_NUM >= 90500
+#if PG_VERSION_NUM >= 90500
 #include "replication/origin.h"
 #endif
 
@@ -124,16 +124,16 @@ static void pg_decode_commit_txn(LogicalDecodingContext *ctx,
 static void pg_decode_change(LogicalDecodingContext *ctx,
 				 ReorderBufferTXN *txn, Relation rel,
 				 ReorderBufferChange *change);
-#if	PG_VERSION_NUM >= 90500
+#if PG_VERSION_NUM >= 90500
 static bool pg_filter_by_origin(LogicalDecodingContext *ctx, RepOriginId origin_id);
 #endif
-#if	PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 90600
 static void pg_decode_message(LogicalDecodingContext *ctx,
 					ReorderBufferTXN *txn, XLogRecPtr lsn,
 					bool transactional, const char *prefix,
 					Size content_size, const char *content);
 #endif
-#if	PG_VERSION_NUM >= 110000
+#if PG_VERSION_NUM >= 110000
 static void pg_decode_truncate(LogicalDecodingContext *ctx,
 					ReorderBufferTXN *txn, int n, Relation relations[],
 					ReorderBufferChange *change);
@@ -160,13 +160,13 @@ static void pg_decode_commit_txn_v1(LogicalDecodingContext *ctx,
 static void pg_decode_change_v1(LogicalDecodingContext *ctx,
 				 ReorderBufferTXN *txn, Relation rel,
 				 ReorderBufferChange *change);
-#if	PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 90600
 static void pg_decode_message_v1(LogicalDecodingContext *ctx,
 					ReorderBufferTXN *txn, XLogRecPtr lsn,
 					bool transactional, const char *prefix,
 					Size content_size, const char *content);
 #endif
-#if	PG_VERSION_NUM >= 110000
+#if PG_VERSION_NUM >= 110000
 static void pg_decode_truncate_v1(LogicalDecodingContext *ctx,
 					ReorderBufferTXN *txn, int n, Relation relations[],
 					ReorderBufferChange *change);
@@ -183,13 +183,13 @@ static void pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN
 static void pg_decode_change_v2(LogicalDecodingContext *ctx,
 				 ReorderBufferTXN *txn, Relation rel,
 				 ReorderBufferChange *change);
-#if	PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 90600
 static void pg_decode_message_v2(LogicalDecodingContext *ctx,
 					ReorderBufferTXN *txn, XLogRecPtr lsn,
 					bool transactional, const char *prefix,
 					Size content_size, const char *content);
 #endif
-#if	PG_VERSION_NUM >= 110000
+#if PG_VERSION_NUM >= 110000
 static void pg_decode_truncate_v2(LogicalDecodingContext *ctx,
 					ReorderBufferTXN *txn, int n, Relation relations[],
 					ReorderBufferChange *change);
@@ -230,13 +230,13 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->change_cb = pg_decode_change;
 	cb->commit_cb = pg_decode_commit_txn;
 	cb->shutdown_cb = pg_decode_shutdown;
-#if	PG_VERSION_NUM >= 90500
+#if PG_VERSION_NUM >= 90500
 	cb->filter_by_origin_cb = pg_filter_by_origin;
 #endif
-#if	PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 90600
 	cb->message_cb = pg_decode_message;
 #endif
-#if	PG_VERSION_NUM >= 110000
+#if PG_VERSION_NUM >= 110000
 	cb->truncate_cb = pg_decode_truncate;
 #endif
 }
@@ -1847,7 +1847,7 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	appendStringInfo(ctx->out, ",%s", data->nl);
 
 	if (data->include_pk)
-#if	PG_VERSION_NUM >= 100000
+#if PG_VERSION_NUM >= 100000
 		pkbs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_PRIMARY_KEY);
 #else
 		pkbs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_KEY);
@@ -2053,7 +2053,7 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 	}
 	else if (kind == PGOUTPUTJSON_PK)
 	{
-#if	PG_VERSION_NUM >= 100000
+#if PG_VERSION_NUM >= 100000
 		bs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_PRIMARY_KEY);
 #else
 		bs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_KEY);
@@ -2396,7 +2396,7 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 			 * Before v10, there is not rd_pkindex then rely on REPLICA
 			 * IDENTITY DEFAULT to obtain primary key.
 			 */
-#if	PG_VERSION_NUM >= 100000
+#if PG_VERSION_NUM >= 100000
 			if (OidIsValid(relation->rd_pkindex) || OidIsValid(relation->rd_replidindex))
 #else
 			if (OidIsValid(relation->rd_replidindex))
@@ -2424,7 +2424,7 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 	if (data->include_pk)
 	{
 		appendStringInfoString(ctx->out, ",\"pk\":[");
-#if	PG_VERSION_NUM >= 100000
+#if PG_VERSION_NUM >= 100000
 		if (OidIsValid(relation->rd_pkindex))
 #else
 		if (OidIsValid(relation->rd_replidindex) && relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
@@ -2486,7 +2486,7 @@ pg_decode_change_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	MemoryContextReset(data->context);
 }
 
-#if	PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 90600
 /* Callback for generic logical decoding messages */
 static void
 pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
@@ -2710,7 +2710,7 @@ pg_decode_message_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 }
 #endif
 
-#if	PG_VERSION_NUM >= 110000
+#if PG_VERSION_NUM >= 110000
 /* Callback for TRUNCATE command */
 static void pg_decode_truncate(LogicalDecodingContext *ctx,
 					ReorderBufferTXN *txn, int n, Relation relations[],
