@@ -5721,6 +5721,26 @@ Status CatalogManager::GetReplicationStatus(
   return Status::OK();
 }
 
+PgReplicaIdentity GetReplicaIdentityFromRecordType(std::string record_type_name) {
+  cdc::CDCRecordType record_type = cdc::CDCRecordType::CHANGE;
+  CDCRecordType_Parse(record_type_name, &record_type);
+  switch (record_type) {
+    case cdc::CDCRecordType::ALL: FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::PG_FULL: return PgReplicaIdentity::FULL;
+    case cdc::CDCRecordType::PG_DEFAULT: return PgReplicaIdentity::DEFAULT;
+    case cdc::CDCRecordType::PG_NOTHING: return PgReplicaIdentity::NOTHING;
+    case cdc::CDCRecordType::PG_CHANGE_OLD_NEW: FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::FULL_ROW_NEW_IMAGE: FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES:
+      LOG(WARNING) << "The record type of the older stream does not have a corresponding replica "
+                      "identity. Going forward with replica identity CHANGE.";
+      FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::CHANGE: return PgReplicaIdentity::CHANGE;
+    // This case should never be reached.
+    default: return PgReplicaIdentity::CHANGE;
+  }
+}
+
 Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
     const YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB* req,
     YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB* resp,
@@ -5729,6 +5749,7 @@ Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
             << RequestorString(rpc) << ": " << req->ShortDebugString();
 
   if (!FLAGS_ysql_yb_enable_replication_commands ||
+      !FLAGS_ysql_yb_enable_replica_identity ||
       !FLAGS_enable_backfilling_cdc_stream_with_replication_slot) {
     RETURN_INVALID_REQUEST_STATUS("Backfilling replication slot name is disabled");
   }
@@ -5782,6 +5803,25 @@ Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
 
     pb.set_cdcsdk_ysql_replication_slot_name(req->cdcsdk_ysql_replication_slot_name());
     cdcsdk_replication_slots_to_stream_map_.insert_or_assign(replication_slot_name, stream_id);
+
+    PgReplicaIdentity replica_identity;
+    bool has_record_type =  false;
+    for (const auto& option : pb.options()) {
+      if (option.key() == cdc::kRecordType) {
+        // Check if record type is a valid replica identity, if not assign replica
+        // identity CHANGE.
+        replica_identity = GetReplicaIdentityFromRecordType(option.value());
+        has_record_type = true;
+        break;
+      }
+    }
+    // This should never happen.
+    RSTATUS_DCHECK(
+        has_record_type, NotFound, Format("Option record_type not present in stream $0"),
+        stream_id);
+    for(auto table_id : pb.table_id()) {
+       pb.mutable_replica_identity_map()->insert({table_id, replica_identity});
+    }
 
     stream_lock.Commit();
   }
