@@ -10,6 +10,29 @@ unversioned: true
 
 Find resources for getting started, migrating existing databases, using your database, and architecting for scalability, reliability, and security.
 
+<ul class="nav yb-pills">
+
+  <li>
+    <a href="https://cloud.yugabyte.com/signup" class="orange">
+      <img src="/icons/yugabyte.svg"></i>
+      Sign Up
+    </a>
+  </li>
+  <li>
+    <a href="https://download.yugabyte.com/" class="orange">
+      <img src="/icons/database.svg"></i>
+      Download Now
+    </a>
+  </li>
+  <li>
+    <a href="https://communityinviter.com/apps/yugabyte-db/register" class="orange">
+      <img src="/icons/slack.svg"></i>
+      Join Us on Slack
+    </a>
+  </li>
+
+</ul>
+
 ## Introducing YugabyteDB
 
 **Video**: [Introducing YugabyteDB: The Distributed SQL Database for Mission-Critical Applications](https://www.youtube.com/watch?v=j24p07Frw00)
@@ -32,14 +55,11 @@ Find resources for getting started, migrating existing databases, using your dat
 **Video**: [How to Start YugabyteDB on Your Laptop](https://www.youtube.com/watch?v=ah_fPDpZjnc)
 : Try YugabyteDB out by running it on your laptop in five minutes.
 
-**Documentation**: [Quick Start](../quick-start-yugabytedb-managed/)
-: Try it out for free, in the cloud or on your laptop.
-
 **Product Lab**: [Create Global Applications](../yugabyte-cloud/managed-labs/)
 : Test YugabyteDB features using a demo application in real time.
 
-**Tutorial**: [Build and Learn](../tutorials/build-and-learn/)
-: Learn the essential capabilities of YugabyteDB.
+**Documentation**: [Quick Start](../quick-start-yugabytedb-managed/)
+: Try it out for free, in the cloud or on your laptop.
 
 ## Migrate from PostgreSQL
 
