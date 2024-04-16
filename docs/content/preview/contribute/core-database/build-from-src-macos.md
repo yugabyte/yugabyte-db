@@ -72,6 +72,10 @@ YugabyteDB build scripts require at least Bash version 4. Make sure that `bash -
 
 {{< /note >}}
 
+### /opt/yb-build
+
+{{% readfile "includes/opt-yb-build.md" %}}
+
 ### Java
 
 {{% readfile "includes/java.md" %}}
