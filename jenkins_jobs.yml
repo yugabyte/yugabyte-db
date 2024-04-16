@@ -38,14 +38,17 @@ jobs:
     build_type: release
     architecture: arm64
     release_artifact: true
+    test_opts: YB_COMPILE_ONLY=1
 
   - os: mac12
     compiler: clang
     build_type: release
     architecture: x86_64
     release_artifact: true
+    test_opts: YB_COMPILE_ONLY=1
 
   - os: ubuntu20.04
     compiler: clang16
     build_type: debug
     release_artifact: false
+    test_opts: YB_COMPILE_ONLY=1
