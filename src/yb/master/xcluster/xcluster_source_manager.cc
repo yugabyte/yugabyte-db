@@ -116,7 +116,11 @@ void XClusterSourceManager::CleanupStreamFromMaps(const CDCStreamInfo& stream) {
   }
 }
 
-void XClusterSourceManager::SysCatalogLoaded() {}
+void XClusterSourceManager::SysCatalogLoaded(const LeaderEpoch& epoch) {
+  for (const auto& outbound_rg : GetAllOutboundGroups()) {
+    outbound_rg->StartPostLoadTasks(epoch);
+  }
+}
 
 void XClusterSourceManager::DumpState(std::ostream& out, bool on_disk_dump) const {
   if (!on_disk_dump) {
@@ -516,7 +520,15 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
     bootstrap_req.add_xrepl_stream_ids(stream_id.ToString());
 
     if (!ts_desc) {
-      ts_desc = VERIFY_RESULT(table_info->GetTablets().front()->GetLeader());
+      auto ts_desc_result = table_info->GetTablets().front()->GetLeader();
+      if (!ts_desc_result) {
+        // After a master failover we may not yet have the leader info, so we need to try again.
+        if (ts_desc_result.status().IsNotFound()) {
+          return STATUS(TryAgain, "Tablet leader not found", ts_desc_result.status().ToString());
+        }
+        RETURN_NOT_OK(ts_desc_result.status());
+      }
+      ts_desc = std::move(*ts_desc_result);
     }
   }
   SCHECK(ts_desc, IllegalState, "No valid tserver found to bootstrap from");
