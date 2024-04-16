@@ -1,4 +1,5 @@
 JAVA	org.yb.pgsql.TestPgBatchExecution
+JAVA	org.yb.pgsql.TestPgRegressPlpgsql
 JAVA	org.yb.pgsql.TestPgRegressTypesNumeric
 integration-tests_xcluster_ysql-test	XClusterYsqlTest.DmlOperationsBlockedOnStandbyCluster
 integration-tests_xcluster_ysql_index-test	XClusterYsqlIndexTest.FailedCreateIndex
