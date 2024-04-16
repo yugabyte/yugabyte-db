@@ -512,6 +512,11 @@ public class RBACController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot set role bindings for LDAP user.");
     }
 
+    // Validate that the user does not have OIDC specified role.
+    if (UserType.oidc.equals(user.getUserType())) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot set role bindings for OIDC user.");
+    }
+
     // Parse request body.
     JsonNode requestBody = request.body().asJson();
     RoleBindingFormData roleBindingFormData =
