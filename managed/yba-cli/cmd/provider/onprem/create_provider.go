@@ -27,6 +27,13 @@ var createOnpremProviderCmd = &cobra.Command{
 		"To utilize the on-premises provider in universes, manage instance types" +
 		" and node instances using the \"yba provider onprem instance-types/node [operation]\" " +
 		"set of commands",
+	Example: `yba provider onprem create --name <provider-name> \
+	--region region-name=region1 --region region-name=region2 \
+	--zone zone-name=zone1,region-name=region1 \
+	--zone zone-name=zone2,region-name=region2 \
+	--ssh-user centos \
+	--ssh-keypair-name <keypair-name>  \
+	--ssh-keypair-file-path <path-to-ssh-key-file>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

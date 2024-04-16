@@ -27,6 +27,7 @@ var RegisterCmd = &cobra.Command{
 	Long: "Register a YugabyteDB Anywhere customer using yba cli. " +
 		"If non-interactive mode is set, provide the host, name, email, password" +
 		" and environment using flags.",
+	Example: "yba register -f -n <name> -e <email> -p <password> -H <host>",
 	Run: func(cmd *cobra.Command, args []string) {
 		force, err := cmd.Flags().GetBool("force")
 		if err != nil {
