@@ -828,6 +828,22 @@
       }
     ],
     "layout": {
+      "metadata": {
+        "supportedGroupBy": [
+          {
+            "label": "waitEvent",
+            "name": "Event"
+          },
+          {
+            "label": "waitEventClass",
+            "name": "Class"
+          },
+          {
+            "label": "waitEventComponent",
+            "name": "Component"
+          }
+        ]
+      },
       "title": "ASH",
       "type": "ASH",
       "xaxis": {

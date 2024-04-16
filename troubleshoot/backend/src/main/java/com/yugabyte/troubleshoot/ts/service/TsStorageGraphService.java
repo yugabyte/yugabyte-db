@@ -107,16 +107,15 @@ public class TsStorageGraphService implements GraphSourceIF {
               .collect(Collectors.toSet()));
     }
     Map<String, TsStorageGraphConfig.FilterColumn> columnsToRead =
-      config.getFilterColumns().entrySet().stream()
-        .filter(entry -> groupByLabels.contains(entry.getKey()))
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        config.getFilterColumns().entrySet().stream()
+            .filter(entry -> groupByLabels.contains(entry.getKey()))
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
     // Generate SQL statement
     String sql = "SELECT ";
     sql += config.getTimestampColumn() + ", ";
-    List<String> filterColumnNames = columnsToRead.values().stream()
-            .map(TsStorageGraphConfig.FilterColumn::getName)
-            .toList();
+    List<String> filterColumnNames =
+        columnsToRead.values().stream().map(TsStorageGraphConfig.FilterColumn::getName).toList();
     sql += StringUtils.join(filterColumnNames, ", ") + ", ";
     sql += StringUtils.join(config.getDataColumns().keySet(), ", ") + " ";
     sql += "FROM " + config.getTable() + " ";

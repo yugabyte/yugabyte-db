@@ -118,3 +118,11 @@ active_session_history:
     type: "ASH"
     xaxis:
       type: "date"
+    metadata:
+      supportedGroupBy:
+        - label: waitEvent
+          name: Event
+        - label: waitEventClass
+          name: Class
+        - label: waitEventComponent
+          name: Component
