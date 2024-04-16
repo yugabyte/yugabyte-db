@@ -2971,6 +2971,11 @@ pgstat_bestart(void)
 			/* bgworker */
 			lbeentry.st_backendType = B_BG_WORKER;
 		}
+		else if (YbIsClientYsqlConnMgr())
+		{
+			/* ysql-connection-manager-backend */
+			lbeentry.st_backendType = YB_YSQL_CONN_MGR;
+		}
 		else
 		{
 			/* client-backend */
@@ -3019,9 +3024,10 @@ pgstat_bestart(void)
 	lbeentry.st_databaseid = MyDatabaseId;
 
 	/* Increment the total connections counter */
-	if (lbeentry.st_procpid > 0 && lbeentry.st_backendType == B_BACKEND)
+	if (lbeentry.st_procpid > 0 &&
+		(lbeentry.st_backendType == B_BACKEND ||
+		 lbeentry.st_backendType == YB_YSQL_CONN_MGR))
 		(*yb_new_conn)++;
-
 
 	if (YBIsEnabledInPostgresEnvVar() && lbeentry.st_databaseid > 0) {
 		HeapTuple tuple;
@@ -3037,7 +3043,8 @@ pgstat_bestart(void)
 
 	if (YBIsEnabledInPostgresEnvVar())
 	{
-		if (lbeentry.st_backendType == B_BACKEND)
+		if (lbeentry.st_backendType == B_BACKEND
+			|| lbeentry.st_backendType == YB_YSQL_CONN_MGR)
 		{
 			/*
 			 * catalog_version should already be initialized by
@@ -3067,7 +3074,8 @@ pgstat_bestart(void)
 	/* We have userid for client-backends, wal-sender and bgworker processes */
 	if (lbeentry.st_backendType == B_BACKEND
 		|| lbeentry.st_backendType == B_WAL_SENDER
-		|| lbeentry.st_backendType == B_BG_WORKER)
+		|| lbeentry.st_backendType == B_BG_WORKER
+		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR)
 		lbeentry.st_userid = GetSessionUserId();
 	else
 		lbeentry.st_userid = InvalidOid;
@@ -3605,8 +3613,8 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
 	{
-		if (IsYugaByteEnabled() && YBEnableAsh())
-			return "YsqlQuery";
+		if (IsYugaByteEnabled() && yb_ash_enable_infra)
+			return "Cpu";
 		return NULL;
 	}
 
@@ -3643,8 +3651,8 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 			break;
 		default:
 			event_type = "???";
-			if (IsYugaByteEnabled() && YBEnableAsh())
-				event_type = YBCGetWaitEventClass(wait_event_info);
+			if (IsYugaByteEnabled() && yb_ash_enable_infra)
+				event_type = YBCGetWaitEventType(wait_event_info);
 			break;
 	}
 
@@ -3667,7 +3675,7 @@ pgstat_get_wait_event(uint32 wait_event_info)
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
 	{
-		if (IsYugaByteEnabled() && YBEnableAsh())
+		if (IsYugaByteEnabled() && yb_ash_enable_infra)
 			return "QueryProcessing";
 		return NULL;
 	}
@@ -3726,7 +3734,7 @@ pgstat_get_wait_event(uint32 wait_event_info)
 			}
 		default:
 			event_name = "unknown wait event";
-			if (IsYugaByteEnabled() && YBEnableAsh())
+			if (IsYugaByteEnabled() && yb_ash_enable_infra)
 				event_name = YBCGetWaitEventName(wait_event_info);
 			break;
 	}
@@ -4409,6 +4417,9 @@ pgstat_get_backend_desc(BackendType backendType)
 			break;
 		case B_WAL_WRITER:
 			backendDesc = "walwriter";
+			break;
+		case YB_YSQL_CONN_MGR:
+			backendDesc = "yb-conn-mgr worker connection";
 			break;
 	}
 

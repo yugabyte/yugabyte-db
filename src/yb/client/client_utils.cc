@@ -28,7 +28,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
@@ -65,7 +65,7 @@ Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
   builder.set_metric_entity(metric_entity);
   builder.UseDefaultConnectionContextFactory(parent_mem_tracker);
   if (secure_context) {
-    server::ApplySecureContext(secure_context, &builder);
+    rpc::ApplySecureContext(secure_context, &builder);
   }
   auto messenger = VERIFY_RESULT(builder.Build());
   if (PREDICT_FALSE(FLAGS_TEST_running_test)) {

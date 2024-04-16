@@ -20,6 +20,8 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/xcluster/xcluster_status.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_config.h"
 
 #include "yb/rpc/rpc_context.h"
@@ -38,7 +40,6 @@ XClusterManager::XClusterManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
     : XClusterSourceManager(master, catalog_manager, sys_catalog),
       XClusterTargetManager(master, catalog_manager, sys_catalog),
-      master_(master),
       catalog_manager_(catalog_manager),
       sys_catalog_(sys_catalog) {
   xcluster_config_ = std::make_unique<XClusterConfig>(&sys_catalog_);
@@ -49,6 +50,7 @@ XClusterManager::~XClusterManager() {}
 void XClusterManager::Shutdown() { XClusterTargetManager::Shutdown(); }
 
 Status XClusterManager::Init() {
+  RETURN_NOT_OK(XClusterSourceManager::Init());
   RETURN_NOT_OK(XClusterTargetManager::Init());
 
   return Status::OK();
@@ -58,23 +60,33 @@ void XClusterManager::Clear() {
   xcluster_config_->ClearState();
   XClusterSourceManager::Clear();
   XClusterTargetManager::Clear();
+
+  in_memory_state_cleared_ = true;
 }
 
-Status XClusterManager::RunLoaders() {
-  Clear();
+Status XClusterManager::RunLoaders(const TabletInfos& hidden_tablets) {
+  RSTATUS_DCHECK(
+      in_memory_state_cleared_, IllegalState,
+      "Attempt to load in-memory state before it is fully cleared");
+
+  in_memory_state_cleared_ = false;
 
   RETURN_NOT_OK(
       sys_catalog_.Load<XClusterConfigLoader>("xcluster configuration", *xcluster_config_));
 
-  RETURN_NOT_OK(XClusterSourceManager::RunLoaders());
+  RETURN_NOT_OK(XClusterSourceManager::RunLoaders(hidden_tablets));
   RETURN_NOT_OK(XClusterTargetManager::RunLoaders());
 
   return Status::OK();
 }
 
-void XClusterManager::SysCatalogLoaded() {
-  XClusterSourceManager::SysCatalogLoaded();
+void XClusterManager::SysCatalogLoaded(const LeaderEpoch& epoch) {
+  XClusterSourceManager::SysCatalogLoaded(epoch);
   XClusterTargetManager::SysCatalogLoaded();
+}
+
+void XClusterManager::RunBgTasks(const LeaderEpoch& epoch) {
+  XClusterTargetManager::RunBgTasks(epoch);
 }
 
 void XClusterManager::DumpState(std::ostream* out, bool on_disk_dump) const {
@@ -96,22 +108,46 @@ Status XClusterManager::PrepareDefaultXClusterConfig(int64_t term, bool recreate
   return xcluster_config_->PrepareDefault(term, recreate);
 }
 
-Status XClusterManager::GetXClusterConfigEntryPB(SysXClusterConfigEntryPB* config) const {
-  *config = VERIFY_RESULT(xcluster_config_->GetXClusterConfigEntryPB());
+Result<XClusterStatus> XClusterManager::GetXClusterStatus() const {
+  XClusterStatus status;
+  RETURN_NOT_OK(XClusterSourceManager::PopulateXClusterStatus(
+      status, VERIFY_RESULT(xcluster_config_->GetXClusterConfigEntryPB())));
+  RETURN_NOT_OK(XClusterTargetManager::PopulateXClusterStatus(status));
+  return status;
+}
+
+Status XClusterManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
+  auto xcluster_config = VERIFY_RESULT(xcluster_config_->GetXClusterConfigEntryPB());
+  jw.String("xcluster_config");
+  jw.Protobuf(xcluster_config);
+
+  RETURN_NOT_OK(XClusterSourceManager::PopulateXClusterStatusJson(jw));
+  RETURN_NOT_OK(XClusterTargetManager::PopulateXClusterStatusJson(jw));
   return Status::OK();
 }
 
 Status XClusterManager::GetMasterXClusterConfig(GetMasterXClusterConfigResponsePB* resp) {
-  return GetXClusterConfigEntryPB(resp->mutable_xcluster_config());
+  *resp->mutable_xcluster_config() = VERIFY_RESULT(xcluster_config_->GetXClusterConfigEntryPB());
+  return Status::OK();
 }
 
 Result<uint32_t> XClusterManager::GetXClusterConfigVersion() const {
   return xcluster_config_->GetVersion();
 }
 
-Status XClusterManager::RemoveStreamFromXClusterProducerConfig(
+Status XClusterManager::RemoveStreamsFromSysCatalog(
     const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams) {
-  return xcluster_config_->RemoveStreams(epoch, streams);
+  std::vector<CDCStreamInfo*> xcluster_streams;
+  std::copy_if(
+      streams.begin(), streams.end(), std::back_inserter(xcluster_streams),
+      [](const auto& stream) { return stream->IsXClusterStream(); });
+
+  if (xcluster_streams.empty()) {
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK(xcluster_config_->RemoveStreams(epoch, xcluster_streams));
+  return XClusterSourceManager::RemoveStreamsFromSysCatalog(xcluster_streams, epoch);
 }
 
 Status XClusterManager::PauseResumeXClusterProducerStreams(
@@ -126,7 +162,7 @@ Status XClusterManager::PauseResumeXClusterProducerStreams(
     LOG(INFO) << action << " replication for all XCluster streams.";
   }
 
-  auto xrepl_stream_ids = catalog_manager_.GetAllXreplStreamIds();
+  auto xrepl_stream_ids = catalog_manager_.GetAllXReplStreamIds();
   std::vector<xrepl::StreamId> streams_to_change;
 
   if (req->stream_ids().empty()) {
@@ -173,9 +209,14 @@ Status XClusterManager::GetXClusterSafeTimeForNamespace(
   return XClusterTargetManager::GetXClusterSafeTimeForNamespace(req, resp, epoch);
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(
-    const LeaderEpoch& epoch) {
-  return XClusterTargetManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch);
+Result<HybridTime> XClusterManager::GetXClusterSafeTimeForNamespace(
+    const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+    const XClusterSafeTimeFilter& filter) {
+  return XClusterTargetManager::GetXClusterSafeTimeForNamespace(epoch, namespace_id, filter);
+}
+
+Status XClusterManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {
+  return XClusterTargetManager::RefreshXClusterSafeTimeMap(epoch);
 }
 
 Status XClusterManager::XClusterCreateOutboundReplicationGroup(
@@ -197,8 +238,7 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
   }
 
   auto namespace_ids = VERIFY_RESULT(CreateOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_names, epoch,
-      rpc->GetClientDeadline()));
+      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_names, epoch));
   for (const auto& namespace_id : namespace_ids) {
     *resp->add_namespace_ids() = namespace_id;
   }
@@ -214,8 +254,7 @@ Status XClusterManager::XClusterAddNamespaceToOutboundReplicationGroup(
   SCHECK(req->has_namespace_name(), InvalidArgument, "Namespace name must be specified");
 
   auto namespace_id = VERIFY_RESULT(AddNamespaceToOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_name(), epoch,
-      rpc->GetClientDeadline()));
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_name(), epoch));
 
   resp->set_namespace_id(namespace_id);
   return Status::OK();
@@ -245,7 +284,7 @@ Status XClusterManager::XClusterDeleteOutboundReplicationGroup(
 Status XClusterManager::IsXClusterBootstrapRequired(
     const IsXClusterBootstrapRequiredRequestPB* req, IsXClusterBootstrapRequiredResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
-  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id, namespace_id);
 
   LOG_FUNC_AND_RPC;
 
@@ -318,9 +357,9 @@ Status XClusterManager::IsCreateXClusterReplicationDone(
   auto create_result = VERIFY_RESULT(XClusterSourceManager::IsCreateXClusterReplicationDone(
       xcluster::ReplicationGroupId(req->replication_group_id()), target_master_addresses, epoch));
 
-  resp->set_done(create_result.done);
-  if (create_result.done) {
-    StatusToPB(create_result.status, resp->mutable_replication_error());
+  resp->set_done(create_result.done());
+  if (create_result.done()) {
+    StatusToPB(create_result.status(), resp->mutable_replication_error());
   }
   return Status::OK();
 }
@@ -339,4 +378,15 @@ std::vector<std::shared_ptr<PostTabletCreateTaskBase>> XClusterManager::GetPostT
 
   return result;
 }
+
+Status XClusterManager::MarkIndexBackfillCompleted(
+    const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) {
+  return XClusterSourceManager::MarkIndexBackfillCompleted(index_ids, epoch);
+}
+
+std::unordered_set<xcluster::ReplicationGroupId>
+XClusterManager::GetInboundTransactionalReplicationGroups() const {
+  return XClusterTargetManager::GetTransactionalReplicationGroups();
+}
+
 }  // namespace yb::master

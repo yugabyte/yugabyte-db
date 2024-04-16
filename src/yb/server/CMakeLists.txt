@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX server)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 #########################################
 # server_common
@@ -40,6 +39,7 @@ set(YB_PCH_DEP_LIBS opid_proto)
 set(SERVER_COMMON_SRCS
   hybrid_clock.cc
   logical_clock.cc
+  skewed_clock.cc
 )
 
 add_library(server_common ${SERVER_COMMON_SRCS})
@@ -83,6 +83,7 @@ target_link_libraries(server_base_proto
 #########################################
 
 set(SERVER_PROCESS_SRCS
+  async_client_initializer.cc
   call_home.cc
   default-path-handlers.cc
   generic_service.cc
@@ -94,7 +95,6 @@ set(SERVER_PROCESS_SRCS
   rpcz-path-handler.cc
   server_base.cc
   server_base_options.cc
-  skewed_clock.cc
   tcmalloc_metrics.cc
   total_mem_watcher.cc
   tracing-path-handlers.cc
@@ -102,7 +102,6 @@ set(SERVER_PROCESS_SRCS
   webserver_options.cc
   webui_util.cc
   random_error_clock.cc
-  secure.cc
 )
 
 add_library(server_process ${SERVER_PROCESS_SRCS})
@@ -113,6 +112,7 @@ target_link_libraries(server_process
   yb_fs
   gutil
   yrpc
+  yb_client
   yb_util
   squeasel)
 

@@ -13,6 +13,7 @@
 
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -29,6 +30,52 @@ public class TestMisc extends BaseYsqlConnMgr {
   private final static String ERROR_YBTSERVERKEY_AUTH_EXPECTED =
       "FATAL: yb_use_tserver_key_auth can only be set if the connection is made over " +
       "unix domain socket";
+
+  private final static String GET_BACKEND_TYPE_QUERY =
+      "SELECT backend_type FROM pg_stat_activity WHERE pid = %d";
+
+  public void testBackendTypeForConn(Connection conn, String exp_backend_type) {
+    try (Statement stmt = conn.createStatement()) {
+      int processId = getProcessId(stmt);
+      assertNotEquals("Failed to obtain the process ID.", processId, -1);
+
+      ResultSet rs = stmt.executeQuery(String.format(GET_BACKEND_TYPE_QUERY, processId));
+      assertTrue("No row found in pg_stat_activity table with the pid " + processId, rs.next());
+      assertEquals("Got wrong backend type", rs.getString("backend_type"), exp_backend_type);
+
+      // Check that there's no more rows
+      if (rs.next()) {
+        fail("Multiple rows found in pg_stat_activity table with the pid " + processId);
+      }
+    } catch (SQLException e) {
+      LOG.error("Got SQL Exception while fetching backend type", e);
+      fail();
+    }
+  }
+
+  private int getProcessId(Statement stmt) {
+    try (ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid();")) {
+      if (rs.next()) {
+        return rs.getInt(1);
+      }
+    } catch (SQLException e) {
+      LOG.error("Error fetching process ID ", e);
+    }
+
+    return -1;
+  }
+
+  @Test
+  public void testBackendType() throws Exception {
+    testBackendTypeForConn(
+        getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+            .connect(),
+        "client backend");
+    testBackendTypeForConn(
+        getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect(),
+        "yb-conn-mgr worker connection");
+  }
 
   @Test
   public void testCreateIndex() throws Exception {
@@ -112,7 +159,9 @@ public class TestMisc extends BaseYsqlConnMgr {
         "yb_use_tserver_key_auth", "true",
         "yb_is_client_ysqlconnmgr", "true"));
 
-    try (Connection conn = getConnectionBuilder().connect(props)) {
+    try (Connection conn =
+                getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+                                      .connect(props)) {
       fail("Did not expected the connection to be successfully established");
     } catch (Exception e) {
       assertEquals("Got wrong error message",

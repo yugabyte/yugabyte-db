@@ -13,8 +13,9 @@
     - "{{ vars_file | default(placeholder_vars_file) }}"
   vars:
     script_to_run: "{{ yb_home_dir | default('/home/yugabyte') }}/bin/yb-server-ctl.sh"
+    user_systemd: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user"
     systemd_option: "{{ systemd_services | default(false) }}"
-    is_clean_command: "{{ command == 'clean' or command == 'clean-logs'}}"
+    is_clean_command: "{{ command == 'clean' or command == 'clean-logs' or command =='clean-instance' }}"
   tasks:
     - name: Call the ctl script with appropriate args
       shell: "{{ script_to_run }} {{ process }} {{ command }}"
@@ -26,8 +27,8 @@
       block:
         - name: Determine system or user scope
           stat:
-            path: /etc/systemd/system/yb-master.service
-          register: systemd_system
+            path: "{{ user_systemd }}/yb-master.service"
+          register: user_systemd
 
         - name: Systemd system scope
           block:
@@ -44,7 +45,7 @@
               when: command == 'stop'
             - name: Reload daemon
               shell: "sudo systemctl daemon-reload"
-          when: systemd_system.stat.exists
+          when: not user_systemd.stat.exists
 
         - name: Systemd user scope
           block:
@@ -64,7 +65,7 @@
               scope: user
               daemon_reload: yes
             when: command == 'stop'
-          when: not systemd_system.stat.exists
+          when: user_systemd.stat.exists
       when: systemd_option and process != "thirdparty" and process != "platform-services"
 
 - name: Removing thirdparty services

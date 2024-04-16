@@ -16,7 +16,7 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
-| YBA Installer | yba-ctl CLI | You are performing a new installation.<br>You are ready to migrate from a Replicated installation. {{<badge/ea>}} |
+| YBA Installer | yba-ctl CLI | You are performing a new installation.<br>You are ready to migrate from a Replicated installation. |
 | Replicated | Docker containers | Your installation already uses Replicated. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
 
@@ -45,7 +45,7 @@ Licensing (such as a license file in the case of YBA Installer or Replicated, or
 
 ## Software requirements
 
-- You can install YugabyteDB Anywhere onto any [x86 Linux operating system](../../../../reference/configuration/operating-systems/#yugabytedb-anywhere) supported by YugabyteDB. YugabyteDB Anywhere doesn't support ARM architectures (but can be used to deploy universes to ARM-based nodes).
+- You can install YugabyteDB Anywhere onto any [x86 Linux operating system](../../../../reference/configuration/operating-systems/) supported by YugabyteDB. YugabyteDB Anywhere doesn't support ARM architectures (but can be used to deploy universes to ARM-based nodes).
 
     YugabyteDB Anywhere may also work on other Linux distributions; contact your YugabyteDB support representative if you need added support.
 
@@ -66,6 +66,48 @@ Licensing (such as a license file in the case of YBA Installer or Replicated, or
     # output: Python 3.8.16
     ```
 
+## Permissions
+
+For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](../../install-software/installer/#non-sudo-installation).)
+
+If your sudo permissions are limited, add the following to the allowed list for root in the sudoers file:
+
+```sh
+/bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
+```
+
+In addition, add the following commands to the sudoers file:
+
+```sh
+/usr/bin/yba-ctl clean
+./yba-ctl clean
+/usr/bin/yba-ctl createBackup
+./yba-ctl generate-config
+/usr/bin/yba-ctl help
+./yba-ctl help
+./yba-ctl install
+/usr/bin/yba-ctl license
+./yba-ctl license
+/usr/bin/yba-ctl log-bundle
+/usr/bin/yba-ctl preflight
+./yba-ctl preflight
+/usr/bin/yba-ctl reconfigure
+./yba-ctl replicated-migrate
+/usr/bin/yba-ctl replicated-migrate
+/usr/bin/yba-ctl restart
+./yba-ctl restart
+/usr/bin/yba-ctl restoreBackup
+/usr/bin/yba-ctl start
+./yba-ctl start
+/usr/bin/yba-ctl status
+./yba-ctl status
+/usr/bin/yba-ctl stop
+./yba-ctl stop
+./yba-ctl upgrade
+/usr/bin/yba-ctl version
+./yba-ctl version
+```
+
 ## Hardware requirements
 
 A node running YugabyteDB Anywhere is expected to meet the following requirements:
@@ -75,7 +117,7 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 - 215 GB disk space
 - x86 architecture
 
-## Other
+## Ports
 
 Ensure that the following ports are available:
 

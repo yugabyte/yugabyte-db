@@ -1,35 +1,56 @@
 package com.yugabyte.troubleshoot.ts.models;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import lombok.Data;
+import lombok.Builder;
+import lombok.Value;
+import lombok.extern.jackson.Jacksonized;
 
-@Data
+@Value
+@Builder(toBuilder = true)
+@Jacksonized
 public class Anomaly {
-  private UUID uuid;
-  @JsonUnwrapped private AnomalyMetadata metadata;
-  private UUID universeUuid;
-  private List<NodeInfo> affectedNodes;
-  private List<TableInfo> affectedTables;
-  private String summary;
-  private Instant detectionTime;
-  private Instant startTime;
-  private Instant endTime;
-  private Instant graphStartTime;
-  private Instant graphEndTime;
+  UUID uuid;
+  @JsonUnwrapped AnomalyMetadata metadata;
+  UUID universeUuid;
+  List<NodeInfo> affectedNodes;
+  List<TableInfo> affectedTables;
+  String summary;
 
-  @Data
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
+  Instant detectionTime;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
+  Instant startTime;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
+  Instant endTime;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
+  Instant graphStartTime;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
+  Instant graphEndTime;
+
+  Long graphStepSeconds;
+
+  @Value
+  @Builder(toBuilder = true)
+  @Jacksonized
   public static class NodeInfo {
-    private String name;
-    private UUID uuid;
+    String name;
+    UUID uuid;
   }
 
-  @Data
+  @Value
+  @Builder(toBuilder = true)
+  @Jacksonized
   public static class TableInfo {
-    private String databaseName;
-    private String tableName;
-    private String tableId;
+    String databaseName;
+    String tableName;
+    String tableId;
   }
 }

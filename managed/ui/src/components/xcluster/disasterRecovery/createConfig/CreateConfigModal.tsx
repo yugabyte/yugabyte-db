@@ -12,7 +12,7 @@ import {
 } from '../../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { formatUuidForXCluster } from '../../ReplicationUtils';
-import { AlertName, XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
+
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import {
   api,
@@ -20,32 +20,27 @@ import {
   drConfigQueryKey,
   universeQueryKey
 } from '../../../../redesign/helpers/api';
-import { generateUniqueName } from '../../../../redesign/helpers/utils';
+import { generateUniqueName, isActionFrozen } from '../../../../redesign/helpers/utils';
 import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
 import { CurrentFormStep } from './CurrentFormStep';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
-import { DurationUnit, DURATION_UNIT_TO_MS } from '../constants';
-
-import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import { AllowedTasks, TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
+import { XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
-import { createAlertConfiguration, getAlertTemplates } from '../../../../actions/universe';
 
 export interface CreateDrConfigFormValues {
   targetUniverse: { label: string; value: Universe };
   namespaceUuids: string[];
   tableUuids: string[];
   storageConfig: StorageConfigOption;
-  replicationLagAlertThreshold: number;
-  replicationLagAlertThresholdUnit: { label: string; value: DurationUnit };
 }
 
 export interface CreateDrConfigFormErrors {
   targetUniverse: string;
   namespaceUuids: { title: string; body: string };
   storageConfig: string;
-  replicationLagAlertThreshold: string;
-  replicationLagAlertThresholdUnit: string;
 }
 
 export interface CreateXClusterConfigFormWarnings {
@@ -57,13 +52,14 @@ export interface CreateXClusterConfigFormWarnings {
 interface CreateConfigModalProps {
   modalProps: YBModalProps;
   sourceUniverseUuid: string;
+  allowedTasks: AllowedTasks;
 }
 
 export const FormStep = {
   SELECT_TARGET_UNIVERSE: 'selectTargetUniverse',
   SELECT_TABLES: 'selectDatabases',
   CONFIGURE_BOOTSTRAP: 'configureBootstrap',
-  CONFIGURE_ALERT: 'configureAlert'
+  CONFIRM_ALERT: 'configureAlert'
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
 
@@ -72,7 +68,11 @@ const FIRST_FORM_STEP = FormStep.SELECT_TARGET_UNIVERSE;
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.createModal';
 const SELECT_TABLE_TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
 
-export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConfigModalProps) => {
+export const CreateConfigModal = ({
+  modalProps,
+  sourceUniverseUuid,
+  allowedTasks
+}: CreateConfigModalProps) => {
   const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FIRST_FORM_STEP);
   const [tableSelectionError, setTableSelectionError] = useState<{ title: string; body: string }>();
 
@@ -146,23 +146,6 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         );
         modalProps.onClose();
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
-
-        // Set up universe level alert for replication lag.
-        const alertTemplateFilter = {
-          name: AlertName.REPLICATION_LAG
-        };
-        const alertTemplates = await getAlertTemplates(alertTemplateFilter);
-        // There should only be one alert template for replication lag.
-        const alertTemplate = alertTemplates[0];
-        alertTemplate.active = true;
-        alertTemplate.thresholds.SEVERE.threshold =
-          values.replicationLagAlertThreshold *
-          DURATION_UNIT_TO_MS[values.replicationLagAlertThresholdUnit.value];
-        alertTemplate.target = {
-          all: false,
-          uuids: [sourceUniverseUuid]
-        };
-        createAlertConfiguration(alertTemplate);
       },
       onError: (error: Error | AxiosError) =>
         handleServerError(error, { customErrorLabel: t('error.requestFailureLabel') })
@@ -183,11 +166,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const formMethods = useForm<CreateDrConfigFormValues>({
     defaultValues: {
       namespaceUuids: [],
-      tableUuids: [],
-      replicationLagAlertThresholdUnit: {
-        label: t('step.configureAlert.duration.second'),
-        value: DurationUnit.SECOND
-      }
+      tableUuids: []
     }
   });
 
@@ -206,7 +185,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
         maxWidth="xl"
-        size='md'
+        size="md"
         overrideWidth="960px"
         {...modalProps}
       >
@@ -223,7 +202,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
         maxWidth="xl"
-        size='md'
+        size="md"
         overrideWidth="960px"
         {...modalProps}
       >
@@ -267,16 +246,18 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         if (formValues.namespaceUuids.length <= 0) {
           formMethods.setError('namespaceUuids', {
             type: 'min',
-            message: t('error.validationMinimumNamespaceUuids')
+            message: t('error.validationMinimumNamespaceUuids.title', {
+              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+            })
           });
           // The TableSelect component expects error objects with title and body fields.
           // React-hook-form only allows string error messages.
           // Thus, we need an store these error objects separately.
           setTableSelectionError({
-            title: t('error.validationMinimumTableUuids.title', {
+            title: t('error.validationMinimumNamespaceUuids.title', {
               keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
             }),
-            body: t('error.validationMinimumTableUuids.body', {
+            body: t('error.validationMinimumNamespaceUuids.body', {
               keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
             })
           });
@@ -285,9 +266,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         }
         return;
       case FormStep.CONFIGURE_BOOTSTRAP:
-        setCurrentFormStep(FormStep.CONFIGURE_ALERT);
+        setCurrentFormStep(FormStep.CONFIRM_ALERT);
         return;
-      case FormStep.CONFIGURE_ALERT:
+      case FormStep.CONFIRM_ALERT:
         return drConfigMutation.mutateAsync(formValues);
       default:
         return assertUnreachableCase(currentFormStep);
@@ -304,7 +285,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       case FormStep.CONFIGURE_BOOTSTRAP:
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
-      case FormStep.CONFIGURE_ALERT:
+      case FormStep.CONFIRM_ALERT:
         setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
         return;
       default:
@@ -320,7 +301,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         return t('step.selectDatabases.submitButton');
       case FormStep.CONFIGURE_BOOTSTRAP:
         return t('step.configureBootstrap.submitButton');
-      case FormStep.CONFIGURE_ALERT:
+      case FormStep.CONFIRM_ALERT:
         return t('step.confirmAlert.submitButton');
       default:
         return assertUnreachableCase(formStep);
@@ -353,7 +334,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const selectedTableUuids = formMethods.watch('tableUuids');
   const selectedNamespaceUuids = formMethods.watch('namespaceUuids');
   const targetUniverseUuid = formMethods.watch('targetUniverse.value.universeUUID');
-  const isFormDisabled = formMethods.formState.isSubmitting;
+  const isConfigureActionFrozen =
+    currentFormStep === FormStep.CONFIRM_ALERT &&
+    isActionFrozen(allowedTasks, UNIVERSE_TASKS.CONFIGURE_DR);
+  const isFormDisabled = formMethods.formState.isSubmitting || isConfigureActionFrozen;
+
   return (
     <YBModal
       title={modalTitle}

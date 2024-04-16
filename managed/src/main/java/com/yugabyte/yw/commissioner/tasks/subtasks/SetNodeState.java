@@ -42,6 +42,10 @@ public class SetNodeState extends NodeTaskBase {
         + ")";
   }
 
+  public static String getStartKey(String nodeName, NodeDetails.NodeState state) {
+    return nodeName + "_" + state + "_started";
+  }
+
   @Override
   public void run() {
     try {
@@ -50,6 +54,7 @@ public class SetNodeState extends NodeTaskBase {
           taskParams().nodeName,
           taskParams().state,
           taskParams().getUniverseUUID());
+      putDateIntoCache(getStartKey(taskParams().nodeName, taskParams().state));
       setNodeState(taskParams().state);
     } catch (Exception e) {
       throw new RuntimeException(e);

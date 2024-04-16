@@ -39,7 +39,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/async_initializer.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
@@ -98,9 +97,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/capabilities.h"
 #include "yb/util/metrics.h"
-#include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
@@ -140,9 +137,6 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
-DEFINE_CAPABILITY(ClientTest, 0x1523c5ae);
-DECLARE_CAPABILITY(TabletReportLimit);
-
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 
@@ -172,7 +166,6 @@ constexpr int32_t kNoBound = kint32max;
 constexpr int kNumTablets = 2;
 
 const std::string kKeyspaceName = "my_keyspace";
-const std::string kPgsqlKeyspaceID = "1234567890abcdef1234567890abcdef";
 const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
 const std::string kPgsqlSchemaName = "my_schema";
 
@@ -491,6 +484,13 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     DEAD_TSERVER
   };
   void DoTestWriteWithDeadServer(WhichServerToKill which);
+
+  Result<NamespaceId> GetPGNamespaceId() {
+    master::GetNamespaceInfoResponsePB namespace_info;
+    RETURN_NOT_OK(client_->GetNamespaceInfo(
+        "" /* namespace_id */, kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &namespace_info));
+    return namespace_info.namespace_().id();
+  }
 
   YBSchema schema_;
 
@@ -2385,36 +2385,12 @@ TEST_F(ClientTest, TestReadFromFollower) {
   }
 }
 
-TEST_F(ClientTest, Capability) {
-  constexpr CapabilityId kFakeCapability = 0x9c40e9a7;
-
-  auto rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), client_table_.table()).get());
-  ASSERT_TRUE(rt.get() != nullptr);
-  auto tservers = rt->GetRemoteTabletServers();
-  ASSERT_EQ(tservers.size(), 3);
-  for (const auto& replica : tservers) {
-    // Capability is related to executable, so it should be present since we run mini cluster for
-    // this test.
-    ASSERT_TRUE(replica->HasCapability(CAPABILITY_ClientTest));
-
-    // Check that fake capability is not reported.
-    ASSERT_FALSE(replica->HasCapability(kFakeCapability));
-
-    // This capability is defined on the TServer, passed to the Master on registration,
-    // then propagated to the YBClient.  Ensure that this runtime pipeline holds.
-    ASSERT_TRUE(replica->HasCapability(CAPABILITY_TabletReportLimit));
-  }
-}
-
 TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   const std::string kPgsqlTableName = "pgsqlrangepartitionedtable";
   const std::string kPgsqlTableId = "pgsqlrangepartitionedtableid";
   const size_t kColIdx = 1;
   const int64_t kKeyValue = 48238;
-  auto pgsql_table_name = YBTableName(
-      YQL_DATABASE_PGSQL, kPgsqlKeyspaceID, kPgsqlKeyspaceName, kPgsqlTableName);
-
   auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
 
   YBSchemaBuilder schema_builder;
@@ -2424,10 +2400,13 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // in GetTableSchema (part of OpenTable).
   schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
-  EXPECT_OK(client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName,
-                                                YQLDatabase::YQL_DATABASE_PGSQL,
-                                                "" /* creator_role_name */,
-                                                kPgsqlKeyspaceID));
+  EXPECT_OK(
+      client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName, YQLDatabase::YQL_DATABASE_PGSQL));
+  auto namespace_id = ASSERT_RESULT(GetPGNamespaceId());
+
+  auto pgsql_table_name =
+      YBTableName(YQL_DATABASE_PGSQL, namespace_id, kPgsqlKeyspaceName, kPgsqlTableName);
+
   // Create a PGSQL table using range partition.
   EXPECT_OK(schema_builder.Build(&schema));
   Status s = table_creator->table_name(pgsql_table_name)
@@ -2648,14 +2627,10 @@ TEST_F(ClientTest, GetNamespaceInfo) {
   GetNamespaceInfoResponsePB resp;
 
   // Setup.
-  ASSERT_OK(client_->CreateNamespace(kPgsqlKeyspaceName,
-                                     YQLDatabase::YQL_DATABASE_PGSQL,
-                                     "" /* creator_role_name */,
-                                     kPgsqlKeyspaceID,
-                                     "" /* source_namespace_id */,
-                                     boost::none /* next_pg_oid */,
-                                     nullptr /* txn */,
-                                     true /* colocated */));
+  ASSERT_OK(client_->CreateNamespace(
+      kPgsqlKeyspaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
+      "" /* namespace_id */, "" /* source_namespace_id */, boost::none /* next_pg_oid */,
+      nullptr /* txn */, true /* colocated */));
 
   // CQL non-colocated.
   ASSERT_OK(client_->GetNamespaceInfo(
@@ -2666,39 +2641,18 @@ TEST_F(ClientTest, GetNamespaceInfo) {
 
   // SQL colocated.
   ASSERT_OK(client_->GetNamespaceInfo(
-        kPgsqlKeyspaceID, "" /* namespace_name */, YQL_DATABASE_PGSQL, &resp));
-  ASSERT_EQ(resp.namespace_().id(), kPgsqlKeyspaceID);
+      "" /* namespace_id */, kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &resp));
   ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);
   ASSERT_TRUE(resp.colocated());
-}
+  auto namespace_id = resp.namespace_().id();
 
-TEST_F(ClientTest, BadMasterAddress) {
-  auto messenger = ASSERT_RESULT(CreateMessenger("test-messenger"));
-  auto host = "should.not.resolve";
-
-  // Put host entry in cache.
-  ASSERT_NOK(messenger->resolver().Resolve(host));
-
-  {
-    struct TestServerOptions : public server::ServerBaseOptions {
-      TestServerOptions() : server::ServerBaseOptions(1) {}
-    };
-    TestServerOptions opts;
-    auto master_addr = std::make_shared<server::MasterAddresses>();
-    // Put several hosts, so resolve would take place.
-    master_addr->push_back({HostPort(host, 1)});
-    master_addr->push_back({HostPort(host, 2)});
-    opts.SetMasterAddresses(master_addr);
-
-    AsyncClientInitializer async_init(
-        "test-client", /* timeout= */ 1s, "UUID", &opts,
-        /* metric_entity= */ nullptr, /* parent_mem_tracker= */ nullptr, messenger.get());
-    async_init.Start();
-    async_init.get_client_future().wait_for(1s);
-  }
-
-  messenger->Shutdown();
+  ASSERT_OK(
+      client_->GetNamespaceInfo(namespace_id, "" /* namespace_name */, YQL_DATABASE_PGSQL, &resp));
+  ASSERT_EQ(resp.namespace_().id(), namespace_id);
+  ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
+  ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);
+  ASSERT_TRUE(resp.colocated());
 }
 
 TEST_F(ClientTest, RefreshPartitions) {
@@ -2895,17 +2849,18 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
   const auto kTabletLookupTimeout = 10s;
   const auto kNumTables = 10;
 
-  YBTableName common_table_name(
-      YQLDatabase::YQL_DATABASE_PGSQL, kPgsqlKeyspaceID, kPgsqlKeyspaceName, "table_name");
   ASSERT_OK(client_->CreateNamespace(
-      common_table_name.namespace_name(),
-      common_table_name.namespace_type(),
-      /* creator_role_name =*/ "",
-      common_table_name.namespace_id(),
-      /* source_namespace_id =*/ "",
-      /* next_pg_oid =*/ boost::none,
-      /* txn =*/ nullptr,
-      /* colocated =*/ true));
+      kPgsqlKeyspaceName, YQLDatabase::YQL_DATABASE_PGSQL,
+      /* creator_role_name =*/"",
+      /* namespace_id =*/"",
+      /* source_namespace_id =*/"",
+      /* next_pg_oid =*/boost::none,
+      /* txn =*/nullptr,
+      /* colocated =*/true));
+
+  auto namespace_id = ASSERT_RESULT(GetPGNamespaceId());
+  YBTableName common_table_name(
+      YQLDatabase::YQL_DATABASE_PGSQL, namespace_id, kPgsqlKeyspaceName, "table_name");
 
   YBSchemaBuilder schema_builder;
   schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::INT64);

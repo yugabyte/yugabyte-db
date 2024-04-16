@@ -5,7 +5,6 @@
 package instancetypes
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -23,7 +22,7 @@ var listInstanceTypesCmd = &cobra.Command{
 	Short: "List instance types of a YugabyteDB Anywhere on-premises provider",
 	Long:  "List instance types of a YugabyteDB Anywhere on-premises provider",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -35,12 +34,9 @@ var listInstanceTypesCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
-		providerName, err := cmd.Flags().GetString("provider-name")
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -53,8 +49,12 @@ var listInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			fmt.Println("No providers found\n")
-			return
+			logrus.Fatalf("No providers with name: %s found\n", providerName)
+		}
+
+		if r[0].GetCode() != util.OnpremProviderType {
+			errMessage := "Operation only supported for On-premises providers."
+			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}
 
 		providerUUID := r[0].GetUuid()
@@ -69,7 +69,11 @@ var listInstanceTypesCmd = &cobra.Command{
 			Format: instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
 		}
 		if len(rList) < 1 {
-			fmt.Println("No instance types found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No instance types found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 		instancetypes.Write(instanceTypesCtx, rList)

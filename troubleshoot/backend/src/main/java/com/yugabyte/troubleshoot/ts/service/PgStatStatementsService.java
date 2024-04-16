@@ -1,5 +1,6 @@
 package com.yugabyte.troubleshoot.ts.service;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.troubleshoot.ts.models.PgStatStatements;
 import com.yugabyte.troubleshoot.ts.models.query.QPgStatStatements;
 import com.yugabyte.troubleshoot.ts.service.filter.PsStatStatetementsFilter;
@@ -24,6 +25,7 @@ public class PgStatStatementsService {
     database.saveAll(stats);
   }
 
+  @VisibleForTesting
   public List<PgStatStatements> listAll() {
     return new QPgStatStatements().findList();
   }

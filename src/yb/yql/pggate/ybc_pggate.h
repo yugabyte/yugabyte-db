@@ -26,17 +26,24 @@ extern "C" {
 typedef void (*YBCAshAcquireBufferLock)(bool);
 typedef YBCAshSample* (*YBCAshGetNextCircularBufferSlot)();
 
+typedef void * SliceVector;
+typedef const void * ConstSliceVector;
+typedef void * SliceSet;
+typedef const void * ConstSliceSet;
+
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
                    YBCPgCallbacks pg_callbacks, uint64_t *session_id,
-                   const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set);
+                   const YBCPgAshConfig* ash_config);
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 
 //--------------------------------------------------------------------------------------------------
 // Environment and Session.
-bool YBCGetCurrentPgSessionId(uint64_t *session_id);
+bool YBCGetCurrentPgSessionParallelData(YBCPgSessionParallelData* session_data);
+
+void YBCRestorePgSessionParallelData(const YBCPgSessionParallelData* session_data);
 
 // Initialize a session to process statements that come from the same client connection.
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats);
@@ -106,6 +113,43 @@ YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
 
 // Validate the JWT based on the options including the identity matching based on the identity map.
 YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options);
+
+//--------------------------------------------------------------------------------------------------
+// YB Bitmap Scan Operations
+//--------------------------------------------------------------------------------------------------
+
+// returns a void pointer to a std::set
+SliceSet YBCBitmapCreateSet();
+
+// Modifies sa to contain the union of `std::set`s sa and sb, and deletes sb. If the item already
+// exists in sa, the duplicate item is deleted. Returns the number of new bytes added to sa.
+size_t YBCBitmapUnionSet(SliceSet sa, ConstSliceSet sb);
+
+// Returns a std::set representing the union of `std::set`s sa and sb.
+// One of sa or sb are deleted, and the other is reused.
+// Any items not included in the final set are deleted
+SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb);
+
+// Insert the vector of ybctids into the set. Returns the number of new bytes allocated for the
+// ybctids.
+size_t YBCBitmapInsertYbctidsIntoSet(SliceSet set, ConstSliceVector vec);
+
+// Returns a new std::vector containing all the elements of the std::set set. It
+// is the caller's responsibility to delete the set.
+ConstSliceVector YBCBitmapCopySetToVector(ConstSliceSet set, size_t *size);
+
+// Returns a vector representing a chunk of the given vector. ybctids are
+// shallow copied - their underlying allocations are shared.
+ConstSliceVector YBCBitmapGetVectorRange(ConstSliceVector vec, size_t start, size_t length);
+
+void YBCBitmapShallowDeleteVector(ConstSliceVector vec);
+void YBCBitmapShallowDeleteSet(ConstSliceSet set);
+
+// Deletes the set allocation AND all of the ybctids contained within the set.
+void YBCBitmapDeepDeleteSet(ConstSliceSet set);
+
+size_t YBCBitmapGetSetSize(ConstSliceSet set);
+size_t YBCBitmapGetVectorSize(ConstSliceVector vec);
 
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
@@ -242,6 +286,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_matview,
                               YBCPgOid pg_table_oid,
                               YBCPgOid old_relfilenode_oid,
+                              bool is_truncate,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -267,6 +312,8 @@ YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname
 
 YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name);
 
+YBCStatus YBCPgAlterTableSetReplicaIdentity(YBCPgStatement handle, const char identity_type);
+
 YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
                                      const char *newname);
 
@@ -276,6 +323,8 @@ YBCStatus YBCPgAlterTableSetTableId(
     YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid);
 
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
+
+YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropTable(YBCPgOid database_oid,
                             YBCPgOid table_relfilenode_oid,
@@ -358,6 +407,7 @@ YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             YBCPgOid index_relfilenode_oid,
                             bool if_exist,
+                            bool ddl_rollback_enabled,
                             YBCPgStatement *handle);
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
@@ -383,6 +433,8 @@ YBCStatus YBCPgBackfillIndex(
 // - SELECT target_expr1, target_expr2, ...
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
+
+YBCStatus YBCPgDmlHasRegularTargets(YBCPgStatement handle, bool *has_targets);
 
 // Check if any statement target is a system column reference.
 YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols);
@@ -439,7 +491,8 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle,
                                    int n_attr_values,
                                    YBCPgExpr *attr_values);
 YBCStatus YBCPgDmlBindColumnCondIsNotNull(YBCPgStatement handle, int attr_num);
-YBCStatus YBCPgDmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count);
+YBCStatus YBCPgDmlBindRow(
+    YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
 
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
@@ -508,6 +561,15 @@ YBCStatus YBCPgExecSample(YBCPgStatement handle);
 YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
+
+// Allocate block of inserts to the same table.
+YBCStatus YBCPgNewInsertBlock(
+    YBCPgOid database_oid,
+    YBCPgOid table_oid,
+    bool is_region_local,
+    YBCPgTransactionSetting transaction_setting,
+    YBCPgStatement *handle);
+
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
                          YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
@@ -567,6 +629,14 @@ YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefi
 YBCStatus YBCPgSetHashBounds(YBCPgStatement handle, uint16_t low_bound, uint16_t high_bound);
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
+
+// Gets the ybctids from a request. Returns a vector of all the results.
+// If the ybctids would exceed max_bytes, set `exceeded_work_mem` to true.
+YBCStatus YBCPgRetrieveYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
+                               int natts, SliceVector *ybctids, size_t *count,
+                               bool *exceeded_work_mem);
+YBCStatus YBCPgFetchRequestedYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
+                                     ConstSliceVector ybctids);
 
 // Functions----------------------------------------------------------------------------------------
 YBCStatus YBCAddFunctionParam(
@@ -736,10 +806,6 @@ YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
-uint64_t YBCPgGetReadTimeSerialNo();
-
-void YBCPgForceReadTimeSerialNo(uint64_t read_time_serial_no);
-
 YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_relfilenode_oid,
                                  bool* is_object_part_of_xrepl);
 
@@ -768,20 +834,38 @@ YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YBCPgOid database_oid,
                                         YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle);
-YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle);
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle,
+                                         uint64_t *consistent_snapshot_time);
 
 YBCStatus YBCPgListReplicationSlots(
     YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);
 
-YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
-                                        bool *active);
+YBCStatus YBCPgGetReplicationSlot(
+    const char *slot_name, YBCReplicationSlotDescriptor **replication_slot);
 
 YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
                                       YBCPgStatement *handle);
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
 
+YBCStatus YBCPgInitVirtualWalForCDC(
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations);
+
+YBCStatus YBCPgUpdatePublicationTableList(
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations);
+
+YBCStatus YBCPgDestroyVirtualWalForCDC();
+
+YBCStatus YBCPgGetCDCConsistentChanges(const char *stream_id,
+                                       YBCPgChangeRecordBatch **record_batch);
+
+YBCStatus YBCPgUpdateAndPersistLSN(
+    const char* stream_id, YBCPgXLogRecPtr restart_lsn_hint, YBCPgXLogRecPtr confirmed_flush,
+    YBCPgXLogRecPtr* restart_lsn);
+
 // Get a new OID from the OID allocator of database db_oid.
 YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);
+
+YBCStatus YBCYcqlStatementStats(YCQLStatementStats** stats, size_t* num_stats);
 
 // Active Session History
 void YBCStoreTServerAshSamples(
@@ -803,7 +887,7 @@ struct PgApiContext;
 void YBCInitPgGateEx(
     const YBCPgTypeEntity *data_type_table, int count, YBCPgCallbacks pg_callbacks,
     PgApiContext *context, std::optional<uint64_t> session_id,
-    const YBCAshMetadata* ash_metadata, bool *is_ash_metadata_set);
+    const YBCPgAshConfig* ash_config);
 
 } // namespace pggate
 } // namespace yb

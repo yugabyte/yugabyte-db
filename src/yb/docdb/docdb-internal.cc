@@ -34,6 +34,9 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
   if (slice[0] == dockv::KeyEntryTypeAsChar::kTransactionId) {
     if (slice.size() == TransactionId::StaticSize() + 1) {
       return KeyType::kTransactionMetadata;
+    } else if (slice.size() == TransactionId::StaticSize() + 2) {
+      // Key for post-apply transaction metadata is [prefix] [transaction id] 00.
+      return KeyType::kPostApplyTransactionMetadata;
     } else {
       return KeyType::kReverseTxnKey;
     }

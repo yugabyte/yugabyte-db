@@ -1,11 +1,15 @@
-import { Box, makeStyles } from '@material-ui/core';
+import { useState } from 'react';
+import { useMutation } from 'react-query';
 import { useForm, FormProvider } from 'react-hook-form';
+import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
+import { Box, makeStyles } from '@material-ui/core';
 import { YBInputField, YBLabel, YBModal } from '../../../../components';
+import { ReleasesAPI } from '../../api';
 import { EditReleaseTagFormFields, ModalTitle, Releases } from '../dtos';
 
 interface EditReleaseTagModalProps {
-  data: Releases | null;
+  data: Releases;
   open: boolean;
   onClose: () => void;
   onActionPerformed: () => void;
@@ -28,6 +32,10 @@ export const EditReleaseTagModal = ({
 }: EditReleaseTagModalProps) => {
   const { t } = useTranslation();
   const helperClasses = useStyles();
+  const releaseUuid = data.release_uuid;
+
+  // State variable
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const releaseTag = data?.release_tag;
   const formMethods = useForm<EditReleaseTagFormFields>({
@@ -43,11 +51,33 @@ export const EditReleaseTagModal = ({
     handleSubmit
   } = formMethods;
 
+  // PUT API call to edit/add release tags to existing release
+  const updateReleaseMetadata = useMutation(
+    (payload: any) => ReleasesAPI.updateReleaseMetadata(payload, releaseUuid!),
+    {
+      onSuccess: (response: any) => {
+        toast.success(t('releases.editReleaseTagModal.updateReleaseTagSuccess'));
+        onActionPerformed();
+        onClose();
+      },
+      onError: () => {
+        toast.error(t('releases.editReleaseTagModal.updateReleaseTagFailure'));
+      }
+    }
+  );
+
   const handleFormSubmit = handleSubmit((formValues) => {
-    // TODO: Write a usemutation call to update release metadata - updateReleaseMetadata (PUT) from api.ts
-    // TODO: onSuccess on above mutation call, ensure to call onActionPerformed() which will get fresh set of releasaes
-    // to be displayed in ReleaseList page
+    const payload: any = {};
+    Object.assign(payload, data);
+    payload.release_tag = formValues.releaseTag;
+    setIsSubmitting(true);
+    // updateReleaseMetadata.mutateAsync(payload);
+    updateReleaseMetadata.mutate(payload, { onSettled: () => resetModal() });
   });
+
+  const resetModal = () => {
+    setIsSubmitting(false);
+  };
 
   return (
     <YBModal
@@ -65,6 +95,7 @@ export const EditReleaseTagModal = ({
         className: helperClasses.root,
         dividers: true
       }}
+      isSubmitting={isSubmitting}
       titleContentProps={helperClasses.modalTitle}
       buttonProps={{
         primary: {

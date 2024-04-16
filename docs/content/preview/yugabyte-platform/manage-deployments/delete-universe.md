@@ -9,7 +9,7 @@ menu:
   preview_yugabyte-platform:
     identifier: delete-universe
     parent: manage-deployments
-    weight: 70
+    weight: 50
 type: docs
 ---
 
@@ -18,6 +18,8 @@ To reduce costs on unused universes, you can pause or delete them.
 ## Pause a universe
 
 To pause a universe via the YugabyteDB Anywhere UI, navigate to **Universes**, select your universe, then click **Actions > Pause Universe**.
+
+Note that you can't pause universes created using an on-premises provider.
 
 You can't change the configuration, or read and write data to a paused universe. Alerts and backups are also stopped. Existing backups remain until they expire.
 

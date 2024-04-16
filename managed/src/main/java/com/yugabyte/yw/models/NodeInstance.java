@@ -10,6 +10,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.gdata.util.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
@@ -19,11 +22,16 @@ import io.ebean.Query;
 import io.ebean.RawSql;
 import io.ebean.RawSqlBuilder;
 import io.ebean.SqlUpdate;
+import io.ebean.annotation.DbJson;
+import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.Transient;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -38,9 +46,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
@@ -70,6 +81,25 @@ public class NodeInstance extends Model {
     }
   }
 
+  @Builder
+  @Data
+  @AllArgsConstructor
+  @NoArgsConstructor
+  public static class UniverseMetadata {
+    private boolean useSystemd = true;
+    private boolean assignStaticPublicIp = false;
+    private boolean otelCollectorEnabled = false;
+  }
+
+  public enum State {
+    @EnumValue("DECOMMISSIONED")
+    DECOMMISSIONED,
+    @EnumValue("USED")
+    USED,
+    @EnumValue("FREE")
+    FREE
+  }
+
   @Id
   @ApiModelProperty(value = "The node's UUID", accessMode = READ_ONLY)
   private UUID nodeUuid;
@@ -90,9 +120,20 @@ public class NodeInstance extends Model {
   @ApiModelProperty(value = "The availability zone's UUID")
   private UUID zoneUuid;
 
-  @Column(nullable = false)
-  @ApiModelProperty(value = "True if the node is in use")
+  @ApiModelProperty(
+      value =
+          "True if the node is in use  <b style=\"color:#ff0000\">Deprecated since "
+              + "YBA version 2024.1.0.0.</b> Use NodeInstance.state instead")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.1.0.0")
+  @Transient
   private boolean inUse;
+
+  @Column(nullable = false)
+  @ApiModelProperty(value = "State of on-prem node", accessMode = READ_ONLY)
+  @Enumerated(EnumType.STRING)
+  private State state;
+
+  @DbJson @JsonIgnore private UniverseMetadata universeMetadata;
 
   @Getter(AccessLevel.NONE)
   @Setter(AccessLevel.NONE)
@@ -132,10 +173,26 @@ public class NodeInstance extends Model {
     setDetails(details);
   }
 
-  // Method sets node name to empty string and inUse to false and persists the value
+  // Method sets node name to empty string and state to FREE and persists the value.
   public void clearNodeDetails() {
-    this.setInUse(false);
+    this.setState(State.FREE);
     this.setNodeName("");
+    this.universeMetadata = null;
+    this.save();
+  }
+
+  @JsonIgnore
+  public void setToFailedCleanup(Universe universe, NodeDetails node) {
+    this.setState(State.DECOMMISSIONED);
+    this.setNodeName("");
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    this.setUniverseMetadata(
+        UniverseMetadata.builder()
+            .useSystemd(universeDetails.getPrimaryCluster().userIntent.useSystemd)
+            .assignStaticPublicIp(
+                universeDetails.getPrimaryCluster().userIntent.assignStaticPublicIP)
+            .otelCollectorEnabled(universeDetails.otelCollectorEnabled)
+            .build());
     this.save();
   }
 
@@ -157,7 +214,7 @@ public class NodeInstance extends Model {
       UUID zoneUuid, String instanceTypeCode, Set<UUID> nodeUuids) {
     // Search in the proper AZ and only for nodes not in use.
     ExpressionList<NodeInstance> exp =
-        NodeInstance.find.query().where().eq("zone_uuid", zoneUuid).eq("in_use", false);
+        NodeInstance.find.query().where().eq("zone_uuid", zoneUuid).eq("state", State.FREE);
     // Filter by instance type if asked to.
     if (instanceTypeCode != null) {
       exp.where().eq("instance_type_code", instanceTypeCode);
@@ -176,7 +233,7 @@ public class NodeInstance extends Model {
     // Search in the proper AZ.
     ExpressionList<NodeInstance> exp = NodeInstance.find.query().where().in("zone_uuid", azUUIDs);
     // Search only for nodes not in use.
-    exp.where().eq("in_use", false);
+    exp.where().eq("state", State.FREE);
     // Filter by instance type if asked to.
     if (instanceTypeCode != null) {
       exp.where().eq("instance_type_code", instanceTypeCode);
@@ -253,6 +310,19 @@ public class NodeInstance extends Model {
     return nodes.stream()
         .filter(n -> !inflightNodeUuids.contains(n.getNodeUuid()))
         .collect(Collectors.toList());
+  }
+
+  @JsonProperty("inUse")
+  public boolean getInUse() {
+    return isUsed();
+  }
+
+  @JsonIgnore
+  public boolean isUsed() {
+    if (getState() == NodeInstance.State.USED) {
+      return true;
+    }
+    return filterInflightNodeUuids(Collections.singletonList(this)).isEmpty();
   }
 
   /**
@@ -342,7 +412,7 @@ public class NodeInstance extends Model {
             "Unexpected error in verifying the count for node instance for cluster " + clusterUuid);
         for (NodeInstance node : nodes) {
           InflightNodeInstanceInfo instanceInfo = nodeUuidInstanceInfoMap.get(node.getNodeUuid());
-          node.setInUse(true);
+          node.setState(State.USED);
           node.setNodeName(instanceInfo.getNodeName());
           outputMap.put(instanceInfo.getNodeName(), node);
           LOG.info(
@@ -427,6 +497,7 @@ public class NodeInstance extends Model {
     node.instanceName = instanceName;
     node.setDetails(formData);
     node.setNodeName("");
+    node.setState(State.FREE);
     node.save();
     return node;
   }
@@ -434,5 +505,19 @@ public class NodeInstance extends Model {
   public static boolean checkIpInUse(String ipAddress) {
     List<NodeInstance> nodeList = NodeInstance.find.all();
     return nodeList.stream().anyMatch(x -> x.getDetails().ip.equals(ipAddress));
+  }
+
+  public static List<NodeInstance> getByInstanceType(UUID providerUUID, String instanceTypeCode) {
+    // Retrieve all node instances for the given provider
+    List<NodeInstance> nodeInstances = listByProvider(providerUUID);
+
+    // filter node instances based on instanceTypeCode
+    List<NodeInstance> filteredInstances =
+        nodeInstances.stream()
+            .filter(nodeInstance -> nodeInstance.getInstanceTypeCode().equals(instanceTypeCode))
+            .collect(Collectors.toList());
+
+    // Return the filtered list of node instances
+    return filteredInstances;
   }
 }

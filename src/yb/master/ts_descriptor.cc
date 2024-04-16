@@ -48,6 +48,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
+DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
+
 DEFINE_UNKNOWN_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
              "The period of time that a Master can go without receiving a heartbeat from a "
              "tablet server before considering it unresponsive. Unresponsive servers are not "
@@ -134,9 +136,6 @@ Status TSDescriptor::RegisterUnlocked(
   }
   local_cloud_info_ = std::move(local_cloud_info);
   proxy_cache_ = proxy_cache;
-
-  capabilities_.clear();
-  capabilities_.insert(registration.capabilities().begin(), registration.capabilities().end());
 
   return Status::OK();
 }
@@ -350,9 +349,14 @@ bool TSDescriptor::HasTabletDeletePending() const {
   return !tablets_pending_delete_.empty();
 }
 
-bool TSDescriptor::IsTabletDeletePending(const std::string& tablet_id) const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return tablets_pending_delete_.count(tablet_id);
+void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
+  std::lock_guard l(lock_);
+  tablets_pending_delete_.insert(tablet_id);
+}
+
+size_t TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
+  std::lock_guard l(lock_);
+  return tablets_pending_delete_.erase(tablet_id);
 }
 
 std::string TSDescriptor::PendingTabletDeleteToString() const {
@@ -360,14 +364,9 @@ std::string TSDescriptor::PendingTabletDeleteToString() const {
   return yb::ToString(tablets_pending_delete_);
 }
 
-void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard l(lock_);
-  tablets_pending_delete_.insert(tablet_id);
-}
-
-void TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard l(lock_);
-  tablets_pending_delete_.erase(tablet_id);
+std::set<std::string> TSDescriptor::TabletsPendingDeletion() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return tablets_pending_delete_;
 }
 
 std::size_t TSDescriptor::NumTasks() const {
@@ -382,6 +381,11 @@ bool TSDescriptor::IsLive() const {
 
 bool TSDescriptor::IsLiveAndHasReported() const {
   return IsLive() && has_tablet_report();
+}
+
+bool TSDescriptor::HasYsqlCatalogLease() const {
+  return TimeSinceHeartbeat().ToMilliseconds() <
+         GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms) && !IsRemoved();
 }
 
 std::string TSDescriptor::ToString() const {

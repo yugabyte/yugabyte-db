@@ -8,13 +8,19 @@ import {
 
 import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
-import { XClusterConfigAction, XClusterTableEligibility } from '../../constants';
+import { XClusterConfigAction } from '../../constants';
 import { formatBytes, isTableToggleable, tableSort } from '../../ReplicationUtils';
-import { TableEligibilityPill } from './TableEligibilityPill';
 import { SortOrder } from '../../../../redesign/helpers/constants';
-import { getTableName, isColocatedParentTable } from '../../../../utils/tableUtils';
+import { IndexTableList } from './IndexTableList';
+import { TableNameCell } from './TableNameCell';
+import { ExpandColumnComponent } from './ExpandColumnComponent';
 
-import { NamespaceItem, XClusterTableCandidate, XClusterTableType } from '../..';
+import {
+  NamespaceItem,
+  MainTableReplicationCandidate,
+  XClusterTableType,
+  TableReplicationCandidate
+} from '../..';
 import { TableType } from '../../../../redesign/helpers/dtos';
 
 import styles from './ExpandedTableSelect.module.scss';
@@ -25,18 +31,20 @@ const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as co
 interface ExpandedTableSelectProps {
   row: NamespaceItem;
   selectedTableUUIDs: string[];
-  // Determines if the rows in this expanded table select are selectable.
+  // `isSelectable` determines if the rows in this expanded table select are selectable.
   isSelectable: boolean;
+  isTransactionalConfig: boolean;
   tableType: XClusterTableType;
   xClusterConfigAction: XClusterConfigAction;
-  handleTableSelect: (row: XClusterTableCandidate, isSelected: boolean) => void;
-  handleTableGroupSelect: (isSelected: boolean, rows: XClusterTableCandidate[]) => boolean;
+  handleTableSelect: (row: TableReplicationCandidate, isSelected: boolean) => void;
+  handleTableGroupSelect: (isSelected: boolean, rows: TableReplicationCandidate[]) => boolean;
 }
 
 export const ExpandedTableSelect = ({
   row,
-  selectedTableUUIDs,
+  selectedTableUUIDs: selectedTableUuids,
   isSelectable,
+  isTransactionalConfig,
   tableType,
   xClusterConfigAction,
   handleTableSelect,
@@ -44,7 +52,7 @@ export const ExpandedTableSelect = ({
 }: ExpandedTableSelectProps) => {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
-  const [sortField, setSortField] = useState<keyof XClusterTableCandidate>('tableName');
+  const [sortField, setSortField] = useState<keyof MainTableReplicationCandidate>('tableName');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
   const tableOptions: Options = {
@@ -52,7 +60,7 @@ export const ExpandedTableSelect = ({
     sortOrder: sortOrder,
     onSortChange: (sortName: string | number | symbol, sortOrder: ReactBSTableSortOrder) => {
       // Each row of the table is of type XClusterTableCandidate.
-      setSortField(sortName as keyof XClusterTableCandidate);
+      setSortField(sortName as keyof MainTableReplicationCandidate);
       setSortOrder(sortOrder);
     }
   };
@@ -66,21 +74,47 @@ export const ExpandedTableSelect = ({
         tableContainerClass={styles.bootstrapTable}
         data={row.tables
           .sort((a, b) =>
-            tableSort<XClusterTableCandidate>(a, b, sortField, sortOrder, 'tableName')
+            tableSort<MainTableReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
           )
           .slice((activePage - 1) * pageSize, activePage * pageSize)}
+        expandableRow={(mainTableReplicationCandidate: MainTableReplicationCandidate) =>
+          (mainTableReplicationCandidate.indexTables?.length ?? 0) > 0
+        }
+        expandComponent={(mainTableReplicationCandidate: MainTableReplicationCandidate) => (
+          <IndexTableList
+            mainTableReplicationCandidate={mainTableReplicationCandidate}
+            xClusterConfigAction={xClusterConfigAction}
+            isMainTableSelectable={isSelectable}
+            isTransactionalConfig={isTransactionalConfig}
+            selectedTableUuids={selectedTableUuids}
+            handleTableSelect={handleTableSelect}
+            handleTableGroupSelect={handleTableGroupSelect}
+          />
+        )}
+        expandColumnOptions={{
+          expandColumnVisible: true,
+          expandColumnComponent: ExpandColumnComponent,
+          columnWidth: 25
+        }}
         selectRow={{
           mode: 'checkbox',
+          clickToExpand: true,
           onSelect: handleTableSelect,
           onSelectAll: handleTableGroupSelect,
-          selected: selectedTableUUIDs,
+          selected: selectedTableUuids,
           hideSelectColumn: !isSelectable,
           unselectable: untoggleableTableUuids
         }}
         options={tableOptions}
       >
         <TableHeaderColumn dataField="tableUUID" isKey={true} hidden={true} />
-        <TableHeaderColumn dataField="tableName" dataSort={true} dataFormat={formatTableName}>
+        <TableHeaderColumn
+          dataField="tableName"
+          dataSort={true}
+          dataFormat={(_: string, mainTableReplicationCandidate: MainTableReplicationCandidate) => (
+            <TableNameCell tableReplicationCandidate={mainTableReplicationCandidate} />
+          )}
+        >
           Table Name
         </TableHeaderColumn>
         <TableHeaderColumn
@@ -125,18 +159,3 @@ export const ExpandedTableSelect = ({
     </div>
   );
 };
-
-const formatTableName = (_: string, xClusterTable: XClusterTableCandidate) => {
-  const { eligibilityDetails, ...table } = xClusterTable;
-  return (
-    <div className={styles.tableNameContainer}>
-      <div className={styles.tableName}>{getTableName(xClusterTable)}</div>
-      {shouldShowTableEligibilityPill(xClusterTable) && (
-        <TableEligibilityPill eligibilityDetails={xClusterTable.eligibilityDetails} />
-      )}
-    </div>
-  );
-};
-
-const shouldShowTableEligibilityPill = (xClusterTable: XClusterTableCandidate) =>
-  xClusterTable.eligibilityDetails.status !== XClusterTableEligibility.ELIGIBLE_UNUSED;

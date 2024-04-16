@@ -1,5 +1,6 @@
 package com.yugabyte.troubleshoot.ts.task;
 
+import static com.yugabyte.troubleshoot.ts.CommonUtils.SYSTEM_PLATFORM;
 import static com.yugabyte.troubleshoot.ts.TestUtils.readResourceAsJsonList;
 import static com.yugabyte.troubleshoot.ts.task.StatStatementsQuery.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -12,6 +13,7 @@ import com.yugabyte.troubleshoot.ts.yba.client.YBAClient;
 import com.yugabyte.troubleshoot.ts.yba.models.RunQueryResult;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.Rule;
 import org.junit.jupiter.api.BeforeEach;
@@ -101,10 +103,9 @@ public class StatStatementsQueryTest {
     when(ybaClient.runSqlQuery(
             universeMetadata, SYSTEM_PLATFORM, PG_STAT_STATEMENTS_QUERY, "node2"))
         .thenReturn(runQueryResult);
-    statStatementsQuery.processAllUniverses();
+    Map<UUID, UniverseProgress> progresses = statStatementsQuery.processAllUniverses();
 
-    UniverseProgress progress =
-        statStatementsQuery.universesProcessStartTime.get(universeMetadata.getId());
+    UniverseProgress progress = progresses.get(universeMetadata.getId());
     while (progress.getStartTimestamp() == 0L || progress.inProgress) {
       Thread.sleep(10);
     }
@@ -121,17 +122,17 @@ public class StatStatementsQueryTest {
                 .setId(
                     new PgStatStatementsQueryId()
                         .setUniverseId(universeMetadata.getId())
+                        .setDbId("13243")
                         .setQueryId(10))
                 .setQuery("query1")
-                .setDbId("13243")
                 .setDbName("postgres"),
             new PgStatStatementsQuery()
                 .setId(
                     new PgStatStatementsQueryId()
                         .setUniverseId(universeMetadata.getId())
+                        .setDbId("13243")
                         .setQueryId(11))
                 .setQuery("query2")
-                .setDbId("13243")
                 .setDbName("postgres"));
     assertThat(queries).containsExactlyInAnyOrderElementsOf(expectedQueries);
 
@@ -146,9 +147,9 @@ public class StatStatementsQueryTest {
     when(ybaClient.runSqlQuery(
             universeMetadata, SYSTEM_PLATFORM, PG_STAT_STATEMENTS_QUERY, "node2"))
         .thenReturn(runQueryResult);
-    statStatementsQuery.processAllUniverses();
+    progresses = statStatementsQuery.processAllUniverses();
 
-    progress = statStatementsQuery.universesProcessStartTime.get(universeMetadata.getId());
+    progress = progresses.get(universeMetadata.getId());
     while (progress.getStartTimestamp() == 0L || progress.inProgress) {
       Thread.sleep(10);
     }
@@ -169,6 +170,7 @@ public class StatStatementsQueryTest {
                 .setActualTimestamp(Instant.parse("2023-12-25T15:58:39.246982Z"))
                 .setNodeName("node2")
                 .setUniverseId(universeMetadata.getId())
+                .setDbId("13243")
                 .setQueryId(10)
                 .setRps(0.0016666666666666668)
                 .setRowsAvg(1.0)
@@ -181,6 +183,7 @@ public class StatStatementsQueryTest {
                 .setActualTimestamp(Instant.parse("2023-12-25T15:58:39.246982Z"))
                 .setNodeName("node1")
                 .setUniverseId(universeMetadata.getId())
+                .setDbId("13243")
                 .setQueryId(10)
                 .setRps(0.16666666666666666)
                 .setRowsAvg(4.95)
@@ -193,6 +196,7 @@ public class StatStatementsQueryTest {
                 .setActualTimestamp(Instant.parse("2023-12-25T15:58:39.246982Z"))
                 .setNodeName("node1")
                 .setUniverseId(universeMetadata.getId())
+                .setDbId("13243")
                 .setQueryId(11)
                 .setRps(0.16666666666666666)
                 .setRowsAvg(9.9)

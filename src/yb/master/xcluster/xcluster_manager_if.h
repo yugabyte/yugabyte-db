@@ -23,28 +23,43 @@
 namespace yb {
 
 class HybridTime;
+class JsonWriter;
 
 namespace rpc {
 class RpcContext;
 }  // namespace rpc
 
+namespace xcluster {
+YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
+}
+
 namespace master {
 
 class GetXClusterSafeTimeRequestPB;
 class GetXClusterSafeTimeResponsePB;
-class SysXClusterConfigEntryPB;
 struct LeaderEpoch;
+struct XClusterStatus;
 
 class XClusterManagerIf {
  public:
   virtual Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const = 0;
-  virtual Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
-      const LeaderEpoch& epoch) = 0;
+  virtual Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) = 0;
   virtual Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap() const = 0;
   virtual Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) = 0;
+  virtual Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      const XClusterSafeTimeFilter& filter) = 0;
+  virtual Status MarkIndexBackfillCompleted(
+      const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) = 0;
 
-  virtual Status GetXClusterConfigEntryPB(SysXClusterConfigEntryPB* config) const = 0;
+  virtual Result<XClusterStatus> GetXClusterStatus() const = 0;
+  virtual Status PopulateXClusterStatusJson(JsonWriter& jw) const = 0;
+
+  virtual void RunBgTasks(const LeaderEpoch& epoch) = 0;
+
+  virtual std::unordered_set<xcluster::ReplicationGroupId>
+  GetInboundTransactionalReplicationGroups() const = 0;
 
  protected:
   virtual ~XClusterManagerIf() = default;

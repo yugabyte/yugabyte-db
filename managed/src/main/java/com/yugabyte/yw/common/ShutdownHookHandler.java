@@ -20,7 +20,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import play.inject.ApplicationLifecycle;
+import org.apache.pekko.actor.CoordinatedShutdown;
 
 /**
  * This allows setting order of shutdown hook execution. ApplicationLifecycle of play framework
@@ -32,7 +32,6 @@ import play.inject.ApplicationLifecycle;
 @Singleton
 public class ShutdownHookHandler {
 
-  private final ApplicationLifecycle lifecycle;
   private final ExecutorService shutdownExecutor;
   private final Map<Object, Hook<?>> hooks;
   private final AtomicBoolean isShutdown = new AtomicBoolean();
@@ -81,13 +80,15 @@ public class ShutdownHookHandler {
   }
 
   @Inject
-  public ShutdownHookHandler(ApplicationLifecycle lifecycle) {
-    this.lifecycle = lifecycle;
+  public ShutdownHookHandler(CoordinatedShutdown coordinatedShutdown) {
     this.shutdownExecutor = Executors.newCachedThreadPool();
     this.hooks = new WeakHashMap<>();
-    this.lifecycle.addStopHook(
+    coordinatedShutdown.addTask(
+        CoordinatedShutdown.PhaseServiceRequestsDone(),
+        getClass().getSimpleName(),
         () -> {
-          return CompletableFuture.runAsync(this::onApplicationShutdown, shutdownExecutor);
+          onApplicationShutdown();
+          return CompletableFuture.completedFuture(null);
         });
   }
 

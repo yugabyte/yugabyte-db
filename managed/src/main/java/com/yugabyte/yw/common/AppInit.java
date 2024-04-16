@@ -10,6 +10,7 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
+import com.yugabyte.yw.commissioner.AutomatedMasterFailover;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -49,6 +50,8 @@ import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.DB;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.HashMap;
 import java.util.List;
@@ -64,6 +67,10 @@ public class AppInit {
 
   private static final long MAX_APP_INITIALIZATION_TIME = 30;
 
+  public static final Gauge INIT_TIME =
+      Gauge.build("yba_init_time_seconds", "Last YBA startup time in seconds.")
+          .register(CollectorRegistry.defaultRegistry);
+
   @Inject
   public AppInit(
       Environment environment,
@@ -76,6 +83,7 @@ public class AppInit {
       YamlWrapper yaml,
       ExtraMigrationManager extraMigrationManager,
       PitrConfigPoller pitrConfigPoller,
+      AutomatedMasterFailover automatedMasterFailover,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
       RefreshKmsService refreshKmsService,
@@ -105,7 +113,8 @@ public class AppInit {
       RuntimeConfGetter confGetter,
       PrometheusConfigManager prometheusConfigManager,
       ImageBundleUtil imageBundleUtil,
-      @Named("AppStartupTimeMs") Long startupTime)
+      @Named("AppStartupTimeMs") Long startupTime,
+      ReleasesUtils releasesUtils)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -248,11 +257,11 @@ public class AppInit {
         releaseManager.importLocalReleases();
         releaseManager.updateCurrentReleases();
         releaseManager
-            .getLocalReleases()
+            .getLocalReleaseVersions()
             .forEach(
-                (version, rm) -> {
+                version -> {
                   try {
-                    gFlagsValidation.addDBMetadataFiles(version, rm);
+                    gFlagsValidation.addDBMetadataFiles(version);
                   } catch (Exception e) {
                     log.error("Error: ", e);
                   }
@@ -281,6 +290,9 @@ public class AppInit {
 
         // Fail all incomplete support bundle creations.
         supportBundleCleanup.markAllRunningSupportBundlesFailed();
+
+        // Cleanup any untracked uploaded releases
+        releasesUtils.cleanupUntracked();
 
         // Schedule garbage collection of old completed tasks in database.
         taskGC.start();
@@ -315,6 +327,7 @@ public class AppInit {
         shellLogsManager.startLogsGC();
         nodeAgentPoller.init();
         pitrConfigPoller.start();
+        automatedMasterFailover.start();
 
         ybcUpgrade.start();
 
@@ -333,6 +346,7 @@ public class AppInit {
 
         long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
         String elapsedStr = String.valueOf(elapsed);
+        INIT_TIME.set(elapsed);
         if (elapsed > MAX_APP_INITIALIZATION_TIME) {
           log.warn("Completed initialization in " + elapsedStr + " seconds.");
         } else {

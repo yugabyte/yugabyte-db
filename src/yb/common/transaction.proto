@@ -16,6 +16,8 @@ package yb;
 
 option java_package = "org.yb";
 
+import "yb/common/opid.proto";
+
 enum IsolationLevel {
   NON_TRANSACTIONAL = 0;
   SNAPSHOT_ISOLATION = 1;
@@ -93,6 +95,14 @@ message SubTransactionMetadataPB {
   optional SubtxnSetPB aborted = 2;
 }
 
+message PostApplyTransactionMetadataPB {
+  optional bytes transaction_id = 1; // 16 byte uuid
+
+  optional OpIdPB apply_op_id = 2;
+  optional fixed64 commit_ht = 3;
+  optional fixed64 log_ht = 4;
+}
+
 enum LockMode {
   WEAK_READ = 0;
   WEAK_WRITE = 1;
@@ -138,6 +148,8 @@ message TabletLockInfoPB {
     optional fixed64 wait_start_ht = 2;
 
     repeated bytes blocking_txn_ids = 3;
+
+    optional bool has_additional_waiting_locks = 4;
   }
 
   // Lock info for a given transaction at this tablet.
@@ -147,6 +159,8 @@ message TabletLockInfoPB {
     repeated LockInfoPB granted_locks = 2;
 
     optional WaiterInfoPB waiting_locks = 3;
+
+    optional bool has_additional_granted_locks = 4;
   }
   repeated TransactionLockInfoPB transaction_locks = 3;
 

@@ -132,8 +132,6 @@ public class HealthCheckMetrics {
         return PlatformMetrics.HEALTH_CHECK_C2N_CERT;
       case CLIENT_CA_CERT_CHECK:
         return PlatformMetrics.HEALTH_CHECK_CLIENT_CA_CERT;
-      case CLIENT_CERT_CHECK:
-        return PlatformMetrics.HEALTH_CHECK_CLIENT_CERT;
       case YB_CONTROLLER_CHECK:
         return PlatformMetrics.HEALTH_CHECK_YB_CONTROLLER_DOWN;
       default:

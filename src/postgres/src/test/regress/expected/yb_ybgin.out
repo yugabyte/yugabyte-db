@@ -1,8 +1,10 @@
 --
 -- Yugabyte-owned test for ybgin access method.
 --
--- Disable sequential scan so that index scan is always chosen.
+-- Always choose index scan.
 SET enable_seqscan = off;
+SET enable_bitmapscan = on;
+SET yb_test_ybgin_disable_cost_factor = 0.5;
 --
 -- Create non-temp table which uses Yugabyte storage.
 --
@@ -330,29 +332,29 @@ INSERT INTO jsonbs (j) VALUES
     ('{"aaa":{"bbb":[2], "ccc":{"ddd":6}}, "eee":[]}'); -- test aminsert
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i;
                 QUERY PLAN
-------------------------------------------
+-------------------------------------------
  Sort
    Sort Key: i
    ->  Seq Scan on jsonbs
-         Remote Filter: (j ? 'aaa'::text)
+         Storage Filter: (j ? 'aaa'::text)
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i;
-                    QUERY PLAN
----------------------------------------------------
+                     QUERY PLAN
+----------------------------------------------------
  Sort
    Sort Key: i
    ->  Seq Scan on jsonbs
-         Remote Filter: (j ?| '{ggg,eee}'::text[])
+         Storage Filter: (j ?| '{ggg,eee}'::text[])
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
-                    QUERY PLAN
----------------------------------------------------
+                     QUERY PLAN
+----------------------------------------------------
  Sort
    Sort Key: i
    ->  Seq Scan on jsonbs
-         Remote Filter: (j ?& '{aaa,eee}'::text[])
+         Storage Filter: (j ?& '{aaa,eee}'::text[])
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
@@ -477,10 +479,10 @@ INSERT INTO partial VALUES
     (to_tsvector('simple', 'a b c'), ARRAY['d', 'd'], '{"g":"g"}'); -- test aminsert
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'b';
                    QUERY PLAN
-------------------------------------------------
+-------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on partial
-         Remote Filter: (v @@ '''b'''::tsquery)
+         Storage Filter: (v @@ '''b'''::tsquery)
          Partial Aggregate: true
 (4 rows)
 
@@ -553,3 +555,4 @@ ERROR:  access method "ybgin" only supported for indexes using Yugabyte storage
 -- Cleanup
 DISCARD TEMP;
 RESET enable_seqscan;
+RESET enable_bitmapscan;

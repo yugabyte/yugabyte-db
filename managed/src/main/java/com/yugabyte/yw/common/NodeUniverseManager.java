@@ -4,7 +4,6 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
@@ -21,7 +20,6 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -459,33 +457,10 @@ public class NodeUniverseManager extends DevopsBase {
     } else if (cloudType != Common.CloudType.unknown) {
       UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
       Provider provider = Provider.getOrBadRequest(providerUUID);
-      ProviderDetails providerDetails = provider.getDetails();
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       Optional<NodeAgent> optional =
           getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
-      String sshPort = providerDetails.sshPort.toString();
-      String sshUser = providerDetails.sshUser;
-      UUID imageBundleUUID = null;
-      if (cluster.userIntent.imageBundleUUID != null) {
-        imageBundleUUID = cluster.userIntent.imageBundleUUID;
-      } else {
-        List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
-        if (bundles.size() > 0) {
-          Architecture arch = universe.getUniverseDetails().arch;
-          ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
-          if (defaultBundle != null) {
-            imageBundleUUID = defaultBundle.getUuid();
-          }
-        }
-      }
-      if (imageBundleUUID != null) {
-        ImageBundle.NodeProperties toOverwriteNodeProperties =
-            imageBundleUtil.getNodePropertiesOrFail(
-                imageBundleUUID, node.cloudInfo.region, cluster.userIntent.providerType.toString());
-        sshPort = toOverwriteNodeProperties.getSshPort().toString();
-        sshUser = toOverwriteNodeProperties.getSshUser();
-      }
       if (optional.isPresent()) {
         NodeAgent nodeAgent = optional.get();
         commandArgs.add("rpc");
@@ -494,9 +469,24 @@ public class NodeUniverseManager extends DevopsBase {
         }
         nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
       } else {
+        String sshPort = provider.getDetails().sshPort.toString();
+        UUID imageBundleUUID =
+            Util.retreiveImageBundleUUID(
+                universe.getUniverseDetails().arch, cluster.userIntent, provider);
+        if (imageBundleUUID != null) {
+          ImageBundle.NodeProperties toOverwriteNodeProperties =
+              imageBundleUtil.getNodePropertiesOrFail(
+                  imageBundleUUID,
+                  node.cloudInfo.region,
+                  cluster.userIntent.providerType.toString());
+          sshPort = toOverwriteNodeProperties.getSshPort().toString();
+        }
         commandArgs.add("ssh");
         // Default SSH port can be the custom port for custom images.
-        if (context.isDefaultSshPort() && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
+        if (StringUtils.isNotBlank(context.getSshUser())
+            && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
+          // In case the custom ssh User is specified in the context, that will be
+          // prepare node stage, where the custom sshPort might not be configured yet.
           sshPort = "22";
         }
         commandArgs.add("--port");
@@ -509,14 +499,9 @@ public class NodeUniverseManager extends DevopsBase {
           commandArgs.add("--ssh2_enabled");
         }
       }
-      if (context.isCustomUser()) {
-        // It is for backward compatibility after a platform upgrade as custom user is null in prior
-        // versions.
-        String user = StringUtils.isNotBlank(sshUser) ? sshUser : cloudType.getSshUser();
-        if (StringUtils.isNotBlank(user)) {
-          commandArgs.add("--user");
-          commandArgs.add(user);
-        }
+      if (StringUtils.isNotBlank(context.getSshUser())) {
+        commandArgs.add("--user");
+        commandArgs.add(context.getSshUser());
       }
     }
   }
@@ -585,6 +570,37 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   /**
+   * Try to run a simple command like ls on the remote node to see if it is responsive. If
+   * unresponsive for more than `timeoutSecs`, return false.
+   *
+   * @param node
+   * @param universe
+   * @param timeoutSecs
+   * @return
+   */
+  public boolean isNodeReachable(NodeDetails node, Universe universe, long timeoutSecs) {
+    List<String> params = new ArrayList<>();
+    params.add("check_file_exists");
+    params.add("master/logs");
+
+    ShellProcessContext context =
+        ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSecs).build();
+
+    ShellResponse scriptOutput = runScript(node, universe, NODE_UTILS_SCRIPT, params, context);
+
+    if (!scriptOutput.isSuccess()) {
+      log.warn(
+          "Node '{}' is unreachable for '{}' sec, or threw an error: '{}'.",
+          node.getNodeName(),
+          timeoutSecs,
+          scriptOutput.getMessage());
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+  /**
    * Gets a list of all the absolute file paths at a given remote directory
    *
    * @param node
@@ -644,7 +660,7 @@ public class NodeUniverseManager extends DevopsBase {
    * @param remoteDirPath
    * @return the list of pairs (size, name)
    */
-  public List<Pair<Integer, String>> getNodeFilePathsAndSize(
+  public List<Pair<Long, String>> getNodeFilePathsAndSize(
       NodeDetails node, Universe universe, String remoteDirPath) {
     String randomUUIDStr = UUID.randomUUID().toString();
     String localTempFilePath =
@@ -669,7 +685,7 @@ public class NodeUniverseManager extends DevopsBase {
 
     // Populate the text file into array.
     List<String> nodeFilePathStrings = Arrays.asList();
-    List<Pair<Integer, String>> nodeFileSizePathStrings = new ArrayList<>();
+    List<Pair<Long, String>> nodeFileSizePathStrings = new ArrayList<>();
     try {
       nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
       log.debug("List of files found on the node '{}': '{}'", node.nodeName, nodeFilePathStrings);
@@ -677,7 +693,7 @@ public class NodeUniverseManager extends DevopsBase {
         String[] outputLineSplit = outputLine.split("\\s+", 2);
         if (!StringUtils.isBlank(outputLine) && outputLineSplit.length == 2) {
           nodeFileSizePathStrings.add(
-              new Pair<>(Integer.valueOf(outputLineSplit[0]), outputLineSplit[1]));
+              new Pair<>(Long.valueOf(outputLineSplit[0]), outputLineSplit[1]));
         }
       }
     } catch (IOException e) {

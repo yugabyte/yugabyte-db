@@ -6,28 +6,29 @@ package log
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	easy "github.com/t-tomalak/logrus-easy-formatter"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
-// SetFormatter sets log formatter for logrus
-func SetFormatter() {
+// setFormatter sets log formatter for logrus
+func setFormatter() {
 	logrus.SetFormatter(&easy.Formatter{
 		LogFormat: "%msg%",
 	})
 }
 
-// SetDebugFormatter sets log formatter for logrus debug
-func SetDebugFormatter() {
+// setDebugFormatter sets log formatter for logrus debug
+func setDebugFormatter() {
 	logrus.SetReportCaller(true)
 	logrus.SetFormatter(&logrus.TextFormatter{
-		DisableColors:          viper.GetBool("no-color"),
+		DisableColors:          viper.GetBool("disable-color"),
 		DisableLevelTruncation: true,
+		FullTimestamp:          true,
 		CallerPrettyfier: func(f *runtime.Frame) (string, string) {
 			return "", fmt.Sprintf("%s:%d", filepath.Base(f.File), f.Line)
 		},
@@ -37,17 +38,19 @@ func SetDebugFormatter() {
 // SetLogLevel sets log level for logrus
 func SetLogLevel(logLevel string, debug bool) {
 
+	setFormatter()
 	if debug {
 		logrus.SetLevel(logrus.DebugLevel)
-		SetDebugFormatter()
+		setDebugFormatter()
 		return
 	}
 	if logLevel != "" {
 		level, err := logrus.ParseLevel(logLevel)
 		if err != nil {
-			logrus.Errorln()
-			fmt.Fprintf(os.Stderr, "Error Parsing Log level: %s\n", logLevel)
-			os.Exit(1)
+			logrus.Fatal(formatter.Colorize(
+				fmt.Sprintf("Error Parsing Log level: %s\n", logLevel),
+				formatter.RedColor,
+			))
 		}
 		logrus.SetLevel(level)
 	} else {

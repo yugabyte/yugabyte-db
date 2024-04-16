@@ -9,7 +9,9 @@ import json
 import logging
 import os
 import platform
+import shlex
 import shutil
+import subprocess
 import sys
 import re
 import distro  # type: ignore
@@ -29,6 +31,7 @@ from typing import Dict, Any, Optional, cast, List
 
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
 RELEASE_VERSION_FILE = "version.txt"
+VERSION_METADATA_FILE = "version_metadata.json"
 THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 

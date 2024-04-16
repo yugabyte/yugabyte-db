@@ -103,7 +103,11 @@ class RaftConsensusQuorumTest : public YBTest {
           METRIC_ENTITY_table.Instantiate(&metric_registry_, "raft-test-table")),
       tablet_metric_entity_(
           METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "raft-test-tablet")),
-      schema_(GetSimpleTestSchema()) {
+      schema_(GetSimpleTestSchema()),
+      raft_notifications_pool_(std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+        .name = "raft_notifications",
+        .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+      })) {
     options_.tablet_id = kTestTablet;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
   }
@@ -177,7 +181,7 @@ class RaftConsensusQuorumTest : public YBTest {
           kTestTablet,
           clock_,
           nullptr /* consensus_context */,
-          raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL));
+          std::make_unique<rpc::Strand>(raft_notifications_pool_.get()));
 
       unique_ptr<ThreadPoolToken> pool_token(
           raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT));
@@ -554,6 +558,24 @@ class RaftConsensusQuorumTest : public YBTest {
     ASSERT_FALSE(cmeta->has_voted_for());
   }
 
+  void TearDown() override {
+    // Use the same order of shutdown operations as is done by TabletPeer in production. In this
+    // test we don't use TabletPeer so we have to emulate this order.
+    // 1. TabletPeer::StartShutdown shuts down the consensus.
+    // 2. TabletPeer::CompleteShutdown closes the log.
+    // 3. TabletPeer::CompleteShutdown destroys the consensus object.
+    // If we don't do this, it is possible that a log append operation callback task might try to
+    // call methods on PeerMessageQueue concurrently with PeerMessageQueue being destroyed.
+    // See https://github.com/yugabyte/yugabyte-db/issues/21564 for more details.
+    for (auto& [_, consensus_ptr] : peers_->GetPeerMapCopy()) {
+      consensus_ptr->Shutdown();
+    }
+    for (auto& log : logs_) {
+      ASSERT_OK(log->Close());
+    }
+    YBTest::TearDown();
+  }
+
   ~RaftConsensusQuorumTest() {
     peers_->Clear();
     operation_factories_.clear();
@@ -581,6 +603,7 @@ class RaftConsensusQuorumTest : public YBTest {
   scoped_refptr<MetricEntity> tablet_metric_entity_;
   const Schema schema_;
   std::unordered_map<ConsensusRound*, Synchronizer*> syncs_;
+  std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 };
 
 TEST_F(RaftConsensusQuorumTest, TestConsensusContinuesIfAMinorityFallsBehind) {

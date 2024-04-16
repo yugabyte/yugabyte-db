@@ -36,9 +36,9 @@ import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
 import { Replication } from './pages/Replication';
-import { ReleaseList } from './pages/ReleaseList';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
+import { SlotDetail } from './redesign/features/universe/universe-tabs/replication-slots/components/SlotDetail';
 import { SecondaryDashboard } from './pages/SecondaryDashboard';
 import {
   clearRbacCreds,
@@ -256,6 +256,7 @@ export default (store) => {
             path="/universes/:uuid/troubleshoot/:troubleshootUUID"
             component={SecondaryDashboard}
           />
+          <Route path="/universes/:uuid/replication-slots/:streamID" component={SlotDetail} />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}
@@ -292,7 +293,6 @@ export default (store) => {
         <Route path="/profile/:tab" component={Profile} />
         <Route path="/logs" component={YugawareLogs} />
         <Route path="/releases" component={Releases} />
-        <Route path="/releases_list" component={ReleaseList} />
         <Route path="/admin" component={Administration}>
           <Route path="/admin/:tab" component={Administration} />
           <Route path="/admin/:tab/:section" component={Administration} />

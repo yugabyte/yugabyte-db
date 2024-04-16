@@ -151,7 +151,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
 
   - Restore to an absolute time, providing a specific timestamp in one of the following formats:
 
-    - [Unix timestamp](https://www.unixtimestamp.com) in seconds, milliseconds, or microseconds.
+    - [Unix timestamp](https://www.unixtimestamp.com) in microseconds.
     - [YSQL timestamp](../../../api/ysql/datatypes/type_datetime/).
     - [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp).
 

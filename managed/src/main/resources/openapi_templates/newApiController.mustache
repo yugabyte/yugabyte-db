@@ -3,12 +3,40 @@ package {{package}};
 
 {{#imports}}import {{import}};
 {{/imports}}
-import com.fasterxml.jackson.databind.JsonNode;
+
+import com.typesafe.config.Config;
+import play.mvc.Controller;
+import play.mvc.Result;
+import play.mvc.Http;
+import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
+import java.io.File;
+import play.libs.Files.TemporaryFile;
+{{^handleExceptions}}
+import java.io.IOException;
+{{/handleExceptions}}
+import openapitools.OpenAPIUtils;
+import com.fasterxml.jackson.core.type.TypeReference;
+{{#supportAsync}}
+
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
+{{/supportAsync}}
+
 {{#useBeanValidation}}
+import javax.validation.constraints.*;
 import com.typesafe.config.Config;
 {{/useBeanValidation}}
+
+{{#wrapCalls}}
+import openapitools.OpenAPIUtils.ApiAction;
+{{/wrapCalls}}
+
 {{! Yugabyte modification: controller to extend AbstractPlatformController or AuthenticatedController}}
 {{#operations.operation}}
 {{#-first}}
@@ -28,23 +56,6 @@ import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
-{{^handleExceptions}}
-import java.io.IOException;
-{{/handleExceptions}}
-{{#supportAsync}}
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CompletableFuture;
-{{/supportAsync}}
-import java.util.UUID;
-{{#useBeanValidation}}
-import javax.validation.constraints.*;
-{{/useBeanValidation}}
-import openapitools.OpenAPIUtils;
-{{#wrapCalls}}
-import openapitools.OpenAPIUtils.ApiAction;
-{{/wrapCalls}}
-import play.mvc.Http;
-import play.mvc.Result;
 
 {{>generatedAnnotation}}
 {{#operations}}
@@ -72,6 +83,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
 
 {{#operation}}
   {{#vendorExtensions.x-yba-api-authz}}
+  {{^noAuthz}}
   {{#-first}}
   @AuthzPath({
   {{/-first}}
@@ -87,6 +99,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
   {{#-last}}
   })
   {{/-last}}
+  {{/noAuthz}}
   {{/vendorExtensions.x-yba-api-authz}}
   {{#wrapCalls}}@ApiAction{{/wrapCalls}}
   public {{#supportAsync}}CompletionStage<{{/supportAsync}}Result{{#supportAsync}}>{{/supportAsync}} {{operationId}}(Http.Request request{{#hasPathParams}}, {{/hasPathParams}}{{#pathParams}}{{>pathParams}}{{^-last}}, {{/-last}}{{/pathParams}}) {{^handleExceptions}}{{#bodyParams}}throws IOException{{/bodyParams}}{{/handleExceptions}}{{#handleExceptions}}throws Exception{{/handleExceptions}} {

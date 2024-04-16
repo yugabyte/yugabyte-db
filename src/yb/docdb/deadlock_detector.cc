@@ -276,6 +276,10 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     if (probe_latency_) {
       sent_at_ = CoarseMonoClock::Now();
     }
+    VLOG(4) << "Sending probes for txn: " << probe_origin_txn_id_
+            << " from detector: " << origin_detector_id_
+            << " with probe_num:" << probe_num_
+            << " and " << handles_.size() << " rpcs";
     for (auto& handle : handles_) {
       (**handle).SendRpc();
     }
@@ -390,14 +394,20 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
               LOG_WITH_FUNC(INFO) << "Abort deadlocked transaction request for " << txn_id
                                   << " completed: " << resp.ShortDebugString();
               shared_this->rpcs_->Unregister(shared_this->handle_);
+              shared_this->callback_();
             }),
         &handle_);
+  }
+
+  void SetCallback(std::function<void()>&& callback) {
+    callback_ = std::move(callback);
   }
 
  private:
   rpc::Rpcs* rpcs_;
   client::YBClient* client_;
   rpc::Rpcs::Handle handle_;
+  std::function<void()> callback_ = [](){};
 };
 
 using LocalProbeProcessorPtr = std::shared_ptr<LocalProbeProcessor>;
@@ -440,6 +450,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
   }
 
   void Shutdown() {
+    VLOG_WITH_PREFIX(1) << "Shutting down";
     rpcs_.Shutdown();
   }
 
@@ -463,7 +474,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     processor->SetCallback(
         [callback = std::move(callback), detector = shared_from_this(), req, resp]
         (const auto& status, const auto& remote_resp) {
-      if (remote_resp.deadlocked_txn_ids_size() > 0) {
+      if (remote_resp.deadlocked_txn_ids_size() > 0 || remote_resp.deadlock_size() > 0) {
         auto local_txn_id_or_status = FullyDecodeTransactionId(req.blocking_txn_id());
         if (!local_txn_id_or_status.ok()) {
           static const std::string kDeserializeError =
@@ -682,7 +693,8 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     new_entry->set_detector_id(detector_id_.data(), detector_id_.size());
   }
 
-  void ResolveDeadlock(const tserver::ProbeTransactionDeadlockResponsePB& resp) {
+  void ResolveDeadlock(
+      const tserver::ProbeTransactionDeadlockResponsePB& resp, const TransactionId& origin_txn_id) {
     DCHECK_GT(resp.deadlock_size(), 0);
     deadlock_size_->Increment(resp.deadlock_size());
 
@@ -727,8 +739,24 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     }
 
     VLOG_WITH_PREFIX(1) << "Remote abort " << newest_txn_id;
-    std::make_shared<RemoteDeadlockResolver>(&rpcs_, &client())
-        ->AbortRemoteTransaction(newest_txn_id, newest_txn_status_tablet, deadlock_msg);
+    auto resolver = std::make_shared<RemoteDeadlockResolver>(&rpcs_, &client());
+    if (newest_txn_id != origin_txn_id) {
+      resolver->SetCallback([detector = shared_from(this), origin_txn_id] {
+        std::vector<WaiterTxnTuple> waiters_to_probe;
+        {
+          SharedLock<decltype(mutex_)> l(detector->mutex_);
+          auto waiter_entries = boost::make_iterator_range(
+              detector->waiters_.get<TransactionIdTag>().equal_range(origin_txn_id));
+          for (auto entry : waiter_entries) {
+            waiters_to_probe.push_back({origin_txn_id, "" /* tserver uuid */, entry.waiter_data()});
+          }
+        }
+        for (const auto& probe : detector->GetProbesToSend(waiters_to_probe)) {
+          probe->Send();
+        }
+      });
+    }
+    resolver->AbortRemoteTransaction(newest_txn_id, newest_txn_status_tablet, deadlock_msg);
   }
 
   template <class T>
@@ -777,17 +805,13 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         }
         if (resp.deadlocked_txn_ids_size() > 0 || resp.deadlock_size() > 0) {
           if (resp.deadlock_size() >= resp.deadlocked_txn_ids_size()) {
-            detector->ResolveDeadlock(resp);
+            detector->ResolveDeadlock(resp, origin_txn_id);
             return;
           }
           // If there are fewer entries in the newer deadlock field than the deprecated
           // deadlocked_txn_ids field, then it's possible that some coordinator in this deadlock
           // is still not upgraded. In this case, we process the deadlocked_txn_ids field since the
           // deadlock field is incomplete and abort the originating transaction.
-          //
-          // Note that if one of the transactions involved in the deadlock was aborted while this
-          // probe was returning to the originator, it's possible that we cleared the deadlock field
-          // but not deadlocked_txn_ids, causing us to hit this branch as well.
           detector->deadlock_size_->Increment(resp.deadlocked_txn_ids_size());
           auto waiter_or_status = FullyDecodeTransactionId(resp.deadlocked_txn_ids(0));
           if (!waiter_or_status.ok()) {
@@ -834,6 +858,10 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     auto probe_num = req.probe_num();
     auto probe_origin_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.probe_origin_txn_id()));
     auto local_blocking_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.blocking_txn_id()));
+    VLOG_WITH_PREFIX(4) << "Processing probe for txn: " << probe_origin_txn_id
+                        << " from detector: " << detector_id
+                        << " with probe_num: " << probe_num
+                        << " and local blocker: " << local_blocking_txn_id;
 
     auto blocking_subtxn_set = VERIFY_RESULT(SubtxnSet::FromPB(req.blocking_subtxn_set().set()));
     auto blocking_subtxn_active =
@@ -922,6 +950,12 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
       blockers_per_ts = GetBlockersUnlocked(detector_id, probe_num, local_blocking_txn_id);
     }
     if (blockers_per_ts.empty()) {
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "Dropping probe with no blocker"
+              << " from detector " << detector_id
+              << " with probe_num " << probe_num
+              << " from origin waiter " << probe_origin_txn_id
+              << " to blocker " << local_blocking_txn_id
+              << " at detector " << detector_id_;
       return nullptr;
     }
 

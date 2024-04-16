@@ -20,13 +20,15 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/value_type.h"
+
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/dockv/doc_key.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
@@ -312,6 +314,28 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
   return std::make_unique<IntentAwareIterator>(
       doc_db, read_opts, read_operation_data, txn_op_context,
       statistics ? statistics->IntentsDBStatistics() : nullptr);
+}
+
+BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
+    rocksdb::DB* intentsdb,
+    const TransactionStatusManager* status_manager,
+    const KeyBounds* docdb_key_bounds,
+    const Slice* iterate_upper_bound,
+    rocksdb::Statistics* statistics) {
+  auto min_running_ht = status_manager->MinRunningHybridTime();
+  if (min_running_ht == HybridTime::kMax) {
+    VLOG(4) << "No transactions running";
+    return {};
+  }
+  return CreateRocksDBIterator(
+      intentsdb,
+      docdb_key_bounds,
+      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+      boost::none /* user_key_for_filter */,
+      rocksdb::kDefaultQueryId,
+      CreateIntentHybridTimeFileFilter(min_running_ht),
+      iterate_upper_bound,
+      statistics);
 }
 
 namespace {

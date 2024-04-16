@@ -62,7 +62,8 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid colocationId,
 						   Oid tablespaceId,
 						   Oid pgTableId,
-						   Oid oldRelfileNodeId);
+						   Oid oldRelfileNodeId,
+						   bool isTruncate);
 
 extern void YBCDropTable(Relation rel);
 
@@ -90,7 +91,8 @@ extern List* YBCPrepareAlterTable(List** subcmds,
 										   int subcmds_size,
 										   Oid relationId,
 										   YBCPgStatement *rollbackHandle,
-										   bool isPartitionOfAlteredTable);
+										   bool isPartitionOfAlteredTable,
+										   int rewriteState);
 
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
@@ -110,14 +112,33 @@ extern void YBCValidatePlacement(const char *placement_info);
 /*  Replication Slot Functions ------------------------------------------------------------------ */
 
 extern void YBCCreateReplicationSlot(const char *slot_name,
-									 CRSSnapshotAction snapshot_action);
+									 CRSSnapshotAction snapshot_action,
+									 uint64_t *consistent_snapshot_time);
 
 extern void
 YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 						size_t *numreplicationslots);
 
-extern void 
-YBCGetReplicationSlotStatus(const char *slot_name, 
-							bool *active);
+extern void
+YBCGetReplicationSlot(const char *slot_name,
+					  YBCReplicationSlotDescriptor **replication_slot);
 
 extern void YBCDropReplicationSlot(const char *slot_name);
+
+extern void YBCInitVirtualWalForCDC(const char *stream_id,
+									Oid *relations,
+									size_t numrelations);
+
+extern void YBCUpdatePublicationTableList(const char *stream_id,
+									Oid *relations,
+									size_t numrelations);
+
+extern void YBCDestroyVirtualWalForCDC();
+
+extern void YBCGetCDCConsistentChanges(const char *stream_id,
+									   YBCPgChangeRecordBatch **record_batch);
+
+extern void YBCUpdateAndPersistLSN(const char *stream_id,
+								   XLogRecPtr restart_lsn_hint,
+								   XLogRecPtr confirmed_flush,
+								   YBCPgXLogRecPtr *restart_lsn);

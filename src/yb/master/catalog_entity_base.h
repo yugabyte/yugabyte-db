@@ -21,6 +21,23 @@
 
 namespace yb::master {
 
+#define DECLARE_MULTI_INSTANCE_LOADER_CLASS(name, key_type, entry_pb_name) \
+  class BOOST_PP_CAT(name, Loader) \
+      : public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
+   public: \
+    explicit BOOST_PP_CAT(name, Loader)( \
+        std::function<Status(const key_type&, const entry_pb_name&)> & \
+        catalog_entity_inserter_func) \
+        : catalog_entity_inserter_func_(catalog_entity_inserter_func) {} \
+\
+   private: \
+    Status Visit(const key_type& key, const entry_pb_name& metadata) override { \
+      return catalog_entity_inserter_func_(key, metadata); \
+    } \
+    std::function<Status(const key_type&, const entry_pb_name&)>& catalog_entity_inserter_func_; \
+    DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
+  };
+
 class TasksTracker;
 
 // This class is a base wrapper around the protos that get serialized in the data column of the
@@ -118,7 +135,8 @@ class CatalogEntityWithTasks {
   // Returns true if no running tasks left.
   bool RemoveTask(const server::MonitoredTaskPtr& task) EXCLUDES(mutex_);
   // Abort all inflight tasks. New tasks can still be added.
-  void AbortTasks() EXCLUDES(mutex_);
+  void AbortTasks(const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore = {})
+      EXCLUDES(mutex_);
   // Abort all inflight tasks and prevent new tasks from being added.
   void AbortTasksAndClose() EXCLUDES(mutex_);
   // Wait for all inflight tasks to complete.
@@ -141,7 +159,9 @@ class CatalogEntityWithTasks {
   }
 
  private:
-  void AbortTasksAndCloseIfRequested(bool close) EXCLUDES(mutex_);
+  void AbortTasksAndCloseIfRequested(
+      bool close, const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore = {})
+      EXCLUDES(mutex_);
 
   scoped_refptr<TasksTracker> tasks_tracker_;
 

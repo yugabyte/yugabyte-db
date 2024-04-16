@@ -68,6 +68,10 @@ class Sidecars {
     return offsets_;
   }
 
+  WriteBuffer& buffer() {
+    return buffer_;
+  }
+
  private:
   simple_spinlock take_mutex_;
   WriteBuffer buffer_;

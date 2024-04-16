@@ -61,6 +61,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/strand.h"
 
 #include "yb/server/clock.h"
 
@@ -346,6 +347,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
+    rpc::ThreadPool* raft_notifications_pool,
     RetryableRequestsManager* retryable_requests_manager,
     MultiRaftManager* multi_raft_manager) {
 
@@ -363,7 +365,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       options.tablet_id,
       clock,
       consensus_context,
-      raft_pool->NewToken(ThreadPool::ExecutionMode::SERIAL));
+      std::make_unique<rpc::Strand>(raft_notifications_pool));
 
   DCHECK(local_peer_pb.has_permanent_uuid());
   const string& peer_uuid = local_peer_pb.permanent_uuid();
@@ -372,7 +374,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
   // PeerManager. Because PeerManager is owned by RaftConsensus, it receives a
   // raw pointer to the token, to emphasize that RaftConsensus is responsible
   // for destroying the token.
-  unique_ptr<ThreadPoolToken> raft_pool_token(raft_pool->NewToken(
+  unique_ptr<ThreadPoolToken> raft_pool_concurrent_token(raft_pool->NewToken(
       ThreadPool::ExecutionMode::CONCURRENT));
 
   // A manager for the set of peers that actually send the operations both remotely
@@ -382,7 +384,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       peer_uuid,
       rpc_factory.get(),
       queue.get(),
-      raft_pool_token.get(),
+      raft_pool_concurrent_token.get(),
       multi_raft_manager);
 
   return std::make_shared<RaftConsensus>(
@@ -391,7 +393,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       std::move(rpc_factory),
       std::move(queue),
       std::move(peer_manager),
-      std::move(raft_pool_token),
+      std::move(raft_pool_concurrent_token),
       table_metric_entity,
       tablet_metric_entity,
       peer_uuid,
@@ -409,7 +411,7 @@ RaftConsensus::RaftConsensus(
     std::unique_ptr<PeerProxyFactory> proxy_factory,
     std::unique_ptr<PeerMessageQueue> queue,
     std::unique_ptr<PeerManager> peer_manager,
-    std::unique_ptr<ThreadPoolToken> raft_pool_token,
+    std::unique_ptr<ThreadPoolToken> raft_pool_concurrent_token,
     const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
@@ -418,7 +420,7 @@ RaftConsensus::RaftConsensus(
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     RetryableRequestsManager* retryable_requests_manager)
-    : raft_pool_token_(std::move(raft_pool_token)),
+    : raft_pool_concurrent_token_(std::move(raft_pool_concurrent_token)),
       log_(log),
       clock_(clock),
       peer_proxy_factory_(std::move(proxy_factory)),
@@ -1057,7 +1059,7 @@ void RaftConsensus::ReportFailureDetected() {
         << "Returning from ReportFailureDetected as there is already an outstanding report task.";
   } else {
     // We're running on a timer thread; start an election on a different thread pool.
-    auto s = raft_pool_token_->SubmitFunc(
+    auto s = raft_pool_concurrent_token_->SubmitFunc(
         std::bind(&RaftConsensus::ReportFailureDetectedTask, shared_from_this()));
     WARN_NOT_OK(s, "Failed to submit failure detected task");
     if (!s.ok()) {
@@ -1498,8 +1500,9 @@ void RaftConsensus::NotifyFailedFollower(const string& uuid,
   }
 
   // Run config change on thread pool after dropping ReplicaState lock.
-  WARN_NOT_OK(raft_pool_token_->SubmitFunc(std::bind(&RaftConsensus::TryRemoveFollowerTask,
-                                               shared_from_this(), uuid, committed_config, reason)),
+  WARN_NOT_OK(raft_pool_concurrent_token_->SubmitFunc(
+                  std::bind(&RaftConsensus::TryRemoveFollowerTask,
+                            shared_from_this(), uuid, committed_config, reason)),
               state_->LogPrefix() + "Unable to start RemoteFollowerTask");
 }
 
@@ -2882,7 +2885,7 @@ void RaftConsensus::Shutdown() {
   }
 
   // Shut down things that might acquire locks during destruction.
-  raft_pool_token_->Shutdown();
+  raft_pool_concurrent_token_->Shutdown();
   // We might not have run Start yet, so make sure we have a FD.
   if (failure_detector_) {
     DisableFailureDetector();
@@ -3337,7 +3340,7 @@ void RaftConsensus::ElectionCallback(const LeaderElectionData& data,
   // The election callback runs on a reactor thread, so we need to defer to our
   // threadpool. If the threadpool is already shut down for some reason, it's OK --
   // we're OK with the callback never running.
-  WARN_NOT_OK(raft_pool_token_->SubmitFunc(
+  WARN_NOT_OK(raft_pool_concurrent_token_->SubmitFunc(
               std::bind(&RaftConsensus::DoElectionCallback, shared_from_this(), data, result)),
               state_->LogPrefix() + "Unable to run election callback");
 }

@@ -43,11 +43,26 @@ class XClusterDDLQueueHandler {
  private:
   friend class XClusterDDLQueueHandlerMocked;
 
-  virtual Status ProcessDDLQuery(int64 start_time, int64 query_id, const std::string& query);
+  Status RunAndLogQuery(const std::string& query);
 
-  virtual Status InitPGConnection(const HybridTime& apply_safe_time);
+  struct DDLQueryInfo {
+    const std::string& query;
+    int64 start_time;
+    int64 query_id;
+    const std::string& schema = "";
+    const std::string& user = "";
+  };
+
+  virtual Status ProcessDDLQuery(const DDLQueryInfo& query_info);
+
+  virtual Result<bool> CheckIfAlreadyProcessed(int64 start_time, int64 query_id);
+
+  Status ProcessManualExecutionQuery(const DDLQueryInfo& query_info);
+
+  virtual Status InitPGConnection();
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace();
-  virtual Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess();
+  virtual Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
+      const HybridTime& apply_safe_time);
 
   const std::shared_ptr<XClusterClient> local_client_;
 

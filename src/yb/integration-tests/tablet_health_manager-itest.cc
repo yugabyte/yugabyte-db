@@ -18,6 +18,7 @@
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
@@ -32,6 +33,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 
+DECLARE_int32(are_nodes_safe_to_take_down_timeout_buffer_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(raft_heartbeat_interval_ms);
 
@@ -72,13 +74,6 @@ class AreNodesSafeToTakeDownItest : public YBTableTestBase {
 
   virtual size_t num_masters() override { return 3; }
 
-  void SleepUntilLeaderElectionAndAtLeast(int sleep_at_least_ms) {
-    int leader_election_duration_ms = std::ceil(
-        FLAGS_raft_heartbeat_interval_ms * FLAGS_leader_failure_max_missed_heartbeat_periods);
-    // Give 1s extra for elections to happen after the failure detection timeout.
-    SleepFor(std::max(leader_election_duration_ms + 1000, sleep_at_least_ms) * 1ms);
-  }
-
   void AssertTabletsWouldBeUnderReplicated(
       const vector<string>& tserver_uuids, const vector<string>& master_uuids) {
     auto status = client_->AreNodesSafeToTakeDown(tserver_uuids, master_uuids, kFollowerLagBoundMs);
@@ -90,10 +85,11 @@ class AreNodesSafeToTakeDownItest : public YBTableTestBase {
       const vector<string>& tserver_uuids, const vector<string>& master_uuids) {
     auto status = client_->AreNodesSafeToTakeDown(tserver_uuids, master_uuids, kFollowerLagBoundMs);
     ASSERT_NOK(status);
-    ASSERT_TRUE(status.IsTimedOut());
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Timed out");
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "tablet(s) would be under-replicated");
   }
 
-  const int kFollowerLagBoundMs = 1000;
+  const int kFollowerLagBoundMs = 1000 * kTimeMultiplier;
 };
 
 TEST_F(AreNodesSafeToTakeDownItest, HealthyCluster) {
@@ -121,10 +117,17 @@ TEST_F(AreNodesSafeToTakeDownItest, MasterUnresponsive) {
   auto good_master = external_mini_cluster_->master(1);
 
   bad_master->Shutdown();
-  SleepUntilLeaderElectionAndAtLeast(kFollowerLagBoundMs);
+  ASSERT_OK(WaitFor([&]() {
+    return external_mini_cluster_->GetLeaderMaster() != bad_master;
+  }, 30s, "Wait for master election if needed"));
 
   // Should time out trying to remove one of the 2 remaining masters.
+  // We should return within the actual deadline so we can provide the client with a readable error.
+  auto expected_deadline = CoarseMonoClock::Now() + client_->default_admin_operation_timeout();
   AssertCallTimesOut({} /* tserver_uuids */, {good_master->uuid()});
+  ASSERT_GT(CoarseMonoClock::Now(),
+            expected_deadline - FLAGS_are_nodes_safe_to_take_down_timeout_buffer_ms * 1ms);
+  ASSERT_LT(CoarseMonoClock::Now(), expected_deadline);
 
   // Should be able to remove the bad master.
   ASSERT_OK(client_->AreNodesSafeToTakeDown({}, {bad_master->uuid()}, kFollowerLagBoundMs));
@@ -135,14 +138,20 @@ TEST_F(AreNodesSafeToTakeDownItest, TserverUnresponsive) {
   auto good_tserver = external_mini_cluster_->tablet_server(1);
 
   bad_tserver->Shutdown();
-  SleepUntilLeaderElectionAndAtLeast(kFollowerLagBoundMs);
 
   // Should time out waiting to hear from bad_tserver when trying to remove one of the 2 tservers
   // that are not being taken down.
+  // We should return within the actual deadline so we can provide the client with a readable error.
+  auto expected_deadline = CoarseMonoClock::Now() + client_->default_admin_operation_timeout();
   AssertCallTimesOut({good_tserver->uuid()}, {} /* master_uuids */);
+  ASSERT_GT(CoarseMonoClock::Now(),
+            expected_deadline - FLAGS_are_nodes_safe_to_take_down_timeout_buffer_ms * 1ms);
+  ASSERT_LT(CoarseMonoClock::Now(), expected_deadline);
 
-  // Should be able to remove the bad tserver.
-  ASSERT_OK(client_->AreNodesSafeToTakeDown({bad_tserver->uuid()}, {}, kFollowerLagBoundMs));
+  // Should be able to remove the bad tserver once the leaders move to the other tservers.
+  ASSERT_OK(WaitFor([&]() {
+    return client_->AreNodesSafeToTakeDown({bad_tserver->uuid()}, {}, kFollowerLagBoundMs).ok();
+  }, 30s, "Wait for bad tserver safe to take down"));
 }
 
 TEST_F(AreNodesSafeToTakeDownItest, TserverLagging) {

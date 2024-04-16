@@ -11,9 +11,9 @@ import com.google.common.collect.Multimap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.AvailabilityZoneHandler;
@@ -600,17 +600,6 @@ public class CloudProviderHelper {
     }
   }
 
-  public void validateInstanceTemplate(Provider provider, CloudBootstrap.Params taskParams) {
-    // Validate instance template, if provided. Only supported for GCP currently.
-    taskParams.perRegionMetadata.forEach(
-        (region, metadata) -> {
-          if (metadata.instanceTemplate != null) {
-            CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
-            cloudAPI.validateInstanceTemplate(provider, metadata.instanceTemplate);
-          }
-        });
-  }
-
   public void createKubernetesInstanceTypes(Customer customer, Provider provider) {
     KUBERNETES_INSTANCE_TYPES.forEach(
         (instanceType -> {
@@ -942,7 +931,7 @@ public class CloudProviderHelper {
           }
           ImageBundle currentImageBundle = currentImageBundles.get(uuid);
           if (imageBundle.getUniverseCount() > 0
-              && currentImageBundle.isUpdateNeeded(imageBundle)) {
+              && !currentImageBundle.allowUpdateDuringUniverseAssociation(imageBundle)) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(
@@ -979,8 +968,12 @@ public class CloudProviderHelper {
     // Validate the provider request so as to ensure we only allow editing of fields
     // that does not impact the existing running universes.
     long universeCount = provider.getUniverseCount();
-    if (!confGetter.getGlobalConf(GlobalConfKeys.allowUsedProviderEdit) && universeCount > 0) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.allowUsedProviderEdit) && universeCount > 0) {
       validateProviderEditPayload(provider, editProviderReq);
+    }
+    boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
+    if (enableVMOSPatching) {
+      validateDefaultImageBundleExistence(editProviderReq.getImageBundles());
     }
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     // Validate regions to add. We only support providing custom VPCs for now.
@@ -991,7 +984,6 @@ public class CloudProviderHelper {
           editProviderReq.getImageBundles().stream()
               .filter(iB -> iB.getMetadata().getType() != ImageBundleType.YBA_ACTIVE)
               .collect(Collectors.toList());
-      boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
       for (Region region : regionsToAdd) {
         if (region.getZones() != null || !region.getZones().isEmpty()) {
           region
@@ -1016,8 +1008,7 @@ public class CloudProviderHelper {
     }
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
-    if (cloudAPI != null
-        && !cloudAPI.isValidCreds(editProviderReq, getFirstRegionCode(editProviderReq))) {
+    if (cloudAPI != null && !cloudAPI.isValidCreds(editProviderReq)) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid %s Credentials.", provider.getCode().toUpperCase()));
     }
@@ -1072,6 +1063,32 @@ public class CloudProviderHelper {
                     "Specify the AMI for the region %s in the image bundle %s",
                     region.getCode(), bundle.getName()));
           }
+        }
+      }
+    }
+  }
+
+  public void validateDefaultImageBundleExistence(List<ImageBundle> bundles) {
+    // Check if there is at least one active default bundle for a architecture
+    if (bundles.size() > 0) {
+      for (Architecture arch : Architecture.values()) {
+        boolean hasBundleForArch =
+            bundles.stream().anyMatch(bundle -> bundle.getDetails().getArch().equals(arch));
+        boolean hasOneDefaultBundle =
+            bundles.stream()
+                    .filter(
+                        bundle ->
+                            bundle.getDetails().getArch().equals(arch)
+                                && bundle.getActive()
+                                && bundle.getUseAsDefault())
+                    .count()
+                == 1;
+        if (hasBundleForArch && !hasOneDefaultBundle) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "There should be exactly one default image bundle for the "
+                  + arch.name()
+                  + " architecture");
         }
       }
     }

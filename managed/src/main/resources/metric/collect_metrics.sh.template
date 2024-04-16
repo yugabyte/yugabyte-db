@@ -76,6 +76,7 @@ fi
 if [ "$output" = "file" ]; then
   mkdir -p "$(dirname "$filename")"
   ${YB_HOME_DIR}/bin/node_health.py --metrics_only True --metrics_file "$filename"
+  chmod o+r "$filename" || true
 else
   ${YB_HOME_DIR}/bin/node_health.py --metrics_only True
 fi

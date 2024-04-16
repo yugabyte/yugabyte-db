@@ -278,6 +278,10 @@ class TransactionState {
            status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
   }
 
+  bool IsRunning() const {
+    return status_ == TransactionStatus::PENDING || status_ == TransactionStatus::PROMOTED;
+  }
+
   bool ShouldBeRetained() const {
     if (!Completed()) {
       return true;
@@ -1119,6 +1123,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       if (it == managed_transactions_.end()) {
         return false;
       }
+      if (!it->IsRunning()) {
+        return false;
+      }
       aborted_subtxn_info = it->GetAbortedSubtxnInfo();
     }
 
@@ -1129,7 +1136,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     {
       std::lock_guard lock(managed_mutex_);
       auto it = managed_transactions_.find(transaction_id);
-      if (it == managed_transactions_.end()) {
+      if (it == managed_transactions_.end() || !it->IsRunning()) {
         return std::nullopt;
       }
       return it->first_touch();

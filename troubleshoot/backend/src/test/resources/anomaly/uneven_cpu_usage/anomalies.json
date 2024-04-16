@@ -1,0 +1,198 @@
+[
+  {
+    "uuid": null,
+    "metadataUuid": "f9d72305-e793-4ea5-9195-5504bbe93048",
+    "category": "NODE",
+    "type": "HOT_NODE_CPU",
+    "title": "Uneven CPU usage distribution across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "cpu_usage",
+        "threshold": null,
+        "filters": {
+          "universeUuid": [
+            "59b6e66f-83ed-4fff-a3c6-b93568237fab"
+          ]
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "DB node(s) are processing more queries",
+        "possibleCauseDescription": "Particular DB node or set of nodes are processing significantly more requests, that the other nodes",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check YSQL RPC distribution across DB nodes",
+            "supportingGraphs": [
+              {
+                "name": "ysql_server_rpc_per_second",
+                "threshold": null,
+                "filters": {
+                  "universeUuid": [
+                    "59b6e66f-83ed-4fff-a3c6-b93568237fab"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check TServer read/write requests distribution across DB nodes",
+            "supportingGraphs": [
+              {
+                "name": "tserver_rpcs_per_sec_by_universe",
+                "threshold": null,
+                "filters": {
+                  "universeUuid": [
+                    "59b6e66f-83ed-4fff-a3c6-b93568237fab"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "DB internal tasks",
+        "possibleCauseDescription": "Some DB background activities are consuming CPU unevenly",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check TServer/Master logs for evidence of background activities",
+            "supportingGraphs": null
+          }
+        ]
+      },
+      {
+        "possibleCause": "3rd party processes",
+        "possibleCauseDescription": "Some process(es) are running on the DB nodes which consumes CPU",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check top command output on the affected DB nodes",
+            "supportingGraphs": null
+          }
+        ]
+      }
+    ],
+    "universeUuid": "59b6e66f-83ed-4fff-a3c6-b93568237fab",
+    "affectedNodes": [
+      {
+        "name": "node2",
+        "uuid": null
+      },
+      {
+        "name": "node1",
+        "uuid": null
+      }
+    ],
+    "affectedTables": null,
+    "summary": "Node(s) 'node2', 'node1' consume significantly more CPU than average of the other nodes.",
+    "detectionTime": null,
+    "startTime": "2024-01-06T15:10:00Z",
+    "endTime": "2024-01-06T16:20:00Z",
+    "graphStartTime": "2024-01-18T15:00:00Z",
+    "graphEndTime": "2024-01-06T18:05:00Z",
+    "graphStepSeconds": 144
+  },
+  {
+    "uuid": null,
+    "metadataUuid": "f9d72305-e793-4ea5-9195-5504bbe93048",
+    "category": "NODE",
+    "type": "HOT_NODE_CPU",
+    "title": "Uneven CPU usage distribution across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "cpu_usage",
+        "threshold": null,
+        "filters": {
+          "universeUuid": [
+            "59b6e66f-83ed-4fff-a3c6-b93568237fab"
+          ]
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "DB node(s) are processing more queries",
+        "possibleCauseDescription": "Particular DB node or set of nodes are processing significantly more requests, that the other nodes",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check YSQL RPC distribution across DB nodes",
+            "supportingGraphs": [
+              {
+                "name": "ysql_server_rpc_per_second",
+                "threshold": null,
+                "filters": {
+                  "universeUuid": [
+                    "59b6e66f-83ed-4fff-a3c6-b93568237fab"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check TServer read/write requests distribution across DB nodes",
+            "supportingGraphs": [
+              {
+                "name": "tserver_rpcs_per_sec_by_universe",
+                "threshold": null,
+                "filters": {
+                  "universeUuid": [
+                    "59b6e66f-83ed-4fff-a3c6-b93568237fab"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "DB internal tasks",
+        "possibleCauseDescription": "Some DB background activities are consuming CPU unevenly",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check TServer/Master logs for evidence of background activities",
+            "supportingGraphs": null
+          }
+        ]
+      },
+      {
+        "possibleCause": "3rd party processes",
+        "possibleCauseDescription": "Some process(es) are running on the DB nodes which consumes CPU",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check top command output on the affected DB nodes",
+            "supportingGraphs": null
+          }
+        ]
+      }
+    ],
+    "universeUuid": "59b6e66f-83ed-4fff-a3c6-b93568237fab",
+    "affectedNodes": [
+      {
+        "name": "node3",
+        "uuid": null
+      }
+    ],
+    "affectedTables": null,
+    "summary": "Node(s) 'node3' consume significantly more CPU than average of the other nodes.",
+    "detectionTime": null,
+    "startTime": "2024-01-06T17:20:00Z",
+    "endTime": "2024-01-06T18:00:00Z",
+    "graphStartTime": "2024-01-18T15:00:00Z",
+    "graphEndTime": "2024-01-06T19:00:00Z",
+    "graphStepSeconds": 144
+  }
+]

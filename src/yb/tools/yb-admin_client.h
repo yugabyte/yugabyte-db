@@ -70,6 +70,7 @@ class ConsensusServiceProxy;
 
 namespace client {
 class YBClient;
+class XClusterClient;
 }
 
 namespace tools {
@@ -350,6 +351,10 @@ class ClusterAdminClient {
   Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
   Result<rapidjson::Document> RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at);
+  Result<rapidjson::Document> CloneNamespace(
+      const TypedNamespaceName& source_namespace, const std::string& target_namespace_name,
+      HybridTime restore_at);
+  Result<rapidjson::Document> IsCloneDone(const NamespaceId& source_namespace_id, uint32_t seq_no);
   Status RestoreSnapshot(const std::string& snapshot_id, HybridTime timestamp);
 
   Result<rapidjson::Document> EditSnapshotSchedule(
@@ -432,8 +437,6 @@ class ClusterAdminClient {
 
   Status WaitForSetupUniverseReplicationToFinish(const std::string& replication_group_id);
 
-  Status ChangeXClusterRole(cdc::XClusterRole role);
-
   Status SetUniverseReplicationEnabled(const std::string& replication_group_id,
                                        bool is_enabled);
 
@@ -452,6 +455,24 @@ class ClusterAdminClient {
   Status GetReplicationInfo(const std::string& replication_group_id);
 
   Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
+
+  Result<std::vector<NamespaceId>> CheckpointXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceName> databases);
+
+  Result<bool> IsXClusterBootstrapRequired(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId namespace_id);
+
+  Status CreateXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::string& target_master_addresses);
+
+  Status WaitForCreateXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::string& target_master_addresses);
+
+  Status DeleteXClusterOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -531,6 +552,8 @@ class ClusterAdminClient {
 
   Result<master::IsTabletSplittingCompleteResponsePB> IsTabletSplittingCompleteInternal(
       bool wait_for_parent_deletion, const MonoDelta timeout = MonoDelta());
+
+  client::XClusterClient XClusterClient();
 
   std::string master_addr_list_;
   HostPort init_master_addr_;

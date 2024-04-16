@@ -20,9 +20,9 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/decimal.h"
+#include "yb/util/debug-util.h"
 
-DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
-     "Enabled packing inserted columns into a single packed value in postgres layer.");
+#include "catalog/pg_type_d.h"
 
 namespace yb {
 namespace pggate {
@@ -34,9 +34,11 @@ namespace pggate {
 PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
                        const PgObjectId& table_id,
                        bool is_region_local,
-                       YBCPgTransactionSetting transaction_setting)
+                       YBCPgTransactionSetting transaction_setting,
+                       bool packed)
     : PgDml(std::move(pg_session), table_id, is_region_local),
-      transaction_setting_(transaction_setting) {
+      transaction_setting_(transaction_setting),
+      packed_(packed) {
 }
 
 PgDmlWrite::~PgDmlWrite() {
@@ -61,6 +63,10 @@ void PgDmlWrite::PrepareColumns() {
 }
 
 Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
+  if (packed()) {
+    return Status::OK();
+  }
+
   // Iterate primary-key columns and remove the binds without values.
   bool missing_primary_key = false;
 
@@ -94,15 +100,13 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
   }
 
   // Check for missing key.  This is okay when binding the whole table (for colocated truncate).
-  if (missing_primary_key && !bind_table_) {
-    return STATUS(InvalidArgument, "Primary key must be fully specified for modifying table");
-  }
+  RSTATUS_DCHECK(!missing_primary_key || bind_table_, InvalidArgument,
+                 "Primary key must be fully specified for modifying table");
 
   return Status::OK();
 }
 
 Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
-
   // Delete allocated binds that are not associated with a value.
   // YBClient interface enforce us to allocate binds for primary key columns in their indexing
   // order, so we have to allocate these binds before associating them with values. When the values
@@ -398,30 +402,51 @@ class EmptyMissingValueProvider : public MissingValueProvider {
   }
 };
 
-Status PgDmlWrite::BindRow(YBCBindColumn* columns, int count) {
-  std::optional<dockv::RowPackerV1> packer;
+Status PgDmlWrite::BindRow(uint64_t ybctid, YBCBindColumn* columns, int count) {
+  if (packed_) {
+    return BindPackedRow(ybctid, columns, count);
+  }
+  {
+    auto* expr = arena().NewObject<PgConstant>(
+        &arena(), YBCPgFindTypeEntity(BYTEAOID),
+        /* collate_is_valid_non_c= */ false,
+        /* collation_sortkey= */ nullptr, ybctid,
+        /* is_null= */ false);
+
+    RETURN_NOT_OK(BindColumn(-8, expr));
+  }
+
+  for (auto it = columns, end = columns + count; it != end; ++it) {
+    auto* expr = arena().NewObject<PgConstant>(
+        &arena(), it->type_entity, it->collation_info.collate_is_valid_non_c,
+        it->collation_info.sortkey, it->datum, it->is_null);
+    RETURN_NOT_OK(BindColumn(it->attr_num, expr));
+  }
+
+  return Status::OK();
+}
+
+Status PgDmlWrite::BindPackedRow(uint64_t ybctid, YBCBindColumn* columns, int count) {
+  {
+    const auto* type_entity = YBCPgFindTypeEntity(BYTEAOID);
+    uint8_t *value;
+    int64_t bytes = type_entity->datum_fixed_size;
+    type_entity->datum_to_yb(ybctid, &value, &bytes);
+    write_req_->add_dup_packed_rows(Slice(value, bytes));
+  }
+
+  static EmptyMissingValueProvider missing_value_provider;
+  dockv::RowPackerV1 packer(
+      bind_->schema_version(), bind_->schema_packing(), std::numeric_limits<ssize_t>::max(),
+      Slice(), missing_value_provider);
   for (auto it = columns, end = columns + count; it != end; ++it) {
     auto& column_desc = VERIFY_RESULT_REF(bind_.ColumnForAttr(it->attr_num));
-    if (FLAGS_ysql_pack_inserted_value && !column_desc.is_primary()) {
-      if (!packer) {
-        static EmptyMissingValueProvider missing_value_provider;
-        packer.emplace(
-            bind_->schema_version(), bind_->schema_packing(), std::numeric_limits<ssize_t>::max(),
-            Slice(), missing_value_provider);
-      }
-      PackableBindColumn packable(it);
-      auto added = VERIFY_RESULT(packer->AddValue(ColumnId(column_desc.id()), packable));
-      SCHECK(added, InternalError, "Unexpectedly failed to pack column value");
-    } else {
-      auto* expr = arena().NewObject<PgConstant>(
-          &arena(), it->type_entity, it->collation_info.collate_is_valid_non_c,
-          it->collation_info.sortkey, it->datum, it->is_null);
-      RETURN_NOT_OK(BindColumn(it->attr_num, expr));
-    }
+    PackableBindColumn packable(it);
+    auto added = VERIFY_RESULT(packer.AddValue(ColumnId(column_desc.id()), packable));
+    SCHECK(added, InternalError, "Unexpectedly failed to pack column value");
   }
-  if (packer) {
-    write_req_->dup_packed_value(VERIFY_RESULT(packer->Complete()));
-  }
+
+  write_req_->add_dup_packed_rows(VERIFY_RESULT(packer.Complete()));
 
   return Status::OK();
 }

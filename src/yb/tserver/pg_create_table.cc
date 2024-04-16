@@ -110,6 +110,13 @@ Status PgCreateTable::Exec(
     set_table_properties = true;
   }
   if (set_table_properties) {
+    if (req_.schema_name() == "pg_catalog") {
+      table_properties.SetReplicaIdentity(PgReplicaIdentity::NOTHING);
+    } else if (req_.schema_name() == "information_schema") {
+      table_properties.SetReplicaIdentity(PgReplicaIdentity::DEFAULT);
+    } else {
+      table_properties.SetReplicaIdentity(PgReplicaIdentity::CHANGE);
+    }
     schema_builder_.SetTableProperties(table_properties);
   }
   if (!req_.schema_name().empty()) {
@@ -125,7 +132,8 @@ Status PgCreateTable::Exec(
                 .table_id(PgObjectId::GetYbTableIdFromPB(req_.table_id()))
                 .schema(&schema)
                 .is_colocated_via_database(req_.is_colocated_via_database())
-                .is_matview(req_.is_matview());
+                .is_matview(req_.is_matview())
+                .is_truncate(req_.is_truncate());
   if (req_.is_pg_catalog_table()) {
     table_creator->is_pg_catalog_table();
   }
@@ -191,9 +199,6 @@ Status PgCreateTable::Exec(
         return Status::OK();
       }
       return STATUS(InvalidArgument, "Duplicate table");
-    }
-    if (s.IsNotFound()) {
-      return STATUS(InvalidArgument, "Database not found", table_name_.namespace_name());
     }
     return STATUS_FORMAT(
         InvalidArgument, "Invalid table definition: $0",

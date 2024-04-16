@@ -154,6 +154,8 @@ func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) ([
 		return env, err
 	}
 	defer ptty.Close()
+	// Do not write to history file.
+	ptty.Write([]byte("unset HISTFILE >/dev/null 2>&1\n"))
 	// Run env and end each output line with NULL instead of newline.
 	ptty.Write([]byte("env -0 2>/dev/null\n"))
 	ptty.Write([]byte("exit 0\n"))
@@ -485,6 +487,8 @@ func HandleUpgradeScript(ctx context.Context, config *util.Config) error {
 			util.UpgradeScriptPath(),
 			"--command",
 			"upgrade",
+			"--install_path",
+			util.InstallDir(),
 		},
 	)
 	_, err := upgradeScriptTask.Process(ctx)

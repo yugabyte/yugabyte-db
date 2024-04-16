@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -132,7 +133,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
       "https://downloads.yugabyte.com/releases/2.20.1.3/" + "yugabyte-2.20.1.3-b3-%s-%s.tar.gz";
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
-  private static final boolean KEEP_FAILED_UNIVERSE = false;
+  private static final boolean KEEP_FAILED_UNIVERSE = true;
   private static List<String> toCleanDirectories = ImmutableList.of("yugabyte_backup");
 
   public static Map<String, String> GFLAGS = new HashMap<>();
@@ -199,6 +200,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected YcqlQueryExecutor ycqlQueryExecutor;
   protected UniverseTableHandler tableHandler;
   protected CertificateHelper certificateHelper;
+  protected Commissioner commissioner;
 
   @BeforeClass
   public static void setUpEnv() {
@@ -398,6 +400,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     ycqlQueryExecutor = app.injector().instanceOf(YcqlQueryExecutor.class);
     tableHandler = app.injector().instanceOf(UniverseTableHandler.class);
     certificateHelper = app.injector().instanceOf(CertificateHelper.class);
+    commissioner = app.injector().instanceOf(Commissioner.class);
   }
 
   @Before
@@ -421,7 +424,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     testDir.mkdirs();
 
     YugawareProperty.addConfigProperty(
-        ReleaseManager.CONFIG_TYPE.name(), getMetadataJson(DB_VERSION, false), "release");
+        ReleaseManager.CONFIG_TYPE.name(), getMetadataJson(ybVersion, false), "release");
     YugawareProperty.addConfigProperty(
         ReleaseManager.YBC_CONFIG_TYPE.name(),
         getMetadataJson("ybc-" + YBC_VERSION, true),
@@ -849,7 +852,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             new RetryTaskUntilCondition<>(
                 () -> {
                   try {
-                    return CheckClusterConsistency.checkCurrentServers(client, universe, true);
+                    return CheckClusterConsistency.checkCurrentServers(
+                        client, universe, null, true, false);
                   } catch (Exception e) {
                     return Collections.singletonList("Got error: " + e.getMessage());
                   }
@@ -935,7 +939,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected void verifyUniverseTaskSuccess(TaskInfo taskInfo) {
     Universe universe =
         Universe.getOrBadRequest(
-            UUID.fromString(taskInfo.getDetails().get("universeUUID").textValue()));
+            UUID.fromString(taskInfo.getTaskParams().get("universeUUID").textValue()));
     String separator = System.getProperty("line.separator");
     StringBuilder errorBuilder = new StringBuilder();
     if (taskInfo.getTaskState() != TaskInfo.State.Success) {
@@ -945,10 +949,10 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
         if (subTask.getTaskState() == TaskInfo.State.Failure) {
           if (subTask.getTaskType() == TaskType.WaitForServer
               || subTask.getTaskType() == TaskType.WaitForServerReady) {
-            String nodeName = subTask.getDetails().get("nodeName").textValue();
+            String nodeName = subTask.getTaskParams().get("nodeName").textValue();
             UniverseTaskBase.ServerType serverType =
                 UniverseTaskBase.ServerType.valueOf(
-                    subTask.getDetails().get("serverType").asText());
+                    subTask.getTaskParams().get("serverType").asText());
             localNodeManager.dumpProcessOutput(universe, nodeName, serverType);
           } else {
             failedTasksMessages.add(
@@ -981,5 +985,23 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected void verifyPayload() {
     simpleSqlPayload.stop();
     assertThat("Low percent errors", simpleSqlPayload.getErrorPercent(), lessThan(0.1d));
+  }
+
+  protected SpecificGFlags getGFlags(String... additional) {
+    Map<String, String> gflags = new HashMap<>(GFLAGS);
+    for (int i = 0; i < additional.length / 2; i++) {
+      gflags.put(additional[i], additional[i + 1]);
+    }
+    return SpecificGFlags.construct(gflags, gflags);
+  }
+
+  protected String getAllErrorsStr(TaskInfo taskInfo) {
+    StringBuilder sb = new StringBuilder(taskInfo.getErrorMessage());
+    for (TaskInfo subTask : taskInfo.getSubTasks()) {
+      if (!StringUtils.isEmpty(subTask.getErrorMessage())) {
+        sb.append("\n").append(subTask.getErrorMessage());
+      }
+    }
+    return sb.toString();
   }
 }

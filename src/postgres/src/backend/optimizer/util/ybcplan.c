@@ -38,6 +38,7 @@
 #include "utils/lsyscache.h"
 
 /* YB includes. */
+#include "catalog/pg_am_d.h"
 #include "catalog/yb_catalog_version.h"
 #include "optimizer/ybcplan.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -186,4 +187,142 @@ bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs)
 
 	/* Verify the sets are the same. */
 	return bms_equal(attrs, primary_key_attrs);
+}
+
+/*
+ * is_index_only_refs
+ *		Check if all column references from the list are available from the
+ *		index described by the indexinfo.
+ */
+bool
+is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo, bool bitmapindex)
+{
+	ListCell *lc;
+	foreach (lc, colrefs)
+	{
+		bool found = false;
+		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, lfirst(lc));
+		for (int i = 0; i < indexinfo->ncolumns; i++)
+		{
+			if (colref->attno == indexinfo->indexkeys[i])
+			{
+				/*
+				 * If index key can not return, it does not have actual value
+				 * to evaluate the expression.
+				 */
+				if (indexinfo->canreturn[i])
+				{
+					found = true;
+					break;
+				}
+				/*
+				 * Special case for LSM bitmap index scans: in Yugabyte, these
+				 * indexes claim they cannot return if they are a primary index.
+				 * Generally it is simpler for primay indexes to pushdown their
+				 * conditions at the table level, rather than the index level.
+				 * Primary indexes don't need to first request ybctids, and then
+				 * request rows matching the ybctids.
+				 *
+				 * However, bitmap index scans benefit from pushing down
+				 * conditions to the index (whether its primary or secondary),
+				 * because they collect ybctids from both. If we can filter
+				 * out more ybctids earlier, it reduces network costs and the
+				 * size of the ybctid bitmap.
+				 */
+				else if (IsYugaByteEnabled() && bitmapindex &&
+						 indexinfo->relam == LSM_AM_OID)
+				{
+					Relation index;
+					index = RelationIdGetRelation(indexinfo->indexoid);
+					bool is_primary = index->rd_index->indisprimary;
+					RelationClose(index);
+
+					if (is_primary)
+					{
+						found = true;
+						break;
+					}
+				}
+
+				return false;
+			}
+		}
+		if (!found)
+			return false;
+	}
+	return true;
+}
+
+/*
+ * extract_pushdown_clauses
+ *	  Extract actual clauses from RestrictInfo list and distribute them
+ * 	  between three groups:
+ *	  - local_quals - conditions not eligible for pushdown. They are evaluated
+ *	  on the Postgres side on the rows fetched from DocDB;
+ *	  - rel_remote_quals - conditions to pushdown with the request to the main
+ *	  scanned relation. In the case of sequential scan or index only scan
+ *	  the DocDB table or DocDB index respectively is the main (and only)
+ *	  scanned relation, so the function returns only two groups;
+ *	  - idx_remote_quals - conditions to pushdown with the request to the
+ *	  secondary (index) relation. Used with the index scan on a secondary
+ *	  index, and caller must provide IndexOptInfo record for the index.
+ *	  - rel_colrefs, idx_colrefs are columns referenced by respective
+ *	  rel_remote_quals or idx_remote_quals.
+ *	  The output parameters local_quals, rel_remote_quals, rel_colrefs must
+ *	  point to valid lists. The output parameters idx_remote_quals and
+ *	  idx_colrefs may be NULL if the indexinfo is NULL.
+ */
+void
+extract_pushdown_clauses(List *restrictinfo_list,
+						 IndexOptInfo *indexinfo,
+						 bool bitmapindex,
+						 List **local_quals,
+						 List **rel_remote_quals,
+						 List **rel_colrefs,
+						 List **idx_remote_quals,
+						 List **idx_colrefs)
+{
+	ListCell *lc;
+	foreach(lc, restrictinfo_list)
+	{
+		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+		/* ignore pseudoconstants */
+		if (ri->pseudoconstant)
+			continue;
+
+		if (ri->yb_pushable)
+		{
+			List *colrefs = NIL;
+			bool pushable PG_USED_FOR_ASSERTS_ONLY;
+
+			/*
+			 * Find column references. It has already been determined that
+			 * the expression is pushable.
+			 */
+			pushable = YbCanPushdownExpr(ri->clause, &colrefs);
+			Assert(pushable);
+
+			/*
+			 * If there are both main and secondary (index) relations,
+			 * determine one to pushdown the condition. It is more efficient
+			 * to apply filter earlier, so prefer index, if it has all the
+			 * necessary columns.
+			 */
+			if (indexinfo == NULL ||
+				!is_index_only_refs(colrefs, indexinfo, bitmapindex))
+			{
+				*rel_colrefs = list_concat(*rel_colrefs, colrefs);
+				*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
+			}
+			else
+			{
+				*idx_colrefs = list_concat(*idx_colrefs, colrefs);
+				*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
+			}
+		}
+		else
+		{
+			*local_quals = lappend(*local_quals, ri->clause);
+		}
+	}
 }

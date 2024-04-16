@@ -19,7 +19,6 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
-#include "yb/client/async_initializer.h"
 #include "yb/common/pg_types.h"
 
 #include "yb/master/catalog_manager_if.h"
@@ -30,6 +29,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/metric_entity.h"
@@ -148,10 +148,6 @@ void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
   }
 }
 
-bool MasterTabletServer::catalog_version_table_in_perdb_mode() const {
-  return master_->catalog_manager()->catalog_version_table_in_perdb_mode();
-}
-
 tserver::TServerSharedData& MasterTabletServer::SharedObject() {
   return master_->shared_object();
 }
@@ -166,7 +162,7 @@ Status MasterTabletServer::get_ysql_db_oid_to_cat_version_info_map(
 }
 
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
-  return master_->async_client_initializer().get_client_future();
+  return master_->client_future();
 }
 
 Status MasterTabletServer::GetLiveTServers(
@@ -187,9 +183,19 @@ client::TransactionPool& MasterTabletServer::TransactionPool() {
   return *temp;
 }
 
-rpc::Messenger* MasterTabletServer::GetMessenger(tserver::ServerType type) const {
+rpc::Messenger* MasterTabletServer::GetMessenger(ash::Component component) const {
   LOG(FATAL) << "Unexpected call of GetMessenger()";
   return nullptr;
+}
+
+void MasterTabletServer::ClearAllMetaCachesOnServer() {
+  client()->ClearAllMetaCachesOnServer();
+}
+
+Status MasterTabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+    tserver::PgYCQLStatementStatsResponsePB* resp) const {
+  LOG(FATAL) << "Unexpected call of YCQLStatementStats()";
+  return Status::OK();
 }
 
 } // namespace master

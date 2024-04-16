@@ -363,7 +363,7 @@ public class MiniYBDaemon {
     }
 
     final List<String> cmdLine = Lists.newArrayList(
-        TestUtils.findBinary("../ybc/yb-controller-cli"),
+        TestUtils.findBinary("../../ybc/yb-controller-cli"),
         "ping",
         "--tserver_ip=" + this.bindIp,
         "--server_port=" + this.rpcPort);

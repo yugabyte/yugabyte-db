@@ -131,6 +131,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
 
   private static final List<TaskType> CLUSTER_DELETE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.CheckLeaderlessTablets,
           TaskType.SetNodeState,
           TaskType.AnsibleDestroyServer,
@@ -147,6 +148,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   private void assertClusterDeleteSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {
@@ -156,7 +158,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = CLUSTER_DELETE_TASK_EXPECTED_RESULTS.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }

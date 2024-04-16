@@ -20,6 +20,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
 #include "yb/client/schema.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
@@ -72,6 +73,7 @@ DECLARE_int32(follower_unavailable_considered_failed_sec);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_uint32(leaderless_tablet_alert_delay_secs);
 
 namespace yb {
@@ -225,6 +227,7 @@ TEST_F(MasterPathHandlersItest, TestMasterPathHandlers) {
   TestUrl("/cluster-config", &result);
   TestUrl("/tablet-replication", &result);
   TestUrl("/load-distribution", &result);
+  TestUrl("/api/v1/meta-cache", &result);
 }
 
 TEST_F(MasterPathHandlersItest, TestDeadTServers) {
@@ -626,23 +629,24 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     MasterPathHandlersItest::SetUp();
   }
+
+  void InsertRows(const client::TableHandle& table, int num_rows_to_insert) {
+    auto session = client_->NewSession(60s);
+    for (int i = 0; i < num_rows_to_insert; i++) {
+      auto insert = table.NewInsertOp();
+      auto req = insert->mutable_request();
+      QLAddInt32HashValue(req, i);
+      ASSERT_OK(session->TEST_ApplyAndFlush(insert));
+    }
+  }
 };
 
 TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHandlersItest) {
-  const int num_rows_to_insert = 500;
-
   CreateTestTable(1 /* num_tablets */);
 
   client::TableHandle table;
   ASSERT_OK(table.Open(table_name, client_.get()));
-
-  auto session = client_->NewSession(60s);
-  for (int i = 0; i < num_rows_to_insert; i++) {
-    auto insert = table.NewInsertOp();
-    auto req = insert->mutable_request();
-    QLAddInt32HashValue(req, i);
-    ASSERT_OK(session->TEST_ApplyAndFlush(insert));
-  }
+  InsertRows(table, /* num_rows_to_insert = */ 500);
 
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto tablet = catalog_manager.GetTableInfo(table->id())->GetTablets()[0];
@@ -675,6 +679,75 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
 
   ASSERT_FALSE(ASSERT_RESULT(webpage_shows_deleted_tablets(false /* should_show_deleted */)));
   ASSERT_TRUE(ASSERT_RESULT(webpage_shows_deleted_tablets(true /* should_show_deleted */)));
+}
+
+// Hidden split parent tablet shouldn't be shown as leaderless.
+TEST_F_EX(
+    MasterPathHandlersItest, TestHiddenSplitParentTablet, TabletSplitMasterPathHandlersItest) {
+  const auto kLeaderlessTabletAlertDelaySecs = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
+      kLeaderlessTabletAlertDelaySecs;
+
+  CreateTestTable(1 /* num_tablets */);
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  InsertRows(table, /* num_rows_to_insert = */ 500);
+
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablet = catalog_manager.GetTableInfo(table->id())->GetTablets()[0];
+
+  auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
+  snapshot_util->SetProxy(&client_->proxy_cache());
+  snapshot_util->SetCluster(cluster_.get());
+  const auto kInterval = 2s * kTimeMultiplier;
+  const auto kRetention = kInterval * 2;
+  auto schedule_id = ASSERT_RESULT(snapshot_util->CreateSchedule(
+      nullptr, YQL_DATABASE_CQL, table->name().namespace_name(),
+      client::WaitSnapshot::kFalse, kInterval, kRetention));
+  ASSERT_OK(snapshot_util->WaitScheduleSnapshot(schedule_id, 1, HybridTime::kMin, 10s));
+  auto schedules = ASSERT_RESULT(snapshot_util->ListSchedules(schedule_id));
+  ASSERT_EQ(schedules.size(), 1);
+
+  ASSERT_OK(yb_admin_client_->FlushTables(
+      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
+
+  // The parent tablet should be retained because it's in a PITR snapshot.
+  ASSERT_OK(WaitFor(
+      [&]() { return tablet->LockForRead()->is_hidden(); },
+      30s /* timeout */,
+      "Wait for tablet split to complete and parent to be hidden"));
+
+  SleepFor(kLeaderlessTabletAlertDelaySecs * 1s);
+  string result = GetLeaderlessTabletsString();
+  ASSERT_EQ(result.find(tablet->id()), string::npos);
+}
+
+// Undeleted split parent tablets shouldn't be shown as leaderless.
+TEST_F_EX(
+    MasterPathHandlersItest, TestUndeletedParentTablet, TabletSplitMasterPathHandlersItest) {
+  const auto kLeaderlessTabletAlertDelaySecs = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
+      kLeaderlessTabletAlertDelaySecs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+
+  CreateTestTable(1 /* num_tablets */);
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  InsertRows(table, /* num_rows_to_insert = */ 500);
+
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablet = catalog_manager.GetTableInfo(table->id())->GetTablets()[0];
+
+  ASSERT_OK(yb_admin_client_->FlushTables(
+      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
+
+  SleepFor(kLeaderlessTabletAlertDelaySecs * 1s);
+  string result = GetLeaderlessTabletsString();
+  ASSERT_EQ(result.find(tablet->id()), string::npos);
 }
 
 class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<ExternalMiniCluster> {
@@ -1346,6 +1419,34 @@ TEST_F(MasterPathHandlersItest, TestVarzAutoFlag) {
 
   ASSERT_NE(it_unexpected_json_flag, flags.End());
   ASSERT_EQ((*it_unexpected_json_flag)["type"], "Default");
+}
+
+void VerifyMetaCacheObjectIsValid(
+    const rapidjson::Value* json_object, const JsonReader& json_reader) {
+  EXPECT_TRUE(json_object->HasMember("MainMetaCache"));
+
+  const rapidjson::Value* main_metacache = nullptr;
+  EXPECT_OK(json_reader.ExtractObject(json_object, "MainMetaCache", &main_metacache));
+  EXPECT_TRUE(main_metacache->HasMember("tablets"));
+
+  std::vector<const rapidjson::Value*> tablets;
+  ASSERT_OK(json_reader.ExtractObjectArray(main_metacache, "tablets", &tablets));
+  for (auto tablet : tablets) {
+    EXPECT_TRUE(tablet->HasMember("tablet_id"));
+    EXPECT_TRUE(tablet->HasMember("replicas"));
+  }
+}
+
+TEST_F(MasterPathHandlersItest, TestMetaCache) {
+  auto table = CreateTestTable();
+  faststring result;
+  TestUrl("/api/v1/meta-cache", &result);
+  JsonReader json_reader(result.ToString());
+  ASSERT_OK(json_reader.Init());
+  const rapidjson::Value* json_object = nullptr;
+  EXPECT_OK(json_reader.ExtractObject(json_reader.root(), NULL, &json_object));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_object)->GetType());
+  VerifyMetaCacheObjectIsValid(json_object, json_reader);
 }
 
 }  // namespace master

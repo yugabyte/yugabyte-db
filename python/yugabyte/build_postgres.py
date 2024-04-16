@@ -70,6 +70,7 @@ from yugabyte.common_util import get_target_arch
 ALLOW_REMOTE_COMPILATION = True
 BUILD_STEPS = (
     'configure',
+    'genbki',
     'make',
 )
 CONFIG_ENV_VARS = [
@@ -299,6 +300,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.export_compile_commands = os.environ.get('YB_EXPORT_COMPILE_COMMANDS') == '1'
         self.skip_pg_compile_commands = os.environ.get('YB_SKIP_PG_COMPILE_COMMANDS') == '1'
         self.should_configure = self.args.step is None or self.args.step == 'configure'
+        self.should_genbki = self.args.step is None or self.args.step == 'genbki'
         self.should_make = self.args.step is None or self.args.step == 'make'
         self.thirdparty_dir = self.cmake_cache.get_or_raise('YB_THIRDPARTY_DIR')
 
@@ -775,19 +777,19 @@ class PostgresBuilder(YbBuildToolBase):
 
         pg_compile_commands_paths = []
 
-        third_party_extensions_dir = os.path.join(self.pg_build_root, 'third-party-extensions')
+        external_extension_dirs = [os.path.join(self.pg_build_root, d) for d
+                                   in ('third-party-extensions', 'yb-extensions')]
         work_dirs = [
             self.pg_build_root,
             os.path.join(self.pg_build_root, 'contrib'),
-            third_party_extensions_dir
-        ]
+        ] + external_extension_dirs
 
         for work_dir in work_dirs:
             with WorkDirContext(work_dir):
                 self.write_debug_scripts(env_script_content)
 
                 make_cmd_suffix = []
-                if work_dir == third_party_extensions_dir:
+                if work_dir in external_extension_dirs:
                     make_cmd_suffix = ['PG_CONFIG=' + self.pg_config_path]
 
                 # Actually run Make.
@@ -1043,6 +1045,13 @@ class PostgresBuilder(YbBuildToolBase):
                 self.configure_postgres()
                 logging.info("The configure step of building PostgreSQL took %.1f sec",
                              time.time() - configure_start_time_sec)
+            if self.should_genbki:
+                make_start_time_sec = time.time()
+                self.run_make_with_retries(
+                    self.pg_build_root,
+                    shlex_join(['make', '-C', 'src/backend/catalog', 'bki-stamp']))
+                logging.info("The genbki step of building PostgreSQL took %.1f sec",
+                             time.time() - make_start_time_sec)
             if self.should_make:
                 make_start_time_sec = time.time()
                 self.make_postgres()

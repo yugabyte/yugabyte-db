@@ -144,8 +144,8 @@
 
   - name: Determine system or user scope
     stat:
-      path: /etc/systemd/system/yb-controller.service
-    register: systemd_system
+      path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/yb-controller.service"
+    register: user_systemd
 
   - name: User mode systemd
     block:
@@ -185,7 +185,7 @@
         state: started
         enabled: yes
         scope: user
-    when: not systemd_system.stat.exists
+    when: user_systemd.stat.exists
 
   - name: System systemd units
     block:
@@ -209,7 +209,7 @@
     - name: Run yb-controller.service to start the yb-controller
       shell:
         cmd: "sudo systemctl start yb-controller"
-    when: systemd_system.stat.exists
+    when: not user_systemd.stat.exists
 
   tags:
     - systemd_upgrade

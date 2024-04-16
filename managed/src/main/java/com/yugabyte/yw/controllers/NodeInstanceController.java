@@ -21,10 +21,12 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
+import com.yugabyte.yw.controllers.handlers.NodeInstanceHandler;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.NodeDetailsResp;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.forms.NodeInstanceStateFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -40,6 +42,7 @@ import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeConfig.ValidationResult;
@@ -82,6 +85,13 @@ public class NodeInstanceController extends AuthenticatedController {
   @Inject NodeConfigValidator nodeConfigValidator;
 
   @Inject private KubernetesManagerFactory kubernetesManagerFactory;
+
+  private NodeInstanceHandler nodeInstanceHandler;
+
+  @Inject
+  public NodeInstanceController(NodeInstanceHandler nodeInstanceHandler) {
+    this.nodeInstanceHandler = nodeInstanceHandler;
+  }
 
   /**
    * GET endpoint for Node data
@@ -369,13 +379,14 @@ public class NodeInstanceController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Should provide only detached node action, but found " + nodeAction);
     }
-    if (nodeAction == NodeActionType.PRECHECK_DETACHED && node.isInUse()) {
+    if (nodeAction == NodeActionType.PRECHECK_DETACHED
+        && node.getState().equals(NodeInstance.State.USED)) {
       return Results.status(OK); // Skip checks for node in use
     }
     List<CustomerTask> running = CustomerTask.findIncompleteByTargetUUID(node.getNodeUuid());
     if (!running.isEmpty()) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Node " + node.getNodeUuid() + " has incomplete tasks");
+          CONFLICT, "Node " + node.getNodeUuid() + " has incomplete tasks");
     }
     DetachedNodeTaskParams taskParams = new DetachedNodeTaskParams();
     taskParams.setNodeUuid(node.getNodeUuid());
@@ -413,8 +424,15 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(providerUUID);
     NodeInstance nodeToBeFound = findNodeOrThrow(provider, instanceIP);
-    if (nodeToBeFound.isInUse()) {
+    if (nodeToBeFound.isUsed()) {
       throw new PlatformServiceException(BAD_REQUEST, "Node is in use");
+    }
+
+    List<CustomerTask> running =
+        CustomerTask.findIncompleteByTargetUUID(nodeToBeFound.getNodeUuid());
+    if (!running.isEmpty()) {
+      throw new PlatformServiceException(
+          CONFLICT, "Node " + nodeToBeFound.getNodeUuid() + " has incomplete tasks");
     }
     auditService()
         .createAuditEntry(
@@ -488,7 +506,8 @@ public class NodeInstanceController extends AuthenticatedController {
     if (nodeAction == NodeActionType.ADD
         || nodeAction == NodeActionType.START
         || nodeAction == NodeActionType.START_MASTER
-        || nodeAction == NodeActionType.STOP) {
+        || nodeAction == NodeActionType.STOP
+        || nodeAction == NodeActionType.REPLACE) {
       if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
         String errMsg =
             String.format(
@@ -530,6 +549,59 @@ public class NodeInstanceController extends AuthenticatedController {
     auditService()
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.NodeInstance, nodeName, Audit.ActionType.Update, taskUUID);
+    return new YBPTask(taskUUID).asResult();
+  }
+
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Update node instance state",
+      response = YBPTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "NodeInstanceStateFormData",
+        value = "Resultant node instance state to transition to",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.NodeInstanceStateFormData",
+        paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.0.0")
+  public Result updateState(
+      UUID customerUUID, UUID providerUUID, String instanceIP, Http.Request request) {
+    Customer c = Customer.getOrBadRequest(customerUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    NodeInstance node = findNodeOrThrow(provider, instanceIP);
+    NodeInstanceStateFormData payload =
+        parseJsonAndValidate(request, NodeInstanceStateFormData.class);
+
+    List<CustomerTask> running = CustomerTask.findIncompleteByTargetUUID(node.getNodeUuid());
+    if (!running.isEmpty()) {
+      throw new PlatformServiceException(
+          CONFLICT, "Node " + node.getNodeUuid() + " has incomplete tasks");
+    }
+    UUID taskUUID = nodeInstanceHandler.updateState(payload, node, provider);
+
+    CustomerTask.create(
+        c,
+        node.getNodeUuid(),
+        taskUUID,
+        CustomerTask.TargetType.Node,
+        CustomerTask.TaskType.Update,
+        node.getNodeName());
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.NodeInstance,
+            Objects.toString(node.getNodeUuid(), null),
+            Audit.ActionType.Update,
+            taskUUID);
+
     return new YBPTask(taskUUID).asResult();
   }
 

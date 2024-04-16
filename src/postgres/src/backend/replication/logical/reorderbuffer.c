@@ -80,6 +80,8 @@
 #include "utils/relfilenodemap.h"
 #include "utils/tqual.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
 
 /* entry for a hash table we use to map from xid to our transaction state */
 typedef struct ReorderBufferTXNByIdEnt
@@ -444,6 +446,9 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 	tuple->alloc_tuple_size = alloc_len;
 	tuple->tuple.t_data = ReorderBufferTupleBufData(tuple);
 
+	if (IsYugaByteEnabled())
+		tuple->yb_is_omitted = NULL;
+
 	return tuple;
 }
 
@@ -453,6 +458,9 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 void
 ReorderBufferReturnTupleBuf(ReorderBuffer *rb, ReorderBufferTupleBuf *tuple)
 {
+	if (IsYugaByteEnabled() && tuple->yb_is_omitted)
+		pfree(tuple->yb_is_omitted);
+
 	pfree(tuple);
 }
 
@@ -1452,25 +1460,33 @@ ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 	txn->origin_lsn = origin_lsn;
 
 	/*
-	 * If this transaction has no snapshot, it didn't make any changes to the
-	 * database, so there's nothing to decode.  Note that
-	 * ReorderBufferCommitChild will have transferred any snapshots from
-	 * subtransactions if there were any.
+	 * YB note: Snapshot is used to read the catalog table entries at the time of
+	 * transaction start. This mechanism is not yet applicable to YB. So we
+	 * disable the snapshot related code here.
 	 */
-	if (txn->base_snapshot == NULL)
+	if (!IsYugaByteEnabled())
 	{
-		Assert(txn->ninvalidations == 0);
-		ReorderBufferCleanupTXN(rb, txn);
-		return;
+		/*
+		 * If this transaction has no snapshot, it didn't make any changes to the
+		 * database, so there's nothing to decode.  Note that
+		 * ReorderBufferCommitChild will have transferred any snapshots from
+		 * subtransactions if there were any.
+		 */
+		if (txn->base_snapshot == NULL)
+		{
+			Assert(txn->ninvalidations == 0);
+			ReorderBufferCleanupTXN(rb, txn);
+			return;
+		}
+
+		snapshot_now = txn->base_snapshot;
+
+		/* build data to be able to lookup the CommandIds of catalog tuples */
+		ReorderBufferBuildTupleCidHash(rb, txn);
+
+		/* setup the initial snapshot */
+		SetupHistoricSnapshot(snapshot_now, txn->tuplecid_hash);
 	}
-
-	snapshot_now = txn->base_snapshot;
-
-	/* build data to be able to lookup the CommandIds of catalog tuples */
-	ReorderBufferBuildTupleCidHash(rb, txn);
-
-	/* setup the initial snapshot */
-	SetupHistoricSnapshot(snapshot_now, txn->tuplecid_hash);
 
 	/*
 	 * Decoding needs access to syscaches et al., which in turn use
@@ -1522,10 +1538,15 @@ ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 				case REORDER_BUFFER_CHANGE_INSERT:
 				case REORDER_BUFFER_CHANGE_UPDATE:
 				case REORDER_BUFFER_CHANGE_DELETE:
-					Assert(snapshot_now);
+					if (IsYugaByteEnabled())
+						reloid = change->data.tp.yb_table_oid;
+					else
+					{
+						Assert(snapshot_now);
 
-					reloid = RelidByRelfilenode(change->data.tp.relnode.spcNode,
-												change->data.tp.relnode.relNode);
+						reloid = RelidByRelfilenode(change->data.tp.relnode.spcNode,
+													change->data.tp.relnode.relNode);
+					}
 
 					/*
 					 * Mapped catalog tuple without data, emitted while
@@ -1548,15 +1569,37 @@ ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 							 relpathperm(change->data.tp.relnode,
 										 MAIN_FORKNUM));
 
-					relation = RelationIdGetRelation(reloid);
+					if (IsYugaByteEnabled())
+					{
+						/*
+						 * In YB, the replica identity used for streaming is the
+						 * one that existed at the time of slot (stream)
+						 * creation. So we overwrite the replica identity of the
+						 * relation to what it existed at that time.
+						 */
+						relation = YbGetRelationWithOverwrittenReplicaIdentity(
+							reloid, YBCGetReplicaIdentityForRelation(reloid));
+					}
+					else
+					{
+						relation = RelationIdGetRelation(reloid);
 
-					if (relation == NULL)
-						elog(ERROR, "could not open relation with OID %u (for filenode \"%s\")",
-							 reloid,
-							 relpathperm(change->data.tp.relnode,
-										 MAIN_FORKNUM));
+						if (relation == NULL)
+							elog(ERROR, "could not open relation with OID %u (for filenode \"%s\")",
+								 reloid,
+								 relpathperm(change->data.tp.relnode,
+											 MAIN_FORKNUM));
+					}
 
-					if (!RelationIsLogicallyLogged(relation))
+					/*
+					 * YB note: We disable this check here since:
+					 * 1. WAL levels are not applicable to YSQL as we have
+					 * a separate WAL.
+					 * 2. We are guaranteed to not get entries for catalog
+					 * tables here since the slot creation itself skips
+					 * catalog tables.
+					 */
+					if (!IsYugaByteEnabled() && !RelationIsLogicallyLogged(relation))
 						goto change_done;
 
 					/*
@@ -1800,7 +1843,7 @@ ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 		if (using_subtxn)
 			RollbackAndReleaseCurrentSubTransaction();
 
-		if (snapshot_now->copied)
+		if (!IsYugaByteEnabled() && snapshot_now->copied)
 			ReorderBufferFreeSnap(rb, snapshot_now);
 
 		/* remove potential on-disk data, and deallocate */
@@ -1826,7 +1869,7 @@ ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 		if (using_subtxn)
 			RollbackAndReleaseCurrentSubTransaction();
 
-		if (snapshot_now->copied)
+		if (!IsYugaByteEnabled() && snapshot_now->copied)
 			ReorderBufferFreeSnap(rb, snapshot_now);
 
 		/* remove potential on-disk data, and deallocate */
@@ -2238,6 +2281,9 @@ ReorderBufferCheckSerializeTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 	 */
 	if (txn->nentries_mem >= max_changes_in_memory)
 	{
+		if (IsYugaByteEnabled())
+			elog(DEBUG1, "Serializing txn %d to disk.", txn->xid);
+
 		ReorderBufferSerializeTXN(rb, txn);
 		Assert(txn->nentries_mem == 0);
 	}
@@ -3538,4 +3584,16 @@ restart:
 	if (cmax)
 		*cmax = ent->cmax;
 	return true;
+}
+
+bool *
+YBAllocateIsOmittedArray(ReorderBuffer *rb, int nattrs)
+{
+	return (bool *) MemoryContextAlloc(rb->tup_context,
+									   MAXIMUM_ALIGNOF + sizeof(bool) * nattrs);
+}
+
+void YBReorderBufferSchemaChange(ReorderBuffer *rb, Oid relid)
+{
+	rb->yb_schema_change(rb, relid);
 }

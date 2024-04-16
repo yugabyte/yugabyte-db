@@ -164,6 +164,10 @@
 #include <gtest/internal/gtest-internal.h>
 #include <rapidjson/document.h>
 
+#include "yb/common/opid.fwd.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind_internal.h"
 #include "yb/gutil/callback.h"
@@ -211,7 +215,6 @@
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/byte_buffer.h"
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/capabilities.h"
 #include "yb/util/cast.h"
 #include "yb/util/clone_ptr.h"
 #include "yb/util/coding_consts.h"
@@ -273,10 +276,6 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/numbered_deque.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/opid.fwd.h"
-#include "yb/util/opid.h"
-#include "yb/util/opid.messages.h"
-#include "yb/util/opid.pb.h"
 #include "yb/util/os-util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"

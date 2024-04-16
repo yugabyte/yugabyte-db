@@ -99,7 +99,7 @@ To add additional regions to the cluster, click **Add Region**.
 
 **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
 
-Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters/#partition-by-region-cluster).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
@@ -137,5 +137,5 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../../develop/build-apps/)
+- [Build an application](../../../../tutorials/build-apps/)
 - [Scale clusters](../../../cloud-clusters/configure-clusters/#partition-by-region-cluster)

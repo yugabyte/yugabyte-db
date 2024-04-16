@@ -333,10 +333,15 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     req.mutable_cluster_config()->set_cluster_uuid("some-cluster-uuid");
     auto status = master_->catalog_manager()->SetClusterConfig(&req, &resp);
     ASSERT_TRUE(status.IsInvalidArgument());
-
-    // Setting the cluster uuid should make the request succeed.
     req.mutable_cluster_config()->set_cluster_uuid(config.cluster_uuid());
 
+    // Verify that we receive an error when trying to change the universe uuid.
+    req.mutable_cluster_config()->set_universe_uuid("some-universe-uuid");
+    status = master_->catalog_manager()->SetClusterConfig(&req, &resp);
+    ASSERT_TRUE(status.IsInvalidArgument());
+    req.mutable_cluster_config()->set_universe_uuid(config.universe_uuid());
+
+    // Setting the cluster and universe uuid correctly should make the request succeed.
     ASSERT_OK(master_->catalog_manager()->SetClusterConfig(&req, &resp));
     l.Commit();
   }
@@ -518,6 +523,7 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   {
     auto l = security_config->LockForWrite();
     l.mutable_data()->pb.mutable_security_config()->set_roles_version(0);
+    l.mutable_data()->pb.mutable_security_config()->set_cassandra_user_created(true);
     l.Commit();
   }
   scoped_refptr<SysConfigInfo> ysql_catalog_config = new SysConfigInfo(kYsqlCatalogConfigType);

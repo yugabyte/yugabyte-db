@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
-import { find } from 'lodash';
 import { toast } from 'react-toastify';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { AxiosError } from 'axios';
@@ -17,7 +16,12 @@ import {
 } from '../../../actions/xClusterReplication';
 import { formatLagMetric, formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
-import { formatBytes, augmentTablesWithXClusterDetails } from '../ReplicationUtils';
+import {
+  formatBytes,
+  augmentTablesWithXClusterDetails,
+  getStrictestReplicationLagAlertThreshold,
+  shouldAutoIncludeIndexTables
+} from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
@@ -31,11 +35,11 @@ import {
   xClusterQueryKey
 } from '../../../redesign/helpers/api';
 import {
-  AlertName,
   BROKEN_XCLUSTER_CONFIG_STATUSES,
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue,
   MetricName,
+  XClusterConfigType,
   XClusterModalName,
   XClusterTableStatus,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
@@ -43,13 +47,11 @@ import {
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
-import { AddTableModal } from './addTable/AddTableModal';
 import {
   RbacValidator,
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { Action, Resource } from '../../../redesign/features/rbac';
 import { getTableName } from '../../../utils/tableUtils';
 import { getAlertConfigurations } from '../../../actions/universe';
 
@@ -62,6 +64,7 @@ import {
 import { XClusterTable } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
 import { NodeAggregation, SplitType } from '../../metrics/dtos';
+import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import styles from './ReplicationTables.module.scss';
 
@@ -104,10 +107,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: xClusterConfig.sourceUniverseUUID
   };
-  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+  const alertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
@@ -139,7 +142,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     (replication: XClusterConfig) => {
       return props.isDrInterface
         ? api.updateTablesInDr(props.drConfigUuid, { tables: replication.tables })
-        : editXClusterConfigTables(replication.uuid, replication.tables);
+        : editXClusterConfigTables(replication.uuid, {
+            tables: replication.tables,
+            autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfig)
+          });
     },
     {
       onSuccess: (response, xClusterConfig) => {
@@ -206,9 +212,6 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     return <YBErrorIndicator customErrorMessage={errorMessage} />;
   }
 
-  const showAddTablesToClusterModal = () => {
-    dispatch(openDialog(XClusterModalName.ADD_TABLE_TO_CONFIG));
-  };
   const hideModal = () => {
     dispatch(closeDialog());
   };
@@ -219,38 +222,12 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     tableReplicationLagQuery.data?.async_replication_sent_lag?.data
   );
   const sourceUniverse = sourceUniverseQuery.data;
-  const isAddTableModalVisible =
-    showModal && visibleModal === XClusterModalName.ADD_TABLE_TO_CONFIG;
   return (
     <div className={styles.rootContainer}>
       {!props.isDrInterface && (
+        // TODO: Ask Yu-Shen if we can remove this line so both xCluster and xCluster DR are consistent.
         <div className={styles.headerSection}>
           <span className={styles.infoText}>Tables selected for Replication</span>
-          <div className={styles.actionBar}>
-            <RbacValidator
-              customValidateFunction={(userPerm) => {
-                return (
-                  find(userPerm, {
-                    resourceUUID: xClusterConfig.sourceUniverseUUID,
-                    actions: [Action.BACKUP_RESTORE, Action.UPDATE],
-                    resourceType: Resource.UNIVERSE
-                  }) !== undefined &&
-                  find(userPerm, {
-                    resourceUUID: xClusterConfig.targetUniverseUUID,
-                    actions: [Action.BACKUP_RESTORE, Action.UPDATE],
-                    resourceType: Resource.UNIVERSE
-                  }) !== undefined
-                );
-              }}
-              isControl
-            >
-              <YBButton
-                onClick={showAddTablesToClusterModal}
-                btnIcon="fa fa-plus"
-                btnText="Add Tables"
-              />
-            </RbacValidator>
-          </div>
         </div>
       )}
       <div className={styles.replicationTable}>
@@ -302,8 +279,8 @@ export function ReplicationTables(props: ReplicationTablesProps) {
               if (
                 tableReplicationLagQuery.isLoading ||
                 tableReplicationLagQuery.isIdle ||
-                maxAcceptableLagQuery.isLoading ||
-                maxAcceptableLagQuery.isIdle
+                alertConfigQuery.isLoading ||
+                alertConfigQuery.isIdle
               ) {
                 return <i className="fa fa-spinner fa-spin yb-spinner" />;
               }
@@ -311,15 +288,13 @@ export function ReplicationTables(props: ReplicationTablesProps) {
               if (
                 BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfig.status) ||
                 tableReplicationLagQuery.isError ||
-                maxAcceptableLagQuery.isError
+                alertConfigQuery.isError
               ) {
                 return <span>-</span>;
               }
 
-              const maxAcceptableLag = Math.min(
-                ...maxAcceptableLagQuery.data.map(
-                  (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-                )
+              const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+                alertConfigQuery.data
               );
               const formattedLag = formatLagMetric(xClusterTable.replicationLag);
 
@@ -327,7 +302,8 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                 return <span className="replication-lag-value warning">{formattedLag}</span>;
               }
 
-              const isReplicationUnhealthy = xClusterTable.replicationLag > maxAcceptableLag;
+              const isReplicationUnhealthy =
+                maxAcceptableLag && xClusterTable.replicationLag > maxAcceptableLag;
 
               return (
                 <Box
@@ -372,11 +348,11 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                       customValidateFunction={() => {
                         return (
                           hasNecessaryPerm({
-                            ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                            ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                             onResource: xClusterConfig.sourceUniverseUUID
                           }) &&
                           hasNecessaryPerm({
-                            ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                            ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                             onResource: xClusterConfig.targetUniverseUUID
                           })
                         );
@@ -402,14 +378,6 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           ></TableHeaderColumn>
         </BootstrapTable>
       </div>
-      {isAddTableModalVisible && (
-        <AddTableModal
-          isDrInterface={props.isDrInterface}
-          isVisible={isAddTableModalVisible}
-          onHide={hideModal}
-          xClusterConfig={xClusterConfig}
-        />
-      )}
       {openTableLagGraphDetails && (
         <ReplicationLagGraphModal
           tableDetails={openTableLagGraphDetails}

@@ -52,9 +52,6 @@ public interface ITask extends Runnable {
     return false;
   }
 
-  /** Invoked when the current task is cancelled/aborted. */
-  default void onCancelled(TaskInfo taskInfo) {}
-
   /** Clean up the initialization. */
   void terminate();
 
@@ -65,7 +62,7 @@ public interface ITask extends Runnable {
    * Return a string representation (usually JSON) of the task details. This is used to describe the
    * task to a user in a read-only mode.
    */
-  JsonNode getTaskDetails();
+  JsonNode getTaskParams();
 
   /**
    * Sets the UUID info of the task. E.g subtask UUID. It is invoked by the task executor.

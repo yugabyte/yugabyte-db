@@ -127,6 +127,8 @@ DEFINE_test_flag(double, fault_crash_leader_before_changing_role, 0.0,
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
+DECLARE_bool(cdc_immediate_transaction_cleanup);
+
 DECLARE_int64(cdc_intent_retention_ms);
 
 DECLARE_bool(enable_flush_retryable_requests);
@@ -213,6 +215,7 @@ Status TabletPeer::InitTabletPeer(
     const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
+    rpc::ThreadPool* raft_notifications_pool,
     ThreadPool* tablet_prepare_pool,
     consensus::RetryableRequestsManager* retryable_requests_manager,
     std::unique_ptr<ConsensusMetadata> consensus_meta,
@@ -305,6 +308,7 @@ Status TabletPeer::InitTabletPeer(
         mark_dirty_clbk_,
         tablet_->table_type(),
         raft_pool,
+        raft_notifications_pool,
         retryable_requests_manager,
         multi_raft_manager);
     has_consensus_.store(true, std::memory_order_release);
@@ -1229,6 +1233,9 @@ Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
       txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+      if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+        tablet_->CleanupIntentFiles();
+      }
     }
   }
   return Status::OK();

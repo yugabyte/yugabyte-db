@@ -219,7 +219,9 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
     gFlags: userIntent?.specificGFlags
       ? transformSpecificGFlagToFlagsArray(userIntent?.specificGFlags)
       : transformGFlagToFlagsArray(userIntent.masterGFlags, userIntent.tserverGFlags),
-    azOverrides: userIntent.azOverrides,
+    azOverrides: userIntent.userIntentOverrides?.azOverrides,
+    proxyConfig: userIntent.proxyConfig,
+    specificGFlagsAzOverrides: userIntent.specificGFlags?.perAZ ?? {},
     universeOverrides: userIntent.universeOverrides,
     inheritFlagsFromPrimary: userIntent?.specificGFlags?.inheritFromPrimary
   };
@@ -254,8 +256,10 @@ export const getUserIntent = (
     instanceTags,
     gFlags,
     azOverrides,
+    proxyConfig,
     universeOverrides,
-    inheritFlagsFromPrimary
+    inheritFlagsFromPrimary,
+    specificGFlagsAzOverrides
   } = formData;
   const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
 
@@ -304,7 +308,7 @@ export const getUserIntent = (
             TSERVER: tserverGFlags
           }
         },
-        perAZ: {}
+        perAZ: specificGFlagsAzOverrides ?? {}
       };
     }
   } else {
@@ -314,7 +318,8 @@ export const getUserIntent = (
 
   if (!_.isEmpty(advancedConfig.awsArnString)) intent.awsArnString = advancedConfig.awsArnString;
   if (!_.isEmpty(instanceTags)) intent.instanceTags = transformTagsArrayToObject(instanceTags);
-  if (!_.isEmpty(azOverrides)) intent.azOverrides = azOverrides;
+  if (!_.isEmpty(azOverrides)) intent.userIntentOverrides = { azOverrides };
+  if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
 
   if (

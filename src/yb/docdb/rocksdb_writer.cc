@@ -16,6 +16,7 @@
 #include "yb/common/row_mark.h"
 
 #include "yb/docdb/conflict_resolution.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -56,6 +57,8 @@ using dockv::KeyEntryTypeAsChar;
 using dockv::ValueEntryTypeAsChar;
 
 namespace {
+
+constexpr char kPostApplyMetadataMarker = 0;
 
 // Slice parts with the number of slices fixed at compile time.
 template <int N>
@@ -218,6 +221,8 @@ TransactionalWriter::TransactionalWriter(
 //   TxnId -> status tablet id + isolation level
 // Reverse index by txn id
 //   TxnId + HybridTime -> Main intent data key
+// Post-apply transaction metadata
+//   TxnId + kPostApplyMetadataMarker -> apply op id
 //
 // Where prefix is just a single byte prefix. TxnId, IntentType, HybridTime all prefixed with
 // appropriate value type.
@@ -398,6 +403,31 @@ Status TransactionalWriter::AddWeakIntent(
   return Status::OK();
 }
 
+PostApplyMetadataWriter::PostApplyMetadataWriter(
+    std::span<const PostApplyTransactionMetadata> metadatas)
+    : metadatas_{metadatas} {
+}
+
+Status PostApplyMetadataWriter::Apply(rocksdb::DirectWriteHandler* handler) {
+  ThreadSafeArena arena;
+  for (const auto& metadata : metadatas_) {
+    std::array<Slice, 3> metadata_key = {{
+        Slice(&KeyEntryTypeAsChar::kTransactionId, 1),
+        metadata.transaction_id.AsSlice(),
+        Slice(&kPostApplyMetadataMarker, 1),
+    }};
+
+    LWPostApplyTransactionMetadataPB data(&arena);
+    metadata.ToPB(&data);
+
+    auto value = data.SerializeAsString();
+    Slice value_slice{value};
+    handler->Put(metadata_key, SliceParts(&value_slice, 1));
+  }
+
+  return Status::OK();
+}
+
 DocHybridTimeBuffer::DocHybridTimeBuffer() {
   buffer_[0] = KeyEntryTypeAsChar::kHybridTime;
 }
@@ -408,15 +438,18 @@ IntentsWriterContext::IntentsWriterContext(const TransactionId& transaction_id)
 }
 
 IntentsWriter::IntentsWriter(const Slice& start_key,
+                             HybridTime file_filter_ht,
                              rocksdb::DB* intents_db,
                              IntentsWriterContext* context)
     : start_key_(start_key), intents_db_(intents_db), context_(*context) {
   AppendTransactionKeyPrefix(context_.transaction_id(), &txn_reverse_index_prefix_);
   txn_reverse_index_prefix_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
   reverse_index_upperbound_ = txn_reverse_index_prefix_.AsSlice();
+
   reverse_index_iter_ = CreateRocksDBIterator(
       intents_db_, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound_);
+      rocksdb::kDefaultQueryId, CreateIntentHybridTimeFileFilter(file_filter_ht),
+      &reverse_index_upperbound_);
 }
 
 Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
@@ -439,7 +472,10 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
     auto reverse_index_value = reverse_index_iter_.value();
 
-    bool metadata = key_slice.size() == 1 + TransactionId::StaticSize();
+    // Check if they key is transaction metadata (1 byte prefix + transaction id) or
+    // post-apply transaction metadata (1 byte prefix + transaction id + 1 byte suffix).
+    bool metadata = key_slice.size() == 1 + TransactionId::StaticSize() ||
+                    key_slice.size() == 2 + TransactionId::StaticSize();
     // At this point, txn_reverse_index_prefix is a prefix of key_slice. If key_slice is equal to
     // txn_reverse_index_prefix in size, then they are identical, and we are seeked to transaction
     // metadata. Otherwise, we're seeked to an intent entry in the index which we may process.
@@ -470,6 +506,7 @@ ApplyIntentsContext::ApplyIntentsContext(
     const SubtxnSet& aborted,
     HybridTime commit_ht,
     HybridTime log_ht,
+    HybridTime file_filter_ht,
     const KeyBounds* key_bounds,
     SchemaPackingProvider* schema_packing_provider,
     rocksdb::DB* intents_db)
@@ -487,7 +524,8 @@ ApplyIntentsContext::ApplyIntentsContext(
       key_bounds_(key_bounds),
       intent_iter_(CreateRocksDBIterator(
           intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-          rocksdb::kDefaultQueryId)) {
+          rocksdb::kDefaultQueryId,
+          CreateIntentHybridTimeFileFilter(file_filter_ht))) {
 }
 
 Result<bool> ApplyIntentsContext::StoreApplyState(

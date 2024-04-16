@@ -107,10 +107,12 @@
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/remote_snapshot_transfer_client.h"
+#include "yb/tserver/tablet_limits.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug-util.h"
@@ -250,11 +252,8 @@ DEFINE_UNKNOWN_int32(read_pool_max_queue_size, 128,
              "is used to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
 
-DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_threads, 1,
-             "DEPRECATED. Use full_compaction_pool_max_threads.");
-
-DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
-             "DEPRECATED. Use full_compaction_pool_max_queue_size.");
+DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_threads, "02_2024");
+DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_queue_size, "02_2024");
 
 DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
              "The maximum number of threads allowed for full_compaction_pool_. This "
@@ -268,8 +267,7 @@ DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 500,
              "on a scheduled basis or after they have been split and still contain irrelevant data "
              "from the tablet they were sourced from.");
 
-DEFINE_NON_RUNTIME_int32(scheduled_full_compaction_check_interval_min, 15,
-             "DEPRECATED. Use auto_compact_check_interval_sec.");
+DEPRECATE_FLAG(int32, scheduled_full_compaction_check_interval_min, "02_2024");
 
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
@@ -363,10 +361,15 @@ METRIC_DEFINE_gauge_uint64(server, ts_post_split_compaction_added,
                         MetricUnit::kRequests,
                         "Number of post-split compaction requests submitted.");
 
-METRIC_DEFINE_gauge_uint32(
-    server, ts_live_tablet_peers, "Number of Live Tablet Peers", MetricUnit::kUnits,
-    "Number of live tablet peers running on this tserver. Tablet peers are live if they are "
+METRIC_DEFINE_gauge_uint32(server, ts_live_tablet_peers,
+    "Number of Live Tablet Peers", MetricUnit::kUnits,
+    "Number of live tablet peers running on this TServer. Tablet peers are live if they are "
     "bootstrapping or running.");
+
+METRIC_DEFINE_gauge_int64(server, ts_supportable_tablet_peers,
+    "Number of Tablet Peers this TServer can support", MetricUnit::kUnits,
+    "Number of tablet peers that this TServer can support based on available RAM and cores or -1 "
+    "if no tablet limit in effect.");
 
 THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
     "Thread pool for admin-triggered tablet compaction jobs.");
@@ -452,6 +455,11 @@ void TSTabletManager::VerifyTabletData() {
   }
 }
 
+void TSTabletManager::EmitMetrics() {
+  ts_live_tablet_peers_metric_->set_value(GetNumLiveTablets());
+  ts_supportable_tablet_peers_metric_->set_value(GetNumSupportableTabletPeers());
+}
+
 void TSTabletManager::CleanupOldMetrics() {
   VLOG(2) << "Cleaning up old metrics";
   metric_registry_->RetireOldMetrics();
@@ -488,6 +496,12 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_min_threads(1)
                .unlimited_threads()
                .Build(&raft_pool_));
+
+  raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+    .name = "raft_notifications",
+    .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+  });
+
   CHECK_OK(ThreadPoolBuilder("log-sync")
                .set_min_threads(1)
                .unlimited_threads()
@@ -548,6 +562,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       METRIC_ts_post_split_compaction_added.Instantiate(server_->metric_entity(), 0);
   ts_live_tablet_peers_metric_ =
       METRIC_ts_live_tablet_peers.Instantiate(server_->metric_entity(), 0);
+  ts_supportable_tablet_peers_metric_ = METRIC_ts_supportable_tablet_peers.Instantiate(
+      server_->metric_entity(), GetNumSupportableTabletPeers());
   ts_open_metadata_time_us_ =
       METRIC_ts_open_metadata_time_us.Instantiate(server_->metric_entity(), 0);
 
@@ -730,6 +746,9 @@ Status TSTabletManager::Init() {
   verify_tablet_data_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::VerifyTabletData, this));
 
+  metrics_emitter_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), std::bind(&TSTabletManager::EmitMetrics, this));
+
   metrics_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupOldMetrics, this));
 
@@ -798,6 +817,7 @@ Status TSTabletManager::Start() {
     LOG(INFO)
         << "Tablet data verification is disabled by verify_tablet_data_interval_sec flag set to 0";
   }
+  metrics_emitter_->Start(&server_->messenger()->scheduler(), 1s);
   if (FLAGS_cleanup_metrics_interval_sec > 0) {
     metrics_cleaner_->Start(
         &server_->messenger()->scheduler(), FLAGS_cleanup_metrics_interval_sec * 1s);
@@ -1234,6 +1254,8 @@ Status TSTabletManager::ApplyCloneTablet(
   const auto target_namespace_name = request->target_namespace_name().ToBuffer();
   const auto clone_request_seq_no = request->clone_request_seq_no();
   const auto target_pg_table_id = request->target_pg_table_id().ToBuffer();
+  const auto target_skip_table_tombstone_check =
+      request->target_skip_table_tombstone_check();
   const boost::optional<qlexpr::IndexInfo> target_table_index_info =
       request->has_target_index_info() ?
       boost::optional<qlexpr::IndexInfo>(request->target_index_info().ToGoogleProtobuf()) :
@@ -1321,7 +1343,8 @@ Status TSTabletManager::ApplyCloneTablet(
         std::move(target_table_index_info),
         source_table->schema_version, /* fixed by restore */
         target_partition_schema,
-        target_pg_table_id);
+        target_pg_table_id,
+        tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));
 
     // Setup raft group metadata. If we crash between here and when we set the tablet data state to
     // TABLET_DATA_READY, the tablet will be deleted on the next bootstrap.
@@ -1471,6 +1494,14 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
           Format("remote bootstrapping tablet from peer $0", bootstrap_peer_uuid), &deleter)));
 
   bool replacing_tablet = old_tablet_peer != nullptr;
+  bool has_faulty_drive = fs_manager_->has_faulty_drive();
+  if (has_faulty_drive && !replacing_tablet) {
+    return STATUS(ServiceUnavailable,
+                  "Reject RBS because tserver cannot create new tablet if there is faulty drive. "
+                  "If the faulty drive has been fixed, the tserver needs to be restarted for "
+                  "the FSManager state to be refreshed");
+  }
+
   RaftGroupMetadataPtr meta = replacing_tablet ? old_tablet_peer->tablet_metadata() : nullptr;
 
   HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(
@@ -1978,6 +2009,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         tablet->GetTableMetricsEntity(),
         tablet->GetTabletMetricsEntity(),
         raft_pool(),
+        raft_notifications_pool(),
         tablet_prepare_pool(),
         &retryable_requests_manager,
         std::move(cmeta),
@@ -2089,6 +2121,8 @@ void TSTabletManager::StartShutdown() {
   verify_tablet_data_poller_->Shutdown();
 
   tablet_metadata_validator_->Shutdown();
+
+  metrics_emitter_->Shutdown();
 
   metrics_cleaner_->Shutdown();
 
@@ -2467,7 +2501,6 @@ int TSTabletManager::GetNumLiveTablets() const {
       count++;
     }
   }
-  ts_live_tablet_peers_metric_->set_value(count);
   return count;
 }
 
@@ -2520,13 +2553,8 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
   }
   reported_tablet->set_schema_version(tablet_peer->tablet_metadata()->schema_version());
 
-  auto& id_to_version = *reported_tablet->mutable_table_to_version();
-  // Attach schema versions of all tables including the colocated ones.
-  for (const auto& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
-    if (id_to_version.find(table_id) == id_to_version.end()) {
-      id_to_version[table_id] = tablet_peer->tablet_metadata()->schema_version(table_id);
-    }
-  }
+  tablet_peer->tablet_metadata()->GetTableIdToSchemaVersionMap(
+      reported_tablet->mutable_table_to_version());
 
   {
     auto tablet_ptr = tablet_peer->shared_tablet();
@@ -3096,7 +3124,7 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
   }
 
   auto xcluster_safe_time_result =
-      server_->GetXClusterSafeTimeMap().GetSafeTime(metadata->namespace_id());
+      server_->GetXClusterContext().GetSafeTime(metadata->namespace_id());
   if (!xcluster_safe_time_result) {
     VLOG(1) << "XCluster GetSafeTime call failed with " << xcluster_safe_time_result.status()
             << " for namespace: " << metadata->namespace_id();

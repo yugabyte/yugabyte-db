@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';
 import { useInterval } from 'react-use';
 import { Typography } from '@material-ui/core';
+import { useTranslation } from 'react-i18next';
 
 import { fetchXClusterConfig } from '../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading, YBLoadingCircleIcon } from '../common/indicators';
@@ -30,7 +31,7 @@ interface Props {
 
 export function XClusterConfigList({ currentUniverseUUID }: Props) {
   const queryClient = useQueryClient();
-
+  const { t } = useTranslation();
   const customerUUID = localStorage.getItem('customerId') ?? '';
   const customerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.customerScope(customerUUID),
@@ -72,11 +73,17 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);
 
   if (universeQuery.isError) {
-    return <YBErrorIndicator />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCurrentUniverse', { keyPrefix: 'queryError' })}
+      />
+    );
   }
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
     );
   }
   if (

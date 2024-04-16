@@ -6,6 +6,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.api.client.util.Strings;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -146,6 +147,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("Hard Reboot")
     HardReboot,
+
+    @EnumValue("Replace")
+    Replace,
 
     @EnumValue("Edit")
     Edit,
@@ -356,7 +360,10 @@ public class CustomerTask extends Model {
     ReprovisionNode,
 
     @EnumValue("Install")
-    Install;
+    Install,
+
+    @EnumValue("UpdateProxyConfig")
+    UpdateProxyConfig;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -375,6 +382,8 @@ public class CustomerTask extends Model {
           return completed ? "Removed " : "Removing ";
         case ResizeNode:
           return completed ? "Resized Node " : "Resizing Node ";
+        case Replace:
+          return completed ? "Replaced Node" : "Replacing Node";
         case Resume:
           return completed ? "Resumed " : "Resuming ";
         case Start:
@@ -515,6 +524,8 @@ public class CustomerTask extends Model {
           return completed ? "Reprovisioned" : "Reprovisioning";
         case Install:
           return completed ? "Installed" : "Installing";
+        case UpdateProxyConfig:
+          return completed ? "Updated Proxy Config" : "Updating Proxy Config";
         default:
           return null;
       }
@@ -855,6 +866,7 @@ public class CustomerTask extends Model {
     }
   }
 
+  @JsonIgnore
   public String getNotificationTargetName() {
     if (getType().equals(TaskType.Create) && getTargetType().equals(TargetType.Backup)) {
       return Universe.getOrBadRequest(getTargetUUID()).getName();

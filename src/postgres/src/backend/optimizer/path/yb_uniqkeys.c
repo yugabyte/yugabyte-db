@@ -199,7 +199,7 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
  * Caveat: Do NOT mark indexkeys as constant when the constantness is not
  * part of index conditions. We can NOT ignore index keys that are constant
  * but not pushed down beyond the DISTINCT operation to the index. This may
- * change in the future when we start supporting remote filters for DISTINCT.
+ * change in the future when we start supporting storage filters for DISTINCT.
  */
 static bool
 yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
@@ -237,12 +237,12 @@ yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
 
 		/* Check whether the clause is of the form indexkey = constant. */
 		if (equal(indexkey, left_op) &&
-			EC_MUST_BE_REDUNDANT(rinfo->right_ec))
+			rinfo->right_ec && EC_MUST_BE_REDUNDANT(rinfo->right_ec))
 			return true;
 
 		/* Check whether the indexkey is on the right. */
 		if (equal(indexkey, right_op) &&
-			EC_MUST_BE_REDUNDANT(rinfo->left_ec))
+			rinfo->left_ec && EC_MUST_BE_REDUNDANT(rinfo->left_ec))
 			return true;
 	}
 

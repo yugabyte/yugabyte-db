@@ -58,7 +58,7 @@ export const CurrentFormStep = ({
           </ol>
           <TableSelect {...tableSelectProps} />
           <div className={classes.bannerContainer}>
-            <YBBanner variant={YBBannerVariant.INFO} showBannerIcon={false}>
+            <YBBanner variant={YBBannerVariant.INFO}>
               <Typography variant="body2">
                 <Trans
                   i18nKey={`${TRANSLATION_KEY_PREFIX}.step.selectDatabases.pitrSetUpNote`}
@@ -71,7 +71,7 @@ export const CurrentFormStep = ({
       );
     case FormStep.CONFIGURE_BOOTSTRAP:
       return <ConfigureBootstrapStep isFormDisabled={isFormDisabled} />;
-    case FormStep.CONFIGURE_ALERT:
+    case FormStep.CONFIRM_ALERT:
       return <ConfirmAlertStep isFormDisabled={isFormDisabled} sourceUniverse={sourceUniverse} />;
     default:
       return assertUnreachableCase(currentFormStep);

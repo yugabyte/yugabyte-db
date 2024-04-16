@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
-import org.apache.commons.lang3.tuple.Pair;
 
 public class TlsToggle extends UpgradeTaskBase {
 
@@ -65,15 +64,21 @@ public class TlsToggle extends UpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+  }
+
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(taskParams().upgradeOption);
   }
 
   @Override
   public void run() {
     runUpgrade(
         () -> {
-          Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-          Set<NodeDetails> allNodes = toOrderedSet(nodes);
+          MastersAndTservers nodes = getNodesToBeRestarted();
+          Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
           // Copy any new certs to all nodes
           createCopyCertTasks(allNodes);
           updateUniverseHttpsEnabledUI();
@@ -86,7 +91,7 @@ public class TlsToggle extends UpgradeTaskBase {
         });
   }
 
-  private void createRound1GFlagUpdateTasks(Pair<List<NodeDetails>, List<NodeDetails>> nodes) {
+  private void createRound1GFlagUpdateTasks(MastersAndTservers nodes) {
     if (getNodeToNodeChange() < 0) {
       // Setting allow_insecure to true can be done in non-restart way
       createNonRestartUpgradeTaskFlow(
@@ -94,7 +99,13 @@ public class TlsToggle extends UpgradeTaskBase {
             createGFlagUpdateTasks(1, nodeList, getSingle(processTypes));
             Map<String, String> gflags = new HashMap<>();
             gflags.put("allow_insecure_connections", "true");
-            createSetFlagInMemoryTasks(nodeList, getSingle(processTypes), true, gflags)
+            createSetFlagInMemoryTasks(
+                    nodeList,
+                    getSingle(processTypes),
+                    (node, params) -> {
+                      params.force = true;
+                      params.gflags = gflags;
+                    })
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes,
@@ -118,7 +129,7 @@ public class TlsToggle extends UpgradeTaskBase {
     }
   }
 
-  private void createRound2GFlagUpdateTasks(Pair<List<NodeDetails>, List<NodeDetails>> nodes) {
+  private void createRound2GFlagUpdateTasks(MastersAndTservers nodes) {
     // Second round upgrade not needed when there is no change in node-to-node
     if (getNodeToNodeChange() > 0) {
       // Setting allow_insecure can be done in non-restart way
@@ -128,7 +139,13 @@ public class TlsToggle extends UpgradeTaskBase {
             createGFlagUpdateTasks(2, nodeList, processType);
             Map<String, String> gflags = new HashMap<>();
             gflags.put("allow_insecure_connections", String.valueOf(taskParams().allowInsecure));
-            createSetFlagInMemoryTasks(nodeList, processType, true, gflags)
+            createSetFlagInMemoryTasks(
+                    nodeList,
+                    processType,
+                    (node, params) -> {
+                      params.force = true;
+                      params.gflags = gflags;
+                    })
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes,
@@ -152,13 +169,13 @@ public class TlsToggle extends UpgradeTaskBase {
     }
 
     if (taskParams().isYbcInstalled()) {
-      createStopYbControllerTasks(nodes.getRight())
+      createStopYbControllerTasks(nodes.tserversList)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-      createYbcFlagsUpdateTasks(nodes.getRight());
-      createStartYbcTasks(nodes.getRight())
+      createYbcFlagsUpdateTasks(nodes.tserversList);
+      createStartYbcTasks(nodes.tserversList)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       // Wait for yb-controller to be responsive on each node.
-      createWaitForYbcServerTask(nodes.getRight())
+      createWaitForYbcServerTask(nodes.tserversList)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }

@@ -18,6 +18,8 @@
 
 namespace yb::master {
 
+class CDCStreamInfo;
+
 // Map[NamespaceId]:xClusterSafeTime
 typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeMap;
 
@@ -36,14 +38,23 @@ struct NamespaceCheckpointInfo {
   std::vector<TableInfo> table_infos;
 };
 
-struct IsOperationDoneResult {
-  IsOperationDoneResult() : done(false) {}
-  IsOperationDoneResult(bool done, Status status) : done(done), status(std::move(status)) {}
+YB_DEFINE_ENUM(StreamCheckpointLocation, (kOpId0)(kCurrentEndOfWAL));
 
-  bool done;      // Indicates of the operation completed.
-  Status status;  // If the operation completed and it failed, this will contain the error.
+using XClusterCheckpointStreamsResult = Result<std::pair<std::vector<TableId>, bool>>;
+
+class XClusterCreateStreamsContext {
+ public:
+  XClusterCreateStreamsContext() = default;
+  virtual ~XClusterCreateStreamsContext() = default;
+
+  virtual void Commit() {}
+
+  std::vector<scoped_refptr<CDCStreamInfo>> streams_;
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(XClusterCreateStreamsContext);
 };
 
-YB_DEFINE_ENUM(StreamCheckpointLocation, (kOpId0)(kCurrentEndOfWAL));
+using XClusterCheckpointStreamsResult = Result<std::pair<std::vector<TableId>, bool>>;
 
 }  // namespace yb::master

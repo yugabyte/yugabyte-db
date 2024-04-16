@@ -1,10 +1,13 @@
 import { useTranslation } from 'react-i18next';
+import { toast } from 'react-toastify';
+import { useMutation } from 'react-query';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import { YBModal } from '../../../../components';
+import { ReleasesAPI } from '../../api';
 import { Releases } from '../dtos';
 
 interface DeleteReleaseModalProps {
-  data: Releases | null;
+  data: Releases;
   open: boolean;
   onClose: () => void;
   onActionPerformed: () => void;
@@ -27,18 +30,29 @@ export const DeleteReleaseModal = ({
 }: DeleteReleaseModalProps) => {
   const { t } = useTranslation();
   const helperClasses = useStyles();
+  const releaseUuid = data.release_uuid;
+
+  // DELETE API call to delete the release
+  const deleteRelease = useMutation(() => ReleasesAPI.deleteRelease(releaseUuid!), {
+    onSuccess: (response: any) => {
+      toast.success(t('releases.deleteReleaseModal.deleteReleaseSuccess'));
+      onActionPerformed();
+      onClose();
+    },
+    onError: () => {
+      toast.error(t('releases.deleteReleaseModal.deleteReleaseFailure'));
+    }
+  });
 
   const handleSubmit = async () => {
-    // TODO: Make an API call to ensure deletion of release - deleteRelease (DELETE) from api.ts
-    // TODO: onSuccess on above mutation call, ensure to call onActionPerformed() which will get fresh set of releasaes
-    // to be displayed in ReleaseList page
+    deleteRelease.mutateAsync();
   };
 
   return (
     <YBModal
       open={open}
       onClose={onClose}
-      title={t('releases.deleteReleaseModal.modalTile')}
+      title={t('releases.deleteReleaseModal.modalTitle')}
       onSubmit={handleSubmit}
       cancelLabel={t('common.cancel')}
       submitLabel={t('common.delete')}

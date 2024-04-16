@@ -15,6 +15,7 @@
 
 #include "yb/rpc/thread_pool.h"
 
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 
@@ -24,6 +25,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
+
+using namespace std::literals;
 
 namespace yb {
 namespace rpc {
@@ -36,7 +39,7 @@ typedef cds::container::BasketQueue<cds::gc::DHP, ThreadPoolTask*> TaskQueue;
 typedef cds::container::BasketQueue<cds::gc::DHP, Worker*> WaitingWorkers;
 
 struct ThreadPoolShare {
-  ThreadPoolOptions options;
+  const ThreadPoolOptions options;
   TaskQueue task_queue;
   WaitingWorkers waiting_workers;
 
@@ -44,11 +47,19 @@ struct ThreadPoolShare {
       : options(std::move(o)) {}
 };
 
-namespace {
+const char* kRpcThreadCategory = "rpc_thread_pool";
 
-const std::string kRpcThreadCategory = "rpc_thread_pool";
+const auto kShuttingDownStatus = STATUS(Aborted, "Service is shutting down");
 
-} // namespace
+void TaskDone(ThreadPoolTask* task, const Status& status) {
+  // We have to retrieve the subpool pointer from the task before calling Done, because that call
+  // may destroy the task.
+  auto* sub_pool = task->sub_pool();
+  task->Done(status);
+  if (sub_pool) {
+    sub_pool->OnTaskDone(task, status);
+  }
+}
 
 class Worker {
  public:
@@ -81,10 +92,10 @@ class Worker {
     added_to_waiting_workers_ = false;
     // There could be cases when we popped task after adding ourselves to worker queue (see below).
     // So we are already processing task, but reside in worker queue.
-    // To handle this case we use waiting_task_ flag.
-    // If we don't wait task, we return false here, and next worker would be popped from queue
-    // and notified.
-    if (!waiting_task_) {
+    // To handle this case we use waiting_for_task_ flag.
+    // If we are not waiting for a task, we return false here, and next worker would be popped from
+    // queue and notified.
+    if (!waiting_for_task_) {
       return false;
     }
     cond_.notify_one();
@@ -102,7 +113,7 @@ class Worker {
       ThreadPoolTask* task = nullptr;
       if (PopTask(&task)) {
         task->Run();
-        task->Done(Status::OK());
+        TaskDone(task, Status::OK());
       }
     }
   }
@@ -114,25 +125,25 @@ class Worker {
       return true;
     }
     std::unique_lock<std::mutex> lock(mutex_);
-    waiting_task_ = true;
+    waiting_for_task_ = true;
     auto se = ScopeExit([this] {
-      waiting_task_ = false;
+      waiting_for_task_ = false;
     });
 
     while (!stop_requested_) {
       AddToWaitingWorkers();
 
-      // There could be situation, when task was queued before we added ourselves to
-      // the worker queue. So worker queue could be empty in this case, and nobody was notified
-      // about new task. So we check there for this case. This technique is similar to
-      // double check.
+      // There could be a situation when a task was queued before we added ourselves to the worker
+      // queue. So the worker queue could be empty in this case, while nobody was notified about
+      // the new task. So we check there for this case. This technique is similar to
+      // double-checked locking.
       if (share_->task_queue.pop(*task)) {
         return true;
       }
 
       cond_.wait(lock);
 
-      // Sometimes another worker could steal task before we wake up. In this case we will
+      // Sometimes another worker could steal a task before we wake up. In this case we will
       // just enqueue ourselves back.
       if (share_->task_queue.pop(*task)) {
         return true;
@@ -154,7 +165,7 @@ class Worker {
   std::mutex mutex_;
   std::condition_variable cond_;
   std::atomic<bool> stop_requested_ = {false};
-  bool waiting_task_ = false;
+  bool waiting_for_task_ = false;
   bool added_to_waiting_workers_ = false;
 };
 
@@ -165,7 +176,6 @@ class ThreadPool::Impl {
   explicit Impl(ThreadPoolOptions options)
       : share_(std::move(options)) {
     LOG(INFO) << "Starting thread pool " << share_.options.ToString();
-    workers_.reserve(share_.options.max_workers);
   }
 
   const ThreadPoolOptions& options() const {
@@ -176,7 +186,7 @@ class ThreadPool::Impl {
     ++adding_;
     if (closing_) {
       --adding_;
-      task->Done(shutdown_status_);
+      TaskDone(task, kShuttingDownStatus);
       return false;
     }
     bool added = share_.task_queue.push(task);
@@ -190,10 +200,7 @@ class ThreadPool::Impl {
     }
     --adding_;
 
-    // We increment created_workers_ every time, the first max_worker increments would produce
-    // a new worker. And after that, we will just increment it doing nothing after that.
-    // So we could be lock free here.
-    auto index = created_workers_++;
+    auto index = num_workers_++;
     if (index < share_.options.max_workers) {
       std::lock_guard lock(mutex_);
       if (!closing_) {
@@ -201,21 +208,26 @@ class ThreadPool::Impl {
         auto status = new_worker->Start(workers_.size());
         if (status.ok()) {
           workers_.push_back(std::move(new_worker));
-        } else if (workers_.empty()) {
-          LOG(FATAL) << "Unable to start first worker: " << status;
         } else {
-          LOG(WARNING) << "Unable to start worker: " << status;
+          if (workers_.empty()) {
+            LOG(FATAL) << "Unable to start first worker: " << status;
+          } else {
+            LOG(WARNING) << "Unable to start worker: " << status;
+          }
+          --num_workers_;
         }
       }
     } else {
-      --created_workers_;
+      --num_workers_;
     }
     return true;
   }
 
   void Shutdown() {
-    // Block creating new workers.
-    created_workers_ += share_.options.max_workers;
+    // Prevent new worker threads from being created by pretending a large number of workers have
+    // already been created.
+    num_workers_ = 1ul << 48;
+    decltype(workers_) workers;
     {
       std::lock_guard lock(mutex_);
       if (closing_) {
@@ -224,22 +236,30 @@ class ThreadPool::Impl {
         return;
       }
       closing_ = true;
+      workers = std::move(workers_);
     }
-    for (auto& worker : workers_) {
+    for (auto& worker : workers) {
       if (worker) {
         worker->Stop();
       }
     }
-    // Shutdown is quite rare situation otherwise enqueue is quite frequent.
+    // Shutdown is quite a rare situation otherwise, and enqueue is quite frequent.
     // Because of this we use "atomic lock" in enqueue and busy wait in shutdown.
-    // So we could process enqueue quickly, and stuck in shutdown for sometime.
+    // So we could process enqueue quickly, and it is OK if we get stuck in shutdown for some time.
     while (adding_ != 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    workers_.clear();
+
+    {
+      std::lock_guard lock(mutex_);
+      if (!workers_.empty()) {
+        LOG(DFATAL) << "Workers were added while closing: " << workers_.size();
+        workers_.clear();
+      }
+    }
     ThreadPoolTask* task = nullptr;
     while (share_.task_queue.pop(task)) {
-      task->Done(shutdown_status_);
+      TaskDone(task, kShuttingDownStatus);
     }
   }
 
@@ -249,13 +269,16 @@ class ThreadPool::Impl {
 
  private:
   ThreadPoolShare share_;
-  std::vector<std::unique_ptr<Worker>> workers_;
-  std::atomic<size_t> created_workers_ = {0};
+  std::vector<std::unique_ptr<Worker>> workers_ GUARDED_BY(mutex_);
+  // An atomic counterpart of workers_.size() during normal operation. During shutdown, this is set
+  // to an unrealistically high number to prevent new workers from being created.
+  std::atomic<size_t> num_workers_ = {0};
   std::mutex mutex_;
   std::atomic<bool> closing_ = {false};
   std::atomic<size_t> adding_ = {0};
-  const Status shutdown_status_ = STATUS(Aborted, "Service is shutting down");
 };
+
+// ------------------------------------------------------------------------------------------------
 
 ThreadPool::ThreadPool(ThreadPoolOptions options)
     : impl_(new Impl(std::move(options))) {
@@ -299,6 +322,51 @@ bool ThreadPool::Owns(Thread* thread) {
 
 bool ThreadPool::OwnsThisThread() {
   return Owns(Thread::current_thread());
+}
+
+// ------------------------------------------------------------------------------------------------
+// ThreadSubPoolBase
+// ------------------------------------------------------------------------------------------------
+
+void ThreadSubPoolBase::Shutdown() {
+  closing_ = true;
+  // We expected shutdown to happen rarely, so just use busy wait here.
+  BusyWait();
+}
+
+void ThreadSubPoolBase::BusyWait() {
+  while (!IsIdle()) {
+    std::this_thread::sleep_for(1ms);
+  }
+}
+
+bool ThreadSubPoolBase::IsIdle() {
+  // Use sequential consistency for safety. This is only used during shutdown.
+  return active_tasks_ == 0;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ThreadSubPool
+// ------------------------------------------------------------------------------------------------
+
+ThreadSubPool::ThreadSubPool(ThreadPool* thread_pool) : ThreadSubPoolBase(thread_pool) {
+}
+
+ThreadSubPool::~ThreadSubPool() {
+}
+
+bool ThreadSubPool::Enqueue(ThreadPoolTask* task) {
+  if (closing_.load(std::memory_order_acquire)) {
+    task->Done(STATUS(Aborted, "Thread sub-pool closing"));
+    return false;
+  }
+  active_tasks_.fetch_add(1, std::memory_order_acq_rel);
+  task->set_sub_pool(this);
+  return thread_pool_.Enqueue(task);
+}
+
+void ThreadSubPool::OnTaskDone(ThreadPoolTask* task, const Status& status) {
+  active_tasks_.fetch_sub(1, std::memory_order_acq_rel);
 }
 
 } // namespace rpc

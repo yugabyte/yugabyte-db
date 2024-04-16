@@ -301,14 +301,15 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
   auto result = std::make_shared<MemTracker>(
       byte_limit, id, std::move(consumption_functor), shared_from_this(), add_to_parent,
           create_metrics, metric_name);
-  auto p = child_trackers_.emplace(id, result);
-  if (!p.second) {
-    auto existing = p.first->second.lock();
+  auto [iter, inserted] = child_trackers_.emplace(id, result);
+  if (!inserted) {
+    auto& tracker_weak_ptr = iter->second;
+    auto existing = tracker_weak_ptr.lock();
     if (existing) {
       LOG(DFATAL) << Format("Duplicate memory tracker (id $0) on parent $1", id, ToString());
       return existing;
     }
-    p.first->second = result;
+    tracker_weak_ptr = result;
   }
 
   return result;
@@ -810,6 +811,24 @@ int64_t MemTracker::GetRootTrackerConsumption() {
 shared_ptr<MemTracker> MemTracker::GetRootTracker() {
   InitRootTrackerOnce();
   return root_tracker;
+}
+
+uint64_t MemTracker::GetTrackedMemory() {
+  uint64_t tracked_memory = 0;
+  for (auto child_tracker : GetRootTracker()->ListChildren()) {
+    if (!child_tracker->id().starts_with(kTCMallocTrackerNamePrefix)) {
+      tracked_memory += child_tracker->consumption();
+    }
+  }
+  return tracked_memory;
+}
+
+uint64_t MemTracker::GetUntrackedMemory() {
+  #if YB_TCMALLOC_ENABLED
+  // generic.current_allocated_bytes = root - tcmalloc
+  return ::yb::GetTCMallocProperty("generic.current_allocated_bytes") - GetTrackedMemory();
+  #endif
+  return 0;
 }
 
 void MemTracker::SetMetricEntity(const MetricEntityPtr& metric_entity) {

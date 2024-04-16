@@ -24,7 +24,6 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import play.libs.Json;
 
@@ -33,7 +32,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
 
   @Override
   protected Pair<Integer, Integer> getIpRange() {
-    return new Pair(2, 30);
+    return new Pair<>(2, 30);
   }
 
   @Test
@@ -62,6 +61,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
     cluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
@@ -88,6 +88,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
     cluster.placementInfo.azStream().limit(1).forEach(az -> az.uuid = az4.getUuid());
@@ -126,6 +127,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
               removingAz.set(az.uuid);
               az.uuid = az4.getUuid();
             });
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
@@ -246,8 +248,8 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     rrIntent.numNodes = 3;
     doAddReadReplica(universe, rrIntent);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     verifyYSQL(universe, true);
-
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getReadOnlyClusters().get(0);
     cluster.userIntent.replicationFactor--;
@@ -457,9 +459,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             .filter(t -> t.getTaskType() == TaskType.ChangeMasterConfig)
             .findFirst()
             .get()
-            .getDetails()
-            .get("errorString")
-            .asText(),
+            .getErrorMessage(),
         containsString("AddMaster operation has not completed within PT30S"));
   }
 
@@ -504,24 +504,6 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
         UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     verifyNodeModifications(
         universe, increment > 0 ? increment : 0, increment < 0 ? -increment : 0);
-  }
-
-  private SpecificGFlags getGFlags(String... additional) {
-    Map<String, String> gflags = new HashMap<>(GFLAGS);
-    for (int i = 0; i < additional.length / 2; i++) {
-      gflags.put(additional[i], additional[i + 1]);
-    }
-    return SpecificGFlags.construct(gflags, gflags);
-  }
-
-  private String getAllErrorsStr(TaskInfo taskInfo) {
-    StringBuilder sb = new StringBuilder(taskInfo.getErrorMessage());
-    for (TaskInfo subTask : taskInfo.getSubTasks()) {
-      if (!StringUtils.isEmpty(subTask.getErrorMessage())) {
-        sb.append("\n").append(subTask.getErrorMessage());
-      }
-    }
-    return sb.toString();
   }
 
   private void verifyNodeModifications(Universe universe, int added, int removed) {

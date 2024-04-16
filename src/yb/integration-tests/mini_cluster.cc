@@ -97,15 +97,7 @@ DEFINE_NON_RUNTIME_string(mini_cluster_base_dir, "", "Directory for master/ts da
 DEFINE_NON_RUNTIME_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
 DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
                  "Time to wait for tservers to register to master.");
-DECLARE_int32(master_svc_num_threads);
 DECLARE_int32(memstore_size_mb);
-DECLARE_int32(master_consensus_svc_num_threads);
-DECLARE_int32(master_remote_bootstrap_svc_num_threads);
-DECLARE_int32(generic_svc_num_threads);
-DECLARE_int32(tablet_server_svc_num_threads);
-DECLARE_int32(ts_admin_svc_num_threads);
-DECLARE_int32(ts_consensus_svc_num_threads);
-DECLARE_int32(ts_remote_bootstrap_svc_num_threads);
 DECLARE_int32(replication_factor);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(use_private_ip);
@@ -203,22 +195,6 @@ Status MiniCluster::StartAsync(
     RETURN_NOT_OK(options_.master_env->CreateDir(fs_root_));
   }
 
-  // TODO: properly handle setting these variables in case of multiple MiniClusters in the same
-  // process.
-
-  // Use conservative number of threads for the mini cluster for unit test env
-  // where several unit tests tend to run in parallel.
-  // To get default number of threads - try to find SERVICE_POOL_OPTIONS macro usage.
-  FLAGS_master_svc_num_threads = 2;
-  FLAGS_master_consensus_svc_num_threads = 2;
-  FLAGS_master_remote_bootstrap_svc_num_threads = 2;
-  FLAGS_generic_svc_num_threads = 2;
-
-  FLAGS_tablet_server_svc_num_threads = 8;
-  FLAGS_ts_admin_svc_num_threads = 2;
-  FLAGS_ts_consensus_svc_num_threads = 8;
-  FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
-
   // Limit number of transaction table tablets to help avoid timeouts.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) =
       NumTabletsPerTransactionTable(options_);
@@ -258,7 +234,7 @@ Status MiniCluster::StartAsync(
     }
   }
 
-  if (UseYbController()) {
+  if (!DisableMiniClusterBackupTests() && UseYbController()) {
     // We need 1 yb controller server for each tserver.
     // YB Controller uses the same IP as corresponding tserver.
     yb_controllers_.reserve(options_.num_tablet_servers);
@@ -1321,11 +1297,11 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
     }
     // TEST_CountIntent return non ok status also means shutdown has started.
     auto intents_count_result = participant->TEST_CountIntents();
-    if (intents_count_result.ok() && intents_count_result->first) {
-      result += intents_count_result->first;
+    if (intents_count_result.ok() && intents_count_result->num_intents) {
+      result += intents_count_result->num_intents;
       LOG(INFO) << Format("T $0 P $1: Intents present: $2, transactions: $3", peer->tablet_id(),
-                          peer->permanent_uuid(), intents_count_result->first,
-                          intents_count_result->second);
+                          peer->permanent_uuid(), intents_count_result->num_intents,
+                          intents_count_result->num_transactions);
     }
   }
   return result;

@@ -8,16 +8,37 @@
  */
 
 import * as yup from 'yup';
-import { mapValues } from 'lodash';
+import { find, mapValues } from 'lodash';
 import { TFunction } from 'i18next';
 import { ProviderCode } from '../../constants';
-import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyString } from '../../../../../utils/ObjectUtils';
+import { ImageBundle } from '../../types';
 
-export const getAddLinuxVersionSchema = (providerCode: ProviderCode, t: TFunction) => {
+export const getAddLinuxVersionSchema = (
+  providerCode: ProviderCode,
+  t: TFunction,
+  existingImageBundles: ImageBundle[],
+  isEditMode: boolean,
+  isYBAManagedBundle: boolean
+) => {
   const translationPrefix = 'linuxVersion.form.validationMsg';
 
   const validationSchema = yup.object({
-    name: yup.string().required(t('nameRequired', { keyPrefix: translationPrefix })),
+    name: yup
+      .string()
+      .required(t('nameRequired', { keyPrefix: translationPrefix }))
+      .test(
+        'duplicatename',
+        t('linuxVersionAlreadyExists', { keyPrefix: translationPrefix }),
+        function (value: any) {
+          return (
+            find(existingImageBundles, {
+              name: value,
+              details: { arch: this.parent?.details?.arch }
+            }) === undefined
+          );
+        }
+      ),
     details: yup.object().shape({
       globalYbImage: yup
         .string()
@@ -25,6 +46,7 @@ export const getAddLinuxVersionSchema = (providerCode: ProviderCode, t: TFunctio
           'globalYBImage',
           t('globalYBImagenameRequired', { keyPrefix: translationPrefix }),
           (value: any) => {
+            if (isEditMode && isYBAManagedBundle) return true;
             return providerCode === ProviderCode.AWS ? true : isNonEmptyString(value);
           }
         ),
@@ -36,7 +58,21 @@ export const getAddLinuxVersionSchema = (providerCode: ProviderCode, t: TFunctio
             });
           })
         )
-      )
+      ),
+      sshPort: yup
+        .number()
+        .typeError(t('sshPortRequired', { keyPrefix: translationPrefix }))
+        .test('sshPort', t('sshPortRequired', { keyPrefix: translationPrefix }), function (value) {
+          if (isEditMode && isYBAManagedBundle) return true;
+          return isDefinedNotNull(value);
+        }),
+
+      sshUser: yup
+        .string()
+        .test('sshUser', t('sshUserRequired', { keyPrefix: translationPrefix }), function (value) {
+          if (isEditMode && isYBAManagedBundle) return true;
+          return isNonEmptyString(value);
+        })
     })
   });
 

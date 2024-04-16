@@ -151,15 +151,7 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
 
 } // namespace
 
-#if defined(__APPLE__) && !defined(NDEBUG)
-// We are experiencing more slowness in tests on macOS in debug mode.
-const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
-#else
-const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
-#endif
-
-DEFINE_UNKNOWN_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
-             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
+DEPRECATE_FLAG(int32, pg_yb_session_timeout_ms, "02_2024");
 
 PgTxnManager::PgTxnManager(
     PgClient* client,
@@ -543,6 +535,13 @@ void PgTxnManager::IncTxnSerialNo() {
   ++txn_serial_no_;
   active_sub_transaction_id_ = 0;
   ++read_time_serial_no_;
+}
+
+void PgTxnManager::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
+  txn_serial_no_ = session_data->txn_serial_no;
+  read_time_serial_no_ = session_data->read_time_serial_no;
+  active_sub_transaction_id_ = session_data->active_sub_transaction_id;
+  VLOG_TXN_STATE(2);
 }
 
 }  // namespace yb::pggate

@@ -19,8 +19,7 @@ public class SyncXClusterConfig extends XClusterConfigTaskBase {
   @Override
   public void run() {
     log.info("Running {}", getName());
-
-    lockUniverseForUpdate(getUniverse().getVersion());
+    lockAndFreezeUniverseForUpdate(getUniverse().getVersion(), null /* Txn callback */);
     try {
       createXClusterConfigSyncTask()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

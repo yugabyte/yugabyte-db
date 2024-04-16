@@ -41,7 +41,7 @@ COMMIT;
 
 This will read data from the closest follower or leader. As replicas may not be up-to-date with all updates, by design, this will return only stale data (the default staleness is 30 seconds). This is the case even if the read goes to a leader.
 
-You can change the staleness value using the following configuration parameter:
+You can change the staleness value using the following YSQL configuration parameter:
 
 ```plpgsql
 SET yb_follower_read_staleness_ms = 10000; -- 10s
@@ -55,7 +55,7 @@ Follower reads only affect reads. All writes are still handled by the leader.
 
 ## Use duplicate indexes
 
-Adding indexes is a common technique for speeding up queries. By adding all the columns needed in a query to create a [covering index](../../../../explore/indexes-constraints/covering-index-ysql/), you can perform index-only scans, where you don't need to scan the table, only the index. When the schema of your covering index is the same as the table, then it is known as a duplicate index.
+Adding indexes is a common technique for speeding up queries. By adding all the columns needed in a query to create a [covering index](../../../../explore/ysql-language-features/indexes-constraints/covering-index-ysql/), you can perform index-only scans, where you don't need to scan the table, only the index. When the schema of your covering index is the same as the table, then it is known as a duplicate index.
 
 If you are running applications from multiple regions, you can use duplicate indexes in conjunction with [tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) in a multi-region cluster to greatly improve read latencies, as follows:
 

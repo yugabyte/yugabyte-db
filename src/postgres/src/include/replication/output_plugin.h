@@ -9,6 +9,7 @@
 #ifndef OUTPUT_PLUGIN_H
 #define OUTPUT_PLUGIN_H
 
+#include "postgres_ext.h"
 #include "replication/reorderbuffer.h"
 
 struct LogicalDecodingContext;
@@ -27,6 +28,8 @@ typedef struct OutputPluginOptions
 {
 	OutputPluginOutputType output_type;
 	bool		receive_rewrites;
+
+	List	   *yb_publication_names;
 } OutputPluginOptions;
 
 /*
@@ -100,6 +103,12 @@ typedef bool (*LogicalDecodeFilterByOriginCB) (struct LogicalDecodingContext *ct
 typedef void (*LogicalDecodeShutdownCB) (struct LogicalDecodingContext *ctx);
 
 /*
+ * Called to let the output plugin know about the schema change of a Relation.
+ */
+typedef void (*YBLogicalDecodeSchemaChangeCB) (struct LogicalDecodingContext *ctx,
+											   Oid relid);
+
+/*
  * Output plugin callbacks
  */
 typedef struct OutputPluginCallbacks
@@ -112,6 +121,8 @@ typedef struct OutputPluginCallbacks
 	LogicalDecodeMessageCB message_cb;
 	LogicalDecodeFilterByOriginCB filter_by_origin_cb;
 	LogicalDecodeShutdownCB shutdown_cb;
+
+	YBLogicalDecodeSchemaChangeCB yb_schema_change_cb;
 } OutputPluginCallbacks;
 
 /* Functions in replication/logical/logical.c */

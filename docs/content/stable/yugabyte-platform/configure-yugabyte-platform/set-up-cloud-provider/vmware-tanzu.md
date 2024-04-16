@@ -1,39 +1,18 @@
 ---
 title: Configure the VMware Tanzu cloud provider
-headerTitle: Create provider configuration
-linkTitle: Create provider configuration
+headerTitle: Create Kubernetes provider configuration
+linkTitle: Kubernetes
 description: Configure the VMware Tanzu provider configuration
-headContent: Configure a VMWare Tanzu provider configuration
+headContent: For deploying universes on VMware Tanzu
 menu:
   stable_yugabyte-platform:
-    identifier: set-up-cloud-provider-4-vmware-tanzu
-    parent: configure-yugabyte-platform
+    identifier: set-up-kubernetes-provider-2
+    parent: set-up-cloud-provider
     weight: 20
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li>
-    <a href="../aws/" class="nav-link">
-      <i class="fa-brands fa-aws"></i>
-      AWS
-    </a>
-  </li>
-
-  <li>
-    <a href="../gcp/" class="nav-link">
-      <i class="fa-brands fa-google" aria-hidden="true"></i>
-      GCP
-    </a>
-  </li>
-
-  <li>
-    <a href="../azure/" class="nav-link">
-      <i class="icon-azure" aria-hidden="true"></i>
-      Azure
-    </a>
-  </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
@@ -56,28 +35,19 @@ type: docs
     </a>
   </li>
 
-  <li>
-    <a href="../on-premises/" class="nav-link">
-      <i class="fa-solid fa-building"></i>
-      On-premises
-    </a>
-  </li>
-
 </ul>
 
-Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
-
-A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+Before you can deploy universes to VMware Tanzu using YugabyteDB Anywhere (YBA), you must create a provider configuration.
 
 ## Prerequisites
 
-Before you start, ensure that you have created the [kubeconfig file](../kubernetes/#kubeconfig-file) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
+Before you start, ensure that you have created the [kubeconfig file](../kubernetes/#kubeconfig-file) so YBA can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
 
 ## Configure TKG
 
 To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), navigate to **Configs > Infrastructure > VMware Tanzu**.
 
-This lists all currently configured VMWare Tanzu providers.
+This lists all currently configured VMware Tanzu providers.
 
 To create a TKG provider, click **Create Kubernetes Config**. For more information, refer to [Create a provider](../kubernetes/#create-a-provider).
 
@@ -85,7 +55,7 @@ To create a TKG provider, click **Create Kubernetes Config**. For more informati
 
 Set the **Kubernetes Provider Type** to VMWare Tanzu.
 
-For information on the Kubernetes Provider settings, refer to [Provider settings](../kubernetes/#kubernetes-provider-settings).
+For information on the Kubernetes Provider settings, refer to [Provider settings](../kubernetes/#provider-settings).
 
 To add service-level annotations, use the following [overrides](../kubernetes/#overrides):
 
@@ -137,7 +107,7 @@ VMware Tanzu Application Service is no longer actively supported and the followi
 If you choose to use VMware Tanzu Application Service, before creating the service instance, ensure that the following is available:
 
 - The YugabyteDB tile is installed in your PCF marketplace.
-- The cloud provider is configured in the YugabyteDB Anywhere instance in your PCF environment.
+- The cloud provider is configured in the YBA instance in your PCF environment.
 
 ### Create a YugabyteDB service instance
 
@@ -186,7 +156,7 @@ You can specify override options when you create a service instance using the Yu
 
 #### Override cloud providers
 
-Depending on the cloud providers configured for your YugabyteDB Anywhere, you can create Yugabyte service instances by providing overrides.
+Depending on the cloud providers configured for your YBA, you can create Yugabyte service instances by providing overrides.
 
 To provision in AWS or GCP cloud, your overrides should include the appropriate `provider_type` and `region_codes` as an array, as follows:
 
@@ -247,7 +217,7 @@ To override the volume settings, include `num_volumes` with the desired value, a
 
 #### Override the YugabyteDB software version
 
-To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in YugabyteDB Anywhere, as follows:
+To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in YBA, as follows:
 
 ```yaml
 {

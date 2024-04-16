@@ -315,6 +315,43 @@ preflight_all_checks() {
   check_yugabyte_user
 
   check_free_space "home_dir_space" "$yb_home_dir"
+
+  # Check whether files in home directory are cleaned up if exists.
+  # Finds all files including the .yugabytedb folder and ignores other dot files, node-agent files.
+  yb_home_dir_clean=true
+  if [[ -e "$yb_home_dir" ]]; then
+    if [[ "$check_type" == "provision" ]]; then
+      files=$(sudo find "$yb_home_dir" -maxdepth 1 -mindepth 1  -name "bin" -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
+    else
+      files=$(find "$yb_home_dir" -maxdepth 1 -mindepth 1  -name "bin" -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
+    fi
+    if [[ -n "$files" ]]; then
+      yb_home_dir_clean=false
+    fi
+  fi
+  update_result_json "yb_home_dir_clean" "$yb_home_dir_clean"
+
+  # Check whether files in data directory are cleaned up.
+  data_dir_clean=true
+  processes=("tserver" "master" "controller")
+  IFS="," read -ra mount_points_arr <<< "$mount_points"
+  for path in "${mount_points_arr[@]}"; do
+    if [ -e "$path/pg_data" ]; then
+      data_dir_clean=false
+      break
+    fi
+    if [ -e "$path/ybc-data" ]; then
+      data_dir_clean=false
+      break
+    fi
+    for daemon in "${processes[@]}"; do
+      if [ -e "$path/yb-data/$daemon" ]; then
+        data_dir_clean=false
+        break
+      fi
+    done
+  done
+  update_result_json "data_dir_clean" "$data_dir_clean"
 }
 
 check_port() {

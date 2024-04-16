@@ -1,5 +1,9 @@
 package com.yugabyte.troubleshoot.ts.service;
 
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.RESULT_SUCCESS;
+import static com.yugabyte.troubleshoot.ts.service.GraphService.DATA_RETRIEVAL_TIME;
+import static com.yugabyte.troubleshoot.ts.service.GraphService.QUERY_TIME;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.troubleshoot.ts.metric.client.PrometheusClient;
@@ -35,6 +39,7 @@ public class MetricGraphService implements GraphSourceIF {
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
   public static final String NAMESPACE_ID = "namespace_id";
+  public static final String NODE_PREFIX = "node_prefix";
 
   private static final Set<String> DATA_DISK_USAGE_METRICS =
       ImmutableSet.of(
@@ -65,13 +70,14 @@ public class MetricGraphService implements GraphSourceIF {
   }
 
   @Override
-  public long minGraphStepSeconds(UniverseMetadata universeMetadata) {
+  public long minGraphStepSeconds(GraphQuery query, UniverseMetadata universeMetadata) {
     return universeMetadata.getMetricsScrapePeriodSec() * 3;
   }
 
   @Override
   public GraphResponse getGraph(
       UniverseMetadata universeMetadata, UniverseDetails universeDetails, GraphQuery query) {
+    Long startTime = System.currentTimeMillis();
     GraphResponse result = new GraphResponse();
     result.setSuccessful(true);
     String graphName = query.getName();
@@ -117,7 +123,8 @@ public class MetricGraphService implements GraphSourceIF {
 
       Map<String, String> queries = getQueries(settings, context);
       result.setLayout(config.getLayout());
-      List<GraphResponse.GraphData> data = new ArrayList<>();
+      result.setStepSeconds(query.getStepSeconds());
+      List<GraphData> data = new ArrayList<>();
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
         String queryExpr = e.getValue();
@@ -145,17 +152,27 @@ public class MetricGraphService implements GraphSourceIF {
       result.setData(data);
     }
 
+    QUERY_TIME
+        .labels(RESULT_SUCCESS, query.getName())
+        .observe(System.currentTimeMillis() - startTime);
     return result;
   }
 
   private MetricResponse getMetrics(
       UniverseMetadata universeMetadata, GraphQuery query, String queryExpression) {
+    Long queryStartTime = System.currentTimeMillis();
     MetricRangeQuery rangeQuery = new MetricRangeQuery();
     rangeQuery.setQuery(queryExpression);
     rangeQuery.setStart(query.getStart().atZone(ZoneOffset.UTC));
     rangeQuery.setEnd(query.getEnd().atZone(ZoneOffset.UTC));
     rangeQuery.setStep(Duration.ofSeconds(query.getStepSeconds()));
-    return prometheusClient.queryRange(universeMetadata.getMetricsUrl(), rangeQuery);
+    MetricResponse response =
+        prometheusClient.queryRange(universeMetadata.getMetricsUrl(), rangeQuery);
+
+    DATA_RETRIEVAL_TIME
+        .labels(query.getName())
+        .observe(System.currentTimeMillis() - queryStartTime);
+    return response;
   }
 
   private Map<String, String> getTopKQueries(GraphQuery query, MetricsGraphConfig config) {
@@ -163,14 +180,14 @@ public class MetricGraphService implements GraphSourceIF {
     if (settings.getSplitMode() == GraphSettings.SplitMode.NONE) {
       return Collections.emptyMap();
     }
-    long range = query.getStepSeconds();
     long end = query.getEnd().getEpochSecond();
+    long start = query.getStart().getEpochSecond();
     MetricQueryContext context =
         MetricQueryContext.builder()
             .graphConfig(config)
             .graphQuery(query)
             .topKQuery(true)
-            .queryRangeSecs(range)
+            .queryRangeSecs(end - start)
             .queryTimestampSec(end)
             .additionalGroupBy(getAdditionalGroupBy(settings))
             .excludeFilters(getExcludeFilters(settings))
@@ -310,13 +327,13 @@ public class MetricGraphService implements GraphSourceIF {
       // The kubelet volume metrics only has the persistentvolumeclain field
       // as well as namespace. Adding any other field will cause the query to fail.
       if (metric.startsWith("kubelet_volume")) {
-        allFilters.remove(GraphFilter.podName.getMetricLabel());
-        allFilters.remove(GraphFilter.containerName.getMetricLabel());
+        allFilters.remove(GraphLabel.podName.getMetricLabel());
+        allFilters.remove(GraphLabel.containerName.getMetricLabel());
       }
       // For all other metrics, it is safe to remove the filter if
       // it exists.
       else {
-        allFilters.remove(GraphFilter.pvc.getMetricLabel());
+        allFilters.remove(GraphLabel.pvc.getMetricLabel());
       }
     }
     allExcludeFilters.putAll(context.getExcludeFilters());
@@ -411,7 +428,7 @@ public class MetricGraphService implements GraphSourceIF {
 
   private static Set<String> getAdditionalGroupBy(GraphSettings settings) {
     return switch (settings.getSplitType()) {
-      case NODE -> ImmutableSet.of(GraphFilter.instanceName.getMetricLabel());
+      case NODE -> ImmutableSet.of(GraphLabel.instanceName.getMetricLabel());
       case TABLE -> ImmutableSet.of(NAMESPACE_NAME, NAMESPACE_ID, TABLE_ID, TABLE_NAME);
       case NAMESPACE -> ImmutableSet.of(NAMESPACE_NAME, NAMESPACE_ID);
       default -> Collections.emptySet();
@@ -425,52 +442,53 @@ public class MetricGraphService implements GraphSourceIF {
     };
   }
 
-  private List<GraphResponse.GraphData> getGraphData(
+  private List<GraphData> getGraphData(
       MetricResponse response,
       String metricName,
       MetricsGraphConfig config,
       GraphSettings settings) {
-    List<GraphResponse.GraphData> metricGraphDataList = new ArrayList<>();
+    List<GraphData> metricGraphDataList = new ArrayList<>();
 
     GraphLayout layout = config.getLayout();
     // We should use instance name for aggregated graph in case it's grouped by instance.
     boolean useInstanceName =
         config.getGroupBy() != null
-            && config.getGroupBy().equals(GraphFilter.instanceName.getMetricLabel())
+            && config.getGroupBy().equals(GraphLabel.instanceName.getMetricLabel())
             && settings.getSplitMode() == GraphSettings.SplitMode.NONE;
     for (final MetricResponse.Result result : response.getData().getResult()) {
-      GraphResponse.GraphData metricGraphData = new GraphResponse.GraphData();
+      GraphData metricGraphData = new GraphData();
       Map<String, String> metricInfo = result.getMetric();
 
-      metricGraphData.instanceName = metricInfo.remove(GraphFilter.instanceName.getMetricLabel());
-      metricGraphData.tableId = metricInfo.remove(TABLE_ID);
-      metricGraphData.tableName = metricInfo.remove(TABLE_NAME);
-      metricGraphData.namespaceName = metricInfo.remove(NAMESPACE_NAME);
-      metricGraphData.namespaceId = metricInfo.remove(NAMESPACE_ID);
-      if (metricInfo.containsKey("node_prefix")) {
-        metricGraphData.name = metricInfo.get("node_prefix");
-      } else if (metricInfo.size() == 1) {
+      metricGraphData.setInstanceName(metricInfo.remove(GraphLabel.instanceName.getMetricLabel()));
+      metricGraphData.setTableId(metricInfo.remove(TABLE_ID));
+      metricGraphData.setTableName(metricInfo.remove(TABLE_NAME));
+      metricGraphData.setNamespaceName(metricInfo.remove(NAMESPACE_NAME));
+      metricGraphData.setNamespaceId(metricInfo.remove(NAMESPACE_ID));
+      metricGraphData.setNodePrefix(metricInfo.remove(NODE_PREFIX));
+      if (metricInfo.size() == 1) {
         // If we have a group_by clause, the group by name would be the only
         // key in the metrics data, fetch that and use that as the name
         String key = metricInfo.keySet().iterator().next();
-        metricGraphData.name = metricInfo.get(key);
+        metricGraphData.setName(metricInfo.get(key));
       } else if (metricInfo.isEmpty()) {
-        if (useInstanceName && StringUtils.isNotBlank(metricGraphData.instanceName)) {
+        if (useInstanceName && StringUtils.isNotBlank(metricGraphData.getInstanceName())) {
           // In case of aggregated metric query need to set name == instanceName for graphs,
           // which are grouped by instance name by default
-          metricGraphData.name = metricGraphData.instanceName;
+          metricGraphData.setName(metricGraphData.getInstanceName());
         } else {
-          metricGraphData.name = metricName;
+          metricGraphData.setName(metricName);
         }
       }
 
+      metricGraphData.setLabels(new HashMap<>());
+      metricGraphData.getLabels().putAll(metricInfo);
+
       if (metricInfo.size() <= 1) {
         if (layout.getYaxis() != null
-            && layout.getYaxis().getAlias().containsKey(metricGraphData.name)) {
-          metricGraphData.name = layout.getYaxis().getAlias().get(metricGraphData.name);
+            && layout.getYaxis().getAlias().containsKey(metricGraphData.getName())) {
+          metricGraphData.setName(layout.getYaxis().getAlias().get(metricGraphData.getName()));
         }
       } else {
-        metricGraphData.labels = new HashMap<>();
         // In case we want to use instance name - it's already set above
         // Otherwise - replace metric name with alias.
         if (layout.getYaxis() != null && !useInstanceName) {
@@ -489,30 +507,33 @@ public class MetricGraphService implements GraphSourceIF {
               }
             }
             if (validLabels) {
-              metricGraphData.name = entry.getValue();
+              metricGraphData.setName(entry.getValue());
             }
           }
-        } else {
-          metricGraphData.labels.putAll(metricInfo);
         }
       }
       if (result.getValues() != null) {
         for (final Pair<Double, Double> value : result.getValues()) {
-          metricGraphData.x.add((long) (value.getKey() * 1000));
-          metricGraphData.y.add(String.valueOf(value.getValue()));
+          metricGraphData
+              .getPoints()
+              .add(new GraphPoint().setX((long) (value.getKey() * 1000)).setY(value.getValue()));
         }
       } else if (result.getValue() != null) {
-        metricGraphData.x.add((long) (result.getValue().getKey() * 1000));
-        metricGraphData.y.add(String.valueOf(result.getValue().getValue()));
+        metricGraphData
+            .getPoints()
+            .add(
+                new GraphPoint()
+                    .setX((long) (result.getValue().getKey() * 1000))
+                    .setY(result.getValue().getValue()));
       }
-      metricGraphData.type = "scatter";
+      metricGraphData.setType("scatter");
       metricGraphDataList.add(metricGraphData);
     }
     return sortGraphData(metricGraphDataList, config);
   }
 
-  private List<GraphResponse.GraphData> sortGraphData(
-      List<GraphResponse.GraphData> graphData, MetricsGraphConfig configDefinition) {
+  private List<GraphData> sortGraphData(
+      List<GraphData> graphData, MetricsGraphConfig configDefinition) {
     Map<String, Integer> nameOrderMap = new HashMap<>();
     if (configDefinition.getLayout().getYaxis() != null
         && configDefinition.getLayout().getYaxis().getAlias() != null) {
@@ -525,14 +546,14 @@ public class MetricGraphService implements GraphSourceIF {
         .sorted(
             Comparator.comparing(
                 data -> {
-                  if (StringUtils.isEmpty(data.name)) {
+                  if (StringUtils.isEmpty(data.getName())) {
                     return Integer.MAX_VALUE;
                   }
-                  if (StringUtils.isEmpty(data.instanceName)
-                      && StringUtils.isEmpty(data.namespaceName)) {
+                  if (StringUtils.isEmpty(data.getInstanceName())
+                      && StringUtils.isEmpty(data.getNamespaceName())) {
                     return Integer.MAX_VALUE;
                   }
-                  Integer position = nameOrderMap.get(data.name);
+                  Integer position = nameOrderMap.get(data.getName());
                   if (position != null) {
                     return position;
                   }
@@ -548,30 +569,29 @@ public class MetricGraphService implements GraphSourceIF {
     // container or not, and use pod_name vs exported_instance accordingly.
     // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
     boolean isContainerMetric = query.getName().startsWith(CONTAINER_METRIC_PREFIX);
-    GraphFilter universeFilterLabel =
-        isContainerMetric ? GraphFilter.namespace : GraphFilter.universeUuid;
-    GraphFilter nodeFilterLabel =
-        isContainerMetric ? GraphFilter.podName : GraphFilter.instanceName;
+    GraphLabel universeFilterLabel =
+        isContainerMetric ? GraphLabel.namespace : GraphLabel.universeUuid;
+    GraphLabel nodeFilterLabel = isContainerMetric ? GraphLabel.podName : GraphLabel.instanceName;
 
     List<UniverseDetails.UniverseDefinition.NodeDetails> nodesToFilter = new ArrayList<>();
-    Map<GraphFilter, List<String>> filters =
+    Map<GraphLabel, List<String>> filters =
         query.getFilters() != null ? query.getFilters() : new HashMap<>();
-    if (filters.containsKey(GraphFilter.clusterUuid)
-        || filters.containsKey(GraphFilter.regionCode)
-        || filters.containsKey(GraphFilter.azCode)
-        || filters.containsKey(GraphFilter.instanceName)
-        || filters.containsKey(GraphFilter.instanceType)) {
+    if (filters.containsKey(GraphLabel.clusterUuid)
+        || filters.containsKey(GraphLabel.regionCode)
+        || filters.containsKey(GraphLabel.azCode)
+        || filters.containsKey(GraphLabel.instanceName)
+        || filters.containsKey(GraphLabel.instanceType)) {
       List<UUID> clusterUuids =
-          filters.getOrDefault(GraphFilter.clusterUuid, Collections.emptyList()).stream()
+          filters.getOrDefault(GraphLabel.clusterUuid, Collections.emptyList()).stream()
               .map(UUID::fromString)
               .toList();
       List<String> regionCodes =
-          filters.getOrDefault(GraphFilter.regionCode, Collections.emptyList());
-      List<String> azCodes = filters.getOrDefault(GraphFilter.azCode, Collections.emptyList());
+          filters.getOrDefault(GraphLabel.regionCode, Collections.emptyList());
+      List<String> azCodes = filters.getOrDefault(GraphLabel.azCode, Collections.emptyList());
       List<String> instanceNames =
-          filters.getOrDefault(GraphFilter.instanceName, Collections.emptyList());
+          filters.getOrDefault(GraphLabel.instanceName, Collections.emptyList());
       List<UniverseDetails.InstanceType> instanceTypes =
-          filters.getOrDefault(GraphFilter.instanceType, Collections.emptyList()).stream()
+          filters.getOrDefault(GraphLabel.instanceType, Collections.emptyList()).stream()
               .map(type -> UniverseDetails.InstanceType.valueOf(type.toUpperCase()))
               .toList();
       // Need to get matching nodes
@@ -635,8 +655,8 @@ public class MetricGraphService implements GraphSourceIF {
         namespaces.add(namespace);
       }
       filters.put(nodeFilterLabel, new ArrayList<>(podNames));
-      filters.put(GraphFilter.containerName, new ArrayList<>(containerNames));
-      filters.put(GraphFilter.pvc, new ArrayList<>(pvcNames));
+      filters.put(GraphLabel.containerName, new ArrayList<>(containerNames));
+      filters.put(GraphLabel.pvc, new ArrayList<>(pvcNames));
       filters.put(universeFilterLabel, new ArrayList<>(namespaces));
     } else {
       if (CollectionUtils.isNotEmpty(nodesToFilter)) {
@@ -649,11 +669,11 @@ public class MetricGraphService implements GraphSourceIF {
 
       if (DISK_USAGE_METRICS.contains(query.getName())) {
         if (DATA_DISK_USAGE_METRICS.contains(query.getName())) {
-          filters.put(GraphFilter.mountPoint, metadata.getDataMountPoints());
+          filters.put(GraphLabel.mountPoint, metadata.getDataMountPoints());
         } else {
           List<String> allMountPoints = new ArrayList<>(metadata.getOtherMountPoints());
           allMountPoints.addAll(metadata.getDataMountPoints());
-          filters.put(GraphFilter.mountPoint, allMountPoints);
+          filters.put(GraphLabel.mountPoint, allMountPoints);
         }
       }
     }

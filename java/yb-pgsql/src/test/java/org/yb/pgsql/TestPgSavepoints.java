@@ -246,6 +246,7 @@ public class TestPgSavepoints extends BasePgSQLTest {
         assertEquals(OptionalInt.empty(), getSingleValue(conn, 3));
         assertEquals(OptionalInt.empty(), getSingleValue(conn, 5));
         assertEquals(OptionalInt.empty(), getSingleValue(conn, 7));
+        conn.commit();
         statement.execute("truncate t");
         conn.commit();
       }
@@ -272,6 +273,7 @@ public class TestPgSavepoints extends BasePgSQLTest {
         assertEquals(getSingleValue(conn, 1), OptionalInt.of(2));
         assertEquals(getSingleValue(conn, 3), OptionalInt.empty());
         assertEquals(getSingleValue(conn, 5), OptionalInt.of(6));
+        conn.commit();
         statement.execute("truncate t");
         conn.commit();
       }
@@ -314,6 +316,7 @@ public class TestPgSavepoints extends BasePgSQLTest {
             }
           }
         }
+        conn.commit();
         statement.execute("truncate t");
         conn.commit();
       }
@@ -324,23 +327,5 @@ public class TestPgSavepoints extends BasePgSQLTest {
   public void testSavepointLargeApplyWithAbortsAndNodeKills() throws Exception {
     // TODO(savepoints): Add test which forces node restarts to ensure transaction loader is
     // properly loading savepoint metadata.
-  }
-
-  @Test
-  public void testSavepointCanBeDisabled() throws Exception {
-    Map<String, String> extra_tserver_flags = new HashMap<String, String>();
-    extra_tserver_flags.put("enable_pg_savepoints", "false");
-    restartClusterWithFlags(Collections.emptyMap(), extra_tserver_flags);
-    createTable();
-    try (Statement statement = connection.createStatement()) {
-        statement.execute("INSERT INTO t VALUES (1, 2)");
-        runInvalidQuery(statement,  "SAVEPOINT a", /*matchAll*/ true,
-                        "SAVEPOINT <transaction> not supported due to setting of flag " +
-                        "--enable_pg_savepoints",
-                        "Hint: The flag may have been set to false because savepoints do not " +
-                        "currently work with xCluster replication");
-    }
-    // Revert back to old set of flags for other test methods
-    restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 }

@@ -93,7 +93,9 @@ For yum to download all the required dependencies, ensure that the list of *all*
         ```sh
         # For RHEL 7
         sudo yum --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+        ```
 
+        ```sh
         # For RHEL 8
         sudo yum --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
         ```
@@ -125,7 +127,7 @@ For yum to download all the required dependencies, ensure that the list of *all*
 1. Navigate to the folder containing all the files and install the rpm files using the following command:
 
     ```sh
-    sudo yum install *
+    sudo yum --disablerepo=* install *
     ```
 
 1. Check that yb-voyager is installed using the following command:

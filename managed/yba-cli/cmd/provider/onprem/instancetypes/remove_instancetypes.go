@@ -23,7 +23,7 @@ var removeInstanceTypesCmd = &cobra.Command{
 	Long:    "Delete instance types of a YugabyteDB Anywhere on-premises provider",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -47,16 +47,13 @@ var removeInstanceTypesCmd = &cobra.Command{
 			fmt.Sprintf("Are you sure you want to remove %s: %s", "instance type", instanceTypeName),
 			viper.GetBool("force"))
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
-		providerName, err := cmd.Flags().GetString("provider-name")
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -64,12 +61,21 @@ var removeInstanceTypesCmd = &cobra.Command{
 		providerListRequest = providerListRequest.Name(providerName)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "Remove - Get Provider")
+			errMessage := util.ErrorFromHTTPResponse(
+				response, err, "Instance Type", "Remove - Get Provider")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			fmt.Println("No providers found\n")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
+		}
+
+		if r[0].GetCode() != util.OnpremProviderType {
+			errMessage := "Operation only supported for On-premises providers."
+			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}
 
 		providerUUID := r[0].GetUuid()
@@ -86,11 +92,20 @@ var removeInstanceTypesCmd = &cobra.Command{
 		}
 
 		if rDelete.GetSuccess() {
-			fmt.Printf("The instance type %s has been removed from provider %s (%s)\n",
-				formatter.Colorize(instanceTypeName, formatter.GreenColor), providerName, providerUUID)
+			logrus.Infof("The instance type %s has been removed from provider %s (%s)\n",
+				formatter.Colorize(instanceTypeName, formatter.GreenColor),
+				providerName,
+				providerUUID)
 
 		} else {
-			fmt.Printf("An error occurred while removing instance type from provider")
+			logrus.Errorf(
+				formatter.Colorize(
+					fmt.Sprintf(
+						"An error occurred while removing instance type %s from provider %s (%s)\n",
+						instanceTypeName,
+						providerName,
+						providerUUID),
+					formatter.RedColor))
 		}
 	},
 }

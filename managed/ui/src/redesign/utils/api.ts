@@ -20,6 +20,7 @@ import {
 } from '../features/universe/universe-form/utils/dto';
 import { TaskResponse } from './dtos';
 import { EncryptionInTransitFormValues } from '../features/universe/universe-actions/encryption-in-transit/EncryptionInTransitUtils';
+import { ReplicationSlotResponse } from '../features/universe/universe-tabs/replication-slots/utils/types';
 
 // define unique names to use them as query keys
 export enum QUERY_KEY {
@@ -32,7 +33,8 @@ export enum QUERY_KEY {
   rotateDBPassword = 'rotateDBPassword',
   updateTLS = 'updateTLS',
   getCertificates = 'getCertificates',
-  getFinalizeInfo = 'getFinalizeInfo'
+  getFinalizeInfo = 'getFinalizeInfo',
+  getReplicationSlots = 'getReplicationSlots'
 }
 
 class ApiService {
@@ -125,6 +127,11 @@ class ApiService {
   retryCurrentTask = (taskUUID: string): Promise<AxiosResponse> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUUID}`;
     return axios.post<AxiosResponse>(requestUrl).then((resp) => resp);
+  };
+
+  getReplicationSlots = (universeId: string): Promise<ReplicationSlotResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/cdc_replication_slots`;
+    return axios.get<ReplicationSlotResponse>(requestUrl).then((resp) => resp.data);
   };
 }
 

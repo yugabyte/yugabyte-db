@@ -19,18 +19,52 @@
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
-DEFINE_test_flag(bool, yb_enable_ash, false,
-    "True to enable Active Session History");
-DEFINE_test_flag(bool, export_wait_state_names, yb::IsDebug(),
+// The reason to include yb_ash_enable_infra in this file and not
+// pg_wrapper.cc:
+//
+// The runtime gFlag yb_enable_ash should only be enabled if the
+// non-runtime gFlag yb_ash_enable_infra is true. Postgres GUC
+// check framework is used to enforce this check. But if both the flags
+// are to be enabled at startup, yb_ash_enable_infra must be registered
+// first, otherwise the check will incorrectly fail.
+//
+// Postmaster processes the list of GUCs twice, once directly from the arrays
+// in guc.c and once from the config file that WriteConfigFile() writes into.
+// AppendPgGFlags() decides the order of Pg gFlags that are going to be written
+// in the same order that GetAllFlags() returns, and GetAllFlags() sorts it
+// internally by the filename (which includes some parts of the filepath as well)
+// and since this is in the folder 'ash', which is lexicographically smaller than
+// the folder 'yql', the flags of this file will be written to the config file
+// before the flags of pg_wrapper.cc and, and hence processed first by postmaster.
+// In the same file, the flags will be sorted lexicographically based on their
+// names, so yb_ash_enable_infra will come before yb_enable_ash.
+//
+// So, to ensure that the GUC check hook doesn't fail, these two flags are
+// defined here. Both the flags are not defined in pg_wrapper.cc since yb_enable_ash
+// is required in other parts of the code as well like cql_server.cc and yb_rpc.cc.
+
+DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_ash_enable_infra, false,
+    "Allocate shared memory for ASH, start the background worker, create "
+    "instrumentation hooks and enable querying the yb_active_session_history "
+    "view.");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ash, false,
+    "Starts sampling and instrumenting YSQL and YCQL queries, "
+    "and various background activities. This does nothing if "
+    "ysql_yb_enable_ash_infra is disabled.");
+
+DEFINE_test_flag(bool, export_wait_state_names, yb::kIsDebug,
     "Exports wait-state name as a human understandable string.");
-DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::IsDebug(),
+DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::kIsDebug,
     "Add a trace line whenever the wait state code is updated.");
 DEFINE_test_flag(uint32, yb_ash_sleep_at_wait_state_ms, 0,
     "How long to sleep/delay when entering a particular wait state.");
 DEFINE_test_flag(uint32, yb_ash_wait_code_to_sleep_at, 0,
     "If enabled, add a sleep/delay when we enter the specified wait state.");
-DEFINE_test_flag(bool, export_ash_uuids_as_hex_strings, yb::IsDebug(),
+DEFINE_test_flag(bool, export_ash_uuids_as_hex_strings, yb::kIsDebug,
     "Exports wait-state name as a human understandable string.");
+DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
+    " of the method tserver is running");
 
 namespace yb::ash {
 
@@ -112,8 +146,8 @@ void AshAuxInfo::UpdateFrom(const AshAuxInfo &other) {
   }
 }
 
-WaitStateInfo::WaitStateInfo(AshMetadata &&meta)
-    : metadata_(std::move(meta)) {}
+WaitStateInfo::WaitStateInfo()
+    : metadata_(AshMetadata{}) {}
 
 void WaitStateInfo::set_code(WaitStateCode c) {
   if (GetAtomicFlag(&FLAGS_TEST_trace_ash_wait_code_updates)) {
@@ -140,6 +174,11 @@ std::string WaitStateInfo::ToString() const {
 void WaitStateInfo::set_rpc_request_id(int64_t rpc_request_id) {
   std::lock_guard lock(mutex_);
   metadata_.rpc_request_id = rpc_request_id;
+}
+
+int64_t WaitStateInfo::rpc_request_id() {
+  std::lock_guard lock(mutex_);
+  return metadata_.rpc_request_id;
 }
 
 void WaitStateInfo::set_root_request_id(const Uuid &root_request_id) {
@@ -196,12 +235,6 @@ const WaitStateInfoPtr& WaitStateInfo::CurrentWaitState() {
     VLOG_WITH_FUNC(3) << "returning nullptr";
   }
   return threadlocal_wait_state_;
-}
-
-WaitStateInfoPtr WaitStateInfo::CreateIfAshIsEnabled() {
-  return yb::GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)
-             ? std::make_shared<yb::ash::WaitStateInfo>(yb::ash::AshMetadata{})
-             : nullptr;
 }
 
 //
@@ -267,6 +300,107 @@ void WaitStateTracker::Untrack(const yb::ash::WaitStateInfoPtr& ptr) {
 std::vector<yb::ash::WaitStateInfoPtr> WaitStateTracker::GetWaitStates() const {
   std::lock_guard lock(mutex_);
   return {entries_.begin(), entries_.end()};
+}
+
+WaitStateType GetWaitStateType(WaitStateCode code) {
+  switch (code) {
+    case WaitStateCode::kUnused:
+    case WaitStateCode::kYSQLReserved:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kCatalogRead:
+    case WaitStateCode::kIndexRead:
+    case WaitStateCode::kStorageRead:
+    case WaitStateCode::kStorageFlush:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kOnCpu_Active:
+    case WaitStateCode::kOnCpu_Passive:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kIdle:
+    case WaitStateCode::kRpc_Done:
+    case WaitStateCode::kRpcs_WaitOnMutexInShutdown:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRetryableRequests_SaveToDisk:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kMVCC_WaitForSafeTime:
+    case WaitStateCode::kLockedBatchEntry_Lock:
+    case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kCreatingNewTablet:
+    case WaitStateCode::kSaveRaftGroupMetadataToDisk:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kTransactionStatusCache_DoGetCommitData:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kWriteSysCatalogSnapshotToDisk:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kConflictResolution_ResolveConficts:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRaft_WaitingForReplication:
+      return WaitStateType::kNetwork;
+
+    case WaitStateCode::kRaft_ApplyingEdits:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kWAL_Append:
+    case WaitStateCode::kWAL_Sync:
+    case WaitStateCode::kConsensusMeta_Flush:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kReplicaState_TakeUpdateLock:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRocksDB_ReadBlockFromFile:
+    case WaitStateCode::kRocksDB_OpenFile:
+    case WaitStateCode::kRocksDB_WriteToFile:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kRocksDB_Flush:
+    case WaitStateCode::kRocksDB_Compaction:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kRocksDB_PriorityThreadPoolTaskPaused:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRocksDB_CloseFile:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kRocksDB_RateLimiter:
+    case WaitStateCode::kRocksDB_WaitForSubcompaction:
+      return WaitStateType::kWaitOnCondition;
+
+    case WaitStateCode::kRocksDB_NewIterator:
+      return WaitStateType::kDiskIO;
+
+    case WaitStateCode::kYCQL_Parse:
+    case WaitStateCode::kYCQL_Read:
+    case WaitStateCode::kYCQL_Write:
+    case WaitStateCode::kYCQL_Analyze:
+    case WaitStateCode::kYCQL_Execute:
+      return WaitStateType::kCpu;
+
+    case WaitStateCode::kYBClient_WaitingOnDocDB:
+    case WaitStateCode::kYBClient_LookingUpTablet:
+      return WaitStateType::kNetwork;
+  }
+  FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
 
 namespace {

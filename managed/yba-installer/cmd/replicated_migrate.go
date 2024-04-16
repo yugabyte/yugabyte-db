@@ -127,16 +127,22 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 
 		// Mark install state. Do this manually, as we are also updating additional fields.
 		state.CurrentStatus = ybactlstate.MigratingStatus
-		if err := ybactlstate.StoreState(state); err != nil {
-			log.Fatal("before replicated migration, failed to update state: " + err.Error())
-		}
 
 		// Migrate config
 		err = config.ExportYbaCtl()
 		if err != nil {
 			log.Fatal("failed to migrated replicated config to yba-ctl config: " + err.Error())
 		}
-		state.RootInstall = viper.GetString("installRoot")
+		installRoot := viper.GetString("installRoot")
+		if installRoot == replicatedInstallRoot {
+			log.Error(fmt.Sprintf("yba-ctl.yml installRoot value %s cannot be the same the replicated "+
+				"storage_path %s. Please regenerate the config.", installRoot, replicatedInstallRoot))
+			log.Fatal("installRoot and replicated storage path cannot be the same")
+		}
+		state.RootInstall = installRoot
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("before replicated migration, failed to update state: " + err.Error())
+		}
 
 		//re-init after exporting config
 		initServices()
@@ -305,6 +311,7 @@ Are you sure you want to continue?`
 		if err := state.TransitionStatus(ybactlstate.FinishingStatus); err != nil {
 			log.Fatal("Failed to update status: " + err.Error())
 		}
+		common.SetReplicatedBaseDir(state.Replicated.StoragePath)
 
 		for _, name := range serviceOrder {
 			if err := services[name].FinishReplicatedMigrate(); err != nil {
@@ -312,12 +319,14 @@ Are you sure you want to continue?`
 			}
 		}
 		if err := replflow.Uninstall(); err != nil {
-			log.Fatal("unable to uninstall replicated: " + err.Error())
+			log.Error("unable to uninstall replicated: " + err.Error())
+			log.Info("Please manually uninstall replicated")
 		}
 		state.CurrentStatus = ybactlstate.InstalledStatus
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("Failed to save state: " + err.Error())
 		}
+		log.Info("Completed migration")
 	},
 }
 

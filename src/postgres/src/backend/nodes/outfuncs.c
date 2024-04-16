@@ -627,6 +627,24 @@ _outBitmapIndexScan(StringInfo str, const BitmapIndexScan *node)
 }
 
 static void
+_outYbBitmapIndexScan(StringInfo str, const YbBitmapIndexScan *node)
+{
+	WRITE_NODE_TYPE("YBBITMAPINDEXSCAN");
+
+	_outScanInfo(str, (const Scan *) node);
+
+	WRITE_OID_FIELD(indexid);
+	WRITE_BOOL_FIELD(isshared);
+	WRITE_NODE_FIELD(indexqual);
+	WRITE_NODE_FIELD(indexqualorig);
+
+	WRITE_NODE_FIELD(indextlist);
+
+	WRITE_NODE_FIELD(yb_idx_pushdown.quals);
+	WRITE_NODE_FIELD(yb_idx_pushdown.colrefs);
+}
+
+static void
 _outBitmapHeapScan(StringInfo str, const BitmapHeapScan *node)
 {
 	WRITE_NODE_TYPE("BITMAPHEAPSCAN");
@@ -634,6 +652,25 @@ _outBitmapHeapScan(StringInfo str, const BitmapHeapScan *node)
 	_outScanInfo(str, (const Scan *) node);
 
 	WRITE_NODE_FIELD(bitmapqualorig);
+}
+
+static void
+_outYbBitmapTableScan(StringInfo str, const YbBitmapTableScan *node)
+{
+	WRITE_NODE_TYPE("YBBITMAPTABLESCAN");
+
+	_outScanInfo(str, (const Scan *) node);
+
+	WRITE_NODE_FIELD(rel_pushdown.quals);
+	WRITE_NODE_FIELD(rel_pushdown.colrefs);
+
+	WRITE_NODE_FIELD(recheck_pushdown.quals);
+	WRITE_NODE_FIELD(recheck_pushdown.colrefs);
+	WRITE_NODE_FIELD(recheck_local_quals);
+
+	WRITE_NODE_FIELD(fallback_pushdown.quals);
+	WRITE_NODE_FIELD(fallback_pushdown.colrefs);
+	WRITE_NODE_FIELD(fallback_local_quals);
 }
 
 static void
@@ -1952,6 +1989,16 @@ static void
 _outBitmapHeapPath(StringInfo str, const BitmapHeapPath *node)
 {
 	WRITE_NODE_TYPE("BITMAPHEAPPATH");
+
+	_outPathInfo(str, (const Path *) node);
+
+	WRITE_NODE_FIELD(bitmapqual);
+}
+
+static void
+_outYbBitmapTablePath(StringInfo str, const YbBitmapTablePath *node)
+{
+	WRITE_NODE_TYPE("YBBITMAPTABLEPATH");
 
 	_outPathInfo(str, (const Path *) node);
 
@@ -3888,8 +3935,14 @@ outNode(StringInfo str, const void *obj)
 			case T_BitmapIndexScan:
 				_outBitmapIndexScan(str, obj);
 				break;
+			case T_YbBitmapIndexScan:
+				_outYbBitmapIndexScan(str, obj);
+				break;
 			case T_BitmapHeapScan:
 				_outBitmapHeapScan(str, obj);
+				break;
+			case T_YbBitmapTableScan:
+				_outYbBitmapTableScan(str, obj);
 				break;
 			case T_TidScan:
 				_outTidScan(str, obj);
@@ -4151,6 +4204,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_BitmapHeapPath:
 				_outBitmapHeapPath(str, obj);
+				break;
+			case T_YbBitmapTablePath:
+				_outYbBitmapTablePath(str, obj);
 				break;
 			case T_BitmapAndPath:
 				_outBitmapAndPath(str, obj);

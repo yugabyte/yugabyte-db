@@ -59,7 +59,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = numNodes;
     userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.ybSoftwareVersion = "2.16.7.0-b1";
+    userIntent.ybSoftwareVersion = "2.21.1.1-b1";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = replicationFactor;
     userIntent.regionList = ImmutableList.of(region.getUuid());
@@ -257,7 +257,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = jsonNodes.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
       taskPosition++;

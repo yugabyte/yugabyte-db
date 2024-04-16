@@ -409,7 +409,6 @@ if(IS_GCC)
     # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
     ADD_CXX_FLAGS("-Wno-use-after-free")
   endif()
-
 endif()
 
 if(USING_LINUXBREW)
@@ -544,10 +543,14 @@ endif()
 # - disable 'alignment' because unaligned access is really OK on Nehalem and we do it
 #   all over the place.
 if ("${YB_BUILD_TYPE}" STREQUAL "asan")
-  set(CXX_NO_SANITIZE_FLAG "alignment")
+  set(CXX_NO_SANITIZE_FLAG "")
+  add_cxx_no_sanitize_flag("alignment")
   if(NOT APPLE)
-    set(CXX_NO_SANITIZE_FLAG "${CXX_NO_SANITIZE_FLAG},vptr")
+    add_cxx_no_sanitize_flag("vptr")
     ADD_CXX_FLAGS("-fsanitize=undefined")
+  endif()
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "17.0.0")
+    add_cxx_no_sanitize_flag("function")
   endif()
   ADD_CXX_FLAGS("-fno-sanitize-recover=all -fno-sanitize=${CXX_NO_SANITIZE_FLAG}")
   ADD_CXX_FLAGS("-fsanitize-recover=float-cast-overflow")
@@ -596,9 +599,15 @@ file(MAKE_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(EXECUTABLE_OUTPUT_PATH "${YB_BUILD_ROOT}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
-# Generated sources always have higher priority.
+# Generated sources always have higher priority than identically named sources in the source
+# directory.
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
+
 include_directories(src)
+
+include_directories("src/inline-thirdparty/usearch")
+include_directories("src/inline-thirdparty/fp16")
+
 
 enable_testing()
 

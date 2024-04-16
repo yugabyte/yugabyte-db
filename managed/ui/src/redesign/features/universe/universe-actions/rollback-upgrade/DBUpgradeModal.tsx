@@ -2,11 +2,12 @@ import { FC, ChangeEvent, useState } from 'react';
 import _ from 'lodash';
 import { toast } from 'react-toastify';
 import { useDispatch, useSelector } from 'react-redux';
-import { useMutation } from 'react-query';
+import { useMutation, useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useForm, FormProvider, Controller } from 'react-hook-form';
 import { Box, Typography } from '@material-ui/core';
+import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
 import {
   YBModal,
   YBAutoComplete,
@@ -20,7 +21,6 @@ import {
   createErrorMessage,
   transitToUniverse
 } from '../../universe-form/utils/helpers';
-import { sortVersion } from '../../../../../components/releases';
 import { Universe } from '../../universe-form/utils/dto';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
 import {
@@ -31,6 +31,10 @@ import {
 import { DBUpgradeFormFields, UPGRADE_TYPE, DBUpgradePayload } from './utils/types';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 import { fetchLatestStableVersion, fetchCurrentLatestVersion } from './utils/helper';
+import {
+  compareYBSoftwareVersions,
+  isVersionStable
+} from '../../../../../utils/universeUtilsTyped';
 //Rbac
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
@@ -42,44 +46,186 @@ import BulbIcon from '../../../../assets/bulb.svg';
 import ExclamationIcon from '../../../../assets/exclamation-traingle.svg';
 import { ReactComponent as UpgradeArrow } from '../../../../assets/upgrade-arrow.svg';
 import WarningIcon from '../../../../assets/warning-triangle.svg';
+import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
+import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
+import { Tooltip } from '@material-ui/core';
+import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
 
 interface DBUpgradeModalProps {
   open: boolean;
   onClose: () => void;
   universeData: Universe;
+  isReleasesEnabled: boolean;
 }
 
+const MAX_RELEASE_TAG_CHAR = 20;
 const TOAST_OPTIONS = { autoClose: TOAST_AUTO_DISMISS_INTERVAL };
 const MINIMUM_SUPPORTED_VERSION = '2.20.2';
-export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, universeData }) => {
+
+const renderOption = (option: Record<string, any>) => {
+  return (
+    <Box
+      style={{
+        display: 'flex',
+        flexDirection: 'row'
+      }}
+    >
+      {option.version}
+      {isNonEmptyString(option.info.release_tag) && (
+        <>
+          <Box
+            style={{
+              border: '1px',
+              borderRadius: '6px',
+              padding: '3px 3px 3px 3px',
+              backgroundColor: '#E9EEF2',
+              maxWidth: 'fit-content',
+              marginLeft: '4px',
+              marginTop: '-4px'
+            }}
+          >
+            <span
+              data-testid={'DBVersionField-ReleaseTag'}
+              style={{
+                fontWeight: 400,
+                fontFamily: 'Inter',
+                fontSize: '11.5px',
+                color: '#0B1117',
+                alignSelf: 'center'
+              }}
+            >
+              {option.info.release_tag.length > MAX_RELEASE_TAG_CHAR
+                ? `${option.info.release_tag.substring(0, 10)}...`
+                : option.info.release_tag}
+            </span>
+          </Box>
+          <span>
+            {option.info.release_tag.length > MAX_RELEASE_TAG_CHAR && (
+              <Tooltip title={option.info.release_tag} arrow placement="top">
+                <img src={InfoMessageIcon} alt="info" />
+              </Tooltip>
+            )}
+          </span>
+        </>
+      )}
+    </Box>
+  );
+};
+
+export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
+  open,
+  onClose,
+  universeData,
+  isReleasesEnabled
+}) => {
   const { t } = useTranslation();
   const classes = dbUpgradeFormStyles();
   const [needPrefinalize, setPrefinalize] = useState(false);
-  const releases = useSelector((state: any) => state.customer.softwareVersionswithMetaData);
+  const releases = useSelector((state: any) =>
+    isReleasesEnabled
+      ? state.customer.dbVersionsWithMetadata
+      : state.customer.softwareVersionswithMetaData
+  );
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const { universeDetails, universeUUID } = universeData;
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
-  const currentRelease = primaryCluster?.userIntent.ybSoftwareVersion;
+  const currentReleaseFromCluster = primaryCluster?.userIntent.ybSoftwareVersion;
+  let currentRelease: string = '';
+  if (currentReleaseFromCluster !== null && currentReleaseFromCluster !== undefined) {
+    currentRelease = currentReleaseFromCluster;
+  }
   const universeHasXcluster =
     universeData?.universeDetails?.xclusterInfo?.sourceXClusterConfigs?.length > 0 ||
     universeData?.universeDetails?.xclusterInfo?.targetXClusterConfigs?.length > 0;
 
+  const { data: globalRuntimeConfigs, isLoading } = useQuery(['globalRuntimeConfigs'], () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  );
+
+  const skipVersionChecksValue = globalRuntimeConfigs?.configEntries?.find(
+    (c: any) => c.key === 'yb.skip_version_checks'
+  )?.value;
+  // By default skipVersionChecks is false
+  // If runtime config flag is not accessible, assign false to the variable
+  const skipVersionChecks =
+    skipVersionChecksValue === undefined || skipVersionChecksValue === 'false' ? false : true;
+
   let finalOptions: Record<string, any>[] = [];
   const latestStableVersion = fetchLatestStableVersion(releases);
   const latestCurrentRelease = fetchCurrentLatestVersion(releases, currentRelease);
-  if (latestStableVersion && _.gte(latestStableVersion.version, currentRelease))
+  const isCurrentReleaseStable = isVersionStable(currentRelease);
+  // Add latest stable version when current release is stable or when skipVersionCheck is true
+  if (
+    latestStableVersion &&
+    compareYBSoftwareVersions({
+      versionA: latestStableVersion.version,
+      versionB: currentRelease,
+      options: {
+        suppressFormatError: true
+      }
+    }) >= 0 &&
+    (isCurrentReleaseStable || skipVersionChecks)
+  )
     finalOptions = [latestStableVersion];
   if (latestCurrentRelease) finalOptions = [...finalOptions, latestCurrentRelease];
-  const sortedVersions = Object.keys(releases).sort(sortVersion);
-  const currentReleaseIndex = sortedVersions.indexOf(currentRelease ?? '');
-  const versionsAboveCurrent = sortedVersions.slice(0, currentReleaseIndex + 1);
+  let sortedVersions: string[];
+  const stableSortedVersions = Object.keys(releases)
+    .filter((release) => isVersionStable(release))
+    .sort((versionA, versionB) =>
+      compareYBSoftwareVersions({
+        versionA: versionB,
+        versionB: versionA,
+        options: {
+          suppressFormatError: true,
+          requireOrdering: true
+        }
+      })
+    );
+
+  const previewSortedVersions = Object.keys(releases)
+    .filter((release) => !isVersionStable(release))
+    .sort((versionA, versionB) =>
+      compareYBSoftwareVersions({
+        versionA: versionB,
+        versionB: versionA,
+        options: {
+          suppressFormatError: true,
+          requireOrdering: true
+        }
+      })
+    );
+
+  let currentReleaseIndex: number = 0;
+  let versionsAboveCurrent: string[] = [];
+  if (!skipVersionChecks) {
+    if (isCurrentReleaseStable) {
+      sortedVersions = stableSortedVersions;
+    } else {
+      sortedVersions = previewSortedVersions;
+    }
+    currentReleaseIndex = sortedVersions.indexOf(currentRelease ?? '');
+    versionsAboveCurrent = sortedVersions.slice(0, currentReleaseIndex + 1);
+  } else {
+    sortedVersions = Object.keys(releases).sort((versionA, versionB) =>
+      compareYBSoftwareVersions({
+        versionA: versionB,
+        versionB: versionA,
+        options: {
+          suppressFormatError: true,
+          requireOrdering: true
+        }
+      })
+    );
+    currentReleaseIndex = sortedVersions.indexOf(currentRelease ?? '');
+    versionsAboveCurrent = sortedVersions;
+  }
   finalOptions = [
     ...finalOptions,
     ...versionsAboveCurrent.map((e: any) => ({
       version: e,
       info: releases[e],
       series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
-        e.split('.')[1] % 2 === 0 ? '(Standard Term Support)' : '(Preview)'
+        isVersionStable(e) ? '(Stable)' : '(Preview)'
       }`
     }))
   ];
@@ -196,6 +342,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
               getOptionDisabled={(option: Record<string, string>): boolean =>
                 option.version === currentRelease
               }
+              renderOption={renderOption}
               onChange={handleVersionChange}
               ybInputProps={{
                 error: !!fieldState.error,
@@ -211,11 +358,15 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     );
   };
 
+  if (isLoading) {
+    return <YBLoadingCircleIcon />;
+  }
+
   return (
     <YBModal
       open={open}
       titleSeparator
-      size="sm"
+      size="md"
       overrideHeight={universeHasXcluster ? '810px' : '720px'}
       overrideWidth="800px"
       onClose={onClose}
@@ -333,7 +484,13 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
             </Box>
           </Box>
           <Box width="100%" display="flex" flexDirection="column">
-            {_.gte(currentRelease, MINIMUM_SUPPORTED_VERSION) && (
+            {compareYBSoftwareVersions({
+              versionA: currentRelease,
+              versionB: MINIMUM_SUPPORTED_VERSION,
+              options: {
+                suppressFormatError: true
+              }
+            }) >= 0 && (
               <Box className={classes.greyFooter}>
                 <img src={BulbIcon} alt="--" height={'32px'} width={'32px'} />
                 <Box ml={0.5} mt={0.5}>

@@ -21,6 +21,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -378,7 +380,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         isReadOnlyCluster,
         commandType,
         false,
-        null);
+        null,
+        /* addDelayAfterStartup */ false);
   }
 
   public void upgradePodsNonRolling(
@@ -638,7 +641,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement currPlacement,
       ServerType serverType,
       String softwareVersion,
-      int waitTime,
+      long waitTime,
       String universeOverridesStr,
       Map<String, String> azsOverrides,
       boolean masterChanged,
@@ -647,7 +650,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       CommandType commandType,
       boolean enableYbc,
-      String ybcSoftwareVersion) {
+      String ybcSoftwareVersion,
+      boolean addDelayAfterStartup) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -744,6 +748,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             getKubernetesNodeName(partition, azCode, serverType, isMultiAz, isReadOnlyCluster);
         List<NodeDetails> nodeList = new ArrayList<>();
         nodeList.add(node);
+        // Add pre-check task
+        createNodePrecheckTasks(
+            node,
+            new HashSet<>(Arrays.asList(serverType)),
+            SubTaskGroupType.ConfigureUniverse,
+            true,
+            softwareVersion);
         if (serverType == ServerType.TSERVER && !edit) {
           addLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
         }
@@ -792,8 +803,16 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
         createWaitForServersTasks(nodeList, serverType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-        createWaitForServerReady(node, serverType, waitTime)
+        createWaitForServerReady(node, serverType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+        if (addDelayAfterStartup) {
+          createSleepAfterStartupTask(
+              taskParams().getUniverseUUID(),
+              Collections.singletonList(serverType),
+              KubernetesCommandExecutor.getPodCommandDateKey(podName, commandType),
+              waitTime);
+        }
 
         // If there are no universe keys on the universe, it will have no effect.
         if (serverType == ServerType.MASTER
@@ -804,6 +823,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         if (serverType == ServerType.TSERVER && !edit) {
           removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
         }
+        // Create post upgrade subtasks
+        createPostUpgradeChecks(serverType, nodeList);
       }
     }
   }
@@ -970,7 +991,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Returns the NodeDetails of the pod that we need to wait for.
   */
-  public NodeDetails getKubernetesNodeName(
+  public static NodeDetails getKubernetesNodeName(
       int partition,
       String azCode,
       ServerType serverType,
@@ -1006,7 +1027,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Sends a collection of all the pods that need to be added.
   */
-  public Set<NodeDetails> getPodsToAdd(
+  public static Set<NodeDetails> getPodsToAdd(
       Map<UUID, Integer> newPlacement,
       Map<UUID, Integer> currPlacement,
       ServerType serverType,
@@ -1033,7 +1054,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Sends a collection of all the pods that need to be removed.
   */
-  public Set<NodeDetails> getPodsToRemove(
+  public static Set<NodeDetails> getPodsToRemove(
       Map<UUID, Integer> newPlacement,
       Map<UUID, Integer> currPlacement,
       ServerType serverType,
@@ -1783,5 +1804,16 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     KubernetesCheckNumPod task = createTask(KubernetesCheckNumPod.class);
     task.initialize(params);
     return task;
+  }
+
+  protected void createPostUpgradeChecks(
+      ServerType serverType, Collection<NodeDetails> nodeDetailsCollection) {
+    if (isFollowerLagCheckEnabled()) {
+      nodeDetailsCollection.stream()
+          .forEach(
+              nD ->
+                  createCheckFollowerLagTask(nD, serverType)
+                      .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse));
+    }
   }
 }

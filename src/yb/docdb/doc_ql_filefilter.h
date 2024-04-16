@@ -15,6 +15,9 @@
 
 #pragma once
 
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.h"
+
 #include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
@@ -22,5 +25,10 @@
 namespace yb::docdb {
 
 std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter(const qlexpr::YQLScanSpec& scan_spec);
+std::shared_ptr<rocksdb::ReadFileFilter> CreateHybridTimeFileFilter(HybridTime min_hybrid_Time);
+// Create a file filter for intentsdb using the given min running hybrid time. Filtering is done
+// based on intent hybrid time stored in the intent key, not commit time of the transaction.
+std::shared_ptr<rocksdb::ReadFileFilter> CreateIntentHybridTimeFileFilter(
+    HybridTime min_running_ht);
 
 }  // namespace yb::docdb

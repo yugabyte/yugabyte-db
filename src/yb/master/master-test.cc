@@ -377,7 +377,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
-    ASSERT_FALSE(resp.has_tablet_report_limit()); // No limit unless capability registered.
+    ASSERT_TRUE(resp.has_tablet_report_limit());
   }
 
   descs.clear();
@@ -388,11 +388,6 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
   ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
   ASSERT_EQ(ts_desc, descs[0]);
-
-  // Add capabilities in next registration.
-  auto cap = Capabilities();
-  *fake_reg.mutable_capabilities() =
-      google::protobuf::RepeatedField<CapabilityId>(cap.begin(), cap.end());
 
   // If the tablet server somehow lost the response to its registration RPC, it would
   // attempt to register again. In that case, we shouldn't reject it -- we should
@@ -407,7 +402,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
-    ASSERT_TRUE(resp.has_tablet_report_limit()); // Limit given, since TS capability registered.
+    ASSERT_TRUE(resp.has_tablet_report_limit());
   }
 
   // Now begin sending full tablet report
@@ -866,6 +861,55 @@ TEST_F(MasterTest, TestCatalog) {
     req.add_relation_type_filter(USER_TABLE_RELATION);
     DoListTables(req, &tables);
     ASSERT_EQ(kNumSystemTables + 2, tables.tables_size());
+  }
+}
+
+TEST_F(MasterTest, TestListTablesIncludesIndexedTableId) {
+  // Create a new PGSQL namespace.
+  NamespaceName test_name = "test_pgsql";
+  CreateNamespaceResponsePB resp;
+  NamespaceId nsid;
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  nsid = resp.id();
+
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("v1", DataType::UINT64),
+      ColumnSchema("v2", DataType::STRING) });
+  const TableName kTableNamePgsql = "testtb_pgsql";
+  ASSERT_OK(CreatePgsqlTable(nsid, kTableNamePgsql, kTableSchema));
+
+  ListTablesResponsePB tables;
+  TableId id;
+  {
+    ListTablesRequestPB req;
+    req.set_name_filter("testtb_pgsql");
+    DoListTables(req, &tables);
+    ASSERT_EQ(1, tables.tables_size());
+    id = tables.tables(0).id();
+  }
+
+  master::CreateTableRequestPB req;
+  IndexInfoPB index_info;
+  index_info.set_indexed_table_id(id);
+  index_info.set_hash_column_count(1);
+  index_info.add_indexed_hash_column_ids(10);
+  auto *col = index_info.add_columns();
+  col->set_column_name("v1");
+  col->set_indexed_column_id(10);
+  req.mutable_index_info()->CopyFrom(index_info);
+  req.set_indexed_table_id(id);
+  const TableName kIndexNamePgsql = "testin_pgsql";
+  const Schema kIndexSchema(
+      {ColumnSchema("v1", DataType::UINT64, ColumnKind::RANGE_ASC_NULL_FIRST)});
+  ASSERT_OK(CreatePgsqlTable(nsid, kIndexNamePgsql, kIndexSchema, &req));
+  {
+    ListTablesRequestPB req;
+    req.set_name_filter("testin_pgsql");
+    DoListTables(req, &tables);
+    ASSERT_EQ(1, tables.tables_size());
+    ASSERT_TRUE(tables.tables(0).has_indexed_table_id());
+    ASSERT_EQ(id, tables.tables(0).indexed_table_id());
   }
 }
 

@@ -1,7 +1,7 @@
 ---
 title: DocDB sharding layer
 headerTitle: DocDB sharding layer
-linkTitle: DocDB sharding layer
+linkTitle: Sharding
 description: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 image: /images/section_icons/architecture/concepts.png
 headcontent: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: architecture-docdb-sharding
     parent: architecture
-    weight: 1130
+    weight: 700
 type: indexpage
 ---
 A distributed SQL database needs to automatically split the data in a table and distribute it across nodes. This is known as data sharding and it can be achieved through different strategies, each with its own tradeoffs. YugabyteDB's sharding architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.

@@ -102,6 +102,7 @@ public class PauseUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> PAUSE_UNIVERSE_TASKS =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
           TaskType.SetNodeState,
@@ -113,6 +114,7 @@ public class PauseUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> PAUSE_UNIVERSE_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
           Json.toJson(ImmutableMap.of()),
@@ -129,7 +131,7 @@ public class PauseUniverseTest extends CommissionerBaseTest {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(taskType, tasks.get(0).getTaskType());
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }

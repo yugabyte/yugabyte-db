@@ -126,10 +126,7 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
-DEFINE_UNKNOWN_bool(tablet_do_dup_key_checks, true,
-            "Whether to check primary keys for duplicate on insertion. "
-            "Use at your own risk!");
-TAG_FLAG(tablet_do_dup_key_checks, unsafe);
+DEPRECATE_FLAG(bool, tablet_do_dup_key_checks, "02_2024");
 
 DEFINE_UNKNOWN_bool(tablet_do_compaction_cleanup_for_intents, true,
             "Whether to clean up intents for aborted transactions in compaction.");
@@ -183,11 +180,6 @@ DEFINE_RUNTIME_bool(yql_allow_compatible_schema_versions, true,
             "Allow YCQL requests to be accepted even if they originate from a client who is ahead "
             "of the server's schema, but is determined to be compatible with the current version.");
 TAG_FLAG(yql_allow_compatible_schema_versions, advanced);
-
-DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
-    "A safety switch to disable the changes from D8710 which makes a schema "
-    "operation take an exclusive lock making all write operations wait for it.");
-TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 
 DEFINE_RUNTIME_bool(dump_metrics_to_trace, false,
     "Whether to dump changed metrics in tracing.");
@@ -289,6 +281,7 @@ DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
+DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_int64(cdc_intent_retention_ms);
 
 DEFINE_test_flag(uint64, inject_sleep_before_applying_write_batch_ms, 0,
@@ -928,6 +921,9 @@ Status Tablet::OpenKeyValueTablet() {
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
     RETURN_NOT_OK(transaction_participant_->SetDB(
         doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_));
+    if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+      CleanupIntentFiles();
+    }
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
@@ -980,6 +976,7 @@ void Tablet::DoCleanupIntentFiles() {
     return;
   }
   HybridTime best_file_max_ht = HybridTime::kMax;
+  OpId best_file_op_id = OpId::Max();
   std::vector<rocksdb::LiveFileMetaData> files;
   // Stops when there are no more files to delete.
   uint64_t previous_name_id = std::numeric_limits<uint64_t>::max();
@@ -995,6 +992,7 @@ void Tablet::DoCleanupIntentFiles() {
     }
 
     best_file_max_ht = HybridTime::kMax;
+    best_file_op_id = OpId::Max();
     const rocksdb::LiveFileMetaData* best_file = nullptr;
     files.clear();
     intents_db_->GetLiveFilesMetaData(&files);
@@ -1008,8 +1006,10 @@ void Tablet::DoCleanupIntentFiles() {
         if (file.largest.user_frontier) {
           auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
           best_file_max_ht = frontier.hybrid_time();
+          best_file_op_id = frontier.op_id();
         } else {
           best_file_max_ht = HybridTime::kMax;
+          best_file_op_id = OpId::Max();
         }
         best_file = &file;
       }
@@ -1022,6 +1022,16 @@ void Tablet::DoCleanupIntentFiles() {
           << "Cannot delete because of running transactions: " << min_running_start_ht
           << ", best file max ht: " << best_file_max_ht;
       break;
+    }
+
+    if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+      auto cdc_op_id = transaction_participant_->GetLatestCheckPoint();
+      if (cdc_op_id.valid() && (!best_file_op_id.valid() || cdc_op_id < best_file_op_id)) {
+        VLOG_WITH_PREFIX_AND_FUNC(4)
+            << "Cannot delete because of CDC: " << cdc_op_id
+            << ", best file op id: " << best_file_op_id;
+        break;
+      }
     }
     if (best_file->name_id == previous_name_id) {
       LOG_WITH_PREFIX_AND_FUNC(INFO)
@@ -1862,9 +1872,9 @@ void SetBackfillSpecForYsqlBackfill(
     response->set_is_backfill_batch_done(true);
   }
 
-  VLOG(2) << "Got input spec " << yb::ToString(in_spec)
-          << " set output spec " << yb::ToString(out_spec)
-          << " batch_done=" << response->is_backfill_batch_done();
+  VLOG(2) << "Got input spec { " << in_spec.ShortDebugString()
+          << " } set output spec { " << out_spec.ShortDebugString()
+          << " } batch_done=" << response->is_backfill_batch_done();
   string serialized_pb;
   out_spec.SerializeToString(&serialized_pb);
   response->set_backfill_spec(b2a_hex(serialized_pb));
@@ -1926,18 +1936,6 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
     query->Cancel(
         STATUS(NotSupported, "Transaction status table does not support write"));
     return;
-  }
-
-  if (!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
-    auto write_permit = GetPermitToWrite(query->deadline());
-    if (!write_permit.ok()) {
-      TRACE("Could not get the write permit.");
-      WriteQuery::StartSynchronization(std::move(query), MoveStatus(write_permit));
-      return;
-    }
-    // Save the write permit to be released after the operation is submitted
-    // to Raft queue.
-    query->UseSubmitToken(std::move(write_permit));
   }
 
   WriteQuery::Execute(std::move(query));
@@ -2002,6 +2000,8 @@ Status Tablet::ImportData(const std::string& source_dir) {
 Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApplyData& data) {
   VLOG_WITH_PREFIX(4) << __func__ << ": " << data.transaction_id;
 
+  HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
+
   // This flag enables tests to induce a situation where a transaction has committed but its intents
   // haven't yet moved to regular db for a sufficiently long period. For example, it can help a test
   // to reliably assert that conflict resolution/ concurrency control with a conflicting committed
@@ -2010,9 +2010,10 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
   docdb::ApplyIntentsContext context(
       data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
-      &key_bounds_, metadata_.get(), intents_db_.get());
+      min_running_ht, &key_bounds_, metadata_.get(), intents_db_.get());
   docdb::IntentsWriter intents_writer(
-      data.apply_state ? data.apply_state->key : Slice(), intents_db_.get(), &context);
+      data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
+      intents_db_.get(), &context);
   rocksdb::WriteBatch regular_write_batch;
   regular_write_batch.SetDirectWriter(&intents_writer);
   // data.hybrid_time contains transaction commit time.
@@ -2031,12 +2032,14 @@ Status Tablet::RemoveIntentsImpl(
   RETURN_NOT_OK(scoped_read_operation);
 
   rocksdb::WriteBatch intents_write_batch;
+  HybridTime min_running_ht = CHECK_NOTNULL(transaction_participant_)->MinRunningHybridTime();
   for (const auto& id : ids) {
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(reason));
       docdb::IntentsWriter writer(
-          apply_state ? apply_state->key : Slice(), intents_db_.get(), &context);
+          apply_state ? apply_state->key : Slice(), min_running_ht,
+          intents_db_.get(), &context);
       intents_write_batch.SetDirectWriter(&writer);
       docdb::ConsensusFrontiers frontiers;
       auto frontiers_ptr = InitFrontiers(data, &frontiers);
@@ -2065,6 +2068,38 @@ Status Tablet::RemoveIntents(
 Status Tablet::RemoveIntents(
     const RemoveIntentsData& data, RemoveReason reason, const TransactionIdSet& transactions) {
   return RemoveIntentsImpl(data, reason, transactions);
+}
+
+Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetadata> metadatas) {
+  if (metadatas.empty()) {
+    return Status::OK();
+  }
+
+  OpId min_op_id = OpId::Max();
+  OpId max_op_id = OpId::Min();
+  HybridTime min_ht = HybridTime::kMax;
+  HybridTime max_ht = HybridTime::kMin;
+
+  for (const auto& metadata : metadatas) {
+    min_op_id = std::min(min_op_id, metadata.apply_op_id);
+    max_op_id = std::max(max_op_id, metadata.apply_op_id);
+    min_ht = std::min({min_ht, metadata.commit_ht, metadata.log_ht});
+    max_ht = std::max({max_ht, metadata.commit_ht, metadata.log_ht});
+  }
+
+  docdb::ConsensusFrontiers frontiers;
+  frontiers.Smallest().set_op_id(min_op_id);
+  frontiers.Smallest().set_hybrid_time(min_ht);
+  frontiers.Largest().set_op_id(max_op_id);
+  frontiers.Largest().set_hybrid_time(max_ht);
+
+  rocksdb::WriteBatch write_batch;
+  docdb::PostApplyMetadataWriter writer(metadatas);
+  write_batch.SetDirectWriter(&writer);
+
+  WriteToRocksDB(&frontiers, &write_batch, StorageDbType::kIntents);
+
+  return Status::OK();
 }
 
 // We batch this as some tx could be very large and may not fit in one batch
@@ -2128,6 +2163,9 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
       VLOG_WITH_PREFIX(1) << "Intents opid retention duration = " << cdc_sdk_op_id_expiration;
       txn_participant->SetIntentRetainOpIdAndTime(
           cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration);
+      if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+        CleanupIntentFiles();
+      }
     }
   }
 
@@ -2251,7 +2289,8 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, boost::none,
-      table_info.schema_version(), op_id, table_info.pg_table_id());
+      table_info.schema_version(), op_id, table_info.pg_table_id(),
+      SkipTableTombstoneCheck(table_info.skip_table_tombstone_check()));
 
   return Status::OK();
 }
@@ -2410,11 +2449,10 @@ string GenerateSerializedBackfillSpec(size_t batch_size, const string& next_row_
   backfill_spec.set_limit(batch_size);
   backfill_spec.set_next_row_key(next_row_to_backfill);
   backfill_spec.SerializeToString(&serialized_backfill_spec);
-  VLOG(2) << "Generating backfill_spec " << yb::ToString(backfill_spec)
-          << (VLOG_IS_ON(3) ? Format(" encoded as $0 a string of length $1",
-                                     b2a_hex(serialized_backfill_spec),
-                                     serialized_backfill_spec.length())
-                            : "");
+  VLOG(2) << "Generating backfill_spec { " << yb::ToString(backfill_spec)
+          << (VLOG_IS_ON(3) ? Format(" } encoded as $0",
+                                     b2a_hex(serialized_backfill_spec))
+                            : " }");
   return serialized_backfill_spec;
 }
 
@@ -2431,15 +2469,16 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
   CHECK_EQ(PQntuples(res.get()), 1);
   CHECK_EQ(PQnfields(res.get()), 1);
   const auto returned_spec = CHECK_RESULT(pgwrapper::GetValue<std::string>(res.get(), 0, 0));
-  VLOG(3) << "Got back " << returned_spec << " of length " << returned_spec.length();
+  VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
 
   PgsqlBackfillSpecPB spec;
   spec.ParseFromString(a2b_hex(returned_spec));
+  VLOG(3) << "Returned backfill spec: { " << spec.ShortDebugString() << " }";
   return spec;
 }
 
 struct BackfillParams {
-  explicit BackfillParams(const CoarseTimePoint deadline)
+  explicit BackfillParams(const CoarseTimePoint deadline, bool is_ysql)
       : start_time(CoarseMonoClock::Now()),
         deadline(deadline),
         rate_per_sec(GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec)),
@@ -2447,8 +2486,13 @@ struct BackfillParams {
     auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
     if (grace_margin_ms < 0) {
       // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
-      // By default, we will set it to twice the minimum value + 1s.
-      grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
+      // To be safe, set it to twice that number or the default margin, whichever is higher.
+      // YSQL default: 3m
+      // YCQL default: 1s
+      const auto kDefaultGraceMarginMs = is_ysql ? 180000 : 1000;
+      grace_margin_ms = std::max<decltype(grace_margin_ms)>(
+          kDefaultGraceMarginMs,
+          rate_per_sec > 0 ? 1000 * (2.0 * batch_size / rate_per_sec) : 0);
       YB_LOG_EVERY_N_SECS(INFO, 10)
           << "Using grace margin of " << grace_margin_ms << "ms, original deadline: "
           << MonoDelta(deadline - start_time);
@@ -2529,12 +2573,12 @@ Status Tablet::BackfillIndexesForYsql(
     const uint64_t postgres_auth_key,
     size_t* number_of_rows_processed,
     std::string* backfilled_until) {
-  LOG(INFO) << "Begin " << __func__ << " at " << read_time << " from "
-            << (backfill_from.empty() ? "<start-of-the-tablet>" : strings::b2a_hex(backfill_from))
-            << " for " << AsString(indexes);
+  LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
+            << " from row \"" << strings::b2a_hex(backfill_from)
+            << "\" for indexes " << AsString(indexes);
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
-  BackfillParams backfill_params(deadline);
+  BackfillParams backfill_params(deadline, true /* is_ysql */);
   auto conn = VERIFY_RESULT(pgwrapper::CreateInternalPGConnBuilder(
                                 pgsql_proxy_bind_address, database_name, postgres_auth_key,
                                 backfill_params.modified_deadline)
@@ -2574,18 +2618,15 @@ Status Tablet::BackfillIndexesForYsql(
     *number_of_rows_processed += spec.count();
     *backfilled_until = spec.next_row_key();
 
-    VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows. "
-            << "Setting backfilled_until to "
-            << (backfilled_until->empty() ? "(empty)" : b2a_hex(*backfilled_until)) << " of length "
-            << backfilled_until->length();
+    VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows so far in this chunk. "
+            << "Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
 
     MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
   } while (CanProceedToBackfillMoreRows(
       backfill_params, *backfilled_until, *number_of_rows_processed));
 
-  VLOG(1) << "Backfilled " << *number_of_rows_processed << " rows. "
-          << "Set backfilled_until to "
-          << (backfilled_until->empty() ? "(empty)" : b2a_hex(*backfilled_until));
+  VLOG(1) << "Backfilled " << *number_of_rows_processed << " rows in this chunk. "
+          << "Set backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
   return Status::OK();
 }
 
@@ -2682,7 +2723,7 @@ Status Tablet::BackfillIndexes(
   QLTableRow row;
   docdb::IndexRequests index_requests;
 
-  BackfillParams backfill_params{deadline};
+  BackfillParams backfill_params{deadline, false /* is_ysql */};
   constexpr auto kProgressInterval = 1000;
 
   if (!backfill_from.empty()) {
@@ -4413,7 +4454,7 @@ Status Tablet::ProcessAutoFlagsConfigOperation(const AutoFlagsConfigPB& config) 
 Status PopulateLockInfoFromIntent(
     Slice key, Slice val, const TableInfoProvider& table_info_provider,
     const std::map<TransactionId, SubtxnSet>& aborted_subtxn_info,
-    TransactionLockInfoManager* lock_info_manager) {
+    TransactionLockInfoManager* lock_info_manager, uint32_t max_txn_locks) {
   auto parsed_intent = VERIFY_RESULT(docdb::ParseIntentKey(key, val));
   auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
       val, nullptr /* verify_transaction_id_slice */, HasStrong(parsed_intent.types)));
@@ -4429,13 +4470,18 @@ Status PopulateLockInfoFromIntent(
   }
 
   auto& lock_entry = *lock_info_manager->GetOrAddTransactionLockInfo(decoded_value.transaction_id);
+  if (max_txn_locks && static_cast<uint32_t>(lock_entry.granted_locks().size()) >= max_txn_locks) {
+    lock_entry.set_has_additional_granted_locks(true);
+    return Status::OK();
+  }
   return docdb::PopulateLockInfoFromParsedIntent(
       parsed_intent, decoded_value, table_info_provider, lock_entry.add_granted_locks());
 }
 
 Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                              TabletLockInfoPB* tablet_lock_info,
-                             uint64_t max_single_shard_waiter_start_time_us) const {
+                             uint64_t max_single_shard_waiter_start_time_us,
+                             uint32_t max_txn_locks_per_tablet) const {
   if (metadata_->table_type() != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
         InvalidArgument, "Cannot get lock status for non YSQL table $0", metadata_->table_id());
@@ -4475,7 +4521,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       }
 
       RETURN_NOT_OK(PopulateLockInfoFromIntent(
-          key, intent_iter->value(), *this, transactions, &lock_info_manager));
+          key, intent_iter->value(), *this, transactions, &lock_info_manager,
+          max_txn_locks_per_tablet));
 
       intent_iter->Next();
     }
@@ -4530,14 +4577,16 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       DCHECK_EQ(intent_iter->key(), key);
 
       auto val = intent_iter->value();
-      RETURN_NOT_OK(PopulateLockInfoFromIntent(key, val, *this, transactions, &lock_info_manager));
+      RETURN_NOT_OK(PopulateLockInfoFromIntent(
+          key, val, *this, transactions, &lock_info_manager, max_txn_locks_per_tablet));
     }
   }
 
-  const auto& wait_queue = transaction_participant()->wait_queue();
+  const auto* wait_queue = transaction_participant()->wait_queue();
   if (wait_queue) {
     RETURN_NOT_OK(wait_queue->GetLockStatus(
-        transactions, max_single_shard_waiter_start_time_us, *this, &lock_info_manager));
+        transactions, max_single_shard_waiter_start_time_us, *this, &lock_info_manager,
+        max_txn_locks_per_tablet));
   }
 
   return Status::OK();
@@ -4547,19 +4596,43 @@ Status Tablet::ProcessPgsqlGetTableKeyRangesRequest(
       const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const {
   const auto& get_key_ranges_req = req.get_tablet_key_ranges_request();
   result->num_rows_read = 0;
-  const auto status = GetTabletKeyRanges(
+  bool has_reached_end = false;
+  Status key_error;
+  auto status = GetTabletKeyRanges(
       get_key_ranges_req.lower_bound_key(), get_key_ranges_req.upper_bound_key(), req.limit(),
-      get_key_ranges_req.range_size_bytes(), IsForward(get_key_ranges_req.is_forward()),
-      get_key_ranges_req.max_key_length(), [result](Slice key) {
+      get_key_ranges_req.range_size_bytes(),
+      req.is_forward_scan() ? Direction::kForward : Direction::kBackward,
+      get_key_ranges_req.max_key_length(),
+      [result, &has_reached_end, &key_error](Slice key) {
+        if (has_reached_end && key_error.ok()) {
+          key_error = STATUS_FORMAT(
+              InternalError, "Got key after reaching boundary: $0", key.ToDebugHexString());
+          YB_LOG_EVERY_N_SECS(DFATAL, 60) << key_error;
+        }
         pggate::WriteBinaryColumn(key, result->rows_data);
         ++result->num_rows_read;
+        has_reached_end |= key.empty();
       }, req.table_id());
+  if (status.ok() && !key_error.ok()) {
+    status = key_error;
+  }
   if (!status.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
     StatusToPB(status, result->response.add_error_status());
     return Status::OK();
   }
-  RETURN_NOT_OK(CreatePagingStateForRead(req, result->num_rows_read, &result->response));
+
+  if ((!req.has_limit() || result->num_rows_read < req.limit()) && !has_reached_end) {
+    auto* paging_state = result->response.mutable_paging_state();
+    paging_state->set_next_partition_key(
+        req.is_forward_scan() ? metadata_->partition()->partition_key_end()
+                              : metadata_->partition()->partition_key_start());
+    if (req.has_paging_state()) {
+      paging_state->set_total_num_rows_read(
+          req.paging_state().total_num_rows_read() + result->num_rows_read);
+    }
+  }
+
   result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
@@ -4570,23 +4643,23 @@ Result<TableInfoPtr> Tablet::GetTableInfo(ColocationId colocation_id) const {
 
 namespace {
 
-// Skips `num_keys_to_skip` keys using `skip_key_func` until `is_reached_end_key_func` return true.
-// Stops at first key that satisfies `is_reached_end_key_func`.
+// Skips `num_keys_to_skip` keys using `skip_key_func` until `no_more_keys_func` return true.
+// Stops at first key that satisfies `no_more_keys_func`.
 // Can skip more keys if `has_key_changed_func` returns false.
-template<typename IsReachedEndKeyFunc, typename SkipKeyFunc, typename HasKeyChangedFunc>
+template<typename NoMoreKeysFunc, typename SkipKeyFunc, typename HasKeyChangedFunc>
 bool SkipKeys(
-    const size_t num_keys_to_skip, IsReachedEndKeyFunc is_reached_end_key_func,
+    const size_t num_keys_to_skip, NoMoreKeysFunc no_more_keys_func,
     SkipKeyFunc skip_key_func, HasKeyChangedFunc has_key_changed_func) {
-  bool reached_end_key = is_reached_end_key_func();
-  for (size_t i = 0; i < num_keys_to_skip && !reached_end_key; ++i) {
+  bool no_more_keys = no_more_keys_func();
+  for (size_t i = 0; i < num_keys_to_skip && !no_more_keys; ++i) {
     skip_key_func();
-    reached_end_key = is_reached_end_key_func();
+    no_more_keys = no_more_keys_func();
   }
-  while (!has_key_changed_func() && !reached_end_key) {
+  while (!has_key_changed_func() && !no_more_keys) {
     skip_key_func();
-    reached_end_key = is_reached_end_key_func();
+    no_more_keys = no_more_keys_func();
   }
-  return reached_end_key;
+  return no_more_keys;
 }
 
 std::string IncrementedCopy(Slice key) {
@@ -4619,29 +4692,214 @@ Status Tablet::AbortSQLTransactions(CoarseTimePoint deadline) const {
 
 Status Tablet::GetTabletKeyRanges(
     const Slice lower_bound_key, const Slice upper_bound_key, const uint64_t max_num_ranges,
-    const uint64_t range_size_bytes, const IsForward is_forward, const uint32_t max_key_length,
+    const uint64_t range_size_bytes, const Direction direction, const uint32_t max_key_length,
     WriteBuffer* keys_buffer, const TableId& colocated_table_id) const {
   if (table_type_ != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
         NotSupported, "GetTabletKeyRanges is only supported for YSQL, tablet_id: ", tablet_id());
   }
+  if (!metadata_->colocated()) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "GetTabletKeyRanges is only supported for colocated tables, tablet_id: ", tablet_id());
+  }
+  if (!metadata_->partition_schema()->IsRangePartitioning()) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "GetTabletKeyRanges is only supported for range-sharded tables, tablet_id: ", tablet_id());
+  }
   return GetTabletKeyRanges(
-      lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
-      max_key_length,
+      lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, direction, max_key_length,
       [&keys_buffer](Slice key) {
         pggate::WriteBinaryColumn(key, keys_buffer);
       }, colocated_table_id);
 }
 
+namespace {
+
+// Retrieves from the data block full doc key pointed by index_iter.
+// If its length less or equal to max_key_length, pushes the key to the callback, updates
+// last_key and returns true.
+// Otherwise, skips the data block and returns false.
+template<Direction direction, typename Callback>
+Result<bool> RetrieveFullDocKey(
+    const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
+    std::string* last_key, const uint32_t max_key_length, Callback callback) {
+  RSTATUS_DCHECK(
+    index_iter->Valid(), InternalError,
+    "Not expected to reach this line when index iterator is invalid");
+  auto data_entry = data_iter->Seek(index_iter->key());
+  RSTATUS_DCHECK(
+      data_entry.Valid(), InternalError,
+      Format(
+          "Invalid data iterator after seeking to key from SST index: $0",
+          index_iter->KeyDebugHexString()));
+
+  for (; data_entry.Valid();
+       data_entry = (direction == Direction::kForward ? data_iter->Next() : data_iter->Prev())) {
+    VLOG_WITH_FUNC(2) << log_prefix << "data_entry.key: " << data_entry.key.ToDebugHexString();
+    // Use encoded doc key to avoid breaking data related to the same row into halves.
+    const auto doc_key_size_result =
+        dockv::DocKey::EncodedSize(data_entry.key, dockv::DocKeyPart::kWholeDocKey);
+
+    if (!doc_key_size_result.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << "Failed to get encoded size of key: " << data_entry.key.ToDebugHexString() << "."
+          << doc_key_size_result.status();
+      continue;
+    }
+    if (doc_key_size_result.get() > max_key_length) {
+      // Skip keys longer than max_key_length. Also skip the whole block for efficiency.
+      return false;
+    }
+    const auto key = data_entry.key.Prefix(doc_key_size_result.get());
+    if (direction == Direction::kBackward && !last_key->empty() && key >= *last_key) {
+      // Skips keys larger than last_key (can only happen during reverse scan).
+      continue;
+    }
+    VLOG_WITH_FUNC(2) << log_prefix << "key: " << key.ToDebugHexString();
+    callback(key);
+    *last_key = key.ToBuffer();
+    return true;
+  }
+  return false;
+}
+
+template <
+    Direction direction, typename NoMoreKeysFunc, typename SkipKeyFunc, typename HasKeyChangedFunc,
+    typename Callback>
+Status DoGetTabletKeyRanges(
+    const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
+    std::string* last_key, NoMoreKeysFunc no_more_keys_func, SkipKeyFunc skip_key_func,
+    HasKeyChangedFunc has_key_changed_func, const uint64_t max_num_ranges,
+    uint64_t num_blocks_to_skip, const uint64_t num_blocks_to_skip_after_first,
+    const uint32_t max_key_length, const Slice key_to_add_as_last, Callback callback) {
+  uint64_t num_keys = 1;
+
+  while (num_keys <= max_num_ranges) {
+    const auto no_more_keys = SkipKeys(
+        num_blocks_to_skip, no_more_keys_func, skip_key_func, has_key_changed_func);
+    num_blocks_to_skip = num_blocks_to_skip_after_first;
+
+    VLOG_WITH_FUNC(2) << log_prefix << "last_key: " << Slice(*last_key).ToDebugHexString()
+                      << ", index_iter: " << index_iter->KeyDebugHexString()
+                      << ", no_more_keys: " << no_more_keys
+                      << ", num_keys: " << num_keys;
+
+    if (no_more_keys) {
+      VLOG_WITH_FUNC(2) << log_prefix << "key: " << key_to_add_as_last.ToDebugHexString();
+      callback(key_to_add_as_last);
+      break;
+    }
+
+    if (VERIFY_RESULT(RetrieveFullDocKey<direction>(
+            log_prefix, index_iter, data_iter, last_key, max_key_length, callback))) {
+      ++num_keys;
+    }
+  }
+  return Status::OK();
+}
+
+// Not able to use typename Callback as template parameter because partial function template
+// specification is not allowed.
+template <Direction direction>
+Status DoGetTabletKeyRanges(
+    const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
+    Slice lower_bound_key, Slice upper_bound_key, const uint64_t max_num_ranges,
+    const uint64_t num_blocks_to_skip, const uint32_t max_key_length,
+    std::function<void(Slice key)> callback, const bool use_empty_as_last_key);
+
+template<>
+Status DoGetTabletKeyRanges<Direction::kForward>(
+    const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
+    Slice lower_bound_key, Slice upper_bound_key, const uint64_t max_num_ranges,
+    const uint64_t num_blocks_to_skip, const uint32_t max_key_length,
+    std::function<void(Slice key)> callback, const bool use_empty_as_last_key) {
+  if (lower_bound_key.empty()) {
+    index_iter->SeekToFirst();
+  } else {
+    index_iter->Seek(lower_bound_key);
+  }
+  VLOG_WITH_FUNC(2) << log_prefix << "index_iter: " << index_iter->KeyDebugHexString();
+
+  // First index key is the last key in first data block, so we treat it as we've already
+  // skipped one data block.
+  const auto treat_first_block_as_skipped =
+      index_iter->Valid() && index_iter->key() != lower_bound_key;
+
+  std::string last_key = lower_bound_key.ToBuffer();
+
+  auto has_iter_key_changed_func = [&index_iter, &last_key]() {
+    if (!index_iter->Valid()) {
+      return true;
+    }
+    return index_iter->key() > last_key;
+  };
+
+  auto no_more_keys_func = [&index_iter, upper_bound_key]() {
+    return !index_iter->Valid() ||
+           (!upper_bound_key.empty() && index_iter->key().GreaterOrEqual(upper_bound_key));
+  };
+
+  auto skip_key_func = [&index_iter]() { index_iter->Next(); };
+
+  return DoGetTabletKeyRanges<Direction::kForward>(
+      log_prefix, index_iter, data_iter, &last_key, no_more_keys_func, skip_key_func,
+      has_iter_key_changed_func, max_num_ranges, num_blocks_to_skip - treat_first_block_as_skipped,
+      num_blocks_to_skip, max_key_length, use_empty_as_last_key ? Slice{} : upper_bound_key,
+      callback);
+}
+
+template<>
+Status DoGetTabletKeyRanges<Direction::kBackward>(
+    const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
+    Slice lower_bound_key, Slice upper_bound_key, const uint64_t max_num_ranges,
+    const uint64_t num_blocks_to_skip, const uint32_t max_key_length,
+    std::function<void(Slice key)> callback, const bool use_empty_as_last_key) {
+  if (upper_bound_key.empty()) {
+    index_iter->SeekToLast();
+  } else {
+    index_iter->Seek(upper_bound_key);
+    if (!index_iter->Valid()) {
+      index_iter->SeekToLast();
+    }
+  }
+
+  VLOG_WITH_FUNC(2) << log_prefix << "index_iter: " << index_iter->KeyDebugHexString();
+
+  std::string last_key = upper_bound_key.ToBuffer();
+
+  auto has_iter_key_changed_func = [&index_iter, &last_key]() {
+    if (!index_iter->Valid()) {
+      return true;
+    }
+    return (last_key.empty() && !index_iter->key().empty()) || index_iter->key() < last_key;
+  };
+
+  auto no_more_keys_func = [&index_iter, lower_bound_key]() {
+    return !index_iter->Valid() || lower_bound_key.GreaterOrEqual(index_iter->key());
+  };
+
+  auto skip_key_func = [&index_iter]() { index_iter->Prev(); };
+
+  return DoGetTabletKeyRanges<Direction::kBackward>(
+      log_prefix, index_iter, data_iter, &last_key, no_more_keys_func, skip_key_func,
+      has_iter_key_changed_func, max_num_ranges, num_blocks_to_skip, num_blocks_to_skip,
+      max_key_length, use_empty_as_last_key ? Slice{} : upper_bound_key, callback);
+}
+
+} // namespace
+
 Status Tablet::GetTabletKeyRanges(
     Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
-    const uint64_t range_size_bytes, const IsForward is_forward, uint32_t max_key_length,
+    const uint64_t range_size_bytes, const Direction direction, uint32_t max_key_length,
     std::function<void(Slice key)> callback, const TableId& colocated_table_id) const {
-  VLOG_WITH_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
-                    << " upper_bound_key: " << upper_bound_key.ToDebugHexString()
-                    << " max_num_ranges: " << max_num_ranges
-                    << " range_size_bytes: " << range_size_bytes
-                    << " max_key_length: " << max_key_length;
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
+                               << " upper_bound_key: " << upper_bound_key.ToDebugHexString()
+                               << " max_num_ranges: " << max_num_ranges
+                               << " range_size_bytes: " << range_size_bytes
+                               << " max_key_length: " << max_key_length
+                               << " direction: " << AsString(direction);
   if (max_num_ranges == 0) {
     max_num_ranges = std::numeric_limits<decltype(max_num_ranges)>::max();
   }
@@ -4651,20 +4909,6 @@ Status Tablet::GetTabletKeyRanges(
 
   auto pending_op = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(pending_op);
-
-  const auto num_blocks_to_skip = std::max<size_t>(range_size_bytes / FLAGS_db_block_size_bytes, 1);
-
-  rocksdb::ReadOptions read_options;
-  // An index block contains one entry per data block, where the key is a string >= last key in that
-  // data block and < the first key in the successive data block. The value is the BlockHandle
-  // (file offset and length) for the data block.
-  // So, we need to skip last key in each SST index because there are no data keys after the last
-  // index key.
-  auto index_iter = regular_db_->NewIndexIterator(read_options, rocksdb::SkipLastEntry::kTrue);
-
-  // TODO(get_table_key_ranges): consider reusing index_iter and BlockHandle to avoid double SST
-  // index seek.
-  auto data_iter = std::unique_ptr<rocksdb::Iterator>(regular_db_->NewIterator(read_options));
 
   std::string encoded_partition_key_start;
   std::string encoded_partition_key_end;
@@ -4691,121 +4935,82 @@ Status Tablet::GetTabletKeyRanges(
     partition_lower_bound_key = encoded_partition_key_start;
     partition_upper_bound_key = encoded_partition_key_end;
   }
-  // Whether it make sense to continue fetching ranges for the caller if we reach end of
-  // tablet(table) or upper/lower bound.
-  bool use_empty_as_end_key;
 
-  if (partition_lower_bound_key > lower_bound_key) {
-    lower_bound_key = partition_lower_bound_key;
-  }
-  if (partition_upper_bound_key.empty() ||
-      (!upper_bound_key.empty() && partition_upper_bound_key >= upper_bound_key)) {
-    // Reaching partition upper bound means we can't have more keys in next tablet.
-    use_empty_as_end_key = true;
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "partition_lower_bound_key: "
+                               << Slice(partition_lower_bound_key).ToDebugHexString()
+                               << " partition_upper_bound_key: "
+                               << Slice(partition_upper_bound_key).ToDebugHexString();
+
+  // Whether it make sense to continue fetching ranges for the caller if we reach end/start of
+  // tablet(table) or upper/lower bound (depending on whether is_forward is true/false).
+  std::optional<bool> use_empty_as_last_key;
+
+  if (partition_lower_bound_key <= lower_bound_key) {
+    if (direction == Direction::kBackward) {
+      // Reaching lower bound means we can't have more keys in next tablet.
+      use_empty_as_last_key = true;
+    }
   } else {
-    // Partition upper bound is less than upper_bound_key, we can have more keys in the next
-    // tablet (unless colocated).
-    use_empty_as_end_key = is_colocated;
-    upper_bound_key = partition_upper_bound_key;
+    lower_bound_key = partition_lower_bound_key;
+    if (direction == Direction::kBackward) {
+      // Partition lower bound is higher than lower_bound_key, we can have more keys in the next (in
+      // reverse order) tablet (unless colocated).
+      use_empty_as_last_key = is_colocated;
+    }
   }
 
-  return is_forward ? GetTabletKeyRangesForward(
-                          index_iter.get(), data_iter.get(), lower_bound_key, upper_bound_key,
-                          max_num_ranges, num_blocks_to_skip, max_key_length, std::move(callback),
-                          use_empty_as_end_key)
-                    : GetTabletKeyRangesBackward(
-                          index_iter.get(), lower_bound_key, upper_bound_key, max_num_ranges,
-                          num_blocks_to_skip, max_key_length, std::move(callback));
-}
+  if (partition_upper_bound_key.empty() ||
+      (!upper_bound_key.empty() && upper_bound_key <= partition_upper_bound_key)) {
+    if (direction == Direction::kForward) {
+      // Reaching upper bound means we can't have more keys in next tablet.
+      use_empty_as_last_key = true;
+    }
+  } else {
+    upper_bound_key = partition_upper_bound_key;
+    if (direction == Direction::kForward) {
+      // Partition upper bound is less than upper_bound_key, we can have more keys in the next
+      // tablet (unless colocated).
+      use_empty_as_last_key = is_colocated;
+    }
+  }
 
-Status Tablet::GetTabletKeyRangesForward(
-    rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter, Slice lower_bound_key,
-    Slice upper_bound_key, const uint64_t max_num_ranges, const uint64_t num_blocks_to_skip,
-    const uint32_t max_key_length, std::function<void(Slice key)> callback,
-    const bool use_empty_as_end_key) const {
+  RSTATUS_DCHECK(
+      use_empty_as_last_key.has_value(), InternalError, "use_empty_as_last_key is not set");
+
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
+                               << " upper_bound_key: " << upper_bound_key.ToDebugHexString()
+                               << " use_empty_as_last_key: " << *use_empty_as_last_key;
+
+  const auto num_blocks_to_skip = std::max<size_t>(range_size_bytes / FLAGS_db_block_size_bytes, 1);
+
+  rocksdb::ReadOptions read_options;
+  // An index block contains one entry per data block, where the key is a string >= last key in that
+  // data block and < the first key in the successive data block. The value is the BlockHandle
+  // (file offset and length) for the data block.
+  // So, we need to skip last key in each SST index because there are no data keys after the last
+  // index key.
+  auto index_iter = regular_db_->NewIndexIterator(read_options, rocksdb::SkipLastEntry::kTrue);
+
+  // TODO(get_table_key_ranges): consider reusing index_iter and BlockHandle to avoid double SST
+  // index seek.
+  auto data_iter = std::unique_ptr<rocksdb::Iterator>(regular_db_->NewIterator(read_options));
+
   // TODO(get_table_key_ranges): As of 2023-09 we get full encoded doc keys and skip keys longer
   // than max_key_length. Consider reworking that to allow using key prefixes as lower/upper bound
   // for scan, currently it is not accepted by QLRocksDBStorage::GetIterator.
-
-  if (lower_bound_key.empty()) {
-    index_iter->SeekToFirst();
-  } else {
-    index_iter->Seek(lower_bound_key);
+  switch (direction) {
+    case Direction::kForward:
+        return DoGetTabletKeyRanges<Direction::kForward>(
+            LogPrefix(), index_iter.get(), data_iter.get(), lower_bound_key, upper_bound_key,
+            max_num_ranges, num_blocks_to_skip, max_key_length, std::move(callback),
+            *use_empty_as_last_key);
+    case Direction::kBackward:
+      return DoGetTabletKeyRanges<Direction::kBackward>(
+          LogPrefix(), index_iter.get(), data_iter.get(), lower_bound_key, upper_bound_key,
+          max_num_ranges, num_blocks_to_skip, max_key_length, std::move(callback),
+          *use_empty_as_last_key);
   }
-
-  // First index key is the last key in first data block, so we treat it as we've already
-  // skipped one data block.
-  bool treat_block_as_skipped = index_iter->Valid() && index_iter->key() != lower_bound_key;
-
-  std::string last_key = lower_bound_key.ToBuffer();
-
-  uint64_t num_keys = 1;
-
-  auto has_iter_key_changed_func = [&index_iter, &last_key]() {
-    if (!index_iter->Valid()) {
-      return true;
-    }
-    return index_iter->key() > last_key;
-  };
-
-  while (num_keys <= max_num_ranges) {
-    const auto reached_end_key = SkipKeys(
-        num_blocks_to_skip - treat_block_as_skipped,
-        [&index_iter, upper_bound_key]() {
-          return !index_iter->Valid() ||
-                 (!upper_bound_key.empty() && index_iter->key().GreaterOrEqual(upper_bound_key));
-        },
-        [&index_iter]() { index_iter->Next(); },
-        has_iter_key_changed_func);
-    treat_block_as_skipped = false;
-
-    if (reached_end_key) {
-      if (use_empty_as_end_key) {
-        callback("");
-      } else {
-        callback(upper_bound_key);
-      }
-      break;
-    }
-
-    auto data_entry = data_iter->Seek(index_iter->key());
-    RSTATUS_DCHECK(
-        data_entry.Valid(), InternalError,
-        Format(
-            "Invalid data iterator after seeking to key from SST index: $0",
-            index_iter->key().ToDebugHexString()));
-
-    for (; data_entry.Valid(); data_entry = data_iter->Next()) {
-      // Use encoded doc key to avoid breaking data related to the same row into halves.
-      const auto doc_key_size_result =
-          dockv::DocKey::EncodedSize(data_entry.key, dockv::DocKeyPart::kWholeDocKey);
-
-      if (!doc_key_size_result.ok()) {
-        YB_LOG_EVERY_N_SECS(WARNING, 60)
-            << "Failed to get encoded size of key: " << data_entry.key.ToDebugHexString() << "."
-            << doc_key_size_result.status();
-        continue;
-      }
-      if (doc_key_size_result.get() > max_key_length) {
-        // Skip keys longer than max_key_length.
-        continue;
-      }
-      const auto key = data_entry.key.Prefix(doc_key_size_result.get());
-      callback(key);
-      last_key = key.ToBuffer();
-      ++num_keys;
-      break;
-    }
-  }
-
-  return Status::OK();
-}
-
-Status Tablet::GetTabletKeyRangesBackward(
-    rocksdb::Iterator* index_iter, Slice lower_bound_key, Slice upper_bound_key,
-    const uint64_t max_num_ranges, const uint64_t num_blocks_to_skip, const uint32_t max_key_length,
-    std::function<void(Slice key)> callback) const {
-  return STATUS(NotSupported, "Tablet::GetTabletKeyRanges in backward order is not yet supported");
+  FATAL_INVALID_ENUM_VALUE(Direction, direction);
 }
 
 // ------------------------------------------------------------------------------------------------

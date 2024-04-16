@@ -18,7 +18,6 @@
 
 #include "yb/master/xcluster/master_xcluster_types.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb::master {
@@ -27,7 +26,9 @@ class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 
 class PostTabletCreateTaskBase;
+class UniverseReplicationInfo;
 class XClusterSafeTimeService;
+struct XClusterStatus;
 
 class XClusterTargetManager {
  public:
@@ -47,12 +48,21 @@ class XClusterTargetManager {
       const GetXClusterSafeTimeForNamespaceRequestPB* req,
       GetXClusterSafeTimeForNamespaceResponsePB* resp, const LeaderEpoch& epoch);
 
-  Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
-      const LeaderEpoch& epoch);
+  Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      const XClusterSafeTimeFilter& filter);
+
+  Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch);
 
   XClusterSafeTimeService* TEST_xcluster_safe_time_service() {
     return xcluster_safe_time_service_.get();
   }
+
+  Status RemoveDroppedTablesOnConsumer(
+      const std::unordered_set<TabletId>& table_ids, const LeaderEpoch& epoch);
+
+  Status WaitForSetupUniverseReplicationToFinish(
+      const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline);
 
  protected:
   explicit XClusterTargetManager(
@@ -70,12 +80,25 @@ class XClusterTargetManager {
 
   void SysCatalogLoaded();
 
+  void RunBgTasks(const LeaderEpoch& epoch);
+
   void DumpState(std::ostream& out, bool on_disk_dump) const;
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
 
+  // After a table is marked for drop we remove them from replication. If master leader failed over
+  // after persisting the table state but before the xcluster cleanup we will have deletes tables in
+  // our replication group that needs to be lazily cleaned up.
+  Status RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch);
+
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
+
+  Status PopulateXClusterStatus(XClusterStatus& xcluster_status) const;
+
+  Status PopulateXClusterStatusJson(JsonWriter& jw) const;
+
+  std::unordered_set<xcluster::ReplicationGroupId> GetTransactionalReplicationGroups() const;
 
  private:
   Master& master_;
@@ -83,6 +106,8 @@ class XClusterTargetManager {
   SysCatalogTable& sys_catalog_;
 
   std::unique_ptr<XClusterSafeTimeService> xcluster_safe_time_service_;
+
+  bool removed_deleted_tables_from_replication_ = false;
 
   // The Catalog Entity is stored outside of XClusterSafeTimeService, since we may want to move the
   // service out of master at a later time.

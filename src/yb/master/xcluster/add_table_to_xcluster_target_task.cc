@@ -13,8 +13,10 @@
 
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 
+#include "yb/cdc/xcluster_util.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster_rpc_tasks.h"
@@ -47,8 +49,9 @@ AddTableToXClusterTargetTask::AddTableToXClusterTargetTask(
     : PostTabletCreateTaskBase(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, std::move(table_info),
           std::move(epoch)),
-      universe_(universe) {
-  is_db_scoped_ = universe_->LockForRead()->pb.has_db_scoped_info();
+      universe_(universe),
+      xcluster_manager_(*catalog_manager.GetXClusterManager()) {
+  is_db_scoped_ = universe_->IsDbScoped();
 }
 
 std::string AddTableToXClusterTargetTask::description() const {
@@ -61,7 +64,8 @@ Status AddTableToXClusterTargetTask::FirstStep() {
 
   auto table_l = table_info_->LockForRead();
 
-  if (!ShouldAddTableToReplicationGroup(*universe_, *table_info_, catalog_manager_)) {
+  if (!VERIFY_RESULT(
+          ShouldAddTableToReplicationGroup(*universe_, *table_info_, catalog_manager_))) {
     LOG_WITH_PREFIX(INFO) << "Table " << table_info_->ToString()
                           << " does not need to be added to xCluster universe replication";
     Complete();
@@ -81,8 +85,9 @@ Status AddTableToXClusterTargetTask::FirstStep() {
     return Status::OK();
   }
 
-  auto callback =
-      std::bind(&AddTableToXClusterTargetTask::BootstrapTableCallback, shared_from(this), _1);
+  auto callback = [this](client::BootstrapProducerResult bootstrap_result) {
+    SCHEDULE(AddTableToReplicationGroup, std::move(bootstrap_result));
+  };
 
   if (!is_db_scoped_) {
     auto xcluster_rpc = VERIFY_RESULT(
@@ -102,10 +107,17 @@ Status AddTableToXClusterTargetTask::FirstStep() {
       {table_info_->pgschema_name()}, std::move(callback));
 }
 
-Status AddTableToXClusterTargetTask::BootstrapTableCallback(
+Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
     client::BootstrapProducerResult bootstrap_result) {
-  auto [producer_table_ids, bootstrap_ids, bootstrap_time] =
-      VERIFY_RESULT(std::move(bootstrap_result));
+  const auto& replication_group_id = universe_->ReplicationGroupId();
+
+  SCHECK_EC_FORMAT(
+      bootstrap_result, InvalidArgument, MasterError(MasterErrorPB::INVALID_REQUEST),
+      "Failed to bootstrap table on the source universe of xCluster replication group $0: $1",
+      replication_group_id, bootstrap_result.status().ToString());
+
+  auto& [producer_table_ids, bootstrap_ids, bootstrap_time] = *bootstrap_result;
+
   CHECK_EQ(producer_table_ids.size(), 1);
   CHECK_EQ(bootstrap_ids.size(), 1);
   if (is_db_scoped_) {
@@ -120,16 +132,13 @@ Status AddTableToXClusterTargetTask::BootstrapTableCallback(
     // the bootstrap time to ensure the base table has all the data before we start the backfill
     // job.
     //
-    // In Db scoped replication we checkpoint the index when it is created on the source at OpId 0.
-    // We still need to run the backfill job on the target since we still do not get the data
-    // produced by the source backfill job. The DDL handler which issues the create index DDL waits
-    // for the xCluster safe time to advance upto the DDL commit time before executing it. This time
-    // is guaranteed to be higher than the backfill time of the source universe since index creation
+    // In Db scoped replication the DDL handler which issues the create index DDL waits for the
+    // xCluster safe time to advance upto the DDL commit time before executing it. This time is
+    // guaranteed to be higher than the backfill time of the source universe since index creation
     // waits for the backfill job to finish.
     //
-    // We set to coarse time now (and dont worry about clock skews) to have some valid time to
-    // compare against.
-    bootstrap_time = HybridTime::FromMicros(GetCurrentTimeMicros());
+    // We set to kMin here and later update it to GetXClusterSafeTimeWithoutDdlQueue.
+    bootstrap_time = HybridTime::kMin;
   } else {
     SCHECK(
         !bootstrap_time.is_special(), IllegalState, "xCluster Bootstrap time is not valid $0",
@@ -138,13 +147,8 @@ Status AddTableToXClusterTargetTask::BootstrapTableCallback(
 
   bootstrap_time_ = bootstrap_time;
 
-  SCHEDULE(AddTableToReplicationGroup, producer_table_ids[0], bootstrap_ids[0]);
-  return Status::OK();
-}
-
-Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
-    TableId producer_table_id, std::string bootstrap_id) {
-  const auto& replication_group_id = universe_->ReplicationGroupId();
+  auto& producer_table_id = producer_table_ids[0];
+  auto& bootstrap_id = bootstrap_ids[0];
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "Adding table to xcluster universe replication "
                                  << replication_group_id << " with bootstrap_id:" << bootstrap_id
                                  << ", bootstrap_time:" << bootstrap_time_
@@ -154,7 +158,7 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
   req.set_replication_group_id(replication_group_id.ToString());
   req.add_producer_table_ids_to_add(producer_table_id);
   req.add_producer_bootstrap_ids_to_add(bootstrap_id);
-  RETURN_NOT_OK(catalog_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */));
+  RETURN_NOT_OK(catalog_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */, epoch_));
 
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -165,41 +169,55 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
 }
 
 Status AddTableToXClusterTargetTask::WaitForSetupUniverseReplicationToFinish() {
-  auto operation_result = VERIFY_RESULT(
-      IsSetupUniverseReplicationDone(universe_->ReplicationGroupId(), catalog_manager_));
+  auto operation_result = VERIFY_RESULT(IsSetupUniverseReplicationDone(
+      xcluster::GetAlterReplicationGroupId(universe_->ReplicationGroupId()), catalog_manager_));
 
-  if (!operation_result.done) {
+  if (!operation_result.done()) {
     VLOG_WITH_PREFIX(2) << "Waiting for setup universe replication to finish";
     // If this takes too long the table creation will timeout and abort the task.
     SCHEDULE_WITH_DELAY(WaitForSetupUniverseReplicationToFinish);
     return Status::OK();
   }
 
-  RETURN_NOT_OK(operation_result.status);
+  RETURN_NOT_OK(operation_result.status());
 
   SCHEDULE(RefreshAndGetXClusterSafeTime);
   return Status::OK();
 }
 
+Result<std::optional<HybridTime>>
+AddTableToXClusterTargetTask::GetXClusterSafeTimeWithoutDdlQueue() {
+  const auto namespace_id = table_info_->namespace_id();
+
+  auto safe_time_res = xcluster_manager_.GetXClusterSafeTimeForNamespace(
+      epoch_, namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
+  if (!safe_time_res) {
+    if (!safe_time_res.status().IsNotFound()) {
+      return safe_time_res.status();
+    }
+    VLOG_WITH_PREFIX(2) << "Namespace " << namespace_id
+                        << " is no longer part of any xCluster replication";
+    return std::nullopt;
+  }
+
+  SCHECK(
+      !safe_time_res->is_special(), IllegalState, "Invalid safe time $0 for namespace $1",
+      *safe_time_res, namespace_id);
+  return *safe_time_res;
+}
+
 Status AddTableToXClusterTargetTask::RefreshAndGetXClusterSafeTime() {
   // Force a refresh of the xCluster safe time map so that it accounts for all tables under
   // replication.
-  auto namespace_id = table_info_->namespace_id();
-  auto initial_safe_time = VERIFY_RESULT(
-      catalog_manager_.GetXClusterManager()->RefreshAndGetXClusterNamespaceToSafeTimeMap(
-          catalog_manager_.GetLeaderEpochInternal()));
-  if (!initial_safe_time.contains(namespace_id)) {
-    VLOG_WITH_PREFIX(2) << "Namespace " << namespace_id
-                        << " is no longer part of any xCluster replication";
+  RETURN_NOT_OK(xcluster_manager_.RefreshXClusterSafeTimeMap(epoch_));
+  auto initial_safe_time = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue());
+  if (!initial_safe_time) {
     Complete();
     return Status::OK();
   }
 
-  initial_xcluster_safe_time_ = initial_safe_time[namespace_id];
+  initial_xcluster_safe_time_ = *initial_safe_time;
   initial_xcluster_safe_time_.MakeAtLeast(bootstrap_time_);
-  SCHECK(
-      !initial_xcluster_safe_time_.is_special(), IllegalState, "Invalid initial safe time $0",
-      initial_xcluster_safe_time_);
 
   // Wait for the xCluster safe time to advance beyond the initial value. This ensures all tables
   // under replication are part of the safe time computation.
@@ -208,12 +226,15 @@ Status AddTableToXClusterTargetTask::RefreshAndGetXClusterSafeTime() {
 }
 
 Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
-  // TODO: Handle the case when replication was dropped.
-  auto ht = VERIFY_RESULT(
-      catalog_manager_.GetXClusterManager()->GetXClusterSafeTime(table_info_->namespace_id()));
+  auto ht = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue());
+  if (!ht) {
+    // The namespace is no longer part of any xCluster replication.
+    Complete();
+    return Status::OK();
+  }
 
-  if (ht <= initial_xcluster_safe_time_) {
-    YB_LOG_EVERY_N_SECS(WARNING, 10) << LogPrefix() << "Waiting for xCluster safe time " << ht
+  if (*ht <= initial_xcluster_safe_time_) {
+    YB_LOG_EVERY_N_SECS(WARNING, 10) << LogPrefix() << "Waiting for xCluster safe time " << *ht
                                      << " to advance beyond " << initial_xcluster_safe_time_;
     // If this takes too long the table creation will timeout and abort the task.
     SCHEDULE_WITH_DELAY(WaitForXClusterSafeTimeCaughtUp);

@@ -69,8 +69,8 @@ func init() {
 	ToolsCmd.AddCommand(generateDocsCmd)
 
 	generateDocsCmd.Flags().SortFlags = false
-	generateDocsCmd.Flags().String("format", "",
-		fmt.Sprintf("[Optional] Documentation output format (%s) .(Default markdown)",
+	generateDocsCmd.Flags().String("format", "markdown",
+		fmt.Sprintf("[Optional] Documentation output format (%s).",
 			strings.Join(documentationFormat, ",")))
 	viper.BindPFlag("format", generateDocsCmd.Flags().Lookup("format"))
 	viper.SetDefault("format", "markdown")
@@ -81,13 +81,13 @@ func init() {
 func RemoveContents(dir string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*"))
 	if err != nil {
-		logrus.Errorf("%s", err.Error())
+		logrus.Errorf("%s\n", err.Error())
 		return err
 	}
 	for _, file := range files {
 		err = os.RemoveAll(file)
 		if err != nil {
-			logrus.Errorf("%s", err.Error())
+			logrus.Errorf("%s\n", err.Error())
 			return err
 		}
 	}

@@ -24,7 +24,7 @@ class TabletSplitCandidateFilterIf {
   virtual ~TabletSplitCandidateFilterIf() {}
 
   // Table-level checks for whether we can split tablets in this table.
-  virtual Status XreplValidateSplitCandidateTable(const TableInfo& table_info) const = 0;
+  virtual Status XReplValidateSplitCandidateTable(const TableId& table_id) const = 0;
   virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) = 0;
 
   // Returns Status::OK if we should split a tablet based on the provided drive_info, and a status
@@ -36,6 +36,11 @@ class TabletSplitCandidateFilterIf {
 
   virtual Status CanAddPartitionsToTable(
     size_t desired_partitions, const PlacementInfoPB& placement_info) = 0;
+
+  virtual Status CanSupportAdditionalTablet(
+      const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const = 0;
+
+  virtual void IncrementSplitBlockedByTabletLimitCounter() = 0;
 };
 
 }  // namespace master

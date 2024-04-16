@@ -142,6 +142,10 @@ Examples:
 --cloud_location *cloud-location*
 : Cloud location of the yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region, and multi-cloud deployments of YugabyteDB clusters.
 
+{{<tip title="Rack awareness">}}
+For on-premises deployments, consider racks as zones to treat them as fault domains.
+{{</tip>}}
+
 --fault_tolerance *fault_tolerance*
 : Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values: none, zone, region, cloud.
 
@@ -1007,6 +1011,41 @@ You can set the replication factor of the cluster manually using the `--rf` flag
     --fault_tolerance=region \
     --constraint_value=aws.us-east-1.us-east-1a,aws.us-west-1.us-west-1a,aws.us-central-1.us-central-1a \
     --rf=3
+```
+
+### Create a multi-region cluster in Docker
+
+You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
+
+The following example shows how to create a multi-region cluster. If the `~/yb_docker_data` directory already exists, delete and re-create it.
+
+
+```sh
+rm -rf ~/yb_docker_data
+mkdir ~/yb_docker_data
+
+docker network create yb-network
+
+docker run -d --name yugabytedb-node1 --net yb-network \
+    -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
+    -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start \
+    --base_dir=/home/yugabyte/yb_data --background=false
+
+docker run -d --name yugabytedb-node2 --net yb-network \
+    -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
+    -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start --join=yugabytedb-node1 \
+    --base_dir=/home/yugabyte/yb_data --background=false
+
+docker run -d --name yugabytedb-node3 --net yb-network \
+    -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
+    -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start --join=yugabytedb-node1 \
+    --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
 ### Enable and disable encryption at rest

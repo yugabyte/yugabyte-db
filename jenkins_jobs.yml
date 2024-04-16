@@ -2,7 +2,7 @@
 # Default architecture is x86_64
 jobs:
   - os: alma8
-    compiler: clang16
+    compiler: clang17
     build_type: asan
     release_artifact: false
 
@@ -13,7 +13,7 @@ jobs:
 
   - os: alma8
     compiler: gcc11
-    build_type: debug
+    build_type: fastdebug
     release_artifact: false
 
   - os: alma8

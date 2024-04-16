@@ -1,11 +1,15 @@
 import { YBSoftwareMetadata } from "../../../utils/dto";
 
-export const sortVersionStrings = (arr: Record<string, string>[]) => {
+export const sortVersionStrings = (arr: any, isReleasesEnabled: boolean) => {
+  const releasesArray = isReleasesEnabled ? arr.map((item: any) => {
+    return { label: item.label.version, value: item.label.version, releaseTag: item.label.release_tag};
+  }) : arr;
+
   const regExp = /^(\d+).(\d+).(\d+).(\d+)(?:-[a-z]+)?(\d+)?/;
-  const matchedVersions = arr.filter((a) => a.label.match(regExp));
-  const abnormalVersions = arr.filter((a) => !a.label.match(regExp));
+  const matchedVersions = releasesArray?.filter((a: any) => a.label.match(regExp));
+  const abnormalVersions = releasesArray?.filter((a: any) => !a.label.match(regExp));
   return matchedVersions
-    .sort((a, b) => {
+    .sort((a: any, b: any) => {
       const a_arr = a.label.split(regExp).filter(Boolean);
       const b_arr = b.label.split(regExp).filter(Boolean);
       for (let idx = 0; idx < a_arr.length; idx++) {
@@ -15,7 +19,7 @@ export const sortVersionStrings = (arr: Record<string, string>[]) => {
       }
       return 0;
     })
-    .concat(abnormalVersions.sort((a, b) => a.label.localeCompare(b.label)));
+    .concat(abnormalVersions.sort((a: any, b: any) => a.label.localeCompare(b.label)));
 };
 
 export const getActiveDBVersions = (releasesMetadata: Record<string, YBSoftwareMetadata>) => {
@@ -26,3 +30,4 @@ export const getActiveDBVersions = (releasesMetadata: Record<string, YBSoftwareM
         value: r[0]
       }));
 };
+

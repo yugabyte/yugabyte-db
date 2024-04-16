@@ -67,8 +67,6 @@ struct CBTabletMetadata {
   // Number of running replicas for this tablet.
   int running = 0;
 
-  // TODO(bogdan): actually use this!
-  //
   // Number of starting replicas for this tablet.
   int starting = 0;
 
@@ -287,7 +285,7 @@ class GlobalLoadState {
   std::set<TabletServerId> leader_blacklisted_servers_;
 
   // List of tablet server ids that have pending deletes.
-  std::set<TabletServerId> servers_with_pending_deletes_;
+  std::unordered_map<TabletServerId, std::set<TabletId>> pending_deletes_;
 
  private:
   // Map from tablet server ids to the global metadata we store for each.
@@ -347,6 +345,11 @@ class PerTableLoadState {
   Status UpdateTablet(TabletInfo* tablet);
 
   virtual void UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc);
+
+  void SetInitialized() {
+    DCHECK(!initialized_);
+    initialized_ = true;
+  }
 
   Result<bool> CanAddTabletToTabletServer(
     const TabletId& tablet_id, const TabletServerId& to_ts, const PlacementInfoPB* placement_info);
@@ -539,9 +542,14 @@ class PerTableLoadState {
   std::vector<AffinitizedZonesSet> affinitized_zones_;
 
  private:
+  // Whether the fields above are all initialized correctly
+  // State-modifying functions that expect to only be called before / after initialization
+  // can SCHECK initialized_ is false / true respectively.
+  bool initialized_ = false;
+
   bool ShouldSkipReplica(const TabletReplica& replica);
   size_t GetReplicaSize(std::shared_ptr<const TabletReplicaMap> replica_map);
-  const std::string uninitialized_ts_meta_format_msg =
+  const std::string uninitialized_ts_meta_format_msg_ =
       "Found uninitialized ts_meta: ts_uuid: $0, table_uuid: $1";
 
   DISALLOW_COPY_AND_ASSIGN(PerTableLoadState);

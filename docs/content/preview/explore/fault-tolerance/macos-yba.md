@@ -1,39 +1,32 @@
 ---
 title: High availability during failures in YugabyteDB Anywhere
-headerTitle: High availability during node and zone failures
-linkTitle: HA during failures
+headerTitle: Handling node failures
+linkTitle: Node failures
 description: Simulate fault tolerance and resilience in a YugabyteDB Anywhere universe.
-headcontent: Keep serving requests through node, zone, and region failures
+headcontent: Keep serving requests through node failures
 menu:
   preview:
     identifier: node-failure-2-macos
     parent: fault-tolerance
-    weight: 10
+    weight: 40
 type: docs
 ---
 
-The following example demonstrates how YugabyteDB can continue to perform reads and writes even in case of node failures. In this scenario, you create a universe with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the universe remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable on the universe to preserve data consistency.
+The ability to survive failures and be highly available is one of the foundational features of YugabyteDB. YugabyteDB is resilient to node failures. On the failure of a node, a leader election is triggered for all the tablets that had leaders in the lost node. A follower on a different node is quickly promoted to leader without any loss of data. The entire process take takes approximately 3 seconds.
 
-The examples are based on the YB Workload Simulator application, which uses the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. The driver automatically balances application connections across the nodes in a universe and rebalances connections when a node fails.
+Let's go over this with an example.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../macos/" class="nav-link">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Local
-    </a>
-  </li>
-  <li>
-    <a href="../macos-yba/" class="nav-link active">
-      <img src="/icons/server.svg" alt="Server Icon">
-      YugabyteDB Anywhere
-    </a>
-  </li>
-</ul>
+## Scenario
+
+Suppose you have a universe with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the universe remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable in order to preserve data consistency.
+
+{{<product-tabs list="local,anywhere">}}
 
 ## Set up a universe
 
 Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
+
+{{<note>}} The [YB Workload Simulator](../../#set-up-yb-workload-simulator) uses the [YugabyteDB JDBC Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. It automatically balances application connections across the nodes in a universe and re-balances connections when a node fails.{{</note>}}
 
 ## Observe even load across all nodes
 

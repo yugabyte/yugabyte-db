@@ -3,6 +3,8 @@ package com.yugabyte.yw.common.supportbundle;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
@@ -14,6 +16,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -28,6 +31,7 @@ class YbcLogsComponent implements SupportBundleComponent {
   protected final Config config;
   private final SupportBundleUtil supportBundleUtil;
   public final String NODE_UTILS_SCRIPT = "bin/node_utils.sh";
+  public final String YBC_CONF_PATH = "controller/conf/server.conf";
 
   @Inject
   YbcLogsComponent(
@@ -94,6 +98,7 @@ class YbcLogsComponent implements SupportBundleComponent {
     String ybcLogsPath = nodeHomeDir + "/controller/logs";
     List<Path> ybcLogFilePaths = new ArrayList<>();
     if (nodeUniverseManager.checkNodeIfFileExists(node, universe, ybcLogsPath)) {
+      // Gets the absolute paths of the ybc logs
       ybcLogFilePaths =
           nodeUniverseManager.getNodeFilePaths(
               node, universe, ybcLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
@@ -119,7 +124,30 @@ class YbcLogsComponent implements SupportBundleComponent {
           nodeTargetFile,
           nodeHomeDir,
           ybcLogFilePathString,
-          this.getClass().getSimpleName());
+          this.getClass().getSimpleName(),
+          false);
+
+      // Collect YBC server.conf file from the node home directory. Directory to get the server.conf
+      // can vary between VM and k8s based universes.
+      CloudType cloudType =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+      String goToPathOnNode;
+      if (CloudType.kubernetes.equals(cloudType)) {
+        goToPathOnNode = KubernetesTaskBase.K8S_NODE_YW_DATA_DIR;
+      } else {
+        goToPathOnNode = nodeUniverseManager.getYbHomeDir(node, universe);
+      }
+      supportBundleUtil.batchWiseDownload(
+          universeInfoHandler,
+          customer,
+          universe,
+          bundlePath,
+          node,
+          nodeTargetFile,
+          goToPathOnNode,
+          Collections.singletonList(YBC_CONF_PATH),
+          this.getClass().getSimpleName(),
+          false);
     } else {
       log.debug(
           "Found no matching YB-Controller logs for node: {}, source path: {}, target path: {}, "

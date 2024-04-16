@@ -172,12 +172,13 @@ Status TableCache::FindTable(const EnvOptions& env_options,
                              const InternalKeyComparatorPtr& internal_comparator,
                              const FileDescriptor& fd, Cache::Handle** handle,
                              const QueryId query_id, const bool no_io, bool record_read_stats,
-                             HistogramImpl* file_read_hist, bool skip_filters) {
+                             HistogramImpl* file_read_hist, bool skip_filters,
+                             Statistics* statistics) {
   PERF_TIMER_GUARD(find_table_nanos);
   Status s;
   uint64_t number = fd.GetNumber();
   Slice key = GetSliceForFileNumber(&number);
-  *handle = cache_->Lookup(key, query_id);
+  *handle = cache_->Lookup(key, query_id, statistics);
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("TableCache::FindTable:0", const_cast<bool*>(&no_io));
 
   if (*handle == nullptr) {
@@ -267,7 +268,8 @@ Status TableCache::DoGetTableReaderForIterator(
   } else {
     *trwh = VERIFY_RESULT(GetTableReader(
         env_options, icomparator, fd, options.query_id,
-        /* no_io =*/ options.read_tier == kBlockCacheTier, file_read_hist, skip_filters));
+        /* no_io =*/ options.read_tier == kBlockCacheTier, file_read_hist, skip_filters,
+        options.statistics));
   }
   trwh->created_new = create_new_table_reader;
   return Status::OK();
@@ -448,13 +450,14 @@ Status TableCache::Get(const ReadOptions& options,
 yb::Result<TableCache::TableReaderWithHandle> TableCache::GetTableReader(
     const EnvOptions& env_options, const InternalKeyComparatorPtr& internal_comparator,
     const FileDescriptor& fd, const QueryId query_id, const bool no_io,
-    HistogramImpl* file_read_hist, const bool skip_filters) {
+    HistogramImpl* file_read_hist, const bool skip_filters,
+    Statistics* statistics) {
   TableReaderWithHandle trwh;
   trwh.table_reader = fd.table_reader;
   if (trwh.table_reader == nullptr) {
     RETURN_NOT_OK(FindTable(
         env_options, internal_comparator, fd, &trwh.handle, query_id, no_io,
-        /* record_read_stats =*/ true, file_read_hist, skip_filters));
+        /* record_read_stats =*/ true, file_read_hist, skip_filters, statistics));
     trwh.table_reader = GetTableReaderFromHandle(trwh.handle);
     trwh.cache = cache_;
   }

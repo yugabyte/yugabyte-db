@@ -98,7 +98,10 @@ class PgsqlWriteOperation :
 
   // Reading current row before operating on it.
   // Returns true if row was present.
-  Result<bool> ReadColumns(const DocOperationApplyData& data, dockv::PgTableRow* table_row);
+  Result<bool> ReadRow(const DocOperationApplyData& data, dockv::PgTableRow* table_row);
+  Result<bool> ReadRow(
+      const DocOperationApplyData& data, const dockv::DocKey& doc_key,
+      dockv::PgTableRow* table_row);
 
   Status PopulateResultSet(const dockv::PgTableRow* table_row);
 

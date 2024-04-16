@@ -28,6 +28,10 @@ cascade:
 
 YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
 
+{{<tip>}}
+YugabyteDB Managed SLA service availability is [99.99%](https://www.yugabyte.com/yugabytedb-managed-service-level-agreement/#:~:text=a%20minimum%20of-,99.99,-%25%20of%20the%20time). For the current status of the service, see [YBM status](https://status.yugabyte.cloud/).
+{{</tip>}}
+
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Sign up to create a Sandbox cluster"
@@ -132,7 +136,7 @@ YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to
   title="Build Applications"
   description="Start coding in your favorite programming language using these examples."
   buttonText="Get Started"
-  buttonUrl="../develop/build-apps/"
+  buttonUrl="../tutorials/build-apps/"
   >}}
 
   {{< sections/3-box-card

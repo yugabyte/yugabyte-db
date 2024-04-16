@@ -11,6 +11,11 @@ menu:
 type: docs
 ---
 
+{{<tabs>}}
+{{<tabitem href="../smart-drivers/" text="YSQL" icon="postgres" active="true">}}
+{{<tabitem href="../smart-drivers-ycql/" text="YCQL" icon="cassandra" >}}
+{{</tabs>}}
+
 In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports smart drivers, which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
 Yugabyte has developed the following smart drivers for YSQL, available as open source software under the Apache 2.0 license.
@@ -203,11 +208,11 @@ YugabyteDB Managed requires TLS/SSL. Depending on the smart driver, using load b
 | Go | Yes | |
 | Node.js | Yes | In the ssl object, set `rejectUnauthorized` to true, `ca` to point to your cluster CA certificate, and `servername` to the cluster host name. |
 
-For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 ## Learn more
 
 - YugabyteDB Friday Tech Talk: [PostgreSQL Smart Drivers](https://youtu.be/FbXrRdB_4u0)
-- [Smart driver FAQ](../../faq/smart-drivers-faq/)
+- [Smart driver FAQ](/preview/faq/smart-drivers-faq/)
 - Smart driver [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 - Blog: [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/)

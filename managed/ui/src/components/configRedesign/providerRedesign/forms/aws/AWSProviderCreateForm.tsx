@@ -12,6 +12,7 @@ import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
 
 import {
   OptionProps,
@@ -69,6 +70,7 @@ import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dt
 import { AWSAvailabilityZoneMutation, AWSRegionMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import {
+  ConfigureSSHDetailsMsg,
   IsOsPatchingEnabled,
   constructImageBundlePayload
 } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
@@ -85,7 +87,6 @@ export interface AWSProviderCreateFormFieldValues {
   accessKeyId: string;
   dbNodePublicInternetAccess: boolean;
   enableHostedZone: boolean;
-  useIMDSv2: boolean;
   hostedZoneId: string;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
@@ -179,11 +180,11 @@ export const AWSProviderCreateForm = ({
     setQuickValidationErrors
   ] = useState<QuickValidationErrorKeys | null>(null);
   const validationClasses = useValidationStyles();
+  const { t } = useTranslation();
 
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
     enableHostedZone: false,
-    useIMDSv2: false,
     ntpServers: [] as string[],
     ntpSetupType: NTPSetupType.CLOUD_VENDOR,
     providerCredentialType: AWSProviderCredentialType.ACCESS_KEY,
@@ -203,11 +204,17 @@ export const AWSProviderCreateForm = ({
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
+
   if (hostInfoQuery.isLoading || hostInfoQuery.isIdle) {
     return <YBLoading />;
   }
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
 
   const handleFormSubmitServerError = (
@@ -413,15 +420,6 @@ export const AWSProviderCreateForm = ({
                   />
                 </FormField>
               )}
-              <FormField>
-                <FieldLabel
-                  infoTitle="Use IMDSv2"
-                  infoContent="This should be turned on if the AMI requires Instance Metadata Service v2"
-                >
-                  Use IMDSv2
-                </FieldLabel>
-                <YBToggleField name="useIMDSv2" control={formMethods.control} />
-              </FormField>
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -489,12 +487,13 @@ export const AWSProviderCreateForm = ({
               infoTitle="SSH Key Pairs"
               infoContent="YBA requires SSH access to DB nodes. For public clouds, YBA provisions the VM instances as part of the DB node provisioning. The OS images come with a preprovisioned user."
             >
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -505,7 +504,7 @@ export const AWSProviderCreateForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -576,7 +575,7 @@ export const AWSProviderCreateForm = ({
                   {Object.entries(quickValidationErrors).map(([keyString, errors]) => {
                     return (
                       <li key={keyString}>
-                        {keyString.replace(/^(data\.)/, '')}
+                        {keyString}
                         <ul>
                           {errors.map((error, index) => (
                             <li key={index}>{error}</li>
@@ -679,7 +678,7 @@ const constructProviderPayload = async (
     formValues.skipKeyValidateAndUpload
   );
 
-  const imageBundles = constructImageBundlePayload(formValues);
+  const imageBundles = constructImageBundlePayload(formValues, true);
 
   return {
     code: ProviderCode.AWS,
@@ -693,8 +692,7 @@ const constructProviderPayload = async (
             awsAccessKeyID: formValues.accessKeyId,
             awsAccessKeySecret: formValues.secretAccessKey
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
-          useIMDSv2: formValues.useIMDSv2
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
         }
       },
       ntpServers: formValues.ntpServers,

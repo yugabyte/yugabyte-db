@@ -14,6 +14,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -214,6 +216,25 @@ public class GFlagsUtil {
           .build();
 
   /**
+   * Returns true if we should use secondary ip for node (in case of dual NIC)
+   *
+   * @param universe
+   * @param node
+   * @param cloudEnabled
+   * @return
+   */
+  public static boolean isUseSecondaryIP(
+      Universe universe, NodeDetails node, boolean cloudEnabled) {
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
+    boolean isDualNet =
+        cloudEnabled
+            && node.cloudInfo.secondary_private_ip != null
+            && !node.cloudInfo.secondary_private_ip.equals("null");
+    return isDualNet && !legacyNet;
+  }
+
+  /**
    * Return the map of default gflags which will be passed as extra gflags to the db nodes.
    *
    * @param taskParam
@@ -254,14 +275,14 @@ public class GFlagsUtil {
       extra_gflags.put(LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS, String.valueOf(5));
     }
 
+    boolean cloudEnabled = config.getBoolean("yb.cloud.enabled");
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    boolean legacyNet =
-        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     boolean isDualNet =
-        config.getBoolean("yb.cloud.enabled")
+        cloudEnabled
             && node.cloudInfo.secondary_private_ip != null
             && !node.cloudInfo.secondary_private_ip.equals("null");
-    boolean useSecondaryIp = isDualNet && !legacyNet;
+
+    boolean useSecondaryIp = isUseSecondaryIP(universe, node, cloudEnabled);
 
     if (node.dedicatedTo != null) {
       extra_gflags.put(
@@ -485,6 +506,15 @@ public class GFlagsUtil {
     return Provider.getOrBadRequest(UUID.fromString(providerUUID)).getYbHome();
   }
 
+  private static String getMasterAddrs(
+      AnsibleConfigureServers.Params taskParam, Universe universe, boolean useSecondaryIp) {
+    String masterAddresses = taskParam.getMasterAddrsOverride();
+    if (StringUtils.isBlank(masterAddresses)) {
+      masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
+    }
+    return masterAddresses;
+  }
+
   private static Map<String, String> getTServerDefaultGflags(
       AnsibleConfigureServers.Params taskParam,
       Universe universe,
@@ -495,7 +525,7 @@ public class GFlagsUtil {
       boolean configureCGroup) {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
+    String masterAddresses = getMasterAddrs(taskParam, universe, useSecondaryIp);
     String privateIp = node.cloudInfo.private_ip;
     int tserverRpcPort =
         taskParam.overrideNodePorts
@@ -827,7 +857,7 @@ public class GFlagsUtil {
       RuntimeConfGetter confGetter) {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
+    String masterAddresses = getMasterAddrs(taskParam, universe, useSecondaryIp);
     String privateIp = node.cloudInfo.private_ip;
     int masterRpcPort =
         taskParam.overrideNodePorts
@@ -1136,6 +1166,35 @@ public class GFlagsUtil {
       trimData.put(key.trim(), value.trim());
     }
     return trimData;
+  }
+
+  public static PerProcessFlags trimFlags(PerProcessFlags perProcessFlags) {
+    if (perProcessFlags == null) {
+      return null;
+    }
+    if (perProcessFlags.value != null) {
+      Map<ServerType, Map<String, String>> trimData = new HashMap<>();
+      for (Map.Entry<ServerType, Map<String, String>> entry : perProcessFlags.value.entrySet()) {
+        trimData.put(entry.getKey(), trimFlags(entry.getValue()));
+      }
+      perProcessFlags.value = trimData;
+    }
+    return perProcessFlags;
+  }
+
+  public static SpecificGFlags trimFlags(SpecificGFlags specificGFlags) {
+    if (specificGFlags == null) {
+      return specificGFlags;
+    }
+    trimFlags(specificGFlags.getPerProcessFlags());
+    if (specificGFlags.getPerAZ() != null) {
+      Map<UUID, PerProcessFlags> trimData = new HashMap<>();
+      for (Map.Entry<UUID, PerProcessFlags> entry : specificGFlags.getPerAZ().entrySet()) {
+        trimData.put(entry.getKey(), trimFlags(entry.getValue()));
+      }
+      specificGFlags.setPerAZ(trimData);
+    }
+    return specificGFlags;
   }
 
   public static String mergeCSVs(String csv1, String csv2, boolean mergeKeyValues) {

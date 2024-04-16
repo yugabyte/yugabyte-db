@@ -29,7 +29,7 @@ public class TaskTest extends FakeDBApplication {
     details.put("description", "Test task");
     details.put("key1", "val1");
     details.put("key2", "val2");
-    taskInfo.setDetails(Json.toJson(details));
+    taskInfo.setTaskParams(Json.toJson(details));
     // Set the owner info.
     String hostname = "";
     try {

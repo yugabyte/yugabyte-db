@@ -25,6 +25,9 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 PG_MODULE_MAGIC;
 
 extern void _PG_output_plugin_init(OutputPluginCallbacks *cb);
@@ -44,6 +47,8 @@ static void pgoutput_truncate(LogicalDecodingContext *ctx,
 				  ReorderBufferChange *change);
 static bool pgoutput_origin_filter(LogicalDecodingContext *ctx,
 					   RepOriginId origin_id);
+
+static void yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid);
 
 static bool publications_valid;
 
@@ -84,6 +89,8 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->commit_cb = pgoutput_commit_txn;
 	cb->filter_by_origin_cb = pgoutput_origin_filter;
 	cb->shutdown_cb = pgoutput_shutdown;
+
+	cb->yb_schema_change_cb = yb_pgoutput_schema_change;
 }
 
 static void
@@ -192,6 +199,9 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("publication_names parameter missing")));
 
+		if (IsYugaByteEnabled())
+			opt->yb_publication_names = data->publication_names;
+
 		/* Init publication state. */
 		data->publications = NIL;
 		publications_valid = false;
@@ -210,7 +220,9 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 static void
 pgoutput_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 {
-	bool		send_replication_origin = txn->origin_id != InvalidRepOriginId;
+	/* Skip sending replication origin as it is not applicable for YB. */
+	bool send_replication_origin = !IsYugaByteEnabled() &&
+								   txn->origin_id != InvalidRepOriginId;
 
 	OutputPluginPrepareWrite(ctx, !send_replication_origin);
 	logicalrep_write_begin(ctx->out, txn);
@@ -348,9 +360,22 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				HeapTuple	oldtuple = change->data.tp.oldtuple ?
 				&change->data.tp.oldtuple->tuple : NULL;
 
+				bool		*yb_old_is_omitted = NULL;
+				bool		*yb_new_is_omitted = NULL;
+				if (IsYugaByteEnabled())
+				{
+					yb_old_is_omitted =
+						(change->data.tp.oldtuple) ?
+							change->data.tp.oldtuple->yb_is_omitted :
+							NULL;
+
+					yb_new_is_omitted = change->data.tp.newtuple->yb_is_omitted;
+				}
+
 				OutputPluginPrepareWrite(ctx, true);
 				logicalrep_write_update(ctx->out, relation, oldtuple,
-										&change->data.tp.newtuple->tuple);
+										&change->data.tp.newtuple->tuple,
+										yb_old_is_omitted, yb_new_is_omitted);
 				OutputPluginWrite(ctx, true);
 				break;
 			}
@@ -446,6 +471,12 @@ pgoutput_shutdown(LogicalDecodingContext *ctx)
 		hash_destroy(RelationSyncCache);
 		RelationSyncCache = NULL;
 	}
+}
+
+static void
+yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid)
+{
+	rel_sync_cache_relation_cb(0 /* unused */, relid);
 }
 
 /*

@@ -51,12 +51,12 @@
 /* DocDB row decode and process cost */
 #define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 50
 
-/* DocDB Remote filter cost */
+/* DocDB storage filter cost */
 #define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 20
 
 /* Network transfer cost */
 #define YB_DEFAULT_LOCAL_LATENCY_COST 180.0
-#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 64000.0
+#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 80000.0
 
 /*
  * TODO : Since we cannot currently estimate the number of key value pairs per
@@ -68,6 +68,13 @@
  * table, we use a constant heuristic value of 3.
  */
 #define YB_DEFAULT_NUM_SST_FILES_PER_TABLE 3
+
+/*
+ * TODO : To avoid expensive seek for a key, DocDB performs a series of nexts
+ * in hope to find the key among the following tuples. This configurable
+ * parameter should be exposed in PG code to be used here.
+ */
+#define MAX_NEXTS_TO_AVOID_SEEK 2
 
 typedef enum
 {
@@ -134,6 +141,7 @@ extern PGDLLIMPORT bool yb_enable_geolocation_costing;
  * loop join plans.
  */
 extern PGDLLIMPORT bool yb_enable_batchednl;
+extern PGDLLIMPORT bool yb_enable_parallel_append;
 
 extern double clamp_row_est(double nrows);
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
@@ -149,6 +157,9 @@ extern void yb_cost_index(IndexPath *path, PlannerInfo *root,
 extern void cost_index(IndexPath *path, PlannerInfo *root,
 		   double loop_count, bool partial_path);
 extern void cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+					  ParamPathInfo *param_info,
+					  Path *bitmapqual, double loop_count);
+extern void cost_yb_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 					  ParamPathInfo *param_info,
 					  Path *bitmapqual, double loop_count);
 extern void cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root);

@@ -78,7 +78,6 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/capabilities.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
@@ -111,8 +110,6 @@ DEFINE_UNKNOWN_int32(heartbeat_max_failures_before_backoff, 3,
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
 DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
-
-DEFINE_CAPABILITY(TabletReportLimit, 0xb1a2a020);
 
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::RpcController;
@@ -396,9 +393,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
     LOG_WITH_PREFIX(INFO) << "Registering TS with master...";
     RETURN_NOT_OK_PREPEND(SetupRegistration(req.mutable_registration()),
                           "Unable to set up registration");
-    auto capabilities = Capabilities();
-    *req.mutable_registration()->mutable_capabilities() =
-        google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
     auto* resources = req.mutable_registration()->mutable_resources();
     resources->set_core_count(base::NumCPUs());
     int64_t tablet_overhead_limit = yb::tserver::ComputeTabletOverheadLimit();
@@ -428,9 +422,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
-  // We rely on the heartbeat thread calling GetNumLiveTablets regularly to keep the
-  // ts_live_tablet_peers metric up to date. If you remove this call, add another mechanism to
-  // update the metric.
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -616,8 +607,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
     server_->UpdateTransactionTablesVersion(last_hb_response_.transaction_tables_version());
   }
 
-  server_->UpdateXClusterSafeTime(last_hb_response_.xcluster_namespace_to_safe_time());
-
   std::optional<AutoFlagsConfigPB> new_config;
   if (last_hb_response_.has_auto_flags_config()) {
     new_config = last_hb_response_.auto_flags_config();
@@ -664,7 +653,7 @@ void Heartbeater::Thread::RunThread() {
   // Config the "last heartbeat response" to indicate that we need to register
   // -- since we've never registered before, we know this to be true.
   last_hb_response_.set_needs_reregister(true);
-  // Have the Master request a full tablet report on 2nd HB, once it knows our capabilities.
+  // Have the Master request a full tablet report on 2nd HB.
   last_hb_response_.set_needs_full_tablet_report(false);
 
   while (true) {

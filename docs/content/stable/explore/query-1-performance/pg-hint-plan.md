@@ -27,7 +27,7 @@ To use `pg_hint_plan` effectively, you need thorough knowledge of how your appli
 
 ## Configure pg_hint_plan
 
-pg_hint_plan is pre-configured, and enabled by default. The following YSQL parameters control pg_hint_plan:
+pg_hint_plan is pre-configured, and enabled by default. The following YSQL configuration parameters control pg_hint_plan:
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |
@@ -44,7 +44,7 @@ yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
 
 {{<note title="Enable pg_hint_plan for all sessions">}}
-You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-options).
+You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-server-options).
 {{</note>}}
 
 
@@ -331,6 +331,7 @@ Join method hints enforce the join methods for SQL statements. Using pg_hint_pla
 | NoHashJoin(t1 t2 t3 ...) | Do not join t1, t2, and t3 using HashJoin.|
 | NestLoop(t1 t2 t3 ...) | Join t1, t2, and t3 using NestLoop join. |
 | NoNestLoop(t1 t2 t3 ...) | Do not join t1, t2, and t3 using NestLoop join.|
+| [YbBatchedNL](../../ysql-language-features/join-strategies/#batched-nested-loop-join-bnl)(t1 t2) | Join t1 and t2 using YbBatchedNL join.|
 
 ```sql
 /*+HashJoin(t1 t2)*/
@@ -602,6 +603,6 @@ This example inserts queries into the `hint_plan.hints` table, with placeholders
 ## Learn more
 
 - Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track planning and execution of all the SQL statements.
-- Refer to [View live queries with pg_stat_activity](../pg-stat-activity/) to analyze live queries.
-- Refer to [View COPY progress with pg_stat_progress_copy](../pg-stat-progress-copy/) to track the COPY operation status.
+- Refer to [View live queries with pg_stat_activity](../../observability/pg-stat-activity/) to analyze live queries.
+- Refer to [View COPY progress with pg_stat_progress_copy](../../observability/pg-stat-progress-copy/) to track the COPY operation status.
 - Refer to [Analyze queries with EXPLAIN](../explain-analyze/) to optimize YSQL's EXPLAIN and EXPLAIN ANALYZE queries.

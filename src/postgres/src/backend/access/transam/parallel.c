@@ -91,7 +91,7 @@ typedef struct FixedParallelState
 	pid_t		parallel_master_pid;
 	BackendId	parallel_master_backend_id;
 	bool		parallel_master_is_yb_session;
-	uint64_t	parallel_master_yb_session_id;
+	YBCPgSessionParallelData parallel_master_yb_session_data;
 	TimestampTz xact_ts;
 	TimestampTz stmt_ts;
 
@@ -221,12 +221,24 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	Size		asnaplen = 0;
 	Size		tstatelen = 0;
 	Size		reindexlen = 0;
-	Size        enumblacklistlen = 0;
+	Size		enumblacklistlen = 0;
 	Size		segsize = 0;
 	int			i;
 	FixedParallelState *fps;
 	dsm_handle	session_dsm_handle = DSM_HANDLE_INVALID;
-	Snapshot	transaction_snapshot = GetTransactionSnapshot();
+	Snapshot	transaction_snapshot;
+	/*
+	 * Postgres unconditionally takes the snapshot, however Yugabyte has
+	 * undesired side effect if transaction isolation is READ COMMITTED: it
+	 * resets the read point, so the next DocDB request picks new read time.
+	 * This can result in a change of read snapshot in the middle of the query.
+	 * Fortunately we can skip that call in READ COMMITTED mode, because
+	 * the transaction_snapshot is only used if the isolation level is
+	 * REPEATABLE READ or SERIALIZABLE.
+	 * For safety, keep original behavior if Yugabyte is not enabled.
+	 */
+	if (IsolationUsesXactSnapshot() || !IsYugaByteEnabled())
+		transaction_snapshot = GetTransactionSnapshot();
 	Snapshot	active_snapshot = GetActiveSnapshot();
 
 	/* We might be running in a very short-lived memory context. */
@@ -337,7 +349,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	fps->parallel_master_backend_id = MyBackendId;
 	/* Capture our Session ID to share with the background workers. */
 	fps->parallel_master_is_yb_session =
-		YbGetCurrentSessionId(&fps->parallel_master_yb_session_id);
+		YBCGetCurrentPgSessionParallelData(&fps->parallel_master_yb_session_data);
 	fps->xact_ts = GetCurrentTransactionStartTimestamp();
 	fps->stmt_ts = GetCurrentStatementStartTimestamp();
 	SpinLockInit(&fps->mutex);
@@ -1362,7 +1374,7 @@ ParallelWorkerMain(Datum main_arg)
 	YbBackgroundWorkerInitializeConnectionByOid(
 		fps->database_id, fps->authenticated_user_id,
 		fps->parallel_master_is_yb_session ?
-			&fps->parallel_master_yb_session_id : NULL, 0);
+			&fps->parallel_master_yb_session_data.session_id : NULL, 0);
 
 	/*
 	 * Set the client encoding to the database encoding, since that is what
@@ -1448,7 +1460,12 @@ ParallelWorkerMain(Datum main_arg)
 	 * obtain it. Perhaps master scan should share the value it has.
 	 */
 	if (IsYugaByteEnabled())
+	{
 		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
+		YBCPgResetCatalogReadTime();
+		if (fps->parallel_master_is_yb_session)
+			YBCRestorePgSessionParallelData(&fps->parallel_master_yb_session_data);
+	}
 
 	/*
 	 * We've initialized all of our state now; nothing should change

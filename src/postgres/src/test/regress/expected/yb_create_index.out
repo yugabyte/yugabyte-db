@@ -219,11 +219,11 @@ SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
            QUERY PLAN
---------------------------------
+---------------------------------
  Sort
    Sort Key: h, r
    ->  Seq Scan on t1
-         Remote Filter: (h > 1)
+         Storage Filter: (h > 1)
 (4 rows)
 
 SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
@@ -352,11 +352,11 @@ EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY k;
 
 EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY k;
                QUERY PLAN
-----------------------------------------
+-----------------------------------------
  Sort
    Sort Key: k
    ->  Seq Scan on null_unique_index
-         Remote Filter: (k IS NOT NULL)
+         Storage Filter: (k IS NOT NULL)
 (4 rows)
 
 SELECT * FROM null_unique_index WHERE k = 4;
@@ -411,10 +411,10 @@ SELECT * FROM null_unique_index ORDER BY v;
 INSERT INTO null_unique_index values (NULL, 2), (3, 3), (NULL, 5);
 EXPLAIN(COSTS OFF) UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
                QUERY PLAN
-----------------------------------------
+-----------------------------------------
  Update on null_unique_index
    ->  Seq Scan on null_unique_index
-         Remote Filter: (k IS NOT NULL)
+         Storage Filter: (k IS NOT NULL)
 (3 rows)
 
 UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
@@ -572,12 +572,12 @@ Indexes:
 -- the other case to force the use of sequential scan on the base table.
 UPDATE test_include SET c2 = 22 WHERE c1 = 2;
 EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
-           QUERY PLAN
----------------------------------
+            QUERY PLAN
+----------------------------------
  Sort
    Sort Key: c2
    ->  Seq Scan on test_include
-         Remote Filter: (c1 > 0)
+         Storage Filter: (c1 > 0)
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test_include ORDER BY c2;
@@ -940,12 +940,12 @@ SELECT * FROM test_method ORDER BY r1, r2;
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
-           QUERY PLAN
----------------------------------
+            QUERY PLAN
+----------------------------------
  Sort
    Sort Key: v1, v2
    ->  Seq Scan on test_method
-         Remote Filter: (v1 > 5)
+         Storage Filter: (v1 > 5)
 (4 rows)
 
 SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;

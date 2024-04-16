@@ -17,9 +17,11 @@ import static org.yb.AssertionWrappers.assertNotNull;
 
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.io.IOException;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
-
+import java.util.Scanner;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;
@@ -27,7 +29,11 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
+import org.yb.pgsql.BasePgSQLTest;
 import org.yb.pgsql.ConnectionBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected static final Logger LOG = LoggerFactory.getLogger(BaseYsqlConnMgr.class);
@@ -46,6 +52,10 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected ConnectionBuilder getConnectionBuilder() {
     return new ConnectionBuilder(miniCluster).withUser(DEFAULT_PG_USER);
+  }
+
+  public String getPgHost(int tserverIndex) {
+    return miniCluster.getPostgresContactPoints().get(tserverIndex).getHostName();
   }
 
   @Before
@@ -95,5 +105,15 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
 
     return true;
+  }
+
+  protected abstract class TestConcurrently implements Runnable {
+    protected String dbName;
+    public Boolean testSuccess;
+
+    public TestConcurrently(String dbName) {
+      this.dbName = dbName;
+      this.testSuccess = false;
+    }
   }
 }

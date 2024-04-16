@@ -75,10 +75,19 @@ DEFINE_RUNTIME_int32(retrying_rpc_max_jitter_ms, 50,
     "Maximum random delay to add between rpc retry attempts.");
 TAG_FLAG(retrying_rpc_max_jitter_ms, advanced);
 
+DEFINE_RUNTIME_int32(
+    ysql_clone_pg_schema_rpc_timeout_ms, 10 * 60 * 1000,  // 10 min.
+    "Timeout used by the master when attempting to clone PG Schema objects using an async task to "
+    "tserver");
+TAG_FLAG(ysql_clone_pg_schema_rpc_timeout_ms, advanced);
+
 DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
                  "For testing purposes, slow down the run method to take longer.");
 
 DEFINE_test_flag(bool, stuck_add_tablet_to_table_task_enabled, false, "description");
+
+DEFINE_test_flag(bool, fail_async_delete_replica_task, false,
+                 "When set, transition all delete replica tasks to a failed state.");
 
 // The flags are defined in catalog_manager.cc.
 DECLARE_int32(master_ts_rpc_timeout_ms);
@@ -589,26 +598,20 @@ void RetryingTSRpcTask::DoRpcCallback() {
           << "TS " << target_ts_desc_->permanent_uuid() << " is on an older version that doesn't"
           << " support backends catalog version RPC. Ignoring.";
       TransitionToCompleteState();
-    } else if (!target_ts_desc_->IsLive()) {
-      switch (type()) {
-        case MonitoredTaskType::kBackendsCatalogVersionTs:
-          // A similar check is done in BackendsCatalogVersionTS::HandleResponse.  This check is hit
-          // when this RPC failed and tserver is dead.  That check is hit when this RPC succeeded
-          // and tserver is dead.
-          LOG_WITH_PREFIX(WARNING)
-              << "TS " << target_ts_desc_->permanent_uuid() << " is DEAD. Assume backends on that"
-              << " TS will be resolved to sufficient catalog version";
-          TransitionToCompleteState();
-          break;
-        case MonitoredTaskType::kDeleteReplica:
-          LOG_WITH_PREFIX(WARNING)
-              << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
-              << tablet_id() << ". TS is DEAD. No further retry.";
-          TransitionToCompleteState();
-          break;
-        default:
-          break;
-      }
+    } else if (type() == MonitoredTaskType::kDeleteReplica && !target_ts_desc_->IsLive()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
+          << tablet_id() << ". TS is DEAD. No further retry.";
+      TransitionToCompleteState();
+    } else if (type() == MonitoredTaskType::kBackendsCatalogVersionTs &&
+               !target_ts_desc_->HasYsqlCatalogLease()) {
+      // A similar check is done in BackendsCatalogVersionTS::HandleResponse.  This check is hit
+      // when this RPC failed and tserver's lease expired.  That check is hit when this RPC
+      // succeeded and tserver's lease is expired.
+      LOG_WITH_PREFIX(WARNING)
+          << "TS " << target_ts_desc_->permanent_uuid() << " catalog lease expired. Assume backends"
+          << " on that TS will be resolved to sufficient catalog version";
+      TransitionToCompleteState();
     }
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.
@@ -992,7 +995,35 @@ void AsyncPrepareDeleteTransactionTablet::UnregisterAsyncTaskCallback() {
 // ============================================================================
 //  Class AsyncDeleteReplica.
 // ============================================================================
+Status AsyncDeleteReplica::SetPendingDelete(AddPendingDelete add_pending_delete) {
+  TSDescriptorPtr ts_desc;
+  if (!master_->ts_manager()->LookupTSByUUID(permanent_uuid_, &ts_desc)) {
+    return STATUS(IllegalState, Format("Could not find tserver with uuid $0", permanent_uuid_));
+  }
+
+  if (add_pending_delete) {
+    ts_desc->AddPendingTabletDelete(tablet_id());
+  } else {
+    ts_desc->ClearPendingTabletDelete(tablet_id());
+  }
+  return Status::OK();
+}
+
+Status AsyncDeleteReplica::BeforeSubmitToTaskPool() {
+  return SetPendingDelete(AddPendingDelete::kTrue);
+}
+
+Status AsyncDeleteReplica::OnSubmitFailure() {
+  return SetPendingDelete(AddPendingDelete::kFalse);
+}
+
 void AsyncDeleteReplica::HandleResponse(int attempt) {
+  if (FLAGS_TEST_fail_async_delete_replica_task) {
+    auto s = STATUS(IllegalState, "TEST_fail_async_delete_replica_task set to true");
+    TransitionToFailedState(MonitoredTaskState::kRunning, s);
+    return;
+  }
+
   if (resp_.has_error()) {
     Status status = StatusFromPB(resp_.error().status());
 
@@ -1073,9 +1104,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
 
 void AsyncDeleteReplica::UnregisterAsyncTaskCallback() {
   // Only notify if we are in a success state.
-  if (state() == MonitoredTaskState::kComplete) {
+  if (state() == MonitoredTaskState::kComplete || state() == MonitoredTaskState::kFailed) {
     master_->catalog_manager()->NotifyTabletDeleteFinished(
-        permanent_uuid_, tablet_id_, table(), epoch());
+        permanent_uuid_, tablet_id_, table(), epoch(), state());
   }
 }
 
@@ -1680,9 +1711,9 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
   if (resp_.has_error()) {
     const Status s = StatusFromPB(resp_.error().status());
     const TabletServerErrorPB::Code code = resp_.error().code();
-    LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
-                             << ") failed for tablet " << tablet_id() << " with error code "
-                             << TabletServerErrorPB::Code_Name(code) << ": " << s;
+    LOG_WITH_PREFIX(INFO) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
+                          << ") failed for tablet " << tablet_id() << " with error code "
+                          << TabletServerErrorPB::Code_Name(code) << ": " << s;
     if (!ShouldRetrySplitTabletRPC(s) ||
         (s.IsIllegalState() && code != tserver::TabletServerErrorPB::NOT_THE_LEADER)) {
       // It can happen that tablet leader has completed post-split compaction after previous split,
@@ -1774,6 +1805,9 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
   return true;
 }
 
+// ============================================================================
+//  Class AsyncUpdateTransactionTablesVersion.
+// ============================================================================
 AsyncUpdateTransactionTablesVersion::AsyncUpdateTransactionTablesVersion(
     Master* master,
     ThreadPool* callback_pool,
@@ -1888,6 +1922,85 @@ bool AsyncMasterTestRetry::SendRequest(int attempt) {
   return true;
 }
 
+// ============================================================================
+//  Class AsyncCloneTablet.
+// ============================================================================
+AsyncCloneTablet::AsyncCloneTablet(
+    Master* master,
+    ThreadPool* callback_pool,
+    const TabletInfoPtr& tablet,
+    LeaderEpoch epoch,
+    tablet::CloneTabletRequestPB req)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)),
+      req_(std::move(req)) {}
+
+std::string AsyncCloneTablet::description() const {
+  return "Clone tablet RPC";
+}
+
+void AsyncCloneTablet::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status status = StatusFromPB(resp_.error().status());
+    LOG(WARNING) << "CloneTablet for tablet " << tablet_id() << "failed: "
+                 << status;
+    return;
+  }
+
+  TransitionToCompleteState();
+}
+
+bool AsyncCloneTablet::SendRequest(int attempt) {
+  req_.set_dest_uuid(permanent_uuid());
+  req_.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  ts_admin_proxy_->CloneTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent clone tablets request to " << tablet_id();
+  return true;
+}
+
+// ============================================================================
+//  Class AsyncClonePgSchema.
+// ============================================================================
+AsyncClonePgSchema::AsyncClonePgSchema(
+    Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+    const std::string& source_db_name, const std::string& target_db_name, HybridTime restore_ht,
+    ClonePgSchemaCallbackType callback, MonoTime deadline)
+    : RetrySpecificTSRpcTask(
+          master, callback_pool, std::move(permanent_uuid), /* async_task_throttler */ nullptr),
+      source_db_name_(source_db_name),
+      target_db_name(target_db_name),
+      restore_ht_(restore_ht),
+      callback_(callback) {
+  deadline_ = deadline;  // Time out according to earliest(deadline_,
+                         // time of sending request + ysql_clone_pg_schema_rpc_timeout_ms).
+}
+
+std::string AsyncClonePgSchema::description() const { return "Async Clone PG Schema RPC"; }
+
+void AsyncClonePgSchema::HandleResponse(int attempt) {
+  Status resp_status;
+  if (resp_.has_error()) {
+    resp_status = StatusFromPB(resp_.error().status());
+    LOG(WARNING) << "Clone PG Schema Objects for source database: " << source_db_name_
+                 << " failed: " << resp_status;
+    TransitionToFailedState(state(), resp_status);
+  } else {
+    resp_status = Status::OK();
+    TransitionToCompleteState();
+  }
+  WARN_NOT_OK(callback_(resp_status), "Failed to execute the call back of AsyncClonePgSchema");
+}
+
+bool AsyncClonePgSchema::SendRequest(int attempt) {
+  tserver::ClonePgSchemaRequestPB req;
+  req.set_source_db_name(source_db_name_);
+  req.set_target_db_name(target_db_name);
+  req.set_restore_ht(restore_ht_.ToUint64());
+  ts_admin_proxy_->ClonePgSchemaAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent clone tablets request to " << tablet_id();
+  return true;
+}
+
+MonoTime AsyncClonePgSchema::ComputeDeadline() { return deadline_; }
 
 }  // namespace master
 }  // namespace yb

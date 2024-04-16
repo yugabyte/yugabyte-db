@@ -138,7 +138,7 @@ message SysTablesEntryPB {
   // This prevents column ID reuse.
   optional int32 next_column_id = 8;
 
-  // Replication information for this tablet.
+  // Replication information for this table.
   optional ReplicationInfoPB replication_info = 5;
 
   // Debug state for the table.
@@ -283,6 +283,10 @@ message SysTabletsEntryPB {
   // tables hosted on this tablet is computed at load time by finding all child tables of the
   // parent table of this tablet.
   optional bool hosted_tables_mapped_by_parent_id = 18;
+
+  // Whether this tablet was created by DB cloning. If true, we should not try to send
+  // CreateTablet requests for this tablet (it should be created by tservers applying the clone op).
+  optional bool created_by_clone = 19 [ default = false ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -334,6 +338,8 @@ message SysNamespaceEntryPB {
   optional TransactionMetadataPB transaction = 6;
 
   optional State state = 5 [ default = UNKNOWN ];
+
+  optional uint32 clone_request_seq_no = 7;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
@@ -415,6 +421,7 @@ message SysSecurityConfigEntryPB {
   // Roles configuration version. Every time a role gets created/deleted, or a permission gets
   // added/removed, we increase the version.
   optional uint64 roles_version = 1;
+  optional bool cassandra_user_created = 2 [default = false];
 }
 
 // Metadata about the YSQL catalog (current only version).
@@ -522,6 +529,10 @@ message SysCDCStreamEntryPB {
   optional string cdcsdk_ysql_replication_slot_name = 6;
   optional CDCSDKStreamEntryPB cdcsdk_stream_metadata = 7;
   optional uint64 stream_creation_time = 8;
+
+  // This map stores the replica identity for each table in the stream at the time of stream
+  // creation. The key for this map is table_id and the value is replica identity for that table.
+  map<string, PgReplicaIdentity> replica_identity_map = 9;
 }
 
 
@@ -567,6 +578,40 @@ message SysSnapshotEntryPB {
   // before it is deleted. Set to -1 to retain indefinitely until
   // an explicit delete_snapshot.
   optional int32 retention_duration_hours = 8;
+}
+
+message SysCloneStatePB {
+  // State for clone operation.
+  // Initial state:
+  // - For YSQL: CLONE_SCHEMA_STARTED: async task to create PG schema is started.
+  // - For YCQL: CREATING: CLONE_OP for every tablet is issued.
+  // Transitions:
+  // CLONE_SCHEMA_STARTED --> CREATING: After successful response from create pg schema async task.
+  // CREATING --> RESTORING: All tablets in clone namespace are created and in a running
+  // stated. Restore snapshot is issued.
+  // RESTORING --> RESTORED: Restore snapshot completed
+  enum State {
+    CLONE_SCHEMA_STARTED = 1;
+    CREATING = 2;
+    RESTORING = 3;
+    RESTORED = 4;
+  }
+
+  message TabletData {
+    optional string source_tablet_id = 1;
+    optional string target_tablet_id = 2;
+  }
+
+  repeated TabletData tablet_data = 1;
+  optional bytes source_snapshot_id = 2;
+  optional bytes target_snapshot_id = 3;
+  optional string source_namespace_id = 4;
+  optional uint32 clone_request_seq_no = 5;
+  optional fixed64 restore_time = 6;
+
+  // Aggregate state of the clone operation. Valid transitions:
+  // CLONE_SCHEMA_STARTED --> CREATING --> RESTORING --> RESTORED
+  optional State aggregate_state = 7;
 }
 
 message SchemaVersionMappingPB {
@@ -770,6 +815,7 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     enum State {
       CHECKPOINTING = 0;
       READY = 1;
+      FAILED = 2;
     }
     required State state = 1;
 
@@ -784,12 +830,14 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     map<string, TableInfoPB> table_infos = 2;
 
     optional bool initial_bootstrap_required = 3; // [default = false]
+
+    optional AppStatusPB error_status = 4; // Set when state is FAILED
   }
 
   // Namespace Id -> NamespaceInfoPB
   map<string, NamespaceInfoPB> namespace_infos = 1;
 
-  message TargetUniverseInfo {
+  message TargetUniverseInfoPB {
     required bytes universe_uuid = 1;
 
     enum State {
@@ -802,7 +850,7 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     optional AppStatusPB error_status = 3; // Set when status is FAILED
   }
 
-  optional TargetUniverseInfo target_universe_info = 2;
+  optional TargetUniverseInfoPB target_universe_info = 2;
 
   enum State {
     READY = 0;

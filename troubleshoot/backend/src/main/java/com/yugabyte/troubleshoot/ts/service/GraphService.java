@@ -1,13 +1,20 @@
 package com.yugabyte.troubleshoot.ts.service;
 
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.LABEL_RESULT;
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.buildSummary;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.troubleshoot.ts.logs.LogsUtil;
 import com.yugabyte.troubleshoot.ts.models.*;
+import io.prometheus.client.Summary;
 import java.io.IOException;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.Future;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -21,6 +28,16 @@ import org.yaml.snakeyaml.Yaml;
 @Slf4j
 @Service
 public class GraphService {
+
+  static String LABEL_GRAPH_NAME = "graph_name";
+
+  static final Summary QUERY_TIME =
+      buildSummary(
+          "ts_graph_query_time_millis", "Graph query time", LABEL_RESULT, LABEL_GRAPH_NAME);
+
+  static final Summary DATA_RETRIEVAL_TIME =
+      buildSummary(
+          "ts_graph_data_retrieval_time_millis", "Graph data retrieval time", LABEL_GRAPH_NAME);
 
   public static final Integer GRAPH_POINTS_DEFAULT = 100;
   private final ThreadPoolTaskExecutor metricQueryExecutor;
@@ -63,6 +80,7 @@ public class GraphService {
     UniverseMetadata universeMetadata = universeMetadataService.get(universeUuid);
     UniverseDetails universeDetails = universeDetailsService.get(universeUuid);
     if (universeMetadata == null || universeDetails == null) {
+      log.warn("Universe information for " + universeUuid + " is missing");
       return queries.stream()
           .map(
               q ->
@@ -77,26 +95,28 @@ public class GraphService {
     for (GraphQuery query : queries) {
 
       // Just in case it was not set in the query itself
-      Map<GraphFilter, List<String>> filtersWithUniverse = new HashMap<>();
+      Map<GraphLabel, List<String>> filtersWithUniverse = new HashMap<>();
       if (query.getFilters() != null) {
         filtersWithUniverse.putAll(query.getFilters());
       }
-      filtersWithUniverse.put(GraphFilter.universeUuid, ImmutableList.of(universeUuid.toString()));
+      filtersWithUniverse.put(GraphLabel.universeUuid, ImmutableList.of(universeUuid.toString()));
       query.setFilters(filtersWithUniverse);
       boolean sourceFound = false;
       for (GraphSourceIF source : sources) {
         if (source.supportsGraph(query.getName())) {
-          prepareQuery(query, source.minGraphStepSeconds(universeMetadata));
+          prepareQuery(query, source.minGraphStepSeconds(query, universeMetadata));
           futures.add(
               new ImmutablePair<>(
                   query,
                   metricQueryExecutor.submit(
-                      () -> source.getGraph(universeMetadata, universeDetails, query))));
+                      LogsUtil.wrapCallable(
+                          () -> source.getGraph(universeMetadata, universeDetails, query)))));
           sourceFound = true;
           break;
         }
       }
       if (!sourceFound) {
+        log.warn("No graph named: " + query.getName());
         responses.add(
             new GraphResponse()
                 .setSuccessful(false)
@@ -107,7 +127,45 @@ public class GraphService {
     for (Pair<GraphQuery, Future<GraphResponse>> future : futures) {
       GraphQuery query = future.getKey();
       try {
-        responses.add(future.getValue().get());
+        GraphResponse response = future.getValue().get();
+        if (query.isFillMissingPoints()) {
+          Set<Long> allTimestamps =
+              response.getData().stream()
+                  .flatMap(data -> data.getPoints().stream())
+                  .map(GraphPoint::getX)
+                  .collect(Collectors.toCollection(TreeSet::new));
+          response
+              .getData()
+              .forEach(
+                  graphData -> {
+                    Map<Long, GraphPoint> pointsByTimestamp =
+                        graphData.getPoints().stream()
+                            .collect(Collectors.toMap(GraphPoint::getX, Function.identity()));
+                    List<GraphPoint> newPoints =
+                        allTimestamps.stream()
+                            .map(
+                                ts ->
+                                    pointsByTimestamp.getOrDefault(
+                                        ts, new GraphPoint(ts, Double.NaN)))
+                            .toList();
+                    graphData.setPoints(newPoints);
+                  });
+        }
+        if (query.isReplaceNaN()) {
+          response
+              .getData()
+              .forEach(
+                  graphData ->
+                      graphData
+                          .getPoints()
+                          .forEach(
+                              point -> {
+                                if (point.getY() != null && point.getY().isNaN()) {
+                                  point.setY(0D);
+                                }
+                              }));
+        }
+        responses.add(response);
       } catch (Exception e) {
         log.warn("Failed to get graph data for query: " + query, e);
         responses.add(
@@ -127,8 +185,9 @@ public class GraphService {
     long endSeconds = query.getEnd().getEpochSecond();
     long startSeconds = query.getStart().getEpochSecond();
     if (query.getStepSeconds() == null) {
-      query.setStepSeconds(Math.max(minStep, (endSeconds - startSeconds) / GRAPH_POINTS_DEFAULT));
+      query.setStepSeconds((endSeconds - startSeconds) / GRAPH_POINTS_DEFAULT);
     }
+    query.setStepSeconds(Math.max(minStep, query.getStepSeconds()));
     startSeconds = startSeconds - startSeconds % query.getStepSeconds();
     endSeconds = endSeconds - endSeconds % query.getStepSeconds();
     query.setStart(Instant.ofEpochSecond(startSeconds));

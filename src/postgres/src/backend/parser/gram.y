@@ -157,13 +157,6 @@ typedef struct ImportQual
 					feature " not supported due to setting of flag --" flag,  \
 					-2, extra_hint)
 
-#define parser_ybc_signal_savepoints_disabled(pos, feature)				 \
-	parser_ybc_signal_unsupported_by_flag(pos, feature,					 \
-		"enable_pg_savepoints",											 \
-		"The flag may have been set to false because savepoints do not " \
-		"currently work with xCluster replication "						 \
-		"(see https://github.com/yugabyte/yugabyte-db/issues/14308).");
-
 #define parser_ybc_not_support_in_templates(pos, feature) \
 	ybc_not_support_in_templates(pos, yyscanner, feature " is not supported in template0/template1 yet")
 
@@ -682,7 +675,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	BACKFILL BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
 	BOOLEAN_P BOTH BY
 
-	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
+	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHANGE CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLOCATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT
@@ -2677,7 +2670,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> REPLICA IDENTITY  */
 			| REPLICA IDENTITY_P replica_identity
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE REPLICA IDENTITY", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_ReplicaIdentity;
 					n->def = $3;
@@ -2771,8 +2763,16 @@ replica_identity:
 					n->name = NULL;
 					$$ = (Node *) n;
 				}
+			| CHANGE
+				{
+					ReplicaIdentityStmt *n = makeNode(ReplicaIdentityStmt);
+					n->identity_type = YB_REPLICA_IDENTITY_CHANGE;
+					n->name = NULL;
+					$$ = (Node *) n;
+				}
 			| USING INDEX name
 				{
+					parser_ybc_signal_unsupported(@1, "ALTER TABLE REPLICA IDENTITY USING INDEX", 1124);
 					ReplicaIdentityStmt *n = makeNode(ReplicaIdentityStmt);
 					n->identity_type = REPLICA_IDENTITY_INDEX;
 					n->name = $3;
@@ -10834,10 +10834,6 @@ TransactionStmt:
 				}
 			| SAVEPOINT ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "SAVEPOINT <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_SAVEPOINT;
 					n->savepoint_name = $2;
@@ -10845,10 +10841,6 @@ TransactionStmt:
 				}
 			| RELEASE SAVEPOINT ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "RELEASE SAVEPOINT <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $3;
@@ -10856,10 +10848,6 @@ TransactionStmt:
 				}
 			| RELEASE ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "RELEASE <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $2;
@@ -10867,10 +10855,6 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO SAVEPOINT ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "ROLLBACK <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
 					n->savepoint_name = $5;
@@ -10878,10 +10862,6 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "ROLLBACK <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
 					n->savepoint_name = $4;
@@ -16109,6 +16089,7 @@ unreserved_keyword:
 			| CASCADED
 			| CATALOG_P
 			| CHAIN
+			| CHANGE
 			| CHARACTERISTICS
 			| CHECKPOINT
 			| CLASS

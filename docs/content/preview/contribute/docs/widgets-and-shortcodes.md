@@ -38,19 +38,19 @@ To remove unnecessary headings from ToC.
 
 Use the note, tip, and warning shortcodes to create admonition boxes.
 
-### tip
+### Tip
 
 {{< tip title="Tip" >}}
 A tip box gives a hint or other helpful but optional piece of information.
 {{< /tip >}}
-
-#### tip source
 
 ```md
 {{</* tip title="Tip" */>}}
 A tip box gives a hint or other useful but optional piece of information.
 {{</* /tip */>}}
 ```
+
+### Note
 
 {{< note title="Note" >}}
 
@@ -63,6 +63,8 @@ A note box gives some important information that is often not optional.
 This is a note with a [link](https://www.yugabyte.com).
 {{</* /note */>}}
 ```
+
+### Warning
 
 {{< warning title="Warning" >}}
 
@@ -77,6 +79,14 @@ This is a warning with a [link](https://www.yugabyte.com).
 
 {{</* /warning */>}}
 ```
+
+## Iconified links
+
+You can add a link to a url with an icon using the `link` shortcode which takes url as a string argument. Internal and external links will have different icons. You can use the `:version` variable to expand to all versions.
+
+- {{<link "https://www.google.com">}} : _External link_ `{{</*link "https://www.google.com"*/>}}`
+- {{<link "../syntax-diagrams">}} : _Relative internal link_ `{{</*link "../syntax-diagrams"*/>}}`
+- {{<link "/:version/explore">}} : _Full path internal link_ `{{</*link "/:version/explore"*/>}}`
 
 ## Tables
 

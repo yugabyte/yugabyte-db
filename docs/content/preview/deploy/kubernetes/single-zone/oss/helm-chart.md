@@ -28,7 +28,7 @@ type: docs
   <li >
     <a href="../yugabyte-operator/" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      Kubernetes Operator (legacy)
+      Kubernetes Operator
     </a>
   </li>
 </ul>

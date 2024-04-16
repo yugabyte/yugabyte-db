@@ -12,10 +12,8 @@
 
 #include "yb/cdc/cdc_state_table.h"
 
-#include "yb/cdc/cdc_types.h"
-
-#include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
+#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
@@ -25,8 +23,6 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
-
-#include "yb/gutil/walltime.h"
 
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_ddl.pb.h"
@@ -63,6 +59,11 @@ static const char* const kCdcLastReplicationTime = "last_replication_time";
 static const char* const kCDCSDKSafeTime = "cdc_sdk_safe_time";
 static const char* const kCDCSDKActiveTime = "active_time";
 static const char* const kCDCSDKSnapshotKey = "snapshot_key";
+static const char* const kCDCSDKConfirmedFlushLSN = "confirmed_flush_lsn";
+static const char* const kCDCSDKRestartLSN = "restart_lsn";
+static const char* const kCDCSDKXmin = "xmin";
+static const char* const kCDCSDKRecordIdCommitTime = "record_id_commit_time";
+static const char* const kCDCSDKLastPubRefreshTime = "last_pub_refresh_time";
 
 namespace {
 const client::YBTableName kCdcStateYBTableName(
@@ -85,6 +86,16 @@ Result<std::optional<T>> GetIntValueFromMap(const QLMapValuePB& map_value, const
   }
 
   return CheckedStol<T>(*str_value);
+}
+
+Result<std::optional<uint32_t>> GetUInt32ValueFromMap(
+    const QLMapValuePB& map_value, const std::string& key) {
+  auto str_value = GetValueFromMap(map_value, key);
+  if (!str_value) {
+    return std::nullopt;
+  }
+
+  return CheckedStoui(*str_value);
 }
 
 void SerializeEntry(
@@ -132,6 +143,30 @@ void SerializeEntry(
       client::AddMapEntryToColumn(get_map_value_pb(), kCDCSDKSnapshotKey, *entry.snapshot_key);
     }
 
+    if (entry.confirmed_flush_lsn) {
+      client::AddMapEntryToColumn(
+          get_map_value_pb(), kCDCSDKConfirmedFlushLSN, AsString(*entry.confirmed_flush_lsn));
+    }
+
+    if (entry.restart_lsn) {
+      client::AddMapEntryToColumn(
+          get_map_value_pb(), kCDCSDKRestartLSN, AsString(*entry.restart_lsn));
+    }
+
+    if (entry.xmin) {
+      client::AddMapEntryToColumn(get_map_value_pb(), kCDCSDKXmin, AsString(*entry.xmin));
+    }
+
+    if (entry.record_id_commit_time) {
+      client::AddMapEntryToColumn(
+          get_map_value_pb(), kCDCSDKRecordIdCommitTime, AsString(*entry.record_id_commit_time));
+    }
+
+    if (entry.last_pub_refresh_time) {
+      client::AddMapEntryToColumn(
+          get_map_value_pb(), kCDCSDKLastPubRefreshTime, AsString(*entry.last_pub_refresh_time));
+    }
+
   } else {
     if (entry.active_time) {
       client::UpdateMapUpsertKeyValue(
@@ -146,6 +181,34 @@ void SerializeEntry(
     if (entry.snapshot_key) {
       client::UpdateMapUpsertKeyValue(
           req, cdc_table->ColumnId(kCdcData), kCDCSDKSnapshotKey, *entry.snapshot_key);
+    }
+
+    if (entry.confirmed_flush_lsn) {
+      client::UpdateMapUpsertKeyValue(
+          req, cdc_table->ColumnId(kCdcData), kCDCSDKConfirmedFlushLSN,
+          AsString(*entry.confirmed_flush_lsn));
+    }
+
+    if (entry.restart_lsn) {
+      client::UpdateMapUpsertKeyValue(
+          req, cdc_table->ColumnId(kCdcData), kCDCSDKRestartLSN, AsString(*entry.restart_lsn));
+    }
+
+    if (entry.xmin) {
+      client::UpdateMapUpsertKeyValue(
+          req, cdc_table->ColumnId(kCdcData), kCDCSDKXmin, AsString(*entry.xmin));
+    }
+
+    if (entry.record_id_commit_time) {
+      client::UpdateMapUpsertKeyValue(
+          req, cdc_table->ColumnId(kCdcData), kCDCSDKRecordIdCommitTime,
+          AsString(*entry.record_id_commit_time));
+    }
+
+    if (entry.last_pub_refresh_time) {
+      client::UpdateMapUpsertKeyValue(
+          req, cdc_table->ColumnId(kCdcData), kCDCSDKLastPubRefreshTime,
+          AsString(*entry.last_pub_refresh_time));
     }
   }
 }
@@ -176,6 +239,35 @@ Status DeserializeColumn(
     }
 
     entry->snapshot_key = GetValueFromMap(map_value, kCDCSDKSnapshotKey);
+
+    auto confirmed_flush_result =
+        VERIFY_PARSE_COLUMN(GetIntValueFromMap<uint64_t>(map_value, kCDCSDKConfirmedFlushLSN));
+    if (confirmed_flush_result) {
+      entry->confirmed_flush_lsn = *confirmed_flush_result;
+    }
+
+    auto restart_lsn_result =
+        VERIFY_PARSE_COLUMN(GetIntValueFromMap<uint64_t>(map_value, kCDCSDKRestartLSN));
+    if (restart_lsn_result) {
+      entry->restart_lsn = *restart_lsn_result;
+    }
+
+    auto xmin_result = VERIFY_PARSE_COLUMN(GetUInt32ValueFromMap(map_value, kCDCSDKXmin));
+    if (xmin_result) {
+      entry->xmin = *xmin_result;
+    }
+
+    auto record_id_commit_time_result =
+        VERIFY_PARSE_COLUMN(GetIntValueFromMap<uint64_t>(map_value, kCDCSDKRecordIdCommitTime));
+    if (record_id_commit_time_result) {
+      entry->record_id_commit_time = *record_id_commit_time_result;
+    }
+
+    auto last_pub_refresh_time_result =
+        VERIFY_PARSE_COLUMN(GetIntValueFromMap<uint64_t>(map_value, kCDCSDKLastPubRefreshTime));
+    if (last_pub_refresh_time_result) {
+      entry->last_pub_refresh_time = *last_pub_refresh_time_result;
+    }
   }
 
   return Status::OK();
@@ -195,6 +287,13 @@ Result<CDCStateTableEntry> DeserializeRow(
   return entry;
 }
 }  // namespace
+
+CDCStateTable::CDCStateTable(std::shared_future<client::YBClient*> client_future)
+    : client_future_(std::move(client_future)) {
+  CHECK(client_future_.valid());
+}
+
+CDCStateTable::CDCStateTable(client::YBClient* client) : client_(client) { CHECK_NOTNULL(client); }
 
 std::string CDCStateTableKey::ToString() const {
   return Format(
@@ -241,6 +340,25 @@ std::string CDCStateTableEntry::ToString() const {
   if (snapshot_key) {
     result += Format(", SnapshotKey: $0", *snapshot_key);
   }
+  if (confirmed_flush_lsn) {
+    result += Format(", ConfirmedFlushLSN: $0", *confirmed_flush_lsn);
+  }
+  if (restart_lsn) {
+    result += Format(", RestartLSN: $0", *restart_lsn);
+  }
+
+  if (xmin) {
+    result += Format(", Xmin: $0", *xmin);
+  }
+
+  if (record_id_commit_time) {
+    result += Format(", RecordIdCommitTime: $0", *record_id_commit_time);
+  }
+
+  if (last_pub_refresh_time) {
+    result += Format(", LastPubRefreshTime: $0", *last_pub_refresh_time);
+  }
+
   return result;
 }
 
@@ -328,7 +446,8 @@ Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
 
 Result<client::YBClient*> CDCStateTable::GetClient() {
   if (!client_) {
-    client_ = async_client_init_->client();
+    CHECK(client_future_.valid());
+    client_ = client_future_.get();
   }
 
   SCHECK(client_, IllegalState, "CDC Client not initialized or shutting down");
@@ -342,11 +461,12 @@ Result<std::shared_ptr<client::YBSession>> CDCStateTable::GetSession() {
 }
 
 template <class CDCEntry>
-Status CDCStateTable::WriteEntries(
+Status CDCStateTable::WriteEntriesAsync(
     const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
-    QLOperator condition_op, const bool replace_full_map,
+    StdStatusCallback callback, QLOperator condition_op, const bool replace_full_map,
     const std::vector<std::string>& keys_to_delete) {
   if (entries.empty()) {
+    callback(Status::OK());
     return Status::OK();
   }
 
@@ -386,15 +506,47 @@ Status CDCStateTable::WriteEntries(
     }
   }
 
+  session->Apply(std::move(ops));
+  session->FlushAsync([session_holder = session,
+                       callback = std::move(callback)](client::FlushStatus* flush_status) mutable {
+    for (auto& error : flush_status->errors) {
+      LOG_WITH_FUNC(WARNING) << "Flush of operation " << error->failed_op().ToString()
+                             << " failed: " << error->status();
+    }
+    session_holder = {};
+    callback(std::move(flush_status->status));
+  });
+  return Status::OK();
+}
+
+template <class CDCEntry>
+Status CDCStateTable::WriteEntries(
+    const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
+    QLOperator condition_op, const bool replace_full_map,
+    const std::vector<std::string>& keys_to_delete) {
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  return session->TEST_ApplyAndFlush(ops);
+  Synchronizer sync;
+  RETURN_NOT_OK(WriteEntriesAsync<CDCEntry>(
+      entries, statement_type, sync.AsStdStatusCallback(), condition_op, replace_full_map,
+      keys_to_delete));
+  return sync.Wait();
+}
+
+Status CDCStateTable::InsertEntriesAsync(
+    const std::vector<CDCStateTableEntry>& entries, StdStatusCallback callback) {
+  VLOG_WITH_FUNC(1) << yb::ToString(entries);
+  return WriteEntriesAsync(
+      entries, QLWriteRequestPB::QL_STMT_INSERT, std::move(callback), QL_OP_NOT_EXISTS,
+      /*replace_full_map=*/true);
 }
 
 Status CDCStateTable::InsertEntries(
     const std::vector<CDCStateTableEntry>& entries) {
   VLOG_WITH_FUNC(1) << yb::ToString(entries);
-  return WriteEntries(
-      entries, QLWriteRequestPB::QL_STMT_INSERT, QL_OP_NOT_EXISTS, true);
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  Synchronizer sync;
+  RETURN_NOT_OK(InsertEntriesAsync(entries, sync.AsStdStatusCallback()));
+  return sync.Wait();
 }
 
 Status CDCStateTable::UpdateEntries(
@@ -521,6 +673,26 @@ CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeCDCSDKSafeTime()
 }
 
 CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeSnapshotKey() {
+  return std::move(IncludeData());
+}
+
+CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeConfirmedFlushLSN() {
+  return std::move(IncludeData());
+}
+
+CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeRestartLSN() {
+  return std::move(IncludeData());
+}
+
+CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeXmin() {
+  return std::move(IncludeData());
+}
+
+CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeRecordIdCommitTime() {
+  return std::move(IncludeData());
+}
+
+CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeLastPubRefreshTime() {
   return std::move(IncludeData());
 }
 

@@ -15,7 +15,7 @@ type: docs
 
 [Joins](../../ysql-language-features/queries#join-columns) are a fundamental concept in relational databases for querying and combining data from multiple tables. They are the mechanism used to combine rows from two or more tables based on a related column between them. The related column is usually a foreign key that establishes a relationship between the tables. A join condition specifies how the rows from one table should be matched with the rows from another table. It can be defined in one of `ON`, `USING`, or `WHERE` clauses.
 
-Although as a user you would write your query using one of the standard joins - [Inner](../queries/#inner-join), [Left outer](..//queries/#left-outer-join), [Right outer](../queries/#right-outer-join), [Full outer](../queries/#full-outer-join), or [Cross](../queries/#cross-join), the query planner will choose from one of many join strategies to execute the query and fetch results.
+Although as a user you would write your query using one of the standard joins - [Inner](../queries/#inner-join), [Left outer](../queries/#left-outer-join), [Right outer](../queries/#right-outer-join), [Full outer](../queries/#full-outer-join), or [Cross](../queries/#cross-join), the query planner will choose from one of many join strategies to execute the query and fetch results.
 
 The query optimizer is responsible for determining the most efficient join strategy for a given query, aiming to minimize the computational cost and improve overall performance. Knowing these strategies will help you understand the performance of your queries.
 
@@ -211,7 +211,7 @@ The query plan would be similar to the following:
 
 In the case of Nested loop joins, the inner table is accessed multiple times, once for each outer table row. This leads to multiple RPC requests across the different nodes in the cluster, making this join strategy very slow as the outer table gets larger.
 
-To reduce the number of requests sent across the nodes during the Nested loop join, YugabyteDB adds an optimization to batch multiple keys of the outer table into one RPC request. This batch size can be controlled using the GUC variable `yb_bnl_batch_size`, which defaults to `1` (which effectively means that the feature is `OFF`). The suggested value for this variable is `1024`.
+To reduce the number of requests sent across the nodes during the Nested loop join, YugabyteDB adds an optimization to batch multiple keys of the outer table into one RPC request. This batch size can be controlled using the YSQL configuration parameter `yb_bnl_batch_size`, which defaults to `1` (which effectively means that the feature is `OFF`). The suggested value for this variable is `1024`.
 
 If `yb_bnl_batch_size` is greater than `1`, the optimizer will try to adopt the batching optimization when other join strategies are not fit for the current query.
 

@@ -250,11 +250,6 @@ extern bool IsYBReadCommitted();
 extern bool YBIsWaitQueueEnabled();
 
 /*
- * Whether to allow users to use SAVEPOINT commands at the query layer.
- */
-extern bool YBSavepointsEnabled();
-
-/*
  * Whether the per database catalog version mode is enabled.
  */
 extern bool YBIsDBCatalogVersionMode();
@@ -275,6 +270,13 @@ extern bool YbNeedAdditionalCatalogTables();
 extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
 
 /*
+ * Handle YBStatus while logging a custom error for DocDB 'NotFound' error.
+ */
+extern void
+HandleYBStatusWithCustomErrorForNotFound(YBCStatus status,
+										 const char *message_for_not_found);
+
+/*
  * Same as HandleYBStatus but delete the table description first if the
  * status is not ok.
  */
@@ -287,8 +289,6 @@ extern void YBInitPostgresBackend(const char *program_name,
 								  const char *db_name,
 								  const char *user_name,
 								  uint64_t *session_id);
-
-extern bool YbGetCurrentSessionId(uint64_t *session_id);
 
 /*
  * This should be called on all exit paths from the PostgreSQL backend process.
@@ -534,6 +534,17 @@ extern bool yb_prefer_bnl;
  */
 extern bool yb_explain_hide_non_deterministic_fields;
 
+/*
+ * Enables scalar array operation pushdown.
+ * If true, planner sends supported expressions to DocDB for evaluation
+ */
+extern bool yb_enable_saop_pushdown;
+
+/*
+ * Enables the use of TOAST compression for the Postgres catcache.
+*/
+extern int yb_toast_catcache_threshold;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -578,6 +589,12 @@ extern bool yb_test_fail_next_ddl;
 extern bool yb_test_fail_next_inc_catalog_version;
 
 /*
+ * This number times disable_cost is added to the cost for some unsupported
+ * ybgin index scans.
+ */
+extern double yb_test_ybgin_disable_cost_factor;
+
+/*
  * Block the given index creation phase.
  * - "indisready": index state change to indisready
  *   (not supported for non-concurrent)
@@ -598,11 +615,26 @@ extern char *yb_test_fail_index_state_change;
  */
 extern bool yb_test_fail_table_rewrite_after_creation;
 
+/* GUC variable yb_test_stay_in_global_catalog_version_mode. */
+extern bool yb_test_stay_in_global_catalog_version_mode;
+
+/*
+ * If set to true, any DDLs that rewrite tables/indexes will not drop the
+ * old relfilenode/DocDB table.
+ */
+extern bool yb_test_table_rewrite_keep_old_table;
+
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
- * back upon failure.
+ * back upon failure. These two GUC variables are used together. See comments
+ * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
 */
-extern bool ddl_rollback_enabled;
+extern bool yb_enable_ddl_atomicity_infra;
+extern bool yb_ddl_rollback_enabled;
+static bool inline
+YbDdlRollbackEnabled () {
+	return yb_enable_ddl_atomicity_infra && yb_ddl_rollback_enabled;
+}
 
 extern bool yb_use_hash_splitting_by_default;
 
@@ -732,6 +764,8 @@ extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 										const char *msg);
 
 extern void YbTestGucFailIfStrEqual(char *actual, const char *expected);
+
+extern int YbGetNumberOfFunctionOutputColumns(Oid func_oid);
 
 char *YBDetailSorted(char *input);
 
@@ -1074,4 +1108,12 @@ extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_t
 extern void YbGetRedactedQueryString(const char* query, int query_len,
 									 const char** redacted_query, int* redacted_query_len);
 
+extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
+										bool yb_copy_split_options,
+										bool is_truncate);
+
+extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
+															char replident);
+
+extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 #endif /* PG_YB_UTILS_H */

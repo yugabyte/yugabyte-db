@@ -464,13 +464,14 @@ class AwsCloud(AbstractCloud):
             results.append(result)
         return results
 
-    def get_device_names(self, args, host_info):
+    def get_device_names(self, args, host_info=None):
         if has_ephemerals(args.instance_type, args.region):
             return []
         else:
             predefined_device_names = []
             if host_info:
-                ami_descr = describe_ami(args.region, host_info.get("image_id"))
+                ami_id = args.machine_image if args.machine_image else host_info.get("image_id")
+                ami_descr = describe_ami(args.region, ami_id)
                 predefined_device_names = get_predefined_devices(ami_descr)
             return get_device_names(args.instance_type, args.num_volumes, args.region,
                                     predefined_device_names)
@@ -481,15 +482,6 @@ class AwsCloud(AbstractCloud):
         return subnet.cidr_block
 
     def create_instance(self, args):
-        # If we are configuring second NIC, ensure that this only happens for a
-        # centOS AMI right now.
-        if args.cloud_subnet_secondary:
-            supported_os = ['centos', 'almalinux']
-            ec2 = boto3.resource('ec2', args.region)
-            image = ec2.Image(args.machine_image)
-            if not any(os_type in image.name.lower() for os_type in supported_os):
-                raise YBOpsRuntimeError(
-                    "Second NIC can only be configured for CentOS/Alma right now")
         create_instance(args)
 
     def delete_instance(self, region, instance_id, has_elastic_ip=False):

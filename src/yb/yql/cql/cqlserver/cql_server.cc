@@ -27,8 +27,9 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/pg_client.pb.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/flags.h"
@@ -57,7 +58,8 @@ TAG_FLAG(cql_limit_nodelist_refresh_to_subscribed_conns, advanced);
 
 DEFINE_UNKNOWN_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
 
-DECLARE_bool(TEST_yb_enable_ash);
+DECLARE_bool(ysql_yb_enable_ash);
+DECLARE_string(cert_node_filename);
 
 namespace yb {
 namespace cqlserver {
@@ -91,9 +93,8 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
 
   if (tserver_) {
     tserver_->RegisterCertificateReloader(std::bind(&CQLServer::ReloadKeysAndCertificates, this));
-
-    if (GetAtomicFlag(&FLAGS_TEST_yb_enable_ash) && tserver) {
-      tserver->SetCQLServer(this);
+    if (tserver) {
+      tserver->SetCQLServer(this, this);
     }
   }
 }
@@ -221,26 +222,32 @@ Status CQLServer::ReloadKeysAndCertificates() {
     return Status::OK();
   }
 
-  return server::ReloadSecureContextKeysAndCertificates(
-      secure_context_.get(),
-      fs_manager_->GetDefaultRootDir(),
-      server::SecureContextType::kExternal,
+  return rpc::ReloadSecureContextKeysAndCertificates(
+      secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kExternal,
       options_.HostsString());
 }
 
 Status CQLServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(RpcAndWebServerBase::SetupMessengerBuilder(builder));
   if (!FLAGS_cert_node_filename.empty()) {
-    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        fs_manager_->GetDefaultRootDir(),
-        FLAGS_cert_node_filename,
-        server::SecureContextType::kExternal,
-        builder));
+    secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
+        fs_manager_->GetDefaultRootDir(), FLAGS_cert_node_filename,
+        rpc::SecureContextType::kExternal, builder));
   } else {
-    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        options_.HostsString(), *fs_manager_, server::SecureContextType::kExternal, builder));
+    std::vector<HostPort> host_ports;
+    RETURN_NOT_OK(HostPort::ParseStrings(options_.HostsString(), 0, &host_ports));
+
+    secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
+        fs_manager_->GetDefaultRootDir(), host_ports[0].host(), rpc::SecureContextType::kExternal,
+        builder));
   }
   return Status::OK();
 }
+
+Status CQLServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+      tserver::PgYCQLStatementStatsResponsePB* resp) const {
+  return cql_service_->YCQLStatementStats(req, resp);
+}
+
 }  // namespace cqlserver
 }  // namespace yb

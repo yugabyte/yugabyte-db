@@ -1399,7 +1399,9 @@ public class TestPgPushdown extends BasePgSQLTest {
     public final int queryRunCount = 20;
 
     /** Minimum speedup multiplier expected for pushed down SELECT-type queries */
-    public final double minSelectSpeedup = 2;
+    // As of GHI #20438 the IN clause is getting pushed down and base select works faster.
+    // To reflect relative timing change the coefficient was lowered from 2 to 1.5
+    public final double minSelectSpeedup = 1.5;
 
     public final String tableName;
 

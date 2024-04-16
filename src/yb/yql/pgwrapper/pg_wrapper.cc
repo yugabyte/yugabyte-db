@@ -55,7 +55,8 @@
 
 DECLARE_bool(enable_ysql_conn_mgr);
 
-DEFINE_UNKNOWN_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
+DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
+
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_UNKNOWN_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
@@ -172,6 +173,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_max_transactions, 16,
     "Sets the maximum number of transactions for which to return rows in pg_locks.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_txn_locks_per_tablet, 200,
+    "Sets the maximum number of rows to return per transaction per tablet in pg_locks.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
 
@@ -209,6 +213,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_add_column_missing_default, kExterna
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_alter_table_rewrite, kLocalPersisted, false, true,
                             "Enable ALTER TABLE rewrite operations");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
+    "Enables use of the PostgreSQL selectivity estimation which utilizes table statistics "
+    "collected with ANALYZE. When disabled, a simpler heuristics based selectivity estimation is "
+    "used.");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 
@@ -222,12 +231,30 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "Enable stats collection from Ysql Connection Manager. These stats will be "
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_saop_pushdown, kLocalVolatile, false, true,
+    "Push supported scalar array operations from ysql down to DocDB for evaluation.");
+
 // TODO(#19211): Convert this to an auto-flag.
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replica_identity, false,
+    "Enable replica identity command for Alter Table query");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
     "The number of rows to plan per parallel worker, zero disables the feature");
+
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_nonempty_ms, 1,  // 1 msec
+    "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
+    "the CDC service in case the last received response was non-empty.");
+
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 1 * 1000,  // 1 sec
+    "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
+    "the CDC service in case the last received response was empty. The response can be empty in "
+    "case there are no DMLs happening in the system.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
+    "Size threshold in bytes for a catcache tuple to be compressed.");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
@@ -243,6 +270,16 @@ DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistenc
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
     "Database for which warmup needs to be done.");
+
+DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
+    "Size (in KiBs) of ASH circular buffer that stores the samples");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval_ms, 1000,
+    "Time (in milliseconds) between two consecutive sampling events");
+DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
+    "Number of samples captured from each component per sampling event");
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -466,7 +503,6 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   } else if (!FLAGS_ysql_hba_conf.empty()) {
     ReadCommaSeparatedValues(FLAGS_ysql_hba_conf, &lines);
   }
-
   // Add auto-generated config for the enable auth and enable_tls flags.
   if (FLAGS_ysql_enable_auth || conf.enable_tls) {
     const auto host_type =  conf.enable_tls ? "hostssl" : "host";

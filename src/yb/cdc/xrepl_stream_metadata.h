@@ -118,6 +118,11 @@ class StreamMetadata {
     DCHECK(loaded_);
     return stream_creation_time_.load(std::memory_order_acquire);
   }
+  std::unordered_map<std::string, PgReplicaIdentity> GetReplicaIdentities() const {
+    DCHECK(loaded_);
+    SharedLock l(table_ids_mutex_);
+    return replica_identitity_map_;
+  }
 
 
   std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
@@ -151,6 +156,8 @@ class StreamMetadata {
 
   mutable std::shared_mutex table_ids_mutex_;
   std::vector<TableId> table_ids_ GUARDED_BY(table_ids_mutex_);
+  std::unordered_map<std::string, PgReplicaIdentity> replica_identitity_map_
+      GUARDED_BY(table_ids_mutex_);
 
   mutable std::shared_mutex tablet_metadata_map_mutex_;
   std::unordered_map<TabletId, std::shared_ptr<StreamTabletMetadata>> tablet_metadata_map_

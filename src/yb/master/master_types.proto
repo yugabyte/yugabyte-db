@@ -47,6 +47,7 @@ enum SysRowEntryType {
   XCLUSTER_CONFIG = 16;
   UNIVERSE_REPLICATION_BOOTSTRAP = 17;
   XCLUSTER_OUTBOUND_REPLICATION_GROUP = 18;
+  CLONE_STATE = 19;
 }
 
 // Master specific errors use this protobuf.
@@ -195,8 +196,8 @@ message ResourcesPB {
 message TSRegistrationPB {
   optional ServerRegistrationPB common = 1;
 
-  // Capabilities supported byt this TS.
-  repeated fixed32 capabilities = 2;
+  // DEPRECATED Capabilities of tablet server.
+  reserved 2;
 
   // Resources available at the tserver.
   optional ResourcesPB resources = 3;

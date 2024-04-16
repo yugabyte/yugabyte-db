@@ -25,10 +25,16 @@ servers:
 security:
 - BearerAuthToken: []
 tags:
+- description: APIs for getting backup Details
+  name: backup-info
 - description: APIs for cluster CRUD
   name: cluster
 - description: APIs for getting information about an existing cluster
   name: cluster-info
+- description: APIs for getting Point-in-Time Recovery (PITR) schedules
+  name: pitr-info
+- description: APIs for getting restore Details
+  name: restore-info
 - description: APIs for getting information about Voyager migrations
   name: voyager-info
 - description: APIs for getting Voyager data migrations metrics
@@ -807,6 +813,60 @@ paths:
       summary: Get the node address for the current node
       tags:
       - cluster-info
+  /pitr:
+    get:
+      description: Retrieve the list of PITR schedules in the YugabyteDB cluster.
+      operationId: getPITRSchedules
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PITRScheduleListResponse'
+          description: List of PITR Schedules in the cluster
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get PITR Schedules
+      tags:
+      - pitr-info
+  /restore:
+    get:
+      description: Retrieve the list of databases on which restore is run in the YugabyteDB
+        cluster.
+      operationId: getRestoreDetails
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestoreDetails'
+          description: Retrieve the list of databases on which restore is run in the
+            YugabyteDB cluster.
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get Restore Details
+      tags:
+      - restore-info
 components:
   requestBodies:
     ClusterSpec:
@@ -936,6 +996,19 @@ components:
           schema:
             type: string
       description: Node address
+    PITRScheduleListResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PITRSchedule'
+      description: List of PITR Schedules in the cluster
+    RestoreDetailsListResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RestoreDetails'
+      description: Retrieve the list of databases on which restore is run in the YugabyteDB
+        cluster.
   schemas:
     VoyagerMigrationDetails:
       description: Information regarding a specific voyager migration task
@@ -2580,6 +2653,128 @@ components:
           type: object
       title: YSQL connection manager stats
       type: object
+    PITRSchedule:
+      description: Details of a Point-in-Time Recovery (PITR) schedule
+      example:
+        databaseKeyspace: databaseKeyspace
+        interval: interval
+        id: 0
+        retention: retention
+        earliestRecoverableTime: earliestRecoverableTime
+      properties:
+        id:
+          type: integer
+        databaseKeyspace:
+          type: string
+        interval:
+          type: string
+        retention:
+          type: string
+        earliestRecoverableTime:
+          type: string
+      required:
+      - databaseKeyspace
+      - earliestRecoverableTime
+      - id
+      - interval
+      - retention
+      title: List of PITR Schedules in the cluster
+      type: object
+    BackupDetails:
+      description: Details of backup enabled on databases in YugabyteDB cluster
+      example:
+        bytes_transferred: bytes_transferred
+        actual_size: actual_size
+        user_operation: user_operation
+        task_status: task_status
+        database_keyspace: database_keyspace
+        ybdb_api: ybdb_api
+        ybc_task_id: ybc_task_id
+        tserver_ip: tserver_ip
+        time_taken: time_taken
+        task_start_time: task_start_time
+      properties:
+        ybc_task_id:
+          type: string
+        tserver_ip:
+          type: string
+        user_operation:
+          type: string
+        ybdb_api:
+          type: string
+        database_keyspace:
+          type: string
+        task_start_time:
+          type: string
+        task_status:
+          type: string
+        time_taken:
+          type: string
+        bytes_transferred:
+          type: string
+        actual_size:
+          type: string
+      required:
+      - actual_size
+      - bytes_transferred
+      - database_keyspace
+      - task_start_time
+      - task_status
+      - time_taken
+      - tserver_ip
+      - user_operation
+      - ybc_task_id
+      - ybdb_api
+      title: Get Backup Details
+      type: object
+    RestoreDetails:
+      description: Details of databases in YugabyteDB cluster on which restore operation
+        in run
+      example:
+        bytes_transferred: bytes_transferred
+        actual_size: actual_size
+        user_operation: user_operation
+        task_status: task_status
+        database_keyspace: database_keyspace
+        ybdb_api: ybdb_api
+        ybc_task_id: ybc_task_id
+        tserver_ip: tserver_ip
+        time_taken: time_taken
+        task_start_time: task_start_time
+      properties:
+        ybc_task_id:
+          type: string
+        tserver_ip:
+          type: string
+        user_operation:
+          type: string
+        ybdb_api:
+          type: string
+        database_keyspace:
+          type: string
+        task_start_time:
+          type: string
+        task_status:
+          type: string
+        time_taken:
+          type: string
+        bytes_transferred:
+          type: string
+        actual_size:
+          type: string
+      required:
+      - actual_size
+      - bytes_transferred
+      - database_keyspace
+      - task_start_time
+      - task_status
+      - time_taken
+      - tserver_ip
+      - user_operation
+      - ybc_task_id
+      - ybdb_api
+      title: Get Restore Details
+      type: object
     API_for_Plan_and_Asses_page:
       example:
         data:
@@ -2923,6 +3118,38 @@ components:
       required:
       - data
       title: Alerts Response
+      type: object
+    RestoreDetails:
+      example:
+        schedules:
+        - bytes_transferred: bytes_transferred
+          actual_size: actual_size
+          user_operation: user_operation
+          task_status: task_status
+          database_keyspace: database_keyspace
+          ybdb_api: ybdb_api
+          ybc_task_id: ybc_task_id
+          tserver_ip: tserver_ip
+          time_taken: time_taken
+          task_start_time: task_start_time
+        - bytes_transferred: bytes_transferred
+          actual_size: actual_size
+          user_operation: user_operation
+          task_status: task_status
+          database_keyspace: database_keyspace
+          ybdb_api: ybdb_api
+          ybc_task_id: ybc_task_id
+          tserver_ip: tserver_ip
+          time_taken: time_taken
+          task_start_time: task_start_time
+      properties:
+        schedules:
+          items:
+            $ref: '#/components/schemas/RestoreDetails'
+          type: array
+          uniqueItems: true
+      required:
+      - restore
       type: object
     ApiError_error:
       properties:

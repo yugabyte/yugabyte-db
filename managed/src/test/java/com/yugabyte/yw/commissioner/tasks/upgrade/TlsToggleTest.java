@@ -46,6 +46,7 @@ import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -66,6 +67,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -73,12 +75,14 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.CheckFollowerLag,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.AnsibleConfigureServers,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -89,7 +93,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
@@ -117,6 +122,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     try {
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
           .thenReturn(true);
+      setCheckNodesAreSafeToTakeDown(mockClient);
     } catch (Exception ignored) {
     }
     tlsToggle.setUserTaskUUID(UUID.randomUUID());
@@ -249,7 +255,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     CertificateInfo.create(
         rootCA,
         defaultCustomer.getUuid(),
-        "test1",
+        "test1" + RandomStringUtils.randomAlphanumeric(8),
         new Date(),
         new Date(),
         "privateKey",
@@ -260,7 +266,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
       CertificateInfo.create(
           clientRootCA,
           defaultCustomer.getUuid(),
-          "test1",
+          "test1" + RandomStringUtils.randomAlphanumeric(8),
           new Date(),
           new Date(),
           "privateKey",
@@ -345,10 +351,10 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     if (taskParams.upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
       if (nodeToNodeChange != 0) {
-        expectedPosition += 78;
+        expectedPosition += 84;
         expectedNumberOfInvocations += 24;
       } else {
-        expectedPosition += 70;
+        expectedPosition += 76;
         expectedNumberOfInvocations += 18;
       }
     } else {

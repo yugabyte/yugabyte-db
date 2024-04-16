@@ -30,6 +30,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -41,6 +42,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
@@ -99,11 +101,6 @@ DEFINE_test_flag(bool, asyncrpc_finished_set_timedout, false,
 DEFINE_test_flag(bool, asyncrpc_common_response_check_fail_once, false,
     "For testing only. When set to true triggers AsyncRpc::Failure() with RuntimeError status "
     "inside AsyncRpcBase::CommonResponseCheck() and returns false from this method.");
-
-// DEPRECATED. It is assumed that all t-servers and masters in the cluster has this capability.
-// Remove it completely when it won't be necessary to support upgrade from releases which checks
-// the existence on this capability.
-DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
 
 DECLARE_bool(collect_end_to_end_traces);
 
@@ -264,6 +261,14 @@ void AsyncRpc::Finished(const Status& status) {
 void AsyncRpc::Failed(const Status& status) {
   VLOG_WITH_FUNC(4) << "status: " << status.ToString();
   std::string error_message = status.message().ToBuffer();
+  // Check size and truncate if needed
+  static const size_t kMaxErrorMessageSize = 1_KB;
+  if (error_message.size() > kMaxErrorMessageSize) {
+    LOG_WITH_FUNC(INFO) << Format(
+        "Found status error message exceeding $0 : $1. Truncating to prevent memory exhaustion.",
+        HumanReadableNumBytes::ToString(kMaxErrorMessageSize), error_message);
+    error_message = error_message.substr(0, kMaxErrorMessageSize) + "...";
+  }
   auto redis_error_code = status.IsInvalidCommand() || status.IsInvalidArgument() ?
       RedisResponsePB_RedisStatusCode_PARSING_ERROR : RedisResponsePB_RedisStatusCode_SERVER_ERROR;
   for (auto& op : ops_) {

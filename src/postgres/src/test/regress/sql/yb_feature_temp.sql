@@ -297,15 +297,15 @@ CREATE TEMP TABLE temptest (k int PRIMARY KEY, v1 int, v2 int);
 CREATE UNIQUE INDEX ON temptest (v1);
 CREATE INDEX ON temptest USING hash (v2);
 
--- \d temptest has unstable output due to temporary schemaname
--- such as pg_temp_1, pg_temp_2, etc. Use regexp_replace to change
--- it to pg_temp_xxx so that the result is stable.
+-- \d temptest has unstable output as the temporary schemaname contains
+-- the tserver uuid. Use regexp_replace to change it to pg_temp_x so that the
+-- result is stable.
 select current_setting('data_directory') || 'describe.out' as desc_output_file
 \gset
 \o :desc_output_file
 \d temptest
 \o
-select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_\d+', 'pg_temp_xxx', 'g');
+select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g');
 
 INSERT INTO temptest VALUES (1, 2, 3), (4, 5, 6);
 INSERT INTO temptest VALUES (2, 2, 3);

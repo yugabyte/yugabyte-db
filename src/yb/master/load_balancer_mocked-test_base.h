@@ -37,11 +37,10 @@ namespace master {
 // This class allows for testing the behavior of single tablet moves (adding / removing tablets and
 // leaders) without having to deal with the asynchronous nature of an actual cluster.
 class LoadBalancerMockedBase : public YBTest {
-  std::string kTableId = "my_table_id";
-
  public:
   LoadBalancerMockedBase()
-      : cb_(),
+      : kTableId("my_table_id"),
+        cb_(kTableId),
         blacklist_(cb_.blacklist_),
         leader_blacklist_(cb_.leader_blacklist_),
         ts_descs_(cb_.ts_descs_),
@@ -68,20 +67,33 @@ class LoadBalancerMockedBase : public YBTest {
   }
 
  protected:
-  Status AnalyzeTablets() NO_THREAD_SAFETY_ANALYSIS /* don't need locks for mock class  */ {
-    cb_.GetAllReportedDescriptors(&cb_.global_state_->ts_descs_);
+  struct PendingTasks {
+    int adds, removes, stepdowns;
+  };
+
+  // Don't need locks for mock class.
+  Result<PendingTasks> ResetLoadBalancerAndAnalyzeTablets() NO_THREAD_SAFETY_ANALYSIS  {
+    ResetLoadBalancerState();
+
+    cb_.GetAllDescriptors(&cb_.global_state_->ts_descs_);
     cb_.SetBlacklistAndPendingDeleteTS();
 
     const auto& table = tables_.FindTableOrNull(cur_table_uuid_);
-    const auto& replication_info =
-        VERIFY_RESULT(cb_.GetTableReplicationInfo(table));
+    const auto& replication_info = VERIFY_RESULT(cb_.GetTableReplicationInfo(table));
     RETURN_NOT_OK(cb_.PopulateReplicationInfo(table, replication_info));
 
     cb_.InitializeTSDescriptors();
-    return cb_.AnalyzeTabletsUnlocked(cur_table_uuid_);
+
+    int adds = 0;
+    int removes = 0;
+    int stepdowns = 0;
+    RETURN_NOT_OK(cb_.CountPendingTasksUnlocked(cur_table_uuid_, &adds, &removes, &stepdowns));
+
+    RETURN_NOT_OK(cb_.AnalyzeTabletsUnlocked(cur_table_uuid_));
+    return PendingTasks { adds, removes, stepdowns };
   }
 
-  void ResetState() {
+  void ResetLoadBalancerState() {
     cb_.global_state_ = std::make_unique<GlobalLoadState>();
     cb_.ResetTableStatePtr(cur_table_uuid_, nullptr);
   }
@@ -157,7 +169,7 @@ class LoadBalancerMockedBase : public YBTest {
   // Methods to prepare the state of the current test.
   void PrepareTestState(const TSDescriptorVector& ts_descs) {
     // Clear old state.
-    ResetState();
+    ResetLoadBalancerState();
     replication_info_.Clear();
     blacklist_.Clear();
     ClearLeaderBlacklist();
@@ -287,6 +299,7 @@ class LoadBalancerMockedBase : public YBTest {
     cb_.state_->tablets_added_.clear();
   }
 
+  const TableId kTableId;
   ClusterLoadBalancerMocked cb_;
 
   int total_num_tablets_;
@@ -299,9 +312,9 @@ class LoadBalancerMockedBase : public YBTest {
   TabletInfoMap& tablet_map_;
   TableIndex& tables_;
   ReplicationInfoPB& replication_info_;
-  std::vector<TabletId>& pending_add_replica_tasks_;
-  std::vector<TabletId>& pending_remove_replica_tasks_;
-  std::vector<TabletId>& pending_stepdown_leader_tasks_;
+  TabletToTabletServerMap& pending_add_replica_tasks_;
+  TabletToTabletServerMap& pending_remove_replica_tasks_;
+  TabletToTabletServerMap& pending_stepdown_leader_tasks_;
 };
 
 } // namespace master

@@ -98,7 +98,7 @@ public class TestCorrectErrorMessage extends BaseYsqlConnMgr {
                               .connect()) {
       fail("Did not expected to login with a wrong db");
     } catch (Exception e) {
-      /* Match error message */
+      // Match error message
       assertTrue("Wrong error message", e.getMessage().contains(WRONG_DB_ERR_STRING));
     }
 

@@ -1,6 +1,5 @@
 [Unit]
 Description=OpenTelemetry Collector
-Requires=network-online.target
 After=network.target network-online.target multi-user.target
 StartLimitInterval=100
 StartLimitBurst=10

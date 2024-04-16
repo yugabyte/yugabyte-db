@@ -60,6 +60,10 @@ export const FETCH_SOFTWARE_VERSIONS = 'FETCH_SOFTWARE_VERSIONS';
 export const FETCH_SOFTWARE_VERSIONS_SUCCESS = 'FETCH_SOFTWARE_VERSIONS_SUCCESS';
 export const FETCH_SOFTWARE_VERSIONS_FAILURE = 'FETCH_SOFTWARE_VERSIONS_FAILURE';
 
+export const FETCH_DB_VERSIONS = 'FETCH_DB_VERSIONS';
+export const FETCH_DB_VERSIONS_SUCCESS = 'FETCH_DB_VERSIONS_SUCCESS';
+export const FETCH_DB_VERSIONS_FAILURE = 'FETCH_DB_VERSIONS_FAILURE';
+
 export const FETCH_HOST_INFO = 'FETCH_HOST_INFO';
 export const FETCH_HOST_INFO_SUCCESS = 'FETCH_HOST_INFO_SUCCESS';
 export const FETCH_HOST_INFO_FAILURE = 'FETCH_HOST_INFO_FAILURE';
@@ -441,6 +445,7 @@ export function updateUserProfileFailure(error) {
   };
 }
 
+// TODO: Remove - 2024.2
 export function fetchSoftwareVersions() {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases`, {
@@ -452,6 +457,7 @@ export function fetchSoftwareVersions() {
   };
 }
 
+// TODO: Remove - 2024.2
 export function fetchSoftwareVersionsSuccess(result) {
   const activeReleasesMap = {};
   const activeReleases = Object.entries(result?.data).filter((e) => {
@@ -471,9 +477,49 @@ export function fetchSoftwareVersionsSuccess(result) {
   };
 }
 
+// TODO: Remove - 2024.2
 export function fetchSoftwareVersionsFailure(error) {
   return {
     type: FETCH_SOFTWARE_VERSIONS_FAILURE,
+    payload: error
+  };
+}
+
+export function fetchDBVersions() {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/ybdb_release`, {
+    params: { includeMetadata: true }
+  });
+  return {
+    type: FETCH_DB_VERSIONS,
+    payload: request
+  };
+}
+
+export function fetchDBVersionsSuccess(result) {
+  const activeReleasesMap = {};
+
+  const activeReleasesNew = result?.data?.filter((release) => {
+    const isActiveRelease = release.state === 'ACTIVE';
+    if (isActiveRelease) {
+      activeReleasesMap[release.version] = release;
+    }
+    return isActiveRelease;
+  });
+
+  return {
+    type: FETCH_DB_VERSIONS_SUCCESS,
+    payload: {
+      ...result,
+      data: activeReleasesNew.map((release) => release.version),
+      releasesWithMetadata: activeReleasesMap
+    }
+  };
+}
+
+export function fetchDBVersionsFailure(error) {
+  return {
+    type: FETCH_DB_VERSIONS_FAILURE,
     payload: error
   };
 }

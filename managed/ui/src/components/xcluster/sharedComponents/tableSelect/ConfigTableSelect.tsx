@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   BootstrapTable,
-  ExpandColumnComponentProps,
   Options,
   SortOrder as ReactBSTableSortOrder,
   TableHeaderColumn
@@ -20,7 +19,7 @@ import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import { formatBytes, augmentTablesWithXClusterDetails, tableSort } from '../../ReplicationUtils';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
-import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
+import { SortOrder } from '../../../../redesign/helpers/constants';
 import {
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue,
@@ -38,6 +37,7 @@ import {
 import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
 import { NodeAggregation, SplitType } from '../../../metrics/dtos';
+import { ExpandColumnComponent } from './ExpandColumnComponent';
 
 import styles from './ConfigTableSelect.module.scss';
 
@@ -214,13 +214,9 @@ export const ConfigTableSelect = ({
   );
 
   const tablesForSelection = tablesInConfig.filter(
-    (xClusterTable) =>
-      xClusterTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION &&
-      xClusterTable.tableType !== TableType.TRANSACTION_STATUS_TABLE_TYPE
+    (xClusterTable) => xClusterTable.tableType !== TableType.TRANSACTION_STATUS_TABLE_TYPE
   );
   const rowItems = getRowItemsFromTables(tablesForSelection);
-  const sourceUniverse = sourceUniverseQuery.data;
-  const sourceUniverseNodePrefix = sourceUniverse.universeDetails.nodePrefix;
   const tableOptions: Options = {
     sortName: sortField,
     sortOrder: sortOrder,
@@ -261,14 +257,13 @@ export const ConfigTableSelect = ({
               selectedTableUUIDs={selectedTableUUIDs}
               tableType={configTableType}
               sourceUniverseUUID={sourceUniverseUUID}
-              sourceUniverseNodePrefix={sourceUniverseNodePrefix}
               handleTableSelect={handleTableToggle}
               handleAllTableSelect={handleTableGroupToggle}
             />
           )}
           expandColumnOptions={{
             expandColumnVisible: true,
-            expandColumnComponent: expandColumnComponent,
+            expandColumnComponent: ExpandColumnComponent,
             columnWidth: 25
           }}
           selectRow={{
@@ -353,21 +348,6 @@ export const ConfigTableSelect = ({
         </div>
       )}
     </>
-  );
-};
-
-const expandColumnComponent = ({ isExpandableRow, isExpanded }: ExpandColumnComponentProps) => {
-  if (!isExpandableRow) {
-    return '';
-  }
-  return (
-    <div>
-      {isExpanded ? (
-        <i className="fa fa-caret-up" aria-hidden="true" />
-      ) : (
-        <i className="fa fa-caret-down" aria-hidden="true" />
-      )}
-    </div>
   );
 };
 

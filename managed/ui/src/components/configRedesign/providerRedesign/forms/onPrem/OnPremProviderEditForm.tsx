@@ -5,6 +5,7 @@ import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'react-toastify';
 import { useQuery } from 'react-query';
+import { useTranslation } from 'react-i18next';
 
 import { KeyPairManagement, NTPSetupType, ProviderCode } from '../../constants';
 import { NTP_SERVER_REGEX } from '../constants';
@@ -42,8 +43,7 @@ import {
   getDeletedZones,
   getInUseAzs,
   getLatestAccessKey,
-  getNtpSetupType,
-  getRegionToInUseAz
+  getNtpSetupType
 } from '../../utils';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { getOnPremLocationOption } from '../configureRegion/utils';
@@ -128,6 +128,7 @@ export const OnPremProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<ConfigureOnPremRegionFormValues>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const { t } = useTranslation();
 
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<OnPremProviderEditFormFieldValues>({
@@ -141,13 +142,15 @@ export const OnPremProviderEditForm = ({
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
 
-  if (customerRuntimeConfigQuery.isError) {
-    return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
-    );
-  }
   if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
     return <YBLoading />;
+  }
+  if (customerRuntimeConfigQuery.isError) {
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
+    );
   }
 
   const onFormSubmit: SubmitHandler<OnPremProviderEditFormFieldValues> = async (formValues) => {
@@ -642,11 +645,7 @@ const constructProviderPayload = async (
           regionFormValues.code
         );
         return {
-          ...(existingRegion && {
-            active: existingRegion.active,
-            uuid: existingRegion.uuid,
-            details: existingRegion.details
-          }),
+          ...existingRegion,
           latitude: regionFormValues.latitude,
           longitude: regionFormValues.longitude,
           code: regionFormValues.code,
@@ -660,8 +659,7 @@ const constructProviderPayload = async (
               return {
                 ...(existingZone
                   ? {
-                      active: existingZone.active,
-                      uuid: existingZone.uuid
+                      ...existingZone
                     }
                   : { active: true }),
                 code: azFormValues.code,
