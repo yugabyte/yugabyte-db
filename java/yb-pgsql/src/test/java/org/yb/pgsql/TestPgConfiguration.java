@@ -18,10 +18,12 @@ import static org.yb.AssertionWrappers.*;
 import java.io.File;
 import java.nio.file.Files;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
@@ -536,6 +538,18 @@ public class TestPgConfiguration extends BasePgSQLTest {
       assertQuery(statement, "SHOW statement_timeout", new Row("1s"));
       runInvalidQuery(statement, "SELECT pg_sleep(5);",
                       "ERROR: canceling statement due to statement timeout");
+    }
+  }
+
+  @Test
+  public void testShowAll() throws Exception {
+    int tserver = spawnTServer();
+
+    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      ResultSet rs = statement.executeQuery("SHOW ALL;");
+      List<Row> rows = getRowList(rs);
+      assertGreaterThan(rows.size(), 0);
     }
   }
 
