@@ -5840,6 +5840,16 @@ PostgresMain(int argc, char *argv[],
 			case 'A': /* Auth Passthrough Request */
 				if (YbIsClientYsqlConnMgr())
 				{
+					/*
+					 * Do not rely on cache during authentication passthrough.
+					 * "ALTER ROLE" does not change the catalog version due to this
+					 * local cache may have an invalid cache.
+					 * 
+					 * TODO (GH #21998): Invalidate cache specific to the role credentials and
+					 * logic permissions.
+					 */
+					ResetCatalogCaches();
+
 					/* Store a copy of the old context */
 					char *db_name = MyProcPort->database_name;
 					char *user_name = MyProcPort->user_name;
