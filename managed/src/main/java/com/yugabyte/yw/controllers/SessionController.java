@@ -410,7 +410,11 @@ public class SessionController extends AbstractPlatformController {
   @Secure(clients = "OidcClient")
   public Result thirdPartyLogin(Http.Request request) {
     String email = thirdPartyLoginHandler.getEmailFromCtx(request);
-    Users user = thirdPartyLoginHandler.findUserByEmailOrUnauthorizedErr(request, email);
+    Users user = Users.getByEmail(email);
+    if (user != null && user.getRole().equals(Users.Role.SuperAdmin)) {
+      throw new PlatformServiceException(FORBIDDEN, "SuperAdmin is not allowed login via SSO!");
+    }
+    user = thirdPartyLoginHandler.findUserByEmailOrUnauthorizedErr(request, email);
 
     Customer cust = Customer.get(user.getCustomerUUID());
 
