@@ -1360,17 +1360,16 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 												 &subPipelineContext);
 		}
 
-		bool isLegacyExtractFunction = !IsClusterVersionAtleastThis(1, 16, 0) ||
+		bool isLegacyExtractFunction = !IsClusterVersionAtleastThis(1, 14, 5) ||
 									   LookupUseLegacyExtractFunctions;
 
 		/* Do not turn on the fast version if we're still using the legacy extract function
 		 * TODO: This can be removed once 1.16 fully deploys with this.
 		 */
-		bool canProcessForeignFieldAsDocumentId = StringViewEquals(
-			&lookupArgs->foreignField,
-			&IdFieldStringView) &&
-												  !isLegacyExtractFunction &&
-												  !isRightQueryAgnostic;
+		bool canProcessForeignFieldAsDocumentId =
+			StringViewEquals(&lookupArgs->foreignField, &IdFieldStringView) &&
+			!isLegacyExtractFunction &&
+			!isRightQueryAgnostic;
 
 		/* We can apply the optimization on this based on object_id if and only if
 		 * The right table is pointing directly to an actual table (not a view)
