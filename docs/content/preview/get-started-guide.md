@@ -104,7 +104,7 @@ Find resources for getting started, migrating existing databases, using your dat
 : Simplify migration from legacy and cloud databases to YugabyteDB.
 
 **Blog**: [Improving PostgreSQL: How to Overcome the Tough Challenges with YugabyteDB](https://www.yugabyte.com/blog/improve-postgresql/)
-: the ten problem areas and explains how they are resolved in YugabyteDB.
+: Problem areas in PostgreSQL and how to resolve them in YugabyteDB.
 
 ## Database operations
 
