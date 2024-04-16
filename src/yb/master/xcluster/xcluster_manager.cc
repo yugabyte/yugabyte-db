@@ -80,8 +80,8 @@ Status XClusterManager::RunLoaders(const TabletInfos& hidden_tablets) {
   return Status::OK();
 }
 
-void XClusterManager::SysCatalogLoaded() {
-  XClusterSourceManager::SysCatalogLoaded();
+void XClusterManager::SysCatalogLoaded(const LeaderEpoch& epoch) {
+  XClusterSourceManager::SysCatalogLoaded(epoch);
   XClusterTargetManager::SysCatalogLoaded();
 }
 

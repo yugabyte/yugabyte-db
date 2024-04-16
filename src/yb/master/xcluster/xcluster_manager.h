@@ -60,7 +60,7 @@ class XClusterManager : public XClusterManagerIf,
 
   Status RunLoaders(const TabletInfos& hidden_tablets);
 
-  void SysCatalogLoaded();
+  void SysCatalogLoaded(const LeaderEpoch& epoch);
 
   void RunBgTasks(const LeaderEpoch& epoch) override;
 

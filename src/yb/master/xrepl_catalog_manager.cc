@@ -1325,18 +1325,20 @@ Status CatalogManager::SetXReplWalRetentionForTable(
                       << table_wal_retention_secs
                       << ", which is equal or higher than cdc_wal_retention_time_secs: "
                       << min_wal_retention_secs;
-    return Status::OK();
+  } else {
+    AlterTableRequestPB alter_table_req;
+    alter_table_req.mutable_table()->set_table_id(table_id);
+    alter_table_req.set_wal_retention_secs(min_wal_retention_secs);
+
+    AlterTableResponsePB alter_table_resp;
+    RETURN_NOT_OK_PREPEND(
+        this->AlterTable(&alter_table_req, &alter_table_resp, /*rpc=*/nullptr, epoch),
+        Format("Unable to change the WAL retention time for table $0", table_id));
   }
 
-  AlterTableRequestPB alter_table_req;
-  alter_table_req.mutable_table()->set_table_id(table_id);
-  alter_table_req.set_wal_retention_secs(min_wal_retention_secs);
-
-  AlterTableResponsePB alter_table_resp;
-  RETURN_NOT_OK_PREPEND(
-      this->AlterTable(&alter_table_req, &alter_table_resp, /*rpc=*/nullptr, epoch),
-      Format("Unable to change the WAL retention time for table $0", table_id));
-
+  // Ideally we should WaitForAlterTableToFinish to ensure the change has propagated to all
+  // tablet peers. But since we have 15min default WAL retention and this operation completes much
+  // sooner, we skip it.
   return Status::OK();
 }
 
