@@ -361,7 +361,6 @@ $(document).ready(() => {
           tabId = `${found.groups.name}-tab`;
         }
 
-        console.log('id:', tabId);
         $(element).addClass(tabId);
       }
     });
@@ -377,8 +376,6 @@ $(document).ready(() => {
             tabId = `${found.groups.name}-tab`;
           }
 
-          console.log('clicked id:', tabId);
-          console.log($(`.td-content .nav-tabs-yb .nav-link.${tabId}`));
           $(`.td-content .nav-tabs-yb .nav-link.${tabId}`).trigger('click');
         }
       }
