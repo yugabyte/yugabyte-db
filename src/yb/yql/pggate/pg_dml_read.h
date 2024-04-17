@@ -118,6 +118,10 @@ class PgDmlRead : public PgDml {
                                            bool *exceeded_work_mem);
   Status InitDocOpWithRowMark();
 
+
+  Status ANNBindVector(PgExpr *vector);
+  Status ANNSetPrefetchSize(int32_t prefetch_size);
+
   void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) override {
     DoSetCatalogCacheVersion(read_req_.get(), db_oid, version);
   }

@@ -138,6 +138,9 @@ class YBTableCreator {
   // For index table: sets whether to do online schema migration when creating index.
   YBTableCreator& skip_index_backfill(const bool skip_index_backfill);
 
+  // For vector index table: adds vector index-specific options.
+  YBTableCreator& add_vector_options(const PgVectorIdxOptionsPB& vec_options);
+
   // For index table: indicates whether this index has mangled column name.
   // - Older index supports only ColumnRef, and its name is identical with colum name.
   // - Newer index supports expressions including ColumnRef, and its name is a mangled name of

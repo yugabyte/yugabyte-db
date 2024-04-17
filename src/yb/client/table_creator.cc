@@ -208,6 +208,12 @@ YBTableCreator& YBTableCreator::is_unique_index(bool is_unique_index) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::add_vector_options(
+    const PgVectorIdxOptionsPB& vec_options) {
+  *index_info_->mutable_vector_idx_options() = vec_options;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::is_backfill_deferred(bool is_backfill_deferred) {
   index_info_->set_is_backfill_deferred(is_backfill_deferred);
   return *this;

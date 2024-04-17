@@ -247,6 +247,16 @@ Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
   return Status::OK();
 }
 
+Status PgCreateTable::SetVectorOptions(YbPgVectorIdxOptions *options) {
+  auto options_pb = req_.mutable_vector_idx_options();
+  options_pb->set_dist_type(static_cast<PgVectorDistanceType>(options->dist_type));
+  options_pb->set_idx_type(static_cast<PgVectorIndexType>(options->idx_type));
+  options_pb->set_dimensions(options->dimensions);
+
+  req_.set_is_unique_index(false);
+  return Status::OK();
+}
+
 Status PgCreateTable::AddSplitBoundary(PgExpr **exprs, int expr_count) {
   auto* values = req_.mutable_split_bounds()->Add()->mutable_values();
   for (int i = 0; i < expr_count; ++i) {

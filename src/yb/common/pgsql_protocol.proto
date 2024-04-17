@@ -542,6 +542,8 @@ message PgsqlReadRequestPB {
   // TODO(get_table_key_ranges): deprecate this field after separate separate GetTabletKeyRanges
   // RPC to the tablet leader is used.
   optional GetTabletKeyRangesEmbeddedRequestPB get_tablet_key_ranges_request = 41;
+
+  optional PgVectorReadOptionsPB vector_idx_options = 42;
 }
 
 //--------------------------------------------------------------------------------------------------
