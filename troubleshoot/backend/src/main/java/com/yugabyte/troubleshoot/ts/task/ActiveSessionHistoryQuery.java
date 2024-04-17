@@ -12,7 +12,6 @@ import com.yugabyte.troubleshoot.ts.yba.client.YBAClient;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClientError;
 import com.yugabyte.troubleshoot.ts.yba.models.RunQueryResult;
 import io.prometheus.client.Summary;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -53,7 +52,7 @@ public class ActiveSessionHistoryQuery {
           + " wait_event, top_level_node_id, query_id, ysql_session_id, client_node_ip,"
           + " wait_event_aux, sample_weight from pg_catalog.yb_active_session_history";
 
-  static final String ASH_SAMPLE_TIME_FILTER = " where sample_time > ";
+  static final String ASH_SAMPLE_TIME_FILTER = " where sample_time >= ";
 
   static final String ASH_ORDER_AND_LIMIT = " order by sample_time ASC limit ";
 
@@ -210,8 +209,7 @@ public class ActiveSessionHistoryQuery {
       while (!fullyProcessed) {
         String query = ASH_QUERY_NO_TIMESTAMP;
         if (queryState != null) {
-          query +=
-              ASH_SAMPLE_TIME_FILTER + "'" + Timestamp.from(queryState.getLastSampleTime()) + "'";
+          query += ASH_SAMPLE_TIME_FILTER + "'" + queryState.getLastSampleTime().toString() + "'";
         }
         query += ASH_ORDER_AND_LIMIT + batchSize;
         RunQueryResult result =
@@ -254,6 +252,16 @@ public class ActiveSessionHistoryQuery {
           ashList.add(ashEntry);
         }
 
+        fullyProcessed = result.getResult().size() < batchSize;
+        if (!fullyProcessed && !ashList.isEmpty()) {
+          // We don't store last sample as we have no way to properly filter out it's entries
+          // on next read. We'll store everything except last sample and re-read it next time.
+          Instant sampleTimeToIgnore = lastSampleTime;
+          ashList =
+              ashList.stream()
+                  .filter(ashEntry -> !ashEntry.getSampleTime().equals(sampleTimeToIgnore))
+                  .collect(Collectors.toList());
+        }
         activeSessionHistoryService.save(ashList);
         if (lastSampleTime != null) {
           ActiveSessionHistoryQueryStateId queryStateId =
@@ -266,7 +274,6 @@ public class ActiveSessionHistoryQuery {
                   .setLastSampleTime(lastSampleTime));
           queryState = ashQueryStateService.get(queryStateId);
         }
-        fullyProcessed = result.getResult().size() < batchSize;
       }
       NODE_PROCESS_TIME.labels(RESULT_SUCCESS).observe(System.currentTimeMillis() - startTime);
       return new NodeProcessResult(true);

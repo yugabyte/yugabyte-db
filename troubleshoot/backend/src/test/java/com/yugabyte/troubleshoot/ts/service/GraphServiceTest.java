@@ -127,7 +127,12 @@ public class GraphServiceTest {
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
     graphQuery.setName("active_session_history");
-    graphQuery.setFilters(ImmutableMap.of(GraphLabel.queryId, ImmutableList.of("200")));
+    graphQuery.setFilters(
+        ImmutableMap.of(
+            GraphLabel.queryId,
+            ImmutableList.of("200"),
+            GraphLabel.regionCode,
+            ImmutableList.of("us-west-1")));
     graphQuery.setSettings(new GraphSettings());
 
     List<GraphResponse> response =
@@ -147,7 +152,12 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setFilters(ImmutableMap.of(GraphLabel.queryId, ImmutableList.of("1")));
+    graphQuery.setFilters(
+        ImmutableMap.of(
+            GraphLabel.queryId,
+            ImmutableList.of("1"),
+            GraphLabel.regionCode,
+            ImmutableList.of("us-west-1")));
     graphQuery.setName("query_latency");
     graphQuery.setSettings(new GraphSettings());
 
