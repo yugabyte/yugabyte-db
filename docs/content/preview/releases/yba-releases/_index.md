@@ -32,8 +32,6 @@ YugabyteDB Anywhere (YBA) is a control plane for deploying and managing Yugabyte
 
 ### Supported versions
 
-The version of YBA should always be the same as or greater than the versions of YugabyteDB it is being used to manage. If you want to deploy a version of YugabyteDB that is later than the version of YBA you have installed, first upgrade YBA.
-
 Every version of YBA supports the two preceding LTS release series, and any intervening STS releases of YugabyteDB. This provides a span of support of approximately 2 years.
 
 YBA v2.20.x supports the following YugabyteDB release series:
