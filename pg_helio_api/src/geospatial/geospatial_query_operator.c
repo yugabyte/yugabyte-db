@@ -88,7 +88,8 @@ static const WKBVisitorFunctions GeoWithinMultiGeometryVisitorFuncs = {
 	.ContinueTraversal = ContinueIfMatched,
 	.VisitEachPoint = NULL,
 	.VisitGeometry = NULL,
-	.VisitSingleGeometry = VisitSingleGeometryForGeoWithin
+	.VisitSingleGeometry = VisitSingleGeometryForGeoWithin,
+	.VisitPolygonRing = NULL
 };
 
 
@@ -96,7 +97,8 @@ static const WKBVisitorFunctions GeoWithinCenterSphereVisitorFuncs = {
 	.ContinueTraversal = ContinueIfMatched,
 	.VisitEachPoint = VisitEachPointForCenterSphere,
 	.VisitGeometry = NULL,
-	.VisitSingleGeometry = NULL
+	.VisitSingleGeometry = NULL,
+	.VisitPolygonRing = NULL
 };
 
 
@@ -559,7 +561,7 @@ static void
 VisitSingleGeometryForGeoWithin(const WKBGeometryConst *geometryConst, void *state)
 {
 	if (geometryConst->geometryType == WKBGeometryType_Polygon &&
-		geometryConst->numberOfRings > 1)
+		geometryConst->numRings > 1)
 	{
 		/* TODO: Fix polygon with holes geowithin comparision, for now we throw unsupported error because of
 		 * Postgis matching difference for these cases

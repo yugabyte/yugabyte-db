@@ -10,6 +10,7 @@
 #include "postgres.h"
 #include "funcapi.h"
 #include "math.h"
+#include "float.h"
 #include "miscadmin.h"
 #include "common/hashfn.h"
 #include "lib/stringinfo.h"
@@ -23,6 +24,8 @@
 #include "geospatial/bson_geojson_utils.h"
 #include "utils/list_utils.h"
 #include "utils/hashset_utils.h"
+#include "include/geospatial/bson_geospatial_wkb_iterator.h"
+#include "include/geospatial/bson_geospatial_common.h"
 
 
 /* Hash entry for points to track duplicate points */
@@ -34,6 +37,39 @@ typedef struct PointsHashEntry
 	/* Index of the point in the point array */
 	uint32_t index;
 } PointsHashEntry;
+
+/* State for polygon validation */
+typedef struct PolygonValidationState
+{
+	GeospatialErrorContext *errorCtxt;
+
+	bool shouldThrowValidityError;
+
+	bool isValid;
+
+	/* Datum for current ring, to be used for covers check in next ring validation */
+	Datum previousRingDatum;
+
+	/* Datum for current ring as LineString, to be used for intersect check in next ring validation */
+	Datum previousRingLineStringGeometryDatum;
+
+	/* Store for postgis functions used in polygon validation */
+	FmgrInfo **validationFunctions;
+
+	/* Start of previous ring points to construct error msg */
+	char *previousRingPointsStart;
+
+	/* Number of points in previous ring to construct error msg */
+	int32 previousRingNumPoints;
+} PolygonValidationState;
+
+/* struct to hold result values from ST_IsValidDetail function */
+typedef struct IsValidDetailState
+{
+	bool isValid;
+
+	const char *invalidityReason;
+} IsValidDetailState;
 
 static const char * GeoJsonTypeName(GeoJsonType type);
 static GeoJsonType GetGeoJsonType(const bson_value_t *value);
@@ -53,16 +89,45 @@ static bool WriteBufferGeoJsonMultiPoints(const bson_value_t *value,
 static bool ValidateCoordinatesNotArray(const bson_value_t *coordinatesValue,
 										GeoJsonType geoJsonType,
 										GeoJsonParseState *parseState);
+
+/* Polygon validation helpers */
 static bool AdditionalPolygonValidation(StringInfo geoJsonWKB,
 										GeoJsonParseState *parseState,
-										int totalRings,
 										bytea **outPolygonWKB);
+static void VisitPolygonRingForValidation(const WKBGeometryConst *geometryConst,
+										  void *state);
+static bool CheckMultiRingPolygonValidity(const WKBGeometryConst *geometryConst,
+										  PolygonValidationState *polygonValidationState);
+static bool CheckSingleRingPolygonValidity(const WKBGeometryConst *geometryConst,
+										   PolygonValidationState *polygonValidationState);
+static bool ContinueIfRingValid(void *state);
+static void InitPolygonValidationState(PolygonValidationState *polygonValidationState,
+									   GeoJsonParseState *parseState,
+									   bytea *polygonWKB);
+static IsValidDetailState GetPolygonInvalidityReason(Datum polygon,
+													 PolygonValidationState *state);
+static bool IsRingStraightLine(char *pointsStart, int32 numPoints);
+static bool IsHoleFullyCoveredByOuterRing(char *currPtr, int32 numPoints,
+										  PolygonValidationState *polygonValidationState,
+										  Datum holeDatum);
+static char * GetRingPointsStringForError(char *currPtr, int32 numPoints);
+
 
 /* HashSet utilities for Points */
 static HTAB * CreatePointsHashSet(void);
 static int PointsHashEntryCompareFunc(const void *obj1, const void *obj2, Size objsize);
 static uint32 PointsHashEntryHashFunc(const void *obj, Size objsize);
 
+/*
+ * Execution function for validating the GeoJSON Polygons
+ */
+static const WKBVisitorFunctions PolygonValidationVisitorFuncs = {
+	.ContinueTraversal = ContinueIfRingValid,
+	.VisitEachPoint = NULL,
+	.VisitGeometry = NULL,
+	.VisitSingleGeometry = NULL,
+	.VisitPolygonRing = VisitPolygonRingForValidation
+};
 
 /*
  * Parses the GeoJSON value and builds the respective Geometry WKB in the buffer provided in parseState.
@@ -206,7 +271,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 
 			/* First: Perform additional polygon validity tests and get the WKB for clockwise oriented polygon */
 			bytea *validPolygonWkb = NULL;
-			isValid = AdditionalPolygonValidation(polygonWKB, parseState, totalRings,
+			isValid = AdditionalPolygonValidation(polygonWKB, parseState,
 												  &validPolygonWkb);
 			if (!isValid)
 			{
@@ -798,119 +863,18 @@ ValidateCoordinatesNotArray(const bson_value_t *coordinatesValue, GeoJsonType ge
  */
 static bool
 AdditionalPolygonValidation(StringInfo polygonWKB, GeoJsonParseState *parseState,
-							int totalRings, bytea **outPolygonWKB)
+							bytea **outPolygonWKB)
 {
 	bool shouldThrowError = parseState->shouldThrowValidityError;
 
 	/* Set the varlena size and cast to bytea */
 	SET_VARSIZE(polygonWKB->data, polygonWKB->len);
-	bytea *wkbPolygon = (bytea *) polygonWKB->data;
-	Datum polygonGeometry = GetGeometryFromWKB(wkbPolygon);
+	bytea *wkbBytea = (bytea *) polygonWKB->data;
+	Datum polygonGeometry = GetGeometryFromWKB(wkbBytea);
 
 	/* Make sure the polygon is clock wise oriented for Postgis */
 	Datum clockWiseOrientedGeometry = OidFunctionCall1(PostgisForcePolygonCWFunctionId(),
 													   polygonGeometry);
-
-	HeapTupleHeader tupleHeader = DatumGetHeapTupleHeader(OidFunctionCall2(
-															  PostgisGeometryIsValidDetailFunctionId(),
-															  clockWiseOrientedGeometry,
-															  Int32GetDatum(0)));
-	Oid tupleType = HeapTupleHeaderGetTypeId(tupleHeader);
-	int32 tupleTypmod = HeapTupleHeaderGetTypMod(tupleHeader);
-	TupleDesc tupleDescriptor = lookup_rowtype_tupdesc(tupleType, tupleTypmod);
-	HeapTupleData tupleValue;
-
-	tupleValue.t_len = HeapTupleHeaderGetDatumLength(tupleHeader);
-	tupleValue.t_data = tupleHeader;
-
-	bool isNull = false;
-	bool isValid = false;
-	Datum isValidDatum = heap_getattr(&tupleValue, 1, tupleDescriptor, &isNull);
-	if (!isNull)
-	{
-		isValid = DatumGetBool(isValidDatum);
-	}
-
-	if (!isValid)
-	{
-		Datum invalidReasonDatum = heap_getattr(&tupleValue, 2, tupleDescriptor, &isNull);
-		if (isNull)
-		{
-			ReleaseTupleDesc(tupleDescriptor);
-			return false;
-		}
-		const char *invalidReason = TextDatumGetCString(invalidReasonDatum);
-
-		/* Check if holes are outside */
-		if (strstr(invalidReason, "Hole lies outside shell") != NULL)
-		{
-			RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
-				shouldThrowError, (
-					errcode(GEO_ERROR_CODE(parseState->errorCtxt)),
-					errmsg("%sSecondary loops not contained by first exterior loop - "
-						   "secondary loops must be holes",
-						   GEO_ERROR_PREFIX(parseState->errorCtxt)),
-					errhint("%sSecondary loops not contained by first exterior loop - "
-							"secondary loops must be holes",
-							GEO_HINT_PREFIX(parseState->errorCtxt))));
-		}
-		else if (strstr(invalidReason, "Self-intersection") != NULL)
-		{
-			/*
-			 * Hacky workaround alert:
-			 * Postgis doesn't provide validation for geography polygons and one specifc case
-			 * where the polygon is a straight line in plannar geometry actually resolves to a
-			 * surface circle in geography
-			 * e.g. North Pole polygon in geography
-			 * { type: "Polygon", "coordinates": [[[-120.0, 89.0], [0.0, 89.0], [120.0, 89.0], [-120.0, 89.0]]] }
-			 *
-			 * This resolves to a straight line intersecting polygon in 2d but a valid geography polygon sphere
-			 * around the North Pole.
-			 *
-			 * There is only 1 way to find these cases as of now, the 2d geometry polygon of above case will have area of 0
-			 * so we exclude these from Self Intersection error as they will resolve to a valid geography region
-			 *
-			 * Also, if there are holes in the polygon and holes cover the complete polygon to make area 0 then thats
-			 * self intersection
-			 */
-			double areaOfPolygon = DatumGetFloat8(OidFunctionCall1(
-													  PostgisGeometryAreaFunctionId(),
-													  clockWiseOrientedGeometry));
-			if (areaOfPolygon > 0 || (areaOfPolygon == 0 &&
-									  totalRings > 1))
-			{
-				/*
-				 * Mongo throws this sample error here
-				 * Edges 0 and 2 cross. Edge locations in degrees: [0, 0]-[4, 0] and [2, -3]-[2, 1]"
-				 * We don't have much information abouth the intersection so we throw generic error
-				 */
-				RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
-					shouldThrowError, (
-						errcode(GEO_ERROR_CODE(parseState->errorCtxt)),
-						errmsg(
-							"%sEdges cross - Loops should not self intersect or share any edge",
-							GEO_ERROR_PREFIX(parseState->errorCtxt)),
-						errhint(
-							"%sEdges cross - Loops should not self intersect or share any edge",
-							GEO_HINT_PREFIX(parseState->errorCtxt))));
-			}
-		}
-		else
-		{
-			/* Something else caused validity failure, for safety instead of wrong behavior throw error */
-			RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
-				shouldThrowError, (
-					errcode(GEO_ERROR_CODE(parseState->errorCtxt)),
-					errmsg("%s%s", GEO_ERROR_PREFIX(parseState->errorCtxt),
-						   invalidReason),
-					errhint("%s%s", GEO_HINT_PREFIX(parseState->errorCtxt),
-							invalidReason)));
-		}
-	}
-
-	ReleaseTupleDesc(tupleDescriptor);
-
-	/* If everything is okay, get the wkb of validated polygon (clock-wise oriented) and return it */
 	*outPolygonWKB = DatumGetByteaP(
 		OidFunctionCall1(PostgisGeometryAsBinaryFunctionId(),
 						 clockWiseOrientedGeometry));
@@ -921,13 +885,460 @@ AdditionalPolygonValidation(StringInfo polygonWKB, GeoJsonParseState *parseState
 			shouldThrowError, (
 				errcode(GEO_ERROR_CODE(parseState->errorCtxt)),
 				errmsg(
-					"%sUnexpected, found null geometry after polygon validation.",
+					"%sUnexpected, found null geometry during polygon validation.",
 					GEO_ERROR_PREFIX(parseState->errorCtxt)),
 				errhint(
-					"%sUnexpected, found null geometry after polygon validation.",
+					"%sUnexpected, found null geometry during polygon validation.",
 					GEO_HINT_PREFIX(parseState->errorCtxt))));
 	}
+
+	IsValidDetailState isValidDetailState =
+		GetPolygonInvalidityReason(clockWiseOrientedGeometry, NULL);
+
+	if (isValidDetailState.isValid)
+	{
+		return true;
+	}
+
+	/* Check if holes are outside */
+	if (strstr(isValidDetailState.invalidityReason, "Hole lies outside shell") != NULL)
+	{
+		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
+			shouldThrowError, (
+				errcode(GEO_ERROR_CODE(parseState->errorCtxt)),
+				errmsg("%sSecondary loops not contained by first exterior loop - "
+					   "secondary loops must be holes",
+					   GEO_ERROR_PREFIX(parseState->errorCtxt)),
+				errhint("%sSecondary loops not contained by first exterior loop - "
+						"secondary loops must be holes",
+						GEO_HINT_PREFIX(parseState->errorCtxt))));
+	}
+	else if (strstr(isValidDetailState.invalidityReason, "Self-intersection") != NULL)
+	{
+		/*
+		 * Hacky workaround alert:
+		 * Postgis doesn't provide validation for geography polygons and cases
+		 * where the polygon is a straight line in plannar geometry actually resolves to a
+		 * surface circle in geography
+		 * e.g. North Pole polygon in geography
+		 * { type: "Polygon", "coordinates": [[[-120.0, 89.0], [0.0, 89.0], [120.0, 89.0], [-120.0, 89.0]]] }
+		 *
+		 * This resolves to a straight line intersecting polygon in 2d but a valid geography polygon sphere
+		 * around the North Pole.
+		 *
+		 * So we have followed a multi-step process here -
+		 * First, we check if a single ring polygon is a straight line in 2d. If not its definitely self intersecting.
+		 *
+		 * Next, we check if the current ring is valid or not using ST_IsValidDetail. If not, we check if it is a straight line. If not, its invalid.
+		 *
+		 * Next, we check if current ring is fully covered by previous ring using ST_Covers. If not, polygon is invalid.
+		 * If yes, we check if linestrings made from current ring and previous ring intersect in 2d,
+		 * as ST_Covers returns true even if edges are overlapping. If they intersect, polygon is invalid.
+		 */
+		PolygonValidationState polygonValidationState;
+		InitPolygonValidationState(&polygonValidationState, parseState,
+								   *outPolygonWKB);
+
+		/* Traverse polygon for validation */
+		TraverseWKBBytea(*outPolygonWKB, &PolygonValidationVisitorFuncs,
+						 (void *) &polygonValidationState);
+
+		if (polygonValidationState.isValid)
+		{
+			return true;
+		}
+
+		/* If the polygon is not valid, throw error */
+		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
+			shouldThrowError, (
+				errcode(GEO_ERROR_CODE(parseState->errorCtxt)),
+				errmsg(
+					"%sEdges cross - Loops should not self intersect or share any edge",
+					GEO_ERROR_PREFIX(parseState->errorCtxt)),
+				errhint(
+					"%sEdges cross - Loops should not self intersect or share any edge",
+					GEO_HINT_PREFIX(parseState->errorCtxt))));
+	}
+	else
+	{
+		/* Something else caused validity failure, for safety instead of wrong behavior throw error */
+		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
+			shouldThrowError, (
+				errcode(GEO_ERROR_CODE(parseState->errorCtxt)),
+				errmsg("%s%s", GEO_ERROR_PREFIX(parseState->errorCtxt),
+					   isValidDetailState.invalidityReason),
+				errhint("%s%s", GEO_HINT_PREFIX(parseState->errorCtxt),
+						isValidDetailState.invalidityReason)));
+	}
+
+	/* If everything is okay, get the wkb of validated polygon (clock-wise oriented) and return it */
 	return true;
+}
+
+
+/* Visitor function for TraverseWKBBuffer during polygon validation */
+static void
+VisitPolygonRingForValidation(const WKBGeometryConst *geometryConst, void *state)
+{
+	if (geometryConst->geometryType != WKBGeometryType_Polygon)
+	{
+		ereport(ERROR, (
+					errcode(MongoInternalError),
+					errmsg(
+						"%d unexpected geospatial type for polygon validation found in document WKB",
+						geometryConst->geometryType),
+					errhint(
+						"%d unexpected geospatial type for polygon validation found in document WKB",
+						geometryConst->geometryType)));
+	}
+
+	PolygonValidationState *polygonValidationState = (PolygonValidationState *) state;
+	int32 numRings = geometryConst->numRings;
+	Assert(geometryConst->ringPointsStart != NULL);
+
+	if (numRings == 1)
+	{
+		polygonValidationState->isValid = CheckSingleRingPolygonValidity(geometryConst,
+																		 polygonValidationState);
+	}
+	else
+	{
+		polygonValidationState->isValid = CheckMultiRingPolygonValidity(geometryConst,
+																		polygonValidationState);
+	}
+}
+
+
+/* Check validity of a single ring polygon */
+static bool
+CheckSingleRingPolygonValidity(const WKBGeometryConst *geometryConst,
+							   PolygonValidationState *polygonValidationState)
+{
+	int32 numPoints = geometryConst->numPoints;
+	char *currPtr = (char *) geometryConst->ringPointsStart;
+
+	/*
+	 * In case of single ring, its invalid unless its a straight line in 2d
+	 * TODO: currently this misses cases like {type: "Polygon", "coordinates": [[[0, 5], [5, 0], [10, 5], [15, 5], [0, 5]]]}
+	 * which is self intersecting in 2d but valid on earth.
+	 * This can be fixed later if a solution is found.
+	 */
+	if (!IsRingStraightLine(currPtr, numPoints))
+	{
+		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
+			polygonValidationState->shouldThrowValidityError, (
+				errcode(GEO_ERROR_CODE(polygonValidationState->errorCtxt)),
+				errmsg("%s Loop is not valid: %s - Edges cross",
+					   GEO_ERROR_PREFIX(polygonValidationState->errorCtxt),
+					   GetRingPointsStringForError(currPtr, numPoints)),
+				errhint("%s Loop is not valid - Edges cross",
+						GEO_HINT_PREFIX(polygonValidationState->errorCtxt)
+						)));
+	}
+
+	return true;
+}
+
+
+/* Check validity of a multi-ring polygon */
+static bool
+CheckMultiRingPolygonValidity(const WKBGeometryConst *geometryConst,
+							  PolygonValidationState *polygonValidationState)
+{
+	int32 numPoints = geometryConst->numPoints;
+	char *currPtr = (char *) geometryConst->ringPointsStart;
+
+	/* Buffer for polygon made from just the current ring */
+	StringInfo currentRingBuffer = makeStringInfo();
+	WriteHeaderToWKBBuffer(currentRingBuffer, WKBGeometryType_Polygon);
+	WriteNumToWKBBuffer(currentRingBuffer, 1);
+	WriteNumToWKBBuffer(currentRingBuffer, numPoints);
+	WriteBufferWithLengthToWKBBuffer(currentRingBuffer,
+									 currPtr, (numPoints) * WKB_BYTE_SIZE_POINT);
+
+	bytea *wkbBytea = WKBBufferGetByteaWithSRID(currentRingBuffer);
+	Datum currentRingGeographyDatum = GetGeographyFromWKB(wkbBytea);
+	Datum currentRingGeometryDatum = GetGeometryFromWKB(wkbBytea);
+	pfree(wkbBytea);
+	DeepFreeWKB(currentRingBuffer);
+
+	/*
+	 * Check if current ring of polygon is valid in 2d.
+	 */
+	IsValidDetailState isValidDetailState =
+		GetPolygonInvalidityReason(currentRingGeometryDatum, polygonValidationState);
+
+	pfree(DatumGetPointer(currentRingGeometryDatum));
+
+	/* Ring is invalid and not a straight line */
+	if (!isValidDetailState.isValid && !IsRingStraightLine(currPtr, numPoints))
+	{
+		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
+			polygonValidationState->shouldThrowValidityError, (
+				errcode(GEO_ERROR_CODE(polygonValidationState->errorCtxt)),
+				errmsg("%s Loop is not valid: %s - Edges cross",
+					   GEO_ERROR_PREFIX(polygonValidationState->errorCtxt),
+					   GetRingPointsStringForError(currPtr, numPoints)),
+				errhint("%s Loop is not valid - Edges cross",
+						GEO_HINT_PREFIX(polygonValidationState->errorCtxt)
+						)));
+	}
+
+	return IsHoleFullyCoveredByOuterRing(currPtr, numPoints, polygonValidationState,
+										 currentRingGeographyDatum);
+}
+
+
+/* Continue polygon traversal if current ring is valid */
+static bool
+ContinueIfRingValid(void *state)
+{
+	PolygonValidationState *polygonValidationState = (PolygonValidationState *) state;
+	return polygonValidationState->isValid;
+}
+
+
+/* Initialize polygon validation state */
+static void
+InitPolygonValidationState(PolygonValidationState *polygonValidationState,
+						   GeoJsonParseState *parseState,
+						   bytea *polygonWKB)
+{
+	/* Initialize polygon validation state */
+	memset(polygonValidationState, 0, sizeof(PolygonValidationState));
+
+	polygonValidationState->shouldThrowValidityError =
+		parseState->shouldThrowValidityError;
+	polygonValidationState->errorCtxt = parseState->errorCtxt;
+	polygonValidationState->isValid = false;
+	polygonValidationState->previousRingPointsStart = NULL;
+	polygonValidationState->previousRingDatum = (Datum) 0;
+	polygonValidationState->previousRingLineStringGeometryDatum = (Datum) 0;
+
+	polygonValidationState->validationFunctions =
+		(FmgrInfo **) palloc0(PostgisFuncsForDollarGeo_MAX * sizeof(FmgrInfo *));
+	polygonValidationState->validationFunctions[Geography_Covers] =
+		palloc0(sizeof(FmgrInfo));
+	fmgr_info(PostgisGeographyCoversFunctionId(),
+			  polygonValidationState->validationFunctions[Geography_Covers]);
+	polygonValidationState->validationFunctions[Geometry_Intersects] =
+		palloc0(sizeof(FmgrInfo));
+	fmgr_info(PostgisGeometryIntersectsFunctionId(),
+			  polygonValidationState->validationFunctions[Geometry_Intersects]);
+	polygonValidationState->validationFunctions[Geometry_IsValidDetail] =
+		palloc0(sizeof(FmgrInfo));
+	fmgr_info(PostgisGeometryIsValidDetailFunctionId(),
+			  polygonValidationState->validationFunctions[Geometry_IsValidDetail]);
+}
+
+
+/* Set isValid and invalidity reason for polygon validation using ST_IsValidDetail func */
+static IsValidDetailState
+GetPolygonInvalidityReason(Datum polygon, PolygonValidationState *state)
+{
+	IsValidDetailState isValidDetailState;
+	HeapTupleHeader tupleHeader;
+
+	if (state != NULL)
+	{
+		tupleHeader =
+			DatumGetHeapTupleHeader(
+				FunctionCall2(state->validationFunctions[Geometry_IsValidDetail],
+							  polygon,
+							  Int32GetDatum(0)));
+	}
+	else
+	{
+		tupleHeader =
+			DatumGetHeapTupleHeader(
+				OidFunctionCall2(PostgisGeometryIsValidDetailFunctionId(),
+								 polygon,
+								 Int32GetDatum(0)));
+	}
+
+	Oid tupleType = HeapTupleHeaderGetTypeId(tupleHeader);
+	int32 tupleTypmod = HeapTupleHeaderGetTypMod(tupleHeader);
+	TupleDesc tupleDescriptor = lookup_rowtype_tupdesc(tupleType, tupleTypmod);
+	HeapTupleData tupleValue;
+
+	tupleValue.t_len = HeapTupleHeaderGetDatumLength(tupleHeader);
+	tupleValue.t_data = tupleHeader;
+
+	bool isNull = false;
+	isValidDetailState.isValid = false;
+	Datum isValidDatum = heap_getattr(&tupleValue, 1, tupleDescriptor, &isNull);
+	if (!isNull)
+	{
+		isValidDetailState.isValid = DatumGetBool(isValidDatum);
+	}
+
+	if (!isValidDetailState.isValid)
+	{
+		Datum invalidityReasonDatum = heap_getattr(&tupleValue, 2, tupleDescriptor,
+												   &isNull);
+		if (isNull)
+		{
+			ReleaseTupleDesc(tupleDescriptor);
+			return isValidDetailState;
+		}
+
+		isValidDetailState.invalidityReason =
+			TextDatumGetCString(invalidityReasonDatum);
+	}
+
+	ReleaseTupleDesc(tupleDescriptor);
+	return isValidDetailState;
+}
+
+
+/* Check if the current ring is a straight line by checking slopes of all consecutive points */
+static bool
+IsRingStraightLine(char *pointsStart, int32 numPoints)
+{
+	float8 *point = (float8 *) pointsStart;
+	float8 *nextPoint = (float8 *) (pointsStart + WKB_BYTE_SIZE_POINT);
+
+	bool isEdgeVertical = fabs(nextPoint[0] - point[0]) < DBL_EPSILON;
+	float8 slope = (nextPoint[1] - point[1]) / (nextPoint[0] - point[0]);
+	for (int i = 1; i < numPoints - 1; i++)
+	{
+		point = nextPoint;
+		nextPoint = (float8 *) (pointsStart + (i + 1) * WKB_BYTE_SIZE_POINT);
+		float8 newSlope = (nextPoint[1] - point[1]) / (nextPoint[0] - point[0]);
+
+		if (isEdgeVertical)
+		{
+			isEdgeVertical = fabs(nextPoint[0] - point[0]) < DBL_EPSILON;
+
+			if (isEdgeVertical)
+			{
+				continue;
+			}
+		}
+
+		if (fabs(newSlope - slope) > DBL_EPSILON)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+
+/* Check if 2 consecutive rings of polygon intersect or outer ring doesn't fully cover the hole */
+static bool
+IsHoleFullyCoveredByOuterRing(char *currPtr, int32 numPoints,
+							  PolygonValidationState *polygonValidationState,
+							  Datum holeDatum)
+{
+	/* Buffer for linestring made from the points of current ring */
+	StringInfo currentRingLineString = makeStringInfo();
+	WriteHeaderToWKBBuffer(currentRingLineString, WKBGeometryType_LineString);
+	WriteNumToWKBBuffer(currentRingLineString, numPoints);
+	WriteBufferWithLengthToWKBBuffer(currentRingLineString,
+									 currPtr, (numPoints) * WKB_BYTE_SIZE_POINT);
+
+	bytea *wkbBytea = WKBBufferGetByteaWithSRID(currentRingLineString);
+	Datum currentRingLineStringGeometryDatum = GetGeometryFromWKB(wkbBytea);
+	pfree(wkbBytea);
+	DeepFreeWKB(currentRingLineString);
+
+	/* Check if current ring shares an edge/intersects with outer ring */
+	if (polygonValidationState->previousRingDatum != (Datum) 0)
+	{
+		/* Check if outer ring covers hole*/
+		bool isHoleCovered =
+			DatumGetBool(
+				FunctionCall2(
+					polygonValidationState->validationFunctions[Geography_Covers],
+					polygonValidationState->previousRingDatum,
+					holeDatum));
+
+		if (!isHoleCovered)
+		{
+			RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
+				polygonValidationState->shouldThrowValidityError, (
+					errcode(GEO_ERROR_CODE(polygonValidationState->errorCtxt)),
+					errmsg(
+						"%s Secondary loops not contained by first exterior loop - secondary loops must be holes: %s first loop: %s",
+						GEO_ERROR_PREFIX(polygonValidationState->errorCtxt),
+						GetRingPointsStringForError(currPtr, numPoints),
+						GetRingPointsStringForError(
+							polygonValidationState->previousRingPointsStart,
+							polygonValidationState->previousRingNumPoints)),
+					errhint(
+						"%s Secondary loops not contained by first exterior loop - secondary loops must be holes",
+						GEO_HINT_PREFIX(polygonValidationState->errorCtxt)
+						)));
+		}
+		else
+		{
+			/*
+			 * ST_Covers returns true in case of overlapping edges.
+			 * For this we check intersection between linestring made from current ring and previous ring
+			 */
+			bool isRingIntersecting =
+				DatumGetBool(
+					FunctionCall2(
+						polygonValidationState->validationFunctions[Geometry_Intersects],
+						polygonValidationState->previousRingLineStringGeometryDatum,
+						currentRingLineStringGeometryDatum));
+
+			if (isRingIntersecting)
+			{
+				RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
+					polygonValidationState->shouldThrowValidityError, (
+						errcode(GEO_ERROR_CODE(polygonValidationState->errorCtxt)),
+						errmsg(
+							"%s Secondary loops not contained by first exterior loop - secondary loops must be holes: %s first loop: %s",
+							GEO_ERROR_PREFIX(polygonValidationState->errorCtxt),
+							GetRingPointsStringForError(currPtr, numPoints),
+							GetRingPointsStringForError(
+								polygonValidationState->previousRingPointsStart,
+								polygonValidationState->previousRingNumPoints)),
+						errhint(
+							"%s Secondary loops not contained by first exterior loop - secondary loops must be holes",
+							GEO_HINT_PREFIX(polygonValidationState->errorCtxt)
+							)));
+			}
+		}
+
+		pfree(DatumGetPointer(polygonValidationState->previousRingDatum));
+		pfree(DatumGetPointer(
+				  polygonValidationState->previousRingLineStringGeometryDatum));
+	}
+
+	polygonValidationState->previousRingLineStringGeometryDatum =
+		currentRingLineStringGeometryDatum;
+	polygonValidationState->previousRingDatum = holeDatum;
+	polygonValidationState->previousRingPointsStart = currPtr;
+	polygonValidationState->previousRingNumPoints = numPoints;
+
+	return true;
+}
+
+
+/* Write points of current loop to buffer to be used in error msg*/
+static char *
+GetRingPointsStringForError(char *currPtr, int32 numPoints)
+{
+	StringInfo loop = makeStringInfo();
+	appendStringInfo(loop, "[ ");
+
+	float8 *point;
+
+	for (int i = 0; i < numPoints; i++)
+	{
+		/* Get the x and y coordinates of the current point */
+		point = (float8 *) (currPtr + i * WKB_BYTE_SIZE_POINT);
+
+		/* Append the point to the error buffer */
+		appendStringInfo(loop, "[%f, %f]%s", point[0], point[1],
+						 ((i < numPoints - 1) ? ", " : " ]"));
+	}
+
+	return loop->data;
 }
 
 

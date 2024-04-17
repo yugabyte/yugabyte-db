@@ -92,6 +92,7 @@ typedef enum PostgisFuncsForDollarGeo
 	Geography_Covers,
 	Geometry_DWithin,
 	Geography_DWithin,
+	Geometry_IsValidDetail,
 	PostgisFuncsForDollarGeo_MAX
 } PostgisFuncsForDollarGeo;
 

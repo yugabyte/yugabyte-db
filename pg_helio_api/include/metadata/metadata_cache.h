@@ -224,6 +224,7 @@ Oid PostgisBox2dfGeometryOverlapsFunctionId(void);
 Oid PostgisGIDXGeographyOverlapsFunctionId(void);
 Oid PostgisGeometryCoversFunctionId(void);
 Oid PostgisGeographyIntersectsFunctionId(void);
+Oid PostgisGeometryIntersectsFunctionId(void);
 Oid PostgisSetSRIDFunctionId(void);
 Oid PostgisGeometryExpandFunctionId(void);
 Oid PostgisGeographyExpandFunctionId(void);

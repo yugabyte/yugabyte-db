@@ -373,6 +373,17 @@ WriteNumToWKBBufferAtPosition(StringInfo buffer, int32 relativePosition, int32 n
 
 
 /*
+ * Write `num` (number of components to the buffer) to buffer.
+ * `num` can represent number of points in multipoint, number of rings in polygon, number of geometries in collection etc
+ */
+static inline void
+WriteNumToWKBBuffer(StringInfo buffer, int32 num)
+{
+	appendBinaryStringInfoNT(buffer, (char *) &num, WKB_BYTE_SIZE_NUM);
+}
+
+
+/*
  * Appends the StringInfo buffer to the WKB buffer
  */
 static inline void

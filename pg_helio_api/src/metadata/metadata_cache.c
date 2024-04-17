@@ -767,8 +767,11 @@ typedef struct HelioApiOidCacheData
 	/* Oid of the ST_Covers (geometry) Postgis function */
 	Oid PostgisGeometryCoversFunctionId;
 
-	/* Oid of the ST_Intersects Postgis function */
+	/* Oid of the ST_Intersects Postgis function for geographies*/
 	Oid PostgisGeographyIntersectsFunctionId;
+
+	/* Oid of the ST_Intersects Postgis function for geometries */
+	Oid PostgisGeometryIntersectsFunctionId;
 
 	/* Oid of the ST_SetSRID Postgis function */
 	Oid PostgisSetSRIDFunctionId;
@@ -3740,6 +3743,24 @@ PostgisGeographyIntersectsFunctionId(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeographyIntersectsFunctionId,
+		PostgisSchemaName, "st_intersects", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisIntersectsFunctionId returns the OID of PostgisSchemaName.st_intersects function.
+ * Note this variant is only used for geometries
+ */
+Oid
+PostgisGeometryIntersectsFunctionId(void)
+{
+	int nargs = 2;
+	Oid geometryOid = GeometryTypeId();
+	Oid argTypes[2] = { geometryOid, geometryOid };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeometryIntersectsFunctionId,
 		PostgisSchemaName, "st_intersects", nargs,
 		argTypes, missingOk);
 }

@@ -44,7 +44,9 @@ typedef struct WKBGeometryConst
 	const int32 length;
 
 	/* Polygon state */
-	const int32 numberOfRings;
+	const char *ringPointsStart;
+	const int32 numRings;
+	const int32 numPoints;
 } WKBGeometryConst;
 
 
@@ -67,6 +69,9 @@ typedef struct WKBVisitorFunctions
 	 */
 	void (*VisitEachPoint)(const WKBGeometryConst *wkbGeometry, void *state);
 
+	/* Currently only called during polygon validation to check for validitiy of each ring */
+	void (*VisitPolygonRing)(const WKBGeometryConst *wkbGeometry, void *state);
+
 	/*
 	 * Whether or not continue traversal of the WKB buffer, this can be used to stop the traversal
 	 */
@@ -84,6 +89,19 @@ InitIteratorFromWKBBuffer(WKBBufferIterator *iter, StringInfo wkbBuffer)
 	iter->currptr = wkbBuffer->data;
 
 	iter->len = wkbBuffer->len;
+}
+
+
+/* Initialize a WKBBufferIterator from given char * and length */
+static inline void
+InitIteratorFromPtrAndLen(WKBBufferIterator *iter, const char *currptr, int32 len)
+{
+	iter->headptr = currptr;
+
+	/* Set currptr also to wkbBuffer->data as we start from the head */
+	iter->currptr = (char *) currptr;
+
+	iter->len = len;
 }
 
 
@@ -113,5 +131,7 @@ IncrementWKBBufferIteratorByNBytes(WKBBufferIterator *iter, size_t bytes)
 
 void TraverseWKBBuffer(const StringInfo wkbBuffer, const
 					   WKBVisitorFunctions *visitorFuncs, void *state);
+void TraverseWKBBytea(const bytea *wkbBytea, const WKBVisitorFunctions *visitorFuncs,
+					  void *state);
 
 #endif

@@ -32,6 +32,22 @@ TraverseWKBBuffer(const StringInfo wkbBuffer, const WKBVisitorFunctions *visitor
 }
 
 
+/*
+ * Traverse the WKB bytea and calls the visitor functions on each geometry / point as required.
+ */
+void
+TraverseWKBBytea(const bytea *wkbBytea, const WKBVisitorFunctions *visitorFuncs,
+				 void *state)
+{
+	int32 len = VARSIZE_ANY_EXHDR(wkbBytea);
+	Assert(wkbBytea != NULL && len > 0);
+	WKBBufferIterator bufferIterator;
+	InitIteratorFromPtrAndLen(&bufferIterator, (char *) VARDATA_ANY(wkbBytea), len);
+	bool isGeometryCollection = false;
+	TraverseWKBBufferCore(&bufferIterator, visitorFuncs, state, isGeometryCollection);
+}
+
+
 static void
 TraverseWKBBufferCore(WKBBufferIterator *iter, const WKBVisitorFunctions *visitorFuncs,
 					  void *state, bool isCollectionGeometry)
@@ -108,33 +124,63 @@ TraverseWKBBufferCore(WKBBufferIterator *iter, const WKBVisitorFunctions *visito
 		{
 			numOfRings = *(int32 *) (iter->currptr);
 			IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_NUM);
+			const char *ringPointsStart = NULL;
 
-			for (int ring = 0; ring < numOfRings; ring++)
+			for (int currRing = 0; currRing < numOfRings; currRing++)
 			{
 				int32 numPoints = *(int32 *) (iter->currptr);
 				IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_NUM);
+				ringPointsStart = iter->currptr;
 
-				for (int point = 0; point < numPoints; point++)
+				if (visitorFuncs->VisitPolygonRing != NULL)
 				{
-					const char *pointStart = iter->currptr;
-					IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_POINT);
+					int32 len = numPoints * WKB_BYTE_SIZE_POINT;
+					const WKBGeometryConst geometryConst = {
+						.geometryType = geoType,
+						.geometryStart = geometryStart,
+						.ringPointsStart = ringPointsStart,
+						.length = len,
+						.numRings = numOfRings,
+						.numPoints = numPoints
+					};
+					visitorFuncs->VisitPolygonRing(&geometryConst, state);
 
-					if (visitorFuncs->VisitEachPoint != NULL)
+					if (visitorFuncs->ContinueTraversal != NULL &&
+						!(visitorFuncs->ContinueTraversal(state)))
 					{
-						const WKBGeometryConst point = {
-							.geometryStart = pointStart,
-							.length = iter->currptr - pointStart,
-							.geometryType = WKBGeometryType_Point
-						};
-						visitorFuncs->VisitEachPoint(&point, state);
+						/* Stop traversing */
+						return;
+					}
+				}
 
-						if (visitorFuncs->ContinueTraversal != NULL &&
-							!(visitorFuncs->ContinueTraversal(state)))
+				if (visitorFuncs->VisitEachPoint != NULL)
+				{
+					for (int point = 0; point < numPoints; point++)
+					{
+						const char *pointStart = iter->currptr;
+						IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_POINT);
+
 						{
-							/* Stop traversing */
-							return;
+							const WKBGeometryConst point = {
+								.geometryStart = pointStart,
+								.length = iter->currptr - pointStart,
+								.geometryType = WKBGeometryType_Point
+							};
+							visitorFuncs->VisitEachPoint(&point, state);
+
+							if (visitorFuncs->ContinueTraversal != NULL &&
+								!(visitorFuncs->ContinueTraversal(state)))
+							{
+								/* Stop traversing */
+								return;
+							}
 						}
 					}
+				}
+				else
+				{
+					IncrementWKBBufferIteratorByNBytes(iter,
+													   (numPoints * WKB_BYTE_SIZE_POINT));
 				}
 			}
 			break;
@@ -180,7 +226,7 @@ TraverseWKBBufferCore(WKBBufferIterator *iter, const WKBVisitorFunctions *visito
 			.geometryStart = geometryStart,
 			.length = iter->currptr - geometryStart,
 			.geometryType = geoType,
-			.numberOfRings = numOfRings
+			.numRings = numOfRings
 		};
 		visitorFuncs->VisitGeometry(&geometryConst, state);
 	}
