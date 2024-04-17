@@ -177,7 +177,6 @@ class IntentsWriterContext {
 class IntentsWriter : public rocksdb::DirectWriter {
  public:
   IntentsWriter(const Slice& start_key,
-                HybridTime file_filter_ht,
                 rocksdb::DB* intents_db,
                 IntentsWriterContext* context);
 
@@ -220,7 +219,6 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       const SubtxnSet& aborted,
       HybridTime commit_ht,
       HybridTime log_ht,
-      HybridTime file_filter_ht,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
       rocksdb::DB* intents_db);
