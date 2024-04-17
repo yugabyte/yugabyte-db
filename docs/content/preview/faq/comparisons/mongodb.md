@@ -21,7 +21,7 @@ Following are the key areas of difference between YugabyteDB 1.1 and MongoDB 4.0
 
 ## Data modeling
 
-MongoDB is a document-oriented database that only supports document data modeling. On the other hand, YugabyteDB is a multi-model and multi-API database that supports multiple different types of data modeling including document data (with the native JSON data type support in the Cassandra-compatible {{<product "ycql">}} API) and relational (with the PostgreSQL-compatible {{<product "ysql">}} API) data modeling.
+MongoDB is a document-oriented database that only supports document data modeling. On the other hand, YugabyteDB is a multi-model and multi-API database that supports multiple different types of data modeling including document data (with the native JSON data type support in the Cassandra-compatible {{<product "ycql">}} API) and relational data (with the PostgreSQL-compatible {{<product "ysql">}} API).
 
 ## Automatic sharding
 

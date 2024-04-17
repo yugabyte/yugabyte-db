@@ -28,6 +28,6 @@ Unlike Redis, the entire data set does not need to fit in memory. In Yugabyte, t
 
 ## Consistent and transparent caching
 
-Applications that use Redis only as a cache and use a separate backing database as the main system of record, and need to deal with pain points around keeping the cache and DB consistent and operational pain points at two levels of infrastructure (sharding, load-balancing, geo-redundancy) etc can leverage YugabyteDB as a unified cache + database offering.
+Applications that use Redis only as a cache and use a separate backing database as the main system of record, and need to deal with pain points around keeping the cache and DB consistent and operational pain points at two levels of infrastructure (sharding, load-balancing, geo-redundancy) can leverage YugabyteDB as a unified cache + database offering.
 
 Scan resistant block cache design ensures long scans (such as of older data) do not impact reads for recent data.
