@@ -1467,13 +1467,13 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 		if (entry->indexkeys[keyno] != 0)
 		{
 			int32		keycoltypmod;
+			char *attname;
 #if PG_VERSION_NUM >= 110000
-			appendStringInfo(&buf, "%s", get_attname(entry->relid,
-													 entry->indexkeys[keyno], false));
+			attname = get_attname(entry->relid, entry->indexkeys[keyno], false);
 #else
-			appendStringInfo(&buf, "%s", get_attname(entry->relid,
-													 entry->indexkeys[keyno]));
+			attname = get_attname(entry->relid, entry->indexkeys[keyno]);
 #endif
+			appendStringInfo(&buf, "%s", quote_identifier(attname));
 
 			get_atttypetypmodcoll(entry->relid, entry->indexkeys[keyno],
 								  &keycoltype, &keycoltypmod,
@@ -1541,11 +1541,13 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 		appendStringInfo(&buf, " INCLUDE (");
 		for (keyno = entry->nkeycolumns; keyno < entry->ncolumns; keyno++)
 		{
+			char *attname;
+
 			if (keyno != entry->nkeycolumns)
 				appendStringInfo(&buf, ", ");
 
-			appendStringInfo(&buf, "%s", get_attname(entry->relid,
-													 entry->indexkeys[keyno], false));
+			attname = get_attname(entry->relid, entry->indexkeys[keyno], false);
+			appendStringInfo(&buf, "%s", quote_identifier(attname));
 		}
 		appendStringInfo(&buf, ")");
 	}
