@@ -69,13 +69,6 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const Slice* iterate_upper_bound = nullptr,
     const DocDBStatistics* statistics = nullptr);
 
-BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
-    rocksdb::DB* intentsdb,
-    const TransactionStatusManager* status_manager,
-    const KeyBounds* docdb_key_bounds,
-    const Slice* iterate_upper_bound = nullptr,
-    rocksdb::Statistics* statistics = nullptr);
-
 std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> CreateRocksDBPriorityThreadPoolMetrics(
     scoped_refptr<yb::MetricEntity> entity);
 
