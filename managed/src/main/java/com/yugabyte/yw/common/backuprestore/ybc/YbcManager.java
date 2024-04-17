@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common.backuprestore.ybc;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
@@ -15,6 +17,7 @@ import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.NFSUtil;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
@@ -38,6 +41,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -493,6 +497,47 @@ public class YbcManager {
     } catch (Exception e) {
       LOG.error(
           "Backup {} task abort failed with error: {}.", backup.getBackupUUID(), e.getMessage());
+    }
+  }
+
+  public void abortRestoreTask(
+      UUID customerUUID, UUID restoreUUID, String taskID, YbcClient ybcClient) {
+    Optional<Restore> optionalRestore = Restore.fetchRestore(restoreUUID);
+    if (!optionalRestore.isPresent()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Invalid restore UUID: %s", restoreUUID));
+    }
+    Restore restore = optionalRestore.get();
+    try {
+      BackupServiceTaskAbortRequest abortTaskRequest =
+          BackupServiceTaskAbortRequest.newBuilder().setTaskId(taskID).build();
+      BackupServiceTaskAbortResponse abortTaskResponse =
+          ybcClient.backupServiceTaskAbort(abortTaskRequest);
+      if (!abortTaskResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+        LOG.error(
+            "Aborting restore {} task errored out with {}.",
+            restore.getRestoreUUID(),
+            abortTaskResponse.getStatus().getErrorMessage());
+        return;
+      }
+      BackupServiceTaskResultRequest taskResultRequest =
+          BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
+      BackupServiceTaskResultResponse taskResultResponse =
+          ybcClient.backupServiceTaskResult(taskResultRequest);
+      if (!taskResultResponse.getTaskStatus().equals(ControllerStatus.ABORT)) {
+        LOG.error(
+            "Aborting restore {} task errored out and is in {} state.",
+            restore.getRestoreUUID(),
+            taskResultResponse.getTaskStatus());
+        return;
+      } else {
+        LOG.info(
+            "Restore {} task is successfully aborted on Yb-controller.", restore.getRestoreUUID());
+        deleteYbcBackupTask(taskID, ybcClient);
+      }
+    } catch (Exception e) {
+      LOG.error(
+          "Restore {} task abort failed with error: {}.", restore.getRestoreUUID(), e.getMessage());
     }
   }
 
