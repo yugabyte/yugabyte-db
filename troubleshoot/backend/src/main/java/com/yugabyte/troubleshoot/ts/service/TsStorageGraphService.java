@@ -122,6 +122,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     sql += "WHERE ";
     sql +=
         query.getFilters().entrySet().stream()
+                .filter(e -> config.getFilterColumns().containsKey(e.getKey().name()))
                 .map(
                     entry -> {
                       TsStorageGraphConfig.FilterColumn filterColumn =
@@ -148,6 +149,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     params.put("endTimestamp", Timestamp.from(query.getEnd()));
     params.putAll(
         query.getFilters().entrySet().stream()
+            .filter(e -> config.getFilterColumns().containsKey(e.getKey().name()))
             .collect(
                 Collectors.toMap(
                     e -> e.getKey().name(),

@@ -78,7 +78,7 @@ public class TroubleshootingController {
         startTime = now.minus(14, ChronoUnit.DAYS);
       }
       if (endTime.isBefore(startTime)) {
-        beanValidator.error().global("startTime should be before endTime");
+        beanValidator.error().global("startTime should be before endTime").throwError();
       }
       result = troubleshootingService.findAnomalies(universeUuid, startTime, endTime);
     }
