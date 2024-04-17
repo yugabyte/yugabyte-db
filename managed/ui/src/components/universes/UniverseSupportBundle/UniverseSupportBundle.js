@@ -66,11 +66,7 @@ export const UniverseSupportBundle = (props) => {
     [dispatch]
   );
 
-  useEffect(() => {
-    listSupportBundle(universeDetails.universeUUID);
-  }, [listSupportBundle, universeDetails.universeUUID]);
-
-  useEffect(() => {
+  const onSupportBundleChange = () => {
     if (supportBundles && Array.isArray(supportBundles) && supportBundles.length === 0) {
       setSteps(stepsObj.firstStep);
     } else {
@@ -87,7 +83,17 @@ export const UniverseSupportBundle = (props) => {
         }, POLLING_INTERVAL);
       }
     }
-  }, [supportBundles, listSupportBundle, universeDetails.universeUUID, steps]);
+  };
+
+  useEffect(() => {
+    listSupportBundle(universeDetails.universeUUID);
+  }, [listSupportBundle, universeDetails.universeUUID]);
+
+  useEffect(onSupportBundleChange, [
+    supportBundles,
+    listSupportBundle,
+    universeDetails.universeUUID
+  ]);
 
   const saveSupportBundle = (universeUUID) => {
     dispatch(crateSupportBundle(universeUUID, payload)).then(() => {
