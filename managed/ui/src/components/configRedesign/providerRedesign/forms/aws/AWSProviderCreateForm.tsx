@@ -12,6 +12,7 @@ import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
 
 import {
   OptionProps,
@@ -179,6 +180,7 @@ export const AWSProviderCreateForm = ({
     setQuickValidationErrors
   ] = useState<QuickValidationErrorKeys | null>(null);
   const validationClasses = useValidationStyles();
+  const { t } = useTranslation();
 
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
@@ -207,7 +209,11 @@ export const AWSProviderCreateForm = ({
     return <YBLoading />;
   }
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
 
   const handleFormSubmitServerError = (
@@ -576,7 +582,7 @@ export const AWSProviderCreateForm = ({
                   {Object.entries(quickValidationErrors).map(([keyString, errors]) => {
                     return (
                       <li key={keyString}>
-                        {keyString.replace(/^(data\.)/, '')}
+                        {keyString}
                         <ul>
                           {errors.map((error, index) => (
                             <li key={index}>{error}</li>
@@ -679,7 +685,7 @@ const constructProviderPayload = async (
     formValues.skipKeyValidateAndUpload
   );
 
-  const imageBundles = constructImageBundlePayload(formValues);
+  const imageBundles = constructImageBundlePayload(formValues, true);
 
   return {
     code: ProviderCode.AWS,

@@ -96,9 +96,11 @@ class XClusterManager : public XClusterManagerIf,
       const GetXClusterSafeTimeForNamespaceRequestPB* req,
       GetXClusterSafeTimeForNamespaceResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+  Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      const XClusterSafeTimeFilter& filter) override;
 
-  Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
-      const LeaderEpoch& epoch) override;
+  Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) override;
 
   // OutboundReplicationGroup RPCs.
   Status XClusterCreateOutboundReplicationGroup(

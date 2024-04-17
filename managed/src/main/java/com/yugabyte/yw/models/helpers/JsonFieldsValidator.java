@@ -42,12 +42,12 @@ public class JsonFieldsValidator extends BaseBeanValidator {
   public void validateFields(String masterKey, Map<String, String> data) {
     Collection<String> allowedKeys = acceptableKeys.get(masterKey);
     if (allowedKeys == null && !data.isEmpty()) {
-      throwBeanValidatorError(data.keySet().iterator().next(), "Unknown field.");
+      throwBeanValidatorError(data.keySet().iterator().next(), "Unknown field.", null);
     }
 
     for (String key : data.keySet()) {
       if (!allowedKeys.contains(key)) {
-        throwBeanValidatorError(key, "Unknown field.");
+        throwBeanValidatorError(key, "Unknown field.", null);
       }
     }
   }

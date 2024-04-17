@@ -154,4 +154,61 @@ public class TestYbAsh extends BasePgSQLTest {
           "AND wait_event_component='Postgres'", 0);
     }
   }
+
+  /**
+   * Sanity check that nested queries work with ASH enabled
+   */
+  @Test
+  public void testNestedQueriesWithAsh() throws Exception {
+    setAshConfigAndRestartCluster(ASH_SAMPLING_INTERVAL, ASH_SAMPLE_SIZE);
+    try (Statement statement = connection.createStatement()) {
+      String tableName = "test_table";
+
+      // Queries inside extension scripts
+      statement.execute("DROP EXTENSION IF EXISTS pg_stat_statements");
+      statement.execute("CREATE EXTENSION pg_stat_statements");
+
+      // Queries inside functions
+      statement.execute("CREATE TABLE " + tableName + "(k INT, v TEXT)");
+      statement.execute("CREATE FUNCTION insert_into_table(k INT, v TEXT) " +
+          "RETURNS void AS $$ INSERT INTO " + tableName + " VALUES($1, $2) $$ " +
+          "LANGUAGE SQL");
+
+      for (int i = 0; i < 10; ++i) {
+        statement.execute(String.format("SELECT insert_into_table(%d, 'v-%d')", i, i));
+      }
+
+      // Queries inside triggers
+      statement.execute("TRUNCATE " + tableName);
+      statement.execute("CREATE FUNCTION trigger_fn() " +
+          "RETURNS TRIGGER AS $$ BEGIN UPDATE test_table SET v = '1' " +
+          "WHERE k = 1; RETURN NEW; END; $$ LANGUAGE plpgsql");
+      statement.execute("CREATE TRIGGER trig AFTER INSERT ON test_table " +
+          "FOR EACH STATEMENT EXECUTE PROCEDURE trigger_fn()");
+
+      for (int i = 0; i < 10; ++i) {
+        statement.execute(String.format("INSERT INTO %s VALUES(%d, 'v-%d')",
+            tableName, i, i));
+      }
+    }
+  }
+
+  /**
+   * Aux info of samples from postgres should be null.
+   */
+  @Test
+  public void testPgAuxInfo() throws Exception {
+    setAshConfigAndRestartCluster(10, ASH_SAMPLE_SIZE);
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
+      for (int i = 0; i < 10000; ++i) {
+        statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
+        statement.execute(String.format("SELECT v FROM test_table WHERE k=%d", i));
+      }
+      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE wait_event_component='Postgres' AND wait_event_aux IS NOT NULL")
+          .getLong(0).intValue();
+      assertEquals(res, 0);
+    }
+  }
 }

@@ -34,7 +34,7 @@ For more details, see [colocation](../../architecture/docdb-sharding/colocated-t
 
 When a query uses an index to look up rows faster, the columns that are not present in the index are fetched from the original table. This results in additional round trips to the main table leading to increased latency.
 
-Use [covering indexes](../../explore/indexes-constraints/covering-index-ysql/) to store all the required columns needed for your queries in the index. Indexing converts a standard Index-Scan to an [Index-Only-Scan](https://dev.to/yugabyte/boosts-secondary-index-queries-with-index-only-scan-5e7j).
+Use [covering indexes](../../explore/ysql-language-features/indexes-constraints/covering-index-ysql/) to store all the required columns needed for your queries in the index. Indexing converts a standard Index-Scan to an [Index-Only-Scan](https://dev.to/yugabyte/boosts-secondary-index-queries-with-index-only-scan-5e7j).
 
 {{<tip>}}
 For more details, see [Avoid trips to the table with covering indexes](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#avoid-trips-to-the-table-with-covering-indexes).
@@ -45,7 +45,7 @@ For more details, see [Avoid trips to the table with covering indexes](https://w
 A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause. This speeds up any writes to the table and reduces the size of the index, thereby improving speed for read queries that use the index.
 
 {{<tip>}}
-For more details, see [Partial indexes](../../explore/indexes-constraints/partial-index-ysql/).
+For more details, see [Partial indexes](../../explore/ysql-language-features/indexes-constraints/partial-index-ysql/).
 {{</tip>}}
 
 ## Distinct keys with unique indexes
@@ -55,7 +55,7 @@ If you need values in some of the columns to be unique, you can specify your ind
 When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a NULL value is treated as a distinct value, you can have multiple NULL values in a column with a unique index.
 
 {{<tip>}}
-For more details, see [Unique indexes](../../explore/indexes-constraints/unique-index-ysql/).
+For more details, see [Unique indexes](../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/).
 {{</tip>}}
 
 ## Faster sequences with server-level caching

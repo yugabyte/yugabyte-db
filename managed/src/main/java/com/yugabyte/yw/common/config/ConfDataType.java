@@ -197,9 +197,9 @@ public class ConfDataType<T> {
               throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
             }
           });
-  static ConfDataType<Role> LdapDefaultRoleEnum =
+  static ConfDataType<Role> UserRoleEnum =
       new ConfDataType<>(
-          "LdapDefaultRole",
+          "UserDefaultRole",
           Role.class,
           new EnumGetter<>(Role.class),
           (s) -> {
@@ -208,11 +208,11 @@ public class ConfDataType<T> {
               if (defaultRole != Role.ConnectOnly && defaultRole != Role.ReadOnly) {
                 throw new PlatformServiceException(
                     BAD_REQUEST,
-                    String.format("%s role cannot be set as default LDAP role!", defaultRole));
+                    String.format("%s role cannot be set as default user role!", defaultRole));
               }
               return defaultRole;
             } catch (IllegalArgumentException e) {
-              String failMsg = String.format("%s is not a valid Default LDAP role!\n", s);
+              String failMsg = String.format("%s is not a valid system role!\n", s);
               throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
             }
           });

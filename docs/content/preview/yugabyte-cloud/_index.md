@@ -132,7 +132,7 @@ YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to
   title="Build Applications"
   description="Start coding in your favorite programming language using these examples."
   buttonText="Get Started"
-  buttonUrl="../develop/build-apps/"
+  buttonUrl="../tutorials/build-apps/"
   >}}
 
   {{< sections/3-box-card

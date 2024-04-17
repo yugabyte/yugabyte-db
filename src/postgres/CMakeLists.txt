@@ -202,6 +202,7 @@ endif()
 # We add spaces before every "flags" parameter so that Python's argparse does not interpret them as
 # its own flags.
 add_custom_target(configure_postgres ALL COMMAND ${build_postgres_args} --step configure)
+add_custom_target(postgres_genbki ALL COMMAND ${build_postgres_args} --step genbki)
 add_custom_target(
     postgres ALL
     COMMAND ${build_postgres_args} --step make
@@ -211,7 +212,8 @@ add_custom_target(
       "${PG_COMMON_STATIC_LIB}"
       "${PG_PORT_STATIC_LIB}")
 
-add_dependencies(postgres configure_postgres)
+add_dependencies(postgres_genbki configure_postgres)
+add_dependencies(postgres configure_postgres postgres_genbki)
 
 # ------------------------------------------------------------------------------------------------
 # Dependencies between postgres and other targets

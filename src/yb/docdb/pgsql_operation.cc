@@ -781,11 +781,15 @@ class PgsqlWriteOperation::RowPackContext {
   }
 
   Status Complete(const RefCntPrefix& encoded_doc_key) {
+    return Complete(encoded_doc_key.as_slice());
+  }
+
+  Status Complete(Slice encoded_doc_key) {
     auto encoded_value = VERIFY_RESULT(std::visit([](auto& packer) {
       return packer.Complete();
     }, packer_));
     return data_.doc_write_batch->SetPrimitive(
-        DocPath(encoded_doc_key.as_slice()), dockv::ValueControlFields(),
+        DocPath(encoded_doc_key), dockv::ValueControlFields(),
         ValueRef(encoded_value), data_.read_operation_data, query_id_, write_id_);
   }
 
@@ -802,9 +806,19 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   // Initialize operation inputs.
   response_ = response;
 
-  DocKeyAccessor accessor(doc_read_context_->schema());
-  doc_key_ = std::move(VERIFY_RESULT_REF(accessor.GetDecoded(request_)));
-  encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix(Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1));
+  if (!request_.packed_rows().empty()) {
+    // When packed_rows are specified, operation could contain multiple rows.
+    // So we use table root key for doc_key, and have to use special handling for packed_rows in
+    // other places.
+    doc_key_ = dockv::DocKey(doc_read_context_->schema());
+    encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();
+  } else {
+    DocKeyAccessor accessor(doc_read_context_->schema());
+    doc_key_ = std::move(VERIFY_RESULT_REF(accessor.GetDecoded(request_)));
+    encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix(
+        Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1));
+  }
+
   encoded_doc_key_.Resize(encoded_doc_key_.size() - 1);
 
   return Status::OK();
@@ -1023,7 +1037,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       // Non-backfill requests shouldn't use HasDuplicateUniqueIndexValue because
       // - they should error even if the conflicting row matches
       // - retrieving and calculating whether the conflicting row matches is a waste
-      if (VERIFY_RESULT(ReadColumns(data, &table_row))) {
+      if (VERIFY_RESULT(ReadRow(data, &table_row))) {
         VLOG(4) << "Duplicate row: " << table_row.ToString();
         // Primary key or unique index value found.
         response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
@@ -1035,47 +1049,53 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
 
   const auto& schema = doc_read_context_->schema();
   auto pack_row = ShouldYsqlPackRow(schema.is_colocated());
-  if (request_.has_packed_value()) {
+  if (!request_.packed_rows().empty()) {
     RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(
         request_.table_id(), schema, schema.value_column_ids()));
-    Slice packed_value(request_.packed_value());
-    if (pack_row &&
-        packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
-      RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-          DocPath(encoded_doc_key_.as_slice()), dockv::ValueControlFields(),
-          ValueRef(packed_value), data.read_operation_data, request_.stmt_id()));
-    } else {
-      SCHECK(packed_value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRowV1),
-             InvalidArgument,
-             "Packed value in a wrong format: $0", packed_value.ToDebugHexString());
-      const auto& packing = VERIFY_RESULT_REF(doc_read_context_->schema_packing_storage.GetPacking(
-          &packed_value));
-
-      std::optional<RowPackContext> pack_context;
-      if (pack_row) {
-        pack_context.emplace(
-            request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
-      } else {
+    dockv::KeyBytes key_bytes(encoded_doc_key_.as_slice());
+    for (auto it = request_.packed_rows().begin(); it != request_.packed_rows().end();) {
+      key_bytes.Truncate(encoded_doc_key_.size());
+      key_bytes.AppendRawBytes(*it++);
+      auto key = key_bytes.AsSlice();
+      Slice packed_value(*it++);
+      if (pack_row &&
+          packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-            DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
-            dockv::ValueControlFields(), ValueRef(dockv::ValueEntryType::kNullLow),
-            data.read_operation_data, request_.stmt_id()));
-      }
-      for (size_t idx = 0; idx != packing.columns(); ++idx) {
-        auto value = dockv::PackedValueV1(packing.GetValue(idx, packed_value));
-        auto column_id = packing.column_packing_data(idx).id;
-        if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, value))) {
-          if (value->empty()) {
-            static char null_column_type = dockv::ValueEntryTypeAsChar::kNullLow;
-            value = dockv::PackedValueV1(Slice(&null_column_type, sizeof(null_column_type)));
-          }
-          DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+            DocPath(key), dockv::ValueControlFields(),
+            ValueRef(packed_value), data.read_operation_data, request_.stmt_id()));
+      } else {
+        SCHECK(packed_value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRowV1),
+               InvalidArgument,
+               "Packed value in a wrong format: $0", packed_value.ToDebugHexString());
+        const auto& packing = VERIFY_RESULT_REF(
+            doc_read_context_->schema_packing_storage.GetPacking(&packed_value));
+
+        std::optional<RowPackContext> pack_context;
+        if (pack_row) {
+          pack_context.emplace(
+              request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
+        } else {
           RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-              sub_path, ValueRef(*value), data.read_operation_data, request_.stmt_id()));
+              DocPath(key, KeyEntryValue::kLivenessColumn),
+              dockv::ValueControlFields(), ValueRef(dockv::ValueEntryType::kNullLow),
+              data.read_operation_data, request_.stmt_id()));
         }
-      }
-      if (pack_context) {
-        RETURN_NOT_OK(pack_context->Complete(encoded_doc_key_));
+        for (size_t idx = 0; idx != packing.columns(); ++idx) {
+          auto value = dockv::PackedValueV1(packing.GetValue(idx, packed_value));
+          auto column_id = packing.column_packing_data(idx).id;
+          if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, value))) {
+            if (value->empty()) {
+              static char null_column_type = dockv::ValueEntryTypeAsChar::kNullLow;
+              value = dockv::PackedValueV1(Slice(&null_column_type, sizeof(null_column_type)));
+            }
+            DocPath sub_path(key, KeyEntryValue::MakeColumnId(column_id));
+            RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+                sub_path, ValueRef(*value), data.read_operation_data, request_.stmt_id()));
+          }
+        }
+        if (pack_context) {
+          RETURN_NOT_OK(pack_context->Complete(key));
+        }
       }
     }
   } else if (pack_row) {
@@ -1167,7 +1187,7 @@ Status PgsqlWriteOperation::UpdateColumn(
 Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   dockv::PgTableRow table_row(projection());
 
-  if (!VERIFY_RESULT(ReadColumns(data, &table_row))) {
+  if (!VERIFY_RESULT(ReadRow(data, &table_row))) {
     // Row not found.
     response_->set_skipped(true);
     return Status::OK();
@@ -1294,7 +1314,7 @@ Status PgsqlWriteOperation::ApplyDelete(
     const bool is_persist_needed) {
   int num_deleted = 1;
   dockv::PgTableRow table_row(projection());
-  if (!VERIFY_RESULT(ReadColumns(data, &table_row))) {
+  if (!VERIFY_RESULT(ReadRow(data, &table_row))) {
     // Row not found.
     // Return early unless we still want to apply the delete for backfill purposes.  Deletes to
     // nonexistent rows are expected to get written to the index when the index has the delete
@@ -1332,7 +1352,7 @@ Status PgsqlWriteOperation::ApplyTruncateColocated(const DocOperationApplyData& 
 Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data) {
   dockv::PgTableRow table_row(projection());
   DCHECK(request_.has_fetch_sequence_params()) << "Invalid input: fetch sequence without params";
-  if (!VERIFY_RESULT(ReadColumns(data, &table_row))) {
+  if (!VERIFY_RESULT(ReadRow(data, &table_row))) {
     // Row not found.
     return STATUS(NotFound, "Unable to find relation for sequence");
   }
@@ -1441,10 +1461,30 @@ const dockv::ReaderProjection& PgsqlWriteOperation::projection() const {
   return *projection_;
 }
 
-Result<bool> PgsqlWriteOperation::ReadColumns(
+Result<bool> PgsqlWriteOperation::ReadRow(
     const DocOperationApplyData& data, dockv::PgTableRow* table_row) {
+  if (request_.packed_rows().empty()) {
+    return ReadRow(data, doc_key_, table_row);
+  }
+
+  dockv::KeyBytes key_bytes(encoded_doc_key_.as_slice());
+  dockv::DocKey doc_key;
+  // 2 entries per row, even for key, odd for value.
+  for (auto it = request_.packed_rows().begin(); it != request_.packed_rows().end(); it += 2) {
+    key_bytes.Truncate(encoded_doc_key_.size());
+    key_bytes.AppendRawBytes(*it);
+    RETURN_NOT_OK(doc_key.FullyDecodeFrom(key_bytes.AsSlice()));
+    if (VERIFY_RESULT(ReadRow(data, doc_key, table_row))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Result<bool> PgsqlWriteOperation::ReadRow(
+    const DocOperationApplyData& data, const dockv::DocKey& doc_key, dockv::PgTableRow* table_row) {
   // Filter the columns using primary key.
-  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), doc_key_);
+  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), doc_key);
   auto iterator = DocRowwiseIterator(
       projection(),
       *doc_read_context_,
@@ -1537,6 +1577,12 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
       }
       break;
     }
+  }
+  if (!request_.packed_rows().empty()) {
+    for (auto it = request_.packed_rows().begin(); it != request_.packed_rows().end(); it += 2) {
+      paths->emplace_back(*it);
+    }
+    return Status::OK();
   }
   // Add row's doc key. Caller code will create strong intent for the whole row in this case.
   paths->push_back(encoded_doc_key_);

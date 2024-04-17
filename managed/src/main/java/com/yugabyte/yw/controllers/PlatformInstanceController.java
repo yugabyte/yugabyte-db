@@ -242,6 +242,19 @@ public class PlatformInstanceController extends AuthenticatedController {
             Audit.TargetType.PlatformInstance,
             instanceUUID.toString(),
             Audit.ActionType.Promote);
+
+    // Background thread to restart YBA
+    Thread shutdownThread =
+        new Thread(
+            () -> {
+              try {
+                Thread.sleep(5000);
+                System.exit(0);
+              } catch (InterruptedException e) {
+                LOG.warn("Interrupted during restart.");
+              }
+            });
+    shutdownThread.start();
     return ok();
   }
 }

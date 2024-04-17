@@ -2459,20 +2459,8 @@ TEST_P(XClusterTest, TestDeleteCDCStreamWithMissingStreams) {
   delete_universe_req.set_ignore_errors(false);
   ASSERT_OK(
       master_proxy->DeleteUniverseReplication(delete_universe_req, &delete_universe_resp, &rpc));
-  // Ensure that the error message describes the missing stream and related table.
-  ASSERT_TRUE(delete_universe_resp.has_error());
-  std::string prefix = "Could not find the following streams:";
-  const auto error_str = delete_universe_resp.error().status().message();
-  ASSERT_TRUE(error_str.substr(0, prefix.size()) == prefix);
-  ASSERT_NE(error_str.find(stream_id), string::npos);
-  ASSERT_NE(error_str.find(producer_table_->id()), string::npos);
-
-  // Force the delete.
-  rpc.Reset();
-  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-  delete_universe_req.set_ignore_errors(true);
-  ASSERT_OK(
-      master_proxy->DeleteUniverseReplication(delete_universe_req, &delete_universe_resp, &rpc));
+  // Ensure that DeleteUniverseReplication ignores any errors due to missing streams
+  ASSERT_FALSE(delete_universe_resp.has_error());
 
   // Ensure that the delete is now succesful.
   ASSERT_OK(VerifyUniverseReplicationDeleted(

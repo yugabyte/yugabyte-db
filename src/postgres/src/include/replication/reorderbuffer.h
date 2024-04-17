@@ -108,6 +108,8 @@ typedef struct ReorderBufferChange
 			ReorderBufferTupleBuf *oldtuple;
 			/* valid for INSERT || UPDATE */
 			ReorderBufferTupleBuf *newtuple;
+
+			Oid			yb_table_oid;
 		}			tp;
 
 		/*

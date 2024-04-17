@@ -2461,6 +2461,8 @@ retry1:
 
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
+	else if (YbIsClientYsqlConnMgr())
+		MyBackendType = YB_YSQL_CONN_MGR;
 	else
 		MyBackendType = B_BACKEND;
 

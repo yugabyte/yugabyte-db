@@ -65,6 +65,7 @@ message CreateCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
   optional bytes stream_id = 2;
+  optional uint64 cdcsdk_consistent_snapshot_time = 3;
 }
 
 message DeleteCDCStreamRequestPB {

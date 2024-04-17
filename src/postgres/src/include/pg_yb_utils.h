@@ -286,6 +286,13 @@ extern bool YbNeedAdditionalCatalogTables();
 extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
 
 /*
+ * Handle YBStatus while logging a custom error for DocDB 'NotFound' error.
+ */
+extern void
+HandleYBStatusWithCustomErrorForNotFound(YBCStatus status,
+										 const char *message_for_not_found);
+
+/*
  * Same as HandleYBStatus but delete the table description first if the
  * status is not ok.
  */
@@ -558,6 +565,12 @@ extern bool yb_prefer_bnl;
  */
 extern bool yb_explain_hide_non_deterministic_fields;
 
+/*
+ * Enables scalar array operation pushdown.
+ * If true, planner sends supported expressions to DocDB for evaluation
+ */
+extern bool yb_enable_saop_pushdown;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -621,6 +634,9 @@ extern char *yb_test_fail_index_state_change;
  * the new table is created.
  */
 extern bool yb_test_fail_table_rewrite_after_creation;
+
+/* GUC variable yb_test_stay_in_global_catalog_version_mode. */
+extern bool yb_test_stay_in_global_catalog_version_mode;
 
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled

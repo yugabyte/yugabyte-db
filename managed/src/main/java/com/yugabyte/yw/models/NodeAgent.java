@@ -70,6 +70,7 @@ import play.mvc.Http.Status;
 public class NodeAgent extends Model {
 
   public static final KeyLock<UUID> NODE_AGENT_KEY_LOCK = new KeyLock<UUID>();
+  public static final String NODE_AGENT_DIR = "node-agent";
 
   /** Node agent server OS type. */
   public enum OSType {
@@ -179,7 +180,6 @@ public class NodeAgent extends Model {
   public static final String SERVER_CERT_NAME = "server.crt";
   public static final String SERVER_KEY_NAME = "server.key";
   public static final String MERGED_ROOT_CA_CERT_NAME = "merged.ca.key.crt";
-  public static final String ROOT_NODE_AGENT_HOME = "/root/node-agent";
 
   @Id
   @ApiModelProperty(value = "Node agent UUID", accessMode = READ_ONLY)

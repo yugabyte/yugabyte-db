@@ -9,7 +9,9 @@ import json
 import logging
 import os
 import platform
+import shlex
 import shutil
+import subprocess
 import sys
 import re
 import distro  # type: ignore
@@ -29,6 +31,7 @@ from typing import Dict, Any, Optional, cast, List
 
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
 RELEASE_VERSION_FILE = "version.txt"
+VERSION_METADATA_FILE = "version_metadata.json"
 THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 
@@ -64,6 +67,37 @@ def filter_bin_items(
         item for item in bin_items
         if os.path.basename(item) not in bin_items_to_remove
     ]
+
+
+def get_max_glibc_version(directory: str) -> str:
+    directory = shlex.quote(directory)
+    cmd = f'find {directory} \( -name "*.so" -or -name "*.so.*" -or -perm +x \)'  # nopep8: W605
+    cmd += " -exec grep -Eoa 'GLIBC_[0-9.]+' {} \;"  # nopep8: W605
+    try:
+        glibc_versions = subprocess.check_output(cmd, shell=True).decode('utf-8').strip().split()
+    except Exception as e:
+        logging.warning("Determining max glibc version with `{}` raised an error".format(cmd))
+        raise e
+
+    if not glibc_versions:
+        logging.warning("No GLIBC versions found using command `{}`".format(cmd))
+        raise RuntimeError('No GLIBC versions found')
+
+    # Return the last version in the list, it should be the highest.
+    return sorted(set(glibc_versions), key=parse_glibc_version)[-1]
+
+
+def parse_glibc_version(glibc_v: str) -> List[int]:
+    """ Glibc versions look like GLIBC_1.2.3
+    Split on the _ to remove the text portion, then split on . to get a list of ints that the
+    sorted function can sort like we expect (as versions).
+
+    >>> parse_glibc_version('GLIBC_2.2.5')
+    [2, 2, 5]
+    >>> parse_glibc_version('GLIBC_2.20')
+    [2, 20]
+    """
+    return list(map(int, glibc_v.split('_', 1)[1].split('.')))
 
 
 class ReleaseUtil:
@@ -230,6 +264,18 @@ class ReleaseUtil:
                     copy_deep(file_path,
                               os.path.join(current_dest_dir, os.path.basename(file_path)))
         logging.info("Created the distribution at '{}'".format(distribution_dir))
+
+    def set_glibc_version(self, distribution_dir: str) -> None:
+        # Only linux has glibc
+        if platform.system() != 'Linux':
+            return
+        glibc_v = get_max_glibc_version(distribution_dir)
+        manifest_file = os.path.join(distribution_dir, VERSION_METADATA_FILE)
+        with open(manifest_file) as m:
+            metadata = json.load(m)
+        metadata['glibc_version'] = glibc_v
+        with open(manifest_file, "w") as m:
+            json.dump(metadata, m)
 
     def update_manifest(self, distribution_dir: str) -> None:
         for release_subdir in ['bin']:

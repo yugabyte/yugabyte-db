@@ -1000,6 +1000,11 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlot
   return pg_client_.ListReplicationSlots();
 }
 
+Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
+    const ReplicationSlotName& slot_name) {
+  return pg_client_.GetReplicationSlot(slot_name);
+}
+
 Result<tserver::PgGetReplicationSlotStatusResponsePB> PgSession::GetReplicationSlotStatus(
     const ReplicationSlotName& slot_name) {
   return pg_client_.GetReplicationSlotStatus(slot_name);

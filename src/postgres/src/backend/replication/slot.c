@@ -104,7 +104,7 @@ ReplicationSlot *MyReplicationSlot = NULL;
 int			max_replication_slots = 0;	/* the maximum number of replication
 										 * slots */
 
-const char *YB_OUTPUT_PLUGIN = "yboutput";
+const char *PG_OUTPUT_PLUGIN = "pgoutput";
 
 static void ReplicationSlotShmemExit(int code, Datum arg);
 static void ReplicationSlotDropAcquired(void);
@@ -256,7 +256,8 @@ ReplicationSlotValidateName(const char *name, int elevel)
 void
 ReplicationSlotCreate(const char *name, bool db_specific,
 					  ReplicationSlotPersistency persistency, bool two_phase,
-					  CRSSnapshotAction yb_snapshot_action)
+					  CRSSnapshotAction yb_snapshot_action,
+					  uint64_t *yb_consistent_snapshot_time)
 {
 	ReplicationSlot *slot = NULL;
 	int			i;
@@ -272,7 +273,7 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	 */
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateReplicationSlot(name, yb_snapshot_action);
+		YBCCreateReplicationSlot(name, yb_snapshot_action, yb_consistent_snapshot_time);
 		return;
 	}
 
@@ -474,6 +475,43 @@ ReplicationSlotAcquire(const char *name, bool nowait)
 retry:
 	Assert(MyReplicationSlot == NULL);
 
+	/*
+	 * Fetch the replication slot metadata from yb-master.
+	 * TODO(#20755): Support acquiring a replication slot exclusively in
+	 * yb-master.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YBCReplicationSlotDescriptor *yb_replication_slot;
+
+		YBCGetReplicationSlot(name, &yb_replication_slot);
+
+		s = palloc(sizeof(ReplicationSlot));
+		namestrcpy(&s->data.name, yb_replication_slot->slot_name);
+		namestrcpy(&s->data.plugin, PG_OUTPUT_PLUGIN);
+		s->data.database = yb_replication_slot->database_oid;
+		s->data.persistency = RS_PERSISTENT;
+		strcpy(s->data.yb_stream_id, yb_replication_slot->stream_id);
+		s->active_pid = MyProcPid;
+
+		SpinLockInit(&s->mutex);
+		LWLockInitialize(&s->io_in_progress_lock,
+						 LWTRANCHE_REPLICATION_SLOT_IO);
+		ConditionVariableInit(&s->active_cv);
+
+		/*
+		 * Dummy values to always stream from the start.
+		 * TODO(#20726): This has to be updated to support restarts.
+		 */
+		s->data.catalog_xmin = 0;
+		s->data.confirmed_flush = 0;
+		s->data.xmin = 0;
+		s->data.restart_lsn = 0;
+
+		MyReplicationSlot = s;
+		return;
+	}
+
 	LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
 
 	/*
@@ -583,7 +621,8 @@ ReplicationSlotRelease(void)
 	 * Snapshots can only be exported while the initial snapshot is still
 	 * acquired.
 	 */
-	if (!TransactionIdIsValid(slot->data.xmin) &&
+	if (!IsYugaByteEnabled() &&
+		!TransactionIdIsValid(slot->data.xmin) &&
 		TransactionIdIsValid(slot->effective_xmin))
 	{
 		SpinLockAcquire(&slot->mutex);

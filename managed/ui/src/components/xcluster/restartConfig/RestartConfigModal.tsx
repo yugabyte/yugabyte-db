@@ -4,6 +4,7 @@ import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 import { useTranslation } from 'react-i18next';
+import { Typography } from '@material-ui/core';
 
 import { YBModalForm } from '../../common/forms';
 import { YBButton, YBModal } from '../../common/forms/fields';
@@ -122,8 +123,6 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     },
     {
       onSuccess: (response) => {
-        closeModal();
-
         const invalidateQueries = () => {
           if (props.isDrInterface) {
             queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfig.uuid));
@@ -141,8 +140,21 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
                 </a>
               </span>
             );
+          } else {
+            toast.success(
+              <Typography variant="body2" component="span">
+                {t(`success.taskSuccess.${props.isDrInterface ? 'dr' : 'xCluster'}`)}
+              </Typography>
+            );
           }
         };
+
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
+        closeModal();
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
       },
       onError: (error: Error | AxiosError) =>
@@ -228,7 +240,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
       title={t(`title.${props.isDrInterface ? 'dr' : 'xCluster'}`)}
       visible={isVisible}
       validate={(values: RestartXClusterConfigFormValues) =>
-        validateForm(values, currentStep, props.isDrInterface)
+        validateForm(values, currentStep, props.isDrInterface, configTableType)
       }
       onFormSubmit={handleFormSubmit}
       initialValues={INITIAL_VALUES}
@@ -306,7 +318,8 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
 const validateForm = async (
   values: RestartXClusterConfigFormValues,
   formStep: FormStep,
-  isDrInterface: boolean
+  isDrInterface: boolean,
+  tableType: TableType
 ) => {
   // Since our formik verision is < 2.0 , we need to throw errors instead of
   // returning them in custom async validation:
@@ -317,8 +330,12 @@ const validateForm = async (
       const errors: Partial<RestartXClusterConfigFormErrors> = {};
       if (!values.tableUUIDs || values.tableUUIDs.length === 0) {
         errors.tableUUIDs = {
-          title: 'No tables selected.',
-          body: 'Select at least 1 table to proceed'
+          title: `No ${
+            tableType === TableType.PGSQL_TABLE_TYPE ? 'databases' : 'tables'
+          } selected.`,
+          body: `Select at least 1 ${
+            tableType === TableType.PGSQL_TABLE_TYPE ? 'database' : 'table'
+          } to proceed`
         };
       }
       throw errors;

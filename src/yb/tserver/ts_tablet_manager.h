@@ -397,6 +397,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Get the metadata cache object.
   client::YBMetaDataCache* YBMetaDataCache() const;
 
+  MetricRegistry* TEST_metric_registry() const { return metric_registry_; }
+
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
   friend class ::yb::XClusterSafeTimeTest;

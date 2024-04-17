@@ -373,6 +373,7 @@ typedef enum BackendType
 	B_WAL_WRITER,
 	B_ARCHIVER,
 	B_LOGGER,
+	YB_YSQL_CONN_MGR,
 } BackendType;
 
 extern PGDLLIMPORT BackendType MyBackendType;

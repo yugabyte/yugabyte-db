@@ -4,6 +4,7 @@ import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useQuery } from 'react-query';
 import { array, mixed, object, string } from 'yup';
+import { useTranslation } from 'react-i18next';
 
 import {
   OptionProps,
@@ -173,6 +174,7 @@ export const GCPProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const { t } = useTranslation();
 
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<GCPProviderEditFormFieldValues>({
@@ -188,11 +190,17 @@ export const GCPProviderEditForm = ({
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
     );
   }
   if (

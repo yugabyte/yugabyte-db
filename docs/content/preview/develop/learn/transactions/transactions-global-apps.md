@@ -55,7 +55,7 @@ Follower reads only affect reads. All writes are still handled by the leader.
 
 ## Use duplicate indexes
 
-Adding indexes is a common technique for speeding up queries. By adding all the columns needed in a query to create a [covering index](../../../../explore/indexes-constraints/covering-index-ysql/), you can perform index-only scans, where you don't need to scan the table, only the index. When the schema of your covering index is the same as the table, then it is known as a duplicate index.
+Adding indexes is a common technique for speeding up queries. By adding all the columns needed in a query to create a [covering index](../../../../explore/ysql-language-features/indexes-constraints/covering-index-ysql/), you can perform index-only scans, where you don't need to scan the table, only the index. When the schema of your covering index is the same as the table, then it is known as a duplicate index.
 
 If you are running applications from multiple regions, you can use duplicate indexes in conjunction with [tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) in a multi-region cluster to greatly improve read latencies, as follows:
 

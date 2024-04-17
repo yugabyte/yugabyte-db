@@ -21,6 +21,7 @@ CREATE INDEX p5_hash_asc ON p5(a hash, b asc);
 ANALYZE p5;
 SET yb_enable_optimizer_statistics = on;
 SET yb_enable_base_scans_cost_model = on;
+SET yb_prefer_bnl = off;
 -- We're testing nested loop join batching in this file
 SET yb_bnl_batch_size = 1024;
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;

@@ -298,7 +298,7 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
           }
           auto msg = status.message().ToBuffer();
           if (msg.find("Snapshot too old: Snapshot too old.") != std::string::npos ||
-              msg.find("Commit of expired transaction") != std::string::npos ||
+              msg.find("Attempted to commit expired transaction") != std::string::npos ||
               msg.find("Catalog Version Mismatch") != std::string::npos ||
               msg.find("Soft memory limit exceeded") != std::string::npos ||
               msg.find("timed out after deadline expired") != std::string::npos) {

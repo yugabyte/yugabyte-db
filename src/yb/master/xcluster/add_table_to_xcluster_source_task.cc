@@ -34,19 +34,39 @@ std::string AddTableToXClusterSourceTask::description() const {
 }
 
 Status AddTableToXClusterSourceTask::FirstStep() {
-  outbound_replication_group_->AddTable(
-      table_info_, epoch_, std::bind(&AddTableToXClusterSourceTask::CompletionCallback, this, _1));
+  RETURN_NOT_OK(outbound_replication_group_->CreateStreamForNewTable(
+      table_info_->namespace_id(), table_info_->id(), epoch_));
+
+  ScheduleNextStep(
+      std::bind(&AddTableToXClusterSourceTask::CheckpointStream, this), "CheckpointStream");
+  return Status::OK();
+}
+
+Status AddTableToXClusterSourceTask::CheckpointStream() {
+  RETURN_NOT_OK(outbound_replication_group_->CheckpointNewTable(
+      table_info_->namespace_id(), table_info_->id(), epoch_,
+      std::bind(&AddTableToXClusterSourceTask::CheckpointCompletionCallback, this, _1)));
 
   return Status::OK();
 }
 
-void AddTableToXClusterSourceTask::CompletionCallback(const Status& status) {
-  if (status.ok()) {
-    Complete();
+void AddTableToXClusterSourceTask::CheckpointCompletionCallback(const Status& status) {
+  if (!status.ok()) {
+    AbortAndReturnPrevState(status);
     return;
   }
 
-  AbortAndReturnPrevState(status);
+  ScheduleNextStep(
+      std::bind(&AddTableToXClusterSourceTask::MarkTableAsCheckpointed, this),
+      "MarkTableAsCheckpointed");
+}
+
+Status AddTableToXClusterSourceTask::MarkTableAsCheckpointed() {
+  RETURN_NOT_OK(outbound_replication_group_->MarkNewTablesAsCheckpointed(
+      table_info_->namespace_id(), table_info_->id(), epoch_));
+
+  Complete();
+  return Status::OK();
 }
 
 }  // namespace yb::master
