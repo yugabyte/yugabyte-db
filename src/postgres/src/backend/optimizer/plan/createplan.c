@@ -1881,6 +1881,7 @@ create_memoize_plan(PlannerInfo *root, MemoizePath *best_path, int flags)
 	ListCell   *lc2;
 	int			nkeys;
 	int			i;
+	bool		yb_singlerow;
 
 	subplan = create_plan_recurse(root, best_path->subpath,
 								  flags | CP_SMALL_TLIST);
@@ -1906,8 +1907,15 @@ create_memoize_plan(PlannerInfo *root, MemoizePath *best_path, int flags)
 
 	keyparamids = pull_paramids((Expr *) param_exprs);
 
+	/*
+	 * YB note: Do not use singlerow mode when processing a BNL because multiple
+	 * rows from the subplan are expected due to batching even when
+	 * JoinPathExtraData.inner_unique is true.
+	 */
+	yb_singlerow = best_path->singlerow && bms_is_empty(root->yb_cur_batched_relids);
+
 	plan = make_memoize(subplan, operators, collations, param_exprs,
-						best_path->singlerow, best_path->binary_mode,
+						yb_singlerow, best_path->binary_mode,
 						best_path->est_entries, keyparamids);
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
