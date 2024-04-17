@@ -1,7 +1,7 @@
 ---
 title: DocDB transactions layer
 headerTitle: DocDB transactions layer
-linkTitle: DocDB transactions layer
+linkTitle: Transactions
 description: DocDB transactions layer
 image: /images/section_icons/architecture/distributed_acid.png
 headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
@@ -9,7 +9,7 @@ menu:
   stable:
     identifier: architecture-acid-transactions
     parent: architecture
-    weight: 1120
+    weight: 900
 type: indexpage
 ---
 
@@ -73,6 +73,18 @@ YugabyteDB's distributed transaction architecture is based on principles of atom
       </div>
       <div class="body">
         Read committed isolation level in YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="read-restart-error/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
+        <div class="title">Read restart error</div>
+      </div>
+      <div class="body">
+        Read restart error in YugabyteDB.
       </div>
     </a>
   </div>

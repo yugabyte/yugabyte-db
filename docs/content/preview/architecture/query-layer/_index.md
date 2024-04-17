@@ -93,4 +93,3 @@ As the executor requests rows from each node, that node fetches or computes the 
 This process continues recursively until the top node has received all the rows it needs to produce the final result. For a `SELECT` query, these final rows are sent to the client. For data modification queries like `INSERT`, `UPDATE`, or `DELETE`, the rows are used to make the requested changes in the database tables.
 
 The executor is designed to efficiently pull rows through the pipeline defined by the plan tree, processing rows in batches where possible for better performance.
-
