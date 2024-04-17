@@ -739,6 +739,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       public Double memoryGib = 4.0;
       // CPU in core count
       public Double cpuCoreCount = 2.0;
+
+      public K8SNodeResourceSpec clone() {
+        K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+        spec.memoryGib = memoryGib;
+        spec.cpuCoreCount = cpuCoreCount;
+        return spec;
+      }
     }
 
     public static final double MIN_CPU = 0.5;
@@ -988,6 +995,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.cgroupSize = cgroupSize;
       if (proxyConfig != null) {
         newUserIntent.proxyConfig = proxyConfig.clone();
+      }
+      if (masterK8SNodeResourceSpec != null) {
+        newUserIntent.masterK8SNodeResourceSpec = masterK8SNodeResourceSpec.clone();
+      }
+      if (tserverK8SNodeResourceSpec != null) {
+        newUserIntent.tserverK8SNodeResourceSpec = tserverK8SNodeResourceSpec.clone();
       }
       return newUserIntent;
     }

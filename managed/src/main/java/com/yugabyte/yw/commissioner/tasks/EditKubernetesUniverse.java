@@ -74,8 +74,20 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    if (isFirstTry) {
+      // Verify the task params.
+      verifyParams(UniverseOpType.EDIT);
+    }
+  }
+
+  @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
+    if (isFirstTry()) {
+      createValidateDiskSizeOnEdit(universe);
+    }
   }
 
   @Override
@@ -83,8 +95,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Throwable th = null;
     try {
       checkUniverseVersion();
-      // Verify the task params.
-      verifyParams(UniverseOpType.EDIT);
       // TODO: Would it make sense to have a precheck k8s task that does
       // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
       Universe universe =

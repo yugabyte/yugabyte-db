@@ -5,7 +5,10 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -220,6 +223,90 @@ public class ApiUtils {
     };
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdaterForK8sEdit(
+      final UserIntent userIntent,
+      final String nodePrefix,
+      final boolean setMasters,
+      final boolean updateInProgress) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(ClusterType.PRIMARY, userIntent);
+    AvailableNodeTracker mockNodeTracker =
+        new AvailableNodeTracker(
+            cluster.uuid, Collections.singletonList(cluster), Collections.emptyList()) {
+          @Override
+          public void acquire(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+            super.acquire(zoneId, serverType);
+          }
+
+          @Override
+          public int getAvailableForZone(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+            return Integer.MAX_VALUE;
+          }
+        };
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            ClusterType.PRIMARY,
+            userIntent,
+            userIntent.replicationFactor,
+            null,
+            Collections.emptyList(),
+            mockNodeTracker);
+    return new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+        universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+        universeDetails.nodeDetailsSet = new HashSet<>();
+        universeDetails.updateInProgress = updateInProgress;
+        PlacementCloud placementCloud = placementInfo.cloudList.get(0);
+        for (PlacementRegion rp : placementCloud.regionList) {
+          for (PlacementAZ az : rp.azList) {
+            int tservers = az.numNodesInAZ;
+            int masters = az.replicationFactor;
+            AvailabilityZone zone = AvailabilityZone.get(az.uuid);
+            for (int idx = 0; idx < tservers; idx++) {
+              NodeDetails node =
+                  getDummyNodeDetailsK8s(
+                      idx,
+                      NodeDetails.NodeState.Live,
+                      false,
+                      true,
+                      zone.getProviderCloudCode().name(),
+                      zone.getRegion().getCode(),
+                      zone.getCode(),
+                      zone.getUuid(),
+                      rp.azList.size() > 1);
+              node.placementUuid = universeDetails.getPrimaryCluster().uuid;
+              node.dedicatedTo = UniverseTaskBase.ServerType.TSERVER;
+              universeDetails.nodeDetailsSet.add(node);
+            }
+            for (int idx = 0; idx < masters; idx++) {
+              NodeDetails node =
+                  getDummyNodeDetailsK8s(
+                      idx,
+                      NodeDetails.NodeState.Live,
+                      setMasters,
+                      true,
+                      zone.getProviderCloudCode().name(),
+                      zone.getRegion().getCode(),
+                      zone.getCode(),
+                      zone.getUuid(),
+                      rp.azList.size() > 1);
+              node.placementUuid = universeDetails.getPrimaryCluster().uuid;
+              node.dedicatedTo = UniverseTaskBase.ServerType.MASTER;
+              node.isTserver = false;
+              universeDetails.nodeDetailsSet.add(node);
+            }
+          }
+        }
+
+        universeDetails.nodePrefix = nodePrefix;
+        universeDetails.rootCA = universe.getUniverseDetails().rootCA;
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+  }
+
   public static Universe.UniverseUpdater mockUniverseUpdater(boolean updateInProgress) {
     return universe -> {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -376,7 +463,7 @@ public class ApiUtils {
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
         userIntent.enableYSQL = true;
-        userIntent.numNodes = 1;
+        userIntent.numNodes = numTservers;
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.nodeDetailsSet.addAll(
             getDummyNodeDetailSet(
@@ -501,13 +588,23 @@ public class ApiUtils {
   }
 
   public static UserIntent getTestUserIntent(Region r, Provider p, InstanceType i, int numNodes) {
+    return getTestUserIntent(r, p, i, numNodes, 100, 0);
+  }
+
+  public static UserIntent getTestUserIntent(
+      Region r, Provider p, InstanceType i, int numNodes, int tserverDiskSize, int masterDiskSize) {
     UserIntent ui = new UserIntent();
     ui.regionList = ImmutableList.of(r.getUuid());
     ui.provider = p.getUuid().toString();
     ui.providerType = Common.CloudType.valueOf(p.getCode());
     ui.numNodes = numNodes;
-    ui.instanceType = i.getInstanceTypeCode();
-    ui.deviceInfo = getDummyDeviceInfo(1, 100);
+    if (!ui.providerType.equals(CloudType.kubernetes)) {
+      ui.instanceType = i.getInstanceTypeCode();
+    }
+    ui.deviceInfo = getDummyDeviceInfo(1, tserverDiskSize);
+    if (masterDiskSize > 0) {
+      ui.masterDeviceInfo = getDummyDeviceInfo(1, masterDiskSize);
+    }
     ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
     ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
     return ui;
@@ -585,6 +682,35 @@ public class ApiUtils {
       String zone,
       String subnet) {
     return getDummyNodeDetails(idx, state, isMaster, isYSQL, cloud, region, zone, subnet, null);
+  }
+
+  public static NodeDetails getDummyNodeDetailsK8s(
+      int partition,
+      NodeDetails.NodeState state,
+      boolean isMaster,
+      boolean isYSQL,
+      String cloud,
+      String region,
+      String zone,
+      UUID azUUID,
+      boolean isMultiAz) {
+    NodeDetails node =
+        KubernetesTaskBase.getKubernetesNodeName(
+            partition, zone, isMaster ? ServerType.MASTER : ServerType.TSERVER, isMultiAz, false);
+    node.nodeUuid = UUID.randomUUID();
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.cloud = cloud;
+    node.cloudInfo.az = zone;
+    node.cloudInfo.region = region;
+    node.cloudInfo.private_ip = node.nodeName + ".svc.cluster.local";
+    node.isTserver = true;
+    node.state = state;
+    node.isMaster = isMaster;
+    if (azUUID != null) {
+      node.azUuid = azUUID;
+    }
+    node.isYsqlServer = isYSQL;
+    return node;
   }
 
   public static NodeDetails getDummyNodeDetails(
