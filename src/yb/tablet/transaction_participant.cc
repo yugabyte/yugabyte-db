@@ -210,6 +210,8 @@ class TransactionParticipant::Impl
       return false;
     }
 
+    loader_.StartShutdown();
+
     wait_queue_poller_.Shutdown();
     if (wait_queue_) {
       wait_queue_->StartShutdown();
@@ -254,11 +256,11 @@ class TransactionParticipant::Impl
       status_resolvers.swap(status_resolvers_);
     }
 
-    loader_.Shutdown();
+    rpcs_.Shutdown();
+    loader_.CompleteShutdown();
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
-    rpcs_.Shutdown();
     shutdown_done_.store(true, std::memory_order_release);
   }
 
