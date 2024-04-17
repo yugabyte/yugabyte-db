@@ -774,7 +774,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 			proc = BackendPidGetProc(beentry->st_procpid);
 
-			if (proc == NULL && (beentry->st_backendType != B_BACKEND))
+			if (proc == NULL && (beentry->st_backendType != B_BACKEND &&
+								 beentry->st_backendType != YB_YSQL_CONN_MGR))
 			{
 				/*
 				 * For an auxiliary process, retrieve process info from

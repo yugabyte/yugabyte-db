@@ -72,11 +72,12 @@ class XClusterSafeTimeService {
       const int64_t leader_term, const NamespaceId& namespace_id,
       const XClusterSafeTimeFilter& filter);
 
-  Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
-      const LeaderEpoch& epoch);
-
   xcluster::XClusterConsumerClusterMetrics* TEST_GetMetricsForNamespace(
       const NamespaceId& namespace_id);
+
+  // Returns true if we need to run again.
+  Result<bool> ComputeSafeTime(const int64_t leader_term, bool update_metrics = false)
+      EXCLUDES(mutex_);
 
  private:
   friend class XClusterSafeTimeServiceMocked;
@@ -103,10 +104,6 @@ class XClusterSafeTimeService {
   void ProcessTaskPeriodically() EXCLUDES(task_enqueue_lock_);
 
   typedef std::map<ProducerTabletInfo, HybridTime> ProducerTabletToSafeTimeMap;
-
-  // Returns true if we need to run again.
-  Result<bool> ComputeSafeTime(const int64_t leader_term, bool update_metrics = false)
-      EXCLUDES(mutex_);
 
   virtual Result<ProducerTabletToSafeTimeMap> GetSafeTimeFromTable() REQUIRES(mutex_);
 

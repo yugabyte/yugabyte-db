@@ -133,6 +133,9 @@ lazy val root = (project in file("."))
 
 javacOptions ++= Seq("-source", "17", "-target", "17")
 
+// This is for dev-mode server. In dev-mode, the play server is started before the files are compiled.
+// Hence, the application files are not available in the path. For prod, It is in reference.conf file.
+PlayKeys.devSettings += "play.pekko.dev-mode.pekko.coordinated-shutdown.phases.service-requests-done.timeout" -> "150s"
 
 Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
@@ -773,6 +776,9 @@ Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, bu
 
 Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
 
+// Disable shutdown hook of ebean to let play manage its lifecycle.
+Universal / javaOptions += "-Debean.registerShutdownHook=false"
+
 Universal / mappings ++= {
   val (status, cliFiles) = compileYbaCliBinary.value
   if (status == 0) {
@@ -810,7 +816,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.78-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b2"
+libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b4"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(

@@ -138,8 +138,14 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
       auto last_heartbeat = desc->LastHeartbeatTime();
       if (last_heartbeat) {
-        entry->set_millis_since_heartbeat(narrow_cast<int>(
-            MonoTime::Now().GetDeltaSince(last_heartbeat).ToMilliseconds()));
+        auto ms_since_heartbeat = MonoTime::Now().GetDeltaSince(last_heartbeat).ToMilliseconds();
+        if (ms_since_heartbeat > std::numeric_limits<int32_t>::max()) {
+          LOG(DFATAL) << entry->instance_id().permanent_uuid()
+                      << " has not heartbeated since "
+                      << ms_since_heartbeat;
+          ms_since_heartbeat = std::numeric_limits<int32_t>::max();
+        }
+        entry->set_millis_since_heartbeat(narrow_cast<int>(ms_since_heartbeat));
       }
       entry->set_alive(desc->IsLive());
       desc->GetMetrics(entry->mutable_metrics());

@@ -1,4 +1,4 @@
----
+<!---
 title: Configure YugabyteDB Anywhere on premises
 headerTitle: Overview
 linkTitle: Overview
@@ -10,7 +10,8 @@ menu:
     parent: configure-yugabyte-platform
     weight: 5
 type: docs
----
+private: true
+--->
 
 For overview of how to configure database nodes, select one of the following cloud providers:
 

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models.configs.validators;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.SetMultimap;
 import com.yugabyte.yw.common.BeanValidator;
@@ -10,6 +11,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Slf4j
 public class KubernetesProviderValidator extends ProviderFieldsValidator {
@@ -30,6 +32,7 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
     }
 
     log.info("Validation is not implemented, sending mock failure");
+    JsonNode providerJson = Json.toJson(provider);
     SetMultimap<String, String> validationErrors = HashMultimap.create();
     validationErrors.put(
         "$.details.cloudInfo.kubernetes.kubernetesImageRegistry", "Image registry has no tags");
@@ -56,7 +59,7 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
     validationErrors.put(
         "$.regions[0].zones[0].details.cloudInfo.kubernetes.certManagerClusterIssuer",
         "Specified cluster issuer does not exist");
-    throwMultipleProviderValidatorError(validationErrors);
+    throwMultipleProviderValidatorError(validationErrors, providerJson);
   }
 
   @Override

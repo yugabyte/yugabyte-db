@@ -3,7 +3,7 @@
 jobs:
 # YB_TODO: tests fail with "stack depth limit exceeded"
 #  - os: alma8
-#    compiler: clang16
+#    compiler: clang17
 #    build_type: asan
 #    release_artifact: false
 

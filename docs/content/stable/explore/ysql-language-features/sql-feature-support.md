@@ -66,11 +66,11 @@ This page highlights the important differences in feature support between YSQL a
 
 |                    |                    Feature                    |                                      Documentation                                      |
 | :----------------: | :-------------------------------------------- | :-------------------------------------------------------------------------------------- |
-|   {{<icon/yes>}}   | Check                                         | [Check constraint](../../indexes-constraints/other-constraints/#check-constraint)       |
-|   {{<icon/yes>}}   | Unique                                        | [Unique constraint](../../indexes-constraints/other-constraints/#unique-constraint)     |
-|   {{<icon/yes>}}   | Not Null                                      | [Not Null constraint](../../indexes-constraints/other-constraints/#not-null-constraint) |
-|   {{<icon/yes>}}   | Primary Key                                   | [Primary keys](../../indexes-constraints/primary-key-ysql/)                             |
-|   {{<icon/yes>}}   | Foreign Key                                   | [Foreign keys](../../indexes-constraints/foreign-key-ysql/)                             |
+|   {{<icon/yes>}}   | Check                                         | [Check constraint](../indexes-constraints/other-constraints/#check-constraint)       |
+|   {{<icon/yes>}}   | Unique                                        | [Unique constraint](../indexes-constraints/other-constraints/#unique-constraint)     |
+|   {{<icon/yes>}}   | Not Null                                      | [Not Null constraint](../indexes-constraints/other-constraints/#not-null-constraint) |
+|   {{<icon/yes>}}   | Primary Key                                   | [Primary keys](../indexes-constraints/primary-key-ysql/)                             |
+|   {{<icon/yes>}}   | Foreign Key                                   | [Foreign keys](../indexes-constraints/foreign-key-ysql/)                             |
 | {{<icon/partial>}} | Default Value                                 |                                                                                         |
 | {{<icon/partial>}} | Deferrable Foreign Key constraints            |                                                                                         |
 |   {{<icon/no>}}    | Deferrable Primary Key and Unique constraints |                                                                                         |
@@ -81,12 +81,12 @@ This page highlights the important differences in feature support between YSQL a
 
 |                |      Component       |                             Documentation                              |
 | :------------: | :------------------- | :--------------------------------------------------------------------- |
-| {{<icon/yes>}} | Indexes              | [Indexes and constraints](../../indexes-constraints/)                  |
-| {{<icon/yes>}} | GIN indexes          | [GIN indexes](../../indexes-constraints/gin/)                          |
-| {{<icon/yes>}} | Partial indexes      | [Partial indexes](../../indexes-constraints/partial-index-ysql/)       |
-| {{<icon/yes>}} | Expression indexes   | [Expression indexes](../../indexes-constraints/expression-index-ysql/) |
-| {{<icon/yes>}} | Multi-column indexes | [Multi-column indexes](../../indexes-constraints/secondary-indexes-ysql/#multi-column-index) |
-| {{<icon/yes>}} | Covering indexes     | [Covering indexes](../../indexes-constraints/covering-index-ysql/)     |
+| {{<icon/yes>}} | Indexes              | [Indexes and constraints](../indexes-constraints/)                  |
+| {{<icon/yes>}} | GIN indexes          | [GIN indexes](../indexes-constraints/gin/)                          |
+| {{<icon/yes>}} | Partial indexes      | [Partial indexes](../indexes-constraints/partial-index-ysql/)       |
+| {{<icon/yes>}} | Expression indexes   | [Expression indexes](../indexes-constraints/expression-index-ysql/) |
+| {{<icon/yes>}} | Multi-column indexes | [Multi-column indexes](../indexes-constraints/secondary-indexes-ysql/#multi-column-index) |
+| {{<icon/yes>}} | Covering indexes     | [Covering indexes](../indexes-constraints/covering-index-ysql/)     |
 | {{<icon/no>}}  | GiST indexes         |                                                                        |
 | {{<icon/no>}}  | BRIN indexes         |                                                                        |
 | {{<icon/yes>}} | B-tree indexes       | B-tree index is treated as an LSM index.                               |

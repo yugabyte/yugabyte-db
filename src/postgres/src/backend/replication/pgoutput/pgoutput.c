@@ -33,6 +33,9 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 PG_MODULE_MAGIC;
 
 extern void _PG_output_plugin_init(OutputPluginCallbacks *cb);
@@ -478,6 +481,9 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 		else
 			ctx->twophase_opt_given = true;
 
+		if (IsYugaByteEnabled())
+			opt->yb_publication_names = data->publication_names;
+
 		/* Init publication state. */
 		data->publications = NIL;
 		publications_valid = false;
@@ -536,8 +542,10 @@ pgoutput_send_begin(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	logicalrep_write_begin(ctx->out, txn);
 	txndata->sent_begin_txn = true;
 
-	send_repl_origin(ctx, txn->origin_id, txn->origin_lsn,
-					 send_replication_origin);
+	/* Skip sending replication origin as it is not applicable for YB. */
+	if (!IsYugaByteEnabled())
+		send_repl_origin(ctx, txn->origin_id, txn->origin_lsn,
+						 send_replication_origin);
 
 	OutputPluginWrite(ctx, true);
 }

@@ -1801,7 +1801,9 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
   num_async_calls_.store(flush_sessions.size() + commit_contexts.size(), std::memory_order_release);
   for (auto* exec_context : commit_contexts) {
     exec_context->CommitTransaction(
-        rescheduler_->GetDeadline(), [this, exec_context](const Status& s) {
+        rescheduler_->GetDeadline(), [this, exec_context,
+            wait_state = ash::WaitStateInfo::CurrentWaitState()](const Status& s) {
+      ADOPT_WAIT_STATE(wait_state);
       CommitDone(s, exec_context);
     });
   }

@@ -13,6 +13,7 @@ import { toast } from 'react-toastify';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import {
@@ -134,6 +135,7 @@ export const K8sProviderEditForm = ({
   const [regionSelection, setRegionSelection] = useState<K8sRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
   const featureFlags = useSelector((state: any) => state.featureFlags);
+  const { t } = useTranslation();
 
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<K8sProviderEditFormFieldValues>({
@@ -162,7 +164,9 @@ export const K8sProviderEditForm = ({
 
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
     );
   }
   if (

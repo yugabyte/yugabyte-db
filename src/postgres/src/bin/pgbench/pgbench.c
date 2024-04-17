@@ -315,10 +315,11 @@ const char *pgport = NULL;
 const char *username = NULL;
 const char *dbName = NULL;
 uint32		batch_size = 1024;	/* Batch size used for a transaction */
-int             yb_metrics_bind_port = 8080; /* Port used by the metrics webserver */
-char            *yb_metrics_bind_address = "localhost"; /* Bind address used by the metrics webserver */
-bool            yb_metrics_arg_set = false; /* Is any metrics server arg set? */
-struct          WebserverWrapper *yb_metrics_webserver = NULL;
+int     yb_metrics_bind_port = 8080; /* Port used by the metrics webserver */
+char    *yb_metrics_bind_address = "localhost"; /* Bind address used by the metrics webserver */
+bool    yb_metrics_arg_set = false; /* Is any metrics server arg set? */
+struct  WebserverWrapper *yb_metrics_webserver = NULL;
+char    *yb_connection_init_sql; /* Connection init sql */
 
 /*
  * There're different types of restrictions for deciding that the current failed
@@ -4705,6 +4706,14 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 						st->state = CSTATE_ABORTED;
 						break;
 					}
+					else                                                             
+					{                                                                
+						// Connection init sql                                   
+						if (yb_connection_init_sql != NULL) {                       
+							executeStatement(st->con,
+									 yb_connection_init_sql);  
+						}                                                        
+					}
 
 					/* reset now after connection */
 					now = pg_time_now();
@@ -7972,6 +7981,7 @@ main(int argc, char **argv)
 		{"verbose-errors", no_argument, NULL, 15},
 		{"yb-metrics-bind-address", required_argument, NULL, 16},
 		{"yb-metrics-bind-port", required_argument, NULL, 17},
+		{"yb-connection-init-sql", required_argument, NULL, 18},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -8348,6 +8358,9 @@ main(int argc, char **argv)
 					yb_metrics_bind_port = (uint32) yb_metrics_bind_port_arg;
 				}
 				yb_metrics_arg_set = true;
+				break;
+			case 18:                                /* yb-connection-init-sql */                
+				yb_connection_init_sql = pg_strdup(optarg);                                 
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -8852,6 +8865,12 @@ threadRun(void *arg)
 				/* coldly abort on initial connection failure */
 				pg_fatal("could not create connection for client %d",
 						 state[i].id);
+			}
+			else                                                                             
+			{                                                                                
+				if (yb_connection_init_sql != NULL) {                                       
+					executeStatement(state[i].con, yb_connection_init_sql);             
+				}                                                                        
 			}
 		}
 	}

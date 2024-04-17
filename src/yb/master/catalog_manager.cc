@@ -185,6 +185,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
@@ -633,14 +634,6 @@ DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
 DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
     "If the leader lease in master's view has expired for this amount of seconds, "
     "treat the lease as expired for too long time.");
-
-#define RETURN_FALSE_IF(cond) \
-  do { \
-    if ((cond)) { \
-      VLOG_WITH_FUNC(3) << "Returning false"; \
-      return false; \
-    } \
-  } while (0)
 
 namespace yb {
 namespace master {
@@ -4386,8 +4379,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
 Status CatalogManager::CreateTableIfNotFound(
     const std::string& namespace_name, const std::string& table_name,
-    std::function<Result<CreateTableRequestPB>()> generate_request, CreateTableResponsePB* resp,
-    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+    std::function<Result<CreateTableRequestPB>()> generate_request, const LeaderEpoch& epoch) {
   // If table exists do nothing, otherwise create it.
   if (VERIFY_RESULT(TableExists(namespace_name, table_name))) {
     return Status::OK();
@@ -4397,9 +4389,13 @@ Status CatalogManager::CreateTableIfNotFound(
   DCHECK_EQ(req.namespace_().name(), namespace_name);
   DCHECK_EQ(req.name(), table_name);
 
-  Status s = CreateTable(&req, resp, /* RpcContext */ nullptr, epoch);
+  CreateTableResponsePB resp;
+  Status s = CreateTable(&req, &resp, /* RpcContext */ nullptr, epoch);
   // We do not lock here so it is technically possible that the table was already created.
   // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
+  if (s.ok() && resp.has_error()) {
+    s = StatusFromPB(resp.error().status());
+  }
   if (!s.ok() && !s.IsAlreadyPresent()) {
     return s;
   }
@@ -5102,25 +5098,48 @@ Status CatalogManager::CreatePgAutoAnalyzeService(const LeaderEpoch& epoch) {
   return Status::OK();
 }
 
-Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
+namespace {
+
+TableIdentifierPB GetTransactionStatusTableId() {
+  TableIdentifierPB table_id;
+
+  table_id.set_table_name(kGlobalTransactionsTableName);
+  table_id.mutable_namespace_()->set_name(kSystemNamespaceName);
+  return table_id;
+}
+
+TableIdentifierPB GetMetricsSnapshotsTableId() {
+  TableIdentifierPB table_id;
+
+  table_id.set_table_name(kMetricsSnapshotsTableName);
+  table_id.mutable_namespace_()->set_name(kSystemNamespaceName);
+  table_id.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_CQL);
+  return table_id;
+}
+
+}  // namespace
+
+Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   TRACE("Locking table");
   auto l = table->LockForRead();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l));
   const auto& pb = l->pb;
 
-  {
-    auto result = !table->IsCreateInProgress();
-    TRACE("Verify if the table creation is in progress for $0, $1", table->ToString(), result);
-    RETURN_FALSE_IF(!result);
-  }
-
-  // Set any current errors, if we are experiencing issues creating the table. This will be
-  // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
-  // MasterErrorPB::UNKNOWN_ERROR.
-  // For master only tests running with TEST_create_table_in_running_state and we expect errors
-  // since tablets cannot be assigned, so ignore those.
-  if (!FLAGS_TEST_create_table_in_running_state) {
-    RETURN_NOT_OK(table->GetCreateTableErrorStatus());
+  TRACE("Verify if the table creation is in progress for $0", table->ToString());
+  VLOG_WITH_FUNC(1) << table->ToString();
+  if (table->IsCreateInProgress()) {
+    // Set any current errors, if we are experiencing issues creating the table. This will be
+    // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
+    // MasterErrorPB::UNKNOWN_ERROR.
+    // For master only tests running with TEST_create_table_in_running_state and we expect errors
+    // since tablets cannot be assigned, so ignore those.
+    if (!FLAGS_TEST_create_table_in_running_state) {
+      auto status = table->GetCreateTableErrorStatus();
+      if (!status.ok()) {
+        return IsOperationDoneResult::Done(std::move(status));
+      }
+    }
+    return IsOperationDoneResult::NotDone();
   }
 
   // If this is an index, we are not done until the index is in the indexed table's schema.  An
@@ -5155,15 +5174,18 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
       RETURN_NOT_OK(GetTableSchemaInternal(
           &get_schema_req, &get_schema_resp, get_fully_applied_indexes));
 
-      bool result = false;
+      bool done = false;
       for (const auto& index : get_schema_resp.indexes()) {
         if (index.has_table_id() && index.table_id() == table->id()) {
-          result = true;
+          done = true;
           break;
         }
       }
 
-      RETURN_FALSE_IF(!result);
+      if (!done) {
+        VLOG(1) << "Indexed table is not yet updated";
+        return IsOperationDoneResult::NotDone();
+      }
     }
   }
 
@@ -5194,7 +5216,12 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   // transactions table.
   if (!FLAGS_create_initial_sys_catalog_snapshot &&
       pb.schema().table_properties().is_transactional()) {
-    RETURN_FALSE_IF(!VERIFY_RESULT(IsTransactionStatusTableCreated()));
+    auto txn_status_table = VERIFY_RESULT(FindTable(GetTransactionStatusTableId()));
+    auto is_create_done = VERIFY_RESULT(IsCreateTableDone(txn_status_table));
+    if (!is_create_done) {
+      VLOG(1) << "Transaction status table is not yet ready: " << is_create_done.ToString();
+      return is_create_done;
+    }
   }
 
   // We are not done until the metrics snapshots table is created.
@@ -5202,19 +5229,24 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
       !(table->GetTableType() == TableType::YQL_TABLE_TYPE &&
         table->namespace_id() == kSystemNamespaceId &&
         table->name() == kMetricsSnapshotsTableName)) {
-    RETURN_FALSE_IF(!VERIFY_RESULT(IsMetricsSnapshotsTableCreated()));
+    auto metric_snapshot_table = VERIFY_RESULT(FindTable(GetMetricsSnapshotsTableId()));
+    auto is_create_done = VERIFY_RESULT(IsCreateTableDone(metric_snapshot_table));
+    if (!is_create_done) {
+      VLOG(1) << "Metrics snapshot table is not yet ready: " << is_create_done.ToString();
+      return is_create_done;
+    }
   }
 
-  return true;
+  return IsOperationDoneResult::Done();
 }
 
 Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                          IsCreateTableDoneResponsePB* resp) {
   TRACE("Looking up table");
-  // 1. Lookup the table and verify if it exists.
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
-  resp->set_done(VERIFY_RESULT(IsCreateTableDone(table)));
-  return Status::OK();
+  auto is_done = VERIFY_RESULT(IsCreateTableDone(table));
+  resp->set_done(is_done.done());
+  return std::move(is_done.status());
 }
 
 Status CatalogManager::IsCreateTableInProgress(const TableId& table_id,
@@ -5222,18 +5254,15 @@ Status CatalogManager::IsCreateTableInProgress(const TableId& table_id,
                                                bool* create_in_progress) {
   DCHECK_ONLY_NOTNULL(create_in_progress);
   DCHECK(!table_id.empty());
+  TableIdentifierPB table_ident;
+  table_ident.set_table_id(table_id);
 
-  IsCreateTableDoneRequestPB req;
-  IsCreateTableDoneResponsePB resp;
-  req.mutable_table()->set_table_id(table_id);
-  RETURN_NOT_OK(IsCreateTableDone(&req, &resp));
+  TRACE("Looking up table");
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(table_ident));
+  auto is_done = VERIFY_RESULT(IsCreateTableDone(table));
+  *create_in_progress = !is_done.done();
 
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
-  *create_in_progress = !resp.done();
-  return Status::OK();
+  return is_done.status();
 }
 
 Status CatalogManager::WaitForCreateTableToFinish(
@@ -5279,25 +5308,6 @@ Status CatalogManager::WaitForAlterTableToFinish(
       deadline - CoarseMonoClock::now(),
       Format("Waiting on Alter Table to be completed for table_id: $0", table_id),
       100ms /* initial_delay */, 1 /* delay_multiplier */);
-}
-
-Result<bool> CatalogManager::IsTransactionStatusTableCreated() {
-  TableIdentifierPB table_id;
-
-  table_id.set_table_name(kGlobalTransactionsTableName);
-  table_id.mutable_namespace_()->set_name(kSystemNamespaceName);
-
-  return IsCreateTableDone(VERIFY_RESULT(FindTable(table_id)));
-}
-
-Result<bool> CatalogManager::IsMetricsSnapshotsTableCreated() {
-  TableIdentifierPB table_id;
-
-  table_id.set_table_name(kMetricsSnapshotsTableName);
-  table_id.mutable_namespace_()->set_name(kSystemNamespaceName);
-  table_id.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_CQL);
-
-  return IsCreateTableDone(VERIFY_RESULT(FindTable(table_id)));
 }
 
 std::string CatalogManager::GenerateId(boost::optional<const SysRowEntryType> entity_type) {
@@ -7971,7 +7981,7 @@ void CatalogManager::NotifyPrepareDeleteTransactionTabletFinished(
 
 void CatalogManager::NotifyTabletDeleteFinished(
     const TabletServerId& tserver_uuid, const TabletId& tablet_id, const TableInfoPtr& table,
-    const LeaderEpoch& epoch) {
+    const LeaderEpoch& epoch, server::MonitoredTaskState task_state) {
   shared_ptr<TSDescriptor> ts_desc;
   if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
     LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
@@ -7982,7 +7992,9 @@ void CatalogManager::NotifyTabletDeleteFinished(
     LOG(INFO) << "Clearing pending delete for tablet " << tablet_id << " in ts " << tserver_uuid;
     ts_desc->ClearPendingTabletDelete(tablet_id);
   }
-  CheckTableDeleted(table, epoch);
+  if (task_state == server::MonitoredTaskState::kComplete) {
+    CheckTableDeleted(table, epoch);
+  }
 }
 
 bool CatalogManager::ReplicaMapDiffersFromConsensusState(const scoped_refptr<TabletInfo>& tablet,
@@ -8353,7 +8365,6 @@ Status CatalogManager::ProcessTabletReportBatch(
           master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
           TABLET_DATA_DELETED, boost::none, epoch,
           GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), msg));
-      ts_desc->AddPendingTabletDelete(tablet_id);
       continue;
     }
 
@@ -8389,7 +8400,6 @@ Status CatalogManager::ProcessTabletReportBatch(
           GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()),
           Substitute("$0 (current committed config index is $1)",
               delete_msg, prev_opid_index)));
-      ts_desc->AddPendingTabletDelete(tablet_id);
       continue;
     }
 
@@ -8416,7 +8426,6 @@ Status CatalogManager::ProcessTabletReportBatch(
           TABLET_DATA_DELETED, boost::none, epoch,
           GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), msg);
       task->set_hide_only(true);
-      ts_desc->AddPendingTabletDelete(tablet_id);
       rpcs->push_back(task);
     }
 
@@ -9329,7 +9338,7 @@ Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<Namespa
   SharedLock lock(mutex_);
   for (const auto& table : tables_->GetAllTables()) {
     auto ltm = table->LockForRead();
-    if (table->namespace_id() != database->id()) {
+    if (ltm->namespace_id() != database->id() || ltm->started_deleting()) {
       continue;
     }
     if (IsXClusterEnabledUnlocked(*table)) {
@@ -11155,10 +11164,6 @@ void CatalogManager::SendDeleteTabletRequest(
 
   auto status = ScheduleTask(call);
   WARN_NOT_OK(status, Substitute("Failed to send delete request for tablet $0", tablet_id));
-  // TODO(bogdan): does the pending delete semantics need to change?
-  if (status.ok()) {
-    ts_desc->AddPendingTabletDelete(tablet_id);
-  }
 }
 
 void CatalogManager::SendLeaderStepDownRequest(
@@ -12910,11 +12915,13 @@ scoped_refptr<TableInfo> CatalogManager::NewTableInfo(TableId id, bool colocated
 }
 
 Status CatalogManager::ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) {
+  RETURN_NOT_OK(task->BeforeSubmitToTaskPool());
   Status s = async_task_pool_->SubmitFunc([task]() {
       WARN_NOT_OK(task->Run(), "Failed task");
   });
   // If we are not able to enqueue, abort the task.
   if (!s.ok()) {
+    RETURN_NOT_OK(task->OnSubmitFailure());
     task->AbortAndReturnPrevState(s);
   }
   return s;

@@ -34,18 +34,18 @@
 # This script generates a header file which contains definitions
 # for the current YugaByte build (e.g. timestamp, git hash, etc)
 
+import argparse
 import json
 import logging
-import argparse
 import os
-import re
+import platform
 import pwd
+import re
 import shlex
+import socket
 import subprocess
 import sys
 import time
-import socket
-import platform
 
 from typing import Optional
 

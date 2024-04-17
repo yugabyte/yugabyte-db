@@ -139,6 +139,7 @@ set(MASTER_SRCS
   xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_manager.cc
   xcluster/xcluster_outbound_replication_group.cc
+  xcluster/xcluster_outbound_replication_group_tasks.cc
   xcluster/xcluster_replication_group.cc
   xcluster/xcluster_safe_time_service.cc
   xcluster/xcluster_source_manager.cc

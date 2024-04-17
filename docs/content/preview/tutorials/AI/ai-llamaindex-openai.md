@@ -6,7 +6,7 @@ description: Learn to build RAG applications using LlamaIndex and OpenAI.
 image: /images/tutorials/ai/icons/llamaindex-icon.svg
 headcontent: Use YugabyteDB as the database backend for RAG applications
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-ai-llamaindex-openai
     parent: tutorials-ai
     weight: 60
@@ -17,7 +17,7 @@ This tutorial demonstrates how use LlamaIndex to build RAG (Retrieval-Augmented 
 
 ## Prerequisites
 
-* Python3
+* Python 3
 * Docker
 
 ## Set up the application
@@ -34,7 +34,7 @@ Download the application and provide settings specific to your deployment:
 
     Dependencies can be installed in a virtual environment, or globally on your machine.
 
-    * Option 1 (recommended): Install Dependencies from *requirements.txt* in virtual environment
+    * Option 1 (recommended): Install Dependencies from *requirements.txt* in virtual environment.
 
         ```sh
         python3 -m venv yb-llamaindex-env
@@ -44,7 +44,7 @@ Download the application and provide settings specific to your deployment:
         # pip install -r requirements-m1.txt
         ```
 
-    * Option 2: Install Dependencies Globally
+    * Option 2: Install Dependencies Globally.
 
         ```sh
         pip install llama-index
@@ -259,4 +259,4 @@ LlamaIndex is a powerful tool for building RAG applications over a variety of in
 
 For more information about LlamaIndex, see the [LlamaIndex documentation](https://docs.llamaindex.ai/en/stable/).
 
-If you would like to learn more on building LLM apps with YugabyteDB, check out the [LangChain and OpenAI](../../ai/ai-langchain-openai/) tutorial.
+If you would like to learn more on building LLM apps with YugabyteDB, check out the [LangChain and OpenAI](../ai-langchain-openai/) tutorial.

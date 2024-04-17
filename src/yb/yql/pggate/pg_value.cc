@@ -100,6 +100,118 @@ Status PgValueToDatum(const YBCPgTypeEntity *type_entity,
   return Status::OK();
 }
 
+Status PBToDatum(const YBCPgTypeEntity *type_entity,
+                 YBCPgTypeAttrs type_attrs,
+                 const QLValuePB& value,
+                 uint64_t* datum,
+                 bool* is_null) {
+  if (IsNull(value)) {
+    *is_null = true;
+    return Status::OK();
+  }
+  *is_null = false;
+
+  switch (type_entity->yb_type) {
+    case YB_YQL_DATA_TYPE_INT8: {
+      int8_t val = value.int8_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_INT16: {
+      int16_t val = value.int16_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_INT32: {
+      int32_t val = value.int32_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_INT64: {
+      int64_t val = value.int64_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_UINT32: {
+      int32_t val = value.uint32_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_UINT64: {
+      int64_t val = value.uint64_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_STRING: {
+      auto str = value.string_value();
+      *datum = type_entity->yb_to_datum(str.data(), str.size(), &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_BOOL: {
+      auto val = value.bool_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_FLOAT: {
+      auto val = value.float_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_DOUBLE: {
+      auto val = value.double_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_BINARY: {
+      auto str = value.binary_value();
+      *datum = type_entity->yb_to_datum(str.data(), str.size(), &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_TIMESTAMP: {
+      auto val = value.int64_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_DECIMAL: {
+      util::Decimal yb_decimal;
+      RETURN_NOT_OK_PREPEND(
+          yb_decimal.DecodeFromComparable(value.decimal_value()),
+          Format("Failed to deserialize DECIMAL from $0", value.decimal_value()));
+
+      std::string plaintext;
+      RETURN_NOT_OK(yb_decimal.ToPointString(&plaintext, std::numeric_limits<int32_t>::max()));
+      auto val = const_cast<char *>(plaintext.c_str());
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(val),
+                                        plaintext.size(),
+                                        &type_attrs);
+      break;
+    }
+
+    case YB_YQL_DATA_TYPE_GIN_NULL: {
+      auto val = value.gin_null_value();
+      *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(&val), 0, &type_attrs);
+      break;
+    }
+
+    YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
+    YB_PG_INVALID_TYPES_IN_SWITCH:
+      return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", type_entity->yb_type);
+  }
+
+  return Status::OK();
+}
 
 Status PgValueToPB(const YBCPgTypeEntity *type_entity,
                    uint64_t datum,

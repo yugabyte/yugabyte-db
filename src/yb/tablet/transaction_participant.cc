@@ -48,6 +48,7 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
@@ -863,6 +864,20 @@ class TransactionParticipant::Impl
       return;
     }
 
+    auto client_future = participant_context_.client_future();
+    if (!IsReady(client_future)) {
+      std::lock_guard lock(pending_applies_mutex_);
+      if (!IsReady(client_future)) {
+        pending_applies_.emplace_back(status_tablet, transaction_id);
+        return;
+      }
+    }
+
+    DoNotifyApplied(client_future.get(), status_tablet, transaction_id);
+  }
+
+  void DoNotifyApplied(client::YBClient* client, const TabletId& status_tablet,
+                       const TransactionId& transaction_id) {
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet);
     req.set_propagated_hybrid_time(participant_context_.Now().ToUint64());
@@ -870,18 +885,13 @@ class TransactionParticipant::Impl
     state.set_transaction_id(transaction_id.data(), transaction_id.size());
     state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
     state.add_tablets(participant_context_.tablet_id());
-    auto client_result = participant_context_.client();
-    if (!client_result.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Get client failed: " << client_result.status();
-      return;
-    }
 
     auto handle = rpcs_.Prepare();
     if (handle != rpcs_.InvalidHandle()) {
       *handle = UpdateTransaction(
           TransactionRpcDeadline(),
           nullptr /* remote_tablet */,
-          *client_result,
+          client,
           &req,
           [this, handle](const Status& status,
                          const tserver::UpdateTransactionRequestPB& req,
@@ -1824,6 +1834,18 @@ class TransactionParticipant::Impl
   }
 
   void Poll() {
+    if (!pending_applied_notified_) {
+      auto& client_future = participant_context_.client_future();
+      if (IsReady(client_future)) {
+        pending_applied_notified_ = true;
+        auto client = client_future.get();
+        std::lock_guard lock(pending_applies_mutex_);
+        for (const auto& [status_tablet, transaction_id] : pending_applies_) {
+          DoNotifyApplied(client, status_tablet, transaction_id);
+        }
+        decltype(pending_applies_)().swap(pending_applies_);
+      }
+    }
     {
       MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard lock(mutex_);
@@ -2041,6 +2063,11 @@ class TransactionParticipant::Impl
   std::unique_ptr<docdb::WaitQueue> wait_queue_;
 
   std::shared_ptr<MemTracker> mem_tracker_ GUARDED_BY(mutex_);
+
+  bool pending_applied_notified_ = false;
+  std::mutex pending_applies_mutex_;
+  std::vector<std::pair<TabletId, TransactionId>> pending_applies_
+      GUARDED_BY(pending_applies_mutex_);
 };
 
 TransactionParticipant::TransactionParticipant(

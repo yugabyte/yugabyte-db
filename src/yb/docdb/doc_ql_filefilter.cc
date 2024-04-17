@@ -108,6 +108,21 @@ bool QLRangeBasedFileFilter::Filter(const rocksdb::FdWithBoundaries& file) const
   return true;
 }
 
+class HybridTimeFileFilter : public rocksdb::ReadFileFilter {
+ public:
+  explicit HybridTimeFileFilter(HybridTime min_hybrid_time)
+      : min_hybrid_time_(min_hybrid_time) {}
+
+  bool Filter(const rocksdb::FdWithBoundaries& file) const override;
+
+ private:
+  HybridTime min_hybrid_time_;
+};
+
+bool HybridTimeFileFilter::Filter(const rocksdb::FdWithBoundaries& file) const {
+  return file.largest.hybrid_time >= min_hybrid_time_.ToUint64();
+}
+
 } // namespace
 
 std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter(const qlexpr::YQLScanSpec& scan_spec) {
@@ -126,6 +141,10 @@ std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter(const qlexpr::YQLScanS
                                                     std::move(upper_bound),
                                                     std::move(upper_bound_incl));
   }
+}
+
+std::shared_ptr<rocksdb::ReadFileFilter> CreateHybridTimeFileFilter(HybridTime min_hybrid_time) {
+  return std::make_shared<HybridTimeFileFilter>(min_hybrid_time);
 }
 
 }  // namespace yb::docdb

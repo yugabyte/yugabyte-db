@@ -186,7 +186,7 @@ test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       de
 test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  clang17 0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang17 0
 test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang17 0
-test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang16 0
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang17 0
 
 # -------------------------------------------------------------------------------------------------
 # Test existence of scripts pointed to by specical "script path" variables.

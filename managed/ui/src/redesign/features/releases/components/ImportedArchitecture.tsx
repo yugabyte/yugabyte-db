@@ -5,13 +5,12 @@ import clsx from 'clsx';
 import { YBButton } from '../../../components';
 import { YBCopyButton } from '../../../components/YBCopyButton/YBCopyButton';
 import { ModalTitle, ReleaseArtifacts, ReleasePlatform, ReleasePlatformArchitecture } from './dtos';
-import { isEmptyString } from '../../../../utils/ObjectUtils';
 
 interface ImportedArchitectureProps {
   artifacts: ReleaseArtifacts[] | undefined;
   onEditArchitectureClick: () => void;
   onSetModalTitle: (modalTitle: string) => void;
-  onSetReleaseArchitecture: (selectedArchitecture: ReleasePlatformArchitecture) => void;
+  onSetReleaseArchitecture: (selectedArchitecture: ReleasePlatformArchitecture | null) => void;
   onSidePanelClose: () => void;
 }
 
@@ -80,12 +79,10 @@ export const ImportedArchitecture = ({
   const { t } = useTranslation();
 
   const formatArchitectureLocation = (artifact: ReleaseArtifacts) => {
-    const btnText = artifact?.location?.package_url
-      ? IMPORT_OPTIONS.COPY_URL
-      : IMPORT_OPTIONS.COPY_FILE_PATH;
-    const architectureLocation = artifact?.location?.package_url
-      ? artifact?.location?.package_url
-      : artifact?.location.package_file_path;
+    const btnText = artifact?.package_url ? IMPORT_OPTIONS.COPY_URL : IMPORT_OPTIONS.COPY_FILE_PATH;
+    const architectureLocation = artifact?.package_url
+      ? artifact?.package_url
+      : artifact?.file_name;
 
     return (
       <Box className={clsx(helperClasses.architectureLocation, helperClasses.architectureType)}>
@@ -95,7 +92,7 @@ export const ImportedArchitecture = ({
   };
 
   const formatArchitectureImportMethod = (artifact: ReleaseArtifacts) => {
-    const architectureImportMethod = artifact?.location?.package_url ? 'URL' : 'File Upload';
+    const architectureImportMethod = artifact?.package_url ? 'URL' : 'File Upload';
     return (
       <Box className={clsx(helperClasses.architectureMetadataValue)}>
         {architectureImportMethod}
@@ -105,11 +102,8 @@ export const ImportedArchitecture = ({
 
   const formatArchitectureType = (artifact: ReleaseArtifacts) => {
     let architectureType = artifact?.architecture;
-    if (
-      (!architectureType || isEmptyString(architectureType)) &&
-      artifact?.platform === ReleasePlatform.KUBERNETES
-    ) {
-      architectureType = ReleasePlatformArchitecture.KUBERNETES;
+    if (architectureType === null && artifact?.platform === ReleasePlatform.KUBERNETES) {
+      architectureType = 'kubernetes';
     }
     return (
       <Box>
@@ -161,8 +155,11 @@ export const ImportedArchitecture = ({
                   } else if (artifact.architecture === ReleasePlatformArchitecture.ARM) {
                     onSetReleaseArchitecture(ReleasePlatformArchitecture.ARM);
                     onSetModalTitle(ModalTitle.EDIT_AARCH);
-                  } else {
-                    onSetReleaseArchitecture(ReleasePlatformArchitecture.KUBERNETES);
+                  } else if (
+                    artifact.architecture === null &&
+                    artifact.platform === ReleasePlatform.KUBERNETES
+                  ) {
+                    onSetReleaseArchitecture(null);
                     onSetModalTitle(ModalTitle.EDIT_KUBERNETES);
                   }
                   onEditArchitectureClick();

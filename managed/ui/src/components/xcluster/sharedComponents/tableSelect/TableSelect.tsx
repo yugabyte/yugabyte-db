@@ -280,13 +280,19 @@ export const TableSelect = (props: TableSelectProps) => {
     sourceUniverseTablesQuery.isError ||
     sourceUniverseQuery.isError
   ) {
-    return <YBErrorIndicator message="Error fetching source universe information." />;
+    const sourceUniverseLabel = isDrInterface ? 'DR primary universe' : 'source universe';
+    return (
+      <YBErrorIndicator customErrorMessage={`Error fetching ${sourceUniverseLabel} information.`} />
+    );
   }
   if (targetUniverseTablesQuery.isError || targetUniverseQuery.isError) {
-    return <YBErrorIndicator message="Error fetching target universe information." />;
+    const targetUniverseLabel = isDrInterface ? 'DR replica universe' : 'source universe';
+    return (
+      <YBErrorIndicator customErrorMessage={`Error fetching ${targetUniverseLabel} information.`} />
+    );
   }
   if (globalRuntimeConfigQuery.isError) {
-    return <YBErrorIndicator message="Error fetching runtime configurations." />;
+    return <YBErrorIndicator customErrorMessage="Error fetching runtime configurations." />;
   }
 
   const toggleTableGroup = (
@@ -448,6 +454,10 @@ export const TableSelect = (props: TableSelectProps) => {
       true
     ) < 0 &&
     !participantsHaveLinkedXClusterConfig;
+  const selectedIndexTableCount = getSelectedIndexTableCount(
+    sourceUniverseTablesQuery.data,
+    selectedTableUUIDs
+  );
   return (
     <>
       {isTransactionalAtomicityEnabled &&
@@ -593,7 +603,7 @@ export const TableSelect = (props: TableSelectProps) => {
       props.configAction === XClusterConfigAction.MANAGE_TABLE ? (
         <Typography variant="body2">
           {t('tableSelectionCount', {
-            selectedTableCount: selectedTableUUIDs.length,
+            selectedTableCount: selectedTableUUIDs.length - selectedIndexTableCount,
             availableTableCount: replicationItems[tableType].tableCount
           })}
         </Typography>
@@ -721,6 +731,16 @@ const getReplicationItemsFromTables = (
     }
   );
 };
+
+const getSelectedIndexTableCount = (sourceUniverseTables: YBTable[], selectedTableUuid: string[]) =>
+  sourceUniverseTables.reduce(
+    (indexTableCount, table) =>
+      selectedTableUuid.includes(getTableUuid(table)) &&
+      table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
+        ? indexTableCount + 1
+        : indexTableCount,
+    0
+  );
 
 // Colocated parent tables have table.tablename in the following format:
 //   <uuid>.colocation.parent.tablename

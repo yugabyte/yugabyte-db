@@ -8,6 +8,8 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider.IAMCredentialSource;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
 import java.util.Map;
@@ -53,7 +55,11 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageData {
   @JsonProperty("REGION_LOCATIONS")
   public List<RegionLocations> regionLocations;
 
-  @ApiModelProperty(value = "Proxy settings")
+  @ApiModelProperty(
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.3.0.</b>."
+              + " Use userIntent.proxySettings instead. </b>. Proxy settings")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.3.0")
   @JsonProperty("PROXY_SETTINGS")
   @Valid
   public ProxySetting proxySetting;

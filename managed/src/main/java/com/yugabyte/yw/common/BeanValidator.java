@@ -20,6 +20,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.modules.CustomObjectMapperModule;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -90,9 +91,20 @@ public class BeanValidator {
   public static class ErrorMessageBuilder {
     int errorCode = BAD_REQUEST;
     Map<String, List<String>> validationErrors = new HashMap<>();
+    JsonNode requestJson;
 
     public ErrorMessageBuilder forField(String fieldName, String message) {
       validationErrors.computeIfAbsent(fieldName, k -> new ArrayList<>()).add(message);
+      return this;
+    }
+
+    public ErrorMessageBuilder forField(String fieldName, Collection<String> messages) {
+      validationErrors.computeIfAbsent(fieldName, k -> new ArrayList<>()).addAll(messages);
+      return this;
+    }
+
+    public ErrorMessageBuilder forRequest(JsonNode req) {
+      requestJson = req;
       return this;
     }
 
@@ -107,7 +119,7 @@ public class BeanValidator {
 
     public void throwError() {
       JsonNode errJson = Json.toJson(validationErrors);
-      throw new PlatformServiceException(errorCode, errJson);
+      throw new PlatformServiceException(errorCode, errJson, requestJson);
     }
   }
 }

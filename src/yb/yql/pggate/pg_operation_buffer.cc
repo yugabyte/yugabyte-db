@@ -106,6 +106,10 @@ class RowIdentifier {
     }
   }
 
+  RowIdentifier(const PgObjectId& table_id, Slice ybctid) : table_id_(table_id), ybctid_(ybctid) {
+  }
+
+
   Slice ybctid() const {
     return ybctid_.data() ? ybctid_ : ybctid_holder_;
   }
@@ -302,22 +306,48 @@ class PgOperationBuffer::Impl {
     // see the results of first operation on DocDB side.
     // Multiple operations on same row must be performed in context of different RPC.
     // Flush is required in this case.
-    RowIdentifier row_id(table.relfilenode_id(), table.schema(), op->write_request());
-    if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
-      RETURN_NOT_OK(Flush());
-      keys_.insert(row_id);
-    } else {
-      // Prevent conflicts on in-flight operations which use current row_id.
-      for (auto i = in_flight_ops_.begin(); i != in_flight_ops_.end(); ++i) {
-        if (i->keys.find(row_id) != i->keys.end()) {
-          RETURN_NOT_OK(EnsureCompleted(i - in_flight_ops_.begin() + 1));
+    auto& target = transactional ? txn_ops_ : ops_;
+    if (target.empty()) {
+      target.Reserve(buffering_settings_.max_batch_size);
+    }
+
+    const auto& write_request = op->write_request();
+    const auto& packed_rows = write_request.packed_rows();
+    if (!packed_rows.empty()) {
+      // Optimistically assume that we don't have conflicts with existing operations.
+      bool has_conflict = false;
+      for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
+        if (PREDICT_FALSE(!keys_.insert(RowIdentifier(table.relfilenode_id(), *it)).second)) {
+          while (it != packed_rows.begin()) {
+            it -= 2;
+            keys_.erase(RowIdentifier(table.relfilenode_id(), *it));
+          }
+          // Have to flush because already have operations for the same key.
+          has_conflict = true;
           break;
         }
       }
-    }
-    auto& target = (transactional ? txn_ops_ : ops_);
-    if (target.empty()) {
-      target.Reserve(buffering_settings_.max_batch_size);
+      if (has_conflict) {
+        RETURN_NOT_OK(Flush());
+        for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
+          SCHECK(keys_.insert(RowIdentifier(table.relfilenode_id(), *it)).second, IllegalState,
+                 "Unable to insert key: $0", packed_rows);
+        }
+      }
+    } else {
+      RowIdentifier row_id(table.relfilenode_id(), table.schema(), write_request);
+      if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
+        RETURN_NOT_OK(Flush());
+        keys_.insert(row_id);
+      } else {
+        // Prevent conflicts on in-flight operations which use current row_id.
+        for (auto i = in_flight_ops_.begin(); i != in_flight_ops_.end(); ++i) {
+          if (i->keys.find(row_id) != i->keys.end()) {
+            RETURN_NOT_OK(EnsureCompleted(i - in_flight_ops_.begin() + 1));
+            break;
+          }
+        }
+      }
     }
     target.Add(std::move(op), table.relfilenode_id());
     return keys_.size() >= buffering_settings_.max_batch_size

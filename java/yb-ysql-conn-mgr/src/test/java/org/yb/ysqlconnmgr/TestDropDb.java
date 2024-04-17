@@ -34,7 +34,7 @@ public class TestDropDb extends BaseYsqlConnMgr{
 
     builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
-    }
+  }
 
   private void dropDatabase(String db_name, boolean should_succeed) {
     try (Connection conn = getConnectionBuilder()

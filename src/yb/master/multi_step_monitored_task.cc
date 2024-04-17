@@ -65,6 +65,8 @@ server::MonitoredTaskState MultiStepMonitoredTask::AbortAndReturnPrevState(const
   if (TrySetState(server::MonitoredTaskState::kAborted)) {
     AbortReactorTaskIfScheduled();
     EndTask(status);
+  } else {
+    LOG_WITH_PREFIX(WARNING) << this << ": Task already ended. Unable to abort it: " << status;
   }
 
   return old_state;

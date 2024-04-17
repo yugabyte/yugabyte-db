@@ -578,7 +578,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertRowSet(statement, query, expectedRows);
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
-      assertTrue("Expect pushdown for IN condition",
+      assertTrue("Expect index pushdown for IN condition",
                  explainOutput.contains("Index Cond: (b = ANY ('{NULL,2,3}'::integer[]))"));
       assertFalse("Expect DocDB to filter fully",
                  explainOutput.contains("Rows Removed by"));
@@ -589,10 +589,8 @@ public class TestPgSelect extends BasePgSQLTest {
       assertRowSet(statement, query, expectedRows);
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
-      assertTrue("Expect no pushdown for NOT IN condition",
-                 explainOutput.contains("Filter: (b <> ALL ('{NULL,2}'::integer[]))"));
-      assertTrue("Expect YSQL-level filtering",
-                 explainOutput.contains("Rows Removed by Filter: 5"));
+      assertTrue("Expect expression pushdown for NOT IN condition",
+                 explainOutput.contains("Remote Filter: (b <> ALL ('{NULL,2}'::integer[]))"));
 
       // Test BETWEEN.
       query = "select * from t1 where b between 1 and 3";

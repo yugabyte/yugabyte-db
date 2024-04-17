@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -760,5 +761,44 @@ public class UpgradeUniverseController extends AuthenticatedController {
             taskUuid,
             additionalDetails);
     return new YBPTask(taskUuid, universe.getUniverseUUID()).asResult();
+  }
+
+  /**
+   * API that updates ProxyConfig in the Universe. Current implementation only updates it in
+   * Universe details.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.3.0")
+  @ApiOperation(
+      value = "Update Proxy Config",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a task to perform Proxy config"
+              + " update in the Universe details.",
+      nickname = "updateProxyConfig",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "update_proxy_config_params",
+          value = "Update Proxy Config Params",
+          dataType = "com.yugabyte.yw.forms.ProxyConfigUpdateParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result updateProxyConfig(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::updateProxyConfig,
+        ProxyConfigUpdateParams.class,
+        Audit.ActionType.UpdateProxyConfig,
+        customerUuid,
+        universeUuid);
   }
 }

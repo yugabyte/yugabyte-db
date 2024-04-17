@@ -131,10 +131,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 6 and k2 IN (4, 8, 1
 
 -- Query Hash: b3c453f75f2bfa75e8934afb1d0a000e
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 14 and k2 IN (4, 8, 12, 16);
-                                    QUERY PLAN
------------------------------------------------------------------------------------
- Index Scan using t2_pkey on t2
-   Index Cond: ((k1 >= 4) AND (k1 < 14) AND (k2 = ANY ('{4,8,12,16}'::integer[])))
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Seq Scan on t2
+   Remote Filter: ((k1 >= 4) AND (k1 < 14) AND (k2 = ANY ('{4,8,12,16}'::integer[])))
 (2 rows)
 
 -- Query Hash: c7fd96b45a1a90a438c5c8b51b88bf2f
@@ -275,26 +275,26 @@ EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k5 >= 4 and k5 < 14;
 
 -- Query Hash: b5562a3ef44a737b2846f0975cf9e1c7
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8);
-                  QUERY PLAN
------------------------------------------------
- Index Scan using t1_pkey on t1
-   Index Cond: (k1 = ANY ('{4,8}'::integer[]))
+                    QUERY PLAN
+--------------------------------------------------
+ Seq Scan on t1
+   Remote Filter: (k1 = ANY ('{4,8}'::integer[]))
 (2 rows)
 
 -- Query Hash: 6a8ead9b8b122eea0e5460236bc6c19b
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8, 12);
-                  QUERY PLAN
-----------------------------------------------
+                     QUERY PLAN
+-----------------------------------------------------
  Seq Scan on t1
-   Filter: (k1 = ANY ('{4,8,12}'::integer[]))
+   Remote Filter: (k1 = ANY ('{4,8,12}'::integer[]))
 (2 rows)
 
 -- Query Hash: d7eedc71bffb36fa0152da8c08bf7808
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8, 12, 16);
-                   QUERY PLAN
--------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Seq Scan on t1
-   Filter: (k1 = ANY ('{4,8,12,16}'::integer[]))
+   Remote Filter: (k1 = ANY ('{4,8,12,16}'::integer[]))
 (2 rows)
 
 -- Query Hash: 3a022df927f53a2864f9d95af72fee58
@@ -307,10 +307,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 IN (4, 8, 12, 16);
 
 -- Query Hash: 8c7bf857d9e088af7a4b5c904c5b8610
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k2 IN (4, 8, 12, 16);
-                   QUERY PLAN
--------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Seq Scan on t2
-   Filter: (k2 = ANY ('{4,8,12,16}'::integer[]))
+   Remote Filter: (k2 = ANY ('{4,8,12,16}'::integer[]))
 (2 rows)
 
 -- DROP QUERIES;

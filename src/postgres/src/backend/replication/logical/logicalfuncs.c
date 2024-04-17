@@ -40,6 +40,9 @@
 #include "utils/regproc.h"
 #include "utils/resowner.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 /* Private data for writing out data */
 typedef struct DecodingOutputState
 {
@@ -102,6 +105,14 @@ LogicalOutputWrite(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xi
 static Datum
 pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool binary)
 {
+	if (IsYugaByteEnabled()
+		&& !yb_enable_replication_slot_consumption)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Getting logical slot changes is unavailable"),
+				 errdetail("yb_enable_replication_slot_consumption "
+						   "is false.")));
+
 	Name		name;
 	XLogRecPtr	upto_lsn;
 	int32		upto_nchanges;
