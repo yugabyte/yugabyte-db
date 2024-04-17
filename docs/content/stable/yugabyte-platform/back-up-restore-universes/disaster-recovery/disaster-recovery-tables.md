@@ -98,7 +98,7 @@ Add indexes to replication in the following sequence:
 
 1. Wait for index backfill to finish.
 
-    For instructions on monitoring backfill, refer to [Monitor index backfill from the command line](https://yugabytedb.tips/?p=2215).
+    For instructions on monitoring backfill, refer to [Create indexes and track the progress](../../../../explore/ysql-language-features/indexes-constraints/index-backfill/).
 
 1. [Resynchronize YBA](#resynchronize-yba).
 
