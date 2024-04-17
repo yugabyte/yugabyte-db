@@ -266,6 +266,11 @@ public class NodeAgentClient {
       }
       return true;
     }
+
+    @Override
+    public String toString() {
+      return String.format("NodeAgent{uuid: %s, ip: %s}", nodeAgent.getUuid(), nodeAgent.getIp());
+    }
   }
 
   @Slf4j
@@ -609,5 +614,13 @@ public class NodeAgentClient {
     UpdateResponse response =
         stub.update(UpdateRequest.newBuilder().setState(State.UPGRADED.name()).build());
     return response.getHome();
+  }
+
+  public synchronized void cleanupCachedClients() {
+    try {
+      cachedChannels.cleanUp();
+    } catch (RuntimeException e) {
+      log.error("Client cache cleanup failed {}", e);
+    }
   }
 }
