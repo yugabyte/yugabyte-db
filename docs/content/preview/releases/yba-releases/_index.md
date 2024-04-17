@@ -49,7 +49,7 @@ v2.14 and v2.18 will reach end of maintenance in mid-2024. If you are running un
 
 For information on managing YugabyteDB releases and upgrading universes using YBA, refer to [Upgrade the YugabyteDB software](../../yugabyte-platform/manage-deployments/upgrade-software/).
 
-For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](/preview/releases/release-notes).
+For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](../ybdb-releases).
 
 ### Upgrading YBA
 
@@ -61,4 +61,4 @@ Note that you cannot deploy or upgrade a universe to a version of YugabyteDB tha
 YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. To perform the migration, you must first upgrade to YBA v2.20.1 or later using Replicated.
 {{< /warning >}}
 
-For information on upgrading YugabyteDB Anywhere, refer to [Upgrade YugabyteDB Anywhere](../../yugabyte-platform/upgrade/upgrade-yp-installer/).
+For information on upgrading YugabyteDB Anywhere, refer to [Upgrade YugabyteDB Anywhere](../../yugabyte-platform/upgrade/).
