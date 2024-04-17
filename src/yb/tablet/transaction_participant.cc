@@ -256,11 +256,11 @@ class TransactionParticipant::Impl
       status_resolvers.swap(status_resolvers_);
     }
 
-    rpcs_.Shutdown();
     loader_.CompleteShutdown();
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
+    rpcs_.Shutdown();
     shutdown_done_.store(true, std::memory_order_release);
   }
 
