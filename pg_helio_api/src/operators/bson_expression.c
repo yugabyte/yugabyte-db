@@ -76,6 +76,11 @@ static bool EvaluateFieldPathAndWrite(bson_iter_t *document,
 									  const char *dottedPathExpression,
 									  uint32_t dottedPathExpressionLength,
 									  pgbson_element_writer *writer, bool isNullOnEmpty);
+static bool EvaluateVariableFieldPathAndWrite(bson_value_t *variableValue,
+											  const char *dottedPathExpression,
+											  uint32_t dottedPathExpressionLength,
+											  pgbson_element_writer *writer, bool
+											  isNullOnEmpty);
 static void EvaluateExpressionArrayToWriter(pgbson *document,
 											bson_iter_t *elementIterator,
 											pgbson_element_writer *writer,
@@ -92,6 +97,8 @@ static void EvaluateAggregationExpressionDocumentToWriter(const
 														  AggregationExpressionData *data,
 														  pgbson *document,
 														  pgbson_element_writer *writer,
+														  ExpressionVariableContext *
+														  variableContext,
 														  bool isNullOnEmpty);
 static void EvaluateAggregationExpressionArrayToWriter(const
 													   AggregationExpressionData *data,
@@ -233,7 +240,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$ltrim", &HandleDollarLtrim, NULL, NULL, FEATURE_AGG_OPERATOR_LTRIM },
 	{ "$makeArray", NULL, &ParseDollarMakeArray, &HandlePreParsedDollarMakeArray,
 	  FEATURE_AGG_OPERATOR_MAKE_ARRAY },
-	{ "$map", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_MAP },
+	{ "$map", NULL, &ParseDollarMap, &HandlePreParsedDollarMap,
+	  FEATURE_AGG_OPERATOR_MAP },
 	{ "$max", NULL, &ParseDollarMax, &HandlePreParsedDollarMax,
 	  FEATURE_AGG_OPERATOR_MAX },
 	{ "$mergeObjects", &HandleDollarMergeObjects, NULL, NULL,
@@ -259,7 +267,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$rand", &HandleDollarRand, NULL, NULL, FEATURE_AGG_OPERATOR_RAND },
 	{ "$range", NULL, &ParseDollarRange, &HandlePreParsedDollarRange,
 	  FEATURE_AGG_OPERATOR_RANGE },
-	{ "$reduce", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_REDUCE },
+	{ "$reduce", NULL, &ParseDollarReduce, &HandlePreParsedDollarReduce,
+	  FEATURE_AGG_OPERATOR_REDUCE },
 	{ "$regexFind", NULL, &ParseDollarRegexFind, &HandlePreParsedDollarRegexFind,
 	  FEATURE_AGG_OPERATOR_REGEXFIND },
 	{ "$regexFindAll", NULL, &ParseDollarRegexFindAll, &HandlePreParsedDollarRegexFindAll,
@@ -885,24 +894,19 @@ EvaluateExpression(pgbson *document, const bson_value_t *expressionValue,
 					return;
 				}
 
-				if (variableValue.value_type == BSON_TYPE_DOCUMENT ||
-					variableValue.value_type == BSON_TYPE_ARRAY)
-				{
-					bool isNullOnEmptyVariable = false;
-					bson_iter_t variableIter;
-					BsonValueInitIterator(&variableValue, &variableIter);
+				/* Evaluate dotted expression for a variable */
+				bool isNullOnEmptyVariable = false;
 
-					StringView varNameDottedSuffix = StringViewFindSuffix(
-						&dottedExpression, '.');
-					EvaluateFieldPathAndWrite(&variableIter, varNameDottedSuffix.string,
-											  varNameDottedSuffix.length,
-											  ExpressionResultGetElementWriter(
-												  expressionResult),
-											  isNullOnEmptyVariable);
+				StringView varNameDottedSuffix = StringViewFindSuffix(
+					&dottedExpression, '.');
+				EvaluateVariableFieldPathAndWrite(&variableValue,
+												  varNameDottedSuffix.string,
+												  varNameDottedSuffix.length,
+												  ExpressionResultGetElementWriter(
+													  expressionResult),
+												  isNullOnEmptyVariable);
 
-					ExpressionResultSetValueFromWriter(expressionResult);
-				}
-
+				ExpressionResultSetValueFromWriter(expressionResult);
 				return;
 			}
 			else if (strLen > 1 && strValue[0] == '$')
@@ -1101,18 +1105,16 @@ ExpressionResultSetVariable(ExpressionResult *expressionResult, StringView varia
 		variableContext->hasSingleVariable = true;
 		return;
 	}
-	else if (hashTable == NULL)
-	{
-		hashTable = CreatePgbsonElementHashSet();
-	}
 
 	if (variableContext->hasSingleVariable)
 	{
-		/* insert singleVariable to hash table. */
+		/* second variable added, initial hash table and insert first variable to it.*/
+		hashTable = CreatePgbsonElementHashSet();
 		InsertVariableToContextTable(&variableContext->context.variable, hashTable);
 		variableContext->hasSingleVariable = false;
 	}
 
+	/* Insert second and following variables into the table.*/
 	InsertVariableToContextTable(&variableElement, hashTable);
 	variableContext->context.table = hashTable;
 }
@@ -1379,6 +1381,66 @@ EvaluateFieldPathAndWrite(bson_iter_t *document, const char *dottedPathExpressio
 			PgbsonElementWriterEndArray(writer, &arrayWriter);
 			return true;
 		}
+	}
+
+	return false;
+}
+
+
+/*
+ * Given an expression of the form "field": "$$variable.path.to.field"
+ * Walks the document or array the $$variable refers to, and find the instances
+ * of the dottedPathExpression.
+ */
+static bool
+EvaluateVariableFieldPathAndWrite(bson_value_t *variableValue, const
+								  char *dottedPathExpressionSuffix,
+								  uint32_t dottedPathExpressionSuffixLength,
+								  pgbson_element_writer *writer, bool isNullOnEmpty)
+{
+	check_stack_depth();
+	CHECK_FOR_INTERRUPTS();
+
+	/*
+	 * If the variable is matches into an array,
+	 * we don't need to write null for paths not found.
+	 *
+	 *  when $$value points to: [ 1, 2, {b : 9}]
+	 *
+	 *  expression: { "field" : "$$value.b"}
+	 *
+	 *  The results is
+	 *  output : { "field" : [9] }
+	 */
+	uint32_t remainingPathLength = dottedPathExpressionSuffixLength;
+	bson_iter_t variableIter;
+	BsonValueInitIterator(variableValue, &variableIter);
+	if (variableValue->value_type == BSON_TYPE_DOCUMENT)
+	{
+		return EvaluateFieldPathAndWrite(&variableIter, dottedPathExpressionSuffix,
+										 remainingPathLength, writer, isNullOnEmpty);
+	}
+	else if (variableValue->value_type == BSON_TYPE_ARRAY)
+	{
+		/* write an array into the element */
+		pgbson_array_writer arrayWriter;
+		pgbson_element_writer innerWriter;
+		PgbsonElementWriterStartArray(writer, &arrayWriter);
+		PgbsonInitArrayElementWriter(&arrayWriter, &innerWriter);
+		while (bson_iter_next(&variableIter))
+		{
+			bson_iter_t nestedDocumentIter;
+			if (BSON_ITER_HOLDS_DOCUMENT(&variableIter) &&
+				bson_iter_recurse(&variableIter, &nestedDocumentIter))
+			{
+				EvaluateFieldPathAndWrite(&nestedDocumentIter, dottedPathExpressionSuffix,
+										  remainingPathLength, &innerWriter,
+										  isNullOnEmpty);
+			}
+		}
+
+		PgbsonElementWriterEndArray(writer, &arrayWriter);
+		return true;
 	}
 
 	return false;
@@ -2095,7 +2157,11 @@ EvaluateAggregationExpressionData(const AggregationExpressionData *expressionDat
 			pgbson_element_writer *elementWriter =
 				ExpressionResultGetElementWriter(expressionResult);
 			EvaluateAggregationExpressionDocumentToWriter(expressionData, document,
-														  elementWriter, isNullOnEmpty);
+														  elementWriter,
+														  &expressionResult->
+														  expressionResultPrivate.
+														  variableContext,
+														  isNullOnEmpty);
 			ExpressionResultSetValueFromWriter(expressionResult);
 			break;
 		}
@@ -2231,7 +2297,8 @@ EvaluateAggregationExpressionDataToWriter(const AggregationExpressionData *expre
 			PgbsonInitObjectElementWriter(writer, &elementWriter, path.string,
 										  path.length);
 			EvaluateAggregationExpressionDocumentToWriter(expressionData, document,
-														  &elementWriter, isNullOnEmpty);
+														  &elementWriter, variableContext,
+														  isNullOnEmpty);
 			break;
 		}
 
@@ -2401,20 +2468,15 @@ EvaluateAggregationExpressionVariableToWriter(const AggregationExpressionData *d
 		return;
 	}
 
-	if (variableValue.value_type == BSON_TYPE_DOCUMENT ||
-		variableValue.value_type == BSON_TYPE_ARRAY)
-	{
-		bool isNullOnEmptyVariable = false;
-		bson_iter_t variableIter;
-		BsonValueInitIterator(&variableValue, &variableIter);
+	/* Evaluate dotted expression for a variable */
+	bool isNullOnEmptyVariable = false;
 
-		StringView varNameDottedSuffix = StringViewFindSuffix(
-			&dottedExpression, '.');
-		EvaluateFieldPathAndWrite(&variableIter, varNameDottedSuffix.string,
-								  varNameDottedSuffix.length,
-								  writer,
-								  isNullOnEmptyVariable);
-	}
+	StringView varNameDottedSuffix = StringViewFindSuffix(
+		&dottedExpression, '.');
+	EvaluateVariableFieldPathAndWrite(&variableValue, varNameDottedSuffix.string,
+									  varNameDottedSuffix.length,
+									  writer,
+									  isNullOnEmptyVariable);
 }
 
 
@@ -2534,6 +2596,7 @@ static void
 EvaluateAggregationExpressionDocumentToWriter(const AggregationExpressionData *data,
 											  pgbson *document,
 											  pgbson_element_writer *writer,
+											  ExpressionVariableContext *variableContext,
 											  bool isNullOnEmpty)
 {
 	Assert(data->kind == AggregationExpressionKind_Document);
@@ -2547,8 +2610,10 @@ EvaluateAggregationExpressionDocumentToWriter(const AggregationExpressionData *d
 
 	pgbson_writer childWriter;
 	PgbsonElementWriterStartDocument(writer, &childWriter);
-	TraverseTreeAndWriteFieldsToWriter(data->expressionTree, &childWriter, document,
-									   &context);
+	TraverseTreeAndWriteFieldsToWriter(data->expressionTree, &childWriter,
+									   document,
+									   &context,
+									   variableContext);
 	PgbsonElementWriterEndDocument(writer, &childWriter);
 }
 
@@ -2696,7 +2761,7 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 		};
 
 		pgbson *document = PgbsonInitEmpty();
-		TraverseTreeAndWriteFieldsToWriter(treeNode, &writer, document, &context);
+		TraverseTreeAndWriteFieldsToWriter(treeNode, &writer, document, &context, NULL);
 		PgbsonWriterCopyDocumentDataToBsonValue(&writer, &expressionData->value);
 		PgbsonWriterFree(&writer);
 		pfree(document);

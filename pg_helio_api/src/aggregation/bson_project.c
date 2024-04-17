@@ -1848,7 +1848,9 @@ HandleUnresolvedFields(const BsonIntermediatePathNode *parentNode,
 		.isNullOnEmpty = false,
 	};
 
-	TraverseTreeAndWriteFieldsToWriter(parentNode, writer, parentDocument, &context);
+	ExpressionVariableContext *variableContext = NULL;
+	TraverseTreeAndWriteFieldsToWriter(parentNode, writer, parentDocument, &context,
+									   variableContext);
 }
 
 

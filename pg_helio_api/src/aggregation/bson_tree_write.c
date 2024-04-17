@@ -21,6 +21,8 @@ static void TraverseTreeAndWriteFieldsToWriterCore(const
 												   pgbson_writer *writer,
 												   pgbson *parentDocument,
 												   WriteTreeContext *context,
+												   ExpressionVariableContext *
+												   variableContext,
 												   bool isRecursiveCall);
 
 
@@ -98,11 +100,14 @@ AppendLeafArrayFieldChildrenToWriter(pgbson_array_writer *arrayWriter, const
  * functions defined in the context passing down the current state as an argument. */
 void
 TraverseTreeAndWriteFieldsToWriter(const BsonIntermediatePathNode *parentNode,
-								   pgbson_writer *writer, pgbson *parentDocument,
-								   WriteTreeContext *context)
+								   pgbson_writer *writer,
+								   pgbson *parentDocument,
+								   WriteTreeContext *context,
+								   ExpressionVariableContext *variableContext)
 {
 	bool inRecursiveContext = false;
 	TraverseTreeAndWriteFieldsToWriterCore(parentNode, writer, parentDocument, context,
+										   variableContext,
 										   inRecursiveContext);
 }
 
@@ -112,6 +117,7 @@ static void
 TraverseTreeAndWriteFieldsToWriterCore(const BsonIntermediatePathNode *parentNode,
 									   pgbson_writer *writer, pgbson *parentDocument,
 									   WriteTreeContext *context,
+									   ExpressionVariableContext *variableContext,
 									   bool inRecursiveContext)
 {
 	check_stack_depth();
@@ -119,7 +125,6 @@ TraverseTreeAndWriteFieldsToWriterCore(const BsonIntermediatePathNode *parentNod
 
 	const BsonPathNode *node;
 	int index = 0;
-	ExpressionVariableContext *variableContext = NULL;
 	bool isNullOnEmpty = context->isNullOnEmpty;
 	foreach_child(node, parentNode)
 	{
@@ -181,6 +186,7 @@ TraverseTreeAndWriteFieldsToWriterCore(const BsonIntermediatePathNode *parentNod
 			bool inRecursiveContextInner = true;
 			TraverseTreeAndWriteFieldsToWriterCore(intermediateNode, &childWriter,
 												   parentDocument, context,
+												   variableContext,
 												   inRecursiveContextInner);
 			PgbsonWriterEndDocument(writer, &childWriter);
 		}

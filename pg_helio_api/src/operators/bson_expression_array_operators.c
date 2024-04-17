@@ -86,6 +86,31 @@ typedef struct DollarFirstNLastNArguments
 	AggregationExpressionData elementsToFetch;
 } DollarFirstNLastNArguments;
 
+/* Struct that represents the parsed arguments to a $map expression. */
+typedef struct DollarMapArguments
+{
+	/* The array input to the $map expression. */
+	AggregationExpressionData input;
+
+	/* The field condition to evaluate against every element in the input array. */
+	AggregationExpressionData in;
+
+	/* Optional: A name for the variable that represents each individual element of the input array. */
+	AggregationExpressionData as;
+} DollarMapArguments;
+
+/* Struct that represents the parsed arguments to a $reduce expression. */
+typedef struct DollarReduceArguments
+{
+	/* The array input to the $reduce expression. */
+	AggregationExpressionData input;
+
+	/* The field condition to evaluate against every element in the input array. */
+	AggregationExpressionData in;
+
+	/* The initial cumulative value set before in is applied to the first element of the input array.. */
+	AggregationExpressionData initialValue;
+} DollarReduceArguments;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -2734,4 +2759,335 @@ SetResultValueForDollarSumAvg(const bson_value_t *inputArgument, bson_value_t *r
 			*result = currentSum;
 		}
 	}
+}
+
+
+/*
+ * Evaluates the output of a $map expression.
+ * $map is expressed as:
+ * { $map: { input: <expression>, as: <string>, in: <expression> } }
+ */
+void
+HandlePreParsedDollarMap(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	DollarMapArguments *mapArguments = arguments;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+
+	EvaluateAggregationExpressionData(&mapArguments->input, doc, &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedInputArg = childExpression.value;
+
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
+	{
+		bson_value_t nullValue = {
+			.value_type = BSON_TYPE_NULL
+		};
+
+		ExpressionResultSetValue(expressionResult, &nullValue);
+		return;
+	}
+
+	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(MongoLocation16883), errmsg(
+							"input to $map must be an array not %s", BsonTypeName(
+								evaluatedInputArg.value_type)),
+						errhint("input to $map must be an array not %s",
+								BsonTypeName(evaluatedInputArg.value_type))));
+	}
+
+	StringView aliasName = {
+		.string = mapArguments->as.value.value.v_utf8.str,
+		.length = mapArguments->as.value.value.v_utf8.len,
+	};
+
+	pgbson_element_writer *resultWriter = ExpressionResultGetElementWriter(
+		expressionResult);
+	pgbson_array_writer arrayWriter;
+	PgbsonElementWriterStartArray(resultWriter, &arrayWriter);
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(&evaluatedInputArg, &arrayIter);
+
+	bson_value_t emptyValue = { 0 };
+	ExpressionResultSetVariable(&childExpression, aliasName, &emptyValue);
+
+	const bson_value_t nullValue = {
+		.value_type = BSON_TYPE_NULL
+	};
+
+	while (bson_iter_next(&arrayIter))
+	{
+		const bson_value_t *currentElem = bson_iter_value(&arrayIter);
+
+		ExpressionResult elementExpression = ExpressionResultCreateChild(
+			&childExpression);
+		ExpressionResultOverrideSingleVariableValue(&childExpression, currentElem);
+		EvaluateAggregationExpressionData(&mapArguments->in, doc, &elementExpression,
+										  isNullOnEmpty);
+		if (IsExpressionResultNullOrUndefined(&elementExpression.value))
+		{
+			PgbsonArrayWriterWriteValue(&arrayWriter, &nullValue);
+		}
+		else
+		{
+			PgbsonArrayWriterWriteValue(&arrayWriter, &elementExpression.value);
+		}
+	}
+
+	PgbsonElementWriterEndArray(resultWriter, &arrayWriter);
+	ExpressionResultSetValueFromWriter(expressionResult);
+}
+
+
+/* Parses the $map expression specified in the bson_value_t and stores it in the data argument.
+ */
+void
+ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation16878), errmsg(
+							"$map only supports an object as its argument")));
+	}
+
+	data->operator.returnType = BSON_TYPE_ARRAY;
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t input = { 0 };
+	bson_value_t in = { 0 };
+	bson_value_t as = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "in") == 0)
+		{
+			in = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "as") == 0)
+		{
+			as = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation16879), errmsg(
+								"Unrecognized parameter to $map: %s", key),
+							errhint(
+								"Unrecognized parameter to $map, unexpected key")));
+		}
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation16880), errmsg(
+							"Missing 'input' parameter to $map")));
+	}
+
+	if (in.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation16882), errmsg(
+							"Missing 'in' parameter to $map")));
+	}
+
+	bson_value_t aliasValue = {
+		.value_type = BSON_TYPE_UTF8,
+		.value.v_utf8.len = 4,
+		.value.v_utf8.str = "this"
+	};
+
+	if (as.value_type != BSON_TYPE_EOD)
+	{
+		if (as.value_type != BSON_TYPE_UTF8)
+		{
+			aliasValue.value.v_utf8.len = 0;
+			aliasValue.value.v_utf8.str = "";
+		}
+		else
+		{
+			aliasValue = as;
+		}
+	}
+
+	DollarMapArguments *arguments = palloc0(sizeof(DollarMapArguments));
+	arguments->as.value = aliasValue;
+
+	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->in, &in);
+	data->operator.arguments = arguments;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/*
+ * Evaluates the output of a $reduce expression.
+ * $reduce is expressed as:
+ * { $reduce: { input: <expression>, as: <string>, in: <expression> } }
+ */
+void
+HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
+							ExpressionResult *expressionResult)
+{
+	DollarReduceArguments *reduceArguments = arguments;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+
+	EvaluateAggregationExpressionData(&reduceArguments->input, doc, &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedInputArg = childExpression.value;
+
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
+	{
+		bson_value_t nullValue = {
+			.value_type = BSON_TYPE_NULL
+		};
+
+		ExpressionResultSetValue(expressionResult, &nullValue);
+		return;
+	}
+
+	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(MongoLocation40080), errmsg(
+							"input to $reduce must be an array not %s", BsonTypeName(
+								evaluatedInputArg.value_type)),
+						errhint("input to $reduce must be an array not %s",
+								BsonTypeName(evaluatedInputArg.value_type))));
+	}
+
+	ExpressionResultReset(&childExpression);
+
+	EvaluateAggregationExpressionData(&reduceArguments->initialValue, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedInitialValueArg = childExpression.value;
+
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(&evaluatedInitialValueArg))
+	{
+		bson_value_t nullValue = {
+			.value_type = BSON_TYPE_NULL
+		};
+
+		ExpressionResultSetValue(expressionResult, &nullValue);
+		return;
+	}
+
+	StringView thisVariableName = {
+		.string = "this",
+		.length = 4,
+	};
+	StringView valueVariableName = {
+		.string = "value",
+		.length = 5,
+	};
+	ExpressionResultSetVariable(&childExpression, valueVariableName,
+								&evaluatedInitialValueArg);
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(&evaluatedInputArg, &arrayIter);
+	bson_value_t result = evaluatedInitialValueArg;
+	while (bson_iter_next(&arrayIter))
+	{
+		const bson_value_t *currentElem = bson_iter_value(&arrayIter);
+		ExpressionResult elementExpression =
+			ExpressionResultCreateChild(&childExpression);
+		ExpressionResultSetVariable(&childExpression, thisVariableName, currentElem);
+
+		EvaluateAggregationExpressionData(&reduceArguments->in, doc, &elementExpression,
+										  isNullOnEmpty);
+
+		ExpressionResultSetVariable(&childExpression, valueVariableName,
+									&elementExpression.value);
+		result = elementExpression.value;
+	}
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* Parses the $reduce expression specified in the bson_value_t and stores it in the data argument.
+ */
+void
+ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation40075), errmsg(
+							"$reduce only supports an object as its argument")));
+	}
+
+	data->operator.returnType = BSON_TYPE_ARRAY;
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t input = { 0 };
+	bson_value_t in = { 0 };
+	bson_value_t initialValue = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "in") == 0)
+		{
+			in = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "initialValue") == 0)
+		{
+			initialValue = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation40076), errmsg(
+								"Unrecognized parameter to $reduce: %s", key),
+							errhint(
+								"Unrecognized parameter to $reduce, unexpected key")));
+		}
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation40077), errmsg(
+							"Missing 'input' parameter to $reduce")));
+	}
+
+	if (in.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation40079), errmsg(
+							"Missing 'in' parameter to $reduce")));
+	}
+
+	if (initialValue.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation40078), errmsg(
+							"Missing 'initialValue' parameter to $reduce")));
+	}
+
+	DollarReduceArguments *arguments = palloc0(sizeof(DollarReduceArguments));
+
+	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->in, &in);
+	ParseAggregationExpressionData(&arguments->initialValue, &initialValue);
+	data->operator.arguments = arguments;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 }

@@ -33,8 +33,10 @@ typedef struct WriteTreeContext
 } WriteTreeContext;
 
 void TraverseTreeAndWriteFieldsToWriter(const BsonIntermediatePathNode *parentNode,
-										pgbson_writer *writer, pgbson *parentDocument,
-										WriteTreeContext *context);
+										pgbson_writer *writer,
+										pgbson *parentDocument,
+										WriteTreeContext *context,
+										ExpressionVariableContext *variableContext);
 void WriteLeafArrayFieldToWriter(pgbson_writer *writer, const BsonPathNode *child,
 								 pgbson *document,
 								 ExpressionVariableContext *variableContext);

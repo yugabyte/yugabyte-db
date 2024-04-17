@@ -420,6 +420,8 @@ void HandlePreParsedDollarLt(pgbson *doc, void *arguments,
 							 ExpressionResult *expressionResult);
 void HandlePreParsedDollarLte(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
+void HandlePreParsedDollarMap(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarMax(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarMin(pgbson *doc, void *arguments,
@@ -438,6 +440,8 @@ void HandlePreParsedDollarMakeArray(pgbson *doc, void *arguments,
 									ExpressionResult *expressionResult);
 void HandlePreParsedDollarRange(pgbson *doc, void *arguments,
 								ExpressionResult *expressionResult);
+void HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult);
 void HandlePreParsedDollarRegexFind(pgbson *doc, void *arguments,
 									ExpressionResult *expressionResult);
 void HandlePreParsedDollarRegexFindAll(pgbson *doc, void *arguments,
@@ -477,6 +481,7 @@ void ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data
 void ParseDollarGte(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarLt(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarLte(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarMax(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarNe(const bson_value_t *argument, AggregationExpressionData *data);
@@ -490,6 +495,7 @@ void ParseDollarLiteral(const bson_value_t *inputDocument,
 void ParseDollarMakeArray(const bson_value_t *inputDocument,
 						  AggregationExpressionData *data);
 void ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarRegexFind(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarRegexFindAll(const bson_value_t *argument,
 							 AggregationExpressionData *data);
