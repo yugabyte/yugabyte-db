@@ -133,7 +133,7 @@ public class UniverseDetailsQuery {
     universesProcessStartTime.remove(metadata.getId());
   }
 
-  private void updateSyncStatusOnSuccess(UniverseDetails universeDetails) {
+  public static void updateSyncStatusOnSuccess(UniverseDetails universeDetails) {
     Instant timestamp = Instant.now();
     universeDetails.setLastSyncStatus(true);
     universeDetails.setLastSyncTimestamp(timestamp);

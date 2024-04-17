@@ -33,25 +33,11 @@ public class MetricGraphService implements GraphSourceIF {
   private static final Pattern SPECIAL_FILTER_PATTERN = Pattern.compile("[*|+$]");
 
   public static final String SYSTEM_PLATFORM_DB = "system_platform";
-
-  private static final String CONTAINER_METRIC_PREFIX = "container";
   public static final String TABLE_ID = "table_id";
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
   public static final String NAMESPACE_ID = "namespace_id";
   public static final String NODE_PREFIX = "node_prefix";
-
-  private static final Set<String> DATA_DISK_USAGE_METRICS =
-      ImmutableSet.of(
-          "disk_usage", "disk_used_size_total", "disk_capacity_size_total", "disk_usage_percent");
-
-  private static final Set<String> DISK_USAGE_METRICS =
-      ImmutableSet.<String>builder()
-          .addAll(DATA_DISK_USAGE_METRICS)
-          .add("disk_volume_usage_percent")
-          .add("disk_volume_used")
-          .add("disk_volume_capacity")
-          .build();
 
   private final PrometheusClient prometheusClient;
   private final Map<String, MetricsGraphConfig> metricGraphConfigs;
@@ -87,7 +73,6 @@ public class MetricGraphService implements GraphSourceIF {
     if (config == null) {
       throw new IllegalArgumentException("Metric graph " + query.getName() + " does not exists");
     } else {
-      query = preProcessFilters(universeMetadata, universeDetails, query);
       Map<String, String> topKQueries = Collections.emptyMap();
       Map<String, String> aggregatedQueries = Collections.emptyMap();
       MetricQueryContext context =
@@ -560,125 +545,6 @@ public class MetricGraphService implements GraphSourceIF {
                   return Integer.MAX_VALUE - 1;
                 }))
         .collect(Collectors.toList());
-  }
-
-  private GraphQuery preProcessFilters(
-      UniverseMetadata metadata, UniverseDetails universe, GraphQuery query) {
-    // Given we have a limitation on not being able to rename the pod labels in
-    // kubernetes cadvisor metrics, we try to see if the metric being queried is for
-    // container or not, and use pod_name vs exported_instance accordingly.
-    // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
-    boolean isContainerMetric = query.getName().startsWith(CONTAINER_METRIC_PREFIX);
-    GraphLabel universeFilterLabel =
-        isContainerMetric ? GraphLabel.namespace : GraphLabel.universeUuid;
-    GraphLabel nodeFilterLabel = isContainerMetric ? GraphLabel.podName : GraphLabel.instanceName;
-
-    List<UniverseDetails.UniverseDefinition.NodeDetails> nodesToFilter = new ArrayList<>();
-    Map<GraphLabel, List<String>> filters =
-        query.getFilters() != null ? query.getFilters() : new HashMap<>();
-    if (filters.containsKey(GraphLabel.clusterUuid)
-        || filters.containsKey(GraphLabel.regionCode)
-        || filters.containsKey(GraphLabel.azCode)
-        || filters.containsKey(GraphLabel.instanceName)
-        || filters.containsKey(GraphLabel.instanceType)) {
-      List<UUID> clusterUuids =
-          filters.getOrDefault(GraphLabel.clusterUuid, Collections.emptyList()).stream()
-              .map(UUID::fromString)
-              .toList();
-      List<String> regionCodes =
-          filters.getOrDefault(GraphLabel.regionCode, Collections.emptyList());
-      List<String> azCodes = filters.getOrDefault(GraphLabel.azCode, Collections.emptyList());
-      List<String> instanceNames =
-          filters.getOrDefault(GraphLabel.instanceName, Collections.emptyList());
-      List<UniverseDetails.InstanceType> instanceTypes =
-          filters.getOrDefault(GraphLabel.instanceType, Collections.emptyList()).stream()
-              .map(type -> UniverseDetails.InstanceType.valueOf(type.toUpperCase()))
-              .toList();
-      // Need to get matching nodes
-      nodesToFilter.addAll(
-          universe.getUniverseDetails().getNodeDetailsSet().stream()
-              .filter(
-                  node -> {
-                    if (CollectionUtils.isNotEmpty(instanceTypes)
-                        && instanceTypes.contains(UniverseDetails.InstanceType.MASTER)
-                        && !node.isMaster()) {
-                      return false;
-                    }
-                    if (CollectionUtils.isNotEmpty(instanceTypes)
-                        && instanceTypes.contains(UniverseDetails.InstanceType.TSERVER)
-                        && !node.isTserver()) {
-                      return false;
-                    }
-                    if (CollectionUtils.isNotEmpty(clusterUuids)
-                        && !clusterUuids.contains(node.getPlacementUuid())) {
-                      return false;
-                    }
-                    if (CollectionUtils.isNotEmpty(regionCodes)
-                        && !regionCodes.contains(node.getCloudInfo().getRegion())) {
-                      return false;
-                    }
-                    if (CollectionUtils.isNotEmpty(azCodes)
-                        && !azCodes.contains(node.getCloudInfo().getRegion())) {
-                      return false;
-                    }
-                    if (CollectionUtils.isNotEmpty(instanceNames)
-                        && !instanceNames.contains(node.getNodeName())) {
-                      return false;
-                    }
-                    return true;
-                  })
-              .toList());
-
-      if (CollectionUtils.isEmpty(nodesToFilter)) {
-        throw new RuntimeException(
-            "No nodes found based on passed universe, "
-                + "clusters, regions, availability zones and node names");
-      }
-    }
-    // Check if it is a Kubernetes deployment.
-    if (isContainerMetric) {
-      if (CollectionUtils.isEmpty(nodesToFilter)) {
-        nodesToFilter = new ArrayList<>(universe.getUniverseDetails().getNodeDetailsSet());
-      }
-      Set<String> podNames = new HashSet<>();
-      Set<String> containerNames = new HashSet<>();
-      Set<String> pvcNames = new HashSet<>();
-      Set<String> namespaces = new HashSet<>();
-      for (UniverseDetails.UniverseDefinition.NodeDetails node : nodesToFilter) {
-        String podName = node.getK8sPodName();
-        String namespace = node.getK8sNamespace();
-        String containerName = podName.contains("yb-master") ? "yb-master" : "yb-tserver";
-        String pvcName = String.format("(.*)-%s", podName);
-        podNames.add(podName);
-        containerNames.add(containerName);
-        pvcNames.add(pvcName);
-        namespaces.add(namespace);
-      }
-      filters.put(nodeFilterLabel, new ArrayList<>(podNames));
-      filters.put(GraphLabel.containerName, new ArrayList<>(containerNames));
-      filters.put(GraphLabel.pvc, new ArrayList<>(pvcNames));
-      filters.put(universeFilterLabel, new ArrayList<>(namespaces));
-    } else {
-      if (CollectionUtils.isNotEmpty(nodesToFilter)) {
-        List<String> nodeNames =
-            nodesToFilter.stream()
-                .map(UniverseDetails.UniverseDefinition.NodeDetails::getNodeName)
-                .collect(Collectors.toList());
-        filters.put(nodeFilterLabel, nodeNames);
-      }
-
-      if (DISK_USAGE_METRICS.contains(query.getName())) {
-        if (DATA_DISK_USAGE_METRICS.contains(query.getName())) {
-          filters.put(GraphLabel.mountPoint, metadata.getDataMountPoints());
-        } else {
-          List<String> allMountPoints = new ArrayList<>(metadata.getOtherMountPoints());
-          allMountPoints.addAll(metadata.getDataMountPoints());
-          filters.put(GraphLabel.mountPoint, allMountPoints);
-        }
-      }
-    }
-    query.setFilters(filters);
-    return query;
   }
 
   @Value

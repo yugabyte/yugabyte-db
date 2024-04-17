@@ -1,7 +1,12 @@
 package com.yugabyte.troubleshoot.ts.controllers;
 
+import com.yugabyte.troubleshoot.ts.models.UniverseDetails;
 import com.yugabyte.troubleshoot.ts.models.UniverseMetadata;
+import com.yugabyte.troubleshoot.ts.service.BeanValidator;
+import com.yugabyte.troubleshoot.ts.service.UniverseDetailsService;
 import com.yugabyte.troubleshoot.ts.service.UniverseMetadataService;
+import com.yugabyte.troubleshoot.ts.task.UniverseDetailsQuery;
+import com.yugabyte.troubleshoot.ts.yba.client.YBAClient;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.*;
@@ -10,9 +15,20 @@ import org.springframework.web.bind.annotation.*;
 public class UniverseMetadataController {
 
   private final UniverseMetadataService universeMetadataService;
+  private final UniverseDetailsService universeDetailsService;
+  private final BeanValidator beanValidator;
 
-  public UniverseMetadataController(UniverseMetadataService universeMetadataService) {
+  private final YBAClient ybaClient;
+
+  public UniverseMetadataController(
+      UniverseMetadataService universeMetadataService,
+      UniverseDetailsService universeDetailsService,
+      BeanValidator beanValidator,
+      YBAClient ybaClient) {
     this.universeMetadataService = universeMetadataService;
+    this.universeDetailsService = universeDetailsService;
+    this.beanValidator = beanValidator;
+    this.ybaClient = ybaClient;
   }
 
   @GetMapping("/universe_metadata")
@@ -28,6 +44,16 @@ public class UniverseMetadataController {
   @PutMapping("/universe_metadata/{id}")
   public UniverseMetadata put(@PathVariable UUID id, @RequestBody UniverseMetadata metadata) {
     metadata.setId(id);
+    try {
+      UniverseDetails details = ybaClient.getUniverseDetails(metadata);
+      UniverseDetailsQuery.updateSyncStatusOnSuccess(details);
+      universeDetailsService.save(details);
+    } catch (Exception e) {
+      beanValidator
+          .error()
+          .global("Failed to fetch universe details: " + e.getMessage())
+          .throwError();
+    }
     return universeMetadataService.save(metadata);
   }
 
