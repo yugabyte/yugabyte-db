@@ -170,9 +170,12 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         processes = ["tserver", "master", "controller"]
         logging.info(("[app] Running control script to stop " +
                       "against master, tserver and controller at {}").format(host_info['name']))
-        self.cloud.run_control_script(processes[0], "stop", args, self.extra_vars, host_info)
-        self.cloud.run_control_script(processes[1], "stop", args, self.extra_vars, host_info)
-        self.cloud.run_control_script(processes[2], "stop", args, self.extra_vars, host_info)
+        self.cloud.run_control_script(processes[0], "stop-destroy", args,
+                                      self.extra_vars, host_info)
+        self.cloud.run_control_script(processes[1], "stop-destroy", args,
+                                      self.extra_vars, host_info)
+        self.cloud.run_control_script(processes[2], "stop-destroy", args,
+                                      self.extra_vars, host_info)
 
         # Revert the force using of user yugabyte.
         args.ssh_user = ssh_user
