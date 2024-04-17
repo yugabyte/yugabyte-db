@@ -21,11 +21,6 @@
 
 #include "yb/rocksdb/db/compaction.h"
 
-#include "yb/util/debug.h"
-
-DEFINE_RUNTIME_bool(docdb_ht_filter_intents, yb::kIsDebug,
-                    "Use hybrid time SST filter when scanning intents.");
-
 namespace yb::docdb {
 
 rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);
@@ -150,13 +145,6 @@ std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter(const qlexpr::YQLScanS
 
 std::shared_ptr<rocksdb::ReadFileFilter> CreateHybridTimeFileFilter(HybridTime min_hybrid_time) {
   return std::make_shared<HybridTimeFileFilter>(min_hybrid_time);
-}
-
-std::shared_ptr<rocksdb::ReadFileFilter> CreateIntentHybridTimeFileFilter(
-    HybridTime min_running_ht) {
-  return GetAtomicFlag(&FLAGS_docdb_ht_filter_intents) && min_running_ht != HybridTime::kMin
-      ? std::make_shared<HybridTimeFileFilter>(min_running_ht)
-      : nullptr;
 }
 
 }  // namespace yb::docdb
