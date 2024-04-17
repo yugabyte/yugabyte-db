@@ -175,6 +175,26 @@ typedef struct DollarDateTruncArgumentState
 	WeekDay weekDay;
 } DollarDateTruncArgumentState;
 
+
+/* State for a $dateDiff operator. */
+typedef struct DollarDateDiffArgumentState
+{
+	/* Start date specified in UTC */
+	AggregationExpressionData startDate;
+
+	/* End date specified in UTC */
+	AggregationExpressionData endDate;
+
+	/*	The unit of time specified in year, quarter, week, month, day, hour, minute, second */
+	AggregationExpressionData unit;
+
+	/* Optional: Timezone for the $dateTrunc calculation */
+	AggregationExpressionData timezone;
+
+	/* Optional: Only used when unit is week , used as the first day of the week for the calculation */
+	AggregationExpressionData startOfWeek;
+} DollarDateDiffArgumentState;
+
 static const char *monthNamesCamelCase[12] = {
 	"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 };
@@ -218,9 +238,10 @@ const int64 rangeforDateUnit[] = {
 	18446744073744000L,     /* DateUnit_Second */
 };
 
-static const char *isoDateFormat = "IYYY-IW-ID";
-static const char *defaultTimezone = "UTC";
-
+static const char *IsoDateFormat = "IYYY-IW-ID";
+static const char *DefaultTimezone = "UTC";
+static const int QuartersPerYear = 4;
+static const int MonthsPerQuarter = 3;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -231,12 +252,21 @@ static int GetAdjustHourWithTimezoneForDateAddSubtract(Datum startTimestamp, Dat
 													   timestampIntervalAdjusted,
 													   DateUnit unitEnum,
 													   ExtensionTimezone timezoneToApply);
+static inline bool isArgumentForDateDiffNull(bson_value_t *startDate,
+											 bson_value_t *endDate,
+											 bson_value_t *unit, bson_value_t *timezone,
+											 bson_value_t *startOfWeek);
 static inline bool isArgumentForDateTruncNull(bson_value_t *date, bson_value_t *unit,
 											  bson_value_t *binSize,
 											  bson_value_t *timezone,
 											  bson_value_t *startOfWeek);
 static inline bool isDateTruncArgumentConstant(DollarDateTruncArgumentState *
 											   dateTruncArgument);
+static inline bool isDateDiffArgumentConstant(DollarDateDiffArgumentState *
+											  dateDiffArgumentState);
+static inline bool IsUnitAndStartOfWeekConstant(AggregationExpressionData *unit,
+												AggregationExpressionData *startOfWeek,
+												char *opName);
 static inline bool IsDollarDatePartsInputConstant(DollarDateFromParts *datePart);
 static inline bool IsInputForDatePartNull(
 	DollarDateFromPartsBsonValue *dateFromPartsValue, bool isIsoWeekDate);
@@ -256,6 +286,12 @@ static void HandleCommonParseForDateAddSubtract(char *opName, bool isDateAdd, co
 static void HandleCommonPreParsedForDateAddSubtract(char *opName, bool isDateAdd,
 													pgbson *doc, void *arguments,
 													ExpressionResult *expressionResult);
+static void ParseInputDocumentForDateDiff(const bson_value_t *inputArgument,
+										  bson_value_t *startDate,
+										  bson_value_t *endDate,
+										  bson_value_t *unit,
+										  bson_value_t *timezone,
+										  bson_value_t *startOfWeek);
 static void ParseInputDocumentForDateTrunc(const bson_value_t *inputArgument,
 										   bson_value_t *date, bson_value_t *unit,
 										   bson_value_t *binSize, bson_value_t *timezone,
@@ -278,7 +314,12 @@ static int64_t ParseUtcOffset(StringView offset);
 static int32_t DetermineUtcOffsetForEpochWithTimezone(int64_t unixEpoch,
 													  ExtensionTimezone timezone);
 static uint32_t GetDatePartFromPgTimestamp(Datum pgTimestamp, DatePart datePart);
+static DateUnit GetDateUnitFromString(char *unit);
 static inline int GetDayOfWeek(int year, int month, int day);
+static inline int GetDifferenceInDaysForStartOfWeek(int dow, WeekDay weekdayEnum);
+static float8 GetEpochDiffForDateDiff(DateUnit dateUnitEnum, ExtensionTimezone
+									  timezoneToApply, int64 startDateEpoch, int64
+									  endDateEpoch);
 static Datum GetIntervalFromBinSize(int64_t binSize, DateTruncUnit dateTruncUnit);
 static Datum GetIntervalFromDatePart(int64 year, int64 month, int64 week, int64 day,
 									 int64 hour, int64 minute, int64 seconds, int64
@@ -292,11 +333,15 @@ static Datum GetPgTimestampFromEpochWithTimezone(int64_t epochInMs, ExtensionTim
 static Datum GetPgTimestampFromEpochWithoutTimezone(int64_t epochInMs,
 													ExtensionTimezone timezone);
 static Datum GetPgTimestampFromUnixEpoch(int64_t epochInMs);
+static inline const char * GetDateUnitStringFromEnum(DateUnit unitEnum);
 static inline int64_t GetUnixEpochFromPgTimestamp(Datum timestamp);
 static StringView GetDateStringWithFormat(int64_t dateInMs, ExtensionTimezone timezone,
 										  StringView format);
 static inline void SetDefaultValueForDatePart(bson_value_t *datePart, bson_type_t
 											  bsonType, int64 defaultValue);
+static void SetResultForDateDiff(bson_value_t *startDate, bson_value_t *endDate,
+								 DateUnit dateUnitEnum, WeekDay weekdayEnum,
+								 ExtensionTimezone timezoneToApply, bson_value_t *result);
 static void SetResultForDateFromParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
 									  ExtensionTimezone timezoneToApply,
 									  bson_value_t *result);
@@ -331,6 +376,7 @@ static void SetResultValueForYearUnitDateTrunc(Datum pgTimestamp, ExtensionTimez
 											   DateTruncUnit dateTruncUnit,
 											   bson_value_t *result);
 static bool TryParseTwoDigitNumber(StringView str, uint32_t *result);
+static Datum TruncateTimestampToPrecision(Datum timestamp, const char *precisionUnit);
 static void ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
 										  bson_value_t *startOfWeek,
 										  bson_value_t *timezone, bson_value_t *unit,
@@ -338,6 +384,12 @@ static void ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *d
 										  WeekDay *weekDay,
 										  ExtensionTimezone *timezoneToApply,
 										  ExtensionTimezone resultTimezone);
+static void ValidateInputArgumentForDateDiff(bson_value_t *startDate,
+											 bson_value_t *endDate,
+											 bson_value_t *unit, bson_value_t *timezone,
+											 bson_value_t *startOfWeek,
+											 DateUnit *dateUnitEnum,
+											 WeekDay *weekDayEnum);
 static void ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey);
 static void ValidateInputForDateFromParts(
 	DollarDateFromPartsBsonValue *dateFromPartsValue, bool isIsoWeekDate);
@@ -384,6 +436,20 @@ ThrowLocation40517Error(bson_type_t foundType)
 						BsonTypeName(foundType)),
 					errhint("timezone must evaluate to a string, found %s",
 							BsonTypeName(foundType))));
+}
+
+
+/*
+ * This is a helper method to throw error when unit does not matches the type of utf8 for date
+ */
+static inline void
+pg_attribute_noreturn() ThrowLocation5439013Error(bson_type_t foundType, char * opName)
+{
+	ereport(ERROR, (errcode(MongoLocation5439013), errmsg(
+						"%s requires 'unit' to be a string, but got %s",
+						BsonTypeName(foundType), opName),
+					errhint("%s requires 'unit' to be a string, but got %s",
+							BsonTypeName(foundType), opName)));
 }
 
 /* Helper that validates a date value is in the valid range 0-9999. */
@@ -2561,7 +2627,7 @@ SetResultForDateFromParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
 	Datum resultTimeWithZone;
 
 	/* Optimization as all calculations are in UTC by default so, no need to change timezone. */
-	if (!timezoneToApply.isUtcOffset && strcmp(timezoneToApply.id, defaultTimezone) == 0)
+	if (!timezoneToApply.isUtcOffset && strcmp(timezoneToApply.id, DefaultTimezone) == 0)
 	{
 		resultTimeWithZone = timestampPlusInterval;
 	}
@@ -2605,7 +2671,7 @@ SetResultForDateFromIsoParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
 			isoWeekDaysValue);
 	Datum toDateResult = OidFunctionCall2(PostgresToDateFunctionId(),
 										  CStringGetTextDatum(buffer),
-										  CStringGetTextDatum(isoDateFormat));
+										  CStringGetTextDatum(IsoDateFormat));
 	int64 daysAdjust = 0;
 	if (isoWeekDaysValue > 7)
 	{
@@ -2630,7 +2696,7 @@ SetResultForDateFromIsoParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
 	Datum resultTimeWithZone;
 
 	/* Optimization as all calculations are in UTC by default so, no need to change timezone. */
-	if (!timezoneToApply.isUtcOffset && strcmp(timezoneToApply.id, defaultTimezone) == 0)
+	if (!timezoneToApply.isUtcOffset && strcmp(timezoneToApply.id, DefaultTimezone) == 0)
 	{
 		resultTimeWithZone = datePlusInterval;
 	}
@@ -3054,25 +3120,10 @@ isDateTruncArgumentConstant(DollarDateTruncArgumentState *
 		return false;
 	}
 
-	/* Check if the 'unit' component of dateTruncArgument is constant. */
-	bool isUnitConstant = IsAggregationExpressionConstant(&dateTruncArgument->unit);
-	if (!isUnitConstant)
-	{
-		return false;
-	}
-
-	/* Check if the 'unit' value is 'week'. */
-	bool isUnitWeek = strcasecmp(dateTruncArgument->unit.value.value.v_utf8.str,
-								 "week") == 0;
-
-	/* If 'unit' is 'week', also check if 'startOfWeek' is constant. */
-	if (isUnitWeek)
-	{
-		return IsAggregationExpressionConstant(&dateTruncArgument->startOfWeek);
-	}
-
-	/* If all checks passed and we didn't early return, all required components are constant. */
-	return true;
+	char *opName = "$dateTrunc";
+	return IsUnitAndStartOfWeekConstant(&dateTruncArgument->unit,
+										&dateTruncArgument->startOfWeek,
+										opName);
 }
 
 
@@ -4157,4 +4208,712 @@ ParseDollarDateSubtract(const bson_value_t *argument, AggregationExpressionData 
 	char *opName = "$dateSubtract";
 	bool isDateAdd = false;
 	HandleCommonParseForDateAddSubtract(opName, isDateAdd, argument, data);
+}
+
+
+/*
+ * This function handles the output for dollar dateDiff after the data has been parsed for the aggregation operator.
+ */
+void
+HandlePreParsedDollarDateDiff(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult)
+{
+	DollarDateDiffArgumentState *dateDiffArgumentState = arguments;
+	bool isNullOnEmpty = false;
+
+	bson_value_t startDate = { 0 };
+	bson_value_t endDate = { 0 };
+	bson_value_t startOfWeek = { 0 };
+	bson_value_t timezone = { 0 };
+	bson_value_t unit = { 0 };
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&dateDiffArgumentState->startDate, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	startDate = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateDiffArgumentState->endDate, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	endDate = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateDiffArgumentState->unit, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	unit = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateDiffArgumentState->timezone, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	timezone = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&dateDiffArgumentState->startOfWeek, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	startOfWeek = childExpression.value;
+
+	bson_value_t result = { .value_type = BSON_TYPE_NULL };
+	if (isArgumentForDateDiffNull(&startDate,
+								  &endDate,
+								  &unit,
+								  &timezone,
+								  &startOfWeek))
+	{
+		ExpressionResultSetValue(expressionResult, &result);
+		return;
+	}
+
+	DateUnit dateUnitEnum = DateUnit_Invalid;
+	WeekDay weekDayEnum = WeekDay_Invalid;
+	ValidateInputArgumentForDateDiff(&startDate,
+									 &endDate,
+									 &unit,
+									 &timezone,
+									 &startOfWeek,
+									 &dateUnitEnum, &weekDayEnum);
+
+	ExtensionTimezone timezoneToApply = {
+		.offsetInMs = 0,
+		.isUtcOffset = true,
+	};
+
+	/* timezone is not default value */
+	if (strcmp(timezone.value.v_utf8.str, DefaultTimezone) != 0)
+	{
+		StringView timezoneToParse = {
+			.string = timezone.value.v_utf8.str,
+			.length = timezone.value.v_utf8.len
+		};
+		timezoneToApply = ParseTimezone(timezoneToParse);
+	}
+
+	SetResultForDateDiff(&startDate,
+						 &endDate,
+						 dateUnitEnum, weekDayEnum,
+						 timezoneToApply, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function takes in the input arguments and then parses the expression for dollar date diff.
+ * The input exresssion is of the format $dateDiff : {startDate: <Expression>, endDate: <expression>, unit: <Expression> , timezone: <tzExpression>, startOfWeek: <string>}
+ */
+void
+ParseDollarDateDiff(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation5166301), errmsg(
+							"$dateDiff only supports an object as its argument")));
+	}
+
+	bson_value_t startDate = { 0 };
+	bson_value_t endDate = { 0 };
+	bson_value_t startOfWeek = { 0 };
+	bson_value_t timezone = { 0 };
+	bson_value_t unit = { 0 };
+
+	ParseInputDocumentForDateDiff(argument, &startDate, &endDate, &unit, &timezone,
+								  &startOfWeek);
+	DollarDateDiffArgumentState *dateDiffArgumentState = palloc0(
+		sizeof(DollarDateDiffArgumentState));
+
+	ParseAggregationExpressionData(&dateDiffArgumentState->startDate, &startDate);
+	ParseAggregationExpressionData(&dateDiffArgumentState->endDate, &endDate);
+	ParseAggregationExpressionData(&dateDiffArgumentState->unit, &unit);
+	ParseAggregationExpressionData(&dateDiffArgumentState->timezone, &timezone);
+	ParseAggregationExpressionData(&dateDiffArgumentState->startOfWeek, &startOfWeek);
+
+	if (isDateDiffArgumentConstant(dateDiffArgumentState))
+	{
+		bson_value_t result = { .value_type = BSON_TYPE_NULL };
+		if (isArgumentForDateDiffNull(&dateDiffArgumentState->startDate.value,
+									  &dateDiffArgumentState->endDate.value,
+									  &dateDiffArgumentState->unit.value,
+									  &dateDiffArgumentState->timezone.value,
+									  &dateDiffArgumentState->startOfWeek.value))
+		{
+			data->value = result;
+			data->kind = AggregationExpressionKind_Constant;
+			pfree(dateDiffArgumentState);
+			return;
+		}
+
+		DateUnit dateUnitEnum = DateUnit_Invalid;
+		WeekDay weekDayEnum = WeekDay_Invalid;
+		ValidateInputArgumentForDateDiff(&dateDiffArgumentState->startDate.value,
+										 &dateDiffArgumentState->endDate.value,
+										 &dateDiffArgumentState->unit.value,
+										 &dateDiffArgumentState->timezone.value,
+										 &dateDiffArgumentState->startOfWeek.value,
+										 &dateUnitEnum, &weekDayEnum);
+
+		ExtensionTimezone timezoneToApply = {
+			.offsetInMs = 0,
+			.isUtcOffset = true,
+		};
+
+		if (strcmp(dateDiffArgumentState->timezone.value.value.v_utf8.str,
+				   DefaultTimezone) != 0)
+		{
+			StringView timezoneToParse = {
+				.string = dateDiffArgumentState->timezone.value.value.v_utf8.str,
+				.length = dateDiffArgumentState->timezone.value.value.v_utf8.len
+			};
+			timezoneToApply = ParseTimezone(timezoneToParse);
+		}
+
+		SetResultForDateDiff(&dateDiffArgumentState->startDate.value,
+							 &dateDiffArgumentState->endDate.value,
+							 dateUnitEnum, weekDayEnum,
+							 timezoneToApply, &result);
+		data->value = result;
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(dateDiffArgumentState);
+	}
+	else
+	{
+		data->operator.arguments = dateDiffArgumentState;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+/* As per the behaviour if any argument is null return null */
+static inline bool
+isArgumentForDateDiffNull(bson_value_t *startDate, bson_value_t *endDate,
+						  bson_value_t *unit,
+						  bson_value_t *timezone, bson_value_t *startOfWeek)
+{
+	/* if unit is week then check startOfWeek else ignore
+	 * Since timezone is optional we don't need to check for EOD. In case of null value we return true.
+	 */
+	bool isUnitNull = IsExpressionResultNullOrUndefined(unit);
+
+	/* Since unit is null we don't need to evaluate others*/
+	if (isUnitNull)
+	{
+		return true;
+	}
+
+	/* If unit is not of type UTF8 then throw error as we cannot process for unit week and startOfWeek*/
+	if (unit->value_type != BSON_TYPE_UTF8)
+	{
+		ThrowLocation5439013Error(unit->value_type, "$dateDiff");
+	}
+	bool isUnitWeek = !isUnitNull && (strcasecmp(unit->value.v_utf8.str, DWEEK) == 0);
+	if (isUnitNull ||
+		(isUnitWeek && IsExpressionResultNullOrUndefined(startOfWeek)) ||
+		IsExpressionResultNullOrUndefined(startDate) ||
+		IsExpressionResultNullOrUndefined(endDate) ||
+		IsExpressionResultNullOrUndefined(timezone))
+	{
+		return true;
+	}
+
+	return false;
+}
+
+
+/* This function checks if all the argument values are constant for dateDiffArfumentState struct */
+static inline bool
+isDateDiffArgumentConstant(DollarDateDiffArgumentState *
+						   dateDiffArgumentState)
+{
+	bool isBasicComponentsConstant =
+		IsAggregationExpressionConstant(&dateDiffArgumentState->startDate) &&
+		IsAggregationExpressionConstant(&dateDiffArgumentState->endDate) &&
+		IsAggregationExpressionConstant(&dateDiffArgumentState->timezone);
+
+	/* Early return if any of the basic components is not constant. */
+	if (!isBasicComponentsConstant)
+	{
+		return false;
+	}
+
+	char *opName = "$dateDiff";
+	return IsUnitAndStartOfWeekConstant(&dateDiffArgumentState->unit,
+										&dateDiffArgumentState->startOfWeek,
+										opName);
+}
+
+
+/* This is a helper function for checking if unit of date and startOfWeek (used when unit is week) are constant. */
+static inline bool
+IsUnitAndStartOfWeekConstant(AggregationExpressionData *unit,
+							 AggregationExpressionData *startOfWeek,
+							 char *opName)
+{
+	/* Check if the 'unit' component of dateTruncArgument is constant. */
+	bool isUnitConstant = IsAggregationExpressionConstant(unit);
+
+	if (!isUnitConstant)
+	{
+		return false;
+	}
+
+	/* If unit is null then it's obviously constant, so we can return true */
+	if (IsExpressionResultNullOrUndefined(&unit->value))
+	{
+		return true;
+	}
+
+	if (unit->value.value_type != BSON_TYPE_UTF8)
+	{
+		ThrowLocation5439013Error(unit->value.value_type, opName);
+	}
+
+	/* Check if the 'unit' value is 'week'. */
+	bool isUnitWeek = strcasecmp(unit->value.value.v_utf8.str,
+								 DWEEK) == 0;
+
+	/* If 'unit' is 'week', also check if 'startOfWeek' is constant. */
+	if (isUnitWeek)
+	{
+		return IsAggregationExpressionConstant(startOfWeek);
+	}
+
+	/* If all checks passed and we didn't early return, all required components are constant. */
+	return true;
+}
+
+
+/* This function parses the input document for dateDiff and then sets the values in corresponding bson_value_t */
+static void
+ParseInputDocumentForDateDiff(const bson_value_t *inputArgument,
+							  bson_value_t *startDate,
+							  bson_value_t *endDate,
+							  bson_value_t *unit,
+							  bson_value_t *timezone,
+							  bson_value_t *startOfWeek)
+{
+	bson_iter_t docIter;
+	BsonValueInitIterator(inputArgument, &docIter);
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "startDate") == 0)
+		{
+			*startDate = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "endDate") == 0)
+		{
+			*endDate = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "startOfWeek") == 0)
+		{
+			*startOfWeek = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "timezone") == 0)
+		{
+			*timezone = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "unit") == 0)
+		{
+			*unit = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation5166302), errmsg(
+								"Unrecognized argument to $dateDiff: %s",
+								key),
+							errhint(
+								"Unrecognized argument to $dateDiff: %s",
+								key)));
+		}
+	}
+
+	/*	Validation to check start and end date */
+	if (startDate->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation5166303), errmsg(
+							"Missing 'startDate' parameter to $dateDiff"),
+						errhint("Missing 'startDate' parameter to $dateDiff")));
+	}
+
+	if (endDate->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation5166304), errmsg(
+							"Missing 'endDate' parameter to $dateDiff"),
+						errhint("Missing 'endDate' parameter to $dateDiff")));
+	}
+
+	if (unit->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation5166305), errmsg(
+							"Missing 'unit' parameter to $dateDiff"),
+						errhint("Missing 'unit' parameter to $dateDiff")));
+	}
+
+	if (startOfWeek->value_type == BSON_TYPE_EOD)
+	{
+		startOfWeek->value_type = BSON_TYPE_UTF8;
+		startOfWeek->value.v_utf8.str = "Sunday";
+		startOfWeek->value.v_utf8.len = 6;
+	}
+
+	if (timezone->value_type == BSON_TYPE_EOD)
+	{
+		timezone->value_type = BSON_TYPE_UTF8;
+		timezone->value.v_utf8.str = "UTC";
+		timezone->value.v_utf8.len = 3;
+	}
+}
+
+
+/*
+ * This is a utility function for getting the date unit char* from date unit.
+ */
+static inline const char *
+GetDateUnitStringFromEnum(DateUnit unitEnum)
+{
+	Assert(unitEnum > 0);
+	return dateUnitStr[unitEnum - 1];
+}
+
+
+/*
+ * This is a helper function which takes in current day of week as per postgres and then takes in week day enum which
+ * can be the startOfWeek. It computes how many days difference is between those 2 days and returns that.
+ * The value of dow can range from 1-7. 1 for sunday and so on.
+ * Here dow is the current dow which comes from startDate.
+ * weekDayEnum is what startOfWeek is input from user.
+ */
+static inline int
+GetDifferenceInDaysForStartOfWeek(int dow, WeekDay weekDayEnum)
+{
+	int adjustedDayForEnum;
+
+	/* 7 is a sunday according to enum and since we (via postgres functions) count days from 1-7 1 being sunday. */
+	/* So, we adjust enum values as according to dow values. */
+	if (weekDayEnum == 7)
+	{
+		adjustedDayForEnum = 1;
+	}
+	else
+	{
+		adjustedDayForEnum = weekDayEnum + 1;
+	}
+
+	/* Logic to compute difference in days. We need to iterate backwards here always. */
+	if (dow == adjustedDayForEnum)
+	{
+		return 0;
+	}
+	else if (dow > adjustedDayForEnum)
+	{
+		return dow - adjustedDayForEnum;
+	}
+	else
+	{
+		return (dow + 7) - adjustedDayForEnum;
+	}
+}
+
+
+/*
+ * This function takes in the enum , timezone and start and end epoch seconds and returns the difference between then in milliseconds
+ * This function is usually for units like seconds, minute, hour, day.
+ */
+static float8
+GetEpochDiffForDateDiff(DateUnit dateUnitEnum, ExtensionTimezone timezoneToApply, int64
+						startDateEpoch, int64 endDateEpoch)
+{
+	/*
+	 *  We are trying to process the output with the format like this equivalent pg query.
+	 *  select (date_part('epoch',date_trunc('unit','endTimestamp' at time zone 'timezoneToApply')) -
+	 *  date_part('epoch',date_trunc('unit','starTimestamp at time zone 'timezoneToApply')))
+	 *
+	 */
+	const char *unitStr = GetDateUnitStringFromEnum(dateUnitEnum);
+
+	Datum startTimestampWithTimezone = GetPgTimestampFromEpochWithTimezone(startDateEpoch,
+																		   timezoneToApply);
+	Datum endTimestampWithTimezone = GetPgTimestampFromEpochWithTimezone(endDateEpoch,
+																		 timezoneToApply);
+	Datum truncatedStartTimestamp = TruncateTimestampToPrecision(
+		startTimestampWithTimezone,
+		unitStr);
+	Datum truncatedEndTimestamp = TruncateTimestampToPrecision(endTimestampWithTimezone,
+															   unitStr);
+	float8 truncatedStartEpochTimestamp = DatumGetFloat8(OidFunctionCall2(
+															 PostgresDatePartFunctionId(),
+															 CStringGetTextDatum(
+																 EPOCH),
+															 truncatedStartTimestamp));
+	float8 truncatedEndEpochTimestamp = DatumGetFloat8(OidFunctionCall2(
+														   PostgresDatePartFunctionId(),
+														   CStringGetTextDatum(
+															   EPOCH),
+														   truncatedEndTimestamp));
+	return ((truncatedEndEpochTimestamp - truncatedStartEpochTimestamp) *
+			MILLISECONDS_IN_SECOND);
+}
+
+
+/*
+ * This function takes in the input arguments and process the end result for dateDiff for different unit types and sets them in result.
+ * The return result value is of type int64.
+ */
+static void
+SetResultForDateDiff(bson_value_t *startDate, bson_value_t *endDate,
+					 DateUnit dateUnitEnum, WeekDay weekdayEnum,
+					 ExtensionTimezone timezoneToApply, bson_value_t *result)
+{
+	result->value_type = BSON_TYPE_INT64;
+	float8 preciseResultDiff = 0;
+	int64 startDateEpoch = BsonValueAsDateTime(startDate);
+	int64 endDateEpoch = BsonValueAsDateTime(endDate);
+	ExtensionTimezone defaultUTCTimezone = {
+		.offsetInMs = 0,
+		.isUtcOffset = true
+	};
+	switch (dateUnitEnum)
+	{
+		case DateUnit_Millisecond:
+		{
+			preciseResultDiff = endDateEpoch - startDateEpoch;
+			break;
+		}
+
+		case DateUnit_Second:
+		{
+			preciseResultDiff = GetEpochDiffForDateDiff(dateUnitEnum, defaultUTCTimezone,
+														startDateEpoch, endDateEpoch) /
+								MILLISECONDS_IN_SECOND;
+			break;
+		}
+
+		case DateUnit_Minute:
+		{
+			preciseResultDiff = GetEpochDiffForDateDiff(dateUnitEnum, defaultUTCTimezone,
+														startDateEpoch, endDateEpoch) /
+								(MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE);
+			break;
+		}
+
+		case DateUnit_Hour:
+		{
+			preciseResultDiff = GetEpochDiffForDateDiff(dateUnitEnum, defaultUTCTimezone,
+														startDateEpoch, endDateEpoch) /
+								(MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE *
+								 MINUTES_IN_HOUR);
+			break;
+		}
+
+		case DateUnit_Day:
+		{
+			preciseResultDiff = GetEpochDiffForDateDiff(dateUnitEnum, timezoneToApply,
+														startDateEpoch, endDateEpoch) /
+								(MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE *
+								 MINUTES_IN_HOUR
+								 *
+								 HOURS_PER_DAY);
+			break;
+		}
+
+		case DateUnit_Week:
+		{
+			Datum startTimestampWithTimezone = GetPgTimestampFromEpochWithTimezone(
+				startDateEpoch,
+				timezoneToApply);
+			Datum endTimestampWithTimezone = GetPgTimestampFromEpochWithTimezone(
+				endDateEpoch,
+				timezoneToApply);
+
+			/* default dow in postgres resolves to sunday and goes like sunday , monday, tuesday, .. */
+			int dayOfWeek = GetDatePartFromPgTimestamp(startTimestampWithTimezone,
+													   DatePart_DayOfWeek);
+			int diffBwStartOfWeekAndCurrent = GetDifferenceInDaysForStartOfWeek(dayOfWeek,
+																				weekdayEnum);
+			Datum truncatedStartTimestamp = TruncateTimestampToPrecision(
+				startTimestampWithTimezone, DDAY);
+			Datum truncatedEndTimestamp = TruncateTimestampToPrecision(
+				endTimestampWithTimezone, DDAY);
+
+			float8 truncatedStartEpochTimestamp = DatumGetFloat8(OidFunctionCall2(
+																	 PostgresDatePartFunctionId(),
+																	 CStringGetTextDatum(
+																		 EPOCH),
+																	 truncatedStartTimestamp));
+			float8 truncatedEndEpochTimestamp = DatumGetFloat8(OidFunctionCall2(
+																   PostgresDatePartFunctionId(),
+																   CStringGetTextDatum(
+																	   EPOCH),
+																   truncatedEndTimestamp));
+			preciseResultDiff = (truncatedEndEpochTimestamp -
+								 truncatedStartEpochTimestamp +
+								 diffBwStartOfWeekAndCurrent * SECONDS_IN_DAY) /
+								(SECONDS_IN_DAY * 7);
+			break;
+		}
+
+		case DateUnit_Month:
+		case DateUnit_Quarter:
+		{
+			Datum startTimestampWithTimezone = GetPgTimestampFromEpochWithTimezone(
+				startDateEpoch,
+				timezoneToApply);
+			Datum endTimestampWithTimezone = GetPgTimestampFromEpochWithTimezone(
+				endDateEpoch,
+				timezoneToApply);
+			int64 endTimestampYear = GetDatePartFromPgTimestamp(endTimestampWithTimezone,
+																DatePart_Year);
+			int64 startTimestampYear = GetDatePartFromPgTimestamp(
+				startTimestampWithTimezone, DatePart_Year);
+			int64 endTimestampMonths = GetDatePartFromPgTimestamp(
+				endTimestampWithTimezone, DatePart_Month);
+			int64 startTimestampMonths = GetDatePartFromPgTimestamp(
+				startTimestampWithTimezone, DatePart_Month);
+			if (dateUnitEnum == DateUnit_Quarter)
+			{
+				/* for quarter logic is (years_diff) *4 + (quarter month end - quarter month start) */
+				preciseResultDiff = (float8) ((endTimestampYear - startTimestampYear) *
+											  QuartersPerYear +
+											  ((endTimestampMonths - 1) /
+											   MonthsPerQuarter - (startTimestampMonths -
+																   1) /
+											   MonthsPerQuarter));
+			}
+			else
+			{
+				/* For months logic is years_diff * 12 + (DATE_PART('month', end) - DATE_PART('month', start))*/
+				preciseResultDiff = (float8) ((endTimestampYear - startTimestampYear) *
+											  MONTHS_PER_YEAR +
+											  (endTimestampMonths -
+											   startTimestampMonths));
+			}
+			break;
+		}
+
+		case DateUnit_Year:
+		{
+			Datum startTimestampWithTimezone = GetPgTimestampFromEpochWithTimezone(
+				startDateEpoch,
+				timezoneToApply);
+			Datum endTimestampWithTimezone = GetPgTimestampFromEpochWithTimezone(
+				endDateEpoch,
+				timezoneToApply);
+			int64 endTimestampYear = GetDatePartFromPgTimestamp(endTimestampWithTimezone,
+																DatePart_Year);
+			int64 startTimestampYear = GetDatePartFromPgTimestamp(
+				startTimestampWithTimezone, DatePart_Year);
+			preciseResultDiff = (float8) (endTimestampYear - startTimestampYear);
+			break;
+		}
+
+		default:
+		{
+			break;
+		}
+	}
+
+	/* Floor as for negative cases. */
+	result->value.v_int64 = (int64) (floor(preciseResultDiff));
+}
+
+
+/*
+ * This function takes in a timestamp and truncates to the nearest unit.
+ * For eg: - trunc on timestamp 10-10-2023T04:50:00 with unit hour will yield 10-10-2023T04:00:00
+ */
+static Datum
+TruncateTimestampToPrecision(Datum timestamp, const char *precisionUnit)
+{
+	return DirectFunctionCall2(timestamptz_trunc,
+							   CStringGetTextDatum(precisionUnit),
+							   timestamp);
+}
+
+
+/*
+ * This function validates the input arguments and then throws error if any of them has invalid input type or value.
+ * Post validation this function extracts the bson_value_t startOFweek and unit value str and sets them in dateUnit and week day enum.
+ */
+static void
+ValidateInputArgumentForDateDiff(bson_value_t *startDate, bson_value_t *endDate,
+								 bson_value_t *unit, bson_value_t *timezone,
+								 bson_value_t *startOfWeek, DateUnit *dateUnitEnum,
+								 WeekDay *weekDayEnum)
+{
+	/* validate start and end date types */
+	bool isStartDateValid = IsBsonValueDateTimeFormat(startDate->value_type);
+	bool isEndDateValid = IsBsonValueDateTimeFormat(endDate->value_type);
+	if (!isStartDateValid || !isEndDateValid)
+	{
+		ereport(ERROR, (errcode(MongoLocation5166307), errmsg(
+							"$dateDiff requires '%s' to be a date, but got %s",
+							(isStartDateValid ? "endDate" : "startDate"),
+							BsonTypeName(isStartDateValid ? endDate->value_type :
+										 startDate->value_type)),
+						errhint("$dateDiff requires '%s' to be a date, but got %s",
+								(isStartDateValid ? "endDate" : "startDate"),
+								BsonTypeName(isStartDateValid ? endDate->value_type :
+											 startDate->value_type))));
+	}
+
+	/* validate unit type */
+	if (unit->value_type != BSON_TYPE_UTF8)
+	{
+		ThrowLocation5439013Error(unit->value_type, "$dateDiff");
+	}
+
+	/* validate unit values */
+	*dateUnitEnum = GetDateUnitFromString(unit->value.v_utf8.str);
+	if (*dateUnitEnum == DateUnit_Invalid)
+	{
+		ereport(ERROR, (errcode(MongoLocation5439014), errmsg(
+							"$dateDiff parameter 'unit' value cannot be recognized as a time unit: %s",
+							unit->value.v_utf8.str),
+						errhint(
+							"$dateDiff parameter 'unit' value cannot be recognized as a time unit")));
+	}
+
+	/* Validate startOfWeekValue only if unit is week. Index 6 in the list if 'week' */
+	if (*dateUnitEnum == DateUnit_Week)
+	{
+		if (startOfWeek->value_type != BSON_TYPE_UTF8)
+		{
+			ereport(ERROR, (errcode(MongoLocation5439015), errmsg(
+								"$dateDiff requires 'startOfWeek' to be a string, but got %s",
+								BsonTypeName(startOfWeek->value_type)),
+							errhint(
+								"$dateDiff requires 'startOfWeek' to be a string, but got %s",
+								BsonTypeName(startOfWeek->value_type))));
+		}
+
+		/* Typed loop check as days can never be increased. */
+		for (int index = 0; index < 7; index++)
+		{
+			if (strcasecmp(startOfWeek->value.v_utf8.str, weekDaysFullName[index]) == 0 ||
+				strcasecmp(startOfWeek->value.v_utf8.str, weekDaysAbbreviated[index]) ==
+				0)
+			{
+				/* Doing index +1 as invalid is the first index which is not in the weekDays list. */
+				*weekDayEnum = (WeekDay) (index + 1);
+				break;
+			}
+		}
+		if (*weekDayEnum == WeekDay_Invalid)
+		{
+			ereport(ERROR, (errcode(MongoLocation5439016), errmsg(
+								"$dateDiff parameter 'startOfWeek' value cannot be recognized as a day of a week: %s",
+								startOfWeek->value.v_utf8.str),
+							errhint(
+								"$dateDiff parameter 'startOfWeek' value cannot be recognized as a day of a week")));
+		}
+	}
+
+	if (timezone->value_type != BSON_TYPE_EOD && timezone->value_type != BSON_TYPE_UTF8)
+	{
+		ThrowLocation40517Error(timezone->value_type);
+	}
 }

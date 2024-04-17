@@ -76,6 +76,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_AGG_OPERATOR_COS] = "agg_operator_cos",
 	[FEATURE_AGG_OPERATOR_COSH] = "agg_operator_cosh",
 	[FEATURE_AGG_OPERATOR_DATEADD] = "agg_operator_dateadd",
+	[FEATURE_AGG_OPERATOR_DATEDIFF] = "agg_operator_datediff",
 	[FEATURE_AGG_OPERATOR_DATESUBTRACT] = "agg_operator_datesubtract",
 	[FEATURE_AGG_OPERATOR_DATEFROMPARTS] = "agg_operator_datefromparts",
 	[FEATURE_AGG_OPERATOR_DATEFROMSTRING] = "agg_operator_datefromstring",

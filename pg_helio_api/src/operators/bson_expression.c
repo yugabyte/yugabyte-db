@@ -181,6 +181,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$cosh", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_COSH },
 	{ "$dateAdd", NULL, &ParseDollarDateAdd, &HandlePreParsedDollarDateAdd,
 	  FEATURE_AGG_OPERATOR_DATEADD },
+	{ "$dateDiff", NULL, &ParseDollarDateDiff, &HandlePreParsedDollarDateDiff,
+	  FEATURE_AGG_OPERATOR_DATEDIFF },
 	{ "$dateFromParts", NULL, &ParseDollarDateFromParts,
 	  &HandlePreParsedDollarDateFromParts, FEATURE_AGG_OPERATOR_DATEFROMPARTS },
 	{ "$dateFromString", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_DATEFROMSTRING },

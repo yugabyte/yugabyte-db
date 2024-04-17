@@ -587,6 +587,15 @@ BsonValueAsDateTime(const bson_value_t *value)
 }
 
 
+/* Given a bson value type it tries to check if it is valid date type format */
+bool
+IsBsonValueDateTimeFormat(const bson_type_t valueType)
+{
+	return (valueType == BSON_TYPE_DATE_TIME || valueType == BSON_TYPE_TIMESTAMP ||
+			valueType == BSON_TYPE_OID);
+}
+
+
 /* Indicates whether the value can be represented as an int32 value without overflow or truncating decimal digits. */
 bool
 IsBsonValue32BitInteger(const bson_value_t *value, bool checkFixedInteger)
