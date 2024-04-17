@@ -228,7 +228,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             />
           </div>
         )}
-        {showIMDSv2 && (
+        {providerType === ProviderCode.AWS && (
           <div>
             <Typography variant="body1">{t('form.amazonMachineImage')}</Typography>
             <div>
@@ -291,7 +291,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
           </Grid>
         </div>
 
-        {providerType === ProviderCode.AWS && (
+        {showIMDSv2 && (
           <div>
             <Typography variant="body1">{t('form.otherConfiguration')}</Typography>
             <Grid container spacing={3} alignItems="center">
