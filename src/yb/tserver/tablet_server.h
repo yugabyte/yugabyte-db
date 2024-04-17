@@ -343,6 +343,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void ClearAllMetaCachesOnServer() override;
 
+  Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
+
  protected:
   virtual Status RegisterServices();
 

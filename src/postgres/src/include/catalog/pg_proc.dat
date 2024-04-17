@@ -10486,4 +10486,14 @@
   proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o,o}',
   proargnames => '{sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,top_level_node_id,query_id,ysql_session_id,client_node_ip,wait_event_aux,sample_weight,wait_event_type}',
   prosrc => 'yb_active_session_history'},
+
+{ oid => '8066',
+  descr => 'Get metadata of all the local tablets',
+  proname => 'yb_local_tablets', prorows => '100',
+  proretset => 't', provolatile => 'v', proparallel => 'r',
+  prorettype => 'record', proargtypes => '',
+  proallargtypes => '{text,text,text,text,text,text,bytea,bytea}',
+  proargnames => '{tablet_id,table_id,table_type,namespace_name,ysql_schema_name,table_name,partition_key_start,partition_key_end}',
+  proargmodes => '{o,o,o,o,o,o,o,o}',
+  prosrc => 'yb_local_tablets'},
 ]

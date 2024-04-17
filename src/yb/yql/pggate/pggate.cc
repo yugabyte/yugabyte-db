@@ -2415,5 +2415,9 @@ Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistor
   return pg_session_->ActiveSessionHistory();
 }
 
+Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata() {
+  return pg_session_->TabletsMetadata();
+}
+
 } // namespace pggate
 } // namespace yb

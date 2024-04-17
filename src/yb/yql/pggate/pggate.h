@@ -791,6 +791,8 @@ class PgApiImpl {
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+
  private:
   class Interrupter;
 
