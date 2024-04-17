@@ -36,10 +36,10 @@ Every version of YBA supports the same version and prior releases of YugabyteDB,
 
 YBA v2.20.x supports the following YugabyteDB release series:
 
-- [v2.20.x](/preview/releases/release-notes/v2.20/) (LTS)
-- [v2.18.x](/preview/releases/release-notes/v2.18/) (STS)
-- [v2.16.x](/preview/releases/release-notes/v2.16/) (STS)
-- [v2.14.x](/preview/releases/release-notes/v2.14/) (LTS)
+- [v2.20.x](../ybdb-releases/v2.20/) (LTS)
+- [v2.18.x](../ybdb-releases/v2.18/) (STS)
+- [v2.16.x](../ybdb-releases/v2.16/) (STS)
+- [v2.14.x](../ybdb-releases/v2.14/) (LTS)
 
 Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
 
