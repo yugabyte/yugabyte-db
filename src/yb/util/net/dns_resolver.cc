@@ -163,6 +163,8 @@ class DnsResolver::Impl {
           if (error == boost::system::error_code()) {
             //only cache successful record in case of udp packet lost
             SetResult(PickResolvedAddress(host, error, entries), promise.get());
+          } else {
+            LOG(WARNING) << "resolve failed: host " << host << ", " <<  "err " << error.message();
           }
         });
 
