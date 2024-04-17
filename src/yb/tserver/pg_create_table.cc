@@ -183,6 +183,10 @@ Status PgCreateTable::Exec(
     table_creator->old_rewrite_table_id(old_relfilenode_id.GetYbTableId());
   }
 
+  if (req_.has_vector_idx_options()) {
+    table_creator->add_vector_options(req_.vector_idx_options());
+  }
+
   // For index, set indexed (base) table id.
   if (indexed_table_id_.IsValid()) {
     table_creator->indexed_table_id(indexed_table_id_.GetYbTableId());

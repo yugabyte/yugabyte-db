@@ -1569,7 +1569,21 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 
 		/* if it's an index, initialize index-related information */
 		if (OidIsValid(relation->rd_rel->relam))
+		{
+			/*
+			 * We don't preload indexes on user-defined AM's for now. Doing so
+			 * results in an issue where we try to load the user-defined AM.
+			 * This AM's handler might not be loaded as pg_proc might not be
+			 * loaded.
+			 */
+			if (relation->rd_rel->relam >= FirstNormalObjectId)
+			{
+				--num_tuples;
+				continue;
+			}
+
 			RelationInitIndexAccessInfo(relation);
+		}
 
 		/* extract reloptions if any */
 		RelationParseRelOptions(relation, pg_class_tuple);

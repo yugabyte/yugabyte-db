@@ -411,6 +411,16 @@ Status PgDmlRead::SetRequestedYbctids(const std::vector<Slice> *ybctids) {
   return Status::OK();
 }
 
+Status PgDmlRead::ANNBindVector(PgExpr *vector) {
+  auto vec_options = read_req_->mutable_vector_idx_options();
+  return vector->EvalTo(vec_options->mutable_vector());
+}
+
+Status PgDmlRead::ANNSetPrefetchSize(int32_t prefetch_size) {
+  read_req_->mutable_vector_idx_options()->set_prefetch_size(prefetch_size);
+  return Status::OK();
+}
+
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   // Save IN/OUT parameters from Postgres.
   pg_exec_params_ = exec_params;

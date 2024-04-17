@@ -1256,6 +1256,13 @@ Status PgApiImpl::CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tabl
   return down_cast<PgCreateTable*>(handle)->SetNumTablets(num_tablets);
 }
 
+Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement *handle, YbPgVectorIdxOptions *options) {
+  SCHECK(PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX),
+         InvalidArgument,
+         "Invalid statement handle");
+  return down_cast<PgCreateTable*>(handle)->SetVectorOptions(options);
+}
+
 Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
     // Invalid handle.
@@ -1798,6 +1805,14 @@ Status PgApiImpl::FetchRequestedYbctids(PgStatement *handle, const PgExecParamet
   RETURN_NOT_OK(dml_read.SetRequestedYbctids((const std::vector<Slice> *) ybctids));
 
   return dml_read.Exec(exec_params);
+}
+
+Status PgApiImpl::DmlANNBindVector(PgStatement *handle, PgExpr *vector) {
+  return down_cast<PgDml*>(handle)->ANNBindVector(vector);
+}
+
+Status PgApiImpl::DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size) {
+  return down_cast<PgDml*>(handle)->ANNSetPrefetchSize(prefetch_size);
 }
 
 Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_params) {

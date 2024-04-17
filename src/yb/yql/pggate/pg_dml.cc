@@ -252,6 +252,22 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   return Status::OK();
 }
 
+Status PgDml::ANNBindVector(PgExpr *query_vec) {
+  if (secondary_index_query_) {
+    return secondary_index_query_->ANNBindVector(query_vec);
+  }
+
+  return STATUS(IllegalState, "Secondary index scan only supports vector search");
+}
+
+Status PgDml::ANNSetPrefetchSize(int32_t prefetch_size) {
+  if (secondary_index_query_) {
+    return secondary_index_query_->ANNSetPrefetchSize(prefetch_size);
+  }
+
+  return STATUS(IllegalState, "Secondary index scan only supports vector search");
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::BindTable() {

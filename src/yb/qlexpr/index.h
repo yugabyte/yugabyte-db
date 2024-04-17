@@ -29,6 +29,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 
@@ -136,6 +137,10 @@ class IndexInfo {
 
   size_t DynamicMemoryUsage() const;
 
+  bool is_vector_idx() const;
+
+  const PgVectorIdxOptionsPB &get_vector_idx_options() const;
+
  private:
   const TableId table_id_;            // Index table id.
   const TableId indexed_table_id_;    // Indexed table id.
@@ -162,6 +167,9 @@ class IndexInfo {
   bool has_index_by_expr_ = false;
 
   mutable std::shared_ptr<const IndexInfoPB_WherePredicateSpecPB> where_predicate_spec_ = nullptr;
+
+  bool has_vector_idx_options_ = false;
+  PgVectorIdxOptionsPB vector_idx_options_;
 };
 
 // A map to look up an index by its index table id.
