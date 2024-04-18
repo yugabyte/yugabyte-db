@@ -80,23 +80,9 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 
 	if (!node->ss.ss_currentScanDesc)
 		node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(node);
+
 	scandesc = node->ss.ss_currentScanDesc;
-
 	ybScan = scandesc->ybscan;
-
-	/*
-	 * Special case: if we don't need the results (e.g. COUNT), just return as
-	 * many null values as we have ybctids.
-	 */
-	if (node->can_skip_fetch && !node->recheck_required && !node->work_mem_exceeded)
-	{
-		if (++node->skipped_tuples > yb_tbm_get_size(ybtbm))
-			return ExecClearTuple(slot);
-		/*
-		 * If we don't have to fetch the tuple, just return nulls.
-		 */
-		return ExecStoreAllNullTuple(slot);
-	}
 
 	/*
 	 * If the bitmaps have exceeded work_mem just select everything from the
@@ -245,7 +231,6 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	PushdownExprs  *yb_pushdown;
 	HeapScanDesc	scandesc;
 	YbBitmapTableScan *plan = (YbBitmapTableScan *) scanstate->ss.ps.plan;
-	bool			has_targets;
 
 	yb_pushdown = YbInstantiatePushdownParams(
 			scanstate->work_mem_exceeded ? &plan->fallback_pushdown
@@ -276,23 +261,6 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	scandesc->rs_temp_snap = false;
 	scandesc->rs_cblock    = InvalidBlockNumber;
 	scandesc->ybscan       = ybScan;
-
-	/*
-	 * We can potentially skip sending a request to the table if we do not need
-	 * any columns of the table, either for checking non-indexable quals or for
-	 * returning data.  This test is a bit simplistic, as it checks the
-	 * stronger condition that there's no qual or return tlist at all.  But in
-	 * most cases it's probably not worth working harder than that.
-	 *
-	 * The PG version of this test looked only at qual and tlist. In Yugabyte,
-	 * the target list from PGGate is more accurate and not much more work to
-	 * look at, so look at that instead.
-	 */
-	HandleYBStatus(YBCPgDmlHasRegularTargets(ybScan->handle, &has_targets));
-
-	scanstate->can_skip_fetch = (plan->scan.plan.qual == NIL &&
-								 plan->rel_pushdown.quals == NIL &&
-								 !has_targets && !scanstate->recheck_required);
 
 	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
 	{

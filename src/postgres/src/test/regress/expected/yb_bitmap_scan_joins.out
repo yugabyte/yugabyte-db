@@ -997,6 +997,28 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
  20
 (4 rows)
 
+--
+-- System Table Join where we don't require any values from the Bitmap table
+--
+/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Nested Loop (actual rows=1 loops=1)
+   ->  Seq Scan on pg_class c (actual rows=1 loops=1)
+         Storage Filter: (relname = 'pg_class'::name)
+   ->  YB Bitmap Table Scan on pg_namespace ns (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on pg_namespace_oid_index (actual rows=1 loops=1)
+               Index Cond: (oid = c.relnamespace)
+(6 rows)
+
+/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */
+SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
+ relname
+----------
+ pg_class
+(1 row)
+
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;
 RESET yb_prefer_bnl;

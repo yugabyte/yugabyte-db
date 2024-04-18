@@ -434,8 +434,6 @@ YBCStatus YBCPgBackfillIndex(
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 
-YBCStatus YBCPgDmlHasRegularTargets(YBCPgStatement handle, bool *has_targets);
-
 // Check if any statement target is a system column reference.
 YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols);
 
