@@ -68,7 +68,7 @@ DECLARE_int32(o_direct_block_size_bytes);
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_bool(TEST_skip_file_close);
 DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
-DECLARE_int32(min_segment_size_to_rollover_at_flush);
+DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
 
 namespace yb {
 namespace log {
@@ -1761,7 +1761,7 @@ TEST_F(LogTest, AsyncRolloverMarker) {
   options_.segment_size_bytes = std::numeric_limits<size_t>::max();
   options_.async_preallocate_segments = true;
   // Always rotate the wal.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_segment_size_to_rollover_at_flush) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_segment_size_bytes_to_rollover_at_flush) = 0;
   BuildLog();
   const auto kNumBatches = 2;
   const auto kNumEntriesPerBatch = 10;
