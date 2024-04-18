@@ -311,8 +311,8 @@ vacuum(List *relations, VacuumParams *params,
 	 */
 	if (params->options & VACOPT_VACUUM)
 	{
-		ereport(WARNING,
-				(errmsg("VACUUM will be ignored")));
+		ereport(NOTICE,
+				(errmsg("VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically")));
 		if (params->options & VACOPT_ANALYZE)
 		{
 			params->options &= ~VACOPT_VACUUM;

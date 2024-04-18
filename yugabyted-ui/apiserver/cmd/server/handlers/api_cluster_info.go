@@ -818,11 +818,10 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
     for _, nodeHost := range nodeList {
         versionInfoFuture := make(chan helpers.VersionInfoFuture)
         versionInfoFutures[nodeHost] = versionInfoFuture
-        go c.helper.GetVersionFuture(nodeHost, versionInfoFuture)
+        go c.helper.GetVersionFuture(nodeHost, false, versionInfoFuture)
     }
     activeYsqlConnectionsFutures := map[string]chan helpers.ActiveYsqlConnectionsFuture{}
     activeYcqlConnectionsFutures := map[string]chan helpers.ActiveYcqlConnectionsFuture{}
-    masterMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
     tserverMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
     for _, nodeHost := range nodeList {
         activeYsqlConnectionsFuture := make(chan helpers.ActiveYsqlConnectionsFuture)
@@ -831,9 +830,6 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
         activeYcqlConnectionsFuture := make(chan helpers.ActiveYcqlConnectionsFuture)
         activeYcqlConnectionsFutures[nodeHost] = activeYcqlConnectionsFuture
         go c.helper.GetActiveYcqlConnectionsFuture(nodeHost, activeYcqlConnectionsFuture)
-        masterMemTrackerFuture := make(chan helpers.MemTrackersFuture)
-        masterMemTrackersFutures[nodeHost] = masterMemTrackerFuture
-        go c.helper.GetMemTrackersFuture(nodeHost, true, masterMemTrackerFuture)
         tserverMemTrackerFuture := make(chan helpers.MemTrackersFuture)
         tserverMemTrackersFutures[nodeHost] = tserverMemTrackerFuture
         go c.helper.GetMemTrackersFuture(nodeHost, false, tserverMemTrackerFuture)
@@ -847,14 +843,28 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
             }
         }
     }
+    // Need to get versions of masters as well
+    versionInfoMasterFutures := map[string]chan helpers.VersionInfoFuture{}
+    masterMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
+    for masterHost := range masters {
+        versionInfoFuture := make(chan helpers.VersionInfoFuture)
+        versionInfoMasterFutures[masterHost] = versionInfoFuture
+        go c.helper.GetVersionFuture(masterHost, true, versionInfoFuture)
+        masterMemTrackerFuture := make(chan helpers.MemTrackersFuture)
+        masterMemTrackersFutures[masterHost] = masterMemTrackerFuture
+        go c.helper.GetMemTrackersFuture(masterHost, true, masterMemTrackerFuture)
+    }
+
     currentTime := time.Now().UnixMicro()
     hostToUuid, errHostToUuidMap := c.helper.GetHostToUuidMap(helpers.HOST)
+    tserverAddresses := map[string]bool{}
     for placementUuid, obj := range tabletServersResponse.Tablets {
         // Cross check the placement UUID of the node with that of read-replica cluster
         isReadReplica := false
-        if readReplicaUuid == placementUuid {
+        if readReplicaUuid != "" && readReplicaUuid == placementUuid {
             isReadReplica = true
         }
+        // Keep track of tserver addresses
         for hostport, nodeData := range obj {
             host, _, err := net.SplitHostPort(hostport)
             // If we can split hostport, just use host as name.
@@ -864,7 +874,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
             versionNumber := ""
             activeYsqlConnections := int64(0)
             activeYcqlConnections := int64(0)
-            isMasterUp := true
+            isMasterUp := false
             ramUsedTserver := int64(0)
             ramUsedMaster := int64(0)
             ramLimitTserver := int64(0)
@@ -875,9 +885,24 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 c.logger.Warnf("failed to split host/port: %s: %s", hostport, err.Error())
             } else {
                 hostName = host
+                tserverAddresses[hostName] = true
                 versionInfo := <-versionInfoFutures[hostName]
+                versionInfoMaster := helpers.VersionInfoFuture{
+                    Error: errors.New("tserver has no master, don't get master version info"),
+                }
+                if _, ok := versionInfoMasterFutures[hostName]; ok {
+                    versionInfoMaster = <-versionInfoMasterFutures[hostName]
+                }
                 if versionInfo.Error == nil {
-                    versionNumber = versionInfo.VersionInfo.VersionNumber
+                    if versionInfoMaster.Error == nil &&
+                        c.helper.CompareVersions(versionInfo.VersionInfo.VersionNumber,
+                            versionInfoMaster.VersionInfo.VersionNumber) > 0 {
+                        versionNumber = versionInfoMaster.VersionInfo.VersionNumber
+                    } else {
+                        versionNumber = versionInfo.VersionInfo.VersionNumber
+                    }
+                } else if versionInfoMaster.Error == nil {
+                    versionNumber = versionInfoMaster.VersionInfo.VersionNumber
                 }
                 ysqlConnections := <-activeYsqlConnectionsFutures[hostName]
                 if ysqlConnections.Error == nil {
@@ -887,7 +912,12 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 if ycqlConnections.Error == nil {
                     activeYcqlConnections += ycqlConnections.YcqlConnections
                 }
-                masterMemTracker := <-masterMemTrackersFutures[hostName]
+                masterMemTracker := helpers.MemTrackersFuture{
+                    Error: errors.New("tserver has no master, don't get master mem tracker"),
+                }
+                if _, ok := masterMemTrackersFutures[hostName]; ok {
+                    masterMemTracker = <-masterMemTrackersFutures[hostName]
+                }
                 if masterMemTracker.Error == nil {
                     ramUsedMaster = masterMemTracker.Consumption
                     ramLimitMaster = masterMemTracker.Limit
@@ -988,6 +1018,77 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 },
                 SoftwareVersion: versionNumber,
             })
+        }
+    }
+    // Special case for deployments where there are master-only nodes (not tservers)
+    getAllMasters := ctx.QueryParam("get_all_masters")
+    if getAllMasters != "" {
+        // Add data for masters that have no tserver. Will have missing values
+        for masterHost, masterData := range masters {
+            if _, ok := tserverAddresses[masterHost]; !ok {
+                isMasterUp := masterData.Error == nil
+                if !isMasterUp {
+                    response.Data = append(response.Data, models.NodeData{
+                        Name:            masterHost,
+                        Host:            masterHost,
+                        IsNodeUp:        isMasterUp,
+                        IsMaster:        true,
+                        IsTserver:       false,
+                        IsMasterUp:      isMasterUp,
+                    })
+                    continue
+                }
+                isReadReplica := false
+                if readReplicaUuid != "" &&
+                    readReplicaUuid == masterData.Registration.PlacementUuid {
+                    isReadReplica = true
+                }
+                zonePreferences := clusterConfigResponse.ClusterConfig.
+                    ReplicationInfo.MultiAffinitizedLeaders
+                var preferenceOrder int32 = getPreferenceOrder(
+                    masterData.Registration.CloudInfo.PlacementCloud,
+                    masterData.Registration.CloudInfo.PlacementRegion,
+                    masterData.Registration.CloudInfo.PlacementZone,
+                    zonePreferences)
+                masterMemTracker := <-masterMemTrackersFutures[masterHost]
+                ramUsedMaster := int64(0)
+                ramLimitMaster := int64(0)
+                if masterMemTracker.Error == nil {
+                    ramUsedMaster = masterMemTracker.Consumption
+                    ramLimitMaster = masterMemTracker.Limit
+                }
+                masterUptimeUs := int64(currentTime - masterData.InstanceId.StartTimeUs)
+                versionNumber := ""
+                versionInfoMaster := <-versionInfoMasterFutures[masterHost]
+                if versionInfoMaster.Error == nil {
+                    versionNumber = versionInfoMaster.VersionInfo.VersionNumber
+                }
+                response.Data = append(response.Data, models.NodeData{
+                    Name:            masterHost,
+                    Host:            masterHost,
+                    IsNodeUp:        isMasterUp,
+                    IsMaster:        true,
+                    IsTserver:       false,
+                    IsReadReplica:   isReadReplica,
+                    PreferenceOrder: preferenceOrder,
+                    IsMasterUp:      isMasterUp,
+                    IsBootstrapping: true,
+                    Metrics: models.NodeDataMetrics{
+                        // Some fields are redundant, keep them in for safety reasons
+                        MemoryUsedBytes:              ramUsedMaster,
+                        UptimeSeconds:                masterUptimeUs / 1000000,
+                        MasterUptimeUs:               masterUptimeUs,
+                        RamUsedBytes:                 ramUsedMaster,
+                        RamProvisionedBytes:          ramLimitMaster,
+                    },
+                    CloudInfo: models.NodeDataCloudInfo{
+                        Cloud:  masterData.Registration.CloudInfo.PlacementCloud,
+                        Region: masterData.Registration.CloudInfo.PlacementRegion,
+                        Zone:   masterData.Registration.CloudInfo.PlacementZone,
+                    },
+                    SoftwareVersion: versionNumber,
+                })
+            }
         }
     }
     sort.Slice(response.Data, func(i, j int) bool {
@@ -1291,7 +1392,9 @@ func (c *Container) GetClusterTablets(ctx echo.Context) error {
 // GetVersion - Get YugabyteDB version
 func (c *Container) GetVersion(ctx echo.Context) error {
     tabletServersFuture := make(chan helpers.TabletServersFuture)
+    masterAddressesFuture := make(chan helpers.MasterAddressesFuture)
     go c.helper.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+    go c.helper.GetMasterAddressesFuture(masterAddressesFuture)
 
     // Get response from tabletServersFuture
     tabletServersResponse := <-tabletServersFuture
@@ -1300,14 +1403,37 @@ func (c *Container) GetVersion(ctx echo.Context) error {
         return ctx.String(http.StatusInternalServerError,
             tabletServersResponse.Error.Error())
     }
+    // Get response from masterAddressesFuture
+    masterAddressesResponse := <-masterAddressesFuture
+    if masterAddressesResponse.Error != nil {
+        c.logger.Errorf("failed to get master addresses")
+        return ctx.String(http.StatusInternalServerError,
+            masterAddressesResponse.Error.Error())
+    }
+
+    // List of tservers
     nodeList := c.helper.GetNodesList(tabletServersResponse)
+    // List of masters
+    masterList := masterAddressesResponse.HostList
     versionInfoFutures := map[string]chan helpers.VersionInfoFuture{}
     for _, nodeHost := range nodeList {
         versionInfoFuture := make(chan helpers.VersionInfoFuture)
         versionInfoFutures[nodeHost] = versionInfoFuture
-        go c.helper.GetVersionFuture(nodeHost, versionInfoFuture)
+        go c.helper.GetVersionFuture(nodeHost, false, versionInfoFuture)
     }
+    versionInfoMasterFutures := map[string]chan helpers.VersionInfoFuture{}
+    for _, masterHost := range masterList {
+        versionInfoFuture := make(chan helpers.VersionInfoFuture)
+        versionInfoMasterFutures[masterHost] = versionInfoFuture
+        go c.helper.GetVersionFuture(masterHost, true, versionInfoFuture)
+    }
+    // We return the smallest version of all masters/tservers
     smallestVersion := c.helper.GetSmallestVersion(versionInfoFutures)
+    smallestVersionMaster := c.helper.GetSmallestVersion(versionInfoMasterFutures)
+    if smallestVersion == "" ||
+        c.helper.CompareVersions(smallestVersion, smallestVersionMaster) > 0 {
+        smallestVersion = smallestVersionMaster
+    }
     return ctx.JSON(http.StatusOK, models.VersionInfo{
         Version: smallestVersion,
     })
@@ -1371,12 +1497,12 @@ func (c *Container) GetGflagsJson(ctx echo.Context) error {
 
     masterFlags := <-gFlagsMasterFuture
     if masterFlags.Error != nil {
-        c.logger.Errorf("failed to get master flags from %s: %s",
+        c.logger.Warnf("failed to get master flags from %s: %s",
             nodeHost, masterFlags.Error.Error())
     }
     tserverFlags := <-gFlagsTserverFuture
     if tserverFlags.Error != nil {
-        c.logger.Errorf("failed to get tserver flags from %s: %s",
+        c.logger.Warnf("failed to get tserver flags from %s: %s",
             nodeHost, tserverFlags.Error.Error())
     }
 
@@ -1566,11 +1692,12 @@ func (c *Container) GetClusterConnections(ctx echo.Context) error {
         }
         connectionsResponse.Data[nodeHost] = []models.ConnectionStatsItem{}
         for _, connectionPool := range connectionResponse.Pools {
-            if connectionPool.Pool != "control_connection" {
+            if connectionPool.DatabaseName != "control_connection" {
                 connectionsResponse.Data[nodeHost] = append(
                     connectionsResponse.Data[nodeHost],
                     models.ConnectionStatsItem{
-                        Pool: connectionPool.Pool,
+                        DatabaseName: connectionPool.DatabaseName,
+                        UserName: connectionPool.UserName,
                         ActiveLogicalConnections: connectionPool.ActiveLogicalConnections,
                         QueuedLogicalConnections: connectionPool.QueuedLogicalConnections,
                         IdleOrPendingLogicalConnections:

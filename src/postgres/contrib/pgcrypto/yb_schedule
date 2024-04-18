@@ -1,24 +1,27 @@
 #contrib/pgcrypto/yb_schedule
+# Since the upstream postgres test works fine without modifications
+# (currently), don't bother porting it to yb_pg_ tests
 
-test: yb_pg_init
-test: yb_pg_3des
-test: yb_pg_cast5
-test: yb_pg_crypt-des
-test: yb_pg_crypt-xdes
-test: yb_pg_hmac-md5
-test: yb_pg_sha2
-test: yb_pg_blowfish
-test: yb_pg_crypt-blowfish
-test: yb_pg_crypt-md5
-test: yb_pg_des
-test: yb_pg_hmac-sha1
-test: yb_pg_md5
-test: yb_pg_sha1
-test: yb_pg_pgp-pubkey-decrypt
-test: yb_pg_pgp-pubkey-encrypt
-test: yb_pg_pgp-info
-test: yb_pg_pgp-encrypt
-test: yb_pg_pgp-decrypt
-test: yb_pg_pgp-compression
-test: yb_pg_pgp-armor
-
+test: init
+test: 3des
+test: cast5
+test: crypt-des
+test: crypt-xdes
+test: hmac-md5
+test: sha2
+test: blowfish
+test: crypt-blowfish
+test: crypt-md5
+test: des
+test: hmac-sha1
+test: md5
+test: sha1
+test: pgp-pubkey-decrypt
+test: pgp-pubkey-encrypt
+test: pgp-info
+test: pgp-encrypt
+test: pgp-decrypt
+test: pgp-compression
+test: pgp-armor
+test: pgp-zlib-DISABLED
+test: rijndael

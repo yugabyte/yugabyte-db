@@ -155,7 +155,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     submitButtonTooltip,
     cancelButtonTooltip,
     isSubmitting,
-    dialogContentProps = {},
+    dialogContentProps = { dividers: true },
     titleContentProps,
     ...dialogProps
   } = props;

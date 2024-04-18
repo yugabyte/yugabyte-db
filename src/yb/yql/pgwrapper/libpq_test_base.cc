@@ -92,6 +92,8 @@ void LibPqTestBase::UpdateMiniClusterFailOnConflict(ExternalMiniClusterOptions* 
   // This test depends on fail-on-conflict concurrency control to perform its validation.
   // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
   options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+  // Set the max query layer retries to 2 to speed up the test.
+  options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=" + MaxQueryLayerRetriesConf(2));
 }
 
 // Test that repeats example from this article:

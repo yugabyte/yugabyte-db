@@ -18,5 +18,4 @@ CREATE TABLE person (
 \set filename :abs_srcdir '/data/person.data'
 COPY person FROM :'filename';
 VACUUM ANALYZE person;
-WARNING:  VACUUM will be ignored
-ERROR:  Transaction for catalog table write operation 'pg_statistic' not found
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically

@@ -22,6 +22,7 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import {
   api,
   drConfigQueryKey,
+  metricQueryKey,
   universeQueryKey,
   xClusterQueryKey
 } from '../../../redesign/helpers/api';
@@ -42,6 +43,7 @@ import { DrBannerSection } from './DrBannerSection';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
+import { EditConfigModal } from './editConfig/EditConfigModal';
 
 import { TableType } from '../../../redesign/helpers/dtos';
 import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
@@ -71,7 +73,7 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     alignItems: 'center',
 
-    margin: `${theme.spacing(3)}px 0 ${theme.spacing(2)}px`,
+    marginBottom: theme.spacing(2),
 
     '& $actionButtonContainer': {
       marginLeft: 'auto'
@@ -112,6 +114,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const [isFailoverModalOpen, setIsFailoverModalOpen] = useState<boolean>(false);
   const [isCreateConfigModalOpen, setIsCreateConfigModalOpen] = useState<boolean>(false);
   const [isDeleteConfigModalOpen, setIsDeleteConfigModalOpen] = useState<boolean>(false);
+  const [isEditConfigModalOpen, setIsEditConfigModalOpen] = useState<boolean>(false);
   const [isEditConfigTargetModalOpen, setIsEditTargetConfigModalOpen] = useState<boolean>(false);
   const [isEditTablesModalOpen, setIsEditTablesModalOpen] = useState<boolean>(false);
   const [isRepairConfigModalOpen, setIsRepairConfigModalOpen] = useState<boolean>(false);
@@ -180,7 +183,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   }, PollingIntervalMs.UNIVERSE_STATE_TRANSITIONS);
   // Polling for metrics and config updates.
   useInterval(() => {
-    queryClient.invalidateQueries('xcluster-metric'); // TODO: Add a dedicated key for 'latest xCluster metrics'.
+    queryClient.invalidateQueries(metricQueryKey.ALL); // TODO: Add a dedicated key for 'latest xCluster metrics'.
   }, PollingIntervalMs.XCLUSTER_METRICS);
   useInterval(() => {
     const xClusterConfigStatus = drConfigQuery.data?.status;
@@ -210,6 +213,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   }
   if (
     currentUniverseQuery.isLoading ||
+    currentUniverseQuery.isIdle ||
     drConfigQuery.isLoading ||
     participantUniverseQuery.isLoading
   ) {
@@ -263,6 +267,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const closeDeleteConfigModal = () => setIsDeleteConfigModalOpen(false);
   const openEditTablesModal = () => setIsEditTablesModalOpen(true);
   const closeEditTablesModal = () => setIsEditTablesModalOpen(false);
+  const openEditConfigModal = () => setIsEditConfigModalOpen(true);
+  const closeEditConfigModal = () => setIsEditConfigModalOpen(false);
   const openEditTargetConfigModal = () => setIsEditTargetConfigModalOpen(true);
   const closeEditTargetConfigModal = () => setIsEditTargetConfigModalOpen(false);
   const openRepairConfigModal = () => setIsRepairConfigModalOpen(true);
@@ -285,7 +291,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const enabledXClusterConfigActions = getEnabledConfigActions(
     xClusterConfig,
     sourceUniverse,
-    targetUniverse
+    targetUniverse,
+    drConfig.state
   );
   return (
     <>
@@ -337,6 +344,22 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                         <YBMenuItemLabel
                           label={t('actionButton.actionMenu.editTables')}
                           preLabelElement={<i className="fa fa-table" />}
+                        />
+                      </MenuItem>
+                    </RbacValidator>
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_EDIT}
+                      overrideStyle={{ display: 'block' }}
+                      isControl
+                    >
+                      <MenuItem
+                        eventKey={DrConfigActions.EDIT}
+                        onSelect={openEditConfigModal}
+                        disabled={!enabledDrConfigActions.includes(DrConfigActions.EDIT)}
+                      >
+                        <YBMenuItemLabel
+                          label={t('actionButton.actionMenu.editDrConfig')}
+                          preLabelElement={<i className="fa fa-gear" />}
                         />
                       </MenuItem>
                     </RbacValidator>
@@ -506,7 +529,14 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isDeleteConfigModalOpen && (
           <DeleteConfigModal
             drConfig={drConfig}
+            currentUniverseName={currentUniverseQuery.data.name}
             modalProps={{ open: isDeleteConfigModalOpen, onClose: closeDeleteConfigModal }}
+          />
+        )}
+        {isEditConfigModalOpen && (
+          <EditConfigModal
+            drConfig={drConfig}
+            modalProps={{ open: isEditConfigModalOpen, onClose: closeEditConfigModal }}
           />
         )}
         {isEditConfigTargetModalOpen && (
@@ -520,6 +550,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
             xClusterConfig={xClusterConfig}
             isDrInterface={true}
             drConfigUuid={drConfig.uuid}
+            storageConfigUuid={drConfig.bootstrapParams?.backupRequestParams?.storageConfigUUID}
             modalProps={{ open: isEditTablesModalOpen, onClose: closeEditTablesModal }}
           />
         )}
@@ -532,7 +563,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isRestartConfigModalOpen && (
           <RestartConfigModal
             isDrInterface={true}
-            drConfigUuid={drConfig.uuid}
+            drConfig={drConfig}
             configTableType={TableType.PGSQL_TABLE_TYPE}
             isVisible={isRestartConfigModalOpen}
             onHide={closeRestartConfigModal}

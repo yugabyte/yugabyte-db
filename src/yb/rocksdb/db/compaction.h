@@ -62,6 +62,7 @@ struct LightweightBoundaries {
   size_t num_user_values;
   UserBoundaryTag* user_tags;
   Slice* user_values;
+  uint64_t hybrid_time = 0;
 
   Slice user_key() const { return ExtractUserKey(key); }
 

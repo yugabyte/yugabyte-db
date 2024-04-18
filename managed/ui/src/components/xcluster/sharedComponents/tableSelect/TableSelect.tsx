@@ -9,7 +9,8 @@ import {
 import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import Select, { ValueType } from 'react-select';
 import clsx from 'clsx';
-import { Box } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
+import { useTranslation } from 'react-i18next';
 
 import {
   fetchTablesInUniverse,
@@ -173,13 +174,13 @@ const NOTE_EXPAND_CONTENT = (
     <p>
       Please be aware that we currently do not support backup/restore at table-level granularity for
       YSQL. The full copy step involves a backup/restore of the source universe data, and initiating
-      a restart replication task from the UI will involve full copying. For a smooth experience
-      managing the xCluster configuration from the UI, we do not recommend creating xCluster
-      configurations for a subset of the tables in a YSQL database.
+      a restart replication task from the UI will involve creating a full copy. For a smooth
+      experience managing the xCluster configuration from the UI, we do not recommend creating
+      xCluster configurations for a subset of the tables in a YSQL database.
     </p>
   </div>
 );
-const TABLE_DESCRIPTOR = 'List of databases and tables in the source universe';
+const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
 
 /**
  * Input component for selecting tables for xCluster configuration.
@@ -208,6 +209,7 @@ export const TableSelect = (props: TableSelectProps) => {
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
   const [isTooltipOpen, setIsTooltipOpen] = useState<boolean>(false);
   const [isMouseOverTooltip, setIsMouseOverTooltip] = useState<boolean>(false);
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const sourceUniverseNamespaceQuery = useQuery<UniverseNamespace[]>(
     universeQueryKey.namespaces(sourceUniverseUUID),
@@ -278,13 +280,19 @@ export const TableSelect = (props: TableSelectProps) => {
     sourceUniverseTablesQuery.isError ||
     sourceUniverseQuery.isError
   ) {
-    return <YBErrorIndicator message="Error fetching source universe information." />;
+    const sourceUniverseLabel = isDrInterface ? 'DR primary universe' : 'source universe';
+    return (
+      <YBErrorIndicator customErrorMessage={`Error fetching ${sourceUniverseLabel} information.`} />
+    );
   }
   if (targetUniverseTablesQuery.isError || targetUniverseQuery.isError) {
-    return <YBErrorIndicator message="Error fetching target universe information." />;
+    const targetUniverseLabel = isDrInterface ? 'DR replica universe' : 'source universe';
+    return (
+      <YBErrorIndicator customErrorMessage={`Error fetching ${targetUniverseLabel} information.`} />
+    );
   }
   if (globalRuntimeConfigQuery.isError) {
-    return <YBErrorIndicator message="Error fetching runtime configurations." />;
+    return <YBErrorIndicator customErrorMessage="Error fetching runtime configurations." />;
   }
 
   const toggleTableGroup = (
@@ -422,6 +430,9 @@ export const TableSelect = (props: TableSelectProps) => {
     }
   };
 
+  const tableDescriptor = isDrInterface
+    ? t('selectionDescriptorDr')
+    : t('selectionDescriptorXCluster');
   const runtimeConfigEntries = globalRuntimeConfigQuery.data.configEntries ?? [];
   const isTransactionalAtomicityEnabled = runtimeConfigEntries.some(
     (config: any) =>
@@ -443,6 +454,10 @@ export const TableSelect = (props: TableSelectProps) => {
       true
     ) < 0 &&
     !participantsHaveLinkedXClusterConfig;
+  const selectedIndexTableCount = getSelectedIndexTableCount(
+    sourceUniverseTablesQuery.data,
+    selectedTableUUIDs
+  );
   return (
     <>
       {isTransactionalAtomicityEnabled &&
@@ -490,9 +505,9 @@ export const TableSelect = (props: TableSelectProps) => {
             </YBTooltip>
           </Box>
         )}
-      <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
-      <div className={styles.tableToolbar}>
-        {!isDrInterface && (
+      <div className={styles.tableDescriptor}>{tableDescriptor}</div>
+      {!isDrInterface && (
+        <div className={styles.tableToolbar}>
           <Select
             styles={TABLE_TYPE_SELECT_STYLES}
             options={TABLE_TYPE_OPTIONS}
@@ -500,13 +515,13 @@ export const TableSelect = (props: TableSelectProps) => {
             value={{ value: tableType, label: TableTypeLabel[tableType] }}
             isDisabled={isFixedTableType}
           />
-        )}
-        <YBInputField
-          containerClassName={styles.namespaceSearchInput}
-          placeHolder="Search for databases.."
-          onValueChanged={(searchTerm: string) => setNamespaceSearchTerm(searchTerm)}
-        />
-      </div>
+          <YBInputField
+            containerClassName={styles.namespaceSearchInput}
+            placeHolder="Search for databases.."
+            onValueChanged={(searchTerm: string) => setNamespaceSearchTerm(searchTerm)}
+          />
+        </div>
+      )}
       <div className={styles.bootstrapTableContainer}>
         <BootstrapTable
           tableContainerClass={styles.bootstrapTable}
@@ -584,16 +599,21 @@ export const TableSelect = (props: TableSelectProps) => {
           />
         </div>
       )}
-      {tableType === TableType.PGSQL_TABLE_TYPE &&
-      props.configAction !== XClusterConfigAction.MANAGE_TABLE ? (
-        <div>
-          Tables in {selectedNamespaceUuids.length} of{' '}
-          {Object.keys(replicationItems.PGSQL_TABLE_TYPE.namespaces).length} database(s) selected
-        </div>
+      {tableType === TableType.YQL_TABLE_TYPE ||
+      props.configAction === XClusterConfigAction.MANAGE_TABLE ? (
+        <Typography variant="body2">
+          {t('tableSelectionCount', {
+            selectedTableCount: selectedTableUUIDs.length - selectedIndexTableCount,
+            availableTableCount: replicationItems[tableType].tableCount
+          })}
+        </Typography>
       ) : (
-        <div>
-          {selectedTableUUIDs.length} of {replicationItems[tableType].tableCount} table(s) selected
-        </div>
+        <Typography variant="body2">
+          {t('databaseSelectionCount', {
+            selectedDatabaseCount: selectedNamespaceUuids.length,
+            availableDatabaseCount: Object.keys(replicationItems.PGSQL_TABLE_TYPE.namespaces).length
+          })}
+        </Typography>
       )}
       {(selectionError || selectionWarning) && (
         <div className={styles.validationContainer}>
@@ -711,6 +731,16 @@ const getReplicationItemsFromTables = (
     }
   );
 };
+
+const getSelectedIndexTableCount = (sourceUniverseTables: YBTable[], selectedTableUuid: string[]) =>
+  sourceUniverseTables.reduce(
+    (indexTableCount, table) =>
+      selectedTableUuid.includes(getTableUuid(table)) &&
+      table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
+        ? indexTableCount + 1
+        : indexTableCount,
+    0
+  );
 
 // Colocated parent tables have table.tablename in the following format:
 //   <uuid>.colocation.parent.tablename

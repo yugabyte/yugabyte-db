@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * pg_cron.h
- *    definition of pg_cron data types
+ *	  definition of pg_cron data types
  *
  * Copyright (c) 2010-2015, Citus Data, Inc.
  *
@@ -14,8 +14,6 @@
 
 /* global settings */
 extern char *CronTableDatabaseName;
-extern const int MaxNodenameLength;
-extern const char *MyNodeName;
-extern bool UseBackgroundWorkers;
+extern bool LaunchActiveJobs;
 
 #endif

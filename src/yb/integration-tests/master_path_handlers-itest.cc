@@ -703,6 +703,8 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     opts_.extra_tserver_flags.push_back("--placement_zone=z${index}");
     opts_.extra_tserver_flags.push_back("--placement_uuid=" + kLivePlacementUuid);
     opts_.extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+    const auto rf = opts_.replication_factor > 0 ? opts_.replication_factor : 3;
+    opts_.extra_master_flags.push_back(Format("--replication_factor=$0", rf));
 
     MasterPathHandlersBaseItest<ExternalMiniCluster>::SetUp();
 
@@ -710,8 +712,14 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
         cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
     ASSERT_OK(yb_admin_client_->Init());
 
-    // 3 live replicas, one in each zone.
-    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3,
+    std::string placement_infos;
+    for (int i = 0; i < rf; i++) {
+      placement_infos += Format("c.r.z$0:1", i);
+      if (i < rf - 1) {
+        placement_infos += ",";
+      }
+    }
+    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(placement_infos, rf,
         kLivePlacementUuid));
   }
 
@@ -991,9 +999,18 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   ASSERT_EQ(table_str.substr(pos + 22, 11), "anotherzone");
 }
 
+template <int RF>
 class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest {
+ protected:
+  int num_tablet_servers() const override {
+    return RF;
+  }
+  int num_masters() const override {
+    return RF;
+  }
  public:
   void SetUp() override {
+    opts_.replication_factor = RF;
     opts_.extra_tserver_flags.push_back(
         {Format("--tserver_heartbeat_metrics_interval_ms=$0", kTserverHeartbeatMetricsIntervalMs)});
     MasterPathHandlersExternalItest::SetUp();
@@ -1040,7 +1057,10 @@ class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest
   static constexpr int kTserverHeartbeatMetricsIntervalMs = 1000;
 };
 
-TEST_F(MasterPathHandlersLeaderlessITest, TestLeaderlessTabletEndpoint) {
+typedef MasterPathHandlersLeaderlessITest<3> MasterPathHandlersLeaderlessRF3ITest;
+typedef MasterPathHandlersLeaderlessITest<1> MasterPathHandlersLeaderlessRF1ITest;
+
+TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderlessTabletEndpoint) {
   ASSERT_OK(cluster_->SetFlagOnMasters("leaderless_tablet_alert_delay_secs", "5"));
   CreateSingleTabletTestTable();
   auto tablet_id = GetSingleTabletId();
@@ -1105,7 +1125,7 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestLeaderlessTabletEndpoint) {
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
 }
 
-TEST_F(MasterPathHandlersLeaderlessITest, TestLeaderChange) {
+TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderChange) {
   const auto kMaxLeaderLeaseExpiredMs = 5000;
   const auto kHtLeaseDurationMs = 2000;
   const auto kMaxTabletWithoutValidLeaderMs = 5000;
@@ -1164,7 +1184,7 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestLeaderChange) {
   ASSERT_EQ(result.find(tablet_id), string::npos);
 }
 
-TEST_F(MasterPathHandlersLeaderlessITest, TestAllFollowers) {
+TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestAllFollowers) {
   const auto kMaxTabletWithoutValidLeaderMs = 5000;
   ASSERT_OK(cluster_->SetFlagOnMasters("leaderless_tablet_alert_delay_secs",
                                        std::to_string(kMaxTabletWithoutValidLeaderMs / 1000)));
@@ -1207,6 +1227,25 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestAllFollowers) {
     string result = GetLeaderlessTabletsString();
     return result.find(tablet_id) == string::npos;
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
+}
+
+TEST_F(MasterPathHandlersLeaderlessRF1ITest, TestRF1) {
+  const auto kLeaderlessTabletAlertDelaySecs = 5;
+  ASSERT_OK(cluster_->SetFlagOnMasters("leaderless_tablet_alert_delay_secs",
+                                       std::to_string(kLeaderlessTabletAlertDelaySecs)));
+  CreateSingleTabletTestTable();
+  auto tablet_id = GetSingleTabletId();
+
+  SleepFor((kLeaderlessTabletAlertDelaySecs + 1) * 1s);
+  string result = GetLeaderlessTabletsString();
+  ASSERT_EQ(result.find(tablet_id), string::npos);
+
+  ASSERT_OK(cluster_->tablet_server(0)->Pause());
+  SleepFor((kLeaderlessTabletAlertDelaySecs + 1) * 1s);
+  result = GetLeaderlessTabletsString();
+  ASSERT_NE(result.find(tablet_id), string::npos);
+
+  ASSERT_OK(cluster_->tablet_server(0)->Resume());
 }
 
 TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {

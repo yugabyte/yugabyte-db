@@ -1,15 +1,15 @@
-import { ChangeEvent, useEffect, useState } from 'react';
+import { ChangeEvent, useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { DropdownButton, MenuItem, Dropdown } from 'react-bootstrap';
+import { useQuery, useQueryClient } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
-import { Box, Divider, makeStyles } from '@material-ui/core';
+import { Box, Divider, Tooltip, makeStyles } from '@material-ui/core';
 import { Add, Refresh } from '@material-ui/icons';
 import clsx from 'clsx';
 import { ReleaseDetails } from './ReleaseDetails';
 import { DeploymentStatus } from './ReleaseDeploymentStatus';
 import { AddReleaseModal } from './ReleaseDialogs/AddReleaseModal';
-import { EditKubernetesModal } from './ReleaseDialogs/EditArchitectureModal';
+import { EditArchitectureModal } from './ReleaseDialogs/EditArchitectureModal';
 import { EditReleaseTagModal } from './ReleaseDialogs/EditReleaseTagModal';
 import { DisableReleaseModal } from './ReleaseDialogs/DisableReleaseModal';
 import { DeleteReleaseModal } from './ReleaseDialogs/DeleteReleaseModal';
@@ -18,6 +18,7 @@ import { YBPanelItem } from '../../../../components/panels';
 import { YBSearchInput } from '../../../../components/common/forms/fields/YBSearchInput';
 import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
+import { YBErrorIndicator, YBLoading } from '../../../../components/common/indicators';
 import {
   ModalTitle,
   ReleaseArtifacts,
@@ -26,13 +27,13 @@ import {
   ReleaseType,
   Releases
 } from './dtos';
-import { RELEASE_LIST_DATA } from '../api/MockData';
-import { RuntimeConfigKey } from '../../../helpers/constants';
+import { QUERY_KEY, ReleasesAPI } from '../api';
 import { getImportedArchitectures } from '../helpers/utils';
 import { isEmptyString, isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 import UnChecked from '../../../../redesign/assets/checkbox/UnChecked.svg';
 import Checked from '../../../../redesign/assets/checkbox/Checked.svg';
+import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
 
 const useStyles = makeStyles((theme) => ({
   biggerReleaseText: {
@@ -49,7 +50,11 @@ const useStyles = makeStyles((theme) => ({
     alignSelf: 'center'
   },
   versionText: {
-    alignSelf: 'center'
+    alignSelf: 'center',
+    overflow: 'visible !important'
+  },
+  alignText: {
+    alignItems: 'center'
   },
   releaseTagBox: {
     border: '1px',
@@ -154,9 +159,12 @@ const OTHER_ACTONS = {
   DELETE_RELEASE: 'Delete'
 } as const;
 
-export const ReleaseList = () => {
+const MAX_RELEASE_TAG_CHAR = 10;
+
+export const NewReleaseList = () => {
   const helperClasses = useStyles();
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
 
   const [openSidePanel, setOpenSidePanel] = useState<boolean>(false);
   const [showAllowedReleases, setShowAllowedReleases] = useState<boolean>(false);
@@ -166,43 +174,60 @@ export const ReleaseList = () => {
   const [showDisableReleaseDialog, setShowDisableReleaseDialog] = useState<boolean>(false);
   const [showDeleteReleaseDialog, setShowDeleteReleaseDialog] = useState<boolean>(false);
   const [showEditKubernetesDialog, setShowEditKubernetesDialog] = useState<boolean>(false);
-  const [releaseArchitecture, setReleaseArchitecture] = useState<ReleasePlatformArchitecture>(
-    ReleasePlatformArchitecture.X86
-  );
+  const [
+    releaseArchitecture,
+    setReleaseArchitecture
+  ] = useState<ReleasePlatformArchitecture | null>(ReleasePlatformArchitecture.X86);
   const releaseSupportKeys = Object.values(ReleaseType);
   const [releaseType, setReleaseType] = useState<string>(releaseSupportKeys[0]);
   const [releaseList, setReleaseList] = useState<Releases[]>([]);
+  const [filteredReleaseList, setFilteredReleaseList] = useState<Releases[]>([]);
   const [searchText, setSearchText] = useState<string>('');
   const [modalTitle, setModalTitle] = useState<string>(ModalTitle.ADD_RELEASE);
 
-  useEffect(() => {
-    // TODO: Make an API call to ensure it returns the list of releases - fetchReleasesList (GET) from api.ts
-    setReleaseList(RELEASE_LIST_DATA);
-  }, []);
+  const {
+    data: releasesData,
+    isIdle: isReleasesIdle,
+    isLoading: isReleasesLoading,
+    isError: isReleasesFetchError,
+    refetch: releasesRefetch
+  } = useQuery(QUERY_KEY.fetchReleasesList, () => ReleasesAPI.fetchReleasesList(), {
+    onSuccess: (data: Releases[]) => {
+      setReleaseList(data);
+      setFilteredReleaseList(data);
+    }
+  });
 
-  // Check if runtime config is enabled for new releases page
-  const runtimeConfigsKeyMetadata = useSelector(
-    (state: any) => state.customer.runtimeConfigsKeyMetadata
-  );
-  const isReleasesRedesignEnabled =
-    runtimeConfigsKeyMetadata?.data?.configEntries?.find(
-      (c: any) => c.key === RuntimeConfigKey.RELEASES_REDESIGN_UI_FEATURE_FLAG
-    )?.value === 'true';
-
-  if (!isReleasesRedesignEnabled) {
-    return <></>;
+  if (isReleasesFetchError) {
+    return <YBErrorIndicator customErrorMessage={t('releases.genericError')} />;
+  }
+  if (isReleasesLoading || (isReleasesIdle && releasesData === undefined)) {
+    return <YBLoading />;
   }
 
   const formatVersion = (cell: any, row: any) => {
     return (
-      <Box className={helperClasses.flexRow}>
+      <Box className={clsx(helperClasses.flexRow, helperClasses.alignText)}>
         <span className={helperClasses.versionText}>{row.version}</span>
         {isNonEmptyString(row.release_tag) && (
-          <Box className={helperClasses.releaseTagBox}>
-            <span className={clsx(helperClasses.releaseTagText, helperClasses.smallerReleaseText)}>
-              {row.release_tag}
+          <>
+            <Box className={helperClasses.releaseTagBox}>
+              <span
+                className={clsx(helperClasses.releaseTagText, helperClasses.smallerReleaseText)}
+              >
+                {row.release_tag.length > MAX_RELEASE_TAG_CHAR
+                  ? `${row.release_tag.substring(0, 10)}...`
+                  : row.release_tag}
+              </span>
+            </Box>
+            <span>
+              {row.release_tag.length > MAX_RELEASE_TAG_CHAR && (
+                <Tooltip title={row.release_tag} arrow placement="top">
+                  <img src={InfoMessageIcon} alt="info" />
+                </Tooltip>
+              )}
             </span>
-          </Box>
+          </>
         )}
       </Box>
     );
@@ -240,21 +265,23 @@ export const ReleaseList = () => {
             return (
               <Box className={helperClasses.importedArchitectureBox}>
                 <span className={helperClasses.smallerReleaseText}>
-                  {t(`releases.tags.${architecture}`)}
+                  {t(`releases.tags.${architecture === null ? 'kubernetes' : architecture}`)}
                 </span>
               </Box>
             );
           })}
-        <YBButton
-          className={helperClasses.overrideMuiStartIcon}
-          onClick={() => {
-            setSelectedReleaseDetails(row);
-            onNewReleaseButtonClick();
-            onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
-          }}
-          startIcon={<Add />}
-          variant="secondary"
-        ></YBButton>
+        {row.artifacts.length < 3 && (
+          <YBButton
+            className={helperClasses.overrideMuiStartIcon}
+            onClick={() => {
+              setSelectedReleaseDetails(row);
+              onNewReleaseButtonClick();
+              onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
+            }}
+            startIcon={<Add />}
+            variant="secondary"
+          ></YBButton>
+        )}
       </Box>
     );
   };
@@ -281,7 +308,7 @@ export const ReleaseList = () => {
     }
     if (action === EDIT_ACTIONS.kubernetes) {
       onSetModalTitle(ModalTitle.EDIT_KUBERNETES);
-      setReleaseArchitecture(ReleasePlatformArchitecture.KUBERNETES);
+      setReleaseArchitecture(null);
       onEditArchitectureClick();
     }
     if (action === EDIT_ACTIONS.aarch64) {
@@ -296,35 +323,41 @@ export const ReleaseList = () => {
     }
   };
 
-  const onSetReleaseArchitecture = (selectedArchitecture: ReleasePlatformArchitecture) => {
+  const onSetReleaseArchitecture = (selectedArchitecture: ReleasePlatformArchitecture | null) => {
     setReleaseArchitecture(selectedArchitecture);
   };
 
   const onActionPerformed = () => {
-    // TODO: Ensure we must call the RELEASES LIST API when we successfully
-    // Add Release/Disable Release/Delete Release/Edit Architecture/Edit Release Tag
+    const getLatestReleasesList = async () => {
+      queryClient.invalidateQueries(QUERY_KEY.fetchReleasesList);
+      await releasesRefetch();
+    };
+    getLatestReleasesList();
   };
 
   const getMenuItemsActions = (row: any) => {
     const renderedItems: any = [];
-    for (const [key, value] of Object.entries(MAIN_ACTION)) {
-      renderedItems.push(
-        <MenuItem
-          key={key}
-          value={value}
-          onClick={(e: any) => {
-            onActionClick(value, row);
-          }}
-        >
-          {value}
-        </MenuItem>
-      );
+    if (row.artifacts.length < 3) {
+      for (const [key, value] of Object.entries(MAIN_ACTION)) {
+        renderedItems.push(
+          <MenuItem
+            key={key}
+            value={value}
+            onClick={(e: any) => {
+              onActionClick(value, row);
+            }}
+          >
+            {value}
+          </MenuItem>
+        );
+      }
     }
 
     row.artifacts.map((artifact: ReleaseArtifacts) => {
-      const action = isEmptyString(artifact.architecture)
-        ? EDIT_ACTIONS[ReleasePlatformArchitecture.KUBERNETES]
-        : EDIT_ACTIONS[artifact.architecture];
+      const action =
+        artifact.architecture === null
+          ? EDIT_ACTIONS['kubernetes']
+          : EDIT_ACTIONS[artifact.architecture!];
       renderedItems.push(
         <MenuItem
           key={artifact.architecture}
@@ -377,35 +410,40 @@ export const ReleaseList = () => {
   const handleAllowedReleases = (event: ChangeEvent<HTMLInputElement>) => {
     const isChecked = event.target.checked;
     setShowAllowedReleases(isChecked);
+    const copyReleaseList = JSON.parse(JSON.stringify(releaseList));
+
     if (isChecked) {
-      const filteredData = RELEASE_LIST_DATA.filter(
+      const filteredData = copyReleaseList.filter(
         (releaseData: Releases) => releaseData.state === ReleaseState.ACTIVE
       );
-      setReleaseList(filteredData);
+
+      setFilteredReleaseList(filteredData);
     } else {
-      setReleaseList(RELEASE_LIST_DATA);
+      setFilteredReleaseList(releaseList);
     }
   };
 
   const onReleaseTypeChanged = (releaseType: any) => {
     if (releaseType === ReleaseType.ALL) {
-      setReleaseList(RELEASE_LIST_DATA);
+      setFilteredReleaseList(releaseList);
     } else {
-      const filteredData = RELEASE_LIST_DATA.filter(
+      const copyReleaseList = JSON.parse(JSON.stringify(releaseList));
+      const filteredData = copyReleaseList.filter(
         (releaseData: Releases) => releaseData.release_type === releaseType
       );
-      setReleaseList(filteredData);
+      setFilteredReleaseList(filteredData);
     }
   };
 
   const onSearchVersions = (searchTerm: string) => {
     if (isEmptyString(searchTerm)) {
-      setReleaseList(RELEASE_LIST_DATA);
+      setFilteredReleaseList(releaseList);
     } else {
-      const filteredData = RELEASE_LIST_DATA.filter((releaseData: Releases) =>
+      const copyReleaseList = JSON.parse(JSON.stringify(releaseList));
+      const filteredData = copyReleaseList.filter((releaseData: Releases) =>
         releaseData.version.includes(searchTerm)
       );
-      setReleaseList(filteredData);
+      setFilteredReleaseList(filteredData);
     }
   };
 
@@ -528,7 +566,7 @@ export const ReleaseList = () => {
                   startIcon={<Refresh />}
                   variant="secondary"
                   onClick={() => {
-                    // TODO: call onActionPerformed
+                    onActionPerformed();
                   }}
                 />
                 <YBButton
@@ -556,13 +594,13 @@ export const ReleaseList = () => {
         body={
           <Box>
             <BootstrapTable
-              data={releaseList}
+              data={filteredReleaseList}
               pagination={true}
               options={{
                 onRowDoubleClick: onRowDoubleClick
               }}
             >
-              <TableHeaderColumn dataField={'uuid'} isKey={true} hidden={true} />
+              <TableHeaderColumn dataField={'release_uuid'} isKey={true} hidden={true} />
               <TableHeaderColumn
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
@@ -622,7 +660,7 @@ export const ReleaseList = () => {
           </Box>
         }
       />
-      {openSidePanel && (
+      {openSidePanel && selectedReleaseDetails && (
         <ReleaseDetails
           data={selectedReleaseDetails}
           onSidePanelClose={onSidePanelClose}
@@ -640,11 +678,12 @@ export const ReleaseList = () => {
           onClose={onNewReleaseDialogClose}
           onActionPerformed={onActionPerformed}
           modalTitle={modalTitle}
+          data={selectedReleaseDetails}
           isAddRelease={modalTitle === ModalTitle.ADD_RELEASE}
           versionNumber={selectedReleaseDetails?.version}
         />
       )}
-      {showEditReleaseTagDialog && (
+      {showEditReleaseTagDialog && selectedReleaseDetails && (
         <EditReleaseTagModal
           open={showEditReleaseTagDialog}
           onActionPerformed={onActionPerformed}
@@ -652,7 +691,7 @@ export const ReleaseList = () => {
           data={selectedReleaseDetails}
         />
       )}
-      {showDisableReleaseDialog && (
+      {showDisableReleaseDialog && selectedReleaseDetails && (
         <DisableReleaseModal
           open={showDisableReleaseDialog}
           onActionPerformed={onActionPerformed}
@@ -660,7 +699,7 @@ export const ReleaseList = () => {
           data={selectedReleaseDetails}
         />
       )}
-      {showDeleteReleaseDialog && (
+      {showDeleteReleaseDialog && selectedReleaseDetails && (
         <DeleteReleaseModal
           open={showDeleteReleaseDialog}
           onActionPerformed={onActionPerformed}
@@ -668,8 +707,8 @@ export const ReleaseList = () => {
           data={selectedReleaseDetails}
         />
       )}
-      {showEditKubernetesDialog && (
-        <EditKubernetesModal
+      {showEditKubernetesDialog && selectedReleaseDetails && (
+        <EditArchitectureModal
           open={showEditKubernetesDialog}
           onActionPerformed={onActionPerformed}
           onClose={onEditArchitectureDialogClose}

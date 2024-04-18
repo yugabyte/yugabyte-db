@@ -19,17 +19,20 @@ const (
 	// Region provides header for AWS Region Cloud Info
 	Region = "table {{.Arch}}\t{{.SecurityGroupID}}\t{{.VNet}}\t{{.YbImage}}"
 
-	accessKeyIDHeader     = "AWS Access Key ID"
-	accessKeySecretHeader = "AWS Access Key Secret"
-	hostedZoneIDHeader    = "Hosted Zone ID"
-	hostedZoneNameHeader  = "Hosted Zone Name"
-	hostVpcIDHeader       = "Host VPC ID"
-	hostVpcRegionHeader   = "Host VPC Region"
-	vpcTypeHeader         = "VPC Type"
-	archHeader            = "Arch"
-	sgIDHeader            = "Security Group ID"
-	vnetHeader            = "Virual Network"
-	ybImageHeader         = "YB Image"
+	// AccessKeyIDHeader for Access key ID header
+	AccessKeyIDHeader = "AWS Access Key ID"
+	// AccessKeySecretHeader for Access key secret header
+	AccessKeySecretHeader = "AWS Access Key Secret"
+
+	hostedZoneIDHeader   = "Hosted Zone ID"
+	hostedZoneNameHeader = "Hosted Zone Name"
+	hostVpcIDHeader      = "Host VPC ID"
+	hostVpcRegionHeader  = "Host VPC Region"
+	vpcTypeHeader        = "VPC Type"
+	archHeader           = "Arch"
+	sgIDHeader           = "Security Group ID"
+	vnetHeader           = "Virual Network"
+	ybImageHeader        = "YB Image"
 )
 
 // ProviderContext for provider outputs
@@ -72,8 +75,8 @@ func NewRegionFormat(source string) formatter.Format {
 func NewProviderContext() *ProviderContext {
 	awsProviderCtx := ProviderContext{}
 	awsProviderCtx.Header = formatter.SubHeaderContext{
-		"AccessKeyID":     accessKeyIDHeader,
-		"AccessKeySecret": accessKeySecretHeader,
+		"AccessKeyID":     AccessKeyIDHeader,
+		"AccessKeySecret": AccessKeySecretHeader,
 		"HostedZoneID":    hostedZoneIDHeader,
 		"HostedZoneName":  hostedZoneNameHeader,
 		"HostVpcID":       hostVpcIDHeader,

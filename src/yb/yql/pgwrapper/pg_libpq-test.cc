@@ -164,6 +164,9 @@ class PgLibPqTest : public LibPqTestBase {
 
   void KillPostmasterProcessOnTservers();
 
+  Result<string> GetPostmasterPidViaShell(pid_t backend_pid);
+  Result<string> GetPostmasterPidViaShell(PGConn* conn);
+
   Result<string> GetSchemaName(const string& relname, PGConn* conn);
 
  private:
@@ -2935,19 +2938,8 @@ class PgLibPqTestEnumType: public PgLibPqTest {
 void PgLibPqTest::KillPostmasterProcessOnTservers() {
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
-    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
-                                                "postmaster.pid");
-
-    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
-    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
-    std::ifstream pg_pid_in;
-    pg_pid_in.open(pg_pid_file, std::ios_base::in);
-    ASSERT_FALSE(pg_pid_in.eof());
-    pid_t pg_pid = 0;
-    pg_pid_in >> pg_pid;
-    ASSERT_GT(pg_pid, 0);
-    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
-    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
+    int ret = ASSERT_RESULT(ts->SignalPostmaster(SIGKILL));
+    ASSERT_EQ(ret, 0);
   }
 }
 
@@ -2961,25 +2953,19 @@ TEST_F_EX(PgLibPqTest,
   auto conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
   ASSERT_OK(conn->ExecuteFormat(
     "CREATE TYPE $0 as enum('b', 'e', 'f', 'c', 'a', 'd')", kEnumTypeName));
-  ASSERT_OK(conn->ExecuteFormat(
-    "CREATE TABLE $0 (id $1)",
-    kTableName,
-    kEnumTypeName));
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('a')", kTableName));
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('b')", kTableName));
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('c')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("CREATE TABLE $0 (id $1)", kTableName, kEnumTypeName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('a'), ('b'), ('c')", kTableName));
 
   // Do table scan to verify contents the table with an ORDER BY clause. This
   // ensures that old enum values which did not have sort order can be read back,
   // sorted and displayed correctly.
-  const std::string query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  const auto query = Format("SELECT id::text AS text_id FROM $0 ORDER BY id", kTableName);
   ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
   auto values = ASSERT_RESULT(conn->FetchRows<std::string>(query));
   ASSERT_EQ(values, (decltype(values){"b", "c", "a"}));
 
   // Now alter the gflag so any new values will have sort order added.
-  ASSERT_OK(cluster_->SetFlagOnTServers(
-              "TEST_do_not_add_enum_sort_order", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_do_not_add_enum_sort_order", "false"));
 
   // Disconnect from the database so we don't have a case where the
   // postmaster dies while clients are still connected.
@@ -2996,9 +2982,7 @@ TEST_F_EX(PgLibPqTest,
 
   // Insert three more rows with --TEST_do_not_add_enum_sort_order=false.
   // The new enum values will have sort order added.
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('d')", kTableName));
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('e')", kTableName));
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('f')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('d'), ('e'), ('f')", kTableName));
 
   // Do table scan again to verify contents the table with an ORDER BY clause.
   // This ensures that old enum values which did not have sort order, mixed
@@ -3017,7 +3001,7 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(values, (decltype(values){"b", "e", "f", "c", "a", "d"}));
 
   // Test where clause.
-  const std::string query2 = Format("SELECT * FROM $0 where id = 'b'", kTableName);
+  const std::string query2 = Format("SELECT id::text FROM $0 where id = 'b'", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query2)));
   ASSERT_EQ(ASSERT_RESULT(conn->FetchRow<std::string>(query2)), "b");
 }
@@ -3071,7 +3055,7 @@ TEST_F_EX(PgLibPqTest,
   // We fix the syntax error by rewriting it to
   // BACKFILL INDEX -2147467255 WITH x'0880011a00' READ TIME 6725053491126669312 PARTITION x'5555';
   // Internally, -2147467255 will be reinterpreted as OID 2147500041 which is the OID of the index.
-  query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  query = Format("SELECT id::text as text_id FROM $0 ORDER BY id", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
   {
     auto values = ASSERT_RESULT(conn.FetchRows<std::string>(query));
@@ -3181,6 +3165,23 @@ TEST_F(PgLibPqTest, CollationRangePresplit) {
   }
 }
 
+Result<string> PgLibPqTest::GetPostmasterPidViaShell(pid_t backend_pid) {
+  string postmaster_pid;
+  if (!RunShellProcess(Format("ps -o ppid= $0", backend_pid), &postmaster_pid)) {
+    return STATUS_FORMAT(RuntimeError, "Failed to get postmaster pid via shell");
+  }
+
+  postmaster_pid.erase(
+      std::remove(postmaster_pid.begin(), postmaster_pid.end(), '\n'), postmaster_pid.end());
+
+  return postmaster_pid;
+}
+
+Result<string> PgLibPqTest::GetPostmasterPidViaShell(PGConn* conn) {
+  auto backend_pid = VERIFY_RESULT(conn->FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  return GetPostmasterPidViaShell(static_cast<pid_t>(backend_pid));
+}
+
 // The motive of this test is to prove that when a postgres backend crashes
 // while possessing an LWLock, the postmaster will kill all postgres backends
 // and would perform a restart.
@@ -3205,14 +3206,9 @@ class PgLibPqYSQLBackendCrash: public PgLibPqTest {
   const std::string expected_backend_oom_score = "123";
   const std::string expected_webserver_oom_score = "456";
 
-  void GetPostmasterPid(std::string *postmaster_pid) {
-    auto conn = ASSERT_RESULT(Connect());
-    auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
-
-    ASSERT_TRUE(RunShellProcess(Format("ps -o ppid= $0", backend_pid), postmaster_pid));
-
-    postmaster_pid->erase(std::remove(postmaster_pid->begin(), postmaster_pid->end(), '\n'),
-                          postmaster_pid->end());
+  Result<string> GetPostmasterPid() {
+    auto conn = VERIFY_RESULT(Connect());
+    return GetPostmasterPidViaShell(&conn);
   }
 };
 
@@ -3235,9 +3231,7 @@ TEST_F_EX(PgLibPqTest,
 TEST_F_EX(PgLibPqTest,
           YB_DISABLE_TEST_IN_TSAN(TestWebserverKill),
           PgLibPqYSQLBackendCrash) {
-
-  string postmaster_pid;
-  GetPostmasterPid(&postmaster_pid);
+  string postmaster_pid = ASSERT_RESULT(GetPostmasterPid());
 
   string message;
   for (int i = 0; i < 50; i++) {
@@ -3253,11 +3247,7 @@ TEST_F_EX(PgLibPqTest,
   }
 }
 
-#ifdef __linux__
-TEST_F_EX(PgLibPqTest,
-          TestOomScoreAdjPGBackend,
-          PgLibPqYSQLBackendCrash) {
-
+TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGBackend), PgLibPqYSQLBackendCrash) {
   auto conn = ASSERT_RESULT(Connect());
   auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
   std::string file_name = "/proc/" + std::to_string(backend_pid) + "/oom_score_adj";
@@ -3266,12 +3256,9 @@ TEST_F_EX(PgLibPqTest,
   getline(fPtr, oom_score_adj);
   ASSERT_EQ(oom_score_adj, expected_backend_oom_score);
 }
-TEST_F_EX(PgLibPqTest,
-          TestOomScoreAdjPGWebserver,
-          PgLibPqYSQLBackendCrash) {
 
-  string postmaster_pid;
-  GetPostmasterPid(&postmaster_pid);
+TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGWebserver), PgLibPqYSQLBackendCrash) {
+  string postmaster_pid = ASSERT_RESULT(GetPostmasterPid());
 
   // Get the webserver pid using postmaster pid
   string webserver_pid;
@@ -3286,7 +3273,6 @@ TEST_F_EX(PgLibPqTest,
   getline(fPtr, oom_score_adj);
   ASSERT_EQ(oom_score_adj, expected_webserver_oom_score);
 }
-#endif
 
 TEST_F_EX(PgLibPqTest, YbTableProperties, PgLibPqTestRF1) {
   const string kDatabaseName = "yugabyte";
@@ -3679,17 +3665,20 @@ TEST_P(PgOidCollisionCreateDatabaseTest, CreateDatabasePgOidCollisionFromTserver
   LOG(INFO) << "Make a new connection to a different node at index 1";
   pg_ts = cluster_->tablet_server(1);
   auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
+  auto db_oid_fetcher = [&conn2] (const std::string& db_name) {
+    return conn2.FetchRow<PGOid>(
+        Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db_name));
+  };
   auto status = conn2.ExecuteFormat("CREATE DATABASE $0", db3);
   if (ysql_enable_pg_per_database_oid_allocator) {
     ASSERT_OK(status);
     // Verify no OID collision and the expected OID is used.
-    int db3_oid = ASSERT_RESULT(conn2.FetchRow<int32_t>(
-        Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
+    const auto db3_oid = ASSERT_RESULT(db_oid_fetcher(db3));
     ASSERT_EQ(db3_oid, 16640);
   } else if (ysql_enable_create_database_oid_collision_retry) {
+    ASSERT_OK(status);
     // Verify internally retry CREATE DATABASE works.
-    int db3_oid = ASSERT_RESULT(conn2.FetchRow<int32_t>(
-        Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
+    const auto db3_oid = ASSERT_RESULT(db_oid_fetcher(db3));
     ASSERT_EQ(db3_oid, 16386);
   } else {
     // Verify the keyspace already exists issue still exists if we disable retry.
@@ -3903,6 +3892,83 @@ TEST_F(PgBackendsSessionExpireTest, UnknownSessionFatal) {
                               kMaxTabletsPerTable + 1));
   ASSERT_NE(conn.ConnStatus(), CONNECTION_BAD);
   ASSERT_OK(conn.Fetch(query));
+}
+
+class PgPostmasterExitTest : public PgLibPqTest {
+ public:
+  Status TestPostmasterExit(string cmd = "") {
+    PGConn conn = VERIFY_RESULT(Connect());
+    auto backend_pid = VERIFY_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+    // Find the postmaster PID corresponding to the connection.
+    string postmaster_pid = VERIFY_RESULT(GetPostmasterPidViaShell(backend_pid));
+
+    // Find the tablet server corresponding to the postmaster.
+    ExternalTabletServer* postmaster_ts = NULL;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      const auto& ts = cluster_->tablet_server(i);
+      pid_t pg_pid = VERIFY_RESULT(ts->PostmasterPid());
+      if (static_cast<pid_t>(std::stoi(postmaster_pid)) == pg_pid) {
+        LOG(INFO) << Format("Tablet Server with index $0 is associated with postmaster", i);
+        postmaster_ts = ts;
+        break;
+      }
+    }
+
+    SCHECK_NOTNULL(postmaster_ts);
+
+    // Run the supplied command.
+    TestThreadHolder thread_holder;
+    if (!cmd.empty()) {
+      thread_holder.AddThreadFunctor([&conn, &cmd]() -> void { ASSERT_NOK(conn.Execute(cmd)); });
+    }
+
+    // Kill the postmaster process.
+    auto ret = VERIFY_RESULT(postmaster_ts->SignalPostmaster(SIGKILL));
+    SCHECK_EQ(ret, 0, IllegalState, "Failed to kill postmaster");
+
+    // Give the backend enough time to ensure that it has received and processed
+    // the PDEATH_SIG. The sleep time is set to a generous 500ms to ensure that in the future,
+    // the backend has enough time to cleanup and gracefully exit if PDEATH_SIG is changed from
+    // SIGKILL to a signal that can be caught and handled.
+    RETURN_NOT_OK(WaitFor(
+        [&backend_pid]() -> Result<bool> {
+          string output;
+          // Ensure that the backend is no longer running.
+          return !RunShellProcess(Format("ps -p $0", backend_pid), &output);
+        },
+        500ms, "Backend still running, should have exited"));
+
+    thread_holder.Stop();
+    return Status::OK();
+  }
+};
+
+// This test validates that in a Linux environment, a backend is signaled with the configured
+// PDEATH_SIG when the postmaster exits.
+TEST_F(PgPostmasterExitTest, YB_LINUX_ONLY_TEST(SignalBackendOnPostmasterDeath)) {
+  constexpr auto kDummyTable = "dummy";
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(Format("CREATE TABLE $0 (h INT)", kDummyTable)));
+  ASSERT_OK(conn.Execute(Format("INSERT INTO $0 SELECT generate_series(1, 100000)", kDummyTable)));
+
+  // Backend is in sleep state.
+  ASSERT_OK(TestPostmasterExit("SELECT pg_sleep(60)"));
+
+  // Backend is busy performing computation.
+  ASSERT_OK(TestPostmasterExit("SELECT generate_series(1, 1000000000)"));
+
+  // Backend is waiting on a DocDB read.
+  ASSERT_OK(TestPostmasterExit(Format("SELECT * FROM $0", kDummyTable)));
+
+  // Backend is performing a DocDB write.
+  ASSERT_OK(
+      TestPostmasterExit(Format("INSERT INTO $0 SELECT generate_series(1, 100000)", kDummyTable)));
+}
+
+// This test validates that in an all environments, an idle backend exits when the postmaster exits.
+TEST_F(PgPostmasterExitTest, SignalIdleBackendOnPostmasterDeath) {
+  ASSERT_OK(TestPostmasterExit());
 }
 
 } // namespace pgwrapper

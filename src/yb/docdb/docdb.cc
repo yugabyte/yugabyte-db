@@ -123,13 +123,19 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
+    const auto require_read_snapshot = doc_op->RequireReadSnapshot();
+    result.need_read_snapshot |= require_read_snapshot;
     auto intent_types = dockv::GetIntentTypesForWrite(level);
     if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
-        doc_op->RequireReadSnapshot()) {
+        require_read_snapshot) {
       intent_types = dockv::IntentTypeSet(
           {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite});
     }
-
+    // TODO(#20662): Assert for the following invariant: the set of (key, intent type) for which
+    // in-memory locks are acquired should be a superset of all (key, intent type) pairs which are
+    // either: (a) used to check conflicts against or (b) written to intents db. This is to ensure
+    // that no new conflicting (key, intent type) is added until the operation is done checking for
+    // conflicts and has successfully written the data in intents/ regular db.
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
       auto doc_path_slice = doc_path.as_slice();
@@ -162,16 +168,12 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
 
       RETURN_NOT_OK(ApplyIntent(doc_path, intent_types, &result.lock_batch));
     }
-
-    if (doc_op->RequireReadSnapshot()) {
-      result.need_read_snapshot = true;
-    }
   }
 
   if (!read_pairs.empty()) {
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result, intent_types = dockv:: GetIntentTypesForRead(isolation_level, row_mark_type)](
+        [&result, intent_types = dockv::GetIntentTypesForRead(isolation_level, row_mark_type)](
             auto ancestor_doc_key, auto, auto, auto* key, auto, auto is_row_lock) {
           auto actual_intents = GetIntentTypes(intent_types, is_row_lock);
           return ApplyIntent(

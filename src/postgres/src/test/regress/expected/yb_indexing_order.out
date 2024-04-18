@@ -1,0 +1,421 @@
+CREATE OR REPLACE FUNCTION get_table_indexes(table_name text)
+RETURNS TABLE(
+    relname name,
+    indisprimary boolean,
+    indisunique boolean,
+    indexdef text,
+    constraintdef text
+) AS $$
+BEGIN
+    RETURN QUERY EXECUTE
+    'SELECT c2.relname, i.indisprimary, i.indisunique, pg_catalog.pg_get_indexdef(i.indexrelid, 0, true), ' ||
+    'pg_catalog.pg_get_constraintdef(con.oid, true) ' ||
+    'FROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i ' ||
+    'LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN (''p'',''u'',''x'')) ' ||
+    'WHERE c.oid = ' || quote_literal(table_name) || '::regclass AND c.oid = i.indrelid AND i.indexrelid = c2.oid ' ||
+    'ORDER BY i.indisprimary DESC, i.indisunique DESC, c2.relname';
+END;
+$$ LANGUAGE plpgsql;
+SET yb_use_hash_splitting_by_default = true; -- should default to true
+CREATE TABLE hash_table(a int primary key, b int, c int); -- column a should be HASH
+SELECT * FROM get_table_indexes('hash_table');
+     relname     | indisprimary | indisunique |                               indexdef                               |  constraintdef
+-----------------+--------------+-------------+----------------------------------------------------------------------+-----------------
+ hash_table_pkey | t            | t           | CREATE UNIQUE INDEX hash_table_pkey ON hash_table USING lsm (a HASH) | PRIMARY KEY (a)
+(1 row)
+
+CREATE TABLE hash_with_asc(a int, b int, c int, primary key(a, b)); -- column a HASH column b ASC
+SELECT * FROM get_table_indexes('hash_with_asc');
+      relname       | indisprimary | indisunique |                                     indexdef                                      |   constraintdef
+--------------------+--------------+-------------+-----------------------------------------------------------------------------------+--------------------
+ hash_with_asc_pkey | t            | t           | CREATE UNIQUE INDEX hash_with_asc_pkey ON hash_with_asc USING lsm (a HASH, b ASC) | PRIMARY KEY (a, b)
+(1 row)
+
+CREATE TABLE mixed_hash_with_asc(a int, b int, c int, primary key((a,b) HASH, c)); -- column a+b HASH column c ASC
+SELECT * FROM get_table_indexes('mixed_hash_with_asc');
+         relname          | indisprimary | indisunique |                                              indexdef                                              |     constraintdef
+--------------------------+--------------+-------------+----------------------------------------------------------------------------------------------------+-----------------------
+ mixed_hash_with_asc_pkey | t            | t           | CREATE UNIQUE INDEX mixed_hash_with_asc_pkey ON mixed_hash_with_asc USING lsm ((a, b) HASH, c ASC) | PRIMARY KEY (a, b, c)
+(1 row)
+
+CREATE TABLE multi_index_hash_default(a int, b int, c int);
+ALTER TABLE multi_index_hash_default ADD PRIMARY KEY(a); -- a HASH
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+SELECT * FROM get_table_indexes('multi_index_hash_default');
+            relname            | indisprimary | indisunique |                                             indexdef                                             |  constraintdef
+-------------------------------+--------------+-------------+--------------------------------------------------------------------------------------------------+-----------------
+ multi_index_hash_default_pkey | t            | t           | CREATE UNIQUE INDEX multi_index_hash_default_pkey ON multi_index_hash_default USING lsm (a HASH) | PRIMARY KEY (a)
+(1 row)
+
+ALTER TABLE multi_index_hash_default DROP CONSTRAINT multi_index_hash_default_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE multi_index_hash_default ADD PRIMARY KEY(a,b); -- a HASH b ASC
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+SELECT * FROM get_table_indexes('multi_index_hash_default');
+            relname            | indisprimary | indisunique |                                                indexdef                                                 |   constraintdef
+-------------------------------+--------------+-------------+---------------------------------------------------------------------------------------------------------+--------------------
+ multi_index_hash_default_pkey | t            | t           | CREATE UNIQUE INDEX multi_index_hash_default_pkey ON multi_index_hash_default USING lsm (a HASH, b ASC) | PRIMARY KEY (a, b)
+(1 row)
+
+ALTER TABLE multi_index_hash_default DROP CONSTRAINT multi_index_hash_default_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE multi_index_hash_default ADD PRIMARY KEY(a,b ASC);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+SELECT * FROM get_table_indexes('multi_index_hash_default');
+            relname            | indisprimary | indisunique |                                                indexdef                                                 |   constraintdef
+-------------------------------+--------------+-------------+---------------------------------------------------------------------------------------------------------+--------------------
+ multi_index_hash_default_pkey | t            | t           | CREATE UNIQUE INDEX multi_index_hash_default_pkey ON multi_index_hash_default USING lsm (a HASH, b ASC) | PRIMARY KEY (a, b)
+(1 row)
+
+ALTER TABLE multi_index_hash_default DROP CONSTRAINT multi_index_hash_default_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE multi_index_hash_default ADD PRIMARY KEY(a,b HASH); -- error
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: ...ER TABLE multi_index_hash_default ADD PRIMARY KEY(a,b HASH);
+                                                               ^
+ALTER TABLE multi_index_hash_default ADD PRIMARY KEY(a, b);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+CREATE INDEX ON multi_index_hash_default (b); -- HASH
+CREATE INDEX ON multi_index_hash_default (b HASH);
+CREATE INDEX ON multi_index_hash_default (c ASC);
+CREATE INDEX ON multi_index_hash_default ((a, c), b);
+CREATE INDEX ON multi_index_hash_default ((a, c));
+CREATE INDEX ON multi_index_hash_default (a, b);
+CREATE INDEX ON multi_index_hash_default (b, c ASC);
+CREATE INDEX ON multi_index_hash_default (b, c HASH); -- error
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: CREATE INDEX ON multi_index_hash_default (b, c HASH);
+                                                     ^
+SELECT * FROM get_table_indexes('multi_index_hash_default');
+              relname               | indisprimary | indisunique |                                                  indexdef                                                  |   constraintdef
+------------------------------------+--------------+-------------+------------------------------------------------------------------------------------------------------------+--------------------
+ multi_index_hash_default_pkey      | t            | t           | CREATE UNIQUE INDEX multi_index_hash_default_pkey ON multi_index_hash_default USING lsm (a HASH, b ASC)    | PRIMARY KEY (a, b)
+ multi_index_hash_default_a_b_idx   | f            | f           | CREATE INDEX multi_index_hash_default_a_b_idx ON multi_index_hash_default USING lsm (a HASH, b ASC)        |
+ multi_index_hash_default_a_c_b_idx | f            | f           | CREATE INDEX multi_index_hash_default_a_c_b_idx ON multi_index_hash_default USING lsm ((a, c) HASH, b ASC) |
+ multi_index_hash_default_a_c_idx   | f            | f           | CREATE INDEX multi_index_hash_default_a_c_idx ON multi_index_hash_default USING lsm ((a, c) HASH)          |
+ multi_index_hash_default_b_c_idx   | f            | f           | CREATE INDEX multi_index_hash_default_b_c_idx ON multi_index_hash_default USING lsm (b HASH, c ASC)        |
+ multi_index_hash_default_b_idx     | f            | f           | CREATE INDEX multi_index_hash_default_b_idx ON multi_index_hash_default USING lsm (b HASH)                 |
+ multi_index_hash_default_b_idx1    | f            | f           | CREATE INDEX multi_index_hash_default_b_idx1 ON multi_index_hash_default USING lsm (b HASH)                |
+ multi_index_hash_default_c_idx     | f            | f           | CREATE INDEX multi_index_hash_default_c_idx ON multi_index_hash_default USING lsm (c ASC)                  |
+(8 rows)
+
+-- With HASH as default, creating a table or index with SPLIT AT should fail
+CREATE INDEX ON multi_index_hash_default (c) SPLIT AT VALUES((10), (20), (30));
+ERROR:  SPLIT AT option is not yet supported for hash partitioned indexes
+CREATE TABLE split_fail(a int primary key, b int) SPLIT AT VALUES ((1000),(2000),(3000));
+ERROR:  SPLIT AT option is not yet supported for hash partitioned tables
+-- Confirm that create table like creates the same sort order even after toggling yb_use_hash_splitting_by_default
+SET yb_use_hash_splitting_by_default = false;
+CREATE TABLE like_hash_default_table(like multi_index_hash_default including all);
+-- Duplicate indexes (indexes on the same key) will not have been created, but existing indexes should have
+-- the same sort order
+SELECT * FROM get_table_indexes('like_hash_default_table');
+              relname              | indisprimary | indisunique |                                                 indexdef                                                 |   constraintdef
+-----------------------------------+--------------+-------------+----------------------------------------------------------------------------------------------------------+--------------------
+ like_hash_default_table_pkey      | t            | t           | CREATE UNIQUE INDEX like_hash_default_table_pkey ON like_hash_default_table USING lsm (a HASH, b ASC)    | PRIMARY KEY (a, b)
+ like_hash_default_table_a_c_b_idx | f            | f           | CREATE INDEX like_hash_default_table_a_c_b_idx ON like_hash_default_table USING lsm ((a, c) HASH, b ASC) |
+ like_hash_default_table_a_c_idx   | f            | f           | CREATE INDEX like_hash_default_table_a_c_idx ON like_hash_default_table USING lsm ((a, c) HASH)          |
+ like_hash_default_table_b_c_idx   | f            | f           | CREATE INDEX like_hash_default_table_b_c_idx ON like_hash_default_table USING lsm (b HASH, c ASC)        |
+ like_hash_default_table_b_idx     | f            | f           | CREATE INDEX like_hash_default_table_b_idx ON like_hash_default_table USING lsm (b HASH)                 |
+ like_hash_default_table_c_idx     | f            | f           | CREATE INDEX like_hash_default_table_c_idx ON like_hash_default_table USING lsm (c ASC)                  |
+(6 rows)
+
+-- Will be recreated again later
+DROP TABLE mixed_hash_with_asc;
+CREATE TABLE asc_table(a int primary key, b int, c int); -- column a should be ASC
+SELECT * FROM get_table_indexes('asc_table');
+    relname     | indisprimary | indisunique |                             indexdef                              |  constraintdef
+----------------+--------------+-------------+-------------------------------------------------------------------+-----------------
+ asc_table_pkey | t            | t           | CREATE UNIQUE INDEX asc_table_pkey ON asc_table USING lsm (a ASC) | PRIMARY KEY (a)
+(1 row)
+
+CREATE TABLE asc_two_column_table(a int, b int, c int, primary key(a, b)); -- column a ASC column b ASC
+SELECT * FROM get_table_indexes('asc_two_column_table');
+          relname          | indisprimary | indisunique |                                            indexdef                                            |   constraintdef
+---------------------------+--------------+-------------+------------------------------------------------------------------------------------------------+--------------------
+ asc_two_column_table_pkey | t            | t           | CREATE UNIQUE INDEX asc_two_column_table_pkey ON asc_two_column_table USING lsm (a ASC, b ASC) | PRIMARY KEY (a, b)
+(1 row)
+
+CREATE TABLE mixed_hash_with_asc(a int, b int, c int, primary key((a,b) HASH, c)); -- column a+b HASH column c ASC
+SELECT * FROM get_table_indexes('mixed_hash_with_asc');
+         relname          | indisprimary | indisunique |                                              indexdef                                              |     constraintdef
+--------------------------+--------------+-------------+----------------------------------------------------------------------------------------------------+-----------------------
+ mixed_hash_with_asc_pkey | t            | t           | CREATE UNIQUE INDEX mixed_hash_with_asc_pkey ON mixed_hash_with_asc USING lsm ((a, b) HASH, c ASC) | PRIMARY KEY (a, b, c)
+(1 row)
+
+CREATE TABLE multi_index_asc_default(a int, b int, c int);
+ALTER TABLE multi_index_asc_default ADD PRIMARY KEY(a); -- a ASC
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+SELECT * FROM get_table_indexes('multi_index_asc_default');
+           relname            | indisprimary | indisunique |                                           indexdef                                            |  constraintdef
+------------------------------+--------------+-------------+-----------------------------------------------------------------------------------------------+-----------------
+ multi_index_asc_default_pkey | t            | t           | CREATE UNIQUE INDEX multi_index_asc_default_pkey ON multi_index_asc_default USING lsm (a ASC) | PRIMARY KEY (a)
+(1 row)
+
+ALTER TABLE multi_index_asc_default DROP CONSTRAINT multi_index_asc_default_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE multi_index_asc_default ADD PRIMARY KEY(a,b); -- a ASC b ASC
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+SELECT * FROM get_table_indexes('multi_index_asc_default');
+           relname            | indisprimary | indisunique |                                               indexdef                                               |   constraintdef
+------------------------------+--------------+-------------+------------------------------------------------------------------------------------------------------+--------------------
+ multi_index_asc_default_pkey | t            | t           | CREATE UNIQUE INDEX multi_index_asc_default_pkey ON multi_index_asc_default USING lsm (a ASC, b ASC) | PRIMARY KEY (a, b)
+(1 row)
+
+ALTER TABLE multi_index_asc_default DROP CONSTRAINT multi_index_asc_default_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE multi_index_asc_default ADD PRIMARY KEY(a,b ASC);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+SELECT * FROM get_table_indexes('multi_index_asc_default');
+           relname            | indisprimary | indisunique |                                               indexdef                                               |   constraintdef
+------------------------------+--------------+-------------+------------------------------------------------------------------------------------------------------+--------------------
+ multi_index_asc_default_pkey | t            | t           | CREATE UNIQUE INDEX multi_index_asc_default_pkey ON multi_index_asc_default USING lsm (a ASC, b ASC) | PRIMARY KEY (a, b)
+(1 row)
+
+ALTER TABLE multi_index_asc_default DROP CONSTRAINT multi_index_asc_default_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE multi_index_asc_default ADD PRIMARY KEY(a,b HASH); -- error
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: ...TER TABLE multi_index_asc_default ADD PRIMARY KEY(a,b HASH);
+                                                               ^
+ALTER TABLE multi_index_asc_default ADD PRIMARY KEY(a, b);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+CREATE INDEX ON multi_index_asc_default (b); -- ASC
+CREATE INDEX ON multi_index_asc_default (b HASH);
+CREATE INDEX ON multi_index_asc_default (c ASC);
+CREATE INDEX ON multi_index_asc_default ((a, c), b);
+CREATE INDEX ON multi_index_asc_default ((a, c));
+CREATE INDEX ON multi_index_asc_default (a, b);
+CREATE INDEX ON multi_index_asc_default (b, c ASC);
+CREATE INDEX ON multi_index_asc_default (b, c HASH); -- error
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: CREATE INDEX ON multi_index_asc_default (b, c HASH);
+                                                    ^
+SELECT * FROM get_table_indexes('multi_index_asc_default');
+              relname              | indisprimary | indisunique |                                                 indexdef                                                 |   constraintdef
+-----------------------------------+--------------+-------------+----------------------------------------------------------------------------------------------------------+--------------------
+ multi_index_asc_default_pkey      | t            | t           | CREATE UNIQUE INDEX multi_index_asc_default_pkey ON multi_index_asc_default USING lsm (a ASC, b ASC)     | PRIMARY KEY (a, b)
+ multi_index_asc_default_a_b_idx   | f            | f           | CREATE INDEX multi_index_asc_default_a_b_idx ON multi_index_asc_default USING lsm (a ASC, b ASC)         |
+ multi_index_asc_default_a_c_b_idx | f            | f           | CREATE INDEX multi_index_asc_default_a_c_b_idx ON multi_index_asc_default USING lsm ((a, c) HASH, b ASC) |
+ multi_index_asc_default_a_c_idx   | f            | f           | CREATE INDEX multi_index_asc_default_a_c_idx ON multi_index_asc_default USING lsm ((a, c) HASH)          |
+ multi_index_asc_default_b_c_idx   | f            | f           | CREATE INDEX multi_index_asc_default_b_c_idx ON multi_index_asc_default USING lsm (b ASC, c ASC)         |
+ multi_index_asc_default_b_idx     | f            | f           | CREATE INDEX multi_index_asc_default_b_idx ON multi_index_asc_default USING lsm (b ASC)                  |
+ multi_index_asc_default_b_idx1    | f            | f           | CREATE INDEX multi_index_asc_default_b_idx1 ON multi_index_asc_default USING lsm (b HASH)                |
+ multi_index_asc_default_c_idx     | f            | f           | CREATE INDEX multi_index_asc_default_c_idx ON multi_index_asc_default USING lsm (c ASC)                  |
+(8 rows)
+
+-- With ASC as default, creating a table with SPLIT AT should succeed
+CREATE TABLE split_table(a int primary key, b int) SPLIT AT VALUES ((1000),(2000),(3000));
+CREATE INDEX ON split_table (b) SPLIT AT VALUES((10), (20), (30));
+SELECT * FROM get_table_indexes('split_table');
+      relname      | indisprimary | indisunique |                               indexdef                                |  constraintdef
+-------------------+--------------+-------------+-----------------------------------------------------------------------+-----------------
+ split_table_pkey  | t            | t           | CREATE UNIQUE INDEX split_table_pkey ON split_table USING lsm (a ASC) | PRIMARY KEY (a)
+ split_table_b_idx | f            | f           | CREATE INDEX split_table_b_idx ON split_table USING lsm (b ASC)       |
+(2 rows)
+
+-- Confirm that create table like creates the same sort order even after toggling yb_use_hash_splitting_by_default
+SET yb_use_hash_splitting_by_default = true;
+CREATE TABLE like_asc_default_table(like multi_index_asc_default including all);
+-- Duplicate indexes (indexes on the same key) will not have been created, but existing indexes should have
+-- the same sort order
+SELECT * FROM get_table_indexes('like_asc_default_table');
+             relname              | indisprimary | indisunique |                                                indexdef                                                |   constraintdef
+----------------------------------+--------------+-------------+--------------------------------------------------------------------------------------------------------+--------------------
+ like_asc_default_table_pkey      | t            | t           | CREATE UNIQUE INDEX like_asc_default_table_pkey ON like_asc_default_table USING lsm (a ASC, b ASC)     | PRIMARY KEY (a, b)
+ like_asc_default_table_a_c_b_idx | f            | f           | CREATE INDEX like_asc_default_table_a_c_b_idx ON like_asc_default_table USING lsm ((a, c) HASH, b ASC) |
+ like_asc_default_table_a_c_idx   | f            | f           | CREATE INDEX like_asc_default_table_a_c_idx ON like_asc_default_table USING lsm ((a, c) HASH)          |
+ like_asc_default_table_b_c_idx   | f            | f           | CREATE INDEX like_asc_default_table_b_c_idx ON like_asc_default_table USING lsm (b ASC, c ASC)         |
+ like_asc_default_table_b_idx     | f            | f           | CREATE INDEX like_asc_default_table_b_idx ON like_asc_default_table USING lsm (b ASC)                  |
+ like_asc_default_table_b_idx1    | f            | f           | CREATE INDEX like_asc_default_table_b_idx1 ON like_asc_default_table USING lsm (b HASH)                |
+ like_asc_default_table_c_idx     | f            | f           | CREATE INDEX like_asc_default_table_c_idx ON like_asc_default_table USING lsm (c ASC)                  |
+(7 rows)
+
+SET yb_use_hash_splitting_by_default = false;
+-- Partitioned table
+CREATE TABLE range_partitioned_example
+(
+    id            serial,
+    date_recorded date,
+    data          text,
+    PRIMARY KEY (id, date_recorded)
+) PARTITION BY RANGE (date_recorded);
+CREATE TABLE range_partitioned_example_y2023 PARTITION OF range_partitioned_example
+    FOR VALUES FROM ('2023-01-01') TO ('2024-01-01');
+CREATE TABLE range_partitioned_example_y2024 PARTITION OF range_partitioned_example
+    FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+CREATE INDEX ON range_partitioned_example (date_recorded);
+SELECT * FROM get_table_indexes('range_partitioned_example');
+                   relname                   | indisprimary | indisunique |                                                          indexdef                                                          |          constraintdef
+---------------------------------------------+--------------+-------------+----------------------------------------------------------------------------------------------------------------------------+---------------------------------
+ range_partitioned_example_pkey              | t            | t           | CREATE UNIQUE INDEX range_partitioned_example_pkey ON ONLY range_partitioned_example USING lsm (id ASC, date_recorded ASC) | PRIMARY KEY (id, date_recorded)
+ range_partitioned_example_date_recorded_idx | f            | f           | CREATE INDEX range_partitioned_example_date_recorded_idx ON ONLY range_partitioned_example USING lsm (date_recorded ASC)   |
+(2 rows)
+
+SELECT * FROM get_table_indexes('range_partitioned_example_y2023');
+                      relname                      | indisprimary | indisunique |                                                             indexdef                                                              |          constraintdef
+---------------------------------------------------+--------------+-------------+-----------------------------------------------------------------------------------------------------------------------------------+---------------------------------
+ range_partitioned_example_y2023_pkey              | t            | t           | CREATE UNIQUE INDEX range_partitioned_example_y2023_pkey ON range_partitioned_example_y2023 USING lsm (id ASC, date_recorded ASC) | PRIMARY KEY (id, date_recorded)
+ range_partitioned_example_y2023_date_recorded_idx | f            | f           | CREATE INDEX range_partitioned_example_y2023_date_recorded_idx ON range_partitioned_example_y2023 USING lsm (date_recorded ASC)   |
+(2 rows)
+
+SELECT * FROM get_table_indexes('range_partitioned_example_y2024');
+                      relname                      | indisprimary | indisunique |                                                             indexdef                                                              |          constraintdef
+---------------------------------------------------+--------------+-------------+-----------------------------------------------------------------------------------------------------------------------------------+---------------------------------
+ range_partitioned_example_y2024_pkey              | t            | t           | CREATE UNIQUE INDEX range_partitioned_example_y2024_pkey ON range_partitioned_example_y2024 USING lsm (id ASC, date_recorded ASC) | PRIMARY KEY (id, date_recorded)
+ range_partitioned_example_y2024_date_recorded_idx | f            | f           | CREATE INDEX range_partitioned_example_y2024_date_recorded_idx ON range_partitioned_example_y2024 USING lsm (date_recorded ASC)   |
+(2 rows)
+
+-- GIN
+CREATE TABLE gin_example (id serial PRIMARY KEY, data jsonb);
+CREATE INDEX data_gin ON gin_example USING gin(data);
+SELECT * FROM get_table_indexes('gin_example');
+     relname      | indisprimary | indisunique |                                indexdef                                |  constraintdef
+------------------+--------------+-------------+------------------------------------------------------------------------+------------------
+ gin_example_pkey | t            | t           | CREATE UNIQUE INDEX gin_example_pkey ON gin_example USING lsm (id ASC) | PRIMARY KEY (id)
+ data_gin         | f            | f           | CREATE INDEX data_gin ON gin_example USING ybgin (data)                |
+(2 rows)
+
+-- Temp table
+CREATE TEMP TABLE temp_example (id serial, name text, value int, primary key(id HASH)); -- fails
+ERROR:  unsupported column sort order
+CREATE TEMP TABLE temp_example (id serial, name text, value int, primary key(id, name HASH)); -- fails
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: ...(id serial, name text, value int, primary key(id, name HASH)...
+                                                             ^
+CREATE TEMP TABLE temp_example (id serial, name text, value int, primary key((id, name), value)); -- fails
+ERROR:  unsupported column sort order
+CREATE TEMP TABLE temp_example (id serial PRIMARY KEY, name text, value int);
+CREATE INDEX temp_value_lsm ON temp_example USING lsm(value); -- fails
+ERROR:  access method "lsm" only supported for indexes using Yugabyte storage
+CREATE INDEX temp_value_idx ON temp_example (value);
+SELECT * FROM get_table_indexes('temp_example');
+      relname      | indisprimary | indisunique |                                  indexdef                                  |  constraintdef
+-------------------+--------------+-------------+----------------------------------------------------------------------------+------------------
+ temp_example_pkey | t            | t           | CREATE UNIQUE INDEX temp_example_pkey ON temp_example USING btree (id ASC) | PRIMARY KEY (id)
+ temp_value_idx    | f            | f           | CREATE INDEX temp_value_idx ON temp_example USING btree (value ASC)        |
+(2 rows)
+
+CREATE TABLE foo(a int, b int, c int, primary key (a HASH, b HASH, c ASC));
+ERROR:  multiple hash columns must be defined as a single hash column group
+LINE 1: ...BLE foo(a int, b int, c int, primary key (a HASH, b HASH, c ...
+                                                             ^
+CREATE TABLE foo(a int, b int, c int, primary key (a, b HASH, c));
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: ...TE TABLE foo(a int, b int, c int, primary key (a, b HASH, c)...
+                                                             ^
+CREATE TABLE foo(a int, b int, c int, primary key ((a, b) ASC, c));
+ERROR:  syntax error at or near "ASC"
+LINE 1: ...TABLE foo(a int, b int, c int, primary key ((a, b) ASC, c));
+                                                              ^
+-- Creating this table with 3 tablets should not work when yb_use_hash_splitting_by_default = false
+-- because the primary key is a range partition.
+CREATE TABLE foo(a int primary key, b int) SPLIT (INTO 3 TABLETS); -- fails
+ERROR:  HASH columns must be present to split by number of tablets
+CREATE TABLE foo(a int, b int, primary key(a)) SPLIT (INTO 3 TABLETS); -- fails
+ERROR:  HASH columns must be present to split by number of tablets
+CREATE TABLE foo(a int, b int, primary key(a HASH)) SPLIT (INTO 3 TABLETS); -- succeeds
+SET yb_use_hash_splitting_by_default = true;
+CREATE TABLE bar(a int primary key, b int) SPLIT (INTO 3 TABLETS); -- succeeds
+CREATE TABLE baz(a int, b int, primary key(a)) SPLIT (INTO 3 TABLETS); -- succeeds
+DROP TABLE foo, bar, baz;
+-- TABLEGROUP tests
+CREATE TABLEGROUP postgres_ordering;
+SET yb_use_hash_splitting_by_default = false;
+CREATE TABLE tg_hash_key (a int, b int, c int, primary key((a,b) HASH, c)) TABLEGROUP postgres_ordering; -- fails
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE TABLE tg_hash_key (a int, b int, c int, primary key((a,b), c)) TABLEGROUP postgres_ordering; -- fails
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE TABLE tg_hash_key (a int, b int, c int, primary key(a HASH)) TABLEGROUP postgres_ordering; -- fails
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE TABLE tablegroup_table (a int, b int, c int, primary key(a)) TABLEGROUP postgres_ordering; -- succeeds
+SELECT * FROM get_table_indexes('tablegroup_table');
+        relname        | indisprimary | indisunique |                                    indexdef                                     |  constraintdef
+-----------------------+--------------+-------------+---------------------------------------------------------------------------------+-----------------
+ tablegroup_table_pkey | t            | t           | CREATE UNIQUE INDEX tablegroup_table_pkey ON tablegroup_table USING lsm (a ASC) | PRIMARY KEY (a)
+(1 row)
+
+ALTER TABLE tablegroup_table DROP CONSTRAINT tablegroup_table_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE tablegroup_table ADD PRIMARY KEY (a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+CREATE INDEX ON tablegroup_table (b); -- ASC
+CREATE INDEX ON tablegroup_table (b HASH); -- error
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE INDEX ON tablegroup_table (c ASC);
+CREATE INDEX ON tablegroup_table ((a, c), b); -- error
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE INDEX ON tablegroup_table ((a, c)); --error
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE INDEX ON tablegroup_table (a, b);
+CREATE INDEX ON tablegroup_table (b, c ASC);
+CREATE INDEX ON tablegroup_table (b, c HASH); -- error
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: CREATE INDEX ON tablegroup_table (b, c HASH);
+                                             ^
+SELECT * FROM get_table_indexes('tablegroup_table');
+         relname          | indisprimary | indisunique |                                      indexdef                                      |  constraintdef
+--------------------------+--------------+-------------+------------------------------------------------------------------------------------+-----------------
+ tablegroup_table_pkey    | t            | t           | CREATE UNIQUE INDEX tablegroup_table_pkey ON tablegroup_table USING lsm (a ASC)    | PRIMARY KEY (a)
+ tablegroup_table_a_b_idx | f            | f           | CREATE INDEX tablegroup_table_a_b_idx ON tablegroup_table USING lsm (a ASC, b ASC) |
+ tablegroup_table_b_c_idx | f            | f           | CREATE INDEX tablegroup_table_b_c_idx ON tablegroup_table USING lsm (b ASC, c ASC) |
+ tablegroup_table_b_idx   | f            | f           | CREATE INDEX tablegroup_table_b_idx ON tablegroup_table USING lsm (b ASC)          |
+ tablegroup_table_c_idx   | f            | f           | CREATE INDEX tablegroup_table_c_idx ON tablegroup_table USING lsm (c ASC)          |
+(5 rows)
+
+CREATE TABLE like_tablegroup_table (like tablegroup_table including all) TABLEGROUP postgres_ordering;
+SELECT * FROM get_table_indexes('like_tablegroup_table');
+            relname            | indisprimary | indisunique |                                           indexdef                                           |  constraintdef
+-------------------------------+--------------+-------------+----------------------------------------------------------------------------------------------+-----------------
+ like_tablegroup_table_pkey    | t            | t           | CREATE UNIQUE INDEX like_tablegroup_table_pkey ON like_tablegroup_table USING lsm (a ASC)    | PRIMARY KEY (a)
+ like_tablegroup_table_a_b_idx | f            | f           | CREATE INDEX like_tablegroup_table_a_b_idx ON like_tablegroup_table USING lsm (a ASC, b ASC) |
+ like_tablegroup_table_b_c_idx | f            | f           | CREATE INDEX like_tablegroup_table_b_c_idx ON like_tablegroup_table USING lsm (b ASC, c ASC) |
+ like_tablegroup_table_b_idx   | f            | f           | CREATE INDEX like_tablegroup_table_b_idx ON like_tablegroup_table USING lsm (b ASC)          |
+ like_tablegroup_table_c_idx   | f            | f           | CREATE INDEX like_tablegroup_table_c_idx ON like_tablegroup_table USING lsm (c ASC)          |
+(5 rows)
+
+SET yb_use_hash_splitting_by_default = true;
+CREATE TABLE like_tablegroup_table2 (like tablegroup_table including all) TABLEGROUP postgres_ordering;
+-- With ASC as default, creating a table in a tablegroup with SPLIT AT should fail
+CREATE TABLE split_fail(a int primary key, b int)
+  SPLIT AT VALUES ((1000),(2000),(3000))
+  TABLEGROUP postgres_ordering;
+ERROR:  cannot use TABLEGROUP with SPLIT
+CREATE TABLE like_hash_table (like hash_table including all) TABLEGROUP postgres_ordering;
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+SET yb_use_hash_splitting_by_default = false;
+CREATE TABLE like_hash_table (like hash_table including all) TABLEGROUP postgres_ordering;
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+DROP FUNCTION get_table_indexes(text);

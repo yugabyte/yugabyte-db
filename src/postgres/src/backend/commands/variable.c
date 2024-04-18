@@ -539,6 +539,15 @@ check_XactIsoLevel(int *newval, void **extra, GucSource source)
 {
 	int			newXactIsoLevel = *newval;
 
+	if (newXactIsoLevel == XACT_READ_COMMITTED &&
+		!YBIsReadCommittedSupported())
+	{
+		ereport(WARNING,
+				(errmsg("read committed isolation is disabled"),
+				 errdetail("Set yb_enable_read_committed_isolation to enable. When disabled, read "
+						 "committed falls back to using repeatable read isolation.")));
+	}
+
 	if (newXactIsoLevel != XactIsoLevel && IsTransactionState())
 	{
 		if (FirstSnapshotSet)
@@ -576,6 +585,19 @@ yb_assign_XactIsoLevel(int newval, void *extra)
 		HandleYBStatus(
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
 	}
+}
+
+bool
+check_yb_default_xact_isolation(int *newval, void **extra, GucSource source)
+{
+	if ((*newval == XACT_READ_COMMITTED) && !YBIsReadCommittedSupported())
+	{
+		ereport(WARNING,
+					(errmsg("read committed isolation is disabled"),
+					 errdetail("Set yb_enable_read_committed_isolation to enable. When disabled, read "
+							 "committed falls back to using repeatable read isolation.")));
+	}
+	return true;
 }
 
 const char *

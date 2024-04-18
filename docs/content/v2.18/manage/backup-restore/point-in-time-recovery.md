@@ -124,14 +124,6 @@ You can also use the same command to view the information about a particular sch
 
 ## Restore to a point in time
 
-{{< warning title="Stop workloads before restoring" >}}
-
-Stop all the application workloads before you restore to a point in time. Transactions running concurrently with the restore operation can lead to data inconsistency.
-
-This requirement will be removed in an upcoming release, and is tracked in issue [12853](https://github.com/yugabyte/yugabyte-db/issues/12853).
-
-{{< /warning >}}
-
 If a database or a keyspace has an associated snapshot schedule, you can use that schedule to restore the database or keyspace to a particular point in time by using the [`restore_snapshot_schedule`](../../../admin/yb-admin/#restore-snapshot-schedule) command with the following parameters:
 
 * The ID of the schedule.

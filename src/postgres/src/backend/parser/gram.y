@@ -1042,6 +1042,7 @@ stmt:
 			| AlterRoleStmt
 			| AlterSeqStmt
 			| AlterTableStmt
+			| AlterTypeStmt
 			| BackfillIndexStmt
 			| CallStmt
 			| ClosePortalStmt
@@ -1104,6 +1105,7 @@ stmt:
 			| TransactionStmt
 			| TruncateStmt
 			| UpdateStmt
+			| VacuumStmt
 			| VariableResetStmt
 			| VariableSetStmt
 			| VariableShowStmt
@@ -1129,7 +1131,6 @@ stmt:
 			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum", false); }
 
 			/* Not supported in template0/template1 statements */
 			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
@@ -1140,7 +1141,6 @@ stmt:
 			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
-			| AlterTypeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }

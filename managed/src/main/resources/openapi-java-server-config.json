@@ -1,0 +1,16 @@
+    {
+        "hideGenerationTimestamp": "true",
+        "groupId": "com.yugabyte",
+        "artifactId": "yugaware",
+        "artifactDescription": "Java server stubs for YugayteDB Anywhere",
+        "sourceFolder": "/",
+        "apiPackage": "api.v2.controllers",
+        "modelPackage": "api.v2.models",
+        "configPackage": "resources",
+        "supportAsync": "false",
+        "developerOrganizationUrl": "https://www.yugabyte.com",
+        "developerOrganization": "Yugabyte",
+        "developerName": "Yugabyte",
+        "developerEmail": "oss-maintainers@yugabyte.com",
+        "licenseName": "POLYFORM-FREE-TRIAL-LICENSE-1.0.0"
+    }

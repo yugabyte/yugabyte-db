@@ -2,10 +2,13 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.models.Customer;
@@ -22,6 +25,8 @@ import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
+import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +34,9 @@ import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.UUID;
 import javax.inject.Inject;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +50,8 @@ public class EmailHelper {
   public static final String DEFAULT_EMAIL_SEPARATORS = ";,";
 
   @Inject private RuntimeConfigFactory configFactory;
+
+  @Inject private CustomCAStoreManager customCAStoreManager;
 
   /**
    * Sends email with subject and content to recipients from destinations. STMP parameters are in
@@ -126,15 +136,15 @@ public class EmailHelper {
           StringUtils.isEmpty(smtpData.smtpServer)
               ? runtimeConfig.getString("yb.health.default_smtp_server")
               : smtpData.smtpServer;
-      props.put("mail.smtp.host", smtpServer);
-      props.put(
-          "mail.smtp.port",
+      String smtpPort =
           String.valueOf(
               smtpData.smtpPort == -1
                   ? (smtpData.useSSL
                       ? runtimeConfig.getInt("yb.health.default_smtp_port_ssl")
                       : runtimeConfig.getInt("yb.health.default_smtp_port"))
-                  : smtpData.smtpPort));
+                  : smtpData.smtpPort);
+      props.put("mail.smtp.host", smtpServer);
+      props.put("mail.smtp.port", smtpPort);
       props.put("mail.smtp.ssl.enable", String.valueOf(smtpData.useSSL));
       if (smtpData.useSSL) {
         props.put("mail.smtp.ssl.trust", smtpServer);
@@ -151,6 +161,28 @@ public class EmailHelper {
       props.put(
           smtpData.useSSL ? "mail.smtps.connectiontimeout" : "mail.smtp.connectiontimeout",
           connectionTimeout);
+
+      if ((smtpData.useSSL || smtpData.useTLS)
+          && customCAStoreManager != null
+          && customCAStoreManager.isEnabled()) {
+        props.put("mail.smtp.socketFactory.port", smtpPort);
+        // Plug in YBA's trust store.
+        KeyStore ybaAndJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+        try {
+          TrustManagerFactory trustFactory =
+              TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+          trustFactory.init(ybaAndJavaKeyStore);
+          TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
+          SecureRandom secureRandom = new SecureRandom();
+          SSLContext sslContext = SSLContext.getInstance("TLS");
+          sslContext.init(null, ybaJavaTrustManagers, secureRandom);
+          props.put("mail.smtp.ssl.context", sslContext);
+          props.put("mail.smtp.ssl.socketFactory", sslContext.getSocketFactory());
+        } catch (Exception e) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Error occurred when building SSL context" + e.getMessage());
+        }
+      }
 
       String timeout = String.valueOf(runtimeConfig.getInt("yb.health.smtp_timeout_ms"));
       props.put(smtpData.useSSL ? "mail.smtps.timeout" : "mail.smtp.timeout", timeout);

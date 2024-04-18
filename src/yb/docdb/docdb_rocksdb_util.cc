@@ -20,13 +20,15 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/value_type.h"
+
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/dockv/doc_key.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
@@ -594,12 +596,14 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
 
 void InitRocksDBOptions(
     rocksdb::Options* options, const string& log_prefix,
+    const TabletId& tablet_id,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
     rocksdb::BlockBasedTableOptions table_options,
     const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
+  options->tablet_id = tablet_id;
   options->create_if_missing = true;
   // We should always sync data to ensure we can recover rocksdb from crash.
   options->disableDataSync = false;

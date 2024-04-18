@@ -64,18 +64,22 @@ export default class ClusterInfoPanel extends Component {
     const getCurrentlyUsedImageBundle = () => {
       if (!providers) return null;
 
-      const primaryCluster = getPrimaryCluster(clusters);
-      const providerUsed = find(providers.data, { uuid: primaryCluster.userIntent.provider });
+      const cluster = isPrimary ? getPrimaryCluster(clusters) : getReadOnlyCluster(clusters);
+
+      if (!cluster) return null;
+
+      const providerUsed = find(providers.data, { uuid: cluster.userIntent.provider });
+
       if (!providerUsed) return null;
 
-      const img = find(providerUsed.imageBundles, { uuid: primaryCluster.userIntent.imageBundleUUID });
+      const img = find(providerUsed.imageBundles, { uuid: cluster.userIntent.imageBundleUUID });
       return img;
     };
 
     const getImageBundleName = () => {
 
       const img = getCurrentlyUsedImageBundle();
-      if(!img) return null;
+      if (!img) return null;
       return <div className='universe-detail-widget-image-bundle' title={img.name}>
         {img.name.length > 15 ? `${img.name.substring(0, 15)}...` : img.name}
         {img.metadata?.type === ImageBundleType.YBA_ACTIVE && <ImageBundleYBActiveTag />}
@@ -91,7 +95,7 @@ export default class ClusterInfoPanel extends Component {
 
     const upgradeLinuxVersionText = () => {
       const img = getCurrentlyUsedImageBundle();
-      if (img?.metadata?.type !== ImageBundleType.YBA_DEPRECATED) return null;
+      if (img === null || img?.metadata?.type !== ImageBundleType.YBA_DEPRECATED) return null;
       return (
         <div className='upgradeLinuxVersionText' onClick={() => {
           dispatch(openDialog('linuxVersionUpgradeModal'));

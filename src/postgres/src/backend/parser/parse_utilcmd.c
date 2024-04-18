@@ -131,7 +131,8 @@ static void transformColumnDefinition(CreateStmtContext *cxt,
 static void transformTableConstraint(CreateStmtContext *cxt,
 									 Constraint *constraint);
 static void transformTableLikeClause(CreateStmtContext *cxt,
-									 TableLikeClause *table_like_clause);
+									 TableLikeClause *table_like_clause,
+									 Constraint **yb_pk_constraint);
 static void transformOfType(CreateStmtContext *cxt,
 							TypeName *ofTypename);
 static CreateStatsStmt *generateClonedExtStatsStmt(RangeVar *heapRel,
@@ -320,7 +321,11 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	/*
 	 * Run through each primary element in the table creation clause. Separate
 	 * column defs from constraints, and do preliminary analysis.
+	 *
+	 * YB note: also extract out PK constraint from LIKE clause now so that we
+	 * have it before DefineRelation.
 	 */
+	Constraint *yb_like_clause_pk_constraint = NULL;
 	foreach(elements, stmt->tableElts)
 	{
 		Node	   *element = lfirst(elements);
@@ -336,7 +341,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 				break;
 
 			case T_TableLikeClause:
-				transformTableLikeClause(&cxt, (TableLikeClause *) element);
+				transformTableLikeClause(&cxt, (TableLikeClause *) element,
+										 &yb_like_clause_pk_constraint);
 				break;
 
 			default:
@@ -512,6 +518,9 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 	if (IsYugaByteEnabled())
 	{
+		if (yb_like_clause_pk_constraint)
+			stmt->constraints = lappend(stmt->constraints,
+										yb_like_clause_pk_constraint);
 		stmt->constraints = list_concat(stmt->constraints, cxt.ixconstraints);
 	}
 
@@ -1193,7 +1202,8 @@ transformTableConstraint(CreateStmtContext *cxt, Constraint *constraint)
  * table has been created.
  */
 static void
-transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_clause)
+transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_clause,
+						 Constraint **yb_pk_constraint)
 {
 	AttrNumber	parent_attno;
 	Relation	relation;
@@ -1249,6 +1259,43 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	}
 
 	tupleDesc = RelationGetDescr(relation);
+
+	/*
+	 * YB: bring back some code removed by upstream PG commit
+	 * 50289819230d8ddad510879ee4793b04a05cf13b in order to build yb_attmap
+	 * which is used below to get the primary key constraint, if any.
+	 */
+	AttrNumber	yb_new_attno;
+	AttrMap    *yb_attmap;
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * Initialize column number map for map_variable_attnos().  We need this
+		 * since dropped columns in the source table aren't copied, so the new
+		 * table can have different column numbers.
+		 */
+		yb_attmap = make_attrmap(tupleDesc->natts);
+
+		/*
+		 * We must fill the attmap now so that it can be used to process generated
+		 * column default expressions in the per-column loop below.
+		 */
+		yb_new_attno = 1;
+		for (parent_attno = 1; parent_attno <= tupleDesc->natts;
+			 parent_attno++)
+		{
+			Form_pg_attribute attribute = TupleDescAttr(tupleDesc,
+														parent_attno - 1);
+
+			/*
+			 * Ignore dropped columns in the parent.  attmap entry is left zero.
+			 */
+			if (attribute->attisdropped)
+				continue;
+
+			yb_attmap->attnums[parent_attno - 1] = list_length(cxt->columns) + (yb_new_attno++);
+		}
+	}
 
 	/*
 	 * Insert the copied attributes into the cxt for the new table definition.
@@ -1380,6 +1427,67 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	}
 
 	/*
+	 * The first half of this code is largely copied from the section
+	 * "Likewise, copy indexes if requested" which was moved to
+	 * expandTableLikeClause by commit
+	 * 50289819230d8ddad510879ee4793b04a05cf13b.  The second half resembles
+	 * YB's modifications by commit 6875e1bb8a697697d3d68a665adeef3d177434a0.
+	 * All this is to get the primary key constraint now before DefineRelation.
+	 */
+	if (IsYugaByteEnabled() &&
+		(table_like_clause->options & CREATE_TABLE_LIKE_INDEXES) &&
+		relation->rd_rel->relhasindex)
+	{
+		List	   *parent_indexes;
+		ListCell   *l;
+
+		parent_indexes = RelationGetIndexList(relation);
+
+		foreach(l, parent_indexes)
+		{
+			Oid			parent_index_oid = lfirst_oid(l);
+			Relation	parent_index;
+			IndexStmt  *index_stmt;
+
+			parent_index = index_open(parent_index_oid, AccessShareLock);
+
+			/* Build CREATE INDEX statement to recreate the parent_index */
+			index_stmt = generateClonedIndexStmt(cxt->relation,
+												 parent_index,
+												 yb_attmap,
+												 NULL);
+
+			/*
+			 * If index is a primary key index save the primary key constraint.
+			 */
+			if (((Form_pg_index)GETSTRUCT(parent_index->rd_indextuple))->indisprimary)
+			{
+				Constraint *primary_key = makeNode(Constraint);
+				primary_key->contype = CONSTR_PRIMARY;
+				primary_key->conname = index_stmt->idxname;
+				primary_key->options = index_stmt->options;
+				primary_key->indexspace = NULL;
+				if (table_like_clause->yb_tablespaceOid != InvalidOid)
+					primary_key->indexspace =
+						get_tablespace_name(table_like_clause->yb_tablespaceOid);
+
+				ListCell *idxcell;
+				foreach(idxcell, index_stmt->indexParams)
+				{
+					IndexElem* ielem = lfirst(idxcell);
+					primary_key->keys =
+						lappend(primary_key->keys, makeString(ielem->name));
+					primary_key->yb_index_params =
+						lappend(primary_key->yb_index_params, ielem);
+				}
+				*yb_pk_constraint = primary_key;
+			}
+
+			index_close(parent_index, AccessShareLock);
+		}
+	}
+
+	/*
 	 * We may copy extended statistics if requested, since the representation
 	 * of CreateStatsStmt doesn't depend on column numbers.
 	 */
@@ -1434,7 +1542,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
  * commands that should be run to generate indexes etc.
  */
 List *
-expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause, List **yb_constraints)
+expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause)
 {
 	List	   *result = NIL;
 	List	   *atsubcmds = NIL;
@@ -1690,32 +1798,6 @@ expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause, Lis
 					if (table_like_clause->yb_tablespaceOid != InvalidOid)
 						index_stmt->tableSpace =
 							get_tablespace_name(table_like_clause->yb_tablespaceOid);
-				}
-
-				/*
-				 * If index is a primary key index save the primary key constraint.
-				 */
-				if (((Form_pg_index)GETSTRUCT(parent_index->rd_indextuple))->indisprimary)
-				{
-					Constraint *primary_key = makeNode(Constraint);
-					primary_key->contype = CONSTR_PRIMARY;
-					primary_key->conname = index_stmt->idxname;
-					primary_key->options = index_stmt->options;
-					primary_key->indexspace = NULL;
-					if (table_like_clause->yb_tablespaceOid != InvalidOid)
-						primary_key->indexspace =
-							get_tablespace_name(table_like_clause->yb_tablespaceOid);
-
-					ListCell *idxcell;
-					foreach(idxcell, index_stmt->indexParams)
-					{
-						IndexElem* ielem = lfirst(idxcell);
-						primary_key->keys =
-							lappend(primary_key->keys, makeString(ielem->name));
-						primary_key->yb_index_params =
-							lappend(primary_key->yb_index_params, ielem);
-					}
-					*yb_constraints = lappend(*yb_constraints, primary_key);
 				}
 			}
 

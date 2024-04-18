@@ -4,6 +4,7 @@ package com.yugabyte.yw.models.configs.validators;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.BeanValidator;
@@ -32,12 +33,14 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     this.runtimeConfGetter = runtimeConfGetter;
   }
 
-  protected void throwBeanProviderValidatorError(String fieldName, String exceptionMsg) {
-    throwBeanValidatorError(fieldName, exceptionMsg, VALIDATION_ERROR_SOURCE);
+  protected void throwBeanProviderValidatorError(
+      String fieldName, String exceptionMsg, JsonNode requestJson) {
+    throwBeanValidatorError(fieldName, exceptionMsg, VALIDATION_ERROR_SOURCE, requestJson);
   }
 
-  protected void throwMultipleProviderValidatorError(SetMultimap<String, String> errorsMap) {
-    throwMultipleBeanValidatorError(errorsMap, VALIDATION_ERROR_SOURCE);
+  protected void throwMultipleProviderValidatorError(
+      SetMultimap<String, String> errorsMap, JsonNode requestJson) {
+    throwMultipleBeanValidatorError(errorsMap, VALIDATION_ERROR_SOURCE, requestJson);
   }
 
   public boolean validateNTPServers(List<String> ntpServers) {

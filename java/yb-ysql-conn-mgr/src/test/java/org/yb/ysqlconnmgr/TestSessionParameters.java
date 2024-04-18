@@ -13,12 +13,10 @@
 
 package org.yb.ysqlconnmgr;
 
-import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
@@ -53,29 +51,6 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     };
 
     builder.addCommonTServerFlags(additionalTserverFlags);
-  }
-
-  boolean verifySessionParameterValue(Statement stmt, String name, String value) throws Exception {
-    String query = String.format("show %s", name);
-    LOG.info(String.format("Exectuting query `%s`", query) );
-
-    ResultSet resultSet = stmt.executeQuery(query);
-
-    assertNotNull(resultSet);
-
-    if (!resultSet.next()) {
-      LOG.error("Got empty result for SHOW query");
-      return false;
-    }
-
-    if (!resultSet.getString(1).toLowerCase().equals(value.toLowerCase())) {
-      LOG.error(
-          "Expected value " + value + " is not same as the query result "
-           + resultSet.getString(1));
-      return false;
-    }
-
-    return true;
   }
 
   @Test

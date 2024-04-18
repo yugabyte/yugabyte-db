@@ -13,8 +13,7 @@
 --
 CREATE TABLE tenk2 AS SELECT * FROM tenk1;
 VACUUM ANALYZE tenk2;
-WARNING:  VACUUM will be ignored
-ERROR:  Transaction for catalog table write operation 'pg_statistic' not found
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 --
 -- yb_pg_create_index
 -- (With modification to make them all nonconcurrent for performance.)

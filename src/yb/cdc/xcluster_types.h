@@ -19,6 +19,13 @@
 
 namespace yb::xcluster {
 
+static const char* const kDDLQueuePgSchemaName = "yb_xcluster_ddl_replication";
+static const char* const kDDLQueueTableName = "ddl_queue";
+static const char* const kDDLReplicatedTableName = "replicated_ddls";
+static const char* const kDDLQueueStartTimeColumn = "start_time";
+static const char* const kDDLQueueQueryIdColumn = "query_id";
+static const char* const kDDLQueueYbDataColumn = "yb_data";
+
 YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 
 struct TabletReplicationError {
@@ -65,4 +72,5 @@ struct XClusterTabletInfo {
 
   const std::string& producer_tablet_id() const { return producer_tablet_info.tablet_id; }
 };
+
 }  // namespace yb::xcluster

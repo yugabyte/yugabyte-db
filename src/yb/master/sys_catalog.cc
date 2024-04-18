@@ -81,6 +81,8 @@
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
 
+#include "yb/rpc/thread_pool.h"
+
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
@@ -177,6 +179,10 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
       leader_cb_(std::move(leader_cb)) {
   CHECK_OK(ThreadPoolBuilder("inform_removed_master").Build(&inform_removed_master_pool_));
   CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
+  raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+    .name = "raft_notifications",
+    .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+  });
   CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
   CHECK_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
   CHECK_OK(ThreadPoolBuilder("log-sync")
@@ -651,6 +657,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTableMetricsEntity(),
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
+          raft_notifications_pool(),
           tablet_prepare_pool(),
           &retryable_requests_manager /* retryable_requests_manager */,
           nullptr,

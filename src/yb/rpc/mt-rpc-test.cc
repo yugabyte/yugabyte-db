@@ -198,7 +198,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   auto service_name = service->service_name();
   ThreadPool thread_pool(ThreadPoolOptions {
     .name = "bogus_pool",
-    .max_workers = 0UL,
+    .max_workers = 0
   });
   scoped_refptr<ServicePool> service_pool(new ServicePool(kMaxConcurrency,
                                                           &thread_pool,

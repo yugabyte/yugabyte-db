@@ -27,6 +27,8 @@ typedef struct OutputPluginOptions
 {
 	OutputPluginOutputType output_type;
 	bool		receive_rewrites;
+
+	List	   *yb_publication_names;
 } OutputPluginOptions;
 
 /*

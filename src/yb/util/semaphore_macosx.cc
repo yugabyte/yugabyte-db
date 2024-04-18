@@ -31,6 +31,7 @@
 //
 #include <semaphore.h>
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/logging.h"
 
 #include "yb/util/semaphore.h"
@@ -80,7 +81,7 @@ void Semaphore::Release() {
   std::unique_lock<std::mutex> lock(mutex_);
   CHECK_GE(count_.load(), 0);
   count_.fetch_add(1);
-  cv_.notify_all();
+  YB_PROFILE(cv_.notify_all());
 }
 
 int Semaphore::GetValue() {

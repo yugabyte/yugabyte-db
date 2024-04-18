@@ -56,6 +56,9 @@ typedef struct WALSegmentContext
 	int			ws_segsize;
 } WALSegmentContext;
 
+/* YB includes. */
+#include "replication/yb_virtual_wal_client_typedefs.h"
+
 typedef struct XLogReaderState XLogReaderState;
 
 /* Function type definitions for various xlogreader interactions */
@@ -234,6 +237,8 @@ struct XLogReaderState
 
 	/* Last record returned by XLogReadRecord(). */
 	DecodedXLogRecord *record;
+
+	YBCPgVirtualWalRecord *yb_virtual_wal_record;
 
 	/* ----------------------------------------
 	 * private/internal state
@@ -439,5 +444,7 @@ extern bool XLogRecGetBlockTagExtended(XLogReaderState *record, uint8 block_id,
 									   RelFileNode *rnode, ForkNumber *forknum,
 									   BlockNumber *blknum,
 									   Buffer *prefetch_buffer);
+
+extern void YBResetDecoder(XLogReaderState *state);
 
 #endif							/* XLOGREADER_H */

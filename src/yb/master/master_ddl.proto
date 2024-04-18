@@ -574,6 +574,7 @@ message AlterNamespaceResponsePB {
 
 message ListNamespacesRequestPB {
   optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_CQL ];
+  optional bool include_nonrunning = 2;
 }
 
 message ListNamespacesResponsePB {

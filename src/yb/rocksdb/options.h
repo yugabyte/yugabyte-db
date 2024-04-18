@@ -31,6 +31,8 @@
 #include <limits>
 #include <unordered_map>
 
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/listener.h"
@@ -1338,6 +1340,9 @@ struct DBOptions {
 
   // A prefix for log messages, usually containing the tablet id.
   std::string log_prefix;
+
+  // Tablet id.
+  yb::TabletId tablet_id;
 
   // This RocksDB instance root mem tracker.
   std::shared_ptr<yb::MemTracker> mem_tracker;

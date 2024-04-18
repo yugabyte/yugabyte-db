@@ -47,7 +47,8 @@ create_physical_replication_slot(char *name, bool immediately_reserve,
 
 	/* acquire replication slot, this will check for conflicting names */
 	ReplicationSlotCreate(name, false,
-						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false);
+						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false,
+						  CRS_NOEXPORT_SNAPSHOT, NULL);
 
 	if (immediately_reserve)
 	{
@@ -141,9 +142,15 @@ create_logical_replication_slot(char *name, char *plugin,
 	 * this transaction fails. We'll make it persistent at the end. Temporary
 	 * slots can be created as temporary from beginning as they get dropped on
 	 * error as well.
+	 *
+	 * YB Note: We use CRS_NOEXPORT_SNAPSHOT here since it is the only supported
+	 * mechanism via this function in PG. It is evident from the
+	 * CreateInitDecodingContext call below where `need_full_snapshot` is passed
+	 * as false indicating that no snapshot should be built.
 	 */
 	ReplicationSlotCreate(name, true,
-						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase);
+						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase,
+						  CRS_NOEXPORT_SNAPSHOT, NULL);
 
 	if (!IsYugaByteEnabled())
 	{
@@ -185,7 +192,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("pg_create_logical_replication_slot is unavailable"),
 				 errdetail("yb_enable_replication_commands is false or a "
-				 		   "system upgrade is in progress")));
+						   "system upgrade is in progress")));
 
 	Name		name = PG_GETARG_NAME(0);
 	Name		plugin = PG_GETARG_NAME(1);
@@ -216,12 +223,15 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 		 *
 		 * This is different from PG where the validation is done after creating
 		 * the replication slot on disk which is cleaned up in case of errors.
+		 *
+		 * TODO(#20756): Support other plugins such as test_decoding once we
+		 * store replication slot metadata in yb-master.
 		 */
-		if (plugin == NULL || strcmp(NameStr(*plugin), YB_OUTPUT_PLUGIN) != 0)
+		if (plugin == NULL || strcmp(NameStr(*plugin), PG_OUTPUT_PLUGIN) != 0)
 			ereport(ERROR, 
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid output plugin"),
-					 errdetail("Only 'yboutput' plugin is supported")));
+					 errdetail("Only 'pgoutput' plugin is supported")));
 	}
 
 	CheckSlotPermissions();
@@ -357,7 +367,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 			slot_contents.data.database = slot->database_oid;
 			namestrcpy(&slot_contents.data.name, slot->slot_name);
-			namestrcpy(&slot_contents.data.plugin, YB_OUTPUT_PLUGIN);
+			namestrcpy(&slot_contents.data.plugin, PG_OUTPUT_PLUGIN);
 			yb_stream_id = slot->stream_id;
 			yb_stream_active = slot->active;
 

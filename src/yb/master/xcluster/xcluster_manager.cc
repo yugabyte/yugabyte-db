@@ -20,6 +20,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_config.h"
 
 #include "yb/rpc/rpc_context.h"
@@ -49,6 +50,7 @@ XClusterManager::~XClusterManager() {}
 void XClusterManager::Shutdown() { XClusterTargetManager::Shutdown(); }
 
 Status XClusterManager::Init() {
+  RETURN_NOT_OK(XClusterSourceManager::Init());
   RETURN_NOT_OK(XClusterTargetManager::Init());
 
   return Status::OK();
@@ -166,9 +168,21 @@ Result<HybridTime> XClusterManager::GetXClusterSafeTime(const NamespaceId& names
   return XClusterTargetManager::GetXClusterSafeTime(namespace_id);
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(
+Status XClusterManager::GetXClusterSafeTimeForNamespace(
+    const GetXClusterSafeTimeForNamespaceRequestPB* req,
+    GetXClusterSafeTimeForNamespaceResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  return XClusterTargetManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch);
+  return XClusterTargetManager::GetXClusterSafeTimeForNamespace(req, resp, epoch);
+}
+
+Result<HybridTime> XClusterManager::GetXClusterSafeTimeForNamespace(
+    const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+    const XClusterSafeTimeFilter& filter) {
+  return XClusterTargetManager::GetXClusterSafeTimeForNamespace(epoch, namespace_id, filter);
+}
+
+Status XClusterManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {
+  return XClusterTargetManager::RefreshXClusterSafeTimeMap(epoch);
 }
 
 Status XClusterManager::XClusterCreateOutboundReplicationGroup(
@@ -190,8 +204,7 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
   }
 
   auto namespace_ids = VERIFY_RESULT(CreateOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_names, epoch,
-      rpc->GetClientDeadline()));
+      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_names, epoch));
   for (const auto& namespace_id : namespace_ids) {
     *resp->add_namespace_ids() = namespace_id;
   }
@@ -207,8 +220,7 @@ Status XClusterManager::XClusterAddNamespaceToOutboundReplicationGroup(
   SCHECK(req->has_namespace_name(), InvalidArgument, "Namespace name must be specified");
 
   auto namespace_id = VERIFY_RESULT(AddNamespaceToOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_name(), epoch,
-      rpc->GetClientDeadline()));
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_name(), epoch));
 
   resp->set_namespace_id(namespace_id);
   return Status::OK();
@@ -238,7 +250,9 @@ Status XClusterManager::XClusterDeleteOutboundReplicationGroup(
 Status XClusterManager::IsXClusterBootstrapRequired(
     const IsXClusterBootstrapRequiredRequestPB* req, IsXClusterBootstrapRequiredResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
-  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id, namespace_id);
+
+  LOG_FUNC_AND_RPC;
 
   auto bootstrap_required = VERIFY_RESULT(IsBootstrapRequired(
       xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id()));
@@ -257,6 +271,8 @@ Status XClusterManager::GetXClusterStreams(
     const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+
+  LOG_FUNC_AND_RPC;
 
   std::vector<std::pair<TableName, PgSchemaName>> table_names;
   for (const auto& table_name : req->table_infos()) {
@@ -280,6 +296,37 @@ Status XClusterManager::GetXClusterStreams(
     table_info->set_pg_schema_name(ns_table_info.pg_schema_name);
   }
 
+  return Status::OK();
+}
+
+Status XClusterManager::CreateXClusterReplication(
+    const CreateXClusterReplicationRequestPB* req, CreateXClusterReplicationResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  std::vector<HostPort> target_master_addresses;
+  HostPortsFromPBs(req->target_master_addresses(), &target_master_addresses);
+
+  return XClusterSourceManager::CreateXClusterReplication(
+      xcluster::ReplicationGroupId(req->replication_group_id()), target_master_addresses, epoch);
+}
+
+Status XClusterManager::IsCreateXClusterReplicationDone(
+    const IsCreateXClusterReplicationDoneRequestPB* req,
+    IsCreateXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  std::vector<HostPort> target_master_addresses;
+  HostPortsFromPBs(req->target_master_addresses(), &target_master_addresses);
+
+  auto create_result = VERIFY_RESULT(XClusterSourceManager::IsCreateXClusterReplicationDone(
+      xcluster::ReplicationGroupId(req->replication_group_id()), target_master_addresses, epoch));
+
+  resp->set_done(create_result.done());
+  if (create_result.done()) {
+    StatusToPB(create_result.status(), resp->mutable_replication_error());
+  }
   return Status::OK();
 }
 

@@ -2,7 +2,7 @@
 source "${BASH_SOURCE[0]%/*}"/common.sh
 
 yb_ctl_destroy_create
-bin/ysqlsh -X -v "ON_ERROR_STOP=1" <<EOT
+ysqlsh <<EOT
 CREATE TABLE t (k int PRIMARY KEY);
 EOT
 

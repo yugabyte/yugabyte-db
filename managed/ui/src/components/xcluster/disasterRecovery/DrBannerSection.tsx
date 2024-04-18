@@ -19,6 +19,7 @@ interface DrBannerSectionProps {
 
 const useStyles = makeStyles((theme) => ({
   bannerContainer: {
+    marginBottom: theme.spacing(2),
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1)
@@ -78,7 +79,7 @@ export const DrBannerSection = ({
           <div className={classes.bannerContent}>
             <Typography variant="body2">
               <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX}.banner.enablingDr`}
+                i18nKey={`${TRANSLATION_KEY_PREFIX}.banner.initializingDr`}
                 components={{ bold: <b /> }}
               />
             </Typography>

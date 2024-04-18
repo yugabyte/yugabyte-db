@@ -235,6 +235,7 @@ readonly -a VALID_COMPILER_TYPES=(
   clang15
   clang16
   clang17
+  clang18
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -550,8 +551,7 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
-      detect_architecture
-      YB_COMPILER_TYPE=clang16
+      YB_COMPILER_TYPE=clang17
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi

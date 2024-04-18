@@ -5,6 +5,7 @@ import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'react-toastify';
 import { useQuery } from 'react-query';
+import { useTranslation } from 'react-i18next';
 
 import { KeyPairManagement, NTPSetupType, ProviderCode } from '../../constants';
 import { NTP_SERVER_REGEX } from '../constants';
@@ -42,8 +43,7 @@ import {
   getDeletedZones,
   getInUseAzs,
   getLatestAccessKey,
-  getNtpSetupType,
-  getRegionToInUseAz
+  getNtpSetupType
 } from '../../utils';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { getOnPremLocationOption } from '../configureRegion/utils';
@@ -60,7 +60,10 @@ import {
   OnPremRegionMutation,
   YBProviderMutation
 } from '../../types';
-import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface OnPremProviderEditFormProps {
@@ -125,6 +128,7 @@ export const OnPremProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<ConfigureOnPremRegionFormValues>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const { t } = useTranslation();
 
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<OnPremProviderEditFormFieldValues>({
@@ -138,13 +142,15 @@ export const OnPremProviderEditForm = ({
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
 
-  if (customerRuntimeConfigQuery.isError) {
-    return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
-    );
-  }
   if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
     return <YBLoading />;
+  }
+  if (customerRuntimeConfigQuery.isError) {
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
+    );
   }
 
   const onFormSubmit: SubmitHandler<OnPremProviderEditFormFieldValues> = async (formValues) => {
@@ -222,7 +228,8 @@ export const OnPremProviderEditForm = ({
   const isProviderInUse = linkedUniverses.length > 0;
   const isFormDisabled =
     (!isEditInUseProviderEnabled && isProviderInUse) ||
-    getIsFormDisabled(formMethods.formState, providerConfig);
+    getIsFormDisabled(formMethods.formState, providerConfig) ||
+    !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -250,10 +257,7 @@ export const OnPremProviderEditForm = ({
               heading="Regions"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -515,7 +519,10 @@ export const OnPremProviderEditForm = ({
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
-              onClick={onFormReset}
+              onClick={(e: any) => {
+                onFormReset();
+                e.currentTarget.blur();
+              }}
               disabled={isFormDisabled}
               data-testid={`${FORM_NAME}-ClearButton`}
             />

@@ -82,7 +82,11 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
+	{
+		if (IsYugaByteEnabled() && YBEnableAsh())
+			return "YsqlQuery";
 		return NULL;
+	}
 
 	classId = wait_event_info & 0xFF000000;
 
@@ -517,6 +521,9 @@ pgstat_get_wait_timeout(WaitEventTimeout w)
 			break;
 		case WAIT_EVENT_VACUUM_TRUNCATE:
 			event_name = "VacuumTruncate";
+			break;
+		case WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF:
+			event_name = "YbTxnConflictBackoff";
 			break;
 			/* no default case, so that compiler will warn */
 	}

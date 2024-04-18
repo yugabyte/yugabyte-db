@@ -46,7 +46,7 @@ const data = {
 
 export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, showTooltip, height, width }) => {
   const { t } = useTranslation();
-  const { data: nodesResponse, isFetching } = useGetClusterNodesQuery();
+  const { data: nodesResponse, isFetching } = useGetClusterNodesQuery({});
 
   const [{ nodeName, clusterType, region: regionParam }] = useQueryParams({
     nodeName: withDefault(StringParam, 'all'),

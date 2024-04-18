@@ -64,7 +64,7 @@ namespace base {
 
 class CAPABILITY("mutex") SpinLock {
  public:
-  SpinLock() : lockword_(kSpinLockFree) { }
+  constexpr SpinLock() : lockword_(kSpinLockFree) { }
 
   // Special constructor for use with static SpinLock objects.  E.g.,
   //

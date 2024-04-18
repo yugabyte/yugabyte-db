@@ -1,0 +1,529 @@
+[
+  {
+    "name": "query_latency",
+    "successful": true,
+    "errorMessage": null,
+    "layout": {
+      "title": "Query Latency",
+      "xaxis": {
+        "type": "date",
+        "alias": {},
+        "ticksuffix": null,
+        "tickformat": null
+      },
+      "yaxis": {
+        "type": null,
+        "alias": {},
+        "ticksuffix": "&nbsp;µs",
+        "tickformat": null
+      }
+    },
+    "data": [
+      {
+        "name": "Average",
+        "instanceName": null,
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "130.5",
+          "118.5",
+          "106.5",
+          "94.5",
+          "82.5",
+          "70.5",
+          "58.5",
+          "46.5",
+          "34.5",
+          "22.5",
+          "10.5"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "Max",
+        "instanceName": null,
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "304.5",
+          "276.5",
+          "248.5",
+          "220.5",
+          "192.5",
+          "164.5",
+          "136.5",
+          "108.5",
+          "80.5",
+          "52.5",
+          "24.5"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "Mean",
+        "instanceName": null,
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "174.0",
+          "158.0",
+          "142.0",
+          "126.0",
+          "110.0",
+          "94.0",
+          "78.0",
+          "62.0",
+          "46.0",
+          "30.0",
+          "14.0"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "P90",
+        "instanceName": null,
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "217.5",
+          "197.5",
+          "177.5",
+          "157.5",
+          "137.5",
+          "117.5",
+          "97.5",
+          "77.5",
+          "57.5",
+          "37.5",
+          "17.5"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "P99",
+        "instanceName": null,
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "261.0",
+          "237.0",
+          "213.0",
+          "189.0",
+          "165.0",
+          "141.0",
+          "117.0",
+          "93.0",
+          "69.0",
+          "45.0",
+          "21.0"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "Average",
+        "instanceName": "node2",
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "82.5",
+          "70.5",
+          "58.5",
+          "46.5",
+          "34.5",
+          "22.5",
+          "10.5"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "Max",
+        "instanceName": "node2",
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "192.5",
+          "164.5",
+          "136.5",
+          "108.5",
+          "80.5",
+          "52.5",
+          "24.5"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "Mean",
+        "instanceName": "node2",
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "110.0",
+          "94.0",
+          "78.0",
+          "62.0",
+          "46.0",
+          "30.0",
+          "14.0"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "P90",
+        "instanceName": "node2",
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "137.5",
+          "117.5",
+          "97.5",
+          "77.5",
+          "57.5",
+          "37.5",
+          "17.5"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "P99",
+        "instanceName": "node2",
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "165.0",
+          "141.0",
+          "117.0",
+          "93.0",
+          "69.0",
+          "45.0",
+          "21.0"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "Average",
+        "instanceName": "node3",
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "82.5",
+          "70.5",
+          "58.5",
+          "46.5",
+          "34.5",
+          "22.5",
+          "10.5"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "Max",
+        "instanceName": "node3",
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "192.5",
+          "164.5",
+          "136.5",
+          "108.5",
+          "80.5",
+          "52.5",
+          "24.5"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "Mean",
+        "instanceName": "node3",
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "110.0",
+          "94.0",
+          "78.0",
+          "62.0",
+          "46.0",
+          "30.0",
+          "14.0"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "P90",
+        "instanceName": "node3",
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "137.5",
+          "117.5",
+          "97.5",
+          "77.5",
+          "57.5",
+          "37.5",
+          "17.5"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "P99",
+        "instanceName": "node3",
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "165.0",
+          "141.0",
+          "117.0",
+          "93.0",
+          "69.0",
+          "45.0",
+          "21.0"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      }
+    ]
+  }
+]

@@ -606,7 +606,7 @@ TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   // Connect to it.
   CreateTsClientProxies(HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr()),
                         proxy_cache_.get(),
-                        &proxy_, &admin_proxy_, &consensus_proxy_, &generic_proxy_);
+                        &proxy_, &admin_proxy_, &consensus_proxy_, &generic_proxy_, &backup_proxy_);
 
   WriteRequestPB req;
   req.set_tablet_id(kTabletId);

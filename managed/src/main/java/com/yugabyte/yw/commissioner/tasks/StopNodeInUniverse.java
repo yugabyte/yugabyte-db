@@ -74,9 +74,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           SubTaskGroupType.StoppingNodeProcesses,
           null);
     }
-    if (isFirstTry()) {
-      verifyClustersConsistency();
-    }
+    addBasicPrecheckTasks();
   }
 
   private void freezeUniverseInTxn(Universe universe) {

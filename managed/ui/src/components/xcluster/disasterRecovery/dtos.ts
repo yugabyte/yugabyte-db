@@ -1,6 +1,6 @@
 import { PitrConfig } from '../../../redesign/helpers/dtos';
 import { XClusterConfigStatus } from '../constants';
-import { XClusterConfig, XClusterTableDetails } from '../dtos';
+import { XClusterTableDetails } from '../dtos';
 
 /**
  * Models the data object provided from YBA API.
@@ -13,6 +13,7 @@ export interface DrConfig {
   createTime: string;
   modifyTime: string;
   state: DrConfigState;
+  bootstrapParams: BootstrapParams;
 
   // Replication Participants
   drReplicaUniverseActive: boolean;
@@ -55,7 +56,8 @@ export const DrConfigState = {
   REPLICATING: 'Replicating',
   SWITCHOVER_IN_PROGRESS: 'Switchover in Progress',
   FAILOVER_IN_PROGRESS: 'Failover in Progress',
-  HALTED: 'Halted'
+  HALTED: 'Halted',
+  ERROR: 'Error'
 } as const;
 export type DrConfigState = typeof DrConfigState[keyof typeof DrConfigState];
 
@@ -107,4 +109,11 @@ export interface DrConfigSafetimeResponse {
     safetimeSkewUs: number;
     estimatedDataLossMs: number;
   }[];
+}
+
+export interface BootstrapParams {
+  backupRequestParams: {
+    storageConfigUUID: string;
+    parallelism?: number;
+  };
 }

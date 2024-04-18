@@ -250,6 +250,7 @@ interface AWSCloudInfoBase {
   awsAccessKeyID?: string;
   awsAccessKeySecret?: string;
   awsHostedZoneId?: string;
+  useIMDSv2: boolean;
 }
 type AWSCloudInfoMutation = AWSCloudInfoBase;
 interface AWSCloudInfo extends AWSCloudInfoBase {
@@ -263,7 +264,7 @@ interface AWSCloudInfo extends AWSCloudInfoBase {
 
 interface AZUCloudInfoBase {
   azuClientId: string;
-  azuClientSecret: string;
+  azuClientSecret?: string;
   azuRG: string; // azure resource group
   azuNetworkRG?: string;
   azuSubscriptionId: string;

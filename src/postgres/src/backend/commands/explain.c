@@ -2948,7 +2948,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_Agg:
 			show_agg_keys(castNode(AggState, planstate), ancestors, es);
 			show_upper_qual(plan->qual, "Filter", planstate, ancestors, es);
-			show_hashagg_info((AggState *) planstate, es);
+			if (!yb_explain_hide_non_deterministic_fields)
+				show_hashagg_info((AggState *) planstate, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);

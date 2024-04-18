@@ -460,6 +460,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
     assertAuditEntry(1, customer.getUuid());
+    task.setCompletionTime(new Date());
+    task.save();
 
     // Software upgrade with rollback support.
     url =
@@ -566,6 +568,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
     assertAuditEntry(1, customer.getUuid());
+    task.setCompletionTime(new Date());
+    task.save();
 
     // Software Upgrade with rollback support
     url =
@@ -905,27 +909,6 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
-  public void testGFlagsUpgradeWithInvalidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
-
-    String url =
-        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
-    Result result =
-        assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
-    assertBadRequest(result, "gflags param is required");
-
-    ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
-        ArgumentCaptor.forClass(GFlagsUpgradeParams.class);
-    verify(mockCommissioner, times(0)).submit(eq(TaskType.GFlagsUpgrade), argCaptor.capture());
-
-    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.getUuid());
-  }
-
-  @Test
   public void testGFlagsUpgradeWithSameFlags() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -955,7 +938,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "No gflags to change");
+    assertBadRequest(result, "No changes in gflags (modify specificGflags in cluster)");
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
         ArgumentCaptor.forClass(GFlagsUpgradeParams.class);

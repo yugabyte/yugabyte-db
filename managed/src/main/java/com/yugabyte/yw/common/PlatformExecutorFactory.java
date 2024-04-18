@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 @Singleton
 public class PlatformExecutorFactory {
 
-  public static final int SHUTDOWN_TIMEOUT_MINUTES = 5;
+  public static final int SHUTDOWN_TIMEOUT_MINUTES = 1;
 
   private final Config config;
   private final ShutdownHookHandler shutdownHookHandler;

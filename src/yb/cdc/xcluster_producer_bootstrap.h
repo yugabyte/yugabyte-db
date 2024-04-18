@@ -62,12 +62,7 @@ class XClusterProducerBootstrap {
 
   void PrepareResponse();
 
-  // Used as a callback function for parallelizing async cdc rpc calls.
-  // Given a finished tasks counter, and the number of total rpc calls
-  // in flight, the callback will increment the counter when called, and
-  // set the promise to be fulfilled when all tasks have completed.
-  void AsyncPromiseCallback(
-      std::promise<void>* const promise, std::atomic<uint>* const finished_tasks, uint total_tasks);
+  Result<bool> IsBootstrapRequired();
 
   CDCServiceImpl* cdc_service_;
   const BootstrapProducerRequestPB& req_;
@@ -82,13 +77,14 @@ class XClusterProducerBootstrap {
       std::unordered_map<std::string, std::vector<BootstrapTabletPair>>;
   using BTPHash = boost::hash<BootstrapTabletPair>;
 
-  std::vector<xrepl::StreamId> bootstrap_ids_;
   std::vector<std::pair<xrepl::StreamId, TableId>> bootstrap_ids_and_tables_;
   std::unordered_map<BootstrapTabletPair, yb::OpId, BTPHash> tablet_op_ids_;
   ServerToCDCServiceMap server_to_proxy_;
   ServerToBootstrapTabletPairMap server_to_remote_tablets_;
   std::unordered_set<BootstrapTabletPair, BTPHash> local_tablets_;
   std::unordered_set<BootstrapTabletPair, BTPHash> remote_tablets_to_fetch_opids_for_;
+  std::vector<TabletId> local_leader_tablets_;
+  std::unordered_map<std::string, std::vector<TabletId>> server_to_remote_leader_tablets_;
   HybridTime bootstrap_time_ = HybridTime::kMin;
 };
 

@@ -91,8 +91,16 @@ class XClusterManager : public XClusterManagerIf,
       const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
   Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const override;
-  Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
-      const LeaderEpoch& epoch) override;
+
+  Status GetXClusterSafeTimeForNamespace(
+      const GetXClusterSafeTimeForNamespaceRequestPB* req,
+      GetXClusterSafeTimeForNamespaceResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      const XClusterSafeTimeFilter& filter) override;
+
+  Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) override;
 
   // OutboundReplicationGroup RPCs.
   Status XClusterCreateOutboundReplicationGroup(
@@ -117,6 +125,13 @@ class XClusterManager : public XClusterManagerIf,
   Status GetXClusterStreams(
       const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status CreateXClusterReplication(
+      const CreateXClusterReplicationRequestPB* req, CreateXClusterReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status IsCreateXClusterReplicationDone(
+      const IsCreateXClusterReplicationDoneRequestPB* req,
+      IsCreateXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
 
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);

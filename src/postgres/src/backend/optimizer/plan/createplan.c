@@ -1881,6 +1881,7 @@ create_memoize_plan(PlannerInfo *root, MemoizePath *best_path, int flags)
 	ListCell   *lc2;
 	int			nkeys;
 	int			i;
+	bool		yb_singlerow;
 
 	subplan = create_plan_recurse(root, best_path->subpath,
 								  flags | CP_SMALL_TLIST);
@@ -1906,8 +1907,15 @@ create_memoize_plan(PlannerInfo *root, MemoizePath *best_path, int flags)
 
 	keyparamids = pull_paramids((Expr *) param_exprs);
 
+	/*
+	 * YB note: Do not use singlerow mode when processing a BNL because multiple
+	 * rows from the subplan are expected due to batching even when
+	 * JoinPathExtraData.inner_unique is true.
+	 */
+	yb_singlerow = best_path->singlerow && bms_is_empty(root->yb_cur_batched_relids);
+
 	plan = make_memoize(subplan, operators, collations, param_exprs,
-						best_path->singlerow, best_path->binary_mode,
+						yb_singlerow, best_path->binary_mode,
 						best_path->est_entries, keyparamids);
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
@@ -3338,7 +3346,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 	if (path->operation == CMD_UPDATE)
 	{
-		Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(relation);
+		Bitmapset *primary_key_attrs = bms_copy(YBGetTablePrimaryKeyBms(relation));
 
 		/*
 		 * Iterate through projection_path tlist, identify true user write columns from unspecified
@@ -5587,8 +5595,9 @@ create_nestloop_plan(PlannerInfo *root,
 				RestrictInfo *batched_rinfo =
 					yb_get_batched_restrictinfo(rinfo, batched_outerrelids,
 											 	inner_relids);
-
-				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
+				hashOpno = ((OpExpr *) rinfo->clause)->opno;
+				if (!bms_equal(batched_rinfo->left_relids, rinfo->left_relids))
+					hashOpno = get_commutator(hashOpno);
 			}
 
 			current_hinfo->hashOp = hashOpno;

@@ -5,6 +5,8 @@ INSERT INTO t (SELECT 1, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 -- Add one more distinct value to catch bugs that arise only with more than one distinct value.
 INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 
+SET yb_explain_hide_non_deterministic_fields = true;
+
 -- Start with CROSS/INNER/LEFT/RIGHT/FULL joins.
 -- CROSS JOIN
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
@@ -108,3 +110,50 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t t
 DROP INDEX irv;
 
 DROP TABLE t;
+
+-- Regression test case for GitHub issue #20827
+
+CREATE TABLE t1 (col_int_key int, pad int, primary key(col_int_key asc, pad asc));
+INSERT INTO t1 (select 3, i from generate_series(1, 1000) i);
+INSERT INTO t1 (select 4, i from generate_series(1, 1000) i);
+ANALYZE t1;
+
+CREATE TABLE t2 (pk int, col_int int, primary key(pk asc));
+INSERT INTO t2 (SELECT i, i FROM generate_series(1, 1000) i);
+ANALYZE t2;
+
+/*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
+
+/*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */
+SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
+
+DROP TABLE t1;
+DROP TABLE t2;
+
+-- Regression test for #20893
+
+CREATE TABLE t (k1 INT, k2 INT, PRIMARY KEY(k1 ASC, k2 ASC));
+
+-- Protect against memory corruption bug when not using ANALYZE.
+SELECT DISTINCT a1.k1 FROM t a1 RIGHT OUTER JOIN t a2 RIGHT OUTER JOIN t a3
+USING (k1) USING (k1) WHERE a2.k1 = 5 AND a3.k1 = 5 GROUP BY a1.k1 ORDER BY a1.k1;
+
+INSERT INTO t (SELECT i%10, i FROM GENERATE_SERIES(1, 10000) AS i);
+ANALYZE t;
+
+-- Protect against memory corruption bug when using ANALYZE.
+SELECT DISTINCT a1.k1 FROM t a1 RIGHT OUTER JOIN t a2 USING (k1) WHERE a2.k1 = 5 GROUP BY a1.k1 ORDER BY a1.k1;
+
+-- Grouping Sets with distinct.
+SELECT DISTINCT t.k1 FROM t GROUP BY GROUPING SETS ((k1), (k1)) ORDER BY k1;
+
+DROP TABLE t;
+
+CREATE TABLE th (h1 INT, r1 INT, PRIMARY KEY(h1 HASH, r1 ASC));
+
+-- Protect against memory corruption bug when using hash partitioned table.
+SELECT DISTINCT a1.h1 FROM th a1, th a2, th a3 where a1.h1 < a2.h1 and a2.h1 = a3.h1 and a2.h1 = 5 AND a3.h1 = 5 GROUP BY a1.h1;
+
+DROP TABLE th;

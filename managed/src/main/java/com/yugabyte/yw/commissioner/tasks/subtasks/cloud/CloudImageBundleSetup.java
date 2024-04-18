@@ -49,12 +49,11 @@ public class CloudImageBundleSetup extends CloudTaskBase {
   private RuntimeConfGetter confGetter;
   private ImageBundleHandler imageBundleHandler;
   private ImageBundleUtil imageBundleUtil;
-  public static Map<String, String> ybaMetadataImages = new HashMap<>();
   public static final Map<String, CloudOS> CLOUD_OS_MAP =
       ImmutableMap.of(
-          "aws", new CloudOS("8.8", "AlmaLinux"),
-          "gcp", new CloudOS("8.7", "AlmaLinux"),
-          "azu", new CloudOS("8.5", "AlmaLinux"));
+          "aws", new CloudOS("8.9", "AlmaLinux"),
+          "gcp", new CloudOS("8.9", "AlmaLinux"),
+          "azu", new CloudOS("8.9", "AlmaLinux"));
 
   @Inject
   public CloudImageBundleSetup(
@@ -143,14 +142,8 @@ public class CloudImageBundleSetup extends CloudTaskBase {
           }
         }
         ImageBundleDetails.BundleInfo bundleInfo = new ImageBundleDetails.BundleInfo();
-        String localybImageKey = cloudType.toString() + r.getCode() + arch.toString();
         if (ybImage == null || forceFetchFromMetadata) {
-          if (ybaMetadataImages.containsKey(localybImageKey)) {
-            ybImage = ybaMetadataImages.get(localybImageKey);
-          } else {
-            ybImage = cloudQueryHelper.getDefaultImage(r, arch.toString());
-            ybaMetadataImages.put(localybImageKey, ybImage);
-          }
+          ybImage = cloudQueryHelper.getDefaultImage(r, arch.toString());
         }
         bundleInfo.setYbImage(ybImage);
         bundleInfo.setSshUserOverride(provider.getDetails().getSshUser());
@@ -159,7 +152,6 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       details.setRegions(regionsImageInfo);
     } else {
       Region region = regions.get(0);
-      String localybImageKey = cloudType.toString() + region.getCode() + arch.toString();
       String ybImage = null;
       if (region.getDetails() != null && region.getDetails().getCloudInfo() != null) {
         if (provider.getCloudCode().equals(CloudType.gcp)) {
@@ -176,12 +168,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       }
 
       if (ybImage == null || forceFetchFromMetadata) {
-        if (ybaMetadataImages.containsKey(localybImageKey)) {
-          ybImage = ybaMetadataImages.get(localybImageKey);
-        } else {
-          ybImage = cloudQueryHelper.getDefaultImage(region, arch.toString());
-          ybaMetadataImages.put(localybImageKey, ybImage);
-        }
+        ybImage = cloudQueryHelper.getDefaultImage(region, arch.toString());
       }
       details.setGlobalYbImage(ybImage);
     }

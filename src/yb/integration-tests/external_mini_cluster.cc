@@ -42,6 +42,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <boost/algorithm/string.hpp>
+
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -311,6 +313,10 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
                         common_extra_flags.begin(),
                         common_extra_flags.end());
   }
+  // Given how little memory kDefaultMemoryLimitHardBytes provides, we will need to use more of
+  // our memory for per-tablet overhead.
+  opts_.extra_tserver_flags.insert(
+      opts_.extra_tserver_flags.begin(), "--tablet_overhead_size_percentage=30"s);
   AddExtraFlagsFromEnvVar("YB_EXTRA_MASTER_FLAGS", &opts_.extra_master_flags);
   AddExtraFlagsFromEnvVar("YB_EXTRA_TSERVER_FLAGS", &opts_.extra_tserver_flags);
 }
@@ -1865,13 +1871,16 @@ ExternalMaster* ExternalMiniCluster::GetLeaderMaster() {
   return master(0);
 }
 
-Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(const yb::TabletId& tablet_id) {
+Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(
+    const yb::TabletId& tablet_id, bool require_lease) {
   for (size_t i = 0; i < num_tablet_servers(); ++i) {
     auto tserver = tablet_server(i);
     if (tserver->IsProcessAlive() && !tserver->IsProcessPaused()) {
       auto tablets = VERIFY_RESULT(GetTablets(tserver));
       for (const auto& tablet : tablets) {
-        if (tablet.tablet_id() == tablet_id && tablet.is_leader()) {
+        if (tablet.tablet_id() == tablet_id &&
+            tablet.is_leader() &&
+            (!require_lease || tablet.has_leader_lease())) {
           return i;
         }
       }
@@ -2907,6 +2916,40 @@ Status ExternalTabletServer::SetNumDrives(uint16_t num_drives) {
   num_drives_ = num_drives;
   data_dirs_ = FsDataDirs(root_dir_, "tserver", num_drives_);
   return Status::OK();
+}
+
+Result<pid_t> ExternalTabletServer::PostmasterPid() {
+  const std::string pg_pid_file = JoinPathSegments(GetRootDir(), "pg_data", "postmaster.pid");
+  if (!Env::Default()->FileExists(pg_pid_file)) {
+    return STATUS(NotFound, Format("Postmaster PID file not found in path: $0", pg_pid_file));
+  }
+
+  // Error handling inspired by ReadMasterAddressesFromFlagFile() in client/client-internal.cc
+  std::ifstream pg_pid_in(pg_pid_file);
+  if (!pg_pid_in) {
+    return STATUS_FORMAT(IOError, "Unable to open pid file '$0': $1",
+        pg_pid_file, strerror(errno));
+  }
+
+  string line;
+  if (pg_pid_in.good() && std::getline(pg_pid_in, line)) {
+     boost::trim(line);
+     return static_cast<pid_t>(std::stoi(line));
+  }
+
+  // Return blanket error for all other error categories
+  return STATUS_FORMAT(IOError, "Failed reading pid file '$0': $1",
+      pg_pid_file, strerror(errno));
+}
+
+Result<int> ExternalTabletServer::SignalPostmaster(int signal) {
+  pid_t postmaster_pid = VERIFY_RESULT(PostmasterPid());
+  if (!postmaster_pid) {
+    return STATUS(NotFound, "Postmaster not found");
+  }
+
+  LOG(INFO) << Format("Sending postmaster process (PID: $0) signal: $1", postmaster_pid, signal);
+  return kill(postmaster_pid, signal);
 }
 
 Status RestartAllMasters(ExternalMiniCluster* cluster) {

@@ -32,11 +32,11 @@ public class TestPgWithoutWaitQueuesIsolationRegress extends BasePgSQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 180;
+    return 800;
   }
 
   @Test
-  public void runPgTransparentRestartsRegressTest() throws Exception {
+  public void runPgWithoutWaitQueuesRegressTest() throws Exception {
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR, "yb_without_wait_queues_schedule",
       0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);

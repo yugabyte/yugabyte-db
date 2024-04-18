@@ -633,7 +633,7 @@ yb-admin \
 ./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     flush_table ysql.yugabyte table_name
-    
+
 ```
 ```output
 Flushed [yugabyte.table_name] tables.
@@ -718,7 +718,7 @@ When this command runs, a `snapshot_id` is generated and printed.
     create_database_snapshot
 ```
 
-To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list-snapshots) command.
 
 #### create_keyspace_snapshot
 
@@ -745,7 +745,7 @@ When this command runs, a `snapshot_id` is generated and printed.
     create_keyspace_snapshot
 ```
 
-To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list-snapshots) command.
 
 #### list_snapshots
 
@@ -871,7 +871,7 @@ Flushing complete: SUCCESS
 Started snapshot creation: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-To see if the snapshot creation has finished, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+To see if the snapshot creation has finished, run the [`yb-admin list_snapshots`](#list-snapshots) command.
 
 #### restore_snapshot
 
@@ -2010,12 +2010,12 @@ Sets the xCluster role to `STANDBY` or `ACTIVE`.
 
 ```sh
 yb-admin \
-    -master_addresses <master_addresses> \
+    -master_addresses <master-addresses> \
     change_xcluster_role \
-    <role> 
+    <role>
 ```
 
-* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
 * *role*: Can be `STANDBY` or `ACTIVE`.
 
 **Example**
@@ -2036,7 +2036,7 @@ Reports the current xCluster safe time for each namespace, which is the time at 
 yb-admin \
     -master_addresses <target_master_addresses> \
     get_xcluster_safe_time \
-    [include_lag_and_skew] 
+    [include_lag_and_skew]
 ```
 
 * *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -2152,7 +2152,7 @@ yb-admin \
 * `force_delete`: (Optional) Force the delete operation.
 
 {{< note title="Note" >}}
-This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams. For normal xCluster replication cleanup, use [delete_universe_replication](#delete-universe-replication).
+This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams. For normal xCluster replication cleanup, use [delete_universe_replication](#delete-universe-replication-source-universe-uuid).
 {{< /note >}}
 
 #### bootstrap_cdc_producer <comma_separated_list_of_table_ids>
@@ -2194,7 +2194,7 @@ Returns the replication status of all consumer streams. If *source_universe_uuid
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <target-master-addresses> \
     get_replication_status [ <source_universe_uuid>_<replication_name> ]
 ```
 
@@ -2527,14 +2527,14 @@ yb-admin \
 If the operation is successful you should see output similar to the following:
 
 ```output
-PromoteAutoFlags status: 
+PromoteAutoFlags status:
 New AutoFlags were promoted. Config version: 2
 ```
 
 OR
 
 ```output
-PromoteAutoFlags status: 
+PromoteAutoFlags status:
 No new AutoFlags to promote
 ```
 
@@ -2542,7 +2542,7 @@ No new AutoFlags to promote
 
 Upgrades the YSQL system catalog after a successful [YugabyteDB cluster upgrade](../../manage/upgrade-deployment/).
 
-YSQL upgrades are not required for clusters where [YSQL is not enabled](../../reference/configuration/yb-tserver/#ysql-flags).
+YSQL upgrades are not required for clusters where [YSQL is not enabled](../../reference/configuration/yb-tserver/#ysql).
 
 **Syntax**
 

@@ -260,6 +260,20 @@ export const mainTheme = createTheme({
         }
       }
     },
+    MuiToggleButtonGroup: {
+      groupedHorizontal: {
+        '&:not(:first-child)': {
+          borderLeft: `1px solid ${colors.ybacolors.ybBorderGray}`
+        }
+      }
+    },
+    MuiToggleButton: {
+      root: {
+        '&.Mui-selected': {
+          backgroundColor: '#e9eef9'
+        }
+      }
+    },
     MuiAccordion: {
       root: {
         display: 'flex',

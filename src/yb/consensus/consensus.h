@@ -33,6 +33,7 @@
 
 #include <iosfwd>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_types.h"
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/metadata.pb.h"
@@ -278,6 +280,9 @@ class Consensus {
   virtual const TabletId& tablet_id() const = 0;
 
   virtual const TabletId& split_parent_tablet_id() const = 0;
+
+  // The sequence number of the clone op that created this tablet, and the source tablet's id.
+  virtual const std::optional<CloneSourceInfo>& clone_source_info() const = 0;
 
   // Returns a copy of the committed state of the Consensus system. Also allows returning the
   // leader lease status captured under the same lock.

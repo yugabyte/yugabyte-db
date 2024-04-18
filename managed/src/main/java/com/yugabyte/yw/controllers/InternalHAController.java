@@ -125,11 +125,16 @@ public class InternalHAController extends Controller {
     Map<String, String[]> reqParams = body.asFormUrlEncoded();
     String[] leaders = reqParams.getOrDefault("leader", new String[0]);
     String[] senders = reqParams.getOrDefault("sender", new String[0]);
-    if (reqParams.size() != 2 || leaders.length != 1 || senders.length != 1) {
+    String[] ybaVersions = reqParams.getOrDefault("ybaversion", new String[0]);
+    if (!((reqParams.size() == 3
+            && leaders.length == 1
+            && senders.length == 1
+            && ybaVersions.length == 1)
+        || (reqParams.size() == 2 && leaders.length == 1 && senders.length == 1))) {
       return ApiResponse.error(
           BAD_REQUEST,
-          "Expected exactly 2 (leader and sender) argument in 'application/x-www-form-urlencoded' "
-              + "data part. Received: "
+          "Expected exactly 2 (leader, sender) or 3 (leader, sender, ybaversion) arguments in "
+              + "'application/x-www-form-urlencoded' data part. Received: "
               + reqParams);
     }
     Http.MultipartFormData.FilePart<Files.TemporaryFile> filePart = body.getFile("backup");
@@ -158,6 +163,17 @@ public class InternalHAController extends Controller {
           BAD_REQUEST, "Backup originated on the node itself. Leader: " + leader);
     }
 
+    if (ybaVersions.length == 1) {
+      String ybaVersion = ybaVersions[0];
+      if (Util.compareYbVersions(ybaVersion, Util.getYbaVersion()) > 0) {
+        return ApiResponse.error(
+            BAD_REQUEST,
+            String.format(
+                "Can not sync backup from leader on higher version %s to follower on lower version"
+                    + " %s",
+                ybaVersion, Util.getYbaVersion()));
+      }
+    }
     URL leaderUrl = new URL(leader);
 
     // For all the other cases we will accept the backup without checking local config state.

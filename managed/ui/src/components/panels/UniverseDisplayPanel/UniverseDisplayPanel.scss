@@ -366,6 +366,10 @@ a:hover>.schedule-display-item-container,
   gap: 8px;
 }
 
+.cluster-metadata__align:has(.universe-detail-widget-image-bundle) {
+  overflow: visible !important;
+}
+
 .upgradeLinuxVersionText {
   display: flex;
   color: #EF5824;

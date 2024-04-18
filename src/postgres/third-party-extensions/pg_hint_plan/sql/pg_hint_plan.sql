@@ -122,8 +122,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 -- YB_COMMENT
 -- Because the plan defaults to a BNL in Yugabyte, add a NoYbBatchedNL test
+SET yb_prefer_bnl to off;
 /*+NoYbBatchedNL(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+SET yb_prefer_bnl to on;
 
 /*+NoMergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;

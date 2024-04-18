@@ -1671,9 +1671,7 @@ pgss_store(const char *query, uint64 queryId,
 	 * Postgres 13 drop this case. Need to verify if that's what we want.
 	 *
 	 * Use the redacted query for checking purposes.
-	redacted_query = pnstrdup(query, query_len);
-	redacted_query = RedactPasswordIfExists(redacted_query);
-	redacted_query_len = strlen(redacted_query);
+	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
 	queryId = pgss_hash_string(redacted_query, redacted_query_len);
 	 */
 

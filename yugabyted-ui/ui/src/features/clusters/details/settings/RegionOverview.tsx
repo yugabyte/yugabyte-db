@@ -68,7 +68,7 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
   }
 
   // Get nodes
-  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const { data: nodesResponse } = useGetClusterNodesQuery({});
   const nodeList = React.useMemo(() =>
     nodesResponse?.data.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
   ,[nodesResponse, readReplica]);

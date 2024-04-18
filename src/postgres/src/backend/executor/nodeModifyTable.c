@@ -180,7 +180,8 @@ static void ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
 											   ResultRelInfo *destPartInfo,
 											   ItemPointer tupleid,
 											   TupleTableSlot *oldslot,
-											   TupleTableSlot *newslot);
+											   TupleTableSlot *newslot,
+											   HeapTuple yb_oldtuple);
 static bool ExecOnConflictUpdate(ModifyTableContext *context,
 								 ResultRelInfo *resultRelInfo,
 								 ItemPointer conflictTid,
@@ -814,6 +815,7 @@ static TupleTableSlot *
 ExecInsert(ModifyTableContext *context,
 		   ResultRelInfo *resultRelInfo,
 		   TupleTableSlot *slot,
+		   YBCPgStatement blockInsertStmt,
 		   bool canSetTag,
 		   TupleTableSlot **inserted_tuple,
 		   ResultRelInfo **insert_destrel)
@@ -1178,7 +1180,7 @@ ExecInsert(ModifyTableContext *context,
 				 * TODO(Mikhail) Verify the YugaByte transaction support works properly for on-conflict.
 				 */
 
-				YBCTupleTableInsert(resultRelInfo, slot, estate);
+				YBCTupleTableInsert(resultRelInfo, slot, blockInsertStmt, estate);
 
 				/* insert index entries for tuple */
 				recheckIndexes = ExecInsertIndexTuples(resultRelInfo, slot, estate, true, true,
@@ -1242,7 +1244,7 @@ ExecInsert(ModifyTableContext *context,
 			if (IsYBRelation(resultRelationDesc))
 			{
 				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-				YBCTupleTableInsert(resultRelInfo, slot, estate);
+				YBCTupleTableInsert(resultRelInfo, slot, blockInsertStmt, estate);
 
 				/* insert index entries for tuple */
 				if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
@@ -2129,7 +2131,7 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
 
 	/* Tuple routing starts from the root table. */
 	context->cpUpdateReturningSlot =
-		ExecInsert(context, mtstate->rootResultRelInfo, slot, canSetTag,
+		ExecInsert(context, mtstate->rootResultRelInfo, slot, NULL, canSetTag,
 				   inserted_tuple, insert_destrel);
 
 	/* Revert ExecPrepareTupleRouting's node change. */
@@ -2325,7 +2327,8 @@ lreplace:;
 												   resultRelInfo,
 												   insert_destrel,
 												   tupleid, slot,
-												   inserted_tuple);
+												   inserted_tuple,
+												   NULL);
 
 			return TM_Ok;
 		}
@@ -2376,6 +2379,7 @@ lreplace:;
 	return result;
 }
 
+/* YB_TODO(arpan): Deduplicate code between YBExecUpdateAct and ExecUpdateAct */
 /* YB_REVIEW(neil) Revisit later. */
 static bool
 YBExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
@@ -2469,8 +2473,8 @@ yb_lreplace:;
 				resultRelInfo->ri_TrigDesc->trig_update_after_row)
 				ExecCrossPartitionUpdateForeignKey(context, resultRelInfo,
 												   insert_destrel, tupleid,
-												   slot, inserted_tuple);
-
+												   slot, inserted_tuple,
+												   oldtuple);
 			return true;
 		}
 
@@ -2516,7 +2520,6 @@ yb_lreplace:;
 
 	Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(resultRelationDesc);
 	bool	   is_pk_updated = bms_overlap(primary_key_bms, actualUpdatedCols);
-	bms_free(primary_key_bms);
 
 	/*
 	 * TODO(alex): It probably makes more sense to pass a
@@ -2631,7 +2634,8 @@ ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
 								   ResultRelInfo *destPartInfo,
 								   ItemPointer tupleid,
 								   TupleTableSlot *oldslot,
-								   TupleTableSlot *newslot)
+								   TupleTableSlot *newslot,
+								   HeapTuple yb_oldtuple)
 {
 	ListCell   *lc;
 	ResultRelInfo *rootRelInfo;
@@ -2686,7 +2690,9 @@ ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
 	/* Perform the root table's triggers. */
 	ExecARUpdateTriggers(context->estate,
 						 rootRelInfo, sourcePartInfo, destPartInfo,
-						 tupleid, NULL, newslot, NIL, NULL, true);
+						 tupleid,
+						 IsYBRelation(sourcePartInfo->ri_RelationDesc) ? yb_oldtuple : NULL,
+						 newslot, NIL, NULL, true);
 }
 
 /* ----------------------------------------------------------------
@@ -3711,7 +3717,7 @@ ExecMergeNotMatched(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				context->relaction = action;
 
 				(void) ExecInsert(context, mtstate->rootResultRelInfo, newslot,
-								  canSetTag, NULL, NULL);
+								  NULL, canSetTag, NULL, NULL);
 				mtstate->mt_merge_inserted += 1;
 				break;
 			case CMD_NOTHING:
@@ -4165,6 +4171,17 @@ ExecModifyTable(PlanState *pstate)
 	context.epqstate = &node->mt_epqstate;
 	context.estate = estate;
 
+	YBCPgStatement blockInsertStmt = NULL;
+	bool hasInserts = false;
+	Relation relation = resultRelInfo->ri_RelationDesc;
+	if (IsYBRelation(relation) && operation == CMD_INSERT) {
+		HandleYBStatus(YBCPgNewInsertBlock(
+			YBCGetDatabaseOid(relation), YbGetRelfileNodeId(relation),
+			YBCIsRegionLocal(relation),
+			estate->yb_es_is_single_row_modify_txn ? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
+			&blockInsertStmt));
+	}
+
 	/*
 	 * Fetch rows from subplan, and execute the required table modification
 	 * for each row.
@@ -4407,6 +4424,7 @@ ExecModifyTable(PlanState *pstate)
 		switch (operation)
 		{
 			case CMD_INSERT:
+				hasInserts = true;
 				/* Initialize projection info if first time for this table */
 				/* YB_TODO(neil@yugabyte) Check to see if this is still needed.
 				 *   bool prev_yb_is_single_row_modify_txn =
@@ -4415,7 +4433,7 @@ ExecModifyTable(PlanState *pstate)
 				if (unlikely(!resultRelInfo->ri_projectNewInfoValid))
 					ExecInitInsertProjection(node, resultRelInfo);
 				slot = ExecGetInsertNewTuple(resultRelInfo, context.planSlot);
-				slot = ExecInsert(&context, resultRelInfo, slot,
+				slot = ExecInsert(&context, resultRelInfo, slot, blockInsertStmt,
 								  node->canSetTag, NULL, NULL);
 				/* YB_TODO(neil@yugabyte)
 				 * Check to see if this is still needed.
@@ -4495,6 +4513,13 @@ ExecModifyTable(PlanState *pstate)
 	 */
 	if (estate->es_insert_pending_result_relations != NIL)
 		ExecPendingInserts(estate);
+
+	if (blockInsertStmt) {
+		if (hasInserts)
+			YBCApplyWriteStmt(blockInsertStmt, relation);
+		else
+			YBCPgDeleteStatement(blockInsertStmt);
+	}
 
 	/*
 	 * We're done, but fire AFTER STATEMENT triggers before exiting.

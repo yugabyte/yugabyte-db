@@ -19,6 +19,26 @@ On this page:
 
 ## Change log
 
+### February 8, 2024
+
+**New Features**
+
+- Support for PingOne [federated authentication](../managed-security/managed-authentication/), which allows single sign-on access for your account users using their PingOne identity.
+
+    Blog: [Enhanced Identity Security with Okta and PingOne Single Sign-On Integrations](https://www.yugabyte.com/blog/single-sign-on-okta-pingone/)
+
+### January 31, 2024
+
+**New Features**
+
+- Support for Okta [federated authentication](../managed-security/managed-authentication/), which allows single sign-on access for your account users using their Okta identities.
+
+    Blog: [Enhanced Identity Security with Okta and PingOne Single Sign-On Integrations](https://www.yugabyte.com/blog/single-sign-on-okta-pingone/)
+
+**Database**
+
+- Innovation track updated to 2.18.5.0.
+
 ### December 27, 2023
 
 **New Features**
@@ -66,7 +86,7 @@ On this page:
 **New Features**
 
 - Support for creating [private service endpoints](../cloud-basics/cloud-vpcs/cloud-add-endpoint/) (PSEs) in the YugabyteDB Managed UI (this feature was previously only available using the YBM CLI). Add PSEs to clusters to connect to your application VPC over a secure private link. Supports AWS PrivateLink and Azure Private Link.
-- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Grafana.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Grafana Cloud.
 
 ### September 22, 2023
 

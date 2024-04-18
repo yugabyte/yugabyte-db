@@ -33,7 +33,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.libs.Json;
@@ -42,7 +41,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @InjectMocks private RollbackKubernetesUpgrade rollbackKubernetesUpgrade;
+  private RollbackKubernetesUpgrade rollbackKubernetesUpgrade;
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
@@ -183,6 +182,8 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   @Before
   public void setup() throws Exception {
+    this.rollbackKubernetesUpgrade =
+        new RollbackKubernetesUpgrade(mockBaseTaskDependencies, mockOperatorStatusUpdaterFactory);
     rollbackKubernetesUpgrade.setTaskUUID(UUID.randomUUID());
   }
 

@@ -26,7 +26,8 @@ import (
 
 // AuthAPIClient is a auth YBA Client
 
-var cliVersion = "v0.1.0"
+var cliVersion = "0.1.0"
+var hostVersion = "0.1.0"
 
 // AuthAPIClient contains authenticated api client and customer UUID
 type AuthAPIClient struct {
@@ -43,6 +44,16 @@ func SetVersion(version string) {
 // GetVersion fetches the version of YBA CLI
 func GetVersion() string {
 	return cliVersion
+}
+
+// SetHostVersion assigns the version of YBA Host
+func SetHostVersion(version string) {
+	hostVersion = version
+}
+
+// GetHostVersion fetches the version of YBA Host
+func GetHostVersion() string {
+	return hostVersion
 }
 
 // NewAuthAPIClient function is returning a new AuthAPIClient Client

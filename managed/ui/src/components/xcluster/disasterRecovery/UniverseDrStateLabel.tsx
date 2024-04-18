@@ -86,7 +86,7 @@ export const UniverseDrStateLabel = ({
           className={clsx(classes.pill, classes.ready)}
         >
           {t(universeDrState)}
-          <i className={clsx('fa fa-check-circle', classes.icon)} />
+          <i className={clsx('fa fa-check', classes.icon)} />
         </Typography>
       );
     case SourceUniverseDrState.DR_FAILED:

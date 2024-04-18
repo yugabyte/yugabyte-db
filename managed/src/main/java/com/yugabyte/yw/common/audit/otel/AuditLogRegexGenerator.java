@@ -55,7 +55,8 @@ public class AuditLogRegexGenerator {
     }
     // See https://github.com/pgaudit/pgaudit/#format for placeholders description
     result +=
-        "LOG:  AUDIT: (?P<audit_type>\\w+),(?P<statement_id>\\d+),(?P<substatement_id>\\d+),"
+        "(?P<log_level>\\w+):  AUDIT:"
+            + " (?P<audit_type>\\w+),(?P<statement_id>\\d+),(?P<substatement_id>\\d+),"
             + "(?P<class>\\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),"
             + "(?P<statement>.*))|(.*)$";
     return new LogRegexResult(result, namedTokens);

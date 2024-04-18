@@ -490,3 +490,51 @@ RESET enable_material;
 RESET yb_prefer_bnl;
 RESET yb_bnl_batch_size;
 -- YB_TODO: end
+
+-- YB_TODO: begin: remove after tracking yb_pg_foreign_key
+-- (the following test is a simplified version of the test under
+--  'Foreign keys and partitioned tables' section there).
+CREATE TABLE fk_notpartitioned_pk (a int, b int,PRIMARY KEY (a, b));
+INSERT INTO fk_notpartitioned_pk VALUES (2501, 2503);
+
+CREATE TABLE fk_partitioned_fk (a int, b int) PARTITION BY HASH (a);
+ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk;
+
+CREATE TABLE fk_partitioned_fk_0 PARTITION OF fk_partitioned_fk FOR VALUES WITH (MODULUS 5, REMAINDER 0);
+CREATE TABLE fk_partitioned_fk_1 PARTITION OF fk_partitioned_fk FOR VALUES WITH (MODULUS 5, REMAINDER 1);
+INSERT INTO fk_partitioned_fk (a,b) VALUES (2501, 2503);
+
+-- this update fails because there is no referenced row
+UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
+-- but we can fix it thusly:
+INSERT INTO fk_notpartitioned_pk (a,b) VALUES (2502, 2503);
+UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
+-- YB_TODO: end
+
+-- YB_TODO: begin: remove after tracking postgres_fdw
+CREATE EXTENSION postgres_fdw;
+CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
+DO $d$
+    BEGIN
+        EXECUTE $$CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
+            OPTIONS (dbname '$$||current_database()||$$',
+                     host '$$||current_setting('listen_addresses')||$$',
+                     port '$$||current_setting('port')||$$'
+            )$$;
+    END;
+$d$;
+
+CREATE USER MAPPING FOR public SERVER testserver1
+    OPTIONS (user 'value', password 'value');
+CREATE USER MAPPING FOR CURRENT_USER SERVER loopback;
+
+create table ctrtest (a int, b text) partition by list (a);
+create table loct1 (a int check (a in (1)), b text);
+create foreign table remp1 (a int check (a in (1)), b text) server loopback options (table_name 'loct1');
+alter table ctrtest attach partition remp1 for values in (1);
+
+copy ctrtest from stdin;
+1	foo
+\.
+select * from ctrtest;
+-- YB_TODO: end

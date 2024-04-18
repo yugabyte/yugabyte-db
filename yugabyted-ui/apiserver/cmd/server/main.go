@@ -284,6 +284,9 @@ func main() {
     e.GET("/", handlers.IndexHandler)
 
     // Start server
-    uiBindAddress := helpers.HOST + port
+    if helpers.BindAddr == "" {
+        helpers.BindAddr = helpers.HOST
+    }
+    uiBindAddress := helpers.BindAddr + port
     e.Logger.Fatal(e.Start(uiBindAddress))
 }

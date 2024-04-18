@@ -79,7 +79,7 @@ export const OverviewDetails: FC = () => {
     });
   };
 
-  const { refetch: refetchNodes } = useGetClusterNodesQuery({ query: { enabled: false } });
+  const { refetch: refetchNodes } = useGetClusterNodesQuery({}, { query: { enabled: false } });
   const { refetch: refetchCluster } = useGetClusterQuery({ query: { enabled: false } });
   const { refetch: refetchTablets } = useGetClusterTabletsQuery({ query: { enabled: false } });
   const { refetch: refetchHealth } = useGetClusterHealthCheckQuery({ query: { enabled: false } });

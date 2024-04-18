@@ -122,6 +122,7 @@ class SnapshotTxnTest
     auto use_fail_on_conflict = GetParam();
     if (use_fail_on_conflict) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+      // TODO: Set yb_max_query_layer_retries to 2 if it speeds up tests.
     }
     SnapshotTxnTestBase::SetUp();
   }
@@ -706,7 +707,7 @@ struct KeyToCheck {
 
 bool IntermittentTxnFailure(const Status& status) {
   static const std::vector<std::string> kAllowedMessages = {
-    "Commit of expired transaction"s,
+    "Attempted to commit expired transaction"s,
     "Leader does not have a valid lease"s,
     "Network error"s,
     "Not the leader"s,

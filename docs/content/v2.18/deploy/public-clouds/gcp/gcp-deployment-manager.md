@@ -41,11 +41,11 @@ type: docs
 * Download and Install [Google Cloud CLI](https://cloud.google.com/sdk/docs/).
 * Clone the [Google Cloud Deployment Manager for YugabyteDB](https://github.com/yugabyte/gcp-deployment-manager.git) repository.
 
-## Deploy using Cloud Shell
+## Deploy using Google Cloud Deployment Manager
 
-<a href="https://console.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fyugabyte%2Fgcp-deployment-manager.git" target="_blank">
-    <img src="https://gstatic.com/cloudssh/images/open-btn.svg"/>
-</a>
+[![Open in Google Cloud Shell](https://www.gstatic.com/cloudssh/images/open-btn.svg)](https://console.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fyugabyte%2Fgcp-deployment-manager.git)
+
+To deploy using Google Cloud Deployment Manager:
 
 * Change the current directory to the cloned repository.
 * Use the following `gcloud` command to create the deployment-manager deployment:
