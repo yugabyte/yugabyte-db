@@ -510,13 +510,13 @@ WHERE seq.id IS NULL OR idx.id IS NULL;
 EXPLAIN (COSTS OFF)
 SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
 FROM quad_box_tbl WHERE b <@ box '((200,300),(500,600))';
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                           QUERY PLAN                            
+-----------------------------------------------------------------
  WindowAgg
    ->  Sort
          Sort Key: ((b <-> '(123,456)'::point))
          ->  Seq Scan on quad_box_tbl
-               Remote Filter: (b <@ '(500,600),(200,300)'::box)
+               Storage Filter: (b <@ '(500,600),(200,300)'::box)
 (5 rows)
 
 CREATE TEMP TABLE quad_box_tbl_ord_idx2 AS

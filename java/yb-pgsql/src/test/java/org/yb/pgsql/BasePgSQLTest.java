@@ -1580,7 +1580,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   /** Whether or not this query pushes down a filter condition */
   protected boolean doesPushdownCondition(Statement stmt, String query) throws SQLException {
-    return doesQueryPlanContainsSubstring(stmt, query, "Remote Filter:");
+    return doesQueryPlanContainsSubstring(stmt, query, "Storage Filter:");
   }
 
   /**

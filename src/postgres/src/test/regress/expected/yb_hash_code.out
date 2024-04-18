@@ -358,7 +358,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_o
 ------------------------------------------------------------------------------------------------
  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) < 512)
-   Remote Filter: (x < 90)
+   Storage Filter: (x < 90)
 (3 rows)
 
 SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90;

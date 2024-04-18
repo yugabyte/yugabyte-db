@@ -577,242 +577,242 @@ EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where id > 100000;
 
 -- Query Hash: e5f7b926682df47cc192858544459088
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k WHERE v2 > 50000;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v2 > 50000)
+   Storage Filter: (v2 > 50000)
 (2 rows)
 
 -- Query Hash: 30b82aa9c0e04be16f3f2ccd778011e6
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_200k WHERE v2 > 150000;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t_range_200k
-   Remote Filter: (v2 > 150000)
+   Storage Filter: (v2 > 150000)
 (2 rows)
 
 -- Query Hash: c99a4af78095152c68d5f4ed1941e179
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_300k WHERE v2 > 250000;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t_range_300k
-   Remote Filter: (v2 > 250000)
+   Storage Filter: (v2 > 250000)
 (2 rows)
 
 -- Query Hash: ca207cbfdfbf4964c434a8bb2914fcf7
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_400k WHERE v2 > 350000;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t_range_400k
-   Remote Filter: (v2 > 350000)
+   Storage Filter: (v2 > 350000)
 (2 rows)
 
 -- Query Hash: 53881b165cc5c50447266e009dc54346
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_500k WHERE v2 > 450000;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t_range_500k
-   Remote Filter: (v2 > 450000)
+   Storage Filter: (v2 > 450000)
 (2 rows)
 
 -- Query Hash: 0be2581fc7c05d3db604730c17885f72
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_600k WHERE v2 > 550000;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t_range_600k
-   Remote Filter: (v2 > 550000)
+   Storage Filter: (v2 > 550000)
 (2 rows)
 
 -- Query Hash: 0483a9a645be16c05b92dc089d9fcc70
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_700k WHERE v2 > 650000;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t_range_700k
-   Remote Filter: (v2 > 650000)
+   Storage Filter: (v2 > 650000)
 (2 rows)
 
 -- Query Hash: 711c576a096fc60cbbf3501d43ba0a69
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_800k WHERE v2 > 750000;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t_range_800k
-   Remote Filter: (v2 > 750000)
+   Storage Filter: (v2 > 750000)
 (2 rows)
 
 -- Query Hash: 4500bbeaa12888e34ff56ae095ca596c
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_900k WHERE v2 > 850000;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t_range_900k
-   Remote Filter: (v2 > 850000)
+   Storage Filter: (v2 > 850000)
 (2 rows)
 
 -- Query Hash: 8db178b6fed52d74c431982c308aa970
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_1m WHERE v2 > 950000;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t_range_1m
-   Remote Filter: (v2 > 950000)
+   Storage Filter: (v2 > 950000)
 (2 rows)
 
 -- Query Hash: 3b3c3c56402325a5fd092b3d88a4a44b
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k WHERE v2 > 50000 AND v3 < 1000000;
                      QUERY PLAN
-----------------------------------------------------
+-----------------------------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: ((v2 > 50000) AND (v3 < 1000000))
+   Storage Filter: ((v2 > 50000) AND (v3 < 1000000))
 (2 rows)
 
 -- Query Hash: 4e18e9cd252aa256ec82a9278d9cf704
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_200k WHERE v2 > 150000 AND v3 < 1000000;
-                     QUERY PLAN
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Seq Scan on t_range_200k
-   Remote Filter: ((v2 > 150000) AND (v3 < 1000000))
+   Storage Filter: ((v2 > 150000) AND (v3 < 1000000))
 (2 rows)
 
 -- Query Hash: efa5fc5ae8601bdb273dd013b041fa5d
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_300k WHERE v2 > 250000 AND v3 < 1000000;
-                     QUERY PLAN
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Seq Scan on t_range_300k
-   Remote Filter: ((v2 > 250000) AND (v3 < 1000000))
+   Storage Filter: ((v2 > 250000) AND (v3 < 1000000))
 (2 rows)
 
 -- Query Hash: 55e9c7fc37dc7fed69d921a6510bcb9d
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_400k WHERE v2 > 350000 AND v3 < 1000000;
-                     QUERY PLAN
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Seq Scan on t_range_400k
-   Remote Filter: ((v2 > 350000) AND (v3 < 1000000))
+   Storage Filter: ((v2 > 350000) AND (v3 < 1000000))
 (2 rows)
 
 -- Query Hash: ac813fd1a5152b25c15b065ae4617bb5
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_500k WHERE v2 > 450000 AND v3 < 1000000;
-                     QUERY PLAN
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Seq Scan on t_range_500k
-   Remote Filter: ((v2 > 450000) AND (v3 < 1000000))
+   Storage Filter: ((v2 > 450000) AND (v3 < 1000000))
 (2 rows)
 
 -- Query Hash: 90947514c5132f84726f568d05d60688
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_600k WHERE v2 > 550000 AND v3 < 1000000;
-                     QUERY PLAN
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Seq Scan on t_range_600k
-   Remote Filter: ((v2 > 550000) AND (v3 < 1000000))
+   Storage Filter: ((v2 > 550000) AND (v3 < 1000000))
 (2 rows)
 
 -- Query Hash: 927022d1ba8523808ef30b00112a46e6
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_700k WHERE v2 > 650000 AND v3 < 1000000;
-                     QUERY PLAN
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Seq Scan on t_range_700k
-   Remote Filter: ((v2 > 650000) AND (v3 < 1000000))
+   Storage Filter: ((v2 > 650000) AND (v3 < 1000000))
 (2 rows)
 
 -- Query Hash: ec58f4f11fdb4404bc9d4a3d4078b5ae
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_800k WHERE v2 > 750000 AND v3 < 1000000;
-                     QUERY PLAN
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Seq Scan on t_range_800k
-   Remote Filter: ((v2 > 750000) AND (v3 < 1000000))
+   Storage Filter: ((v2 > 750000) AND (v3 < 1000000))
 (2 rows)
 
 -- Query Hash: 732641e32668a5e274d6c9dafea02fdf
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_900k WHERE v2 > 850000 AND v3 < 1000000;
-                     QUERY PLAN
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Seq Scan on t_range_900k
-   Remote Filter: ((v2 > 850000) AND (v3 < 1000000))
+   Storage Filter: ((v2 > 850000) AND (v3 < 1000000))
 (2 rows)
 
 -- Query Hash: 99f734ee2fbbb4cb95c2661da742d47c
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_1m WHERE v2 > 950000 AND v3 < 1000000;
-                     QUERY PLAN
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Seq Scan on t_range_1m
-   Remote Filter: ((v2 > 950000) AND (v3 < 1000000))
+   Storage Filter: ((v2 > 950000) AND (v3 < 1000000))
 (2 rows)
 
 -- Query Hash: 914b005e42e071e7544901db91613ae8
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k WHERE v2 > 50000 AND v3 < 1000000 AND v4 > 0;
-                           QUERY PLAN
------------------------------------------------------------------
+                            QUERY PLAN
+------------------------------------------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: ((v2 > 50000) AND (v3 < 1000000) AND (v4 > 0))
+   Storage Filter: ((v2 > 50000) AND (v3 < 1000000) AND (v4 > 0))
 (2 rows)
 
 -- Query Hash: 4445dfd88e004aced6dbd48edec0516a
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_200k WHERE v2 > 150000 AND v3 < 1000000 AND v4 > 0;
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on t_range_200k
-   Remote Filter: ((v2 > 150000) AND (v3 < 1000000) AND (v4 > 0))
+   Storage Filter: ((v2 > 150000) AND (v3 < 1000000) AND (v4 > 0))
 (2 rows)
 
 -- Query Hash: 65e1815681a4f03e0af14dc9fa133eaf
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_300k WHERE v2 > 250000 AND v3 < 1000000 AND v4 > 0;
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on t_range_300k
-   Remote Filter: ((v2 > 250000) AND (v3 < 1000000) AND (v4 > 0))
+   Storage Filter: ((v2 > 250000) AND (v3 < 1000000) AND (v4 > 0))
 (2 rows)
 
 -- Query Hash: e179415e1cedf769c687ddf1baf8f4da
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_400k WHERE v2 > 350000 AND v3 < 1000000 AND v4 > 0;
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on t_range_400k
-   Remote Filter: ((v2 > 350000) AND (v3 < 1000000) AND (v4 > 0))
+   Storage Filter: ((v2 > 350000) AND (v3 < 1000000) AND (v4 > 0))
 (2 rows)
 
 -- Query Hash: 592389fcf9ecc3a05dae99c370f988ae
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_500k WHERE v2 > 450000 AND v3 < 1000000 AND v4 > 0;
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on t_range_500k
-   Remote Filter: ((v2 > 450000) AND (v3 < 1000000) AND (v4 > 0))
+   Storage Filter: ((v2 > 450000) AND (v3 < 1000000) AND (v4 > 0))
 (2 rows)
 
 -- Query Hash: 80ec102ac6323bb89a3e2f90d456dc87
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_600k WHERE v2 > 550000 AND v3 < 1000000 AND v4 > 0;
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on t_range_600k
-   Remote Filter: ((v2 > 550000) AND (v3 < 1000000) AND (v4 > 0))
+   Storage Filter: ((v2 > 550000) AND (v3 < 1000000) AND (v4 > 0))
 (2 rows)
 
 -- Query Hash: 3c644840a86173902a9c47d304b923f6
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_700k WHERE v2 > 650000 AND v3 < 1000000 AND v4 > 0;
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on t_range_700k
-   Remote Filter: ((v2 > 650000) AND (v3 < 1000000) AND (v4 > 0))
+   Storage Filter: ((v2 > 650000) AND (v3 < 1000000) AND (v4 > 0))
 (2 rows)
 
 -- Query Hash: 55fcbe9f70aa45f7e184178e5cd799ea
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_800k WHERE v2 > 750000 AND v3 < 1000000 AND v4 > 0;
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on t_range_800k
-   Remote Filter: ((v2 > 750000) AND (v3 < 1000000) AND (v4 > 0))
+   Storage Filter: ((v2 > 750000) AND (v3 < 1000000) AND (v4 > 0))
 (2 rows)
 
 -- Query Hash: 6536b253b090d114cf2e89c3c9c3cd0c
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_900k WHERE v2 > 850000 AND v3 < 1000000 AND v4 > 0;
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on t_range_900k
-   Remote Filter: ((v2 > 850000) AND (v3 < 1000000) AND (v4 > 0))
+   Storage Filter: ((v2 > 850000) AND (v3 < 1000000) AND (v4 > 0))
 (2 rows)
 
 -- Query Hash: 06bff16d48cfda0d3a4d1db810dfb818
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_1m WHERE v2 > 950000 AND v3 < 1000000 AND v4 > 0;
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on t_range_1m
-   Remote Filter: ((v2 > 950000) AND (v3 < 1000000) AND (v4 > 0))
+   Storage Filter: ((v2 > 950000) AND (v3 < 1000000) AND (v4 > 0))
 (2 rows)
 
 -- Query Hash: 59e6de5247cc4e29c81c208f9e5a32f3
@@ -852,114 +852,114 @@ EXPLAIN (COSTS OFF) SELECT id, v1, v2, v3, v4 FROM t_range_100k;
 
 -- Query Hash: 752c4b16a3e07738ec2b3dbd219cc0c9
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 0;
-        QUERY PLAN
----------------------------
+         QUERY PLAN
+----------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 0)
+   Storage Filter: (v1 > 0)
 (2 rows)
 
 -- Query Hash: bdc22699c4775408c6a6f4bf4e038e10
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 1;
-        QUERY PLAN
----------------------------
+         QUERY PLAN
+----------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 1)
+   Storage Filter: (v1 > 1)
 (2 rows)
 
 -- Query Hash: 4ef60164be568bad49d0e66d4d9c2986
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 10;
          QUERY PLAN
-----------------------------
+-----------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 10)
+   Storage Filter: (v1 > 10)
 (2 rows)
 
 -- Query Hash: cce05c28cffe5309dd567cd176fd728a
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 100;
-         QUERY PLAN
------------------------------
+          QUERY PLAN
+------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 100)
+   Storage Filter: (v1 > 100)
 (2 rows)
 
 -- Query Hash: 74d65f8d13aa6a893a449f12186e5c10
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 1000;
           QUERY PLAN
-------------------------------
+-------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 1000)
+   Storage Filter: (v1 > 1000)
 (2 rows)
 
 -- Query Hash: 5e51f314c3954af68beb0fb3a699ab00
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 10000;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 10000)
+   Storage Filter: (v1 > 10000)
 (2 rows)
 
 -- Query Hash: caa8a3ce320cb9ec26c70d87b93d1a49
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 20000;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 20000)
+   Storage Filter: (v1 > 20000)
 (2 rows)
 
 -- Query Hash: 7002953b0aac4fe5a0ebe54672e8e557
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 30000;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 30000)
+   Storage Filter: (v1 > 30000)
 (2 rows)
 
 -- Query Hash: f59033c5f0cdcf1a61ec2d1294498723
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 40000;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 40000)
+   Storage Filter: (v1 > 40000)
 (2 rows)
 
 -- Query Hash: 34415093794c0bee911d97722bd3b015
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 50000;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 50000)
+   Storage Filter: (v1 > 50000)
 (2 rows)
 
 -- Query Hash: ac57ffed7f517fe626541e9377a9fb1d
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 60000;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 60000)
+   Storage Filter: (v1 > 60000)
 (2 rows)
 
 -- Query Hash: d219120944637d070cd8b838064c485f
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 70000;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 70000)
+   Storage Filter: (v1 > 70000)
 (2 rows)
 
 -- Query Hash: bf0d45764d65ec4810ab2dea43a34338 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 80000;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 80000)
+   Storage Filter: (v1 > 80000)
 (2 rows)
 
 -- Query Hash: f522aab9d236d3ed75ab2352fb500db6 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 90000;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on t_range_100k
-   Remote Filter: (v1 > 90000)
+   Storage Filter: (v1 > 90000)
 (2 rows)
 
 -- Query Hash: 0a188489b59c5498c04ae3dd3725e05d

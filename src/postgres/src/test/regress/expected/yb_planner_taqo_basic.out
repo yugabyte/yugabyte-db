@@ -591,7 +591,7 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 <= 3500 ORDER BY v1 DESC LIMI
    ->  Sort
          Sort Key: v1 DESC
          ->  Seq Scan on ts2
-               Remote Filter: (v1 <= 3500)
+               Storage Filter: (v1 <= 3500)
 (5 rows)
 
 -- Query Hash: dfc8d19fba8ce1c2a633dc7b9b04aa53
@@ -602,7 +602,7 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 <= 3500 ORDER BY v1 DESC LIMI
    ->  Sort
          Sort Key: v1 DESC
          ->  Seq Scan on ts2
-               Remote Filter: (v1 <= 3500)
+               Storage Filter: (v1 <= 3500)
 (5 rows)
 
 -- Query Hash: cd8713c2b96c824e12fad567b743df19
@@ -613,7 +613,7 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 <= 3500 ORDER BY v1 DESC LIMI
    ->  Sort
          Sort Key: v1 DESC
          ->  Seq Scan on ts3
-               Remote Filter: (v1 <= 3500)
+               Storage Filter: (v1 <= 3500)
 (5 rows)
 
 -- Query Hash: a53e46e8c2bebddc3f66505ef0fa0772
@@ -624,7 +624,7 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 <= 3500 ORDER BY v1 DESC LIMI
    ->  Sort
          Sort Key: v1 DESC
          ->  Seq Scan on ts3
-               Remote Filter: (v1 <= 3500)
+               Storage Filter: (v1 <= 3500)
 (5 rows)
 
 -- Query Hash: 8c7db34f0f1ab387f6a467cb3e05ddc8
@@ -633,7 +633,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 -----------------------------------------
  Limit
    ->  Index Scan using t1_pkey on t1
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
 -- Query Hash: d6becef8d1d6fff246dab709c776a43c
@@ -642,7 +642,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 -----------------------------------------
  Limit
    ->  Index Scan using t1_pkey on t1
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
 -- Query Hash: 037bfe342e9a36d6e78fdc6193b2cd7d
@@ -651,7 +651,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 -----------------------------------------
  Limit
    ->  Index Scan using t2_pkey on t2
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
 -- Query Hash: f4448e3c7a70d66028288e6f6e3f0078
@@ -660,7 +660,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 -----------------------------------------
  Limit
    ->  Index Scan using t2_pkey on t2
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
 -- Query Hash: 412d5b94165936cf16bbce483cd9fa4e
@@ -669,7 +669,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 -----------------------------------------
  Limit
    ->  Index Scan using t3_pkey on t3
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
 -- Query Hash: e1f0758a638322dc28632de93745f51b , !BEST_PLAN_FOUND
@@ -678,7 +678,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 -----------------------------------------
  Limit
    ->  Index Scan using t3_pkey on t3
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
 -- Query Hash: e29f8f19d78b4f70f162d5553fa8ba49
@@ -687,7 +687,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT
 -----------------------------------------
  Limit
    ->  Index Scan using ts2_pkey on ts2
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
 -- Query Hash: 9588b7dca850aced58785e8d67f24cc4
@@ -696,7 +696,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT
 -----------------------------------------
  Limit
    ->  Index Scan using ts2_pkey on ts2
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
 -- Query Hash: 3dc708fc9d1a0ed2da91efc48f9786d0
@@ -705,7 +705,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT
 -----------------------------------------
  Limit
    ->  Index Scan using ts3_pkey on ts3
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
 -- Query Hash: 6e2dfb787296b406aea09f8042bfce4c
@@ -714,7 +714,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT
 -----------------------------------------
  Limit
    ->  Index Scan using ts3_pkey on ts3
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
 -- Query Hash: e3b0e01c35cc884a1ac724c10757559d
@@ -724,7 +724,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
  Limit
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (4 rows)
 
 -- Query Hash: 24e4eac69f2d69337d45c64fc1dce2b1
@@ -734,7 +734,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
  Limit
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (4 rows)
 
 -- Query Hash: 9bf335ab1c1b49d8424d831ceb1e1a4a
@@ -744,7 +744,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
  Limit
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (4 rows)
 
 -- Query Hash: 4df77b96b30cdf5649b598e873fc4692
@@ -754,7 +754,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
  Limit
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (4 rows)
 
 -- Query Hash: 279dbb8f084e7a20225a538742d4f019
@@ -764,7 +764,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
  Limit
    ->  Index Scan using t3_pkey on t3
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (4 rows)
 
 -- Query Hash: f6cb277d6981446aee92ea4c5ee49f9e
@@ -774,7 +774,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
  Limit
    ->  Index Scan using t3_pkey on t3
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (4 rows)
 
 -- Query Hash: 09415831b703b660d9149fe296810637
@@ -784,7 +784,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER 
  Limit
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (4 rows)
 
 -- Query Hash: c30740c81d5508b13e89df15fdb15350
@@ -794,7 +794,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER 
  Limit
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (4 rows)
 
 -- Query Hash: b810961ef96b98093a82e76f29a2988a
@@ -804,7 +804,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER 
  Limit
    ->  Index Scan using ts3_pkey on ts3
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (4 rows)
 
 -- Query Hash: 97be296075a63ead79f8932f44676451
@@ -814,7 +814,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER 
  Limit
    ->  Index Scan using ts3_pkey on ts3
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NOT NULL)
+         Storage Filter: (v1 IS NOT NULL)
 (4 rows)
 
 -- Query Hash: a5b3fa258f26d3507b1c2856bb1b31e6
@@ -889,7 +889,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NULL ORDER BY k1 ASC LIMIT 100
 ----------------------------------------
  Limit
    ->  Index Scan using ts2_pkey on ts2
-         Remote Filter: (v1 IS NULL)
+         Storage Filter: (v1 IS NULL)
 (3 rows)
 
 -- Query Hash: 6c7c013c371fbcb4aab4df729700e278
@@ -898,7 +898,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NULL ORDER BY k1 ASC LIMIT 100
 ----------------------------------------
  Limit
    ->  Index Scan using ts2_pkey on ts2
-         Remote Filter: (v1 IS NULL)
+         Storage Filter: (v1 IS NULL)
 (3 rows)
 
 -- Query Hash: 1b1621a65c7b1b448a1c3e9d0d715868
@@ -907,7 +907,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NULL ORDER BY k1 ASC LIMIT 100
 ----------------------------------------
  Limit
    ->  Index Scan using ts3_pkey on ts3
-         Remote Filter: (v1 IS NULL)
+         Storage Filter: (v1 IS NULL)
 (3 rows)
 
 -- Query Hash: f94ec3a91c845359e8a3f0ce94004d82
@@ -916,7 +916,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NULL ORDER BY k1 ASC LIMIT 100
 ----------------------------------------
  Limit
    ->  Index Scan using ts3_pkey on ts3
-         Remote Filter: (v1 IS NULL)
+         Storage Filter: (v1 IS NULL)
 (3 rows)
 
 -- Query Hash: ad172ffa917b93e842fb048f6f375523
@@ -928,7 +928,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k1
          Sort Key: k1
          ->  Index Scan using t1_v1_k2_idx on t1
                Index Cond: (v1 IS NULL)
-               Remote Filter: (k1 >= 5500)
+               Storage Filter: (k1 >= 5500)
 (6 rows)
 
 -- Query Hash: 4f4aab1cf5b3d80931ec6ebfdbec0683
@@ -940,7 +940,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k1
          Sort Key: k1
          ->  Index Scan using t1_v1_k2_idx on t1
                Index Cond: (v1 IS NULL)
-               Remote Filter: (k1 >= 5500)
+               Storage Filter: (k1 >= 5500)
 (6 rows)
 
 -- Query Hash: 034e10caeafa420f62d5945808a6c2d6 , !BEST_PLAN_FOUND
@@ -952,7 +952,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k1
          Sort Key: k1
          ->  Index Scan using t2_v1_k2_idx on t2
                Index Cond: (v1 IS NULL)
-               Remote Filter: (k1 >= 5500)
+               Storage Filter: (k1 >= 5500)
 (6 rows)
 
 -- Query Hash: 850da1de1af487f8642d4823a4d3340b
@@ -964,7 +964,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k1
          Sort Key: k1
          ->  Index Scan using t2_v1_k2_idx on t2
                Index Cond: (v1 IS NULL)
-               Remote Filter: (k1 >= 5500)
+               Storage Filter: (k1 >= 5500)
 (6 rows)
 
 -- Query Hash: c202b4293b08d53f44603cf5fb40cdab
@@ -976,7 +976,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k1
          Sort Key: k1
          ->  Index Scan using t3_v1_k2_idx on t3
                Index Cond: (v1 IS NULL)
-               Remote Filter: (k1 >= 5500)
+               Storage Filter: (k1 >= 5500)
 (6 rows)
 
 -- Query Hash: 9f7e686663f860e9e370622d73314148
@@ -988,7 +988,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k1
          Sort Key: k1
          ->  Index Scan using t3_v1_k2_idx on t3
                Index Cond: (v1 IS NULL)
-               Remote Filter: (k1 >= 5500)
+               Storage Filter: (k1 >= 5500)
 (6 rows)
 
 -- Query Hash: b4d1e6f3cc917a8d32f0b398dd4940fa
@@ -998,7 +998,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k
  Limit
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NULL)
+         Storage Filter: (v1 IS NULL)
 (4 rows)
 
 -- Query Hash: a708f5d67f4bf443efccf7c5bfa83bab
@@ -1008,7 +1008,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k
  Limit
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NULL)
+         Storage Filter: (v1 IS NULL)
 (4 rows)
 
 -- Query Hash: 39a26230956b109f6d6f828c4acc8911
@@ -1018,7 +1018,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k
  Limit
    ->  Index Scan using ts3_pkey on ts3
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NULL)
+         Storage Filter: (v1 IS NULL)
 (4 rows)
 
 -- Query Hash: 1b5c8246a030c8183cfc8d61174594cf
@@ -1028,7 +1028,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k
  Limit
    ->  Index Scan using ts3_pkey on ts3
          Index Cond: (k1 >= 5500)
-         Remote Filter: (v1 IS NULL)
+         Storage Filter: (v1 IS NULL)
 (4 rows)
 
 -- Query Hash: 626b95ba40dc7167a1c04f809c7c5c48
@@ -2694,7 +2694,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 1000
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on t1
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: 6704caccd64f9bb3e810f632c9316173
@@ -2705,7 +2705,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 1000
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on t1
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: cb5b7bd89976d810fb85e3d66c41d063 , !BEST_PLAN_FOUND
@@ -2716,7 +2716,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 1000
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on t2
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: 1262567af96df3c19c65ce883b2adad9
@@ -2727,7 +2727,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 1000
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on t2
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: f62c7ba49634af52f3014a3ee936a2ce
@@ -2738,7 +2738,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on ts2
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: 54b5d1b16cf580191b24ccaa81077df3
@@ -2749,7 +2749,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on ts2
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: 1153a8cb67ed0459e4549f2369f9cd98
@@ -2760,7 +2760,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on ts3
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: 48b9419316384834e29ee9ebb8e18d0b
@@ -2771,7 +2771,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on ts3
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: 3d6fcde63014bbb5163c22fd19ba74d5
@@ -2818,7 +2818,7 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on ts2
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: 9460e9485046094d5cdb86cb01d66aa0
@@ -2829,7 +2829,7 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on ts2
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: c25491960a5e5f56f9e3d0b06259d82d
@@ -2840,7 +2840,7 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on ts3
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: e13c0cdc238cfc314c1beb13e6d53a03
@@ -2851,7 +2851,7 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT
    ->  Sort
          Sort Key: v1
          ->  Seq Scan on ts3
-               Remote Filter: (v1 > 20000)
+               Storage Filter: (v1 > 20000)
 (5 rows)
 
 -- Query Hash: bff381d796a9737be5d460241b7a30d6
@@ -2995,7 +2995,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 = 4231  AND k2 = 'k2-042';
                         QUERY PLAN
 ----------------------------------------------------------
  Seq Scan on ts2
-   Remote Filter: ((v1 = 4231) AND (k2 = 'k2-042'::text))
+   Storage Filter: ((v1 = 4231) AND (k2 = 'k2-042'::text))
 (2 rows)
 
 -- Query Hash: 039dbc1361cf4c8531378ec6d1acd6c6
@@ -3004,7 +3004,7 @@ EXPLAIN (COSTS OFF) SELECT k1,k2 FROM ts3 WHERE k1 = 4231  AND k2 = 'k2-042';
 ----------------------------------------
  Index Scan using ts3_pkey on ts3
    Index Cond: (k1 = 4231)
-   Remote Filter: (k2 = 'k2-042'::text)
+   Storage Filter: (k2 = 'k2-042'::text)
 (3 rows)
 
 -- Query Hash: 3dd03b51847c025f75ea2fe2f92072e0
@@ -3012,7 +3012,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 = 4231  AND k2 = 'k2-042';
                         QUERY PLAN
 ----------------------------------------------------------
  Seq Scan on ts3
-   Remote Filter: ((v1 = 4231) AND (k2 = 'k2-042'::text))
+   Storage Filter: ((v1 = 4231) AND (k2 = 'k2-042'::text))
 (2 rows)
 
 -- DROP QUERIES;
