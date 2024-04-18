@@ -1,4 +1,4 @@
----
+<!---
 title: How to get started with YugabyteDB
 headerTitle: How to get started with YugabyteDB
 linkTitle: Guide to resources
@@ -6,7 +6,8 @@ description: Find resources for getting started with YugabyteDB.
 headcontent: Find resources for getting started with YugabyteDB
 type: docs
 unversioned: true
----
+private: true
+--->
 
 Find resources for getting started, migrating existing databases, using your database, and architecting for scalability, reliability, and security.
 

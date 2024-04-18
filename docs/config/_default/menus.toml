@@ -327,23 +327,23 @@
   [home.params]
     showSection = true
 
-[[home]]
-  name = "Key benefits"
-  weight = 2
-  identifier = "features"
-  url = "/preview/features/"
-  [home.params]
-    showSection = true
-    hideChildren = true
+# [[home]]
+#   name = "Key benefits"
+#   weight = 2
+#   identifier = "features"
+#   url = "/preview/features/"
+#   [home.params]
+#     showSection = true
+#     hideChildren = true
 
-[[home]]
-  name = "Resource guide"
-  weight = 3
-  identifier = "get-started-guide"
-  url = "/preview/get-started-guide/"
-  [home.params]
-    showSection = true
-    hideChildren = true
+# [[home]]
+#   name = "Resource guide"
+#   weight = 3
+#   identifier = "get-started-guide"
+#   url = "/preview/get-started-guide/"
+#   [home.params]
+#     showSection = true
+#     hideChildren = true
 
 [[home]]
   name = "Quick Start"
@@ -408,23 +408,23 @@
   [preview.params]
     showSection = true
 
-[[preview]]
-  name = "Key benefits"
-  weight = 3
-  identifier = "features"
-  url = "/preview/features/"
-  [preview.params]
-    showSection = true
-    hideChildren = true
+# [[preview]]
+#   name = "Key benefits"
+#   weight = 3
+#   identifier = "features"
+#   url = "/preview/features/"
+#   [preview.params]
+#     showSection = true
+#     hideChildren = true
 
-[[preview]]
-  name = "Resource guide"
-  weight = 4
-  identifier = "get-started-guide"
-  url = "/preview/get-started-guide/"
-  [preview.params]
-    showSection = true
-    hideChildren = true
+# [[preview]]
+#   name = "Resource guide"
+#   weight = 4
+#   identifier = "get-started-guide"
+#   url = "/preview/get-started-guide/"
+#   [preview.params]
+#     showSection = true
+#     hideChildren = true
 
 [[preview]]
   name = "Quick Start"
