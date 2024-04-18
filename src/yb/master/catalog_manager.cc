@@ -9047,8 +9047,6 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
         // this case has not yet been tested.
         //
         // TODO(20710): Verify upgrade behavior with user-created databases.
-        // TODO(20710): Add a preflight check that the user has all 5 system databases and has not
-        // dropped any of them.
         if (ns == nullptr) {
           std::string context;
           if (by_id) {

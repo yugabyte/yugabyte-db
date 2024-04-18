@@ -117,15 +117,22 @@ main(int argc, char **argv)
 
 	output_check_banner(live_check);
 
-	check_cluster_versions();
+	/* 
+	 * This checks for Postgres versions. 
+	 * The check isn't relevant to Yugabyte right now.
+	 */
+	if (!is_yugabyte_enabled())
+		check_cluster_versions();
 
 	get_sock_dir(&old_cluster, live_check);
 	get_sock_dir(&new_cluster, false);
 
-	#ifdef YB_TODO
-	/* Enable these checks */
-	check_cluster_compatibility(live_check);
-	#endif
+	/* 
+	 * This checks for global state information initialized 
+	 * during initdb and is not relevant for YB currently.
+	 */
+	if (!is_yugabyte_enabled())
+		check_cluster_compatibility(live_check);
 
 	check_and_dump_old_cluster(live_check);
 
@@ -135,8 +142,9 @@ main(int argc, char **argv)
 		start_postmaster(&new_cluster, true);
 
 	#ifdef YB_TODO
-	/* Investigate these functions for setting up node */
+	/* Investigate relevant checks within check_new_cluster */
 	check_new_cluster();
+	#endif
 	report_clusters_compatible();
 
 	pg_log(PG_REPORT,
@@ -144,14 +152,18 @@ main(int argc, char **argv)
 		   "Performing Upgrade\n"
 		   "------------------\n");
 
-	prepare_new_cluster();
+	if (!is_yugabyte_enabled())
+	{
+		prepare_new_cluster();
 
-	stop_postmaster(false);
+		stop_postmaster(false);
+	}
 
 	/*
 	 * Destructive Changes to New Cluster
 	 */
-
+	#ifdef YB_TODO
+	/* Investigate these functions for setting up node */
 	copy_xact_xlog_xid();
 
 	/* New now using xids of the old system */
@@ -341,6 +353,9 @@ setup(char *argv0, bool *live_check)
 	}
 
 	verify_directories();
+
+	if (is_yugabyte_enabled() && user_opts.check)
+		*live_check = true;
 
 	/* no postmasters should be running, except for a live check */
 	if (!is_yugabyte_enabled() && pid_lock_file_exists(old_cluster.pgdata))

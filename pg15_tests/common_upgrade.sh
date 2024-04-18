@@ -57,13 +57,19 @@ ysql_upgrade_using_node_2() {
   # Restart tserver 2 to PG15 for the upgrade, with postgres binaries in binary_upgrade mode
   yb_ctl restart_node 2 --tserver_flags="TEST_pg_binary_upgrade=true"
 
-  # Run pg_upgrade which calls ysql_dumpall, ysql_dump and pg_restore.
-  # ysql_dump and pg_restore together migrate the metadata for the databases.
-  # Currently, pg_upgrade migrates only the 'yugabyte' database.
-  build/latest/postgres/bin/pg_upgrade -b "$prefix/yugabyte-$ybversion_pg11/postgres/bin" \
-    -d "$data_dir/node-1/disk-1/pg_data" -D "$data_dir/node-2/disk-1/pg_data" -h "$PGHOST" -p 5433 \
-    -H "$pghost2" -P 5433 --username "yugabyte"
+  run_pg_upgrade
 
   # The upgrade is finished. Restart node 2 with postgres binaries *not* in binary upgrade mode
   yb_ctl restart_node 2
+}
+
+# Run pg_upgrade which calls ysql_dumpall, ysql_dump and pg_restore.
+# ysql_dump and pg_restore together migrate the metadata for the databases.
+# Currently, pg_upgrade migrates only the 'yugabyte' database.
+# Use --check flag if you only want to run the preflight checks.
+run_pg_upgrade() {
+  # YB_TODO: Make the target cluster optional when running pg_upgrade in check mode.
+  build/latest/postgres/bin/pg_upgrade -b "$prefix/yugabyte-$ybversion_pg11/postgres/bin" \
+    -d "$data_dir/node-1/disk-1/pg_data" -D "$data_dir/node-2/disk-1/pg_data" -h "$PGHOST" -p 5433 \
+    -H "$pghost2" -P 5433 --username "yugabyte" "$@"
 }

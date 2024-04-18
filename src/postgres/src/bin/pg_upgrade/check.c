@@ -34,6 +34,8 @@ static void check_for_new_tablespace_dir(ClusterInfo *new_cluster);
 static void check_for_user_defined_encoding_conversions(ClusterInfo *cluster);
 static char *get_canonical_locale_name(int category, const char *locale);
 
+/* Yugabyte-specific checks */
+static void yb_check_system_databases_exist(ClusterInfo *cluster);
 
 /*
  * fix_path_separator
@@ -105,12 +107,25 @@ check_and_dump_old_cluster(bool live_check)
 	/*
 	 * Check for various failure cases
 	 */
+	/* 
+	 * YB: this check requires the following conditions:
+	 * 	1. The logged in user is 'postgres' (oid = 10)
+	 * 	2. New cluster does not have any users
+	 */
 	check_is_install_user(&old_cluster);
+	#endif
 	check_proper_datallowconn(&old_cluster);
-	check_for_prepared_transactions(&old_cluster);
+	if (!is_yugabyte_enabled())
+	{
+		/* Yugabyte does not support prepared transactions, see #1125 */
+		check_for_prepared_transactions(&old_cluster);
+	}
 	check_for_composite_data_type_usage(&old_cluster);
 	check_for_reg_data_type_usage(&old_cluster);
+	#ifdef YB_TODO
+	/* Enable this check when contrib directory is enabled in build_postgres.py */
 	check_for_isn_and_int8_passing_mismatch(&old_cluster);
+	#endif
 
 	/*
 	 * PG 14 changed the function signature of encoding conversion functions.
@@ -118,9 +133,16 @@ check_and_dump_old_cluster(bool live_check)
 	 * because the user-defined functions used by the encoding conversions
 	 * need to be changed to match the new signature.
 	 */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1300)
-		check_for_user_defined_encoding_conversions(&old_cluster);
-
+	if (!is_yugabyte_enabled())
+	{
+		/* 
+		 * CREATE CONVERSION is not supported by YB,
+		 * cannot have user-defined encoding conversions.
+		 */
+		if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1300)
+			check_for_user_defined_encoding_conversions(&old_cluster);
+	}
+	
 	/*
 	 * Pre-PG 14 allowed user defined postfix operators, which are not
 	 * supported anymore.  Verify there are none, iff applicable.
@@ -139,8 +161,11 @@ check_and_dump_old_cluster(bool live_check)
 	 * Pre-PG 12 allowed tables to be declared WITH OIDS, which is not
 	 * supported anymore. Verify there are none, iff applicable.
 	 */
+	#ifdef YB_TODO
+	/* Investigate/implement this check */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1100)
 		check_for_tables_with_oids(&old_cluster);
+	#endif
 
 	/*
 	 * PG 12 changed the 'sql_identifier' type storage to be based on name,
@@ -154,25 +179,34 @@ check_and_dump_old_cluster(bool live_check)
 	 * Pre-PG 10 allowed tables with 'unknown' type columns and non WAL logged
 	 * hash indexes
 	 */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 906)
+	if (!is_yugabyte_enabled())
 	{
-		old_9_6_check_for_unknown_data_type_usage(&old_cluster);
-		if (user_opts.check)
-			old_9_6_invalidate_hash_indexes(&old_cluster, true);
+		/* These checks are irrelevant for Yugabyte (Pre-PG11 checks) */
+		if (GET_MAJOR_VERSION(old_cluster.major_version) <= 906)
+		{
+			old_9_6_check_for_unknown_data_type_usage(&old_cluster);
+			if (user_opts.check)
+				old_9_6_invalidate_hash_indexes(&old_cluster, true);
+		}
+	
+		/* 9.5 and below should not have roles starting with pg_ */
+		if (GET_MAJOR_VERSION(old_cluster.major_version) <= 905)
+			check_for_pg_role_prefix(&old_cluster);
+
+		if (GET_MAJOR_VERSION(old_cluster.major_version) == 904 &&
+			old_cluster.controldata.cat_ver < JSONB_FORMAT_CHANGE_CAT_VER)
+			check_for_jsonb_9_4_usage(&old_cluster);
+
+		/* Pre-PG 9.4 had a different 'line' data type internal format */
+		if (GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
+			old_9_3_check_for_line_data_type_usage(&old_cluster);
 	}
 
-	/* 9.5 and below should not have roles starting with pg_ */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 905)
-		check_for_pg_role_prefix(&old_cluster);
-
-	if (GET_MAJOR_VERSION(old_cluster.major_version) == 904 &&
-		old_cluster.controldata.cat_ver < JSONB_FORMAT_CHANGE_CAT_VER)
-		check_for_jsonb_9_4_usage(&old_cluster);
-
-	/* Pre-PG 9.4 had a different 'line' data type internal format */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
-		old_9_3_check_for_line_data_type_usage(&old_cluster);
-	#endif
+	/* Yugabyte checks */
+	if (is_yugabyte_enabled())
+	{
+		yb_check_system_databases_exist(&old_cluster);
+	}
 
 	/*
 	 * While not a check option, we do this now because this is the only time
@@ -211,8 +245,10 @@ check_new_cluster(void)
 			break;
 	}
 
+	#ifdef YB_TODO
+	/* Investigate/implement this check */
 	check_is_install_user(&new_cluster);
-
+	#endif
 	check_for_prepared_transactions(&new_cluster);
 
 	check_for_new_tablespace_dir(&new_cluster);
@@ -341,10 +377,11 @@ check_cluster_compatibility(bool live_check)
 {
 	/* get/check pg_control data of servers */
 	get_control_data(&old_cluster, live_check);
-	get_control_data(&new_cluster, false);
+	get_control_data(&new_cluster, live_check);
 	check_control_data(&old_cluster.controldata, &new_cluster.controldata);
 
-	if (live_check && old_cluster.port == new_cluster.port)
+	/* This check is irrelevant for YB */
+	if (!is_yugabyte_enabled() && live_check && old_cluster.port == new_cluster.port)
 		pg_fatal("When checking a live server, "
 				 "the old and new port numbers must be different.\n");
 }
@@ -1530,4 +1567,50 @@ get_canonical_locale_name(int category, const char *locale)
 	pg_free(save);
 
 	return res;
+}
+
+/*
+ * yb_check_system_databases_exist()
+ *
+ *	All the 5 system database should exist before upgrading
+ */
+static void
+yb_check_system_databases_exist(ClusterInfo *cluster)
+{
+	PGresult   *res;
+	PGconn	   *conn = connectToServer(cluster, "template1");
+
+	const char *system_dbs[] = {"postgres", "system_platform", "template0",
+								"template1", "yugabyte"};
+	const int num_system_dbs = lengthof(system_dbs);
+
+	prep_status("Checking for all 5 system databases");
+
+	res = executeQueryOrDie(conn, "SELECT datname FROM pg_database;");
+	int ntups = PQntuples(res);
+
+	for (int i = 0; i < num_system_dbs; i++)
+	{
+		bool found = false;
+		for (int dbnum = 0; dbnum < ntups; dbnum++)
+		{
+			char *datname = PQgetvalue(res, dbnum, 0);
+			if (strcmp(datname, system_dbs[i]) == 0)
+			{
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+		{
+			pg_fatal("The source cluster does not have the database: \"%s\"\n",
+					 system_dbs[i]);
+		}
+	}
+
+	PQclear(res);
+
+	PQfinish(conn);
+
+	check_ok();
 }
