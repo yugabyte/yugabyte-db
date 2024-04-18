@@ -1,7 +1,8 @@
 ---
-title: Active Session History
+title: Active Session History capability in YugabyteDB
+headerTitle: Active Session History
 linkTitle: Active Session History
-description: Active Session History
+description: Use Active Session History to get current and historical views of the database system activity.
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues.
 techPreview: /preview/releases/versioning/#feature-availability
 menu:
