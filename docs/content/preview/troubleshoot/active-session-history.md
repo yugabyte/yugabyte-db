@@ -14,7 +14,7 @@ type: docs
 
 Active Session History (ASH) provides a current and historical view of system activity by sampling session activity in the database. A database session or connection is considered active if it is consuming CPU, or has an active RPC call that is waiting on one of the wait events.
 
-ASH exposes session activity in the form of [SQL views](../../explore/ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues. So, you need to enable [YSQL](../../api/ysql/) or [YCQL](../../api/ycql/) to run ASH for YSQL or YCQL sessions.
+ASH exposes session activity in the form of [SQL views](../../explore/ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues. To run ASH, you need to enable [YSQL](../../api/ysql/) or [YCQL](../../api/ycql/) for YSQL or YCQL sessions respectively.
 
 Currently, ASH is available for [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes. ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
 Analyzing the wait events and wait event types lets you troubleshoot, answer the following questions and subsequently tune performance:
@@ -48,6 +48,8 @@ To use ASH, enable and configure the following flags for each node of your clust
 
 ### Additional flags
 
+You can also use the following flags based on your requirements.
+
 | Flag | Description |
 | :--- | :---------- |
 | ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. <br> Default: 16000. Changing this flag requires a system restart. |
@@ -65,7 +67,7 @@ Note that the following limitations are subject to change as the feature is in [
 
 ## SQL views
 
-ASH exposes the following [SQL views](../../explore/ysql-language-features/advanced-features/views/) in each node to analyze and troubleshoot performance issues:
+ASH exposes the following [SQL views](../../explore/ysql-language-features/advanced-features/views/) in each node to analyze and troubleshoot performance issues.
 
 ### yb_active_session_history
 
@@ -74,17 +76,17 @@ Get information on wait events for each normalized query, YSQL, or YCQL request.
 | Column | Type | Description |
 | :----- | :--- | :---------- |
 | root_request_id | UUID | A 16-byte UUID that is generated per request. Generated for queries at YSQL/YCQL layer. |
-| rpc_request_id | integer | Request ID per RPC. This is not globally unique. However, it is a monotonically increasing number for the lifetime of a YB-TServer. If a YB-TServer restarts, the number starts from 0 again, thus it may not be unique across time. However, if there are no restarts, the combination of the server/rpc_request_id is unique. This could be used for advanced use cases later. For example, understanding if the same RPC is being sampled multiple times. |
+| rpc_request_id | integer | Request ID per RPC. This is not globally unique. However, it is a monotonically increasing number for the lifetime of a YB-TServer. If a YB-TServer restarts, the number starts from 0 again, so it may not be unique across time. However, if there are no restarts, the combination of the server/rpc_request_id is unique. This could be used for advanced use cases later. For example, understanding if the same RPC is being sampled multiple times. |
 | wait_event_component | text | There are three components: YSQL, YCQL, and YB-TServer. |
 | wait_event_class | text | Every wait event will have a class associated with it. |
 | wait_event | text | Provides insight into what the RPC is waiting on. |
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for yb-tserver wait events. |
 | top_level_node_id | UUID | 16-byte yb-tserver UUID of the YSQL/YCQL node where the query is being executed. |
-| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../explore/query-1-performance/pg-stat-statements/)/ycql_stat_statements. For background activities, query ID will be a known constant (For example, log appender is 1, flush is 2, compaction is 3, consensus is 4). |
+| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../explore/query-1-performance/pg-stat-statements/)/ycql_stat_statements. For background activities, query ID will be a known constant (for example, log appender is 1, flush is 2, compaction is 3, consensus is 4). |
 | ysql_session_id | bigint | Same as `PgClientSessionId`. This is 0 for YCQL and background activities, as this is a YSQL specific field. |
 | client_node_ip | text | Client IP for the RPC. For YSQL, it will be the client node from where the query is generated. For YB-TServer, it will be the YSQL/TServer node from where the RPC originated. |
-| sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. If say there are 200 events, but only 100 events were collected, each of the collected sample will have a weight of (200 / 100) = 2.0 |
+| sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events were collected, each of the collected sample will have a weight of (200 / 100) = 2.0 |
 
 ### yb_local_tablets
 
@@ -169,6 +171,8 @@ List of wait events by the following request types.
 ## Examples
 
 {{% explore-setup-single %}}
+
+Make sure you have an active ysqlsh session (`./bin/ysqlsh`) to run the following examples.
 
 - Distribution of wait events on each component for each query_id
 
