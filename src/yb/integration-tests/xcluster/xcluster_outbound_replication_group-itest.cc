@@ -19,7 +19,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
 
-DECLARE_bool(TEST_enable_xcluster_api_v2);
+DECLARE_bool(enable_xcluster_api_v2);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_uint32(max_xcluster_streams_to_checkpoint_in_parallel);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
@@ -36,7 +36,7 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
  public:
   XClusterOutboundReplicationGroupTest() {}
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
 
     XClusterYsqlTestBase::SetUp();
     MiniClusterOptions opts;

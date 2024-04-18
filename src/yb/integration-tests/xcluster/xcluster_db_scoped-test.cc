@@ -17,7 +17,7 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/util/backoff_waiter.h"
 
-DECLARE_bool(TEST_enable_xcluster_api_v2);
+DECLARE_bool(enable_xcluster_api_v2);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_string(certs_for_cdc_dir);
 
@@ -34,7 +34,7 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
 
   virtual void SetUp() override {
     XClusterYsqlTestBase::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
   }
 };
 
