@@ -498,10 +498,12 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
         << "incompatible with tablet " << tablet_id << ". Not allowing it to host this tablet.";
     return false;
   }
-  // If this server has a pending tablet delete, don't use it.
-  if (global_state_->servers_with_pending_deletes_.count(to_ts)) {
-    YB_LOG_EVERY_N_SECS(INFO, 20) << "tablet server " << to_ts << " has a pending delete. "
-              << "Not allowing it to take more tablets";
+  // If this server has a pending tablet delete for this tablet, don't use it.
+  auto ts_it = global_state_->pending_deletes_.find(to_ts);
+  if (ts_it != global_state_->pending_deletes_.end() && ts_it->second.contains(tablet_id)) {
+    YB_LOG_EVERY_N_SECS(INFO, 20) << "tablet server " << to_ts
+                                  << " has a pending delete for tablet " << tablet_id
+                                  << ". Not allowing it to take another replica.";
     return false;
   }
   // If all checks pass, return true.

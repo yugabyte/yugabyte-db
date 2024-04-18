@@ -930,15 +930,12 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
   }
 
   // Finally, handle normal load balancing.
-  if (!VERIFY_RESULT(GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts))) {
-    if (VLOG_IS_ON(2)) {
+  auto move_made = VERIFY_RESULT(GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts));
+  if (!move_made && VLOG_IS_ON(2)) {
       VLOG(2) << "Cannot find any more tablets to move for this table, under current constraints. "
               << "Sorted load: " << GetSortedLoad();
-    }
-    return false;
   }
-
-  return true;
+  return move_made;
 }
 
 string ClusterLoadBalancer::GetSortedLoad() const {
@@ -1583,11 +1580,7 @@ void ClusterLoadBalancer::SetBlacklistAndPendingDeleteTS() {
     VLOG(1) << "Processing TS for blacklist: " << ts_desc->ToString();
     AddTSIfBlacklisted(ts_desc, l->pb.server_blacklist(), false /* leader_blacklist */);
     AddTSIfBlacklisted(ts_desc, l->pb.leader_blacklist(), true /* leader_blacklist */);
-    if (ts_desc->HasTabletDeletePending()) {
-      VLOG(1) << "TS " << ts_desc->permanent_uuid() << " has a delete pending, "
-              << "adding to global state of servers with pending deletes";
-      global_state_->servers_with_pending_deletes_.insert(ts_desc->permanent_uuid());
-    }
+    global_state_->pending_deletes_[ts_desc->permanent_uuid()] = ts_desc->TabletsPendingDeletion();
   }
 }
 
