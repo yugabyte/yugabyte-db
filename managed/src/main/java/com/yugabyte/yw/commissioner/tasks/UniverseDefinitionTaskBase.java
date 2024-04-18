@@ -42,6 +42,7 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -2447,7 +2448,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void createValidateDiskSizeOnNodeRemovalTasks(
       Universe universe, Cluster cluster, Set<NodeDetails> clusterNodes) {
-    if (config.getBoolean("yb.cloud.enabled")) {
+    // TODO cloudEnabled is supposed to be a static config but this is read from runtime config to
+    // make itests work.
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    if (cloudEnabled) {
       // This is not enabled for cloud.
       return;
     }
