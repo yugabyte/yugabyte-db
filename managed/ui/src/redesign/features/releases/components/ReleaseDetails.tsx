@@ -174,7 +174,7 @@ export const ReleaseDetails = ({
     const key = releaseDetailsMap[releaseDetailsKey];
     let value = data?.[key];
     if (!value) {
-      value = 'NA';
+      value = '';
     }
 
     if (key === releaseDetailsMap.releaseNote) {
