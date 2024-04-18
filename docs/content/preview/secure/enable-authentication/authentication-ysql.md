@@ -11,26 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li>
-    <a href="../yedis/" class="nav-link">
-      <i class="icon-redis" aria-hidden="true"></i>
-      YEDIS
-    </a>
-  </li>
-</ul>
+{{<api-tabs>}}
 
 YSQL authentication, the process of identifying that YSQL users are who they say they are, is based on roles. Users, groups, and roles in YugabyteDB are created using roles. Typically, a role that has login privileges is known as a *user*, while a *group* is a role that can have multiple users as members.
 

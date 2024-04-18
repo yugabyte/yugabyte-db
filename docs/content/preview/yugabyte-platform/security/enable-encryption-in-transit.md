@@ -21,7 +21,7 @@ YugabyteDB Anywhere allows you to protect data in transit by using the following
 
 {{< note title="Note" >}}
 
-Client-to-server encryption in transit is not supported for YEDIS. Before you can enable client-to-server encryption, you first must enable server-to-server encryption.
+Before you can enable client-to-server encryption, you first must enable server-to-server encryption.
 
 {{< /note >}}
 
