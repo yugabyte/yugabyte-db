@@ -73,5 +73,5 @@ Update the backup policy of a specified cluster.
 | --full-backup-frequency-in-days | Frequency of full backup in days. Default is 1. |
 | --full-backup-schedule-days-of-week | Days of the week to run backups. Specify a comma-separated list of the first two letters of the days. For example, MO,WE,SA. |
 | --full-backup-schedule-time | Time of day to run backups. Specify local time in 24 hr HH:MM format. For example, 15:04. |
-| --incremental-backup-frequency-in-minutes | Frequency of incremental backups in minutes. Default is 120. |
+| --incremental-backup-frequency-in-minutes | Frequency of incremental backups in minutes. Default is 60. |
 | --retention-period-in-days | Required. Retention period for the backup in days. Default is 1. |
