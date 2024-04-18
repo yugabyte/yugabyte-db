@@ -2,7 +2,7 @@ export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';
 
 export const DEV_HOST_URL = 'http://localhost:8080';
 
-export const PROD_HOST_URL = 'https://10.9.15.156:8443';
+export const PROD_HOST_URL = 'http://10.9.15.156:8080';
 
 // NOTE: when using REACT_APP_YUGAWARE_API_URL at local development - after login with SSO it will
 // set auth cookies for API host domain and redirect to API host root instead of localhost:3000/
