@@ -34,6 +34,7 @@ class ScopedWaitingTxnRegistration {
  public:
   virtual Status Register(
     const TransactionId& waiting,
+    int64_t request_id,
     std::shared_ptr<ConflictDataManager> blockers,
     const TabletId& status_tablet) = 0;
   virtual Status RegisterSingleShardWaiter(

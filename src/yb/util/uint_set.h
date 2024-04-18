@@ -118,6 +118,10 @@ class UnsignedIntSet {
     return set_difference.empty();
   }
 
+  size_t hash_value() const {
+    return yb::hash_value(ToString());
+  }
+
  private:
   using ElementType = uint32_t;
   using ElementRange = boost::icl::discrete_interval<ElementType>;
@@ -125,4 +129,20 @@ class UnsignedIntSet {
   ElementRangeSet interval_set_;
 };
 
+template<class T>
+std::size_t hash_value(const UnsignedIntSet<T>& uint_set) noexcept {
+  return uint_set.hash_value();
+}
+
 } // namespace yb
+
+namespace std {
+
+template<class T>
+struct hash<yb::UnsignedIntSet<T>> {
+  size_t operator()(const yb::UnsignedIntSet<T>& uint_set) const {
+    return yb::hash_value(uint_set);
+  }
+};
+
+} // namespace std
