@@ -24,6 +24,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AccessManager.KeyType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundleDetails;
@@ -559,6 +560,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
 
   @Test
   public void testCloudBootstrapSuccessAwsAarchArchitecture() throws InterruptedException {
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.enableVMOSPatching.getKey(), "false");
     JsonNode zoneInfo = Json.parse("{\"us-west-1\": {\"zone-1\": \"subnet-1\"}}");
     CloudBootstrap.Params taskParams = getBaseTaskParams();
     CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
