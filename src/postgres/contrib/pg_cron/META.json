@@ -1,0 +1,49 @@
+{
+    "name": "pg_cron",
+    "abstract": "Periodic job scheduler for PostgreSQL",
+    "description": "Sets up a background worker that periodically runs queries in the background",
+    "version": "1.0",
+    "maintainer": "\"Marco Slot\" <marco@citusdata.com>",
+    "license": {
+		"PostgreSQL": "http://www.postgresql.org/about/licence"
+	},
+    "prereqs": {
+       "runtime": {
+          "requires": {
+             "PostgreSQL": "9.5.0"
+          }
+       }
+    },
+    "provides": {
+        "pg_cron": {
+            "abstract": "Periodic background job scheduler",
+            "file": "pg_cron--1.0.sql",
+            "docfile": "README.md",
+            "version": "1.0"
+        }
+    },
+    "release_status": "stable",
+    "resources": {
+        "homepage": "https://citusdata.com/",
+        "bugtracker": {
+            "web": "https://github.com/citusdata/pg_cron/issues",
+            "mailto": "support@citusdata.com"
+        },
+        "repository": {
+          "url":  "git://github.com/citusdata/pg_cron.git",
+          "web":  "https://github.com/citusdata/pg_cron",
+          "type": "git"
+        }
+    },
+
+    "generated_by": "\"Marco Slot\" <marco@citusdata.com>",
+
+    "tags": [
+        "cron", "background worker"
+    ],
+
+    "meta-spec": {
+        "version": "1.0.0",
+        "url": "http://pgxn.org/meta/spec.txt"
+    }
+}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/tools"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -89,6 +90,7 @@ func init() {
 	rootCmd.AddCommand(releases.ReleasesCmd)
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)
+	rootCmd.AddCommand(storageconfiguration.StorageConfigurationCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 }
@@ -109,7 +111,7 @@ func setDefaults() {
 	viper.SetDefault("no-color", false)
 	viper.SetDefault("wait", true)
 	viper.SetDefault("timeout", time.Duration(7*24*time.Hour))
-	viper.SetDefault("lastVersionAvailable", "v0.0.0")
+	viper.SetDefault("lastVersionAvailable", "0.0.0")
 	viper.SetDefault("lastCheckedTime", 0)
 }
 

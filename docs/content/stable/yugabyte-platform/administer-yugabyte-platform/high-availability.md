@@ -12,32 +12,34 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere high availability (HA) is an active-standby model for multiple YugabyteDB Anywhere instances. YugabyteDB Anywhere HA uses YugabyteDB's distributed architecture to replicate your YugabyteDB Anywhere data across multiple virtual machines (VM), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
+YugabyteDB Anywhere (YBA) high availability (HA) is an active-standby model for multiple YBA instances. YBA HA uses YugabyteDB's distributed architecture to replicate your YBA data across multiple virtual machines (VM), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
 
-Each HA cluster includes a single active YugabyteDB Anywhere instance and at least one standby YugabyteDB Anywhere instance, configured as follows:
+Each HA cluster includes a single active YBA instance and at least one standby YBA instance, configured as follows:
 
 - The active instance runs normally, but also pushes out backups of its state to all of the standby instances in the HA cluster.
-- A standby instance is completely passive while in standby mode and cannot be used for managing or monitoring clusters until you manually promote it to active.
+- A standby instance is completely passive while in standby mode and can't be used for managing or monitoring clusters until you manually promote it to active.
 
 Backups from the active instance are periodically taken and pushed to standby instances at a configurable frequency (no more than once per minute). The active instance also creates and sends one-off backups to standby instances whenever a task completes (such as creating a new universe). Metrics are duplicated to standby instances using Prometheus federation. Standby instances retain the ten most recent backups on disk.
 
-When you promote a standby instance to active, YugabyteDB Anywhere restores your selected backup, and then automatically demotes the previous active instance to standby mode.
+When you promote a standby instance to active, YBA restores your selected backup, and then automatically demotes the previous active instance to standby mode.
 
 ## Prerequisites
 
-Before configuring a HA cluster for your YugabyteDB Anywhere instances, ensure that you have the following:
+Before configuring a HA cluster for your YBA instances, ensure that you have the following:
 
-- [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the HA cluster.
-- YugabyteDB Anywhere VMs can connect to each other over the port where the YugabyteDB Anywhere UI is typically reachable (port 80 and 443, for example).
-- All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. You should upgrade all YugabyteDB Anywhere instances in the HA cluster at approximately the same time.
+- [Multiple YBA instances](../../install-yugabyte-platform/) to be used in the HA cluster.
+- The YBA instances can connect to each other over the port where the YBA UI is reachable (typically 443).
+- Communication is open in both directions over ports 9000 and 9090 on all YBA instances.
+- If you are using custom ports for Prometheus, all YBA instances are using the same custom port. The default Prometheus port for YugabyteDB Anywhere is 9090.
+- All YBA instances are running the same version of YBA software. (The YBA instances in a HA cluster should always be upgraded at approximately the same time.)
 
 ## Configure active and standby instances
 
-To set up HA for YugabyteDB Anywhere, you first configure the active instance by creating an active replication configuration and generating a shared authentication key.
+To set up HA, you first configure the active instance by creating an active HA replication configuration and generating a shared authentication key.
 
-You then configure one or more standby instances by creating standby replication configurations, using the shared authentication key generated on the active instance.
+You then configure one or more standby instances by creating standby HA replication configurations, using the shared authentication key generated on the active instance.
 
-If your instances are using the HTTPS protocol, you must also add the root certificates for the active and standby instances to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance.
+If your instances are using the HTTPS protocol (the default), you must also add the root certificates for the active and standby instances to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance.
 
 ### Configure the active instance
 
@@ -93,11 +95,13 @@ After the active instance has been configured, you can configure one or more sta
 
     - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/replicated/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
 
-1. Switch to the active instance. 
+1. Switch to the active instance.
 
-1. Add the standby instance root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance. **Note**  that you need to perform this step on the active instance, and not the standby instance.
+1. Add the standby instance root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance. This allows the primary to connect to the standby instance.
 
-    This allows the primary to connect to the standby instance.
+    Note that you need to perform this step on the _active_ instance, and not the standby instance.
+
+    If you find you have connection problems, you may consider relaxing the certificate validation requirements as a workaround, by enabling the [runtime configuration](../manage-runtime-config/) `yb.ha.ws.ssl.loose.acceptAnyCertificate` (set the flag to `true`).
 
 1. Navigate to **Admin > High Availability > Replication Configuration** and select **Instance Configuration**.
 
@@ -109,44 +113,101 @@ After the active instance has been configured, you can configure one or more sta
 
 Your standby instance is now configured.
 
+### Verify HA
+
+To confirm communication between the active and standby, you can do the following:
+
+- Click **Make Active** on the standby (but don't promote it). You should see a list of available backups that you can restore from.
+
+    ![Make Active](/images/yp/high-availability/ha-make-active.png)
+
+- Verify that Prometheus on the standby is able to see similar metrics to the active. Navigate to `http://<STANDBY_IP>:9090/targets`; the federate target should have a status of UP, and the endpoint should match the active instance IP address.
+
+    ![Verify Prometheus](/images/yp/high-availability/ha-prometheus.png)
+
+- Navigate to **Profile > Releases** and verify that the standby has all the database releases that are in use by universes, and that the releases are listed as Active. To discover all the database releases that are in use by universes, you can view the **Dashboard** page.
+
+    If releases are missing, follow the instructions in [How to configure YugabyteDB Anywhere to provide Older, Hotfix, or Debug Builds](https://support.yugabyte.com/hc/en-us/articles/360054421952-How-to-configure-YugabyteDB-Anywhere-to-provide-Older-Hotfix-or-Debug-Builds).
+
+### Use a load balancer
+
+To set up a single URL for signing in to YBA that points to the current primary even after a switchover or failover, it is recommended to use an application load balancer. On the load balancer, set the health check URL for each HA instance to `https://<instance IP or DNS>/ha_leader`. Note that you may need to set the support origin URL for your YBA instance to the load balancer URL; this can be set during installation, refer to [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/installer/).
+
 ## Promote a standby instance to active
 
 You can make a standby instance active as follows:
 
-1. Open **Replication Configuration** of the standby instance that you wish to promote to active and click **Make Active**.
+1. On the standby instance you want to promote, navigate to **Admin > High Availability > Replication Configuration** and click **Make Active**.
 
-1. Use the **Make Active** dialog to select the backup from which you want to restore (in most cases, you should choose the most recent backup) and enable **Confirm promotion**.
+1. Select the backup from which you want to restore (in most cases, you should choose the most recent backup) and enable **Confirm promotion**.
 
-1. Click **Continue**. The restore takes a few seconds, after which expect to be logged out.
+1. Click **Continue**. The restore takes a few seconds, after which expect to be signed out.
 
-1. Log in using credentials that you had configured on the previously active instance.
+1. Sign in using the credentials that you had configured on the previously active instance.
 
 You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, cloud providers, and so on.
 
-## Check results
+### Verify promotion
 
-During a HA backup, the entire YugabyteDB Anywhere state is copied. If your universes are visible through YugabyteDB Anywhere UI and the replication timestamps are increasing, the backup is successful.
+After switching or failing over to the standby, verify that the old active YBA instance is in standby mode (switchover), or is no longer available (failover). If both YBA instances were to attempt to perform actions on a universe, it could have unpredictable side effects.
+
+#### Switchover
+
+After a switchover, do the following:
+
+- [Verify that HA is functioning properly](#verify-ha).
+- If the old active instance is not in standby mode, there could be a communication issue from the new active to the old active instance. Follow the [setup instructions](#configure-active-and-standby-instances) to verify that certificates and ports are set up correctly.
+
+#### Failover
+
+After a failover, do the following:
+
+- If the old active instance is hard down, verify that there is no chance that it can come back and run YBA at a later point. It is recommended to re-image the server hosting the active instance.
+- If the old active instance does come back up, it should automatically go into standby mode. If it does not go into standby mode, you should manually demote it using the YBA API. Refer to [High Availability Workflows](https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/high-availability.ipynb) for an example.
+
+    If you can't identify the timestamp for whatever reason, you can provide a current timestamp to forcibly demote the instance. However, it will be harder to reestablish the HA connection as the active and standby will have different notions of the last failover time. This could lead to unexpected behavior.
+
+    If there are any issues with the old active going into standby that you can't resolve, you should disable HA completely and re-enable it with the new active-standby configuration.
+
+- If the old active instance has successfully switched to standby, [verify that HA is functioning properly](#verify-ha).
 
 ## Upgrade instances
 
-All instances involved in HA should be of the same YugabyteDB Anywhere version. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance may result in errors.
+All instances involved in HA should use the same version of YugabyteDB Anywhere. Promoting a standby instance using a YBA backup from an active instance where the YBA versions are different may result in errors.
 
-Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these general guidelines:
+Although you can upgrade all YBA instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, you should follow these general guidelines:
 
-- Start an upgrade with an active instance.
-- After the active instance has been upgraded, ensure that YugabyteDB Anywhere is reachable by logging in and checking various pages.
+- Start an upgrade with the active instance.
+- After the active instance has been upgraded, ensure that YBA is reachable by signing in and checking various pages.
 - Proceed with upgrading standby instances.
+- After upgrading all instances, verify that the standbys are receiving new backups from the active instance.
 
-The following is the detailed upgrade procedure:
+Certificates in the trust store should not require setup again.
+
+{{< warning title="Important: Don't promote an old active backup" >}}
+
+Immediately after an upgrade, older backups of the active instance _before it was upgraded_ will still be available on the standby. These are not deleted until the standby is promoted at some point, or they expire. Because these old backups are present, you need to be cautious promoting the standby in the time immediately after upgrading the HA pair.
+
+Only promote a standby when both standby and active are at same version, and use the most recent backup that you are confident was received after the active was upgraded.
+
+{{< /warning >}}
+
+### Upgrade instances in HA
+
+To upgrade instances in a HA cluster, do the following:
 
 1. Stop the HA synchronization. This ensures that only backups of the original YugabyteDB Anywhere version are synchronized to the standby instance.
-1. [Upgrade the active instance](../../upgrade/). Expect a momentary lapse in availability for the duration of the upgrade. If the upgrade is successful, proceed to step 3. If the upgrade fails, perform the following:
+1. [Upgrade the active instance](../../upgrade/). Expect a momentary lapse in availability for the duration of the upgrade.
+
+    If the upgrade is successful, proceed to step 3.
+
+    If the upgrade fails, perform the following:
 
     - Decommission the faulty active instance in the active-standby pair.
-    - Promote the standby instance.
+    - [Promote the standby instance](#promote-a-standby-instance-to-active).
     - Do not attempt to upgrade until the root cause of the upgrade failure is determined.
     - Delete the HA configuration and bring up another standby instance at the original YugabyteDB Anywhere version and reconfigure HA.
-    - After the root cause of failure has been established, repeat the upgrade process starting from step 1. Depending on the cause of failure and its solution, this may involve a different YugabyteDB Anywhere version to which to upgrade.
+    - After the root cause of failure has been established, repeat the upgrade process starting from step 1. Depending on the cause of failure and its solution, this may involve upgrading to a different version of YugabyteDB Anywhere.
 
 1. On the upgraded instance, perform post-upgrade validation tests that may include creating or editing a universe, backups, and so on.
 1. [Upgrade the standby instance](../../upgrade/).
@@ -157,13 +218,7 @@ The following diagram provides a graphical representation of the upgrade procedu
 
 ![High availability upgrade](/images/yp/high-availability/ha-upgrade.png)
 
-The following table provides the terminology mapping between the upgrade diagram and the upgrade procedure description:
-
-| Diagram   | Procedure description                                        |
-| --------- | ------------------------------------------------------------ |
-| HA        | High availability                                            |
-| Version A | Original YugabyteDB Anywhere version that is subject to upgrade |
-| Version B | Newer YugabyteDB Anywhere version to which to upgrade        |
+Where Version A is the original YugabyteDB Anywhere version present on the active and standby instances, and Version B is the version you are upgrading to.
 
 ## Remove a standby instance
 
@@ -179,14 +234,6 @@ After you have returned a standby instance to standalone mode, the information o
 
 ## Limitations
 
-If you are using custom ports for Prometheus in your YugabyteDB Anywhere installation and the YugabyteDB Anywhere instance is configured for HA with other YugabyteDB Anywhere instances, then the following limitation applies:
-
-- All YugabyteDB Anywhere instances configured under HA must use the same custom port.
-
-    The default Prometheus port for YugabyteDB Anywhere is `9090`. Custom ports are configured through the settings section of the Replicated installer UI that is typically available at `https://<yugabyteanywhere-ip>:8800/`.
-
-    For information on how to access the Replicated settings page, see [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/default/).
-
-## Troubleshooting
-
-If you face issues configuring high availability when the YBA instances are configured to use the HTTPS protocol, attempt the steps mentioned in the preceding sections to add CA certificates appropriately to the trust store. In case the issue persists, consider relaxing the certificate validation requirements as a workaround, by enabling the runtime configuration `yb.ha.ws.ssl.loose.acceptAnyCertificate` (set the flag to `true`).
+- No automatic failover. If the active instance fails, follow the steps in [Promote a standby instance to active](#promote-a-standby-instance-to-active).
+- The last backup time updates regardless of successful synchronization. To validate that backups are running, check the YBA logs for errors during synchronization.
+- After promotion, you may be unable to sign in to the new active instance for under a minute. You can wait and then reload the page, or you can restart the newly active YBA.

@@ -131,17 +131,17 @@ explain (costs off) select * from lp where a <> 'a' and a <> 'd';
 (9 rows)
 
 explain (costs off) select * from lp where a not in ('a', 'd');
-                   QUERY PLAN
-------------------------------------------------
+                      QUERY PLAN
+-------------------------------------------------------
  Append
    ->  Seq Scan on lp_bc
-         Filter: (a <> ALL ('{a,d}'::bpchar[]))
+         Remote Filter: (a <> ALL ('{a,d}'::bpchar[]))
    ->  Seq Scan on lp_ef
-         Filter: (a <> ALL ('{a,d}'::bpchar[]))
+         Remote Filter: (a <> ALL ('{a,d}'::bpchar[]))
    ->  Seq Scan on lp_g
-         Filter: (a <> ALL ('{a,d}'::bpchar[]))
+         Remote Filter: (a <> ALL ('{a,d}'::bpchar[]))
    ->  Seq Scan on lp_default
-         Filter: (a <> ALL ('{a,d}'::bpchar[]))
+         Remote Filter: (a <> ALL ('{a,d}'::bpchar[]))
 (9 rows)
 
 -- collation matches the partitioning collation, pruning works
@@ -385,13 +385,12 @@ explain (costs off) select * from rlp where a = 16;
 (9 rows)
 
 explain (costs off) select * from rlp where a = 16 and b in ('not', 'in', 'here');
-                         QUERY PLAN
--------------------------------------------------------------
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
  Append
    ->  Seq Scan on rlp3_default
-         Remote Filter: (a = 16)
-         Filter: ((b)::text = ANY ('{not,in,here}'::text[]))
-(4 rows)
+         Remote Filter: ((a = 16) AND ((b)::text = ANY ('{not,in,here}'::text[])))
+(3 rows)
 
 explain (costs off) select * from rlp where a = 16 and b < 'ab';
                            QUERY PLAN
@@ -1046,13 +1045,13 @@ create table boolpart_default partition of boolpart default;
 create table boolpart_t partition of boolpart for values in ('true');
 create table boolpart_f partition of boolpart for values in ('false');
 explain (costs off) select * from boolpart where a in (true, false);
-                   QUERY PLAN
-------------------------------------------------
+                      QUERY PLAN
+-------------------------------------------------------
  Append
    ->  Seq Scan on boolpart_f
-         Filter: (a = ANY ('{t,f}'::boolean[]))
+         Remote Filter: (a = ANY ('{t,f}'::boolean[]))
    ->  Seq Scan on boolpart_t
-         Filter: (a = ANY ('{t,f}'::boolean[]))
+         Remote Filter: (a = ANY ('{t,f}'::boolean[]))
 (5 rows)
 
 /*
@@ -1104,51 +1103,51 @@ explain (costs off) select * from coercepart where a in ('ab', to_char(125, '999
 (7 rows)
 
 explain (costs off) select * from coercepart where a ~ any ('{ab}');
-                     QUERY PLAN
-----------------------------------------------------
+                        QUERY PLAN
+-----------------------------------------------------------
  Append
    ->  Seq Scan on coercepart_ab
-         Filter: ((a)::text ~ ANY ('{ab}'::text[]))
+         Remote Filter: ((a)::text ~ ANY ('{ab}'::text[]))
    ->  Seq Scan on coercepart_bc
-         Filter: ((a)::text ~ ANY ('{ab}'::text[]))
+         Remote Filter: ((a)::text ~ ANY ('{ab}'::text[]))
    ->  Seq Scan on coercepart_cd
-         Filter: ((a)::text ~ ANY ('{ab}'::text[]))
+         Remote Filter: ((a)::text ~ ANY ('{ab}'::text[]))
 (7 rows)
 
 explain (costs off) select * from coercepart where a !~ all ('{ab}');
-                     QUERY PLAN
------------------------------------------------------
+                         QUERY PLAN
+------------------------------------------------------------
  Append
    ->  Seq Scan on coercepart_ab
-         Filter: ((a)::text !~ ALL ('{ab}'::text[]))
+         Remote Filter: ((a)::text !~ ALL ('{ab}'::text[]))
    ->  Seq Scan on coercepart_bc
-         Filter: ((a)::text !~ ALL ('{ab}'::text[]))
+         Remote Filter: ((a)::text !~ ALL ('{ab}'::text[]))
    ->  Seq Scan on coercepart_cd
-         Filter: ((a)::text !~ ALL ('{ab}'::text[]))
+         Remote Filter: ((a)::text !~ ALL ('{ab}'::text[]))
 (7 rows)
 
 explain (costs off) select * from coercepart where a ~ any ('{ab,bc}');
-                      QUERY PLAN
--------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Append
    ->  Seq Scan on coercepart_ab
-         Filter: ((a)::text ~ ANY ('{ab,bc}'::text[]))
+         Remote Filter: ((a)::text ~ ANY ('{ab,bc}'::text[]))
    ->  Seq Scan on coercepart_bc
-         Filter: ((a)::text ~ ANY ('{ab,bc}'::text[]))
+         Remote Filter: ((a)::text ~ ANY ('{ab,bc}'::text[]))
    ->  Seq Scan on coercepart_cd
-         Filter: ((a)::text ~ ANY ('{ab,bc}'::text[]))
+         Remote Filter: ((a)::text ~ ANY ('{ab,bc}'::text[]))
 (7 rows)
 
 explain (costs off) select * from coercepart where a !~ all ('{ab,bc}');
-                       QUERY PLAN
---------------------------------------------------------
+                          QUERY PLAN
+---------------------------------------------------------------
  Append
    ->  Seq Scan on coercepart_ab
-         Filter: ((a)::text !~ ALL ('{ab,bc}'::text[]))
+         Remote Filter: ((a)::text !~ ALL ('{ab,bc}'::text[]))
    ->  Seq Scan on coercepart_bc
-         Filter: ((a)::text !~ ALL ('{ab,bc}'::text[]))
+         Remote Filter: ((a)::text !~ ALL ('{ab,bc}'::text[]))
    ->  Seq Scan on coercepart_cd
-         Filter: ((a)::text !~ ALL ('{ab,bc}'::text[]))
+         Remote Filter: ((a)::text !~ ALL ('{ab,bc}'::text[]))
 (7 rows)
 
 drop table coercepart;

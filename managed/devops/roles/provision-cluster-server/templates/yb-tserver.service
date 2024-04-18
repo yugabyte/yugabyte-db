@@ -18,7 +18,7 @@ Group={{ user_name }}
 # Start
 ExecStartPre={{yb_home_dir}}/bin/clock-sync.sh
 ExecStart={{yb_home_dir}}/tserver/bin/yb-tserver --flagfile {{yb_home_dir}}/tserver/conf/server.conf
-Restart=on-failure
+Restart=always
 RestartSec=5
 # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
 KillMode=process

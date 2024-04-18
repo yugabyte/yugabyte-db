@@ -18,6 +18,7 @@ export type YBTableRelationType = typeof YBTableRelationType[keyof typeof YBTabl
 export const YBAHost = {
   GCP: 'gcp',
   AWS: 'aws',
+  AZU: 'azu',
   SELF_HOSTED: 'selfHosted'
 } as const;
 
@@ -37,7 +38,6 @@ export const RuntimeConfigKey = {
   PROVIDER_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
   EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG: 'yb.ui.feature_flags.edit_in_use_provider',
   XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
-  DISASTER_RECOVERY_UI_FEATURE_FLAG: 'yb.ui.feature_flags.disaster_recovery',
   DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',
   PERFOMANCE_ADVISOR_UI_FEATURE_FLAG: 'yb.ui.feature_flags.perf_advisor',
   GRANULAR_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.granular_metrics',

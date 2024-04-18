@@ -609,6 +609,22 @@ DefineIndex(Oid relationId,
 	 * there's no harm in grabbing a stronger lock, and a non-concurrent DROP
 	 * is more efficient.  Do this before any use of the concurrent option is
 	 * done.
+	 *
+	 * YB note: this logic is mostly thrown away by redefining the "concurrent"
+	 * variable later on.  It is only needed right now for
+	 * pgstat_progress_update_param with an estimation on the "concurrent"
+	 * value.  Note that stmt->concurrent is an enum in YB and a bool in PG,
+	 * but the upstream PG condition "stmt->concurrent" still works well as
+	 * - for YB, it covers the non-zero cases YB_CONCURRENCY_IMPLICIT_ENABLED
+	 *   and YB_CONCURRENCY_EXPLICIT_ENABLED, which are a good estimate.
+	 * - for PG, ideally we want to only allow YB_CONCURRENCY_EXPLICIT_ENABLED,
+	 *   but we don't need to worry about YB_CONCURRENCY_IMPLICIT_ENABLED
+	 *   because
+	 *   - in case of temporary relations, the second condition "!=
+	 *     RELPERSISTENCE_TEMP" covers the inaccuracy.
+	 *   - in case of initdb, gram.y sets "stmt->concurrent" to
+	 *     YB_CONCURRENCY_DISABLED by default because
+	 *     YbIsConnectedToTemplateDb.
 	 */
 	if (stmt->concurrent && get_rel_persistence(relationId) != RELPERSISTENCE_TEMP)
 		concurrent = true;
@@ -624,7 +640,7 @@ DefineIndex(Oid relationId,
 		pgstat_progress_start_command(PROGRESS_COMMAND_CREATE_INDEX,
 									  relationId);
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_COMMAND,
-									 concurrent && IsYBRelationById(relationId) ?
+									 concurrent ?
 									 PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY :
 									 PROGRESS_CREATEIDX_COMMAND_CREATE);
 	}
@@ -677,10 +693,10 @@ DefineIndex(Oid relationId,
 	 * parallel workers under the control of certain particular ambuild
 	 * functions will need to be updated, too.
 	 *
-	 * In YB, opening the relation under AccessShareLock first, just to get access to
-	 * its metadata. Stronger lock will be taken later.
+	 * YB note: opening the relation under AccessShareLock first, just to get
+	 * access to its metadata.  Stronger lock will be taken later.
 	 */
-	lockmode = IsYugaByteEnabled()? AccessShareLock : concurrent ? ShareUpdateExclusiveLock : ShareLock;
+	lockmode = IsYugaByteEnabled() ? AccessShareLock : concurrent ? ShareUpdateExclusiveLock : ShareLock;
 	rel = table_open(relationId, lockmode);
 
 	/*
@@ -720,7 +736,7 @@ DefineIndex(Oid relationId,
 		databaseId = YBCGetDatabaseOid(rel);
 
 		/*
-		 * An index build should not be concurent when
+		 * An index build should not be concurrent when
 		 * - index backfill is disabled
 		 * - the index is primary
 		 * - the indexed table is temporary
@@ -744,7 +760,7 @@ DefineIndex(Oid relationId,
 		 *   CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
 		 *   is safe to be disabled.
 		 */
-		if (IsCatalogRelation(rel))
+		if (concurrent && IsCatalogRelation(rel))
 		{
 			if (stmt->concurrent == YB_CONCURRENCY_EXPLICIT_ENABLED)
 				ereport(ERROR,
@@ -752,17 +768,19 @@ DefineIndex(Oid relationId,
 						errmsg("CREATE INDEX CONCURRENTLY is currently not "
 								"supported for system catalog")));
 			else
-				stmt->concurrent = YB_CONCURRENCY_DISABLED;
+				concurrent = false;
 		}
-		if (!IsYBRelation(rel))
-			stmt->concurrent = YB_CONCURRENCY_DISABLED;
-
-		if (stmt->primary || IsBootstrapProcessingMode())
+		/*
+		 * For concurrent to be true, temporary tables should already be ruled
+		 * out by the PG-owned code far above, and by also ruling out system
+		 * tables, what's left should be YB relations.
+		 */
+		Assert(!concurrent || IsYBRelation(rel));
+		if (concurrent && (stmt->primary || IsBootstrapProcessingMode()))
 		{
 			Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);
-			stmt->concurrent = YB_CONCURRENCY_DISABLED;
+			concurrent = false;
 		}
-
 		/*
 		* Use fast path create index when in nested DDL. This is desired
 		* when there would be no concurrency issues (e.g. `CREATE TABLE
@@ -772,14 +790,16 @@ DefineIndex(Oid relationId,
 		* CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
 		* is safe to be disabled.
 		*/
-		if (stmt->concurrent != YB_CONCURRENCY_DISABLED &&
-			YBGetDdlNestingLevel() > 1)
+		if (concurrent && YBGetDdlNestingLevel() > 1)
 		{
 			Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);
-			stmt->concurrent = YB_CONCURRENCY_DISABLED;
+			concurrent = false;
 		}
 
-		concurrent = stmt->concurrent != YB_CONCURRENCY_DISABLED;
+		/*
+		 * Now that we know the true value of "concurrent", take the right
+		 * lock.
+		 */
 		lockmode = concurrent ? ShareUpdateExclusiveLock : ShareLock;
 		LockRelationOid(relationId, lockmode);
 
@@ -789,7 +809,7 @@ DefineIndex(Oid relationId,
 		 * - initdb (bootstrap mode) is prevented from being concurrent
 		 * - users cannot create indexes on system tables
 		 */
-		Assert(!(stmt->concurrent && IsSystemRelation(rel)));
+		Assert(!(concurrent && IsSystemRelation(rel)));
 	}
 
 	relIsShared = rel->rd_rel->relisshared;
@@ -2268,60 +2288,32 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		Oid			atttype;
 		Oid			attcollation;
 
-		if (IsYugaByteEnabled())
+		SortByDir   yb_ordering = attribute->ordering;
+
+		if (use_yb_ordering)
 		{
-			if (use_yb_ordering)
+			yb_ordering =
+				YbSortOrdering(attribute->ordering, is_colocated,
+							   OidIsValid(tablegroupId) /* is_tablegroup */,
+							   (attn == 0) /* is_first_key */);
+
+			if (yb_ordering == SORTBY_DESC || yb_ordering == SORTBY_ASC)
 			{
-				switch (attribute->ordering)
-				{
-					case SORTBY_ASC:
-					case SORTBY_DESC:
-						range_index = true;
-						break;
-					case SORTBY_DEFAULT:
-						/*
-						 * In YB mode, first attribute defaults to HASH and
-						 * other attributes default to ASC.  However, for
-						 * colocated tables, the first attribute defaults to
-						 * ASC.
-						 */
-						if (attn > 0 || is_colocated || tablegroupId != InvalidOid)
-						{
-							range_index = true;
-							break;
-						}
-						switch_fallthrough();
-					case SORTBY_HASH:
-						if (range_index)
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-									errmsg("hash column not allowed after an ASC/DESC column")));
-						else if (tablegroupId != InvalidOid && !MyDatabaseColocated)
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-									 errmsg("cannot create a hash partitioned"
-									 		" index in a TABLEGROUP")));
-						else if (is_colocated)
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-									 errmsg("cannot colocate hash partitioned index")));
-						break;
-					default:
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-								errmsg("unsupported column sort order")));
-						break;
-				}
+				range_index = true;
 			}
-			else
+			else if (yb_ordering == SORTBY_HASH)
 			{
-				if (attribute->ordering == SORTBY_HASH)
-				{
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-								errmsg("unsupported column sort order")));
-				}
+				if (range_index)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+							 errmsg("hash column not allowed after an ASC/DESC column")));
 			}
+		}
+		else if (attribute->ordering == SORTBY_HASH)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("unsupported column sort order")));
 		}
 
 		/*
@@ -2608,18 +2600,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			/* default ordering is ASC */
 			if (attribute->ordering == SORTBY_DESC)
 				colOptionP[attn] |= INDOPTION_DESC;
-			if (IsYugaByteEnabled() &&
-				attribute->ordering == SORTBY_HASH)
-				colOptionP[attn] |= INDOPTION_HASH;
 
-			/*
-			 * In Yugabyte, use HASH as the default for the first column of
-			 * non-colocated tables
-			 */
-			if (use_yb_ordering &&
-				attn == 0 &&
-				attribute->ordering == SORTBY_DEFAULT &&
-				!is_colocated && tablegroupId == InvalidOid)
+			if (yb_ordering == SORTBY_HASH)
 				colOptionP[attn] |= INDOPTION_HASH;
 
 			/* default null ordering is LAST for ASC, FIRST for DESC */
@@ -4923,20 +4905,35 @@ YbWaitForBackendsCatalogVersion()
 			TimestampDifferenceExceeds(start,
 									   GetCurrentTimestamp(),
 									   yb_wait_for_backends_catalog_version_timeout))
-			ereport(ERROR,
-					(errmsg("timed out waiting for postgres backends to catch"
-							" up"),
-					 errdetail("%d backends on database %u are still behind"
-							   " catalog version %" PRIu64 ".",
-							   num_lagging_backends,
-							   MyDatabaseId,
-							   YbGetCatalogCacheVersion()),
-					 errhint("Run the following query on all tservers to find"
-							 " the lagging backends: SELECT * FROM"
-							 " pg_stat_activity WHERE catalog_version < %"
-							 PRIu64 " AND datid = %u;",
-							 YbGetCatalogCacheVersion(),
-							 MyDatabaseId)));
+		{
+			if (num_lagging_backends > 0)
+				ereport(ERROR,
+						(errmsg("timed out waiting for postgres backends to catch"
+								" up"),
+						 errdetail("%d backends on database %u are still behind"
+								   " catalog version %" PRIu64 ".",
+								   num_lagging_backends,
+								   MyDatabaseId,
+								   YbGetCatalogCacheVersion()),
+						 errhint("Run the following query on all tservers to find"
+								 " the lagging backends: SELECT * FROM"
+								 " pg_stat_activity WHERE catalog_version < %"
+								 PRIu64 " AND datid = %u;",
+								 YbGetCatalogCacheVersion(),
+								 MyDatabaseId)));
+			else
+			{
+				Assert(num_lagging_backends == -1);
+				ereport(ERROR,
+						(errmsg("timed out waiting for postgres backends to catch"
+								" up"),
+						 errdetail("Failed to determine how many backends on"
+								   " database %u are still behind"
+								   " catalog version %" PRIu64 ".",
+								   MyDatabaseId,
+								   YbGetCatalogCacheVersion())));
+			}
+		}
 
 		YBCStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
 														 YbGetCatalogCacheVersion(),

@@ -73,6 +73,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 /** Node manager that runs all the processes locally. Processess are bind to loopback interfaces. */
@@ -559,7 +560,9 @@ public class LocalNodeManager {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
     String newYBBinDir = versionBinPathMap.get(version);
     LocalCloudInfo localCloudInfo = getCloudInfo(userIntent);
-    localCloudInfo.setYugabyteBinDir(newYBBinDir);
+    if (StringUtils.isNotEmpty(newYBBinDir)) {
+      localCloudInfo.setYugabyteBinDir(newYBBinDir);
+    }
     ProviderDetails details = provider.getDetails();
     ProviderDetails.CloudInfo cloudInfo = details.getCloudInfo();
     cloudInfo.setLocal(localCloudInfo);
@@ -632,7 +635,7 @@ public class LocalNodeManager {
       NodeInfo nodeInfo)
       throws IOException {
     Map<String, String> gflagsToWrite = new LinkedHashMap<>(gflags);
-    if (additionalGFlags != null) {
+    if (additionalGFlags != null && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
       gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
     }
     log.debug("Write gflags {} to file {}", gflagsToWrite, serverType);
@@ -749,6 +752,10 @@ public class LocalNodeManager {
     return binDir + "/" + nodeInfo.ip + "-" + nodeInfo.name.substring(nodeInfo.name.length() - 2);
   }
 
+  public NodeInfo getNodeInfo(NodeDetails nodeDetails) {
+    return nodesByNameMap.get(nodeDetails.nodeName);
+  }
+
   private String getNodeFSRoot(
       UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
     String res = getNodeRoot(userIntent, nodeInfo) + "/data/";
@@ -766,7 +773,7 @@ public class LocalNodeManager {
     return res;
   }
 
-  private String getNodeGFlagsFile(
+  public String getNodeGFlagsFile(
       UniverseDefinitionTaskParams.UserIntent userIntent,
       UniverseTaskBase.ServerType serverType,
       NodeInfo nodeInfo) {

@@ -5286,7 +5286,7 @@ KnownAssignedXidsReset(void)
 }
 
 void
-YbStoreAshSamples(TimestampTz sample_time)
+YbStorePgAshSamples(TimestampTz sample_time)
 {
 	int			i;
 	int			samples_stored = 0;

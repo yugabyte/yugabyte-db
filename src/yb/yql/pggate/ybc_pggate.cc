@@ -91,7 +91,8 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
     "If true, YB catalog preloads a default set of tables upon connection "
-    "creation and cache refresh: pg_am,pg_amproc,pg_cast,pg_tablespace.");
+    "creation and cache refresh: pg_am,pg_amproc,pg_cast,pg_cast,pg_inherits,"
+    "pg_policy,pg_proc,pg_tablespace,pg_trigger.");
 
 DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "A list of catalog tables that YSQL preloads additionally upon "
@@ -110,6 +111,9 @@ DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "
 DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
+
+DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
+    " of the method tserver is running");
 
 namespace {
 
@@ -299,6 +303,59 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YBCPgSysTablePrefetcherCacheMode 
   }
   LOG(DFATAL) << "Unexpected PgSysTablePrefetcherCacheMode value " << mode;
   return PrefetchingCacheMode::RENEW_CACHE_HARD;
+}
+
+// Sets the client address in the ASH circular buffer and returns the address family.
+// The host comes from the class HostPort and that only accepts IPv4/IPv6 as of today,
+// that's why there is no check for a unix domain socket here.
+uint8_t AshGetTServerClientAddress(const std::string& host, unsigned char* client_addr) {
+  if (host.find(':') == std::string::npos) { // IPv4 address
+    inet_pton(AF_INET, host.c_str(), client_addr);
+    return AF_INET;
+  }
+  // IPv6 address
+  inet_pton(AF_INET6, host.c_str(), client_addr);
+  return AF_INET6;
+}
+
+void AshCopyTServerSample(
+    YBCAshSample* cb_sample, const WaitStateInfoPB& tserver_sample, uint64_t sample_time) {
+  auto* cb_metadata = &cb_sample->metadata;
+  const auto& tserver_metadata = tserver_sample.metadata();
+
+  cb_metadata->query_id = tserver_metadata.query_id();
+  cb_metadata->session_id = tserver_metadata.session_id();
+  cb_metadata->client_port =  static_cast<uint16_t>(tserver_metadata.client_host_port().port());
+  cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
+  cb_sample->wait_event_code = tserver_sample.wait_status_code();
+  cb_sample->sample_weight = 1; // TODO: Change this once sampling is done at tserver side
+  cb_sample->sample_time = sample_time;
+
+  std::memcpy(cb_metadata->root_request_id,
+              tserver_metadata.root_request_id().data(),
+              sizeof(cb_metadata->root_request_id));
+
+  std::memcpy(cb_sample->yql_endpoint_tserver_uuid,
+              tserver_metadata.yql_endpoint_tserver_uuid().data(),
+              sizeof(cb_sample->yql_endpoint_tserver_uuid));
+
+  // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
+  // This expects compilation with -Wno-format-truncation.
+  const auto& tserver_aux_info = tserver_sample.aux_info();
+  snprintf(cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
+      FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
+                               : tserver_aux_info.tablet_id().c_str());
+
+  cb_metadata->addr_family = AshGetTServerClientAddress(
+      tserver_metadata.client_host_port().host(), cb_metadata->client_addr);
+}
+
+void AshCopyTServerSamples(
+    YBCAshGetNextCircularBufferSlot get_cb_slot_fn, const tserver::WaitStatesPB& samples,
+    uint64_t sample_time) {
+  for (const auto& sample : samples.wait_states()) {
+    AshCopyTServerSample(get_cb_slot_fn(), sample, sample_time);
+  }
 }
 
 } // namespace
@@ -992,8 +1049,9 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
-YBCStatus YBCPgDmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count) {
-  return ToYBCStatus(pgapi->DmlBindRow(handle, columns, count));
+YBCStatus YBCPgDmlBindRow(
+    YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count) {
+  return ToYBCStatus(pgapi->DmlBindRow(handle, ybctid, columns, count));
 }
 
 YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle,
@@ -1127,6 +1185,21 @@ YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, dou
 }
 
 // INSERT Operations -------------------------------------------------------------------------------
+YBCStatus YBCPgNewInsertBlock(
+    YBCPgOid database_oid,
+    YBCPgOid table_oid,
+    bool is_region_local,
+    YBCPgTransactionSetting transaction_setting,
+    YBCPgStatement *handle) {
+  auto result = pgapi->NewInsertBlock(
+      PgObjectId(database_oid, table_oid), is_region_local, transaction_setting);
+  if (result.ok()) {
+    *handle = *result;
+    return NULL;
+  }
+  return ToYBCStatus(result.status());
+}
+
 YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
                          const YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
@@ -1576,6 +1649,10 @@ YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
   return ExtractValueFromResult(pgapi->GetNumberOfDatabases(), num_databases);
 }
 
+YBCStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode) {
+  return ExtractValueFromResult(pgapi->CatalogVersionTableInPerdbMode(), perdb_mode);
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }
@@ -1610,7 +1687,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
       .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
       .ysql_enable_pg_per_database_oid_allocator =
-          &FLAGS_ysql_enable_pg_per_database_oid_allocator
+          &FLAGS_ysql_enable_pg_per_database_oid_allocator,
+      .ysql_enable_db_catalog_version_mode =
+          &FLAGS_ysql_enable_db_catalog_version_mode,
   };
   // clang-format on
   return &accessor;
@@ -1837,14 +1916,25 @@ YBCStatus YBCGetTableKeyRanges(
 
 YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YBCPgOid database_oid,
+                                        YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
                                                      database_oid,
+                                                     snapshot_action,
                                                      handle));
 }
 
-YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->ExecCreateReplicationSlot(handle));
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle,
+                                         uint64_t *consistent_snapshot_time) {
+  const auto result = pgapi->ExecCreateReplicationSlot(handle);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  if (consistent_snapshot_time) {
+    *consistent_snapshot_time = result->cdcsdk_consistent_snapshot_time();
+  }
+  return YBCStatusOK();
 }
 
 YBCStatus YBCPgListReplicationSlots(
@@ -1874,6 +1964,28 @@ YBCStatus YBCPgListReplicationSlots(
   return YBCStatusOK();
 }
 
+YBCStatus YBCPgGetReplicationSlot(
+    const char *slot_name, YBCReplicationSlotDescriptor **replication_slot) {
+  const auto replication_slot_name = ReplicationSlotName(std::string(slot_name));
+  const auto result = pgapi->GetReplicationSlot(replication_slot_name);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& slot_info = result.get().replication_slot_info();
+
+  *replication_slot =
+      static_cast<YBCReplicationSlotDescriptor*>(YBCPAlloc(sizeof(YBCReplicationSlotDescriptor)));
+
+  new (*replication_slot) YBCReplicationSlotDescriptor{
+      .slot_name = YBCPAllocStdString(slot_info.slot_name()),
+      .stream_id = YBCPAllocStdString(slot_info.stream_id()),
+      .database_oid = slot_info.database_oid(),
+      .active = slot_info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
+  };
+
+  return YBCStatusOK();
+}
+
 YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
                                         bool *active) {
   const auto replication_slot_name = ReplicationSlotName(std::string(slot_name));
@@ -1894,6 +2006,180 @@ YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
 
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropReplicationSlot(handle));
+}
+
+void YBCStoreTServerAshSamples(
+    YBCAshAcquireBufferLock acquire_cb_lock_fn, YBCAshGetNextCircularBufferSlot get_cb_slot_fn,
+    uint64_t sample_time) {
+  const auto result = pgapi->ActiveSessionHistory();
+  // This lock is released inside YbAshMain after copying PG samples
+  acquire_cb_lock_fn(true /* exclusive */);
+  if (!result.ok()) {
+    // We don't return error status to avoid a restart loop of the ASH collector
+    LOG(ERROR) << result.status();
+  } else {
+    AshCopyTServerSamples(get_cb_slot_fn, result->tserver_wait_states(), sample_time);
+    AshCopyTServerSamples(get_cb_slot_fn, result->flush_and_compaction_wait_states(), sample_time);
+    AshCopyTServerSamples(get_cb_slot_fn, result->raft_log_appender_wait_states(), sample_time);
+    AshCopyTServerSamples(get_cb_slot_fn, result->cql_wait_states(), sample_time);
+  }
+}
+
+// TODO(#20726): This function won't be needed once the virtual wal component is ready in the CDC
+// service.
+YBCStatus YBCPgGetTabletListToPollForStreamAndTable(const char *stream_id,
+                                                    const YBCPgOid database_oid,
+                                                    const YBCPgOid table_oid,
+                                                    YBCPgTabletCheckpoint **tablet_checkpoints,
+                                                    size_t *numtablets) {
+  const PgObjectId pg_table_id(database_oid, table_oid);
+  const auto result = pgapi->GetTabletListToPollForCDC(std::string(stream_id), pg_table_id);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  *DCHECK_NOTNULL(tablet_checkpoints) = NULL;
+
+  const auto& tablet_checkpoint_pairs = result.get().tablet_checkpoint_pairs();
+  *DCHECK_NOTNULL(numtablets) = tablet_checkpoint_pairs.size();
+  if (!tablet_checkpoint_pairs.empty()) {
+    *tablet_checkpoints = static_cast<YBCPgTabletCheckpoint *>(
+        YBCPAlloc(sizeof(YBCPgTabletCheckpoint) * tablet_checkpoint_pairs.size()));
+    YBCPgTabletCheckpoint *dest = *tablet_checkpoints;
+    for (const auto &tablet_checkpoint : tablet_checkpoint_pairs) {
+      auto location = static_cast<YBCPgTabletLocationsDescriptor *>(
+          YBCPAlloc(sizeof(YBCPgTabletLocationsDescriptor)));
+      location->tablet_id = YBCPAllocStdString(tablet_checkpoint.tablet_locations().tablet_id());
+
+      auto checkpoint_pb = tablet_checkpoint.cdc_sdk_checkpoint();
+      auto checkpoint = static_cast<YBCPgCDCSDKCheckpoint *>(
+          YBCPAlloc(sizeof(YBCPgCDCSDKCheckpoint)));
+      checkpoint->term = checkpoint_pb.term();
+      checkpoint->index = checkpoint_pb.index();
+      checkpoint->key = YBCPAllocStdString(checkpoint_pb.key());
+      checkpoint->write_id = checkpoint_pb.write_id();
+
+      new (dest) YBCPgTabletCheckpoint{
+          .location = location,
+          .checkpoint = checkpoint,
+          // Set table_oid to invalid here to please the compiler. It is later set to a valid value
+          // in the virtual wal client.
+          .table_oid = kPgInvalidOid};
+      ++dest;
+    }
+  }
+
+  return YBCStatusOK();
+}
+
+// TODO(#20726): This function won't be needed once the virtual wal component is ready in the CDC
+// service.
+YBCStatus YBCPgSetCDCTabletCheckpoint(
+    const char *stream_id, const char *tablet_id, const YBCPgCDCSDKCheckpoint *checkpoint,
+    uint64_t safe_time, bool is_initial_checkpoint) {
+  const auto result = pgapi->SetCDCTabletCheckpoint(
+      std::string(stream_id), std::string(tablet_id), checkpoint, safe_time, is_initial_checkpoint);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  return YBCStatusOK();
+}
+
+YBCPgRowMessageAction GetRowMessageAction(yb::cdc::RowMessage row_message_pb) {
+  switch (row_message_pb.op()) {
+    case cdc::RowMessage_Op_BEGIN:
+      return YB_PG_ROW_MESSAGE_ACTION_BEGIN;
+    case cdc::RowMessage_Op_COMMIT:
+      return YB_PG_ROW_MESSAGE_ACTION_COMMIT;
+    case cdc::RowMessage_Op_INSERT:
+      return YB_PG_ROW_MESSAGE_ACTION_INSERT;
+    case cdc::RowMessage_Op_UPDATE:
+      return YB_PG_ROW_MESSAGE_ACTION_UPDATE;
+    case cdc::RowMessage_Op_DELETE:
+      return YB_PG_ROW_MESSAGE_ACTION_DELETE;
+    case cdc::RowMessage_Op_DDL:
+      return YB_PG_ROW_MESSAGE_ACTION_DDL;
+    default:
+      return YB_PG_ROW_MESSAGE_ACTION_UNKNOWN;
+  }
+}
+
+YBCStatus YBCPgGetCDCChanges(
+    const char *stream_id, const char *tablet_id, const YBCPgCDCSDKCheckpoint *checkpoint,
+    YBCPgChangeRecordBatch **record_batch) {
+  const auto result =
+      pgapi->GetCDCChanges(std::string(stream_id), std::string(tablet_id), checkpoint);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  *DCHECK_NOTNULL(record_batch) = NULL;
+  const auto resp = result.get();
+  auto row_count = resp.cdc_sdk_proto_records_size();
+
+  auto resp_checkpoint_pb = resp.cdc_sdk_checkpoint();
+  auto resp_checkpoint =
+      static_cast<YBCPgCDCSDKCheckpoint *>(YBCPAlloc(sizeof(YBCPgCDCSDKCheckpoint)));
+  new (resp_checkpoint) YBCPgCDCSDKCheckpoint{
+      .term = resp_checkpoint_pb.term(),
+      .index = resp_checkpoint_pb.index(),
+      .key = YBCPAllocStdString(resp_checkpoint_pb.key()),
+      .write_id = resp_checkpoint_pb.write_id(),
+  };
+
+  auto resp_rows_pb = resp.cdc_sdk_proto_records();
+  auto resp_rows = static_cast<YBCPgRowMessage *>(YBCPAlloc(sizeof(YBCPgRowMessage) * row_count));
+  size_t row_idx = 0;
+  for (const auto& row_pb : resp_rows_pb) {
+    auto row_message_pb = row_pb.row_message();
+    auto col_count = row_message_pb.new_tuple_size();
+    auto commit_time = row_message_pb.commit_time();
+
+    YBCPgDatumMessage *cols = nullptr;
+    if (col_count > 0) {
+      cols = static_cast<YBCPgDatumMessage *>(YBCPAlloc(sizeof(YBCPgDatumMessage) * col_count));
+
+      for (int tuple_idx = 0; tuple_idx < col_count; tuple_idx++) {
+        const auto& tuple = row_message_pb.new_tuple(tuple_idx);
+
+        const auto* type_entity = pgapi->FindTypeEntity(static_cast<int>(tuple.column_type()));
+        YBCPgTypeAttrs type_attrs{-1 /* typmod */};
+        uint64 datum = 0;
+        bool is_null;
+        auto s = PBToDatum(type_entity, type_attrs, tuple.pg_ql_value(), &datum, &is_null);
+        if (!s.ok()) {
+          return ToYBCStatus(s);
+        }
+
+        auto col = &cols[tuple_idx];
+        col->column_name = YBCPAllocStdString(tuple.column_name());
+        col->column_type = tuple.column_type();
+        col->datum = datum;
+        col->is_null = is_null;
+      }
+    }
+
+    new (&resp_rows[row_idx]) YBCPgRowMessage{
+        .col_count = col_count,
+        .cols = cols,
+        .commit_time = commit_time,
+        .action = GetRowMessageAction(row_message_pb),
+    };
+    row_idx++;
+  }
+
+  *record_batch = static_cast<YBCPgChangeRecordBatch *>(YBCPAlloc(sizeof(YBCPgChangeRecordBatch)));
+  new (*record_batch) YBCPgChangeRecordBatch{
+      .row_count = row_count,
+      .rows = resp_rows,
+      .checkpoint = resp_checkpoint,
+      // table_oid is set in the virtual wal client. We initialize it here with an invalid value to
+      // please the compiler.
+      .table_oid = kPgInvalidOid,
+  };
+
+  return YBCStatusOK();
 }
 
 } // extern "C"

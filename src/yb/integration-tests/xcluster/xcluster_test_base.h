@@ -107,6 +107,8 @@ class XClusterTestBase : public YBTest {
     HybridTime::TEST_SetPrettyToString(true);
 
     google::SetVLOGLevel("xcluster*", 4);
+    google::SetVLOGLevel("add_table*", 4);
+    google::SetVLOGLevel("xrepl*", 4);
     google::SetVLOGLevel("cdc*", 4);
     YBTest::SetUp();
 
@@ -180,7 +182,7 @@ class XClusterTestBase : public YBTest {
       const std::vector<xrepl::StreamId>& bootstrap_ids = {},
       SetupReplicationOptions opts = SetupReplicationOptions());
 
-  Status SetupUniverseReplication(
+  virtual Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<TableId>& producer_table_ids,
@@ -208,7 +210,7 @@ class XClusterTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id, int num_expected_table);
 
-  Status ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster = nullptr);
+  virtual Status ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster = nullptr);
 
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
@@ -313,7 +315,11 @@ class XClusterTestBase : public YBTest {
     return result;
   }
 
+  // Wait for the xcluster safe time to advance to the given time on all TServers.
   Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);
+
+  // Wait for the xcluster safe time to advance to Now on all TServers.
+  virtual Status WaitForSafeTimeToAdvanceToNow();
 
   Status VerifyReplicationError(
       const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
@@ -326,10 +332,14 @@ class XClusterTestBase : public YBTest {
 
   Result<TableId> GetColocatedDatabaseParentTableId();
 
+  Result<master::MasterReplicationProxy> GetProducerMasterProxy();
+
  protected:
   CoarseTimePoint PropagationDeadline() const {
     return CoarseMonoClock::Now() + propagation_timeout_;
   }
+
+  Status SetupCertificates(const xcluster::ReplicationGroupId& replication_group_id);
 
   Cluster producer_cluster_;
   Cluster consumer_cluster_;

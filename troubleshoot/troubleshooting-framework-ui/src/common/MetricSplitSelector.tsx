@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Box, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
-import { MetricMeasure } from '../utils/dtos';
-import { YBButton } from '@yugabytedb/ui-components';
-import TreeIcon from '../assets/tree-icon.svg';
+import { YBButton, YBLabel } from '@yugabytedb/ui-components';
+import { Anomaly, MetricMeasure, SplitMode, SplitType } from '../helpers/dtos';
+
+import treeIcon from '../assets/tree-icon.svg';
 
 interface MetricSplitSelectorProps {
   metricSplitSelectors: any;
+  anomalyData: Anomaly | null;
   onSplitTypeSelected: (selectedOption: MetricMeasure) => void;
 }
 
@@ -33,20 +35,35 @@ const useStyles = makeStyles((theme) => ({
 
 export const MetricSplitSelector = ({
   metricSplitSelectors,
-  onSplitTypeSelected
+  onSplitTypeSelected,
+  anomalyData
 }: MetricSplitSelectorProps) => {
   const classes = useStyles();
-  const [active, setActive] = useState(0);
+  let defaultActiveIndex = 0;
+  if (
+    anomalyData?.defaultSettings?.splitMode === SplitMode.NONE &&
+    anomalyData?.defaultSettings?.splitType === SplitType.NONE
+  ) {
+    defaultActiveIndex = 0;
+  }
+
+  if (
+    anomalyData?.defaultSettings?.splitMode === SplitMode.TOP ||
+    anomalyData?.defaultSettings?.splitMode === SplitMode.BOTTOM
+  ) {
+    defaultActiveIndex = anomalyData?.defaultSettings?.splitType === SplitType.NODE ? 1 : 2;
+  }
+  const [active, setActive] = useState(defaultActiveIndex);
 
   return (
     <Box ml={2} display="flex" flexDirection="row">
       <Box display="flex" flexDirection="row">
         <img
           className={classes.icon}
-          src={TreeIcon}
+          src={treeIcon}
           alt="Indicator towards metric measure to use"
         />
-        {/* <YBLabel width="120px">{"View metrics for"}</YBLabel> */}
+        <YBLabel width="120px">{'View metrics for'}</YBLabel>
       </Box>
       <Box>
         {metricSplitSelectors.map((metricSplitSelector: any, idx: number) => {
@@ -59,7 +76,7 @@ export const MetricSplitSelector = ({
               })}
               data-testid={`MetricTypeSelector-MetricMeasureButton`}
               onClick={() => {
-                onSplitTypeSelected(metricSplitSelector.label);
+                onSplitTypeSelected(metricSplitSelector.value);
                 setActive(idx);
               }}
               size="medium"

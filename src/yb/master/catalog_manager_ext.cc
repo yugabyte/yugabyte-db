@@ -55,6 +55,7 @@
 #include "yb/consensus/consensus.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_pgapi.h"
 
@@ -88,6 +89,7 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/date_time.h"
+#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -168,6 +170,55 @@ namespace master {
 ////////////////////////////////////////////////////////////
 // CatalogManager
 ////////////////////////////////////////////////////////////
+
+using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
+using SysTabletsEntriesWithIds = std::vector<TabletIdWithEntry>;
+struct TableWithTabletsEntries {
+  TableWithTabletsEntries(
+      const SysTablesEntryPB& table_entry, const SysTabletsEntriesWithIds& tablets_entries) {
+    this->table_entry = table_entry;
+    this->tablets_entries = tablets_entries;
+  }
+  TableWithTabletsEntries() {}
+
+  // Add the table with table_id and its tablets entries to snapshot_info
+  void AddToSnapshotInfo(const TableId& table_id, SnapshotInfoPB* snapshot_info) {
+    BackupRowEntryPB* table_backup_entry = snapshot_info->add_backup_entries();
+    std::string output;
+    table_entry.AppendToString(&output);
+    *table_backup_entry->mutable_entry() =
+        ToSysRowEntry(table_id, SysRowEntryType::TABLE, std::move(output));
+    if (table_entry.schema().has_pgschema_name() && table_entry.schema().pgschema_name() != "") {
+      table_backup_entry->set_pg_schema_name(table_entry.schema().pgschema_name());
+    }
+    for (const auto& sysTabletEntry : tablets_entries) {
+      std::string output;
+      sysTabletEntry.second.AppendToString(&output);
+      *snapshot_info->add_backup_entries()->mutable_entry() =
+          ToSysRowEntry(sysTabletEntry.first, SysRowEntryType::TABLET, std::move(output));
+    }
+  }
+
+  void OrderTabletsByPartitions() {
+    std::sort(
+        tablets_entries.begin(), tablets_entries.end(),
+        [](const TabletIdWithEntry& lhs, const TabletIdWithEntry& rhs) -> bool {
+          return lhs.second.partition().partition_key_start() <
+                 rhs.second.partition().partition_key_start();
+        });
+  }
+
+  SysRowEntry ToSysRowEntry(const string& id, const SysRowEntryType& type, const string& data) {
+    SysRowEntry entry;
+    entry.set_id(id);
+    entry.set_type(type);
+    entry.set_data(data);
+    return entry;
+  }
+
+  SysTablesEntryPB table_entry;
+  SysTabletsEntriesWithIds tablets_entries;
+};
 
 Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
                                       CreateSnapshotResponsePB* resp,
@@ -1267,6 +1318,144 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
       rpc->GetClientDeadline()));
 
   return Status::OK();
+}
+
+Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoFromSchedule(
+    const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
+    CoarseTimePoint deadline) {
+  LOG(INFO) << Format(
+      "Servicing GenerateSnapshotInfoFromSchedule for snapshot_schedule_id: $0 and export "
+      "time: $1",
+      snapshot_schedule_id, export_time);
+  auto suitable_snapshot = VERIFY_RESULT(snapshot_coordinator_.GetSuitableSnapshot(
+      snapshot_schedule_id, export_time, LeaderTerm(), deadline));
+  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(suitable_snapshot.id()));
+  LOG(INFO) << Format("Found suitable snapshot: $0", snapshot_id);
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  LOG(INFO) << Format(
+      "Opening Temporary SysCatalog DocDB for : $0 , export_time: $1", snapshot_id, export_time);
+  // Open a temporary on the side DocDb for the sys.catalog using the data files of snapshot_id and
+  // reading sys.catalog data as of read_time.
+  auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(snapshot_id, export_time));
+  rocksdb::Options rocksdb_options;
+  tablet->InitRocksDBOptions(&rocksdb_options, /*log_prefix*/ " [TMP]: ");
+  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
+  // db can't be closed concurrently, so it is ok to use dummy ScopedRWOperation.
+  auto db_pending_op = ScopedRWOperation();
+  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
+
+  SnapshotInfoPB snapshot_info = VERIFY_RESULT(
+      GenerateSnapshotInfoPbAsOfTime(snapshot_id, export_time, doc_db, db_pending_op));
+  LOG(INFO) << Format("snapshot_info returned: $0", snapshot_info.ShortDebugString());
+  return snapshot_info;
+}
+
+Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoPbAsOfTime(
+    const TxnSnapshotId& snapshot_id, HybridTime read_time, const docdb::DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> db_pending_op) {
+  // Get the SnapshotInfoPB of snapshot_id to set some fields in snapshot_info (all fields except
+  // backup_entries which will be populated from iterating over DocDB).
+  ListSnapshotsRequestPB req;
+  ListSnapshotsResponsePB resp;
+  req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+  req.set_prepare_for_backup(true);
+  RETURN_NOT_OK_PREPEND(
+      ListSnapshots(&req, &resp), Format("Failed to list snapshot: $0", snapshot_id));
+  if (resp.snapshots().size() < 1) {
+    return STATUS_FORMAT(InvalidArgument, "Unknown snapshot: $0", snapshot_id);
+  }
+  SnapshotInfoPB snapshot_info = resp.snapshots()[0];
+  // Get the namespace_id that this snapshot covers.
+  auto namespace_it = std::find_if(
+      snapshot_info.backup_entries().begin(), snapshot_info.backup_entries().end(),
+      [](const BackupRowEntryPB& backup_entry) {
+        return backup_entry.entry().type() == SysRowEntryType::NAMESPACE;
+      });
+  if (namespace_it == snapshot_info.backup_entries().end()) {
+    return STATUS_FORMAT(
+        NotFound, Format("No namespace entry found in snapshot: $0", snapshot_info.id()));
+  }
+  NamespaceId namespace_id = namespace_it->entry().id();
+  // Remove backup_entries from original snapshot as they will be generated as of
+  // read_time.
+  snapshot_info.clear_backup_entries();
+  const docdb::DocReadContext& doc_read_cntxt = doc_read_context();
+  dockv::ReaderProjection projection(doc_read_cntxt.schema());
+  // Pass 1: Get the SysNamespaceEntryPB of the selected database.
+  docdb::DocRowwiseIterator namespace_iter = docdb::DocRowwiseIterator(
+      projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
+      docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
+  RETURN_NOT_OK(EnumerateSysCatalog(
+      &namespace_iter, doc_read_cntxt.schema(), SysRowEntryType::NAMESPACE,
+      [namespace_id, &snapshot_info](const Slice& id, const Slice& data) -> Status {
+        if (id.ToBuffer() == namespace_id) {
+          auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysNamespaceEntryPB>(data));
+          VLOG_WITH_FUNC(1) << "Found SysNamespaceEntryPB: " << pb.ShortDebugString();
+          SysRowEntry* ns_entry = snapshot_info.add_backup_entries()->mutable_entry();
+          ns_entry->set_id(id.ToBuffer());
+          ns_entry->set_type(SysRowEntryType::NAMESPACE);
+          ns_entry->set_data(data.ToBuffer());
+        }
+        return Status::OK();
+      }));
+  // Pass 2: Get all the SysTablesEntry of the database that are in running state as of read_time.
+  // Stores SysTablesEntry and its SysTabletsEntries to order the tablets of each table by
+  // partitions' start keys.
+  std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
+  std::optional<std::string> colocation_parent_table_id;
+  docdb::DocRowwiseIterator tables_iter = docdb::DocRowwiseIterator(
+      projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
+      docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
+  RETURN_NOT_OK(EnumerateSysCatalog(
+      &tables_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLE,
+      [namespace_id, &tables_to_tablets, &colocation_parent_table_id](
+          const Slice& id, const Slice& data) -> Status {
+        auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
+        if (pb.namespace_id() == namespace_id && pb.state() == SysTablesEntryPB::RUNNING &&
+            !pb.schema().table_properties().is_ysql_catalog_table()) {
+          VLOG_WITH_FUNC(1) << "Found SysTablesEntryPB: " << pb.ShortDebugString();
+          if (IsColocatedDbParentTableId(id.ToBuffer()) ||
+              IsColocatedDbTablegroupParentTableId(id.ToBuffer())) {
+            colocation_parent_table_id = id.ToBuffer();
+          }
+          // Tables and tablets will be added to backup entries at the end.
+          tables_to_tablets.insert(std::make_pair(
+              id.ToBuffer(), TableWithTabletsEntries(pb, SysTabletsEntriesWithIds())));
+        }
+        return Status::OK();
+      }));
+  // Pass 3: Get all the SysTabletsEntry that are in a running state as of read_time and belongs to
+  // the running tables from pass 2.
+  docdb::DocRowwiseIterator tablets_iter = docdb::DocRowwiseIterator(
+      projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
+      docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
+  RETURN_NOT_OK(EnumerateSysCatalog(
+      &tablets_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLET,
+      [namespace_id, &tables_to_tablets](const Slice& id, const Slice& data) -> Status {
+        auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(data));
+        if (tables_to_tablets.contains(pb.table_id()) && pb.state() == SysTabletsEntryPB::RUNNING) {
+          VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
+          tables_to_tablets[pb.table_id()].tablets_entries.push_back(
+              std::make_pair(id.ToBuffer(), pb));
+        }
+        return Status::OK();
+      }));
+  // Order SysTabletsEntries in each SysTableEntry by partition start_key as CreateTable relies on
+  // the order of tablets.
+  for (auto& sys_table_entry : tables_to_tablets) {
+    sys_table_entry.second.OrderTabletsByPartitions();
+  }
+  // Populate the backup_entries with SysTablesEntry and SysTabletsEntry
+  // Start with the colocation_parent_table_id if the database is colocated.
+  if (colocation_parent_table_id) {
+    tables_to_tablets[colocation_parent_table_id.value()].AddToSnapshotInfo(
+        colocation_parent_table_id.value(), &snapshot_info);
+    tables_to_tablets.erase(colocation_parent_table_id.value());
+  }
+  for (auto& sys_table_entry : tables_to_tablets) {
+    sys_table_entry.second.AddToSnapshotInfo(sys_table_entry.first, &snapshot_info);
+  }
+  return snapshot_info;
 }
 
 Status CatalogManager::GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,

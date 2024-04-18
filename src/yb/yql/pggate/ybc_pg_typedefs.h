@@ -390,6 +390,7 @@ typedef struct PgGFlagsAccessor {
   const char*     ysql_catalog_preload_additional_table_list;
   const bool*     ysql_use_relcache_file;
   const bool*     ysql_enable_pg_per_database_oid_allocator;
+  const bool*     ysql_enable_db_catalog_version_mode;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -548,6 +549,54 @@ typedef struct PgReplicationSlotDescriptor {
   bool active;
 } YBCReplicationSlotDescriptor;
 
+typedef struct PgCDCSDKCheckpoint {
+  int64_t term;
+  int64_t index;
+  const char *key;
+  int32_t write_id;
+} YBCPgCDCSDKCheckpoint;
+
+typedef struct PgTabletLocationsDescriptor {
+  const char *tablet_id;
+} YBCPgTabletLocationsDescriptor;
+
+typedef struct PgTabletCheckpoint {
+  YBCPgTabletLocationsDescriptor *location;
+  YBCPgCDCSDKCheckpoint *checkpoint;
+  YBCPgOid table_oid;
+} YBCPgTabletCheckpoint;
+
+typedef struct PgDatumMessage {
+  const char* column_name;
+  uint64_t column_type;
+  uint64_t datum;
+  bool is_null;
+} YBCPgDatumMessage;
+
+typedef enum PgRowMessageAction {
+  YB_PG_ROW_MESSAGE_ACTION_UNKNOWN = 0,
+  YB_PG_ROW_MESSAGE_ACTION_BEGIN = 1,
+  YB_PG_ROW_MESSAGE_ACTION_COMMIT = 2,
+  YB_PG_ROW_MESSAGE_ACTION_INSERT = 3,
+  YB_PG_ROW_MESSAGE_ACTION_UPDATE = 4,
+  YB_PG_ROW_MESSAGE_ACTION_DELETE = 5,
+  YB_PG_ROW_MESSAGE_ACTION_DDL = 6,
+} YBCPgRowMessageAction;
+
+typedef struct PgRowMessage {
+  int col_count;
+  YBCPgDatumMessage* cols;
+  uint64_t commit_time;
+  YBCPgRowMessageAction action;
+} YBCPgRowMessage;
+
+typedef struct PgChangeRecordBatch {
+  int row_count;
+  YBCPgRowMessage* rows;
+  YBCPgCDCSDKCheckpoint* checkpoint;
+  YBCPgOid table_oid;
+} YBCPgChangeRecordBatch;
+
 // A struct to store ASH metadata in PG's procarray
 typedef struct AshMetadata {
   // A unique id corresponding to a YSQL query in bytes.
@@ -573,6 +622,39 @@ typedef struct AshMetadata {
   uint8_t addr_family;
 } YBCAshMetadata;
 
+// Struct to store ASH samples in the circular buffer.
+typedef struct AshSample {
+  // Metadata of the sample.
+  // yql_endpoint_tserver_uuid and rpc_request_id are also part of the metadata,
+  // but the reason to not store them inside YBCAshMetadata is that these remain
+  // constant in PG for all the samples of a particular node. So we don't store it
+  // in YBCAshMetadata, which is stored in the procarray to save shared memory.
+  YBCAshMetadata metadata;
+
+  // UUID of the TServer where the query generated.
+  // This remains constant for PG samples on a node, but can differ for TServer
+  // samples as TServer can be processing requests from other nodes.
+  unsigned char yql_endpoint_tserver_uuid[16];
+
+  // A single query can generate multiple RPCs, this is used to differentiate
+  // those RPCs. This will always be 0 for PG samples
+  int64_t rpc_request_id;
+
+  // Auxiliary information about the sample.
+  char aux_info[16];
+
+  // 32-bit wait event code of the sample.
+  uint32_t wait_event_code;
+
+  // If a certain number of samples are available and we capture a portion of
+  // them, the sample weight is the reciprocal of the captured portion or 1,
+  // whichever is maximum.
+  double sample_weight;
+
+  // Timestamp when the sample was captured.
+  uint64_t sample_time;
+} YBCAshSample;
+
 typedef struct YBCBindColumn {
   int attr_num;
   const YBCPgTypeEntity* type_entity;
@@ -580,6 +662,13 @@ typedef struct YBCBindColumn {
   bool is_null;
   uint64_t datum;
 } YBCBindColumn;
+
+// Postgres replication slot snapshot action defined in Postgres' walsender.h
+// It does not include EXPORT_SNAPSHOT since it isn't supported yet.
+typedef enum PgReplicationSlotSnapshotAction {
+  YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT,
+  YB_REPLICATION_SLOT_USE_SNAPSHOT
+} YBCPgReplicationSlotSnapshotAction;
 
 #ifdef __cplusplus
 }  // extern "C"

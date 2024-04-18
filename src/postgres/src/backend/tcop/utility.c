@@ -1210,7 +1210,6 @@ ProcessUtilitySlow(ParseState *pstate,
 				{
 					List	   *stmts;
 					RangeVar   *table_rv = NULL;
-					List	   **yb_constraints = &((CreateStmt *) parsetree)->constraints;
 
 					/* Run parse analysis ... */
 					stmts = transformCreateStmt((CreateStmt *) parsetree,
@@ -1303,7 +1302,7 @@ ProcessUtilitySlow(ParseState *pstate,
 
 							Assert(table_rv != NULL);
 
-							morestmts = expandTableLikeClause(table_rv, like, yb_constraints);
+							morestmts = expandTableLikeClause(table_rv, like);
 							stmts = list_concat(morestmts, stmts);
 						}
 						else

@@ -43,8 +43,15 @@ class XClusterTargetManager {
 
   Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const;
 
-  Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
-      const LeaderEpoch& epoch);
+  Status GetXClusterSafeTimeForNamespace(
+      const GetXClusterSafeTimeForNamespaceRequestPB* req,
+      GetXClusterSafeTimeForNamespaceResponsePB* resp, const LeaderEpoch& epoch);
+
+  Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      const XClusterSafeTimeFilter& filter);
+
+  Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch);
 
   XClusterSafeTimeService* TEST_xcluster_safe_time_service() {
     return xcluster_safe_time_service_.get();
@@ -69,8 +76,6 @@ class XClusterTargetManager {
   void DumpState(std::ostream& out, bool on_disk_dump) const;
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
-
-  bool ShouldAddTableToXClusterTarget(const TableInfo& table_info) const;
 
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);

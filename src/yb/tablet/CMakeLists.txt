@@ -56,6 +56,7 @@ set(TABLET_SRCS
   operations/operation.cc
   operations/change_auto_flags_config_operation.cc
   operations/change_metadata_operation.cc
+  operations/clone_operation.cc
   operations/history_cutoff_operation.cc
   operations/operation_driver.cc
   operations/operation_tracker.cc
@@ -170,3 +171,4 @@ ADD_YB_TEST(composite-pushdown-test)
 ADD_YB_TEST(tablet_peer-test)
 ADD_YB_TEST(tablet_random_access-test)
 ADD_YB_TEST(tablet_data_integrity-test)
+ADD_YB_TEST(operations/operation_tracker-test)

@@ -34,10 +34,11 @@ import Releases from './pages/Releases';
 import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/ObjectUtils';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
+import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
 import { Replication } from './pages/Replication';
-import { ReleaseList } from './pages/ReleaseList';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
+import { SecondaryDashboard } from './pages/SecondaryDashboard';
 import {
   clearRbacCreds,
   getRbacEnabledVal,
@@ -65,6 +66,7 @@ export const clearCredentials = () => {
   localStorage.removeItem('apiToken');
   localStorage.removeItem('customerId');
   localStorage.removeItem('userId');
+  localStorage.removeItem(testFeatureFlagsLocalStorageKey);
   clearRbacCreds();
 
   /*
@@ -249,6 +251,10 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
+          <Route
+            path="/universes/:uuid/troubleshoot/:troubleshootUUID"
+            component={SecondaryDashboard}
+          />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}
@@ -285,7 +291,6 @@ export default (store) => {
         <Route path="/profile/:tab" component={Profile} />
         <Route path="/logs" component={YugawareLogs} />
         <Route path="/releases" component={Releases} />
-        <Route path="/releases_list" component={ReleaseList} />
         <Route path="/admin" component={Administration}>
           <Route path="/admin/:tab" component={Administration} />
           <Route path="/admin/:tab/:section" component={Administration} />

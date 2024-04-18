@@ -4802,7 +4802,6 @@ yb_get_sleep_usecs_on_txn_conflict(int attempt) {
 
 static void yb_maybe_sleep_on_txn_conflict(int attempt)
 {
-#ifdef YB_TODO
 	/* Rewrite this function */
 	if (!YBIsWaitQueueEnabled())
 	{
@@ -4817,7 +4816,6 @@ static void yb_maybe_sleep_on_txn_conflict(int attempt)
 		pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
 		pgstat_report_wait_end();
 	}
-#endif
 }
 
 /*
@@ -6232,8 +6230,8 @@ PostgresMain(const char *dbname, const char *username)
 					// HARD Code connection type between client and ysql_conn_mgr to AF_INET (only supported)
 					// for authentication
 					MyProcPort->raddr.addr.ss_family = AF_INET;
-					// TODO(mkumar) GH #20097 Add support for connection type hostssl/hostnossl
-					// in  ysql conn mgr
+					MyProcPort->yb_is_ssl_enabled_in_logical_conn = 
+						pq_getmsgbyte(&input_message) == 'E' ? true : false;
 
 					/* Update the `remote_host` */
 					struct sockaddr_in *ip_address_1;
@@ -6250,6 +6248,7 @@ PostgresMain(const char *dbname, const char *username)
 
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
+					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;

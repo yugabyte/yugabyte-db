@@ -102,4 +102,13 @@ template<class T>
 concept OptionalType = StdOptionalType<T> ||
                        std::is_same_v<T, boost::optional<typename T::value_type>>;
 
+
+template<class T>
+concept TupleLikeType =
+    requires (T a) {
+      typename std::tuple_size<T>::type;
+      typename std::tuple_element_t<0, T>;
+      std::get<0>(a);
+    }; // NOLINT
+
 }  // namespace yb

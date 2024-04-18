@@ -293,6 +293,9 @@ GetBackendTypeDesc(BackendType backendType)
 		case B_LOGGER:
 			backendDesc = "logger";
 			break;
+		case YB_YSQL_CONN_MGR:
+			backendDesc = "yb-conn-mgr worker connection";
+			break;
 	}
 
 	return backendDesc;

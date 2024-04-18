@@ -27,6 +27,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/trace.h"
@@ -228,7 +229,7 @@ class SingleLocalityPool {
       return false;
     }
     if (Idle()) {
-      cond_.notify_all();
+      YB_PROFILE(cond_.notify_all());
     }
     return true;
   }

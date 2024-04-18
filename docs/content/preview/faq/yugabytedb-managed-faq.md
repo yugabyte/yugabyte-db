@@ -8,8 +8,9 @@ menu:
   preview_faq:
     identifier: yugabytedb-managed-faq
     parent: faq
-    weight: 60
+    weight: 30
 type: docs
+unversioned: true
 rightNav:
   hideH3: true
   hideH4: true
@@ -262,7 +263,7 @@ For detailed steps for configuring other popular third party tools, see [Third p
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver and configure it with the required connection parameters. You can also connect to YugabyteDB Managed clusters using smart drivers.
 
-For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](../../develop/build-apps/).
+For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](../../tutorials/build-apps/).
 
 For information on obtaining the connection parameters for your cluster, refer to [Connect applications](../../yugabyte-cloud/cloud-connect/connect-applications/).
 

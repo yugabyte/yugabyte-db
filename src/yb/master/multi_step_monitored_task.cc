@@ -48,6 +48,10 @@ bool MultiStepMonitoredTask::TrySetState(server::MonitoredTaskState new_state) {
   return false;
 }
 
+void MultiStepMonitoredTask::TaskCompleted(const Status& status) {
+  // NoOp
+}
+
 void MultiStepMonitoredTask::Complete() {
   if (TrySetState(server::MonitoredTaskState::kComplete)) {
     EndTask(Status::OK());
@@ -61,6 +65,8 @@ server::MonitoredTaskState MultiStepMonitoredTask::AbortAndReturnPrevState(const
   if (TrySetState(server::MonitoredTaskState::kAborted)) {
     AbortReactorTaskIfScheduled();
     EndTask(status);
+  } else {
+    LOG_WITH_PREFIX(WARNING) << this << ": Task already ended. Unable to abort it: " << status;
   }
 
   return old_state;
@@ -196,7 +202,7 @@ void MultiStepMonitoredTask::EndTask(const Status& status) {
   LOG_WITH_PREFIX(INFO) << this << " task ended" << (status.ok() ? " successfully" : "");
 
   UnregisterTask();
-  // Unsafe to use this beyond this point.
+  // Unsafe to use 'this' beyond this point.
 
   if (callback) {
     callback(status);
@@ -273,30 +279,26 @@ Status MultiStepMonitoredTask::StartTasks(
   return Status::OK();
 }
 
-MultiStepTableTask::MultiStepTableTask(
-    CatalogManager& catalog_manager, ThreadPool& async_task_pool, rpc::Messenger& messenger,
-    TableInfoPtr table_info, const LeaderEpoch& epoch)
+MultiStepCatalogEntityTask::MultiStepCatalogEntityTask(
+    std::function<Status(const LeaderEpoch& epoch)> validate_epoch_func,
+    ThreadPool& async_task_pool, rpc::Messenger& messenger, CatalogEntityWithTasks& catalog_entity,
+    const LeaderEpoch& epoch)
     : MultiStepMonitoredTask(async_task_pool, messenger),
-      catalog_manager_(catalog_manager),
       epoch_(std::move(epoch)),
-      table_info_(std::move(table_info)) {}
+      catalog_entity_(catalog_entity),
+      validate_epoch_func_(std::move(validate_epoch_func)) {}
 
-Status MultiStepTableTask::RegisterTask() {
-  table_info_->AddTask(shared_from_this());
+Status MultiStepCatalogEntityTask::RegisterTask() {
+  catalog_entity_.AddTask(shared_from_this());
   return Status::OK();
 }
 
-void MultiStepTableTask::UnregisterTask() {
-  DCHECK(table_info_->HasTasks(type()));
+void MultiStepCatalogEntityTask::UnregisterTask() {
+  DCHECK(catalog_entity_.HasTasks(type()));
 
-  table_info_->RemoveTask(shared_from_this());
+  catalog_entity_.RemoveTask(shared_from_this());
 }
 
-Status MultiStepTableTask::ValidateRunnable() {
-  RETURN_NOT_OK(catalog_manager_.CheckIsLeaderAndReady());
-  SCHECK_EQ(
-      epoch_, catalog_manager_.GetLeaderEpochInternal(), IllegalState, "Epoch is no longer valid");
-  return Status::OK();
-}
+Status MultiStepCatalogEntityTask::ValidateRunnable() { return validate_epoch_func_(epoch_); }
 
 }  // namespace yb::master

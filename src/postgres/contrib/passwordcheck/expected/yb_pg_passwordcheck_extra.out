@@ -1,3 +1,4 @@
+-- YB note: LOAD is not ported because The extension is loaded using cmd line flag.
 -- Restrictive policy
 SET passwordcheck.minimum_length TO 8;
 SET passwordcheck.maximum_length TO 15;

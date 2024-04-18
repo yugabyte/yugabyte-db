@@ -68,6 +68,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -97,7 +98,7 @@ DEFINE_test_flag(bool, verify_all_replicas_alive, false,
                  "If set, when a RemoteTablet object is destroyed, we will verify that all its "
                  "replicas are not marked as failed");
 
-DEFINE_UNKNOWN_int32(retry_failed_replica_ms, 60 * 1000,
+DEFINE_UNKNOWN_int32(retry_failed_replica_ms, 3600 * 1000,
              "Time in milliseconds to wait for before retrying a failed replica");
 
 DEFINE_UNKNOWN_int64(meta_cache_lookup_throttling_step_ms, 5,
@@ -2229,7 +2230,7 @@ bool MetaCache::AcquireMasterLookupPermit() {
 }
 
 void MetaCache::ReleaseMasterLookupPermit() {
-  master_lookup_sem_.Release();
+  YB_PROFILE(master_lookup_sem_.Release());
 }
 
 std::future<Result<internal::RemoteTabletPtr>> MetaCache::LookupTabletByKeyFuture(

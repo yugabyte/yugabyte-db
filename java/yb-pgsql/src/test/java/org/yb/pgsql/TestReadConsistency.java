@@ -36,7 +36,7 @@ public class TestReadConsistency extends BasePgSQLTest {
     flags.put("TEST_transactional_read_delay_ms", "100");
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    flags.put("enable_wait_queues", "false");
+    flags.putAll(FailOnConflictTestGflags);
     return flags;
   }
 

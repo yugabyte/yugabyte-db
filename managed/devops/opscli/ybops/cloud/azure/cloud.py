@@ -10,15 +10,18 @@
 
 import json
 import logging
+import socket
+import requests
 import os
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.cloud.azure.command import AzureNetworkCommand, AzureInstanceCommand, \
     AzureAccessCommand, AzureQueryCommand, AzureDnsCommand
-from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, \
-    create_resource_group
+from ybops.cloud.azure.utils import AzureCloudAdmin, create_resource_group
 from ybops.utils.remote_shell import RemoteShell
+from azure.identity import DefaultAzureCredential
+from azure.core.exceptions import ClientAuthenticationError
 
 
 class AzureCloud(AbstractCloud):
@@ -26,6 +29,10 @@ class AzureCloud(AbstractCloud):
         Assumes env variable "AZURE_RG" is set to name of resource_group
         used for all cloud operations.
     """
+    BASE_INSTANCE_METADATA_API = "http://169.254.169.254/metadata/instance?api-version="
+    API_VERSION = "2021-02-01"
+    METADATA_API_TIMEOUT_SECONDS = 3
+
     def __init__(self):
         super(AzureCloud, self).__init__("azu")
         self.admin = None
@@ -291,3 +298,35 @@ class AzureCloud(AbstractCloud):
             if instance_state in ("deallocated"):
                 return InstanceState.TERMINATED
         return InstanceState.UNKNOWN
+
+    def has_machine_credentials(self):
+        """
+        Override for superclass method to detect if current instance has cloud access credentials.
+        """
+        try:
+            # Try to get credentials using DefaultAzureCredential
+            credential = DefaultAzureCredential()
+            token = credential.get_token("https://management.azure.com/.default")
+            # If successful, return True
+            return True
+        except ClientAuthenticationError as e:
+            # If authentication fails return False
+            return False
+
+    def get_instance_metadata(self):
+        imds_url = self.BASE_INSTANCE_METADATA_API + self.API_VERSION
+        headers = {"Metadata": "true"}
+        response = requests.get(imds_url, headers=headers,
+                                timeout=self.METADATA_API_TIMEOUT_SECONDS)
+        response.raise_for_status()  # Check for HTTP errors
+        return response.json()
+
+    def get_current_host_info(self, args):
+        """This method would fetch current host information by calling Azure metadata api
+        to fetch requested metatdata's.
+        """
+        try:
+            res = self.get_instance_metadata()
+            return res
+        except (requests.exceptions.RequestException, socket.timeout) as e:
+            raise YBOpsRuntimeError("Unable to auto-discover AZU provider information")

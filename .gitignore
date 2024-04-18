@@ -54,6 +54,7 @@ core.*
 
 # Temporary files
 .DS_Store
+.DS_Store.out
 .\#*.proto
 
 # C# Object files
@@ -115,6 +116,7 @@ submodules/
 !python/yugabyte/test_data/org_yb_pgsql_TestDropTableWithConcurrentTxn_testDmlTxnDrop_1pct_sample.log
 
 managed/yba-installer/bin/yba-ctl
+managed/.devspace
 managed/yba-installer/yba-ctl
 managed/devops/pex/pexEnv/
 managed/src/main/java/com/yugabyte/yw/common/operator/io/*

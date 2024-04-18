@@ -60,6 +60,8 @@ Result<FlagCallbackRegistration> RegisterFlagUpdateCallback(
 // Note: This macro should be used in the same file that DEFINEs the flag. Using it any other file
 // can result in segfault due to indeterminate order of static initialization.
 #define REGISTER_CALLBACK(flag_name, descriptive_name, callback) \
+  static_assert( \
+      sizeof(_DEFINE_FLAG_IN_FILE(flag_name)), "callback must be DEFINED in the same file as the flag"); \
   namespace { \
   static const std::shared_ptr<yb::FlagCallbackInfo> BOOST_PP_CAT( \
       flag_name, _global_callback_registered) \

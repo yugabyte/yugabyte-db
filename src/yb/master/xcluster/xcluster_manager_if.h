@@ -38,11 +38,13 @@ struct LeaderEpoch;
 class XClusterManagerIf {
  public:
   virtual Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const = 0;
-  virtual Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
-      const LeaderEpoch& epoch) = 0;
+  virtual Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) = 0;
   virtual Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap() const = 0;
   virtual Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) = 0;
+  virtual Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      const XClusterSafeTimeFilter& filter) = 0;
 
   virtual Status GetXClusterConfigEntryPB(SysXClusterConfigEntryPB* config) const = 0;
 

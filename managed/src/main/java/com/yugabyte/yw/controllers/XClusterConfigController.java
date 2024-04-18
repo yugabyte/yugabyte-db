@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -95,6 +96,7 @@ public class XClusterConfigController extends AuthenticatedController {
   private final YBClientService ybService;
   private final RuntimeConfGetter confGetter;
   private final XClusterUniverseService xClusterUniverseService;
+  private final AutoFlagUtil autoFlagUtil;
 
   @Inject
   public XClusterConfigController(
@@ -104,7 +106,8 @@ public class XClusterConfigController extends AuthenticatedController {
       CustomerConfigService customerConfigService,
       YBClientService ybService,
       RuntimeConfGetter confGetter,
-      XClusterUniverseService xClusterUniverseService) {
+      XClusterUniverseService xClusterUniverseService,
+      AutoFlagUtil autoFlagUtil) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -112,6 +115,7 @@ public class XClusterConfigController extends AuthenticatedController {
     this.ybService = ybService;
     this.confGetter = confGetter;
     this.xClusterUniverseService = xClusterUniverseService;
+    this.autoFlagUtil = autoFlagUtil;
   }
 
   /**
@@ -168,6 +172,10 @@ public class XClusterConfigController extends AuthenticatedController {
     Universe targetUniverse = Universe.getOrBadRequest(createFormData.targetUniverseUUID, customer);
     XClusterConfigTaskBase.checkConfigDoesNotAlreadyExist(
         createFormData.name, createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
 
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
@@ -417,6 +425,10 @@ public class XClusterConfigController extends AuthenticatedController {
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
 
     XClusterConfigTaskParams params;
     if (editFormData.tables != null) {
@@ -731,6 +743,10 @@ public class XClusterConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
+
     XClusterConfigTaskParams params =
         getRestartTaskParams(
             ybService,
@@ -740,7 +756,8 @@ public class XClusterConfigController extends AuthenticatedController {
             restartForm.tables,
             restartForm.bootstrapParams,
             restartForm.dryRun,
-            isForceDelete);
+            isForceDelete,
+            false /*forceBootstrap*/);
 
     if (restartForm.dryRun) {
       return YBPSuccess.withMessage("The pre-checks are successful");
@@ -774,7 +791,8 @@ public class XClusterConfigController extends AuthenticatedController {
       Set<String> tableIds,
       RestartBootstrapParams restartBootstrapParams,
       boolean dryRun,
-      boolean isForceDelete) {
+      boolean isForceDelete,
+      boolean isForceBootstrap) {
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
         XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, sourceUniverse, tableIds);
@@ -822,7 +840,8 @@ public class XClusterConfigController extends AuthenticatedController {
         requestedTableInfoList,
         mainTableIndexTablesMap,
         sourceTableIdTargetTableIdMap,
-        isForceDelete);
+        isForceDelete,
+        isForceBootstrap);
   }
 
   /**

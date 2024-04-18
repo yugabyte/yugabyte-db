@@ -169,9 +169,9 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
 	 */
 	foreach(lc, index->indrestrictinfo)
 	{
-		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		RestrictInfo   *rinfo = lfirst_node(RestrictInfo, lc);
 
-		if (!list_member_ptr(index_clauses, rinfo))
+		if (!is_redundant_with_indexclauses(rinfo, index_clauses))
 			exprs = lappend(exprs, rinfo->clause);
 	}
 
@@ -188,10 +188,17 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
  * Determines whether the key at 'indexcol' is a constant as decided
  * by 'index_clauses'.
  *
- * The definition of a constant follows the function match_clause_to_indexcol
- * in indxpath.c very closely. Clauses such as 'WHERE indexkey = constant'
- * implies that 'indexkey' is a constant after filtering. Do the same for
- * boolean variables, see indexcol_is_bool_constant_for_query.
+ * Caveat: Do NOT use the match_clause_to_indexcol definition of a constant
+ * since that definition is too permissive for our purposes.
+ *
+ * We wish to exploit the constantness of the index column to ignore the column
+ * from the prefix. This can be done safely when we are guaranteed no more than
+ * one unique element per scan.
+ *
+ * Caveat: Do NOT mark indexkeys as constant when the constantness is not
+ * part of index conditions. We can NOT ignore index keys that are constant
+ * but not pushed down beyond the DISTINCT operation to the index. This may
+ * change in the future when we start supporting remote filters for DISTINCT.
  */
 static bool
 yb_is_const_clause_for_distinct_pushdown(PlannerInfo *root,
@@ -202,20 +209,24 @@ yb_is_const_clause_for_distinct_pushdown(PlannerInfo *root,
 {
 	ListCell *lc;
 
-	/* Boolean clauses. */
-	if (indexcol_is_bool_constant_for_query(root, index, indexcol))
-		return true;
-
 	foreach(lc, index_clauses)
 	{
-		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
-		Expr		 *clause = rinfo->clause;
+		IndexClause  *ic = lfirst_node(IndexClause, lc);
+		RestrictInfo *rinfo;
+		Expr		 *clause;
 		Node		 *left_op,
 					 *right_op;
 		int			  op_strategy;
 
+		if (ic->lossy || list_length(ic->indexquals) != 1)
+			continue;
+
+		rinfo = linitial_node(RestrictInfo, ic->indexquals);
+		clause = rinfo->clause;
+
 		/* Must be a binary operation. */
-		if (!is_opclause(clause))
+		if (!is_opclause(clause)
+			|| list_length(((OpExpr *) clause)->args) != 2)
 			continue;
 
 		left_op = get_leftop(clause);
@@ -224,20 +235,12 @@ yb_is_const_clause_for_distinct_pushdown(PlannerInfo *root,
 			continue;
 
 		op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno,
-											   index->opfamily[indexcol]);
+												index->opfamily[indexcol]);
 		if (op_strategy != BTEqualStrategyNumber)
 			continue;
 
 		/* Check whether the clause is of the form indexkey = constant. */
-		if (equal(indexkey, left_op) &&
-			!bms_is_member(index->rel->relid, rinfo->right_relids) &&
-			!contain_volatile_functions(right_op))
-			return true;
-
-		/* Check whether the indexkey is on the right. */
-		if (equal(indexkey, right_op) &&
-			!bms_is_member(index->rel->relid, rinfo->left_relids) &&
-			!contain_volatile_functions(left_op))
+		if (equal(indexkey, left_op) && IsA(right_op, Const))
 			return true;
 	}
 
@@ -277,6 +280,9 @@ yb_get_const_colrefs_for_distinct_pushdown(PlannerInfo *root,
 	foreach(lc, index->indextlist)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+
+		if (indexcol >= index->nkeycolumns)
+			break;
 
 		/*
 		 * We only consider range columns since all hash columns need to be

@@ -22,5 +22,13 @@ std::string MonitoredTask::ToString() const {
   return Format("{ type: $0 description: $1 }", type(), description());
 }
 
+Status RunnableMonitoredTask::BeforeSubmitToTaskPool() {
+  return Status::OK();
+}
+
+Status RunnableMonitoredTask::OnSubmitFailure() {
+  return Status::OK();
+}
+
 } // namespace server
 } // namespace yb

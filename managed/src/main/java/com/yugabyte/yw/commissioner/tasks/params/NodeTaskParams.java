@@ -38,6 +38,10 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams implements INod
 
   public Map<String, String> tags;
 
+  public boolean isMaster;
+
+  public boolean isTserver;
+
   @JsonIgnore private AvailabilityZone zone;
 
   @Override

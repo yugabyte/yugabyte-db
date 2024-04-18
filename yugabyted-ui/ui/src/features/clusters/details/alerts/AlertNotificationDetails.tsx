@@ -145,7 +145,9 @@ export const AlertNotificationDetails: FC = () => {
   const { t } = useTranslation();
   const classes = useStyles();
 
-  const { data: nodesResponse, refetch: refetchNodes } = useGetClusterNodesQuery();
+  const { data: nodesResponse, refetch: refetchNodes } = useGetClusterNodesQuery(
+    { get_all_masters: true }
+  );
   const { data: nodeAddress } = useGetNodeAddressQuery();
 
   const nodesList = useMemo(

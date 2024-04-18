@@ -136,7 +136,7 @@ class LocalYBInboundCallTracker : public InboundCall::CallProcessedListener {
 
  private:
   std::mutex lock_;
-  std::unordered_map<uintptr_t, InboundCallWeakPtr> calls_being_handled_ GUARDED_BY(lock_);
+  std::unordered_map<int64_t, InboundCallWeakPtr> calls_being_handled_ GUARDED_BY(lock_);
 };
 
 } // namespace rpc

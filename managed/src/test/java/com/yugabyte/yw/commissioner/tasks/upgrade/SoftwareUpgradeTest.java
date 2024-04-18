@@ -12,6 +12,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,11 +30,13 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -186,8 +189,32 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "Command output:\n2989898";
     shellResponse.code = 0;
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    List<String> command = new ArrayList<>();
+    command.add("awk");
+    command.add(String.format("/%s/ {print$2}", Util.AVAILABLE_MEMORY));
+    command.add("/proc/meminfo");
+    when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
         .thenReturn(shellResponse);
+
+    List<String> command2 = new ArrayList<>();
+    command2.add("locale");
+    command2.add("-a");
+    command2.add("|");
+    command2.add("grep");
+    command2.add("-E");
+    command2.add("-q");
+    command2.add("\"en_US.utf8|en_US.UTF-8\"");
+    command2.add("&&");
+    command2.add("echo");
+    command2.add("\"Locale is present\"");
+    command2.add("||");
+    command2.add("echo");
+    command2.add("\"Locale is not present\"");
+    ShellResponse shellResponse2 = new ShellResponse();
+    shellResponse2.message = "Command output:\\nLocale is present";
+    shellResponse2.code = 0;
+    when(mockNodeUniverseManager.runCommand(any(), any(), eq(command2), any()))
+        .thenReturn(shellResponse2);
 
     try {
       UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
@@ -207,6 +234,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams requestParams) {
@@ -406,7 +434,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -415,6 +443,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLocale);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
@@ -433,7 +462,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(130, position);
+    assertEquals(131, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -455,7 +484,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(86)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -464,6 +493,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLocale);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
@@ -482,7 +512,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true, true);
-    assertEquals(140, position);
+    assertEquals(141, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -507,7 +537,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     assertEquals(
@@ -532,7 +562,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -541,6 +571,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLocale);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
@@ -603,7 +634,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(95)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(8)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(16)).runCommand(any(), any(), anyList(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -612,6 +643,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLocale);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
@@ -630,7 +662,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(175, position);
+    assertEquals(176, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -652,7 +684,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
     verify(mockNodeManager, times(51)).nodeCommand(any(), commandParams.capture());
-    verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -660,6 +692,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLocale);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
@@ -675,7 +708,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     position = assertSequence(subTasksByPosition, MASTER, position, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, false, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true, true);
-    assertEquals(25, position);
+    assertEquals(26, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -729,7 +762,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         masterTserverNodesCount + 1);
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(65)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -754,7 +787,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         masterTserverNodesCount + tserversNodes.size());
     taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(130)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(20)).runCommand(any(), any(), anyList(), any());
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

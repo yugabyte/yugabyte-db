@@ -270,6 +270,7 @@ set(UTIL_SRCS
   write_buffer.cc
   yb_partition.cc
   zlib.cc
+  callsite_profiling.cc
   )
 
 set(UTIL_LIBS
@@ -439,6 +440,7 @@ ADD_YB_TEST(fast_varint-test)
 ADD_YB_TEST(shared_mem-test)
 ADD_YB_TEST(operation_counter-test)
 ADD_YB_TEST(write_buffer-test)
+ADD_YB_TEST(scope_exit-test)
 
 #######################################
 # jsonwriter_test_proto

@@ -3,6 +3,7 @@ package com.yugabyte.yw.models.helpers;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
@@ -408,6 +409,9 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.PromoteSecondaryConfigToMainConfig
           .class),
 
+  DeleteRemnantStreams(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteRemnantStreams.class),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(
       com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeyCleanup.class),
@@ -519,6 +523,8 @@ public enum TaskType {
 
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 
+  CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
+
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),
 
@@ -626,7 +632,11 @@ public enum TaskType {
 
   DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class),
 
-  CheckForClusterServers(CheckClusterConsistency.class);
+  CheckForClusterServers(CheckClusterConsistency.class),
+
+  CheckLeaderlessTablets(CheckLeaderlessTablets.class),
+
+  UpdateProxyConfig(com.yugabyte.yw.commissioner.tasks.upgrade.UpdateProxyConfig.class);
 
   private final Class<? extends ITask> taskClass;
 

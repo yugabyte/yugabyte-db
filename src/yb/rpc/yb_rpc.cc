@@ -274,17 +274,9 @@ CoarseTimePoint YBInboundCall::GetClientDeadline() const {
   return ToCoarse(timing_.time_received) + header_.timeout_ms * 1ms;
 }
 
-Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call_data) {
-  TRACE_EVENT_FLOW_BEGIN0("rpc", "YBInboundCall", this);
-  TRACE_EVENT0("rpc", "YBInboundCall::ParseFrom");
-
-  RETURN_NOT_OK(ParseYBMessage(*call_data, &header_, &serialized_request_, &received_sidecars_));
-  DVLOG(4) << "Parsed YBInboundCall header: " << header_.call_id;
-  // having to get rid of the const for metadata_. Is it better to
-  // create the waitstate after parsing?
+void YBInboundCall::UpdateWaitStateInfo() {
   if (wait_state_) {
-    wait_state_->UpdateMetadata({.rpc_request_id = header_.call_id});
-    wait_state_->set_client_host_port(HostPort(remote_address()));
+    wait_state_->UpdateMetadata({.rpc_request_id = instance_id()});
     wait_state_->UpdateAuxInfo({
         .method = method_name().ToBuffer(),
     });
@@ -292,6 +284,15 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
     LOG_IF(ERROR, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash))
         << "Wait state is nullptr for " << ToString();
   }
+}
+
+Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call_data) {
+  TRACE_EVENT_FLOW_BEGIN0("rpc", "YBInboundCall", this);
+  TRACE_EVENT0("rpc", "YBInboundCall::ParseFrom");
+
+  RETURN_NOT_OK(ParseYBMessage(*call_data, &header_, &serialized_request_, &received_sidecars_));
+  DVLOG(4) << "Parsed YBInboundCall header: " << header_.call_id;
+  UpdateWaitStateInfo();
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
   request_data_ = std::move(*call_data);

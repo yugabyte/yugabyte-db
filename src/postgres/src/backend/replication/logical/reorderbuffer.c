@@ -108,6 +108,8 @@
 #include "utils/rel.h"
 #include "utils/relfilenodemap.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
 
 /* entry for a hash table we use to map from xid to our transaction state */
 typedef struct ReorderBufferTXNByIdEnt
@@ -2054,11 +2056,14 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 	volatile bool stream_started = false;
 	ReorderBufferTXN *volatile curtxn = NULL;
 
-	/* build data to be able to lookup the CommandIds of catalog tuples */
-	ReorderBufferBuildTupleCidHash(rb, txn);
+	if (!IsYugaByteEnabled())
+	{
+		/* build data to be able to lookup the CommandIds of catalog tuples */
+		ReorderBufferBuildTupleCidHash(rb, txn);
 
-	/* setup the initial snapshot */
-	SetupHistoricSnapshot(snapshot_now, txn->tuplecid_hash);
+		/* setup the initial snapshot */
+		SetupHistoricSnapshot(snapshot_now, txn->tuplecid_hash);
+	}
 
 	/*
 	 * Decoding needs access to syscaches et al., which in turn use
@@ -2155,10 +2160,15 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				case REORDER_BUFFER_CHANGE_INSERT:
 				case REORDER_BUFFER_CHANGE_UPDATE:
 				case REORDER_BUFFER_CHANGE_DELETE:
-					Assert(snapshot_now);
+					if (IsYugaByteEnabled())
+						reloid = change->data.tp.yb_table_oid;
+					else
+					{
+						Assert(snapshot_now);
 
-					reloid = RelidByRelfilenode(change->data.tp.relnode.spcNode,
-												change->data.tp.relnode.relNode);
+						reloid = RelidByRelfilenode(change->data.tp.relnode.spcNode,
+													change->data.tp.relnode.relNode);
+					}
 
 					/*
 					 * Mapped catalog tuple without data, emitted while
@@ -2181,6 +2191,11 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 							 relpathperm(change->data.tp.relnode,
 										 MAIN_FORKNUM));
 
+					/*
+					 * YB note: TODO(#20726) - This is the schema of the
+					 * relation at the streaming time. Needs to be updated to
+					 * fetch the schema at the time of commit.
+					 */
 					relation = RelationIdGetRelation(reloid);
 
 					if (!RelationIsValid(relation))
@@ -2189,7 +2204,15 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 							 relpathperm(change->data.tp.relnode,
 										 MAIN_FORKNUM));
 
-					if (!RelationIsLogicallyLogged(relation))
+					/*
+					 * YB note: We disable this check here since:
+					 * 1. WAL levels are not applicable to YSQL as we have
+					 * a separate WAL.
+					 * 2. We are guaranteed to not get entries for catalog
+					 * tables here since the slot creation itself skips
+					 * catalog tables.
+					 */
+					if (!IsYugaByteEnabled() && !RelationIsLogicallyLogged(relation))
 						goto change_done;
 
 					/*
@@ -2508,7 +2531,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		 * For 4, as the entire txn has been decoded, we can fully clean up
 		 * the TXN reorder buffer.
 		 */
-		if (streaming || rbtxn_prepared(txn))
+		if (!IsYugaByteEnabled() && (streaming || rbtxn_prepared(txn)))
 		{
 			ReorderBufferTruncateTXN(rb, txn, rbtxn_prepared(txn));
 			/* Reset the CheckXidAlive */
@@ -2553,7 +2576,8 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		 * not finished yet or when we are sending the data out on a PREPARE
 		 * during a two-phase commit.
 		 */
-		if (errdata->sqlerrcode == ERRCODE_TRANSACTION_ROLLBACK &&
+		if (!IsYugaByteEnabled() &&
+			errdata->sqlerrcode == ERRCODE_TRANSACTION_ROLLBACK &&
 			(stream_started || rbtxn_prepared(txn)))
 		{
 			/* curtxn must be set for streaming or prepared transactions */
@@ -2607,36 +2631,48 @@ ReorderBufferReplay(ReorderBufferTXN *txn,
 	txn->origin_lsn = origin_lsn;
 
 	/*
-	 * If the transaction was (partially) streamed, we need to commit it in a
-	 * 'streamed' way. That is, we first stream the remaining part of the
-	 * transaction, and then invoke stream_commit message.
-	 *
-	 * Called after everything (origin ID, LSN, ...) is stored in the
-	 * transaction to avoid passing that information directly.
+	 * YB note: Snapshot is used to read the catalog table entries at the time of
+	 * transaction start. This mechanism is not yet applicable to YB. So we
+	 * disable the snapshot related code here.
 	 */
-	if (rbtxn_is_streamed(txn))
+	if (!IsYugaByteEnabled())
 	{
-		ReorderBufferStreamCommit(rb, txn);
-		return;
-	}
-
-	/*
-	 * If this transaction has no snapshot, it didn't make any changes to the
-	 * database, so there's nothing to decode.  Note that
-	 * ReorderBufferCommitChild will have transferred any snapshots from
-	 * subtransactions if there were any.
-	 */
-	if (txn->base_snapshot == NULL)
-	{
-		Assert(txn->ninvalidations == 0);
+		/*
+		 * If the transaction was (partially) streamed, we need to commit it in a
+		 * 'streamed' way. That is, we first stream the remaining part of the
+		 * transaction, and then invoke stream_commit message.
+		 *
+		 * Called after everything (origin ID, LSN, ...) is stored in the
+		 * transaction to avoid passing that information directly.
+		 */
+		/*
+		 * YB_TODO(stiwary): evaluate whether this code is applicable for
+		 * ysql.
+		 */
+		if (rbtxn_is_streamed(txn))
+		{
+			ReorderBufferStreamCommit(rb, txn);
+			return;
+		}
 
 		/*
-		 * Removing this txn before a commit might result in the computation
-		 * of an incorrect restart_lsn. See SnapBuildProcessRunningXacts.
+		 * If this transaction has no snapshot, it didn't make any changes to the
+		 * database, so there's nothing to decode.  Note that
+		 * ReorderBufferCommitChild will have transferred any snapshots from
+		 * subtransactions if there were any.
 		 */
-		if (!rbtxn_prepared(txn))
-			ReorderBufferCleanupTXN(rb, txn);
-		return;
+		if (txn->base_snapshot == NULL)
+		{
+			Assert(txn->ninvalidations == 0);
+
+			/*
+			 * Removing this txn before a commit might result in the computation
+			 * of an incorrect restart_lsn. See SnapBuildProcessRunningXacts.
+			 */
+			if (!rbtxn_prepared(txn))
+				ReorderBufferCleanupTXN(rb, txn);
+			return;
+		}
 	}
 
 	snapshot_now = txn->base_snapshot;

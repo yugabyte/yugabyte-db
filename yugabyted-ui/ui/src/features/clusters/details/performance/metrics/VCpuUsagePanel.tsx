@@ -27,7 +27,7 @@ export const VCpuUsagePanel: FC<VCpuUsagePanelProps> = ({ cluster }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const { refetch: refetchNodes } = useGetClusterNodesQuery({ query: { enabled: false }});
+  const { refetch: refetchNodes } = useGetClusterNodesQuery({}, { query: { enabled: false }});
 
   return (
     <Paper className={classes.container}>

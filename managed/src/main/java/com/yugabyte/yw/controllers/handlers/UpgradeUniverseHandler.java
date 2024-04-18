@@ -19,9 +19,9 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -30,6 +30,7 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -132,12 +133,12 @@ public class UpgradeUniverseHandler {
 
     if (userIntent.providerType.equals(CloudType.kubernetes)) {
       Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-      if (confGetter.getConfForScope(p, ProviderConfKeys.enableYbcOnK8s)
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.enableYbcForUniverse)
           && Util.compareYbVersions(
                   requestParams.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
               >= 0
-          && !universe.isYbcEnabled()
-          && requestParams.isEnableYbc()) {
+          && !universe.isYbcEnabled()) {
+        requestParams.setEnableYbc(true);
         requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         requestParams.installYbc = true;
       } else if (universe.isYbcEnabled()) {
@@ -154,7 +155,8 @@ public class UpgradeUniverseHandler {
                 true)
             > 0
         && !universe.isYbcEnabled()
-        && requestParams.isEnableYbc()) {
+        && confGetter.getConfForScope(universe, UniverseConfKeys.enableYbcForUniverse)) {
+      requestParams.setEnableYbc(true);
       requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       requestParams.installYbc = true;
     } else {
@@ -719,6 +721,18 @@ public class UpgradeUniverseHandler {
       baseTaskName += booleanToStr(clientToNode == null ? nodeToNode : clientToNode);
     }
     return baseTaskName;
+  }
+
+  public UUID updateProxyConfig(
+      ProxyConfigUpdateParams requestParams, Customer customer, Universe universe) {
+    // Verify request params
+    requestParams.verifyParams(universe, true);
+    return submitUpgradeTask(
+        TaskType.UpdateProxyConfig,
+        CustomerTask.TaskType.UpdateProxyConfig,
+        requestParams,
+        customer,
+        universe);
   }
 
   private static String booleanToStr(boolean toggle) {

@@ -1119,7 +1119,7 @@ Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
 }
 
 Status WaitUntilTabletHasLeader(
-    MiniCluster* cluster, const string& tablet_id, MonoTime deadline) {
+    MiniCluster* cluster, const TabletId& tablet_id, CoarseTimePoint deadline) {
   return Wait(
       [cluster, &tablet_id] {
         auto tablet_peers = ListTabletPeers(cluster, [&tablet_id](auto peer) {
@@ -1130,6 +1130,19 @@ Status WaitUntilTabletHasLeader(
         return tablet_peers.size() == 1;
       },
       deadline, "Waiting for election in tablet " + tablet_id);
+}
+
+Status WaitForTableLeaders(
+    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline) {
+  for (const auto& tablet_id : ListTabletIdsForTable(cluster, table_id)) {
+    RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster, tablet_id, deadline));
+  }
+  return Status::OK();
+}
+
+Status WaitForTableLeaders(
+    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout) {
+  return WaitForTableLeaders(cluster, table_id, CoarseMonoClock::Now() + timeout);
 }
 
 Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
@@ -1155,18 +1168,25 @@ Status WaitForLeaderOfSingleTablet(
 
 Status StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
-    ForceStepDown force_step_down) {
+    ForceStepDown force_step_down, MonoDelta timeout) {
   consensus::LeaderStepDownRequestPB req;
   req.set_tablet_id(leader->tablet_id());
   req.set_new_leader_uuid(new_leader_uuid);
   if (force_step_down) {
     req.set_force_step_down(true);
   }
-  consensus::LeaderStepDownResponsePB resp;
-  RETURN_NOT_OK(VERIFY_RESULT(leader->GetConsensus())->StepDown(&req, &resp));
-  if (resp.has_error()) {
-    return STATUS_FORMAT(RuntimeError, "Step down failed: $0", resp);
-  }
+  return WaitFor([&]() -> Result<bool> {
+    consensus::LeaderStepDownResponsePB resp;
+    RETURN_NOT_OK(VERIFY_RESULT(leader->GetConsensus())->StepDown(&req, &resp));
+    if (resp.has_error()) {
+      if (resp.error().code() == tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN) {
+        LOG(INFO) << "Leader not ready to step down";
+        return false;
+      }
+      return STATUS_FORMAT(RuntimeError, "Step down failed: $0", resp);
+    }
+    return true;
+  }, timeout, Format("Waiting for step down to $0", new_leader_uuid));
   return Status::OK();
 }
 
@@ -1447,6 +1467,10 @@ Status WaitAllReplicasSynchronizedWithLeader(
         Format("Wait T $0 P $1 commit $2", peer->tablet_id(), peer->permanent_uuid(), it->second)));
   }
   return Status::OK();
+}
+
+Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseDuration timeout) {
+  return WaitAllReplicasSynchronizedWithLeader(cluster, CoarseMonoClock::Now() + timeout);
 }
 
 Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {

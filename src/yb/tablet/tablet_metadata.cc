@@ -764,7 +764,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   rocksdb::Options rocksdb_options;
   TabletOptions tablet_options;
   docdb::InitRocksDBOptions(
-      &rocksdb_options, log_prefix_, nullptr /* statistics */, tablet_options);
+      &rocksdb_options, log_prefix_, raft_group_id_, nullptr /* statistics */, tablet_options);
 
   const auto& rocksdb_dir = this->rocksdb_dir();
   LOG_WITH_PREFIX(INFO) << "Destroying regular db at: " << rocksdb_dir;
@@ -978,6 +978,8 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       }
     }
 
+    last_attempted_clone_seq_no_ = superblock.last_attempted_clone_seq_no();
+
     if (!superblock.active_restorations().empty()) {
       active_restorations_.reserve(superblock.active_restorations().size());
       for (const auto& id : superblock.active_restorations()) {
@@ -1156,6 +1158,8 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
       *split_child_table_ids.Add() = split_child_tablet_id;
     }
   }
+
+  pb.set_last_attempted_clone_seq_no(last_attempted_clone_seq_no_);
 
   if (!active_restorations_.empty()) {
     auto& active_restorations = *pb.mutable_active_restorations();
@@ -1624,6 +1628,22 @@ void RaftGroupMetadata::SetSplitDone(
   split_child_tablet_ids_[1] = child2;
 }
 
+void RaftGroupMetadata::MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no) {
+  std::lock_guard lock(data_mutex_);
+  DCHECK(last_attempted_clone_seq_no_ < clone_request_seq_no);
+  last_attempted_clone_seq_no_ = clone_request_seq_no;
+}
+
+bool RaftGroupMetadata::HasAttemptedClone(uint32_t clone_request_seq_no) {
+  std::lock_guard lock(data_mutex_);
+  return last_attempted_clone_seq_no_ >= clone_request_seq_no;
+}
+
+uint32_t RaftGroupMetadata::LastAttemptedCloneSeqNo() {
+  std::lock_guard lock(data_mutex_);
+  return last_attempted_clone_seq_no_;
+}
+
 bool RaftGroupMetadata::has_active_restoration() const {
   std::lock_guard lock(data_mutex_);
   return !active_restorations_.empty();
@@ -1736,18 +1756,28 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::CotablePacking(
         NotFound, "Cannot find table info for: $0, raft group id: $1",
         cotable_id, raft_group_id_);
   }
+  LOG_IF_WITH_PREFIX(FATAL, cotable_id != (*res)->cotable_id) << "Cotable id mismatch: "
+      << cotable_id.ToHexString() << " vs " << (*res)->cotable_id.ToHexString();
   return TableInfo::Packing(*res, schema_version, history_cutoff);
 }
 
 Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::ColocationPacking(
     ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) {
-  auto it = kv_store_.colocation_to_table.find(colocation_id);
-  if (it == kv_store_.colocation_to_table.end()) {
-    return STATUS_FORMAT(
-        NotFound, "Cannot find table info for colocation: $0, raft group id: $1",
-        colocation_id, raft_group_id_);
+  TableInfoPtr table_info;
+  {
+    std::lock_guard lock(data_mutex_);
+    auto it = kv_store_.colocation_to_table.find(colocation_id);
+    if (it == kv_store_.colocation_to_table.end()) {
+      return STATUS_FORMAT(
+          NotFound, "Cannot find table info for colocation: $0, raft group id: $1",
+          colocation_id, raft_group_id_);
+    }
+    table_info = it->second;
   }
-  return TableInfo::Packing(it->second, schema_version, history_cutoff);
+  LOG_IF_WITH_PREFIX(FATAL, colocation_id != table_info->schema().colocation_id())
+      << "Colocation id mismatch: " << colocation_id << " vs "
+      << table_info->schema().colocation_id();
+  return TableInfo::Packing(table_info, schema_version, history_cutoff);
 }
 
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {

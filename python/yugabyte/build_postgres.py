@@ -70,6 +70,7 @@ from yugabyte.common_util import get_target_arch
 ALLOW_REMOTE_COMPILATION = True
 BUILD_STEPS = (
     'configure',
+    'genbki',
     'make',
 )
 CONFIG_ENV_VARS = [
@@ -299,6 +300,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.export_compile_commands = os.environ.get('YB_EXPORT_COMPILE_COMMANDS') == '1'
         self.skip_pg_compile_commands = os.environ.get('YB_SKIP_PG_COMPILE_COMMANDS') == '1'
         self.should_configure = self.args.step is None or self.args.step == 'configure'
+        self.should_genbki = self.args.step is None or self.args.step == 'genbki'
         self.should_make = self.args.step is None or self.args.step == 'make'
         self.thirdparty_dir = self.cmake_cache.get_or_raise('YB_THIRDPARTY_DIR')
 
@@ -780,6 +782,17 @@ class PostgresBuilder(YbBuildToolBase):
             self.pg_build_root,
             # self.pg_build_root,
             # os.path.join(self.pg_build_root, 'contrib'),
+            # YB_TODO: begin: cleanup the below when all extensions in contrib directory work
+            os.path.join(self.pg_build_root, 'contrib/pgcrypto'),
+            os.path.join(self.pg_build_root, 'contrib/uuid-ossp'),
+            os.path.join(self.pg_build_root, 'contrib/file_fdw'),
+            os.path.join(self.pg_build_root, 'contrib/postgres_fdw'),
+            os.path.join(self.pg_build_root, 'contrib/passwordcheck'),
+            os.path.join(self.pg_build_root, 'contrib/fuzzystrmatch'),
+            os.path.join(self.pg_build_root, 'contrib/tablefunc'),
+            os.path.join(self.pg_build_root, 'contrib/spi'),
+            os.path.join(self.pg_build_root, 'contrib/sslinfo'),
+            # YB_TODO: end
             third_party_extensions_dir,
         ]
 
@@ -1044,6 +1057,13 @@ class PostgresBuilder(YbBuildToolBase):
                 self.configure_postgres()
                 logging.info("The configure step of building PostgreSQL took %.1f sec",
                              time.time() - configure_start_time_sec)
+            if self.should_genbki:
+                make_start_time_sec = time.time()
+                self.run_make_with_retries(
+                    self.pg_build_root,
+                    shlex_join(['make', '-C', 'src/backend/catalog', 'bki-stamp']))
+                logging.info("The genbki step of building PostgreSQL took %.1f sec",
+                             time.time() - make_start_time_sec)
             if self.should_make:
                 make_start_time_sec = time.time()
                 self.make_postgres()

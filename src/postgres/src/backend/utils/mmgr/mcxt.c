@@ -786,7 +786,7 @@ MemoryContextStatsUsage(MemoryContext context, int max_children)
 
 	memset(&grand_totals, 0, sizeof(grand_totals));
 
-	MemoryContextStatsInternal(context, 0, false, max_children, &grand_totals, false);
+	MemoryContextStatsInternal(context, 0, false, max_children, &grand_totals, true);
 
 	return (grand_totals.totalspace - grand_totals.freespace);
 }

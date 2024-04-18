@@ -1,0 +1,42 @@
+package {{package}};
+
+import static play.mvc.Results.ok;
+
+{{#imports}}import {{import}};
+{{/imports}}
+import api.v2.utils.ApiControllerUtils;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.inject.Inject;
+import com.typesafe.config.Config;
+{{#supportAsync}}
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
+{{/supportAsync}}
+{{#useBeanValidation}}
+import javax.validation.constraints.*;
+{{/useBeanValidation}}
+import openapitools.OpenAPIUtils;
+import play.mvc.Http;
+import play.mvc.Result;
+
+{{#operations}}
+@SuppressWarnings("RedundantThrows")
+{{! Yugabyte modification: extends ApiControllerUtils to inherit utility methods }}
+public abstract class {{classname}}ControllerImpInterface extends ApiControllerUtils {
+  {{#useBeanValidation}}
+  @Inject private Config configuration;
+  {{/useBeanValidation}}
+
+{{#operation}}
+  public {{#supportAsync}}CompletionStage<{{/supportAsync}}Result{{#supportAsync}}>{{/supportAsync}} {{operationId}}Http(
+      Http.Request request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{^-last}}, {{/-last}}{{/allParams}})
+      {{#handleExceptions}}throws Exception{{/handleExceptions}} {
+    {{>responseToResult}}  }
+
+  public abstract {{^returnType}}void{{/returnType}}{{#returnType}}{{#supportAsync}}CompletionStage<{{/supportAsync}}{{>returnTypesNoVoid}}{{#supportAsync}}>{{/supportAsync}}{{/returnType}} {{operationId}}(
+      Http.Request request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{^-last}}, {{/-last}}{{/allParams}})
+      {{#handleExceptions}}throws Exception{{/handleExceptions}};
+{{/operation}}
+}
+{{/operations}}

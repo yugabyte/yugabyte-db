@@ -13,7 +13,7 @@ type: docs
 
 The following describes the data types supported in YCQL, from the basic data types to collections, and user defined types.
 
-The [JSONB document data type](../../json-support/jsonb-ycql/) is described in a separate section.
+The [JSONB document data type](../jsonb-ycql/) is described in a separate section.
 
 {{% explore-setup-single %}}
 

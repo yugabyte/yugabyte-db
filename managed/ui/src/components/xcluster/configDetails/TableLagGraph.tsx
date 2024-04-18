@@ -73,7 +73,7 @@ export const TableLagGraph: FC<Props> = ({
   const tableMetricsQuery = useQuery(
     isFixedTimeRange
       ? metricQueryKey.detail(replciationLagMetricRequestParams)
-      : metricQueryKey.latest(
+      : metricQueryKey.live(
           replciationLagMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type

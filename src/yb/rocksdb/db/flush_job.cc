@@ -33,6 +33,8 @@
 #include <vector>
 #include <chrono>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/event_helpers.h"
@@ -115,13 +117,24 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       output_file_directory_(output_file_directory),
       output_compression_(output_compression),
       stats_(stats),
-      event_logger_(event_logger) {
+      event_logger_(event_logger),
+      wait_state_(yb::ash::WaitStateInfo::CreateIfAshIsEnabled()) {
+  if (wait_state_) {
+    wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForFlush));
+    wait_state_->set_rpc_request_id(job_context_->job_id);
+    wait_state_->UpdateAuxInfo({.tablet_id = db_options_.tablet_id, .method = "Flush"});
+    SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
+    yb::ash::FlushAndCompactionWaitStatesTracker().Track(wait_state_);
+  }
   // Update the thread status to indicate flush.
   ReportStartedFlush();
   DEBUG_ONLY_TEST_SYNC_POINT("FlushJob::FlushJob()");
 }
 
 FlushJob::~FlushJob() {
+  if (wait_state_) {
+    yb::ash::FlushAndCompactionWaitStatesTracker().Untrack(wait_state_);
+  }
 }
 
 void FlushJob::ReportStartedFlush() {
@@ -134,6 +147,8 @@ void FlushJob::RecordFlushIOStats() {
 }
 
 Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
+  ADOPT_WAIT_STATE(wait_state_);
+  SCOPED_WAIT_STATUS(RocksDB_Flush);
   if (PREDICT_FALSE(yb::GetAtomicFlag(&FLAGS_TEST_rocksdb_crash_on_flush))) {
     CHECK(false) << "a flush should not have been scheduled.";
   }

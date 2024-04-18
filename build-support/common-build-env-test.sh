@@ -182,11 +182,11 @@ test_set_cmake_build_type_and_compiler_type   release    darwin    clang      re
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu clang      release    clang   0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc        release    gcc     0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc11      release    gcc11   0
-test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      clang16 0
-test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  clang16 0
-test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang16 0
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang16 0
-test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang16 0
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      clang17 0
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  clang17 0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang17 0
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang17 0
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang17 0
 
 # -------------------------------------------------------------------------------------------------
 # Test existence of scripts pointed to by specical "script path" variables.

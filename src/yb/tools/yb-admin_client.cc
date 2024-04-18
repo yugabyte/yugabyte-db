@@ -160,13 +160,13 @@ using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 
+using master::AbortSnapshotRestoreRequestPB;
+using master::AbortSnapshotRestoreResponsePB;
 using master::BackupRowEntryPB;
 using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
 using master::DeleteSnapshotRequestPB;
 using master::DeleteSnapshotResponsePB;
-using master::AbortSnapshotRestoreRequestPB;
-using master::AbortSnapshotRestoreResponsePB;
 using master::IdPairPB;
 using master::ImportSnapshotMetaRequestPB;
 using master::ImportSnapshotMetaResponsePB;
@@ -1689,9 +1689,9 @@ Status ClusterAdminClient::DeleteIndexById(const TableId& table_id) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListAllNamespaces() {
+Status ClusterAdminClient::ListAllNamespaces(bool include_nonrunning) {
   cout << "name | UUID | language | state | colocated" << endl << endl;
-  const auto namespaces = VERIFY_RESULT_REF(GetNamespaceMap());
+  const auto namespaces = VERIFY_RESULT_REF(GetNamespaceMap(include_nonrunning));
   const auto list_namespaces = [&] (bool for_system_namespace) -> void {
     cout << (for_system_namespace ? "System Namespaces:" : "User Namespaces:") << endl;
     for (const auto& namespace_info_pair : namespaces) {
@@ -2450,9 +2450,11 @@ Result<Response> ClusterAdminClient::InvokeRpc(
       VERIFY_RESULT(InvokeRpcNoResponseCheck(func, obj, req, error_message, timeout)));
 }
 
-Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespaceMap() {
+Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespaceMap(
+    bool include_nonrunning) {
   if (namespace_map_.empty()) {
-    auto v = VERIFY_RESULT(yb_client_->ListNamespaces());
+    auto v = VERIFY_RESULT(
+        yb_client_->ListNamespaces(client::IncludeNonrunningNamespaces(include_nonrunning)));
     for (auto& ns : v) {
       auto ns_id = ns.id.id();
       namespace_map_.emplace(std::move(ns_id), std::move(ns));

@@ -68,6 +68,10 @@ STARTED_SNAPSHOT_CREATION_RE = re.compile(r'[\S\s]*Started snapshot creation: (?
 YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 
 YSQL_SHELL_ERROR_RE = re.compile('.*ERROR.*')
+# This temporary variable enables the features:
+# 1. "STOP_ON_ERROR" mode in 'ysqlsh' tool
+# 2. New API: 'backup_tablespaces'/'restore_tablespaces'+'use_tablespaces'
+#    instead of old 'use_tablespaces'
 ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = False
 
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
@@ -920,7 +924,7 @@ class YBManifest:
           "storage-type": "nfs",
 
           # Was additional 'YSQLDump_tablespaces' dump file created?
-          "use-tablespaces": true,
+          "backup-tablespaces": true,
 
           # Parallelism level - number of worker threads.
           "parallelism": 8,
@@ -985,7 +989,9 @@ class YBManifest:
         properties = self.body['properties']
         properties['platform-version'] = get_yb_backup_version_string()
         properties['parallelism'] = self.backup.args.parallelism
-        properties['use-tablespaces'] = self.backup.args.use_tablespaces
+        if not ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            properties['use-tablespaces'] = self.backup.args.use_tablespaces
+        properties['backup-tablespaces'] = self.backup.args.backup_tablespaces
         properties['pg-based-backup'] = pg_based_backup
         properties['start-time'] = self.backup.timer.start_time_str()
         properties['end-time'] = self.backup.timer.end_time_str()
@@ -1330,11 +1336,18 @@ class YBBackup:
             help='The Unix microsecond timestamp to which to restore the snapshot.')
 
         parser.add_argument(
+            '--backup_tablespaces', required=False, action='store_true', default=False,
+            help='Backup YSQL TABLESPACE objects into the backup.')
+        parser.add_argument(
+            '--restore_tablespaces', required=False, action='store_true', default=False,
+            help='Restore YSQL TABLESPACE objects from the backup.')
+        parser.add_argument(
             '--ignore_existing_tablespaces', required=False, action='store_true', default=False,
             help='Whether to skip tablespace creation if tablespace already exists.')
         parser.add_argument(
             '--use_tablespaces', required=False, action='store_true', default=False,
-            help='Backup/restore YSQL TABLESPACE objects into/from the backup.')
+            help="Use the restored YSQL TABLESPACE objects for the tables "
+                 "via 'SET default_tablespace=...' syntax.")
 
         parser.add_argument('--upload', dest='upload', action='store_true', default=True)
         # Please note that we have to use this weird naming (i.e. underscore in the argument name)
@@ -3034,12 +3047,21 @@ class YBBackup:
         """
         :return: snapshot_id and list of sql_dump files
         """
+        if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            if self.args.use_tablespaces:
+                raise BackupException("--use_tablespaces can be used in RESTORE mode only")
+
         snapshot_id = None
         dump_files = []
         pg_based_backup = self.args.pg_based_backup
         if self.is_ysql_keyspace():
-            sql_tbsp_dump_path = os.path.join(
-                self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME) if self.args.use_tablespaces else None
+            if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+                backup_tablespaces = self.args.backup_tablespaces
+            else:
+                backup_tablespaces = self.args.use_tablespaces or self.args.backup_tablespaces
+
+            sql_tbsp_dump_path = os.path.join(self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME)\
+                if backup_tablespaces else None
             sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
             db_name = keyspace_name(self.args.keyspace[0])
             ysql_dump_args = ['--include-yb-metadata', '--serializable-deferrable', '--create',
@@ -3403,7 +3425,12 @@ class YBBackup:
         self.load_or_create_manifest()
         dump_files = []
 
-        if self.args.use_tablespaces:
+        if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            restore_tablespaces = self.args.restore_tablespaces
+        else:
+            restore_tablespaces = self.args.use_tablespaces or self.args.restore_tablespaces
+
+        if restore_tablespaces:
             src_sql_tbsp_dump_path = os.path.join(
                 self.args.backup_location, SQL_TBSP_DUMP_FILE_NAME)
             sql_tbsp_dump_path = os.path.join(self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME)
@@ -3504,6 +3531,12 @@ class YBBackup:
 
         if self.args.ignore_existing_tablespaces:
             ysql_shell_args.append('--variable=ignore_existing_tablespaces=1')
+
+        if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            if self.args.use_tablespaces:
+                ysql_shell_args.append('--variable=use_tablespaces=1')
+        else:  # Always enabled in old semantics
+            ysql_shell_args.append('--variable=use_tablespaces=1')
 
         if on_error_stop:
             logging.info(

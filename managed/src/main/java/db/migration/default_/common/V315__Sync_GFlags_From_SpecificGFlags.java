@@ -62,7 +62,7 @@ public class V315__Sync_GFlags_From_SpecificGFlags extends BaseJavaMigration {
         Map<String, String> masterGFlags = getGFlags(userIntent, "masterGFlags");
         Map<String, String> tserverGFlags = getGFlags(userIntent, "tserverGFlags");
         primarySpecificGFlags = getSpecificGFlags(userIntent);
-        if (primarySpecificGFlags != null && primarySpecificGFlags.getPerProcessFlags() != null) {
+        if (primarySpecificGFlags != null) {
           updateUserIntentFromSpecificGFlags(userIntent, primarySpecificGFlags);
         } else {
           primarySpecificGFlags = SpecificGFlags.construct(masterGFlags, tserverGFlags);
@@ -114,9 +114,13 @@ public class V315__Sync_GFlags_From_SpecificGFlags extends BaseJavaMigration {
   private static void updateUserIntentFromSpecificGFlags(
       JsonNode userIntent, SpecificGFlags specificGFlags) {
     Map<String, String> newMasterGFlags =
-        specificGFlags.getPerProcessFlags().value.get(UniverseTaskBase.ServerType.MASTER);
+        specificGFlags.getPerProcessFlags() == null
+            ? new HashMap<>()
+            : specificGFlags.getPerProcessFlags().value.get(UniverseTaskBase.ServerType.MASTER);
     Map<String, String> newTserverGFlags =
-        specificGFlags.getPerProcessFlags().value.get(UniverseTaskBase.ServerType.TSERVER);
+        specificGFlags.getPerProcessFlags() == null
+            ? new HashMap<>()
+            : specificGFlags.getPerProcessFlags().value.get(UniverseTaskBase.ServerType.TSERVER);
     ((ObjectNode) userIntent).set("masterGFlags", Json.toJson(newMasterGFlags));
     ((ObjectNode) userIntent).set("tserverGFlags", Json.toJson(newTserverGFlags));
   }

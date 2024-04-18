@@ -195,7 +195,7 @@ class Master : public tserver::DbServerBase {
     AttemptMetric,
   };
 
-  // Function that returns an object pointer to a RPC's histogram metric. If a histogram
+  // Function that returns an object pointer to an RPC's histogram metric. If a histogram
   // metric pointer is not created, it will create a new object pointer and return it.
   scoped_refptr<Histogram> GetMetric(const std::string& metric_identifier,
                                      Master::MasterMetricType type,

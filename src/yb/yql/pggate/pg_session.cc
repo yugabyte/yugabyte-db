@@ -1013,6 +1013,11 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlot
   return pg_client_.ListReplicationSlots();
 }
 
+Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
+    const ReplicationSlotName& slot_name) {
+  return pg_client_.GetReplicationSlot(slot_name);
+}
+
 Result<tserver::PgGetReplicationSlotStatusResponsePB> PgSession::GetReplicationSlotStatus(
     const ReplicationSlotName& slot_name) {
   return pg_client_.GetReplicationSlotStatus(slot_name);
@@ -1020,6 +1025,10 @@ Result<tserver::PgGetReplicationSlotStatusResponsePB> PgSession::GetReplicationS
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
   return {wait_starter_, wait_event};
+}
+
+Result<tserver::PgActiveSessionHistoryResponsePB> PgSession::ActiveSessionHistory() {
+  return pg_client_.ActiveSessionHistory();
 }
 
 }  // namespace yb::pggate

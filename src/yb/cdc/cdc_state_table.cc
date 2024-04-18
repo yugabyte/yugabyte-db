@@ -16,6 +16,7 @@
 
 #include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
+#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
@@ -196,6 +197,13 @@ Result<CDCStateTableEntry> DeserializeRow(
 }
 }  // namespace
 
+CDCStateTable::CDCStateTable(client::AsyncClientInitializer* async_client_init)
+    : async_client_init_(async_client_init) {
+  CHECK_NOTNULL(async_client_init);
+}
+
+CDCStateTable::CDCStateTable(client::YBClient* client) : client_(client) { CHECK_NOTNULL(client); }
+
 std::string CDCStateTableKey::ToString() const {
   return Format(
       "TabletId: $0, StreamId: $1 $2", tablet_id, stream_id,
@@ -328,6 +336,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
 
 Result<client::YBClient*> CDCStateTable::GetClient() {
   if (!client_) {
+    SCHECK_NOTNULL(async_client_init_);
     client_ = async_client_init_->client();
   }
 
@@ -342,11 +351,12 @@ Result<std::shared_ptr<client::YBSession>> CDCStateTable::GetSession() {
 }
 
 template <class CDCEntry>
-Status CDCStateTable::WriteEntries(
+Status CDCStateTable::WriteEntriesAsync(
     const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
-    QLOperator condition_op, const bool replace_full_map,
+    StdStatusCallback callback, QLOperator condition_op, const bool replace_full_map,
     const std::vector<std::string>& keys_to_delete) {
   if (entries.empty()) {
+    callback(Status::OK());
     return Status::OK();
   }
 
@@ -386,15 +396,45 @@ Status CDCStateTable::WriteEntries(
     }
   }
 
+  session->Apply(std::move(ops));
+  session->FlushAsync([callback = std::move(callback)](client::FlushStatus* flush_status) {
+    for (auto& error : flush_status->errors) {
+      LOG_WITH_FUNC(WARNING) << "Flush of operation " << error->failed_op().ToString()
+                             << " failed: " << error->status();
+    }
+    callback(std::move(flush_status->status));
+  });
+  return Status::OK();
+}
+
+template <class CDCEntry>
+Status CDCStateTable::WriteEntries(
+    const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
+    QLOperator condition_op, const bool replace_full_map,
+    const std::vector<std::string>& keys_to_delete) {
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  return session->TEST_ApplyAndFlush(ops);
+  Synchronizer sync;
+  RETURN_NOT_OK(WriteEntriesAsync<CDCEntry>(
+      entries, statement_type, sync.AsStdStatusCallback(), condition_op, replace_full_map,
+      keys_to_delete));
+  return sync.Wait();
+}
+
+Status CDCStateTable::InsertEntriesAsync(
+    const std::vector<CDCStateTableEntry>& entries, StdStatusCallback callback) {
+  VLOG_WITH_FUNC(1) << yb::ToString(entries);
+  return WriteEntriesAsync(
+      entries, QLWriteRequestPB::QL_STMT_INSERT, std::move(callback), QL_OP_NOT_EXISTS,
+      /*replace_full_map=*/true);
 }
 
 Status CDCStateTable::InsertEntries(
     const std::vector<CDCStateTableEntry>& entries) {
   VLOG_WITH_FUNC(1) << yb::ToString(entries);
-  return WriteEntries(
-      entries, QLWriteRequestPB::QL_STMT_INSERT, QL_OP_NOT_EXISTS, true);
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  Synchronizer sync;
+  RETURN_NOT_OK(InsertEntriesAsync(entries, sync.AsStdStatusCallback()));
+  return sync.Wait();
 }
 
 Status CDCStateTable::UpdateEntries(

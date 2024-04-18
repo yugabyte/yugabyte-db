@@ -53,7 +53,7 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cdc-tutorials/">
+    <a class="section-link icon-offset" href="../../tutorials/cdc-tutorials/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
         <div class="title">Tutorials</div>

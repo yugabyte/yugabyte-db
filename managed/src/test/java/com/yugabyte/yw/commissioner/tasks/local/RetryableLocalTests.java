@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner.tasks.local;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
@@ -132,9 +131,7 @@ public class RetryableLocalTests extends LocalProviderUniverseTestBase {
     userIntent.specificGFlags =
         SpecificGFlags.construct(EditUniverseLocalTest.GFLAGS, EditUniverseLocalTest.GFLAGS);
     Universe universe = createUniverse(userIntent);
-    SimpleSqlPayload simpleSqlPayload = new SimpleSqlPayload(5, 2, 200, universe);
-    simpleSqlPayload.init();
-    simpleSqlPayload.start();
+    initAndStartPayload(universe);
     MDC.put(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY, abortPosition);
     TaskInfo taskInfo = taskFunction.apply(universe);
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
@@ -144,8 +141,7 @@ public class RetryableLocalTests extends LocalProviderUniverseTestBase {
     taskInfo = CommissionerBaseTest.waitForTask(customerTask.getTaskUUID());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
-    simpleSqlPayload.stop();
-    assertTrue(simpleSqlPayload.getErrorPercent() < 0.1d);
+    verifyPayload();
     verifyYSQL(universe);
   }
 }

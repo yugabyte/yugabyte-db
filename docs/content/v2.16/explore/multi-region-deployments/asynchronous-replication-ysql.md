@@ -39,7 +39,7 @@ For more information, see the following:
 - [xCluster replication architecture](../../../architecture/docdb-replication/async-replication/)
 - [xCluster replication commands](../../../admin/yb-admin/#xcluster-replication-commands)
 - [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)
-- [yugabyted](../../../reference/configuration/yugabyted/) 
+- [yugabyted](../../../reference/configuration/yugabyted/)
 - [yb-admin](../../../admin/yb-admin/)
 
 ## Create two data centers
@@ -49,15 +49,15 @@ For more information, see the following:
    ```sh
    ./bin/yugabyted start --base_dir=datacenter-east --listen=127.0.0.1
    ```
-   
+
    The preceding command starts a one-node local cluster using the IP address of `127.0.0.1` and creates `datacenter-east` as the base directory. Expect to see an output similar to the following:
 
-   
+
 
    ```output
    Starting yugabyted...
    ✅ System checks
-   
+
    +--------------------------------------------------------------------------------------------------+
    |                                            yugabyted                                             |
    +--------------------------------------------------------------------------------------------------+
@@ -74,21 +74,21 @@ For more information, see the following:
    🎉 Join us on Slack at https://www.yugabyte.com/slack
    👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
    ```
-   
+
 1. Create and start your second local cluster that simulates "Data Center = West" by running the following `yugabyted start` command from your YugabyteDB home directory:
 
      ```sh
    ./bin/yugabyted start --base_dir=datacenter-west --listen=127.0.0.2
    ```
-   
+
     The preceding command starts a one-node cluster using IP address of `127.0.0.2` and creates `datacenter-west` as the base directory. Expect to see an output similar to the following:
 
-   
+
 
      ```output
    Starting yugabyted...
    ✅ System checks
-   
+
    +--------------------------------------------------------------------------------------------------+
    |                                            yugabyted                                             |
    +--------------------------------------------------------------------------------------------------+
@@ -153,7 +153,8 @@ To configure "Data Center - West" to be the target of data changes from the "Dat
 
 ```sh
 yb-admin -master_addresses <target-master-addresses> \
-setup_universe_replication <source-universe_uuid> <source_master_addresses> <source-table-ids>
+setup_universe_replication <source-universe-uuid> \
+<source-master-addresses> <source-table-ids>
 ```
 
 - *target-master-addresses*: a comma-separated list of the YB-Master servers. For this simulation, you have one YB-Master server for each cluster (typically, there are three).
@@ -276,7 +277,9 @@ When the bidirectional replication has been configured, you can add data to the 
 You can add more tables to an existing replication using the `yb-admin` command `alter_universe_replication` `add_table`:
 
 ```sh
-yb-admin -master_addresses <target-master-addresses> alter_universe_replication <source-universe_uuid> add_table <source-table-ids>
+yb-admin -master_addresses <target-master-addresses> \
+alter_universe_replication <source-universe-uuid> \
+add_table <source-table-ids>
 ```
 
 The following is an example command:

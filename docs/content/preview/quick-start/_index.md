@@ -61,13 +61,13 @@ The local cluster setup on a single host is intended for development and learnin
 
 ## Install YugabyteDB
 
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the packaged database](#download-yugabytedb).
+Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the packaged database](#download).
 
 ### Prerequisites
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-- <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+- <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later. If you are on Apple silicon, you also need [Rosetta](https://support.apple.com/en-us/HT211861).
 
 - Python 3. To check the version, execute the following command:
 

@@ -23,11 +23,14 @@
 
 #include <iomanip>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/env.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 
@@ -77,10 +80,10 @@ GenericRateLimiter::~GenericRateLimiter() {
   requests_to_wait_ = static_cast<int32_t>(queue_[yb::to_underlying(IOPriority::kLow)].size() +
                                            queue_[yb::to_underlying(IOPriority::kHigh)].size());
   for (auto& r : queue_[yb::to_underlying(IOPriority::kHigh)]) {
-    r->cv.Signal();
+    YB_PROFILE(r->cv.Signal());
   }
   for (auto& r : queue_[yb::to_underlying(IOPriority::kLow)]) {
-    r->cv.Signal();
+    YB_PROFILE(r->cv.Signal());
   }
   while (requests_to_wait_ > 0) {
     exit_cv_.Wait();
@@ -108,6 +111,7 @@ void GenericRateLimiter::Request(int64_t bytes, const yb::IOPriority priority) {
   assert(bytes <= refill_bytes_per_period_.load(std::memory_order_relaxed));
 
   const auto pri = yb::to_underlying(priority);
+  SCOPED_WAIT_STATUS(RocksDB_RateLimiter);
 
   MutexLock g(&request_mutex_);
   if (stop_) {
@@ -170,7 +174,7 @@ void GenericRateLimiter::Request(int64_t bytes, const yb::IOPriority priority) {
     // request_mutex_ is held from now on
     if (stop_) {
       --requests_to_wait_;
-      exit_cv_.Signal();
+      YB_PROFILE(exit_cv_.Signal());
       return;
     }
 
@@ -205,9 +209,9 @@ void GenericRateLimiter::Request(int64_t bytes, const yb::IOPriority priority) {
                  (queue_[yb::to_underlying(IOPriority::kLow)].empty() ||
                     &r != queue_[yb::to_underlying(IOPriority::kLow)].front()));
           if (!queue_[yb::to_underlying(IOPriority::kHigh)].empty()) {
-            queue_[yb::to_underlying(IOPriority::kHigh)].front()->cv.Signal();
+            YB_PROFILE(queue_[yb::to_underlying(IOPriority::kHigh)].front()->cv.Signal());
           } else if (!queue_[yb::to_underlying(IOPriority::kLow)].empty()) {
-            queue_[yb::to_underlying(IOPriority::kLow)].front()->cv.Signal();
+            YB_PROFILE(queue_[yb::to_underlying(IOPriority::kLow)].front()->cv.Signal());
           }
           // Done
           break;
@@ -274,7 +278,7 @@ void GenericRateLimiter::Refill() {
       next_req->granted = true;
       if (next_req != leader_) {
         // Quota granted, signal the thread
-        next_req->cv.Signal();
+        YB_PROFILE(next_req->cv.Signal());
       }
     }
   }

@@ -581,16 +581,18 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN
---------------------------------------
- Nested Loop
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.id = t2.id)
    ->  Seq Scan on t2
    ->  Index Scan using t1_pkey on t1
-         Index Cond: (id = t2.id)
-(4 rows)
+         Index Cond: (id = ANY (ARRAY[t2.id, $1, $2, ..., $1023]))
+(5 rows)
 
 -- YB_COMMENT
 -- Because the plan defaults to a BNL in Yugabyte, add a NoYbBatchedNL test
+SET yb_prefer_bnl to off;
 /*+NoYbBatchedNL(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
@@ -608,6 +610,7 @@ error hint:
          Index Cond: (id = t2.id)
 (4 rows)
 
+SET yb_prefer_bnl to on;
 /*+NoMergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
@@ -656,13 +659,14 @@ not used hint:
 duplication hint:
 error hint:
 
-             QUERY PLAN
--------------------------------------
- Nested Loop
+                             QUERY PLAN
+---------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.val = t3.val)
    ->  Seq Scan on t3
    ->  Index Scan using t1_val on t1
-         Index Cond: (val = t3.val)
-(4 rows)
+         Index Cond: (val = ANY (ARRAY[t3.val, $1, $2, ..., $1023]))
+(5 rows)
 
 /*+NoHashJoin(t1 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
@@ -769,7 +773,8 @@ error hint:
 
                                   QUERY PLAN
 -------------------------------------------------------------------------------
- Nested Loop
+ YB Batched Nested Loop Join
+   Join Filter: (t1.id = t2.id)
    ->  YB Batched Nested Loop Join
          Join Filter: (t1.id = t3.id)
          ->  YB Batched Nested Loop Join
@@ -780,8 +785,8 @@ error hint:
          ->  Index Scan using t3_pkey on t3
                Index Cond: (id = ANY (ARRAY[t1.id, $1025, $1026, ..., $2047]))
    ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
-(12 rows)
+         Index Cond: (id = ANY (ARRAY[t1.id, $2049, $2050, ..., $3071]))
+(13 rows)
 
 /*+NoNestLoop(t4 t1 t3 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -3999,7 +4004,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
 
 TRUNCATE hint_plan.hints;
 VACUUM ANALYZE hint_plan.hints;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 -- plpgsql test
 EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = 1;
            QUERY PLAN

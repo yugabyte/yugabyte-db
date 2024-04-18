@@ -196,6 +196,8 @@ Under **Application config**, specify TLS versions as shown in the following ill
 
 The recommended TLS version is 1.2.
 
+Optionally, you can specify a Support Origin URL to provide an alternate hostname or IP address to whitelist for the CORS filter. For example, for a load balancer.
+
 ## Set up HTTP/HTTPS proxy
 
 YugabyteDB Anywhere sometimes initiates HTTP or HTTPS connections to other servers. For example, HTTP or HTTPS connections (depending on your setup) can be used to do the following, or more:

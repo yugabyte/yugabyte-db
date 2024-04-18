@@ -7,15 +7,24 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 public class OperatorStatusUpdaterFactory {
   private final RuntimeConfGetter confGetter;
 
+  private KubernetesOperatorStatusUpdater kubernetesOperatorStatusUpdater;
+  private NoOpOperatorStatusUpdater noOpOperatorStatusUpdater;
+
   @Inject
   public OperatorStatusUpdaterFactory(RuntimeConfGetter confGetter) {
     this.confGetter = confGetter;
   }
 
-  public OperatorStatusUpdater create() {
+  public synchronized OperatorStatusUpdater create() {
     if (confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
-      return new KubernetesOperatorStatusUpdater(confGetter);
+      if (kubernetesOperatorStatusUpdater == null) {
+        kubernetesOperatorStatusUpdater = new KubernetesOperatorStatusUpdater(this.confGetter);
+      }
+      return kubernetesOperatorStatusUpdater;
     }
-    return new NoOpOperatorStatusUpdater();
+    if (noOpOperatorStatusUpdater == null) {
+      noOpOperatorStatusUpdater = new NoOpOperatorStatusUpdater();
+    }
+    return noOpOperatorStatusUpdater;
   }
 }

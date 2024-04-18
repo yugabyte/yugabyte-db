@@ -17,6 +17,10 @@
 #include "storage/spin.h"
 #include "replication/walreceiver.h"
 
+/* YB includes. */
+#include "replication/walsender.h"
+#include "utils/uuid.h"
+
 /*
  * Behaviour of replication slots, upon release or crash.
  *
@@ -96,6 +100,9 @@ typedef struct ReplicationSlotPersistentData
 
 	/* plugin name */
 	NameData	plugin;
+
+	/* The CDC stream_id (32 bytes + 1 for null terminator) */
+	char yb_stream_id[33];
 } ReplicationSlotPersistentData;
 
 /*
@@ -189,7 +196,7 @@ extern PGDLLIMPORT ReplicationSlot *MyReplicationSlot;
 /* GUCs */
 extern PGDLLIMPORT int max_replication_slots;
 
-extern PGDLLIMPORT const char *YB_OUTPUT_PLUGIN;
+extern PGDLLIMPORT const char *PG_OUTPUT_PLUGIN;
 
 /* shmem initialization functions */
 extern Size ReplicationSlotsShmemSize(void);
@@ -197,7 +204,9 @@ extern void ReplicationSlotsShmemInit(void);
 
 /* management of individual slots */
 extern void ReplicationSlotCreate(const char *name, bool db_specific,
-								  ReplicationSlotPersistency p, bool two_phase);
+								  ReplicationSlotPersistency p, bool two_phase,
+								  CRSSnapshotAction yb_snapshot_action,
+								  uint64_t *yb_consistent_snapshot_time);
 extern void ReplicationSlotPersist(void);
 extern void ReplicationSlotDrop(const char *name, bool nowait);
 

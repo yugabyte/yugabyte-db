@@ -33,6 +33,8 @@
 #include <utility>
 #include <vector>
 
+#include "yb/ash/wait_state_fwd.h"
+
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/compaction_job_stats.h"
 #include "yb/rocksdb/db.h"
@@ -173,6 +175,7 @@ class CompactionJob {
 
   std::shared_ptr<Cache> table_cache_;
 
+  yb::ash::WaitStateInfoPtr wait_state_;
   EventLogger* event_logger_;
 
   bool bottommost_level_;

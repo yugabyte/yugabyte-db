@@ -120,7 +120,12 @@ public class EnvProxySelector extends ProxySelector {
 
   @Override
   public List<Proxy> select(URI uri) {
-    validateUri(uri);
+    if (uri == null) {
+      throw new IllegalArgumentException("URI can't be null.");
+    }
+    if (uri.getScheme() == null) {
+      throw new IllegalArgumentException("URI should have protocol.");
+    }
     switch (uri.getScheme()) {
       case "http":
         return selectInternal(uri, httpProxy);
@@ -131,18 +136,11 @@ public class EnvProxySelector extends ProxySelector {
     }
   }
 
-  private static void validateUri(URI uri) {
-    if (uri == null) {
-      throw new IllegalArgumentException("URI can't be null.");
-    }
-    if (uri.getScheme() == null || uri.getHost() == null) {
-      throw new IllegalArgumentException(
-          "protocol = " + uri.getScheme() + " host = " + uri.getHost());
-    }
-  }
-
   @NotNull
   private List<Proxy> selectInternal(URI uri, Optional<URI> proxyUri) {
+    if (uri.getHost() == null) {
+      throw new IllegalArgumentException("URI should have host.");
+    }
     return Collections.singletonList(
         proxyUri
             .filter(ignore -> shouldUseProxy(uri))

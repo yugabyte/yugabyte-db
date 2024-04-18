@@ -5,8 +5,9 @@ import { Trans, useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
+import { useSelector } from 'react-redux';
 
-import { YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
+import { YBModal, YBModalProps } from '../../../../redesign/components';
 import { YBReactSelectField } from '../../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
@@ -16,28 +17,22 @@ import {
   universeQueryKey,
   xClusterQueryKey
 } from '../../../../redesign/helpers/api';
-import {
-  fetchTaskUntilItCompletes,
-  restartXClusterConfig
-} from '../../../../actions/xClusterReplication';
+import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 import { UnavailableUniverseStates } from '../../../../redesign/helpers/constants';
 import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
-import {
-  ReactSelectStorageConfigField,
-  StorageConfigOption
-} from '../../sharedComponents/ReactSelectStorageConfig';
+import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import { ReactComponent as SelectedIcon } from '../../../../redesign/assets/circle-selected.svg';
 import { ReactComponent as UnselectedIcon } from '../../../../redesign/assets/circle-empty.svg';
-import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
 import { getXClusterConfig } from '../utils';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
-import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 
 interface RepairDrConfigModalProps {
   drConfig: DrConfig;
@@ -119,6 +114,7 @@ const RepairType = {
 } as const;
 type RepairType = typeof RepairType[keyof typeof RepairType];
 
+const MODAL_NAME = 'RepairDrConfigModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.repairDrConfigModal';
 
 export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModalProps) => {
@@ -128,6 +124,16 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
   const queryClient = useQueryClient();
   const formMethods = useForm<RepairDrConfigModalFormValues>();
 
+  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
+    reduxState?.customer?.configs?.data.filter(
+      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+    )
+  );
+  const storageConfigName =
+    storageConfigs?.find(
+      (storageConfig) =>
+        storageConfig.configUUID === drConfig.bootstrapParams.backupRequestParams.storageConfigUUID
+    )?.configName ?? '';
   const universeListQuery = useQuery<Universe[]>(universeQueryKey.ALL, () =>
     api.fetchUniverseList()
   );
@@ -195,9 +201,7 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
   const xClusterConfig = getXClusterConfig(drConfig);
   const restartConfigMutation = useMutation(
     (storageConfigUuid: string) => {
-      return restartXClusterConfig(xClusterConfig.uuid, [], {
-        backupRequestParams: { storageConfigUUID: storageConfigUuid }
-      });
+      return api.restartDrConfig(drConfig.uuid, { dbs: [] });
     },
     {
       onSuccess: (response) => {
@@ -251,28 +255,54 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
     }
   );
 
-  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
-    const i18nKey = drConfig.primaryUniverseUuid
-      ? 'undefinedTargetUniverseUuid'
-      : 'undefinedSourceUniverseUuid';
+  const modalTitle = t('title');
+  const cancelLabel = t('cancel', { keyPrefix: 'common' });
+  if (
+    !drConfig.primaryUniverseUuid ||
+    !drConfig.drReplicaUniverseUuid ||
+    universeListQuery.isError
+  ) {
+    const customErrorMessage = universeListQuery.isError
+      ? t('failedToFetchUniverseList', { keyPrefix: 'queryError' })
+      : t(
+          drConfig.primaryUniverseUuid
+            ? 'undefinedDrReplicaUniveresUuid'
+            : 'undefinedDrPrimaryUniveresUuid',
+          {
+            keyPrefix: 'clusterDetail.disasterRecovery.error'
+          }
+        );
     return (
-      <YBErrorIndicator
-        customErrorMessage={t(i18nKey, {
-          keyPrefix: 'clusterDetail.xCluster.error'
-        })}
-      />
-    );
-  }
-  if (universeListQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchUniverseList', { keyPrefix: 'queryError' })}
-      />
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size="md"
+        overrideWidth="960px"
+        {...modalProps}
+      >
+        <YBErrorIndicator customErrorMessage={customErrorMessage} />
+      </YBModal>
     );
   }
 
   if (universeListQuery.isLoading || universeListQuery.isIdle) {
-    return <YBLoading />;
+    return (
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size="md"
+        overrideWidth="960px"
+        {...modalProps}
+      >
+        <YBLoading />
+      </YBModal>
+    );
   }
 
   const universeList = universeListQuery.data;
@@ -289,14 +319,26 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
     const i18nKey = sourceUniverse ? 'failedToFindTargetUniverse' : 'failedToFindSourceUniverse';
     const universeUuid = sourceUniverse ? targetUniverseUuid : sourceUniverseUuid;
     return (
-      <YBErrorIndicator
-        customErrorMessage={t(i18nKey, {
-          keyPrefix: 'clusterDetail.xCluster.error',
-          universeUuid: universeUuid
-        })}
-      />
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size="md"
+        overrideWidth="960px"
+        {...modalProps}
+      >
+        <YBErrorIndicator
+          customErrorMessage={t(i18nKey, {
+            keyPrefix: 'clusterDetail.xCluster.error',
+            universeUuid: universeUuid
+          })}
+        />
+      </YBModal>
     );
   }
+
   const onSubmit: SubmitHandler<RepairDrConfigModalFormValues> = (formValues) => {
     if (!formValues.repairType) {
       // This shouldn't be reached.
@@ -304,7 +346,7 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
       return;
     }
 
-    const storageConfigUuid = formValues.storageConfig.value.uuid;
+    const storageConfigUuid = drConfig.bootstrapParams.backupRequestParams.storageConfigUUID;
     switch (formValues.repairType) {
       case RepairType.USE_EXISITING_TARGET_UNIVERSE:
         return restartConfigMutation.mutateAsync(storageConfigUuid);
@@ -312,12 +354,7 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
         if (formValues.targetUniverse) {
           return replaceDrReplicaMutation.mutateAsync({
             primaryUniverseUuid: drConfig.primaryUniverseUuid ?? '',
-            drReplicaUniverseUuid: formValues.targetUniverse.value.universeUUID,
-            bootstrapParams: {
-              backupRequestParams: {
-                storageConfigUUID: storageConfigUuid
-              }
-            }
+            drReplicaUniverseUuid: formValues.targetUniverse.value.universeUUID
           });
         }
         return;
@@ -362,9 +399,11 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
   const isFormDisabled = formMethods.formState.isSubmitting;
   return (
     <YBModal
-      title={t('title')}
+      title={modalTitle}
       submitLabel={t('submitButton')}
-      cancelLabel={t('cancel', { keyPrefix: 'common' })}
+      cancelLabel={cancelLabel}
+      submitTestId={`${MODAL_NAME}-SubmitButton`}
+      cancelTestId={`${MODAL_NAME}-CancelButton`}
       onSubmit={formMethods.handleSubmit(onSubmit)}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
       isSubmitting={formMethods.formState.isSubmitting}
@@ -479,30 +518,27 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
           {formMethods.formState.errors.repairType.message}
         </FormHelperText>
       )}
-      <Box marginTop={3} maxWidth="400px">
+      <Box marginTop={3}>
         <div className={classes.fieldLabel}>
           <Typography variant="body2">
             {t('option.useExistingTargetUniverse.backupStorageConfig.label')}
           </Typography>
-          <YBTooltip
-            title={
-              <Typography variant="body2">
-                <Trans
-                  i18nKey={`${TRANSLATION_KEY_PREFIX}.option.useExistingTargetUniverse.backupStorageConfig.tooltip`}
-                  components={{ paragraph: <p />, bold: <b /> }}
-                />
-              </Typography>
-            }
-          >
-            <InfoIcon className={classes.infoIcon} />
-          </YBTooltip>
         </div>
-        <ReactSelectStorageConfigField
-          control={formMethods.control}
-          name="storageConfig"
-          rules={{ required: t('error.fieldRequired') }}
-          isDisabled={isFormDisabled}
-        />
+        {storageConfigName ? (
+          <Typography variant="body2">
+            <Trans
+              i18nKey={`clusterDetail.disasterRecovery.backupStorageConfig.currentStorageConfigInfo`}
+              components={{ bold: <b /> }}
+              values={{ storageConfigName: storageConfigName }}
+            />
+          </Typography>
+        ) : (
+          <Typography variant="body2">
+            {t('missingStorageConfigInfo', {
+              keyPrefix: 'clusterDetail.disasterRecovery.backupStorageConfig'
+            })}
+          </Typography>
+        )}
       </Box>
     </YBModal>
   );

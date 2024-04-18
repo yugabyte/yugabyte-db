@@ -67,6 +67,7 @@ set(CLIENT_SRCS
   transaction_rpc.cc
   universe_key_client.cc
   value.cc
+  xcluster_client.cc
   yb_op.cc
   yb_table_name.cc
 )

@@ -1670,7 +1670,8 @@ find_hash_columns(AggState *aggstate)
 		execTuplesHashPrepare(perhash->numCols,
 							  perhash->aggnode->grpOperators,
 							  &perhash->eqfuncoids,
-							  &perhash->hashfunctions);
+							  &perhash->hashfunctions,
+							  NULL);
 		perhash->hashslot =
 			ExecAllocTableSlot(&estate->es_tupleTable, hashDesc,
 							   &TTSOpsMinimalTuple);

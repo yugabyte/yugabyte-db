@@ -4,7 +4,12 @@
 /node_modules
 /.pnp
 /build
+/dist
+dist
 .pnp.js
+/.rollup.cache
+.rollup.cache
+tsconfig.tsbuildinfo
 
 # testing
 /coverage

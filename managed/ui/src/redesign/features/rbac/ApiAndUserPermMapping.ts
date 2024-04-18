@@ -301,7 +301,7 @@ export const ApiPermissionMap = {
         endpoint: '/nodes/$nodeUUID<[^/]+>/list'
     },
     GET_PROVIDERS: { requestType: ApiRequestType.GET, endpoint: '/providers' },
-    CREATE_PROVIDERS: { requestType: ApiRequestType.POST, endpoint: '/providers' },
+    CREATE_PROVIDER: { requestType: ApiRequestType.POST, endpoint: '/providers' },
     GET_PROVIDER_BY_ID: {
         requestType: ApiRequestType.GET,
         endpoint: '/providers/$pUUID<[^/]+>'
@@ -1087,6 +1087,10 @@ export const ApiPermissionMap = {
     GET_DR_CONFIG: {
         requestType: ApiRequestType.GET,
         endpoint: '/dr_configs/$drUUID<[^/]+>'
+    },
+    DR_CONFIG_EDIT: {
+        requestType: ApiRequestType.POST,
+        endpoint: 'dr_configs/$drUUID<[^/]+>/edit'
     },
     DR_CONFIG_REPLACE_REPLICA: {
         requestType: ApiRequestType.POST,

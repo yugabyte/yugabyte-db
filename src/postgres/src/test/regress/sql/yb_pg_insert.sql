@@ -1,14 +1,16 @@
- --
+--
 -- insert with DEFAULT in the target_list
 --
-create table inserttest (col1 int4, col2 int4 NOT NULL, col3 text default 'testing');
+create table inserttest (col1 int4, col2 int4 NOT NULL, col3 text default 'testing',
+                         ybsort serial, PRIMARY KEY (ybsort ASC));
 insert into inserttest (col1, col2, col3) values (DEFAULT, DEFAULT, DEFAULT);
 insert into inserttest (col2, col3) values (3, DEFAULT);
 insert into inserttest (col1, col2, col3) values (DEFAULT, 5, DEFAULT);
 insert into inserttest values (DEFAULT, 5, 'test');
 insert into inserttest values (DEFAULT, 7);
 
-select * from inserttest order by col1, col2, col3;
+-- YB note: avoid selecting ybsort column.
+select col1, col2, col3 from inserttest;
 
 --
 -- insert with similar expression / target_list values (all fail)
@@ -18,7 +20,8 @@ insert into inserttest (col1, col2, col3) values (1, 2);
 insert into inserttest (col1) values (1, 2);
 insert into inserttest (col1) values (DEFAULT, DEFAULT);
 
-select * from inserttest order by col1, col2, col3;
+-- YB note: avoid selecting ybsort column.
+select col1, col2, col3 from inserttest;
 
 --
 -- VALUES test
@@ -26,16 +29,25 @@ select * from inserttest order by col1, col2, col3;
 insert into inserttest values(10, 20, '40'), (-1, 2, DEFAULT),
     ((select 2), (select i from (values(3)) as foo (i)), 'values are fun!');
 
-select * from inserttest order by col1, col2, col3;
+-- YB note: avoid selecting ybsort column.
+select col1, col2, col3 from inserttest;
 
 --
 -- TOASTed value test
 --
 insert into inserttest values(30, 50, repeat('x', 10000));
 
-select col1, col2, char_length(col3) from inserttest order by col1, col2, col3;
+select col1, col2, char_length(col3) from inserttest;
 
 drop table inserttest;
+
+--
+-- tuple larger than fillfactor
+--
+CREATE TABLE large_tuple_test (a int, b text) WITH (fillfactor = 10);
+ALTER TABLE large_tuple_test ALTER COLUMN b SET STORAGE plain;
+
+DROP TABLE large_tuple_test;
 
 --
 -- check indirection (field/array assignment), cf bug #14265
@@ -46,7 +58,8 @@ drop table inserttest;
 create type insert_test_type as (if1 int, if2 text[]);
 
 create table inserttest (f1 int, f2 int[],
-                         f3 insert_test_type, f4 insert_test_type[]);
+                         f3 insert_test_type, f4 insert_test_type[],
+                         ybsort serial, PRIMARY KEY (ybsort ASC));
 
 insert into inserttest (f2[1], f2[2]) values (1,2);
 insert into inserttest (f2[1], f2[2]) values (3,4), (5,6);
@@ -66,7 +79,8 @@ insert into inserttest (f4[1].if2[1], f4[1].if2[2]) values ('foo', 'bar');
 insert into inserttest (f4[1].if2[1], f4[1].if2[2]) values ('foo', 'bar'), ('baz', 'quux');
 insert into inserttest (f4[1].if2[1], f4[1].if2[2]) select 'bear', 'beer';
 
-select * from inserttest ORDER BY f1, f2, f3, f4;
+-- YB note: avoid selecting ybsort column.
+select f1, f2, f3, f4 from inserttest;
 
 -- also check reverse-listing
 create table inserttest2 (f1 bigint, f2 text);
@@ -88,7 +102,8 @@ drop type insert_test_type;
 -- direct partition inserts should check partition bound constraint
 create table range_parted (
 	a text,
-	b int
+	b int,
+	ybsort serial
 ) partition by range (a, (b+0));
 
 -- no partitions, so fail
@@ -116,8 +131,9 @@ insert into part1 values (null);
 insert into part1 values (1);
 
 create table list_parted (
-    a text,
-    b int
+	a text,
+	b int,
+	ybsort serial
 ) partition by list (lower(a));
 create table part_aa_bb partition of list_parted FOR VALUES IN ('aa', 'bb');
 create table part_cc_dd partition of list_parted FOR VALUES IN ('cc', 'dd');
@@ -168,7 +184,40 @@ insert into part_default_p2 values ('de', 35);
 insert into list_parted values ('ab', 21);
 insert into list_parted values ('xx', 1);
 insert into list_parted values ('yy', 2);
-select tableoid::regclass, * from list_parted ORDER BY a,b;
+
+-- YB note: create a helper table (ybpartitionsort, relid) that ranks each
+-- partition of list_parted by preorder traversal.  This is to match the
+-- ordering of upstream PG in the below selects.  Within each partition,
+-- ordering by the ybsort column is still needed.
+CREATE TABLE yborder_list_parted AS
+    WITH tree AS (SELECT * FROM pg_partition_tree('list_parted')),
+         rel_and_parent AS (SELECT relid,
+                                   parentrelid
+                            FROM tree
+                            WHERE level = 2
+                            UNION
+                            SELECT null,
+                                   relid
+                            FROM tree
+                            WHERE level = 1)
+    SELECT row_number() OVER (ORDER BY
+                              substr(l1bound, 1, 1) DESC,
+                              l1bound,
+                              substr(l2bound, 1, 1) DESC,
+                              l2bound)
+                        AS ybpartitionsort,
+           relid
+    FROM (SELECT CASE WHEN relid IS null THEN parentrelid ELSE relid END,
+                 pg_get_expr(c1.relpartbound, relid) AS l2bound,
+                 pg_get_expr(c2.relpartbound, parentrelid) AS l1bound
+          FROM rel_and_parent
+          LEFT JOIN pg_class c1 ON relid = c1.oid
+          JOIN pg_class c2 ON parentrelid = c2.oid) rel_and_bounds;
+
+SELECT tableoid, a, b FROM (
+select tableoid::regclass, * from list_parted
+LIMIT ALL) ybview JOIN yborder_list_parted ON ybview.tableoid = relid
+ORDER BY ybpartitionsort, ybsort;
 
 -- Check tuple routing for partitioned tables
 
@@ -196,7 +245,9 @@ insert into range_parted values ('a', null);
 insert into range_parted values (null, 19);
 insert into range_parted values ('b', 20);
 
-select tableoid::regclass, * from range_parted ORDER BY a,b;
+SELECT tableoid, a, b FROM (
+select tableoid::regclass, * from range_parted
+LIMIT ALL) ybview ORDER BY ybview.tableoid, ybsort;
 -- ok
 insert into list_parted values (null, 1);
 insert into list_parted (a) values ('aA');
@@ -206,7 +257,10 @@ insert into part_ee_ff values ('EE', 0);
 -- ok
 insert into list_parted values ('EE', 1);
 insert into part_ee_ff values ('EE', 10);
-select tableoid::regclass, * from list_parted ORDER BY a,b;
+SELECT tableoid, a, b FROM (
+select tableoid::regclass, * from list_parted
+LIMIT ALL) ybview JOIN yborder_list_parted ON ybview.tableoid = relid
+ORDER BY ybpartitionsort, ybsort;
 
 -- some more tests to exercise tuple-routing with multi-level partitioning
 create table part_gg partition of list_parted for values in ('gg') partition by range (b);
@@ -229,7 +283,7 @@ select tableoid::regclass::text, a, min(b) as min_b, max(b) as max_b from list_p
 -- direct partition inserts should check hash partition bound constraint
 
 create table hash_parted (
-    a int
+	a int
 ) partition by hash (a part_test_int4_ops);
 create table hpart0 partition of hash_parted for values with (modulus 4, remainder 0);
 create table hpart1 partition of hash_parted for values with (modulus 4, remainder 1);
@@ -246,8 +300,12 @@ insert into hpart0 values(11);
 insert into hpart3 values(11);
 
 -- view data
+-- YB note: also order by column a.
 select tableoid::regclass as part, a, a%4 as "remainder = a % 4"
-from hash_parted order by part,a;
+from hash_parted order by part, a;
+
+-- YB note: ybsort column is no longer needed, so drop it before \d.
+ALTER TABLE list_parted DROP COLUMN ybsort;
 
 -- test \d+ output on a table which has both partitioned and unpartitioned
 -- partitions
@@ -265,7 +323,9 @@ create table part_default partition of list_parted default;
 insert into part_default values (null);
 insert into part_default values (1);
 insert into part_default values (-1);
-select tableoid::regclass, a from list_parted ORDER BY tableoid,a;
+SELECT * FROM (
+select tableoid::regclass, a from list_parted
+LIMIT ALL) ybview ORDER BY a DESC;
 -- cleanup
 drop table list_parted;
 
@@ -372,7 +432,44 @@ insert into mlparted_def2 values (34, 50);
 create table mlparted_defd partition of mlparted_def default;
 insert into mlparted values (70, 100);
 
-select tableoid::regclass, * from mlparted_def order by tableoid,a;
+SELECT * FROM (
+select tableoid::regclass, * from mlparted_def
+LIMIT ALL) ybview ORDER BY a;
+
+-- Check multi-level tuple routing with attributes dropped from the
+-- top-most parent.  First remove the last attribute.
+alter table mlparted add d int, add e int;
+alter table mlparted drop e;
+create table mlparted5 partition of mlparted
+  for values from (1, 40) to (1, 50) partition by range (c);
+create table mlparted5_ab partition of mlparted5
+  for values from ('a') to ('c') partition by list (c);
+-- This partitioned table should remain with no partitions.
+create table mlparted5_cd partition of mlparted5
+  for values from ('c') to ('e') partition by list (c);
+create table mlparted5_a partition of mlparted5_ab for values in ('a');
+create table mlparted5_b (d int, b int, c text, a int);
+alter table mlparted5_ab attach partition mlparted5_b for values in ('b');
+truncate mlparted;
+insert into mlparted values (1, 2, 'a', 1);
+insert into mlparted values (1, 40, 'a', 1);  -- goes to mlparted5_a
+insert into mlparted values (1, 45, 'b', 1);  -- goes to mlparted5_b
+insert into mlparted values (1, 45, 'c', 1);  -- goes to mlparted5_cd, fails
+insert into mlparted values (1, 45, 'f', 1);  -- goes to mlparted5, fails
+select tableoid::regclass, * from mlparted order by a, b, c, d;
+alter table mlparted drop d;
+truncate mlparted;
+-- Remove the before last attribute.
+alter table mlparted add e int, add d int;
+alter table mlparted drop e;
+insert into mlparted values (1, 2, 'a', 1);
+insert into mlparted values (1, 40, 'a', 1);  -- goes to mlparted5_a
+insert into mlparted values (1, 45, 'b', 1);  -- goes to mlparted5_b
+insert into mlparted values (1, 45, 'c', 1);  -- goes to mlparted5_cd, fails
+insert into mlparted values (1, 45, 'f', 1);  -- goes to mlparted5, fails
+select tableoid::regclass, * from mlparted order by a, b, c, d;
+alter table mlparted drop d;
+drop table mlparted5;
 
 -- check that message shown after failure to find a partition shows the
 -- appropriate key description (or none) in various situations
@@ -447,7 +544,8 @@ insert into mcrparted5 values (30, 21, 20);
 insert into mcrparted4 values (30, 21, 20); -- error
 
 -- check rows
-select tableoid::regclass::text, * from mcrparted order by 1,a,b;
+-- YB note: add more ordering to match PG output order.
+select tableoid::regclass::text, * from mcrparted order by 1, (b - 10000 * (a + c));
 
 -- cleanup
 drop table mcrparted;
@@ -480,9 +578,7 @@ drop table inserttest3;
 drop table brtrigpartcon;
 drop function brtrigpartcon1trigf();
 
--- check that "do nothing" BR triggers work with tuple-routing (this checks
--- that estate->es_result_relation_info is appropriately set/reset for each
--- routed tuple)
+-- check that "do nothing" BR triggers work with tuple-routing
 create table donothingbrtrig_test (a int, b text) partition by list (a);
 create table donothingbrtrig_test1 (b text, a int);
 create table donothingbrtrig_test2 (c text, b text, a int);
@@ -498,6 +594,7 @@ copy donothingbrtrig_test from stdout;
 2	qux
 \.
 select tableoid::regclass, * from donothingbrtrig_test;
+
 -- cleanup
 drop table donothingbrtrig_test;
 drop function donothingbrtrig_func();

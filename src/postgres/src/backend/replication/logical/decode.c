@@ -43,6 +43,10 @@
 #include "replication/snapbuild.h"
 #include "storage/standby.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+#include "replication/yb_decode.h"
+
 /* individual record(group)'s handlers */
 static void DecodeInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf);
 static void DecodeUpdate(LogicalDecodingContext *ctx, XLogRecordBuffer *buf);
@@ -90,6 +94,23 @@ static bool DecodeTXNNeedSkip(LogicalDecodingContext *ctx,
 void
 LogicalDecodingProcessRecord(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * YB Note: The above comments are not applicable to YB since our
+		 * transaction ordering is taken care of by the virtual WAL component in
+		 * the CDC service. Once we reach here, we are sure that there will be
+		 * no interleaved transactions.
+		 *
+		 * Note that 'fast forward' is also not applicable to YB since we only
+		 * get relevant records from the virtual WAL. In PG, the WAL is read
+		 * sequentially and you might find records which are not relevant for
+		 * replication.
+		 */
+		YBLogicalDecodingProcessRecord(ctx, record);
+		return;
+	}
+
 	XLogRecordBuffer buf;
 	TransactionId txid;
 	RmgrData	rmgr;
