@@ -87,8 +87,6 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
 
   if (target->is_system()) {
     has_system_targets_ = true;
-  } else if (!is_aggregate) {
-    has_regular_targets_ = true;
   }
 
   if (is_aggregate) {
@@ -463,10 +461,6 @@ Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
   }
 
   return false;
-}
-
-bool PgDml::has_regular_targets() const {
-  return has_regular_targets_;
 }
 
 bool PgDml::has_aggregate_targets() const {
