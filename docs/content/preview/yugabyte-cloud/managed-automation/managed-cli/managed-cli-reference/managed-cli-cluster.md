@@ -164,7 +164,7 @@ Update the specified cluster.
 | --cloud-provider | Cloud provider. `AWS`, `AZURE`, or `GCP`. |
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
-| --database-version | Database version to use for the cluster. `Stable` or `Preview`. |
+| &#8209;&#8209;database&#8209;version | Database version to use for the cluster. `Innovation`, `Production`, or `Preview`. |
 | --fault-tolerance | Fault tolerance for the cluster. `NONE`, `NODE`, `ZONE`, or `REGION`. |
 | --new-name | The new name for the cluster. |
 | --node-config | Number of vCPUs and disk size per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li><li>disk-iops - disk IOPS per node (AWS only)</li></ul>If specified, num-cores is required and disk-size-gb and disk-iops are optional. |

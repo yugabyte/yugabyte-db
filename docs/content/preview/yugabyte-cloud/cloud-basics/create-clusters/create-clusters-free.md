@@ -22,7 +22,7 @@ Your Sandbox cluster includes the following:
 
 - Single node.
 - Up to 2 vCPUs, 4 GB memory, and 10 GB of storage, depending on the cloud provider.
-- A [preview release](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
+- Access to [innovation and preview release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on).
 - Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
 
 Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).
@@ -42,6 +42,7 @@ To create a Sandbox cluster:
     - **Cluster Name**: Enter a name for the cluster.
     - **Provider**: Choose a cloud provider - AWS or GCP.
     - **Region**: Choose the region in which to deploy the cluster.
+    - **Database Version**: Choose Innovation or Preview track.
 
 1. Click **Add Current IP Address** to add your computer to the cluster [IP allow list](../../../cloud-secure-clusters/add-connections/). This allows you to connect to the cluster after it's created. You can also add existing allow lists in your account, or create a new allow list and add addresses manually. Click **Next** when you are done.
 
