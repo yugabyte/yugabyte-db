@@ -9,8 +9,8 @@
 
 import { FC } from 'react';
 import clsx from 'clsx';
+import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { values } from 'lodash';
 import { Control, useFieldArray, useForm } from 'react-hook-form';
 import { FormHelperText, Grid, Typography, makeStyles } from '@material-ui/core';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -27,9 +27,12 @@ import { CloudVendorRegionField } from '../../forms/configureRegion/ConfigureReg
 import { isNonEmptyObject } from '../../../../../utils/ObjectUtils';
 import {
   ImageBundle,
-  ImageBundleType
+  ImageBundleType,
+  RunTimeConfigEntry
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { ArchitectureType, ProviderCode } from '../../constants';
+import { runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
+import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
 import { AWSProviderEditFormFieldValues } from '../../forms/aws/AWSProviderEditForm';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
 import { getAddLinuxVersionSchema } from './ValidationSchemas';
@@ -87,6 +90,8 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+const IMDSV2_RUNTIME_CONFIG = 'yb.aws.enable_imdsv2_support';
+
 export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
   providerType,
   control,
@@ -100,6 +105,17 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
     keyPrefix: 'linuxVersion'
   });
   const classes = useStyles();
+
+  const { data: globalRuntimeConfigs } = useQuery(runtimeConfigQueryKey.globalScope(), () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  );
+
+  const isIMDSv2Enabled =
+    globalRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === IMDSV2_RUNTIME_CONFIG
+    )?.value === 'true';
+
+  const showIMDSv2 = providerType === ProviderCode.AWS && isIMDSv2Enabled;
 
   const regions = useFieldArray({
     name: 'regions',
@@ -119,7 +135,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
       details: {
         arch: ArchitectureType.X86_64,
         sshPort: 22,
-        ...(providerType === ProviderCode.AWS && { useIMDSv2: false })
+        ...(showIMDSv2 && { useIMDSv2: false })
       },
       ...editDetails
     },
@@ -275,7 +291,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
           </Grid>
         </div>
 
-        {providerType === ProviderCode.AWS && (
+        {showIMDSv2 && (
           <div>
             <Typography variant="body1">{t('form.otherConfiguration')}</Typography>
             <Grid container spacing={3} alignItems="center">
@@ -285,11 +301,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                 </FieldLabel>
               </Grid>
               <Grid item xs={9}>
-                <YBToggleField
-                  name={'details.useIMDSv2'}
-                  control={formControl}
-                  disabled={isEditMode || isYBAManagedBundle}
-                />
+                <YBToggleField name={'details.useIMDSv2'} control={formControl} />
               </Grid>
             </Grid>
           </div>

@@ -724,6 +724,7 @@ export interface Provider {
   name: string;
   active: boolean;
   customerUUID: string;
+  details: Record<string, any>;
 }
 export interface RegionInfo {
   parentRegionId: string;

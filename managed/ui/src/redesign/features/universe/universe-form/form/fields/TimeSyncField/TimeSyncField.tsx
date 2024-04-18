@@ -1,8 +1,10 @@
 import { ReactElement } from 'react';
+import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Box } from '@material-ui/core';
 import { YBLabel, YBToggleField, YBTooltip } from '../../../../../../components';
+import { api, QUERY_KEY } from '../../../utils/api';
 import { CloudType, UniverseFormData } from '../../../utils/dto';
 import { TIME_SYNC_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
 import InfoMessageIcon from '../../../../../../assets/info-message.svg';
@@ -21,8 +23,12 @@ export const TimeSyncField = ({ disabled }: TimeSyncFieldProps): ReactElement =>
   const { control } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
 
+  const { data } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList);
+
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
+
+  const isChronyEnabled = !!data?.find((p) => p?.uuid === provider.uuid)?.details?.setUpChrony;
   const timeSyncTooltipText = t('universeForm.instanceConfig.useTimeSyncHelper', {
     provider: PROVIDER_FRIENDLY_NAME[provider?.code]
   });
@@ -37,7 +43,7 @@ export const TimeSyncField = ({ disabled }: TimeSyncFieldProps): ReactElement =>
           'data-testid': 'TimeSyncField-Toggle'
         }}
         control={control}
-        disabled={disabled}
+        disabled={disabled || isChronyEnabled}
       />
       <Box flex={1}>
         <YBLabel dataTestId="TimeSyncField-Label">
