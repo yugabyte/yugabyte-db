@@ -158,14 +158,6 @@ Database memory rejections have been detected for universe `'$universe_name'`.
 sum by (node_prefix) (increase(leader_memory_pressure_rejections{node_prefix="$node_prefix"}[10m])) + sum by (node_prefix) (increase(follower_memory_pressure_rejections{node_prefix="$node_prefix"}[10m])) + sum by (node_prefix) (increase(operation_memory_pressure_rejections{node_prefix="$node_prefix"}[10m])) > 0
 ```
 
-#### DB Redis connection
-
-Redis connection failure has been detected for universe `'$universe_name'` on `$value` T-Server instances.
-
-```expression
-ybp_health_check_redis_connectivity_error{universe_uuid="$uuid"} > 0
-```
-
 #### DB version mismatch
 
 Version mismatch has been detected for universe `'$universe_name'` for `$value` Master or T-Server instances.
@@ -329,14 +321,6 @@ Failed to collect metrics for universe `'$universe_name'`. You need to check Yug
 
 ```expression
 last_over_time(ybp_universe_metric_collection_status{universe_uuid = "__universeUuid__"}[1d]) {{ query_condition }} 1
-```
-
-#### Number of YEDIS connections is high
-
-Number of YEDIS connections for universe `'$universe_name'` is above `$threshold`. Current value is `$value`.
-
-```expression
-max by (universe_uuid) (max_over_time(rpc_connections_alive{universe_uuid="__universeUuid__",export_type="cql_export"}[5m])) {{ query_condition }} {{ query_threshold }}
 ```
 
 #### Replication lag

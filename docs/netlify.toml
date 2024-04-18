@@ -578,6 +578,14 @@
   to = "/preview/secure/authentication/ldap-authentication-ysql/"
 
 [[redirects]]
+  from = "/preview/secure/authentication/enable-authentication/ysql"
+  to = "/preview/secure/authentication/enable-authentication/authentication-ysql"
+
+[[redirects]]
+  from = "/preview/secure/authentication/enable-authentication/ycql"
+  to = "/preview/secure/authentication/enable-authentication/authentication-ycql"
+
+[[redirects]]
   from = "/preview/yugabyte-cloud/cloud-overview/"
   to = "/preview/yugabyte-cloud/"
 
@@ -599,7 +607,11 @@
 
 [[redirects]]
   from = "/quick-start/run-sample-apps/"
-  to = "/preview/develop/realworld-apps/explore-sample-apps/"
+  to = "/preview/tutorials/"
+
+[[redirects]]
+  from = "/preview/develop/realworld-apps/*"
+  to = "/preview/tutorials/"
 
 [[redirects]]
   from = "/quick-start/test-redis/"

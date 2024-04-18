@@ -27,7 +27,6 @@ The following ports must be exposed for intra-cluster communication. You should 
 - 9300 - Prometheus Node Exporter
 - 7000 - YB-Master HTTP endpoint
 - 9000 - YB-TServer HTTP endpoint
-- 11000 - YEDIS API
 - 12000 - YCQL API
 - 13000 - YSQL API
 - 54422 - Custom SSH
@@ -36,7 +35,6 @@ The following ports must be exposed for intra-node communication and be availabl
 
 - 5433 - YSQL server
 - 9042 - YCQL server
-- 6379 - YEDIS server
 
 For more information on ports used by YugabyteDB, refer to [Default ports](../../../reference/configuration/default-ports).
 

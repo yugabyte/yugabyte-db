@@ -68,7 +68,6 @@ Complete the **Security Configurations** section as follows:
 - **Enable YSQL Auth** - specify whether or not to enable the YSQL password authentication.
 - **Enable YCQL** - specify whether or not to enable the YCQL API endpoint for running Cassandra-compatible workloads. This setting is enabled by default.
 - **Enable YCQL Auth** - specify whether or not to enable the YCQL password authentication.
-- **Enable YEDIS** - specify whether or not to enable the YEDIS API endpoint for running Redis-compatible workloads. This setting is disabled by default.
 - **Enable Node-to-Node TLS** - specify whether or not to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
 - **Enable Client-to-Node TLS** - specify whether or not to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
 - **Root Certificate** - select an existing security certificate or create a new one.
@@ -211,8 +210,6 @@ Note that this requires all the zone deployments to be in the same namespace.
        universe-name: yb-k8s
      ports:
      # Modify the ports if using non-standard ports.
-     - name: tcp-yedis-port
-       port: 6379
      - name: tcp-yql-port
        port: 9042
      - name: tcp-ysql-port

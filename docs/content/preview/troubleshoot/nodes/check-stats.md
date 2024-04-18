@@ -54,13 +54,13 @@ auditctl -e 1
 
 ## YugabyteDB processes state
 
-YugabyteDB provides the following web endpoints where the current state of each process is aggregated. This includes logs, flags, as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for YCQL and, respectively, Redis requests:
+YugabyteDB provides the following web endpoints where the current state of each process is aggregated. This includes logs, flags, as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for YCQL and YSQL requests:
 
 | Description | URL |
 |-------------|-----|
 | Master Web Page | `<node-ip>:7000` |
 | TServer Web Page | `<node-ip>:9000` |
-| Redis Metrics | `<node-ip>:11000/metrics` |
 | YCQL Metrics | `<node-ip>:12000/metrics` |
+| YSQL Metrics | `<node-ip>:13000/metrics` |
 
 When running `yb-ctl` locally with default values, three local IP addresses are created: `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node.

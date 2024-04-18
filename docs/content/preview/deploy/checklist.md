@@ -2,7 +2,7 @@
 title: Deployment checklist for YugabyteDB clusters
 headerTitle: Deployment checklist
 linkTitle: Deployment checklist
-description: Checklist to review system requirements, configuration details, and so on, when deploying the YugabyteDB database to production or for performance testing.  
+description: Checklist to review system requirements, configuration details, and so on, when deploying the YugabyteDB database to production or for performance testing.
 menu:
   preview:
     identifier: checklist
@@ -126,7 +126,6 @@ The following is a list of default ports along with the network access required 
 
   - 5433 for YSQL
   - 9042 for YCQL
-  - 6379 for YEDIS
 
 This deployment uses YugabyteDB [default ports](../../reference/configuration/default-ports/).
 

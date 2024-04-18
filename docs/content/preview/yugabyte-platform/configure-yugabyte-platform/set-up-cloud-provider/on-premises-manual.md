@@ -91,7 +91,6 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | :------- | :--- | :---------- |
 | TCP | 22 | SSH (for provisioning) |
 | TCP | 5433 | YSQL client |
-| TCP | 6379 | YEDIS client |
 | TCP | 7000 | YB master webserver |
 | TCP | 7100 | YB master RPC |
 | TCP | 9000 | YB tablet server webserver |
@@ -589,7 +588,7 @@ You can install systemd-specific database service unit files, as follows:
 On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle Enterprise Linux 8.x, Amazon Linux 2), additionally, add the following line to `/etc/systemd/system.conf` and `/etc/systemd/user.conf`:
 
 ```sh
-DefaultLimitNOFILE=1048576 
+DefaultLimitNOFILE=1048576
 ```
 
 You must reboot the system for these two settings to take effect.
