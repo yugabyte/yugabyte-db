@@ -349,7 +349,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const int tablet_idx = 0, int64 index = 0, int64 term = 0, std::string key = "",
       int32_t write_id = 0, int64 snapshot_time = 0, const TableId table_id = "",
       int64 safe_hybrid_time = -1, int32_t wal_segment_index = 0,
-      const bool populate_checkpoint = true);
+      const bool populate_checkpoint = true, const bool need_schema_info = false);
 
   void PrepareChangeRequest(
       GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
@@ -464,7 +464,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       int64 safe_hybrid_time = -1,
       int wal_segment_index = 0,
       const bool populate_checkpoint = true,
-      const bool should_retry = true);
+      const bool should_retry = true,
+      const bool need_schema_info = false);
 
   Result<GetChangesResponsePB> GetChangesFromCDC(
       const xrepl::StreamId& stream_id,

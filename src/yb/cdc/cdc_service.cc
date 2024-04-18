@@ -1773,6 +1773,14 @@ void CDCServiceImpl::GetChanges(
       // Clean all the records which got added in the resp, till the enum cache miss failure is
       // encountered.
       resp->clear_cdc_sdk_proto_records();
+      if (req->has_need_schema_info() && req->need_schema_info()) {
+        VLOG(2) << "Clearing cached schema for tablet " << req->tablet_id()
+                << "since the response needs schema details.";
+        cached_schema_details.clear();
+      }
+
+      VLOG(2) << "Handling GetChanges retry internally for tablet " << req->tablet_id()
+              << " for error: " << status.ToString();
       status = GetChangesForCDCSDK(
           stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
           enum_map, composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,

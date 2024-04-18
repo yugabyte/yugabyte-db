@@ -67,6 +67,7 @@ constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
+static const std::string kEnumTypeName = "coupon_discount_type";
 static const std::string kReplicationSlotName = "test_replication_slot";
 constexpr static const char* const kTableName = "test_table";
 constexpr static const char* const kKeyColumnName = "key";
