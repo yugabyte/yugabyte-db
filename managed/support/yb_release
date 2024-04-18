@@ -10,6 +10,16 @@
 #
 # This script generates the platform support packages tar.gz in the required destination.
 
+if [[ $(uname -m) != "x86_64" ]]; then
+  echo "This target doesn't support $(uname -m)."
+  exit 0
+fi
+
+if [[ $(uname) != "Linux" ]]; then
+  echo "This target doesn't support $(uname)."
+  exit 0
+fi
+
 set -euo pipefail
 
 print_help() {
