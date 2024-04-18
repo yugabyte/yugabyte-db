@@ -14,6 +14,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/util/path_util.h"
+#include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
@@ -1187,7 +1188,7 @@ TEST_F(PgCatalogVersionTest, InvalidateWholeRelCache) {
   RestartClusterWithDBCatalogVersionMode();
   conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
-  // CREATE PUBLICATION is not a global-impact DDL.
+  // CREATE PUBLICATION is not a global-impact DDL in PG11, but is a global-impact DDL in PG15.
   ASSERT_OK(conn_yugabyte.Execute("SET yb_enable_replication_commands = true"));
   ASSERT_OK(conn_yugabyte.Execute("CREATE PUBLICATION testpub_foralltables FOR ALL TABLES"));
 
@@ -1203,8 +1204,11 @@ ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update, delete, t
         )#"));
   auto expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   ASSERT_TRUE(expected_versions.find(yugabyte_db_oid) != expected_versions.end());
+  auto version_string = ASSERT_RESULT(GetPGVersionString(&conn_yugabyte));
+  LOG(INFO) << "PG version string: " << version_string;
+  auto is_pg11 = StringStartsWithOrEquals(version_string, "PostgreSQL 11");
   for (const auto& entry : expected_versions) {
-    if (entry.first != yugabyte_db_oid) {
+    if (entry.first != yugabyte_db_oid && is_pg11) {
       ASSERT_OK(CheckMatch(entry.second, {2, 2}));
     } else {
       ASSERT_OK(CheckMatch(entry.second, {3, 3}));
