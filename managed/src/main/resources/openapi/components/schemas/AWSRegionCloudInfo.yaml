@@ -1,0 +1,9 @@
+title: Region in AWS provider
+type: object
+properties:
+  security_group_id:
+    description: AWS security group id
+    type: string
+  vnet:
+    description: AWS vnet
+    type: string

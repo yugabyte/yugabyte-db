@@ -1,0 +1,31 @@
+title: Universe Create Spec
+type: object
+required:
+  - spec
+  - arch
+properties:
+  spec:
+    $ref: ./UniverseSpec.yaml
+  arch:
+    description: CPU Arch of DB nodes.
+    type: string
+    example: x86_64
+    enum:
+      - x86_64
+      - aarch64
+  ysql:
+    description: Universe create time properties to set if YSQL is enabled
+    type: object
+    properties:
+      password:
+        description: Password to set for the YSQL database in this universe. Required if spec.ysql.enable_auth is true.
+        type: string
+        format: password
+  ycql:
+    description: Universe create time properties to set if YCQL is enabled
+    type: object
+    properties:
+      password:
+        description: Password to set for the YCQL database in this universe. Required if spec.ycql.enable_auth is true.
+        type: string
+        format: password

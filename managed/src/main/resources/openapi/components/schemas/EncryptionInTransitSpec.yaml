@@ -1,0 +1,22 @@
+title: Encryption In Transit Specification
+description: Specification of node-to-node and client-to-node TLS encryption
+type: object
+properties:
+  enable_node_to_node_encrypt:
+    description: Whether to enable encryption for communication among DB nodes
+    type: boolean
+    example: false
+  enable_client_to_node_encrypt:
+    description: Whether to enable encryption for client connection to DB nodes
+    type: boolean
+    example: false
+  root_ca:
+    description: The UUID of the rootCA to be used to generate node certificates and facilitate TLS communication between database nodes.
+    type: string
+    format: uuid
+    example: fce99806-03f0-4b17-9483-297ccfaa368d
+  client_root_ca:
+    description: The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. Can be set to same as root_CA.
+    type: string
+    format: uuid
+    example: 1711b83b-af74-416b-84b9-e9f66b532c82

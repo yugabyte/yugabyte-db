@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -680,6 +681,7 @@ public class ApiUtils {
     deviceInfo.numVolumes = numVolumes;
     deviceInfo.volumeSize = volumeSize;
     deviceInfo.mountPoints = "/mnt/d0";
+    deviceInfo.storageType = PublicCloudConstants.StorageType.GP2;
     return deviceInfo;
   }
 
