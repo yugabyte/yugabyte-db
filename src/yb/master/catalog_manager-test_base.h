@@ -210,6 +210,12 @@ class TestLoadBalancerBase {
     PrepareTestState(ts_descs_multi_az);
     TestWithBlacklist();
 
+    PrepareTestState(ts_descs_single_az);
+    TestAddReplicaToTSWithPendingDelete();
+
+    PrepareTestState(ts_descs_single_az);
+    TestAddReplicaToTSWithPendingDeleteForSameTablet();
+
     gflags::SetCommandLineOption("load_balancer_ignore_cloud_info_similarity", "true");
     PrepareTestState(ts_descs_multi_az);
     TestChooseTabletInSameZone();
@@ -392,6 +398,42 @@ class TestLoadBalancerBase {
     TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
     // Now we should have no more tablets we are able to move.
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
+  }
+
+  void TestAddReplicaToTSWithPendingDelete() {
+    SetupClusterConfig({"a"}, &replication_info_);
+    auto underreplicated_tablet = tablets_[0];
+    auto pending_delete_tablet = tablets_[1];
+    auto destination_ts = ts_descs_[2];
+
+    RemoveReplica(underreplicated_tablet.get(), destination_ts);
+    destination_ts->AddPendingTabletDelete(pending_delete_tablet->id());
+    ResetState();
+    ASSERT_OK(AnalyzeTablets());
+    std::string tablet_id, out_ts, to_ts;
+    auto replica_added = ASSERT_RESULT(HandleAddReplicas(&tablet_id, &out_ts, &to_ts));
+    EXPECT_TRUE(replica_added);
+    EXPECT_EQ(tablet_id, underreplicated_tablet->id());
+    EXPECT_EQ(to_ts, destination_ts->permanent_uuid());
+  }
+
+  // It's not clear how realistic this scenario is. The load balancer has checks in the addition
+  // validation code for adding another tablet replica to a TS that already has that tablet in the
+  // RUNNING, UNKNOWN, NOT_STARTED, or BOOTSTRAPPING states.
+  void TestAddReplicaToTSWithPendingDeleteForSameTablet() {
+    SetupClusterConfig({"a"}, &replication_info_);
+    auto tablet = tablets_[0];
+    auto destination_ts = ts_descs_[2];
+
+    RemoveReplica(tablet.get(), destination_ts);
+    destination_ts->AddPendingTabletDelete(tablet->id());
+    ResetState();
+    ASSERT_OK(AnalyzeTablets());
+    std::string tablet_id, out_ts, to_ts;
+    auto replica_added = ASSERT_RESULT(HandleAddReplicas(&tablet_id, &out_ts, &to_ts));
+    EXPECT_FALSE(replica_added);
+    EXPECT_EQ(tablet_id, "");
+    EXPECT_EQ(to_ts, "");
   }
 
   void TestChooseTabletInSameZone() {

@@ -66,9 +66,8 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     for (const auto& ts_desc : global_state_->ts_descs_) {
       AddTSIfBlacklisted(ts_desc, blacklist_, false);
       AddTSIfBlacklisted(ts_desc, leader_blacklist_, true);
-      if (ts_desc->HasTabletDeletePending()) {
-        global_state_->servers_with_pending_deletes_.insert(ts_desc->permanent_uuid());
-      }
+      global_state_->pending_deletes_[ts_desc->permanent_uuid()] =
+          ts_desc->TabletsPendingDeletion();
     }
   }
 
