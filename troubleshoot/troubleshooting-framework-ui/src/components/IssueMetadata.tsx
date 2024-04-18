@@ -2,10 +2,14 @@ import { FC } from 'react';
 import { Box, Divider, Tooltip } from '@material-ui/core';
 import { Link } from 'react-router';
 import _ from 'lodash';
-import { YBButton, YBLabel } from '@yugabytedb/ui-components';
+import {
+  YBButton,
+  YBLabel,
+  YBTimeFormats,
+  formatDatetime,
+  isNonEmptyString
+} from '@yugabytedb/ui-components';
 import { Anomaly, AnomalyCategory, AppName, NodeInfo } from '../helpers/dtos';
-import { isNonEmptyString } from '../helpers/objectUtils';
-import { YBTimeFormats, formatDatetime } from '../helpers/dateUtils';
 import { useHelperStyles } from './styles';
 
 import LightBulbIcon from '../assets/lightbulb.svg';

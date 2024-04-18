@@ -2,11 +2,10 @@ import { useState } from 'react';
 import { useQuery } from 'react-query';
 import { Box, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
-import { YBErrorIndicator } from '../common/YBErrorIndicator';
+import { YBErrorIndicator, isNonEmptyArray } from '@yugabytedb/ui-components';
 import { PrimaryDashboardData } from './PrimaryDashboardData';
 import { TroubleshootAPI, QUERY_KEY } from '../api';
 import { Anomaly, AppName } from '../helpers/dtos';
-import { isNonEmptyArray } from '../helpers/objectUtils';
 
 import { ReactComponent as LoadingIcon } from '../assets/loading.svg';
 import { useHelperStyles } from './styles';

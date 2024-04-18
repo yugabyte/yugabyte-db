@@ -5,16 +5,14 @@ import { useUpdateEffect } from 'react-use';
 import { Box, Typography } from '@material-ui/core';
 import _ from 'lodash';
 import clsx from 'clsx';
-import { YBPanelItem } from '../common/YBPanelItem';
 import { SecondaryDashboardHeader } from './SecondaryDashboardHeader';
-import { SecondaryDashboard } from './SecondaryDashboard';
+import { ASH_GROUPBY_VALUES, SecondaryDashboard } from './SecondaryDashboard';
 import { TroubleshootAPI } from '../api';
 import {
   Anomaly,
   AppName,
   GraphQuery,
   GraphResponse,
-  GraphSettings,
   GraphType,
   MetricMeasure,
   SplitMode,
@@ -23,11 +21,18 @@ import {
   Universe
 } from '../helpers/dtos';
 import {
+  YBPanelItem,
   isEmptyArray,
   isNonEmptyArray,
   isNonEmptyObject,
   isNonEmptyString
-} from '../helpers/objectUtils';
+} from '@yugabytedb/ui-components';
+// import {
+//   isEmptyArray,
+//   isNonEmptyArray,
+//   isNonEmptyObject,
+//   isNonEmptyString
+// } from '../helpers/objectUtils';
 import {
   getAnomalyMetricMeasure,
   getAnomalyOutlierType,
@@ -46,7 +51,6 @@ import { useHelperStyles } from './styles';
 
 import TraingleDownIcon from '../assets/traingle-down.svg';
 import TraingleUpIcon from '../assets/traingle-up.svg';
-import { YBTimeFormats, formatDatetime } from '../helpers/dateUtils';
 
 export interface SecondaryDashboardDataProps {
   anomalyData: Anomaly | null;
@@ -81,6 +85,7 @@ export const SecondaryDashboardData = ({
   yesterday.setDate(yesterday.getDate() - 1);
 
   // State variables
+  const [graphQueryParams, setGraphQueryParams] = useState<any>(graphParams);
   const [openTiles, setOpenTiles] = useState<string[]>([]);
   const [clusterRegionItem, setClusterRegionItem] = useState<string>(ALL_REGIONS);
   const [zoneNodeItem, setZoneNodeItem] = useState<string>(ALL_ZONES);
@@ -107,7 +112,7 @@ export const SecondaryDashboardData = ({
       setGraphData(null);
     }
 
-    const graphParamsCopy = JSON.parse(JSON.stringify(graphParams));
+    const graphParamsCopy = JSON.parse(JSON.stringify(graphQueryParams));
 
     const formattedStartDate = startDateTime?.toISOString();
     const formattedEndDate = endDateTime?.toISOString();
@@ -149,7 +154,8 @@ export const SecondaryDashboardData = ({
       return settings;
     });
 
-    const actualQueryParams = graphParamsCopy ?? graphParams;
+    const actualQueryParams = graphParamsCopy ?? graphQueryParams;
+    setGraphQueryParams(actualQueryParams);
     fetchAnomalyGraphs.mutate(actualQueryParams);
   }, [
     numNodes,
@@ -178,8 +184,33 @@ export const SecondaryDashboardData = ({
     }
   );
 
+  const onSelectAshLabel = (groupByLabel: string) => {
+    let groupBy = ASH_GROUPBY_VALUES.WAIT_EVENT_COMPONENT;
+    if (groupByLabel === 'Class') {
+      groupBy = ASH_GROUPBY_VALUES.WAIT_EVENT_CLASS;
+    } else if (groupByLabel === 'Event') {
+      groupBy = ASH_GROUPBY_VALUES.WAIT_EVENT;
+    }
+
+    const graphParamsCopy = JSON.parse(JSON.stringify(graphQueryParams));
+    const ashGraph = graphParamsCopy?.find(
+      (queryParams: GraphQuery) => queryParams.name === 'active_session_history'
+    );
+    if (ashGraph) {
+      ashGraph.groupBy = groupBy;
+    }
+    graphParamsCopy.map((obj: any) => {
+      if (obj.name === 'active_session_history') {
+        return ashGraph;
+      }
+      return obj;
+    });
+    setGraphQueryParams(graphParamsCopy);
+    fetchAnomalyGraphs.mutate(graphParamsCopy);
+  };
+
   useEffect(() => {
-    fetchAnomalyGraphs.mutate(graphParams);
+    fetchAnomalyGraphs.mutate(graphQueryParams);
   }, []);
 
   const onSplitTypeSelected = (metricMeasure: string) => {
@@ -304,6 +335,7 @@ export const SecondaryDashboardData = ({
           appName={appName}
           timezone={timezone}
           graphType={graphType}
+          onSelectAshLabel={onSelectAshLabel}
         />
       </Box>
     );
@@ -403,77 +435,102 @@ export const SecondaryDashboardData = ({
                   return reason?.name?.map((metricName: string, idx: number) => {
                     let uniqueOperations: any = new Set();
                     const numReasons = reason.name.length - 1;
+                    const isOnlyReason = reason.name.length === 1;
                     const metricData = graphData.find((data: any) => data.name === metricName);
 
-                    if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
-                      metricData.data.forEach((metricItem: any) => {
-                        uniqueOperations.add(metricItem.name);
-                      });
-                    }
-                    uniqueOperations = Array.from(uniqueOperations);
-                    return (
-                      <>
-                        {idx === 0 && reasonIdx === 0 && (
-                          <Box mt={2} mb={2}>
-                            <Typography variant="h4">{'Possible Causes'}</Typography>
-                          </Box>
-                        )}
-                        {isNonEmptyObject(metricData) && (
-                          <>
-                            <Box hidden={true}>
-                              {renderItems.push(
-                                renderSupportingGraphs(
-                                  metricData,
-                                  uniqueOperations,
-                                  GraphType.SUPPORTING
-                                )
-                              )}
+                    console.log('metricData name', metricData?.name);
+                    console.log('metricData errorMessage', metricData?.errorMessage);
+                    console.log(
+                      'metricData errorMessage',
+                      isNonEmptyString(metricData?.errorMessage)
+                    );
+                    if (isNonEmptyString(metricData?.errorMessage)) {
+                      return <Box>{'No data'}</Box>;
+                    } else {
+                      if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
+                        metricData.data.forEach((metricItem: any) => {
+                          uniqueOperations.add(metricItem.name);
+                        });
+                      } else if (
+                        metricData?.layout?.title === 'ASH' &&
+                        isNonEmptyObject(metricData)
+                      ) {
+                        metricData.layout.metadata?.supportedGroupBy?.map((groupByLabel: any) => {
+                          uniqueOperations.add(groupByLabel.name);
+                        });
+                      }
+                      uniqueOperations = Array.from(uniqueOperations);
+
+                      if (metricData?.layout?.title === 'ASH' && isNonEmptyObject(metricData)) {
+                        uniqueOperations = uniqueOperations.reverse();
+                      }
+
+                      return (
+                        <>
+                          {idx === 0 && reasonIdx === 0 && (
+                            <Box mt={2} mb={2}>
+                              <Typography variant="h4">{'Possible Causes'}</Typography>
                             </Box>
-                            {idx === numReasons && (
-                              <Box
-                                onClick={() => handleOpenBox(metricData.name)}
-                                className={classes.secondaryDashboard}
-                                key={metricData.name}
-                              >
-                                <Box>
-                                  <span className={classes.smallBold}>{reason.cause}</span>
-                                </Box>
-                                <Box mt={1}>
-                                  <span className={classes.mediumNormal}>{reason.description}</span>
-                                </Box>
-                                {openTiles.includes(metricData.name) ? (
-                                  <img
-                                    src={TraingleDownIcon}
-                                    alt="expand"
-                                    className={classes.arrowIcon}
-                                  />
-                                ) : (
-                                  <img
-                                    src={TraingleUpIcon}
-                                    alt="shrink"
-                                    className={classes.arrowIcon}
-                                  />
-                                )}
-                                {openTiles.includes(metricData.name) && (
-                                  <Box mt={3}>
-                                    <span className={classes.smallNormal}>
-                                      {'SUPPORTING METRICS'}
-                                    </span>
-                                  </Box>
-                                )}
-                                {openTiles.includes(metricData.name) && (
-                                  <Box className={clsx(classes.metricGroupItems)}>
-                                    {renderItems?.map((item: any) => {
-                                      return item;
-                                    })}
-                                  </Box>
+                          )}
+                          {isNonEmptyObject(metricData) && (
+                            <>
+                              <Box hidden={true}>
+                                {renderItems.push(
+                                  renderSupportingGraphs(
+                                    metricData,
+                                    uniqueOperations,
+                                    isOnlyReason ? GraphType.MAIN : GraphType.SUPPORTING
+                                  )
                                 )}
                               </Box>
-                            )}
-                          </>
-                        )}
-                      </>
-                    );
+                              {idx === numReasons && (
+                                <Box
+                                  onClick={() => handleOpenBox(metricData.name)}
+                                  className={classes.secondaryDashboard}
+                                  key={metricData.name}
+                                >
+                                  <Box>
+                                    <span className={classes.smallBold}>{reason.cause}</span>
+                                  </Box>
+                                  <Box mt={1}>
+                                    <span className={classes.mediumNormal}>
+                                      {reason.description}
+                                    </span>
+                                  </Box>
+                                  {openTiles.includes(metricData.name) ? (
+                                    <img
+                                      src={TraingleDownIcon}
+                                      alt="expand"
+                                      className={classes.arrowIcon}
+                                    />
+                                  ) : (
+                                    <img
+                                      src={TraingleUpIcon}
+                                      alt="shrink"
+                                      className={classes.arrowIcon}
+                                    />
+                                  )}
+                                  {openTiles.includes(metricData.name) && (
+                                    <Box mt={3}>
+                                      <span className={classes.smallNormal}>
+                                        {'SUPPORTING METRICS'}
+                                      </span>
+                                    </Box>
+                                  )}
+                                  {openTiles.includes(metricData.name) && (
+                                    <Box className={clsx(classes.metricGroupItems)}>
+                                      {renderItems?.map((item: any) => {
+                                        return item;
+                                      })}
+                                    </Box>
+                                  )}
+                                </Box>
+                              )}
+                            </>
+                          )}
+                        </>
+                      );
+                    }
                   });
                 }
               })}
