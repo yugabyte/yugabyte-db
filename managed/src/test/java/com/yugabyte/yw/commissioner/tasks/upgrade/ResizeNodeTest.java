@@ -123,7 +123,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
-    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
+    setLeaderlessTabletsMock();
   }
 
   @Override
@@ -524,9 +524,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(false))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
-        .tservers()
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        .applyToTservers()
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -627,9 +626,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(false))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
-        .tservers()
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        .applyToTservers()
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -702,12 +700,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
-        // Only primary cluster affected
-        .clusterNodes(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        // Only primary cluster affected
+        .applyToCluster(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -770,20 +767,18 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
-        // Primary cluster first
-        .clusterNodes(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        // Primary cluster first
+        .applyToCluster(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
         .addTask(TaskType.PersistResizeNode, null)
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
-        // Now read replica
-        .clusterNodes(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        // Now read replica
+        .applyToCluster(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -834,12 +829,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
-        // Only RR cluster
-        .clusterNodes(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        // Only RR cluster
+        .applyToCluster(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -861,11 +855,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
-        .tservers()
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        .applyToTservers()
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -925,14 +918,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
-        .tservers()
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
-        .applyRound()
+        .applyToTservers()
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
-        .masters()
         .masterTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        .applyToMasters()
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -954,11 +945,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
-        .masters()
         .withContext(instanceChangeContext(mockUpgrade))
         .masterTask(TaskType.ChangeInstanceType)
         .masterTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        .applyToMasters()
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -989,9 +979,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(false))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
-        .masters()
         .masterTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        .applyToMasters()
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -1023,9 +1012,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(false))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
-        .masters()
         .masterTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        .applyToMasters()
         .addTasks(TaskType.PersistResizeNode)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -1280,12 +1268,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
-        // Only one node affected
-        .nodes(
-            Collections.emptyList(), Collections.singletonList(defaultUniverse.getNode(azNodeName)))
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
-        .applyRound()
+        // Only one node affected
+        .applyToNodes(Collections.emptySet(), Collections.singleton(azNodeName))
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -1338,10 +1324,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(false))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
-        .nodes(
-            Collections.emptyList(), Collections.singletonList(defaultUniverse.getNode(azNodeName)))
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
-        .applyRound()
+        .applyToNodes(Collections.emptySet(), Collections.singleton(azNodeName))
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
   }
@@ -1379,13 +1363,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
-        // Only one node affected
-        .nodes(
-            Collections.emptyList(),
-            Collections.singletonList(defaultUniverse.getNode(nodeName.get())))
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
-        .applyRound()
+        // Only one node affected
+        .applyToNodes(Collections.emptySet(), Collections.singleton(nodeName.get()))
         .addTask(TaskType.PersistResizeNode, null)
         .verifyTasks(taskInfo.getSubTasks());
 
@@ -1479,19 +1460,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     }
   }
 
-  private TaskType[] getPrecheckTasks(boolean hasRestarts) {
-    List<TaskType> types = new ArrayList<>();
-    if (hasRestarts) {
-      types.add(TaskType.CheckNodesAreSafeToTakeDown);
-    }
-    return types.toArray(new TaskType[0]);
-  }
-
-  private MockUpgrade initMockUpgrade() {
-    MockUpgrade mockUpgrade = new MockUpgrade(mockBaseTaskDependencies, defaultUniverse);
-    return mockUpgrade;
-  }
-
   private UpgradeTaskBase.UpgradeContext instanceChangeContext(MockUpgrade mockUpgrade) {
     return UpgradeTaskBase.UpgradeContext.builder()
         .reconfigureMaster(
@@ -1531,6 +1499,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     volumeDetails.mountPath = "/";
     instanceTypeDetails.volumeDetailsList = Collections.singletonList(volumeDetails);
     InstanceType.upsert(providerId, type, 1, 100d, instanceTypeDetails);
+  }
+
+  private MockUpgrade initMockUpgrade() {
+    return initMockUpgrade(ResizeNode.class);
   }
 
   private void assertDedicatedIntent(

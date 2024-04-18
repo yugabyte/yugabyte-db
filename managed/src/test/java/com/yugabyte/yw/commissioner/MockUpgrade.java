@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doAnswer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.HookScope;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -21,6 +22,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
@@ -35,6 +37,7 @@ public class MockUpgrade extends UpgradeTaskBase {
   private final UUID userTaskUUID = UUID.randomUUID();
   private final Map<Integer, List<TaskInfo>> subtasksByPosition = new HashMap<>();
   private final Universe universe;
+  private final Class<? extends UpgradeTaskBase> upgradeClass;
   private final TaskExecutor.RunnableTask fakeRunnableTask;
   private final TaskExecutor.SubTaskGroup fakeSubTaskGroup;
   private Integer position = 0;
@@ -62,6 +65,11 @@ public class MockUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  protected UUID getTaskUUID() {
+    return userTaskUUID;
+  }
+
+  @Override
   public void run() {}
 
   @Override
@@ -83,11 +91,14 @@ public class MockUpgrade extends UpgradeTaskBase {
     return fakeRunnableTask;
   }
 
-  public MockUpgrade(BaseTaskDependencies baseTaskDependencies, Universe universe) {
+  public MockUpgrade(
+      BaseTaskDependencies baseTaskDependencies,
+      Universe universe,
+      Class<? extends UpgradeTaskBase> upgradeClass) {
     super(baseTaskDependencies);
 
     this.universe = universe;
-
+    this.upgradeClass = upgradeClass;
     fakeRunnableTask = Mockito.mock(TaskExecutor.RunnableTask.class);
     doAnswer(
             inv -> {
@@ -115,6 +126,11 @@ public class MockUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  protected String getClassNameForHooks() {
+    return upgradeClass.getSimpleName();
+  }
+
+  @Override
   protected TaskExecutor.SubTaskGroup createSubTaskGroup(
       String name, UserTaskDetails.SubTaskGroupType subTaskGroupType, boolean ignoreErrors) {
     return fakeSubTaskGroup;
@@ -129,6 +145,14 @@ public class MockUpgrade extends UpgradeTaskBase {
   private void flushSubtasks() {
     subtasksByPosition.put(position++, new ArrayList<>(tasksForTaskGroup));
     tasksForTaskGroup.clear();
+  }
+
+  public MockUpgrade addSimultaneousTasks(TaskType taskType, int count) {
+    for (int i = 0; i < count; i++) {
+      addTaskNoFlush(taskType, null);
+    }
+    flushSubtasks();
+    return this;
   }
 
   public MockUpgrade addTasks(TaskType... taskType) {
@@ -149,7 +173,19 @@ public class MockUpgrade extends UpgradeTaskBase {
       addTask(taskType, null);
     }
     addTask(TaskType.FreezeUniverse, null);
+    addHookTasks(true);
     return this;
+  }
+
+  private void addHookTasks(boolean isPre) {
+    String hookName = getHookTriggerName(isPre, false);
+    Optional<HookScope.TriggerType> optTrigger = HookScope.TriggerType.maybeResolve(hookName);
+    if (optTrigger.isPresent()) {
+      for (int i = 0; i < universe.getUniverseDetails().nodeDetailsSet.size(); i++) {
+        addTaskNoFlush(TaskType.RunHooks, null);
+      }
+      flushSubtasks();
+    }
   }
 
   public UpgradeRound upgradeRound(UpgradeTaskParams.UpgradeOption upgradeOption) {
@@ -207,7 +243,7 @@ public class MockUpgrade extends UpgradeTaskBase {
       this.stopBothProcesses = stopBothProcesses;
     }
 
-    public UpgradeRound clusterNodes(UUID uuid) {
+    public MockUpgrade applyToCluster(UUID uuid) {
       tservers =
           fetchTServerNodes(upgradeOption).stream()
               .filter(n -> n.isInPlacement(uuid))
@@ -216,23 +252,30 @@ public class MockUpgrade extends UpgradeTaskBase {
           fetchMasterNodes(upgradeOption).stream()
               .filter(n -> n.isInPlacement(uuid))
               .collect(Collectors.toList());
-      return this;
+      return applyRound();
     }
 
-    public UpgradeRound tservers() {
+    public MockUpgrade applyToTservers() {
       tservers = fetchTServerNodes(upgradeOption);
-      return this;
+      return applyRound();
     }
 
-    public UpgradeRound masters() {
+    public MockUpgrade applyToMasters() {
       masters = fetchMasterNodes(upgradeOption);
-      return this;
+      return applyRound();
     }
 
-    public UpgradeRound nodes(List<NodeDetails> masters, List<NodeDetails> tservers) {
-      this.masters = new ArrayList<>(masters);
-      this.tservers = new ArrayList<>(tservers);
-      return this;
+    public MockUpgrade applyToNodes(Set<String> masters, Set<String> tservers) {
+      this.masters =
+          fetchMasterNodes(upgradeOption).stream()
+              .filter(m -> masters.contains(m.nodeName))
+              .collect(Collectors.toList());
+      this.tservers =
+          fetchTServerNodes(upgradeOption).stream()
+              .filter(m -> tservers.contains(m.nodeName))
+              .collect(Collectors.toList());
+
+      return applyRound();
     }
 
     public UpgradeRound tserverTasks(TaskType... tasks) {
@@ -275,6 +318,12 @@ public class MockUpgrade extends UpgradeTaskBase {
       return task(ServerType.MASTER, task, details, nodeDetailsCustomizer);
     }
 
+    public UpgradeRound task(TaskType task) {
+      masterTask(task);
+      tserverTask(task);
+      return this;
+    }
+
     public UpgradeRound task(
         ServerType serverType,
         TaskType task,
@@ -298,8 +347,8 @@ public class MockUpgrade extends UpgradeTaskBase {
     public MockUpgrade applyRound() {
       if (masters.isEmpty() && tservers.isEmpty()) {
         // Using all nodes.
-        masters();
-        tservers();
+        masters = fetchMasterNodes(upgradeOption);
+        tservers = fetchTServerNodes(upgradeOption);
       }
       switch (upgradeOption) {
         case ROLLING_UPGRADE:
@@ -364,6 +413,7 @@ public class MockUpgrade extends UpgradeTaskBase {
   }
 
   public void verifyTasks(List<TaskInfo> subTasks) {
+    addHookTasks(false);
     addTasks(TaskType.UniverseUpdateSucceeded);
     if (hasRollingUpgrade) {
       addTasks(TaskType.ModifyBlackList);
