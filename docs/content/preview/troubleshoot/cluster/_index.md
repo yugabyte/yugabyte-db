@@ -29,19 +29,6 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="connect-yedis/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">YEDIS API connection problems</div>
-      </div>
-      <div class="body">
-        Troubleshoot issues related to connecting to the Redis-compatible YEDIS API service.
-      </div>
-    </a>
-  </div>
-
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="recover_server/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
@@ -63,7 +50,7 @@ type: indexpage
         Replace a failed YB-TServer in a YugabyteDB cluster.
       </div>
     </a>
-  </div>  
+  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="replace_master/">
@@ -75,7 +62,7 @@ type: indexpage
         Replace a failed YB-Master in a YugabyteDB cluster.
       </div>
     </a>
-  </div>    
+  </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="replace_failed_peers/">
       <div class="head">
@@ -86,7 +73,7 @@ type: indexpage
         Perform manual remote bootstrap of failed peers.
       </div>
     </a>
-  </div>    
+  </div>
 
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -99,7 +86,7 @@ type: indexpage
         Find faulty tablets and their data on disk, and then remove it.
       </div>
     </a>
-  </div>    
+  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="performance-troubleshooting/">
@@ -111,7 +98,7 @@ type: indexpage
         Investigate and troubleshoot performance of your YugabyteDB clusters.
       </div>
     </a>
-  </div>    
+  </div>
 
 
 

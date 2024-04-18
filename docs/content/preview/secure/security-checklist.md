@@ -17,7 +17,7 @@ Use the following security measures to protect your YugabyteDB installation.
 
 ## Enable authentication
 
-Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
+Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL and YCQL APIs.
 
 For more information, see [Authentication in YugabyteDB](../authentication/).
 
