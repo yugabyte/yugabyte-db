@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gtest/gtest.h>
+
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_state_table.h"
@@ -2205,6 +2207,75 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumMultipleStreams)) {
   }
 
   ASSERT_EQ(insert_count, expected_key);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestPopulationOfDDLRecordUponCacheMiss)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(EXPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 3;
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteEnumsRows(0, insert_count, &test_cluster_));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  GetChangesResponsePB change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size_1 = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_size_1, 1 + 1 + insert_count + 1 /* DDL + BEGIN + 3 INSERTS + COMMIT */);
+
+  // Drop table now and recreate the setup - it will cause in recreation of another enum
+  // type with the same name (the previous will not exist), but since the previous one is stored
+  // in the cache, the logic will not enum labels again unless it hits a cache miss error.
+  DropTable(&test_cluster_, kTableName);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("DROP TYPE $0", kEnumTypeName));
+
+  auto table_2 = ASSERT_RESULT(
+      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets_2, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets_2.size(), num_tablets);
+
+  xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(EXPLICIT));
+  auto resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets_2));
+  ASSERT_FALSE(resp_2.has_error());
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteEnumsRows(0, insert_count, &test_cluster_));
+  ASSERT_OK(WaitForFlushTables(
+      {table_2.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Setting need_schema_info to true to mimic the connector/client behaviour in case
+  // where it hasn't received the DDL record yet.
+  GetChangesResponsePB change_resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id_2, tablets_2, nullptr, 0,
+                                      -1 /* safe_hybrid_time */, 0 /* wal_Segment_index */,
+                                      true /* populate_checkpoint */, true /* should_retry */,
+                                      true /* need_schema_info */));
+  uint32_t record_size_2 = change_resp_2.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_size_2, 1 + 1 + insert_count + 1 /* DDL + BEGIN + 3 INSERTS + COMMIT */);
+
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(0).row_message().op(),
+            RowMessage::Op::RowMessage_Op_DDL);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeType)) {
