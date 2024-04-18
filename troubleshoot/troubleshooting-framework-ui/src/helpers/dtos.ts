@@ -103,6 +103,13 @@ export interface GraphQuery {
   name: string;
   filters: GraphFilters;
   settings: GraphSettings;
+  groupBy?: GraphLabel;
+}
+
+export enum GraphLabel {
+  WAIT_EVENT_COMPONENT = 'waitEventComponent',
+  WAIT_EVENT_CLASS = 'waitEventClass',
+  WAIT_EVENT = 'waitEvent'
 }
 
 export interface GraphFilters {
