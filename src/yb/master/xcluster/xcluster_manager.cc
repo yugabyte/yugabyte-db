@@ -29,7 +29,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 
-DEFINE_test_flag(bool, enable_xcluster_api_v2, false, "Allow the usage of new xCluster APIs");
+DEFINE_RUNTIME_PREVIEW_bool(enable_xcluster_api_v2, false,
+    "Allow the usage of v2 xCluster APIs that support DB Scoped replication groups");
 
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
@@ -223,7 +224,7 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
     const XClusterCreateOutboundReplicationGroupRequestPB* req,
     XClusterCreateOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  SCHECK(FLAGS_TEST_enable_xcluster_api_v2, IllegalState, "xCluster API v2 is not enabled.");
+  SCHECK(FLAGS_enable_xcluster_api_v2, IllegalState, "xCluster API v2 is not enabled.");
 
   LOG_FUNC_AND_RPC;
 
