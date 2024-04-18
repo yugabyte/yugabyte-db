@@ -20,7 +20,7 @@ import decimal
 import age
 import argparse
 
-DSN = "host=localhost port=5432 dbname=postgres user=dehowefeng password=agens"
+DSN = "host=localhost port=5432 dbname=postgres user=postgres password=agens"
 TEST_HOST = "localhost"
 TEST_PORT = 5432
 TEST_DB = "postgres"
