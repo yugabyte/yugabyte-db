@@ -1,0 +1,60 @@
+title: Node information reported by the cloud provider
+type: object
+properties:
+  assign_public_ip:
+    description: True if the node has a public IP address assigned
+    type: boolean
+  az:
+    description: The node's availability zone
+    type: string
+  cloud:
+    description: The node's cloud provider
+    type: string
+  instance_type:
+    description: The node's instance type
+    type: string
+  kubernetes_namespace:
+    description: Kubernetes namespace
+    type: string
+  kubernetes_pod_name:
+    description: Pod name in Kubernetes
+    type: string
+  lun_indexes:
+    description: Mounted disks LUN indexes
+    type: array
+    items:
+      format: int32
+      type: integer
+  mount_roots:
+    description: Mount roots
+    type: string
+  private_dns:
+    description: The node's private DNS
+    type: string
+  private_ip:
+    description: The node's private IP address
+    type: string
+  public_dns:
+    description: The node's public DNS name
+    type: string
+  public_ip:
+    description: The node's public IP address
+    type: string
+  region:
+    description: The node's region
+    type: string
+  root_volume:
+    description: Root volume ID or name
+    type: string
+  secondary_private_ip:
+    description: Secondary Private IP
+    type: string
+  secondary_subnet_id:
+    description: Secondary Subnet IP
+    type: string
+  subnet_id:
+    description: ID of the subnet on which this node is deployed
+    type: string
+  use_time_sync:
+    description: True if `use time sync` is enabled
+    type: boolean

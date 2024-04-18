@@ -1,0 +1,179 @@
+title: Details of a cloud node
+type: object
+properties:
+  az_uuid:
+    description: The availability zone's UUID
+    type: string
+    format: uuid
+  cloud_info:
+    description: 'Node information, as reported by the cloud provider'
+    $ref: ./CloudSpecificInfo.yaml
+  crons_active:
+    description: True if cron jobs were properly configured for this node
+    type: boolean
+  dedicated_to:
+    description: Used for configurations where each node can have only one process
+    type: string
+    enum:
+      - MASTER
+      - TSERVER
+      - CONTROLLER
+      - YQLSERVER
+      - YSQLSERVER
+      - REDISSERVER
+      - EITHER
+  disks_are_mounted_by_uuid:
+    description: Disks are mounted by uuid
+    type: boolean
+  is_master:
+    description: True if this node is a master
+    type: boolean
+  is_redis_server:
+    description: True if this node is a REDIS server
+    type: boolean
+  is_tserver:
+    description: True if this node is a Tablet server
+    type: boolean
+  is_yql_server:
+    description: True if this node is a YCQL server
+    type: boolean
+  is_ysql_server:
+    description: True if this node is a YSQL server
+    type: boolean
+  last_volume_update_time:
+    description: Store last volume update time
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+    readOnly: true
+  machine_image:
+    description: Machine image name
+    type: string
+  master_http_port:
+    description: Master HTTP port
+    type: integer
+    format: int32
+  master_rpc_port:
+    description: Master RPC port
+    type: integer
+    format: int32
+  master_state:
+    description: Master state
+    type: string
+    example: ToStart
+    enum:
+      - None
+      - ToStart
+      - Configured
+      - ToStop
+  node_exporter_port:
+    description: Node exporter port
+    type: integer
+    format: int32
+  node_idx:
+    description: Node ID
+    type: integer
+    format: int32
+  node_name:
+    description: Node name
+    type: string
+  node_uuid:
+    description: Node UUID
+    type: string
+    format: uuid
+  otel_collector_metrics_port:
+    description: Otel collector metrics port
+    type: integer
+    format: int32
+  placement_uuid:
+    description: UUID of the cluster to which this node belongs
+    type: string
+    format: uuid
+  redis_server_http_port:
+    description: REDIS HTTP port
+    type: integer
+    format: int32
+  redis_server_rpc_port:
+    description: REDIS RPC port
+    type: integer
+    format: int32
+  ssh_port_override:
+    description: SSH port override for the AMI
+    type: integer
+    format: int32
+  ssh_user_override:
+    description: SSH user override for the AMI
+    type: string
+  state:
+    description: Node state
+    type: string
+    example: Provisioned
+    enum:
+      - ToBeAdded
+      - InstanceCreated
+      - ServerSetup
+      - ToJoinCluster
+      - Reprovisioning
+      - Provisioned
+      - SoftwareInstalled
+      - UpgradeSoftware
+      - RollbackUpgrade
+      - FinalizeUpgrade
+      - UpdateGFlags
+      - Live
+      - Stopping
+      - Starting
+      - Stopped
+      - Unreachable
+      - MetricsUnavailable
+      - ToBeRemoved
+      - Removing
+      - Removed
+      - Adding
+      - BeingDecommissioned
+      - Decommissioned
+      - UpdateCert
+      - ToggleTls
+      - ConfigureDBApis
+      - Resizing
+      - SystemdUpgrade
+      - Terminating
+      - Terminated
+      - Rebooting
+      - HardRebooting
+      - VMImageUpgrade
+  tserver_http_port:
+    description: Tablet server HTTP port
+    type: integer
+    format: int32
+  tserver_rpc_port:
+    description: Tablet server RPC port
+    type: integer
+    format: int32
+  yb_controller_http_port:
+    description: Yb controller HTTP port
+    type: integer
+    format: int32
+  yb_controller_rpc_port:
+    description: Yb controller RPC port
+    type: integer
+    format: int32
+  yb_prebuilt_ami:
+    description: True if this a custom YB AMI
+    type: boolean
+  yql_server_http_port:
+    description: YCQL HTTP port
+    type: integer
+    format: int32
+  yql_server_rpc_port:
+    description: YCQL RPC port
+    type: integer
+    format: int32
+  ysql_server_http_port:
+    description: YSQL HTTP port
+    type: integer
+    format: int32
+  ysql_server_rpc_port:
+    description: YSQL RPC port
+    type: integer
+    format: int32

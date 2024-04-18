@@ -1,0 +1,19 @@
+title: XCluster related states in this universe
+type: object
+properties:
+  source_root_cert_dir_path:
+    description: The value of certs_for_cdc_dir gflag
+    type: string
+    example: /mnt/disk0/yw-data/yugabyte-tls
+  source_x_cluster_configs:
+    description: The source universe's xcluster replication relationships
+    type: array
+    items:
+      type: string
+      format: uuid
+  target_x_cluster_configs:
+    description: The target universe's xcluster replication relationships
+    type: array
+    items:
+      type: string
+      format: uuid
