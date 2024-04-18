@@ -944,16 +944,26 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   // Get the TriggerType for the given situation and trigger the hooks
   private void createHookTriggerTasks(
       Collection<NodeDetails> nodes, boolean isPre, boolean isRolling) {
+    String triggerName = getHookTriggerName(isPre, isRolling);
+    Optional<TriggerType> optTrigger = TriggerType.maybeResolve(triggerName);
+    if (optTrigger.isPresent())
+      HookInserter.addHookTrigger(optTrigger.get(), this, taskParams(), nodes);
+  }
+
+  protected String getHookTriggerName(boolean isPre, boolean isRolling) {
+    String className = getClassNameForHooks();
+    String triggerName = (isPre ? "Pre" : "Post") + className;
+    if (isRolling) triggerName += "NodeUpgrade";
+    return triggerName;
+  }
+
+  protected String getClassNameForHooks() {
     String className = this.getClass().getSimpleName();
     if (this.getClass().equals(SoftwareUpgradeYB.class)) {
       // use same hook for new upgrade task which was added for old upgrade task.
       className = SoftwareUpgrade.class.getSimpleName();
     }
-    String triggerName = (isPre ? "Pre" : "Post") + className;
-    if (isRolling) triggerName += "NodeUpgrade";
-    Optional<TriggerType> optTrigger = TriggerType.maybeResolve(triggerName);
-    if (optTrigger.isPresent())
-      HookInserter.addHookTrigger(optTrigger.get(), this, taskParams(), nodes);
+    return className;
   }
 
   @Value
