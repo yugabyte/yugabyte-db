@@ -1059,18 +1059,14 @@ class ControlScript(object):
             Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
                 "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
 
-        # Find current YBDB version
-        VERSION_METADATA_PATH = find_version_metadata_location("version_metadata.json")
-        with open(VERSION_METADATA_PATH) as metadata:
-            version_metadata = json.load(metadata)
-            executable_version = version_metadata.get("version_number")
-
         tserver_addresses = self.get_tserver_addresses()
 
         # Verify if all nodes were upgraded successfully
         Output.init_animation("Verifying version compatibility across all nodes...")
-        mismatched_nodes_version = self.verify_all_nodes_version(
-                                tserver_addresses, executable_version)
+        node_versions = self.get_all_nodes_version(tserver_addresses)
+        highest_version = self.get_highest_version(node_versions)
+        mismatched_nodes_version = self.verify_all_nodes_version(node_versions,
+                                                            highest_version)
 
         if len(mismatched_nodes_version) > 0:
             mismatched_nodes = ', '.join(mismatched_nodes_version)
@@ -1079,7 +1075,7 @@ class ControlScript(object):
             Output.log_error_and_exit(
             Output.make_red("Error") + ": Version mismatch detected in the " +
             "following nodes: {}. Please upgrade these".format(mismatched_nodes) +
-            " nodes to version {} and then rerun the".format(executable_version) +
+            " nodes to version {} and then rerun the".format(highest_version) +
             Output.make_yellow(" yugabyted finalize_upgrade") + " command."
         )
 
@@ -1112,7 +1108,7 @@ class ControlScript(object):
         status_details = [
                     (Output.make_yellow("Status"), final_status)]
         status_display_info[final_status] = Output.make_green
-        status_details.append((Output.make_yellow("Version"), executable_version))
+        status_details.append((Output.make_yellow("Version"), highest_version))
         Output.print_out(self.get_status_string_common(status_details, status_display_info))
 
     # Starts an interactive YSQL shell.
@@ -3470,15 +3466,55 @@ class ControlScript(object):
             Output.log_error_and_exit("Other error occurred while fetching version from " +
                                     "tserver {}: {}".format(tserver_hostport, err))
 
-    # Verify nodes version
-    def verify_all_nodes_version(self, tserver_addresses, executable_version):
-        mismatched_nodes_version = []
+    # Get all nodes version
+    def get_all_nodes_version(self, tserver_addresses):
+        node_versions = {}
         for tserver_addr in tserver_addresses:
             version = self.get_node_version(tserver_addr)
-            if version != executable_version:
-                mismatched_nodes_version.append(tserver_addr.split(':')[0])
+            node_versions[tserver_addr] = version
 
-        return mismatched_nodes_version
+        return node_versions
+
+    # Get highest nodes version
+    def get_highest_version(self, node_versions):
+        highest_version = ""
+        for _, version in node_versions.items():
+            if highest_version == "" or self.compare_versions(
+                                    version, highest_version) == 1:
+                highest_version = version
+
+        return highest_version
+
+    # Compare Versions
+    def compare_versions(self, versionA, versionB):
+        int_version_a = self.get_int_version(versionA)
+        int_version_b = self.get_int_version(versionB)
+
+        for a, b in zip(int_version_a, int_version_b):
+            if a < b:
+                return -1
+            elif a > b:
+                return 1
+
+        return 0
+
+    # Convert Version to Integer for comparision
+    def get_int_version(self, version_number):
+        parts = version_number.split(".")[:3]
+        int_versions = []
+        for part in parts:
+            int_versions.append(int(part))
+
+        return int_versions
+
+    # Get mismatched nodes
+    def verify_all_nodes_version(self, node_versions, highest_version):
+        mismatched_nodes = []
+        for node, version in node_versions.items():
+            if self.compare_versions(version, highest_version) != 0:
+                mismatched_nodes.append(node.split(':')[0])
+
+        return mismatched_nodes
 
     # Get all masters placement locations
     def get_all_nodes_locations(self, all_tserver_info, placement_uuid):
