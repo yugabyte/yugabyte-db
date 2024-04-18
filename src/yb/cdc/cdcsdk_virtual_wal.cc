@@ -501,26 +501,32 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
                                 last_shipped_commit.commit_record_unique_id->GetCommitTime()))) /
                             1000;
     }
-    VLOG(1)
-        << "Sending non-empty GetConsistentChanges response for stream_id: " << stream_id
-        << " with total_records: " << resp->cdc_sdk_proto_records_size()
-        << ", total_txns: " << metadata.txn_ids.size() << ", min_txn_id: "
-        << ((metadata.min_txn_id == std::numeric_limits<uint32_t>::max()) ? 0 : metadata.min_txn_id)
-        << ", max_txn_id: " << metadata.max_txn_id << ", min_lsn: "
-        << (metadata.min_lsn == std::numeric_limits<uint64_t>::max() ? 0 : metadata.min_lsn)
-        << ", max_lsn: " << metadata.max_lsn
-        << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
-        << ", begin_records: " << metadata.begin_records
-        << ", commit_records: " << metadata.commit_records
-        << ", insert_records: " << metadata.insert_records
-        << ", update_records: " << metadata.update_records
-        << ", delete_records: " << metadata.delete_records
-        << ", ddl_records: " << metadata.ddl_records
-        << ", contains_publication_refresh_record: " << metadata.contains_publication_refresh_record
-        << ", VWAL lag: " << (metadata.commit_records > 0 ? Format("$0 ms", vwal_lag_in_ms) : "-1")
-        << ", Number of unacked txns in VWAL: "
-        << (metadata.max_txn_id -
+
+    int64_t unacked_txn = 0;
+    if(!commit_meta_and_last_req_map_.empty()) {
+      unacked_txn = (metadata.max_txn_id -
             commit_meta_and_last_req_map_.begin()->second.record_metadata.commit_txn_id);
+    }
+
+    VLOG(1) << "Sending non-empty GetConsistentChanges response for stream_id: " << stream_id
+            << " with total_records: " << resp->cdc_sdk_proto_records_size()
+            << ", total_txns: " << metadata.txn_ids.size() << ", min_txn_id: "
+            << ((metadata.min_txn_id == std::numeric_limits<uint32_t>::max()) ? 0
+                                                                              : metadata.min_txn_id)
+            << ", max_txn_id: " << metadata.max_txn_id << ", min_lsn: "
+            << (metadata.min_lsn == std::numeric_limits<uint64_t>::max() ? 0 : metadata.min_lsn)
+            << ", max_lsn: " << metadata.max_lsn
+            << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
+            << ", begin_records: " << metadata.begin_records
+            << ", commit_records: " << metadata.commit_records
+            << ", insert_records: " << metadata.insert_records
+            << ", update_records: " << metadata.update_records
+            << ", delete_records: " << metadata.delete_records
+            << ", ddl_records: " << metadata.ddl_records
+            << ", contains_publication_refresh_record: "
+            << metadata.contains_publication_refresh_record << ", VWAL lag: "
+            << (metadata.commit_records > 0 ? Format("$0 ms", vwal_lag_in_ms) : "-1")
+            << ", Number of unacked txns in VWAL: " << unacked_txn;
   }
 
   VLOG(1)
