@@ -215,8 +215,8 @@ DEFINE_RUNTIME_int64(reuse_unclosed_segment_threshold_bytes, INT64_MAX,
             "Log will reuse this last segment as writable active_segment at tablet bootstrap. "
             "Otherwise, Log will create a new segment.");
 
-DEFINE_RUNTIME_int32(min_segment_size_to_rollover_at_flush, 0,
-                    "Only rotate wals at least of this size at tablet flush."
+DEFINE_RUNTIME_int32(min_segment_size_bytes_to_rollover_at_flush, 0,
+                    "Only rotate wals at least of this size (in bytes) at tablet flush."
                     "-1 to disable WAL rollover at flush. 0 to always rollover WAL at flush.");
 
 // Validate that log_min_segments_to_retain >= 1
@@ -907,7 +907,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
       } else if (entry_batch->IsSingleEntryOfType(ASYNC_ROLLOVER_AT_FLUSH_MARKER)) {
         if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
           const auto min_size_to_rollover =
-              GetAtomicFlag(&FLAGS_min_segment_size_to_rollover_at_flush);
+              GetAtomicFlag(&FLAGS_min_segment_size_bytes_to_rollover_at_flush);
           if (min_size_to_rollover < 0 || active_segment_->Size() < min_size_to_rollover) {
             VLOG_WITH_PREFIX(1) << Format("Skipping async wal rotation at flush. "
                                           "segment_size: $0 min_size_to_rollover: $1",
