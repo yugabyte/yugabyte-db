@@ -600,7 +600,7 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       LOG(INFO) << "Beginning new remote log anchor session on tablet " << req->tablet_id()
                 << " with session id = " << req->owner_info();
     } else {
-      tablet_peer.reset(it->second->tablet_peer_.get());
+      tablet_peer = it->second->tablet_peer_;
       std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
       it->second->ResetExpiration();
       RPC_RETURN_NOT_OK(
