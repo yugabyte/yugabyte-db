@@ -355,11 +355,13 @@ func init() {
 	createUniverseCmd.Flags().Bool("enable-ysql", true,
 		"[Optional] Enable YSQL endpoint.")
 	createUniverseCmd.Flags().String("ysql-password", "",
-		"[Optional] YSQL authentication password.")
+		"[Optional] YSQL authentication password. Use single quotes ('') to provide "+
+			"values with special characters.")
 	createUniverseCmd.Flags().Bool("enable-ycql", true,
 		"[Optional] Enable YCQL endpoint.")
 	createUniverseCmd.Flags().String("ycql-password", "",
-		"[Optional] YCQL authentication password.")
+		"[Optional] YCQL authentication password. Use single quotes ('') to provide "+
+			"values with special characters.")
 	createUniverseCmd.Flags().Bool("enable-yedis", false,
 		"[Optional] Enable YEDIS endpoint. (default false)")
 
