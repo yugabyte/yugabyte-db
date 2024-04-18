@@ -275,6 +275,12 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     setUpCqlClient();
   }
 
+  protected void restartClusterWithMasterFlags(Map<String, String> masterFlags) throws Exception {
+    destroyMiniCluster();
+    createMiniCluster(masterFlags, Collections.emptyMap());
+    setUpCqlClient();
+  }
+
   protected void restartClusterWithFlag(String flag, String value) throws Exception {
     restartClusterWithTSFlags(Collections.singletonMap(flag, value));
   }
