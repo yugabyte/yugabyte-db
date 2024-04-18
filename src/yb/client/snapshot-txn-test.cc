@@ -79,6 +79,7 @@ DECLARE_uint64(max_transactions_in_status_request);
 DECLARE_uint64(clock_skew_force_crash_bound_usec);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_check_retryable_request_timeout);
+DECLARE_double(TEST_txn_participant_error_on_load);
 
 extern double TEST_delay_create_transaction_probability;
 
@@ -109,6 +110,7 @@ class SnapshotTxnTest
      std::atomic<int64_t>* updates, TransactionPool* pool);
   void TestRemoteBootstrap();
   void TestMultiWriteWithRestart();
+  void TestDeleteOnLoad();
 };
 
 bool TransactionalFailure(const Status& status) {
@@ -996,7 +998,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
   }
 }
 
-TEST_F(SnapshotTxnTest, DeleteOnLoad) {
+void SnapshotTxnTest::TestDeleteOnLoad() {
   constexpr int kTransactions = 400;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_status_resolver_delay_ms) = 150 * kTimeMultiplier;
@@ -1017,6 +1019,15 @@ TEST_F(SnapshotTxnTest, DeleteOnLoad) {
   std::this_thread::sleep_for(1s * kTimeMultiplier);
 
   ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
+}
+
+TEST_F(SnapshotTxnTest, DeleteOnLoad) {
+  TestDeleteOnLoad();
+}
+
+TEST_F(SnapshotTxnTest, DeleteOnErroredLoad) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_participant_error_on_load) = 0.4;
+  TestDeleteOnLoad();
 }
 
 } // namespace client
