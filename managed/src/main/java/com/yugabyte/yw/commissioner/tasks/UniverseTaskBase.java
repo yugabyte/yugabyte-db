@@ -147,6 +147,7 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
@@ -478,11 +479,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return () -> {
         // Refresh the nodes from the DB to get IPs.
         Universe universe = Universe.getOrBadRequest(universeUuid);
+        // TODO cloudEnabled is supposed to be a static config but this is read from runtime config
+        // to make itests work.
+        boolean cloudEnabled =
+            confGetter.getConfForScope(
+                Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
         return universe.getHostPortsString(
             universe.getNodes().stream().filter(n -> nodes.contains(n)).collect(Collectors.toSet()),
             ServerType.MASTER,
             PortType.RPC,
-            config.getBoolean("yb.cloud.enabled"));
+            cloudEnabled);
       };
     }
 

@@ -14,10 +14,12 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
@@ -114,10 +116,14 @@ public class ChangeMasterConfig extends UniverseTaskBase {
         return;
       }
     }
+    // TODO cloudEnabled is supposed to be a static config but this is read from runtime config to
+    // make itests work.
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
     // If the cluster has a secondary IP, we want to ensure that we use the correct addresses.
     // The ipToUse is the address that we need to add to the config.
-    boolean shouldUseSecondary =
-        GFlagsUtil.isUseSecondaryIP(universe, node, config.getBoolean("yb.cloud.enabled"));
+    boolean shouldUseSecondary = GFlagsUtil.isUseSecondaryIP(universe, node, cloudEnabled);
     String ipToUse =
         shouldUseSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
     String certificate = universe.getCertificateNodetoNode();
