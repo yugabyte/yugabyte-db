@@ -71,15 +71,7 @@ Use a backup policy to schedule backups and override the default 24 hour/8-day r
 
 Any changes to the retention policy are applied to new backups only.
 
-To create a backup policy, do the following:
-
-1. On the **Backups** tab, click **Create Backup Policy** to display the **Backup Policy** dialog.
-1. Specify how often to take full backups of the database.
-1. To take incremental backups, select the **Enable incremental backup** option and specify how often to take incremental backups.
-1. Set the retention period for the backup. The maximum retention is 31 days.
-1. Click **Create Policy**.
-
-To edit your cluster backup policy, do the following:
+To manage the cluster backup policy, do the following:
 
 1. On the **Backups** tab, click **Scheduled Backup Settings** and choose **Edit Backup Policy** to display the **Backup Policy** dialog.
 1. Specify how often to take full backups of the database.
@@ -96,10 +88,12 @@ Before performing a restore, ensure the following:
 - the target cluster is sized appropriately; refer to [Scale and configure clusters](../configure-clusters/)
 - if the target cluster has the same namespaces as the source cluster, those namespaces don't have any tables
 
-To review previous restores, click **Restore**.
+To review previous restores, on the **Backups** tab, select **Restore History**.
 
 To restore a backup of a cluster:
 
-1. On the **Backups** tab, select a backup in the list and click the **Restore** icon to display the **Restore Backup** dialog.
+1. On the **Backups** tab, select a backup in the list to display the **Backup Details** sheet.
+1. Click **Restore** to display the **Restore Backup** dialog.
+1. Choose the databases or keyspaces to restore and click **Next**.
 1. Select the target cluster.
-1. Click **Restore**.
+1. Click **Restore Now**.
