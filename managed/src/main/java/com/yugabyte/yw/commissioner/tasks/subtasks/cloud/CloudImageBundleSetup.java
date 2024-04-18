@@ -326,6 +326,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
   private void updateYBAActiveImageBundles(
       Provider provider, ImageBundle bundle, List<Region> regions) {
     ImageBundleDetails details = bundle.getDetails();
+    CloudType cloudType = provider.getCloudCode();
     if (details == null) {
       log.error(
           String.format("Image Bundle %s is missing details. Can't continue", bundle.getName()));
@@ -342,7 +343,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       String defaultRegionImage =
           cloudQueryHelper.getDefaultImage(region, bundle.getDetails().getArch().toString());
       info.setYbImage(defaultRegionImage);
-      details.setSshUser(provider.getDetails().getSshUser());
+      details.setSshUser(cloudType.getSshUser());
 
       regionBundleInfo.put(region.getCode(), info);
       details.setRegions(regionBundleInfo);
@@ -439,7 +440,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
             BAD_REQUEST,
             String.format(
                 "Provider %s already has %s as the default image bundle for architecture"
-                    + "type %s. Can't continue.",
+                    + " type %s. Can't continue.",
                 provider.getUuid(), defaultImageBundle.get().getUuid(), arch.toString()));
       }
     }
