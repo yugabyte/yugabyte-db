@@ -121,8 +121,8 @@ templates:
         {{ if $index }},{{ end }}{{ $element.Labels.instance_addr }}{{ end}}
     annotations:
       summary: >-
-        Standby instance(s) '{{$labels.affected_instance_addrs}}' on higher version than current
-        active. Please upgrade active YBA to match version.
+        Standby instance(s) '{{$labels.affected_instance_addrs}}' on different version than current
+        active. Please upgrade lower version YBA to match.
 
   BACKUP_FAILURE:
     name: Backup Failure
