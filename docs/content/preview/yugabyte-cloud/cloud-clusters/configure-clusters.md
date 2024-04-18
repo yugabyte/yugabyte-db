@@ -125,9 +125,7 @@ To scale a partition-by-region cluster:
 
 1. To scale the cluster horizontally, enter the number of nodes for each region.
 
-1. To scale the cluster vertically, enter the number of vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only).
-
-    You can scale the number of nodes in each region independently, however the same node sizes apply across all regions.
+1. To scale the cluster vertically, enter the number of vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only) for each region.
 
     Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
