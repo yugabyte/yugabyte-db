@@ -162,11 +162,12 @@ func init() {
 	LoginCmd.Flags().SortFlags = false
 	LoginCmd.Flags().StringP("email", "e", "",
 		fmt.Sprintf(
-			"[Optional] Email or username for the user. %s",
+			"[Optional] Email or username for the user. %s.",
 			formatter.Colorize("Required for non-interactive usage", formatter.GreenColor)))
 	LoginCmd.Flags().StringP("password", "p", "",
 		fmt.Sprintf(
-			"[Optional] Password for the user. %s",
+			"[Optional] Password for the user. %s. Use single quotes ('') to provide "+
+				"values with special characters.",
 			formatter.Colorize("Required for non-interactive usage", formatter.GreenColor)))
 	LoginCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")

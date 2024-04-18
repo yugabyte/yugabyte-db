@@ -97,7 +97,10 @@ var RegisterCmd = &cobra.Command{
 			}
 
 			// Prompt for the password
-			fmt.Print("Enter password: ")
+			fmt.Print(
+				"Enter password (must contain at least 8 characters " +
+					"and at least 1 digit , 1 capital , 1 lowercase and 1 " +
+					"of the !@#$^&* (special) characters): ")
 			data, err = term.ReadPassword(int(os.Stdin.Fd()))
 			if err != nil {
 				logrus.Fatalln(
@@ -245,7 +248,8 @@ func init() {
 		fmt.Sprintf(
 			"[Optional] Password for the user. Password must contain at "+
 				"least 8 characters and at least 1 digit , 1 capital , 1 lowercase"+
-				" and 1 of the !@#$^&* (special) characters. %s",
+				" and 1 of the !@#$^&* (special) characters. %s. Use single quotes ('') to provide "+
+				"values with special characters.",
 			formatter.Colorize("Required for non-interactive usage", formatter.GreenColor)))
 	RegisterCmd.Flags().String("environment", "dev",
 		"[Optional] Environment of the installation. "+
