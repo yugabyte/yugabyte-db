@@ -1711,7 +1711,7 @@ templates:
       summary: >-
         RPC queue size is high for universe '{{ $labels.source_name }}'.
 
-        Affected nodes: {{ $labels.affected_node_names }}
+        Affected nodes: {{ $labels.affected_node_names }}  
 
 
   NODE_AGENT_DOWN:
@@ -1735,4 +1735,53 @@ templates:
       summary: >-
         Node agent server has been down for universe '{{ $labels.source_name }}' for more than 1 minute.
 
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  LOG_CACHE_SIZE:
+    name: Log cache size is high
+    description: WAL cache size is the total per-tablet size of consensus entries kept in memory.
+    queryTemplate: max by (universe_uuid) ((sum by (universe_uuid, node_name) (log_cache_size{universe_uuid="__universeUuid__", export_type="tserver_export"})) / 1024) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: false
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MEGABYTE
+    thresholdUnitName: MB(s)
+    thresholdConditionReadOnly: true
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "(sum by (universe_uuid, node_name) (log_cache_size{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'})) / 1024 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        WAL cache size is high for nodes '{{ $labels.affected_node_names }}' in universe '{{ $labels.source_name }}'.
+        Current value is {{ $value | printf "%.0f" }} MB for one of the nodes.
+  
+  CACHE_MISS:
+    name: DocDB cache miss percentage is high
+    description: It represents the percentage of block cache misses compared to hits.
+    queryTemplate: avg by (universe_uuid)
+      (sum by (exported_instance, universe_uuid) (rate(rocksdb_block_cache_miss{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m]))
+      / (sum by (exported_instance, universe_uuid) (rate(rocksdb_block_cache_miss{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m]))
+      + sum by (exported_instance, universe_uuid) (rate(rocksdb_block_cache_hit{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m])))) * 100 {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: false
+    defaultThresholdMap:
+      WARNING:
+        threshold: 50.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "avg by (universe_uuid, node_name)
+        (sum by (exported_instance, universe_uuid) (rate(rocksdb_block_cache_miss{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m]))
+        / (sum by (exported_instance, universe_uuid) (rate(rocksdb_block_cache_miss{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m]))
+        + sum by (exported_instance, universe_uuid) (rate(rocksdb_block_cache_hit{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])))) * 100 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        DocDB cache miss percentage is high for universe '{{ $labels.source_name }}'.
+        Current value is {{ $value | printf "%.0f" }} %.
         Affected nodes: {{ $labels.affected_node_names }}
