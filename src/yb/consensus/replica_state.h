@@ -188,6 +188,10 @@ class ReplicaState {
   // Return current consensus state summary.
   ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const;
 
+  // Return a copy of the committed consensus state cache.
+  // This method is thread safe.
+  ConsensusStatePB GetConsensusStateFromCache() const;
+
   // Returns the currently active Raft role.
   PeerRole GetActiveRoleUnlocked() const;
 

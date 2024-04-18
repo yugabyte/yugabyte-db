@@ -57,5 +57,13 @@ YB_STRONGLY_TYPED_BOOL(AllowSplitTablet);
 
 using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 
+template <typename, typename = std::void_t<>>
+struct HasTabletConsensusInfo : std::false_type {};
+
+template <typename T>
+struct HasTabletConsensusInfo<
+    T, std::void_t<decltype(std::declval<T>().tablet_consensus_info())>>
+    : std::true_type {};
+
 } // namespace tserver
 } // namespace yb

@@ -228,6 +228,7 @@ using yb::master::WaitForYsqlBackendsCatalogVersionRequestPB;
 using yb::master::WaitForYsqlBackendsCatalogVersionResponsePB;
 using yb::rpc::Messenger;
 using yb::tserver::AllowSplitTablet;
+using yb::tserver::TabletConsensusInfoPB;
 
 using namespace yb::size_literals;  // NOLINT.
 
@@ -2945,6 +2946,16 @@ Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
 
 void YBClient::ClearAllMetaCachesOnServer() {
   data_->meta_cache_->ClearAll();
+}
+
+bool YBClient::RefreshTabletInfoWithConsensusInfo(
+    const tserver::TabletConsensusInfoPB& newly_received_info) {
+  auto status = data_->meta_cache_->RefreshTabletInfoWithConsensusInfo(newly_received_info);
+  if(!status.ok()) {
+    VLOG(1) << "Partially refreshing meta-cache for tablet failed because " << status;
+    return false;
+  }
+  return true;
 }
 
 }  // namespace client

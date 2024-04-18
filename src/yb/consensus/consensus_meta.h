@@ -45,6 +45,8 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/util/locks.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -58,6 +60,51 @@ struct CloneSourceInfo {
 };
 
 namespace consensus {
+
+// This class is used to cache the values of consensus state so we don't have to wait for the
+// current consensus state operation to finish before being able to retrieve the values.
+// The fields here are updated atomically but independently so may independently be from before or
+// after the current running consensus config update.
+class ConsensusStateCache {
+ public:
+  RaftConfigPB config() const {
+    SharedLock lock(mutex_);
+    return config_;
+  }
+
+  void set_config(const RaftConfigPB& config) {
+    std::lock_guard lock(mutex_);
+    config_ = config;
+  }
+
+  std::string leader_uuid() const {
+    SharedLock lock(mutex_);
+    return leader_uuid_;
+  }
+
+  void set_leader_uuid(std::string uuid) {
+    std::lock_guard lock(mutex_);
+    leader_uuid_ = uuid;
+  }
+
+  int64_t current_term() const {
+    SharedLock lock(mutex_);
+    return current_term_;
+  }
+
+  void set_current_term(int64_t term) {
+    std::lock_guard lock(mutex_);
+    current_term_ = term;
+  }
+
+ private:
+  mutable rw_spinlock mutex_;
+
+  // These fields are protected by mutex_.
+  RaftConfigPB config_;
+  std::string leader_uuid_;
+  int64_t current_term_;
+};
 
 // Provides methods to read, write, and persist consensus-related metadata.
 // This partly corresponds to Raft Figure 2's "Persistent state on all servers".
@@ -164,6 +211,11 @@ class ConsensusMetadata {
   // leader_uuid field of the returned ConsensusStatePB will be cleared.
   ConsensusStatePB ToConsensusStatePB(ConsensusConfigType type) const;
 
+  // Copies the stored committed consensus info cache into a ConsensusStatePB object.
+  // It is possible for the current leader to not be a member of the committed configuration;
+  // in such case the leader_uuid of the returned ConsensusStatePB is cleared. This is thread safe.
+  ConsensusStatePB GetConsensusStateFromCache() const;
+
   // Merge the committed consensus state from the source node during remote
   // bootstrap.
   //
@@ -222,6 +274,13 @@ class ConsensusMetadata {
                             // configuration change pending.
   // RaftConfig used by the peers when there is a pending config change operation.
   RaftConfigPB pending_config_;
+
+  // Committed Consensus Info, stored as a struct for fast read-only access. Contains the
+  // currently committed consensus state, it is not atomic and needs to be locked by its internal
+  // lock before being modified. This cache will not take into account of the currently writing
+  // config change, therefore it could be behind by one committed config change.
+  ConsensusStateCache committed_consensus_state_cache_;
+
   OpId pending_config_op_id_;
 
   // Cached role of the peer_uuid_ within the active configuration.

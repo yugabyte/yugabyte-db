@@ -3272,6 +3272,10 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
   return state_->ConsensusStateUnlocked(type);
 }
 
+ConsensusStatePB RaftConsensus::GetConsensusStateFromCache() const {
+  return state_->GetConsensusStateFromCache();
+}
+
 RaftConfigPB RaftConsensus::CommittedConfig() const {
   auto lock = state_->LockForRead();
   return state_->GetCommittedConfigUnlocked();

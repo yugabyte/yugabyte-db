@@ -77,6 +77,7 @@ ADD_YB_LIBRARY(yb_common_base
 set(COMMON_SRCS
   clock.cc
   colocated_util.cc
+  common_consensus_util.cc
   common_flags.cc
   common_types_util.cc
   common_util.cc

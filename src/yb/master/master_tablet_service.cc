@@ -53,7 +53,8 @@ MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Mas
 
 Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabletForRead(
   const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
-  YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) {
+  YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
+  tserver::ReadResponsePB* resp) {
   // Ignore looked_up_tablet_peer.
 
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
