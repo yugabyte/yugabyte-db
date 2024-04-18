@@ -1,0 +1,23 @@
+title: Encryption at rest specification
+type: object
+readOnly: false
+required:
+  - kms_config_uuid
+properties:
+  kms_config_uuid:
+    description: The KMS Configuration associated with the encryption keys being used on this universe
+    type: string
+    format: uuid
+  type:
+    description: Whether to generate a data key or just retrieve the CMK ARN. Defaults to DATA_KEY.
+    type: string
+    enum:
+      - CMK
+      - DATA_KEY
+  op_type:
+    description: 'Operation type enable, disable, or rotate the universe key/encryption at rest. Defaults to UNDEFINED.'
+    type: string
+    enum:
+      - ENABLE
+      - DISABLE
+      - UNDEFINED

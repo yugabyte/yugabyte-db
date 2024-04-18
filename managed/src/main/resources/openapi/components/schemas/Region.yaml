@@ -1,0 +1,42 @@
+title: Region in a cloud provider
+type: object
+description: 'Region within a given provider. Typically, this maps to a single cloud provider region.'
+required:
+  - zones
+properties:
+  uuid:
+    description: Region UUID
+    type: string
+    format: uuid
+    readOnly: true
+  name:
+    description: Cloud provider region name
+    type: string
+    example: US West (Oregon)
+    readOnly: true
+  active:
+    description: Whether this region is active
+    type: boolean
+    readOnly: true
+  code:
+    description: Cloud provider region code
+    type: string
+    example: us-west-2
+  latitude:
+    description: The region's latitude
+    type: number
+    format: double
+    example: 37.22
+    readOnly: true
+  longitude:
+    description: The region's longitude
+    type: number
+    format: double
+    example: -120.01
+    readOnly: true
+  details:
+    $ref: ./RegionDetails.yaml
+  zones:
+    type: array
+    items:
+      $ref: ./AvailabilityZone.yaml

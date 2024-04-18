@@ -1,0 +1,20 @@
+title: Audit Log Configuration
+description: Audit Log Configuration Specification for the universe cluster
+required:
+  - universe_logs_exporter_config
+type: object
+properties:
+  export_active:
+    description: Universe logs export active
+    type: boolean
+  universe_logs_exporter_config:
+    description: Universe logs exporter config
+    type: array
+    items:
+      $ref: ./UniverseLogsExporterConfig.yaml
+  ycql_audit_config:
+    description: YCQL audit config
+    $ref: ./YCQLAuditConfig.yaml
+  ysql_audit_config:
+    description: YSQL audit config
+    $ref: ./YSQLAuditConfig.yaml

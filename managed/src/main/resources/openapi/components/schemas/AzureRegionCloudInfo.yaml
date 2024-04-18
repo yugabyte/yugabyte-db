@@ -1,0 +1,9 @@
+title: Region in Azure provider
+type: object
+properties:
+  security_group_id:
+    description: Azure security group id
+    type: string
+  vnet:
+    description: Azure vnet
+    type: string
