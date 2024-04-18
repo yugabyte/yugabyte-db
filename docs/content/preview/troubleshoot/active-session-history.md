@@ -12,11 +12,11 @@ menu:
 type: docs
 ---
 
-Active Session History (ASH) provides a current and historical view of system activity by sampling session activity in the database. A database session or connection is considered active if it is consuming CPU, or has an active RPC call that is waiting on one of the wait events. ASH exposes session activity in the form of SQL views, which can be used to analyze and troubleshoot performance issues.
+Active Session History (ASH) provides a current and historical view of system activity by sampling session activity in the database. A database session or connection is considered active if it is consuming CPU, or has an active RPC call that is waiting on one of the wait events.
 
-ASH is exposed as SQL views so that you can run analytical queries, aggregations on it for analysis, and troubleshooting. So, you need to enable [YSQL](../../api/ysql/) or [YCQL](../../api/ycql/) to run ASH for YSQL or YCQL sessions.
+ASH exposes session activity in the form of [SQL views](../../explore/ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues. So, you need to enable [YSQL](../../api/ysql/) or [YCQL](../../api/ycql/) to run ASH for YSQL or YCQL sessions.
 
-ASH facilitates analysis by recording wait events related to YSQL, YCQL, YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
+Currently, ASH is available for [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes. ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
 Analyzing the wait events and wait event types lets you troubleshoot, answer the following questions and subsequently tune performance:
 
 - Why is a query taking longer than usual to execute?
@@ -59,7 +59,7 @@ To use ASH, enable and configure the following flags for each node of your clust
 Note that the following limitations are subject to change as the feature is in [Tech Preview](/preview/releases/versioning/#feature-availability) currently.
 
 - ASH is available per node only. [Aggregations](../../develop/learn/aggregations-ycql/) need to be done by you.
-- ASH is not available for [YB-Master](../../architecture/yb-master/) processes. ASH is available for [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes.
+- ASH is not available for [YB-Master](../../architecture/yb-master/) processes.
 - ASH is available only for foreground activities or queries from customer applications. ASH is not available for most background activities such as backups, restore, remote bootstrap, CDC, tablet splitting. ASH is available for flushes and compactions.
 - ASH does not capture start and end time of wait events.
 
@@ -141,18 +141,18 @@ List of wait events by the following request types.
 | Common | OnCpu_Passive | CPU | none | Waiting for a thread to pick it up |
 | Common | OnCpu_Active | CPU | ignored  | RPC is being actively processed on a thread |
 | Common | ResponseQueued | Network | ignored | Waiting for response to be transferred |
-| Tablet | AcquiringLocks | Lock | <tablet-id>| Taking row-wise locks. May need to wait for other rpcs to release the lock. |
-| Tablet | MVCC_WaitForSafeTime | Lock | <tablet-id>| Waiting for the SafeTime to be at least the desired read-time. |
-| Tablet | BackfillIndex_WaitForAFreeSlot | Lock | <tablet-id> | Waiting for a slot to open if there are too many backfill requests at the same time. |
-| Tablet | CreatingNewTablet | I/O  | <tablet-id>| Creating a new tablet may involve writing metadata files, causing I/O wait.  |
-| Tablet | WaitOnConflictingTxn | Lock | <tablet-id>| Waiting for the conflicting transactions to complete. |
-| Consensus | WAL_Append | I/O | <tablet-id>| Persisting Wal edits |
-| Consensus | WAL_Sync | I/O | <tablet-id>| Persisting Wal edits |
-| Consensus | Raft_WaitingForReplication | Network | <tablet-id>| Waiting for Raft replication |
-| Consensus | Raft_ApplyingEdits | Lock/CPU | <tablet-id>| Applying the edits locally |
-| RocksDB  | BlockCacheReadFromDisk | I/O  | <tablet-id>| Populating block cache from disk |
-| RocksDB | Flush  | I/O | <tablet-id> | Doing RocksDB flush  |
-| RocksDB | Compaction | I/O | <tablet-id>| Doing RocksDB compaction |
+| Tablet | AcquiringLocks | Lock | \<tablet&#8209;id>| Taking row-wise locks. May need to wait for other rpcs to release the lock. |
+| Tablet | MVCC_WaitForSafeTime | Lock | \<tablet-id>| Waiting for the SafeTime to be at least the desired read-time. |
+| Tablet | BackfillIndex_WaitForAFreeSlot | Lock | \<tablet-id> | Waiting for a slot to open if there are too many backfill requests at the same time. |
+| Tablet | CreatingNewTablet | I/O  | \<tablet-id>| Creating a new tablet may involve writing metadata files, causing I/O wait.  |
+| Tablet | WaitOnConflictingTxn | Lock | \<tablet-id>| Waiting for the conflicting transactions to complete. |
+| Consensus | WAL_Append | I/O | \<tablet-id>| Persisting Wal edits |
+| Consensus | WAL_Sync | I/O | \<tablet-id>| Persisting Wal edits |
+| Consensus | Raft_WaitingForReplication | Network | \<tablet-id>| Waiting for Raft replication |
+| Consensus | Raft_ApplyingEdits | Lock/CPU | \<tablet-id>| Applying the edits locally |
+| RocksDB  | BlockCacheReadFromDisk | I/O  | \<tablet-id>| Populating block cache from disk |
+| RocksDB | Flush  | I/O | \<tablet-id> | Doing RocksDB flush  |
+| RocksDB | Compaction | I/O | \<tablet-id>| Doing RocksDB compaction |
 | RocksDB | RateLimiter | I/O | | Slow down due to rate limiter throttling access to disk |
 
 ### YCQL
@@ -160,8 +160,8 @@ List of wait events by the following request types.
 | Wait Event Class | Wait Event | Wait Event Type | AUX | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
 | YCQLQuery | YCQL_Parse | CPU  | | CQL call is being actively processed |
-| YCQLQuery | YCQL_Read | Network | table-id | Waiting for DocDB read operation |
-| YCQLQuery | YCQL_Write | Network | table-id | Waiting for DocDB write operation  |
+| YCQLQuery | YCQL_Read | Network | \<table&#8209;id> | Waiting for DocDB read operation |
+| YCQLQuery | YCQL_Write | Network | \<table-id> | Waiting for DocDB write operation  |
 | YBClient | LookingUpTablet | Network |  | Looking up tablet information  |
 | YBClient | YBCSyncLeaderMasterRpc  | Network |  | Waiting on an RPC to the master/master-service  |
 | YBClient | YBCFindMasterProxy | Network  | | Waiting on establishing the proxy to master leader |
