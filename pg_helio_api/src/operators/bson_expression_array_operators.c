@@ -136,7 +136,6 @@ static bool ProcessDollarConcatArraysElement(bson_value_t *result,
 static void ProcessDollarConcatArraysResult(bson_value_t *result, void *state);
 static pgbsonelement ParseElementFromObjectForArrayToObject(const bson_value_t *element);
 static pgbsonelement ParseElementFromArrayForArrayToObject(const bson_value_t *element);
-static void ValidateVariableName(StringView name);
 static void ParseInputDocumentForFirstAndLastN(const bson_value_t *inputDocument,
 											   bson_value_t *input,
 											   bson_value_t *elementsToFetch, const
@@ -482,38 +481,6 @@ HandleDollarConcatArrays(pgbson *doc, const bson_value_t *operatorValue,
 	startValue.value_type = BSON_TYPE_ARRAY;
 	HandleVariableArgumentExpression(doc, operatorValue, expressionResult,
 									 &startValue, &context);
-}
-
-
-/* Helper function that validates variable name.
- * TODO: when we add full variable support, move to a common place. */
-void
-ValidateVariableName(StringView name)
-{
-	if (name.length <= 0)
-	{
-		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
-							"empty variable names are not allowed")));
-	}
-
-	uint32_t i;
-	for (i = 0; i < name.length; i++)
-	{
-		char current = name.string[i];
-		if (i == 0 && isascii(current) && !islower(current))
-		{
-			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
-								"'%s' starts with an invalid character for a user variable name",
-								name.string)));
-		}
-		else if (isascii(current) && !isdigit(current) && !islower(current) &&
-				 !isupper(current) && current != '_')
-		{
-			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
-								"'%s' contains an invalid character for a variable name: '%c'",
-								name.string, current)));
-		}
-	}
 }
 
 
@@ -2918,6 +2885,13 @@ ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data)
 		{
 			aliasValue = as;
 		}
+
+		StringView aliasNameView = {
+			.length = aliasValue.value.v_utf8.len,
+			.string = aliasValue.value.v_utf8.str,
+		};
+
+		ValidateVariableName(aliasNameView);
 	}
 
 	DollarMapArguments *arguments = palloc0(sizeof(DollarMapArguments));

@@ -72,15 +72,16 @@ typedef struct
 static void GetAndEvaluateOperator(pgbson *document, const char *operatorName,
 								   const bson_value_t *operatorValue,
 								   ExpressionResult *expressionResult);
-static bool EvaluateFieldPathAndWrite(bson_iter_t *document,
+static bool EvaluateFieldPathAndWriteCore(bson_iter_t *document,
+										  const char *dottedPathExpression,
+										  uint32_t dottedPathExpressionLength,
+										  pgbson_element_writer *writer, bool
+										  isNullOnEmpty);
+static bool EvaluateFieldPathAndWrite(bson_value_t *value,
 									  const char *dottedPathExpression,
 									  uint32_t dottedPathExpressionLength,
-									  pgbson_element_writer *writer, bool isNullOnEmpty);
-static bool EvaluateVariableFieldPathAndWrite(bson_value_t *variableValue,
-											  const char *dottedPathExpression,
-											  uint32_t dottedPathExpressionLength,
-											  pgbson_element_writer *writer, bool
-											  isNullOnEmpty);
+									  pgbson_element_writer *writer,
+									  bool isNullOnEmpty);
 static void EvaluateExpressionArrayToWriter(pgbson *document,
 											bson_iter_t *elementIterator,
 											pgbson_element_writer *writer,
@@ -111,7 +112,9 @@ static void EvaluateAggregationExpressionVariableToWriter(const
 														  pgbson *document,
 														  pgbson_element_writer *writer,
 														  ExpressionVariableContext *
-														  variableContext);
+														  variableContext,
+														  bool isNullOnEmpty,
+														  bool *isFieldPathExpression);
 static void EvaluateAggregationExpressionSystemVariableToWriter(const
 																AggregationExpressionData
 																*data,
@@ -119,7 +122,10 @@ static void EvaluateAggregationExpressionSystemVariableToWriter(const
 																pgbson_element_writer *
 																writer,
 																ExpressionVariableContext
-																*variableContext);
+																*variableContext,
+																bool isNullOnEmpty,
+																bool *
+																isFieldPathExpression);
 static void ParseDocumentAggregationExpressionData(const bson_value_t *value,
 												   AggregationExpressionData *
 												   expressionData);
@@ -131,6 +137,7 @@ static bool GetVariableFromContext(StringView variableName,
 								   bson_value_t *variableValue);
 static void InsertVariableToContextTable(const pgbsonelement *variableElement,
 										 HTAB *hashTable);
+static bool IsOverridableSystemVariable(StringView *name);
 
 static void ReportOperatorExpressonSyntaxError(const char *fieldA,
 											   bson_iter_t *fieldBIter, bool
@@ -897,28 +904,41 @@ EvaluateExpression(pgbson *document, const bson_value_t *expressionValue,
 				}
 
 				/* Evaluate dotted expression for a variable */
-				bool isNullOnEmptyVariable = false;
-
 				StringView varNameDottedSuffix = StringViewFindSuffix(
 					&dottedExpression, '.');
-				EvaluateVariableFieldPathAndWrite(&variableValue,
-												  varNameDottedSuffix.string,
-												  varNameDottedSuffix.length,
-												  ExpressionResultGetElementWriter(
-													  expressionResult),
-												  isNullOnEmptyVariable);
+				EvaluateFieldPathAndWrite(&variableValue,
+										  varNameDottedSuffix.string,
+										  varNameDottedSuffix.length,
+										  ExpressionResultGetElementWriter(
+											  expressionResult),
+										  isNullOnEmpty);
 
+				expressionResult->isFieldPathExpression = true;
 				ExpressionResultSetValueFromWriter(expressionResult);
 				return;
 			}
 			else if (strLen > 1 && strValue[0] == '$')
 			{
-				/* if the string starts with $ it's a special projection. Otherwise it's a const value. */
-				bson_iter_t documentIterator;
-				PgbsonInitIterator(document, &documentIterator);
-				EvaluateFieldPathAndWrite(&documentIterator, strValue + 1, strLen - 1,
+				/* if the string starts with $ it's a special projection. Otherwise it's a const value.
+				 * field path expressions should be treated as $$CURRENT.<path> */
+				bson_value_t currentValue;
+
+				/* should always return true since current defaults to root if not defined. */
+				bool found PG_USED_FOR_ASSERTS_ONLY =
+					GetVariableFromContext(CurrentVariableName,
+										   &expressionResult->expressionResultPrivate.
+										   variableContext,
+										   document,
+										   &currentValue);
+
+				Assert(found);
+
+				EvaluateFieldPathAndWrite(&currentValue,
+										  strValue + 1,
+										  strLen - 1,
 										  ExpressionResultGetElementWriter(
-											  expressionResult), isNullOnEmpty);
+											  expressionResult),
+										  isNullOnEmpty);
 
 				expressionResult->isFieldPathExpression = true;
 				ExpressionResultSetValueFromWriter(expressionResult);
@@ -1122,6 +1142,47 @@ ExpressionResultSetVariable(ExpressionResult *expressionResult, StringView varia
 }
 
 
+/* Helper function that validates variable name */
+void
+ValidateVariableName(StringView name)
+{
+	if (name.length <= 0)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+							"empty variable names are not allowed")));
+	}
+
+	uint32_t i;
+	for (i = 0; i < name.length; i++)
+	{
+		char current = name.string[i];
+		if (i == 0 && isascii(current) && !islower(current) &&
+			!IsOverridableSystemVariable(&name))
+		{
+			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+								"'%s' starts with an invalid character for a user variable name",
+								name.string)));
+		}
+		else if (isascii(current) && !isdigit(current) && !islower(current) &&
+				 !isupper(current) && current != '_')
+		{
+			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+								"'%s' contains an invalid character for a variable name: '%c'",
+								name.string, current)));
+		}
+	}
+}
+
+
+/* Helper function that checks if a variable name is an overridable system variable. */
+static bool
+IsOverridableSystemVariable(StringView *name)
+{
+	/* Only CURRENT is overridable so far. */
+	return StringViewEquals(name, &CurrentVariableName);
+}
+
+
 /* Inserts/overrides an element into the variable hash table. */
 static void
 InsertVariableToContextTable(const pgbsonelement *variableElement, HTAB *hashTable)
@@ -1289,9 +1350,9 @@ CompareOperatorExpressionByName(const void *a, const void *b)
  * and projects them into the writer with the $field projection semantics.
  */
 static bool
-EvaluateFieldPathAndWrite(bson_iter_t *document, const char *dottedPathExpression,
-						  uint32_t dottedPathExpressionLength,
-						  pgbson_element_writer *writer, bool isNullOnEmpty)
+EvaluateFieldPathAndWriteCore(bson_iter_t *document, const char *dottedPathExpression,
+							  uint32_t dottedPathExpressionLength,
+							  pgbson_element_writer *writer, bool isNullOnEmpty)
 {
 	check_stack_depth();
 	CHECK_FOR_INTERRUPTS();
@@ -1354,8 +1415,9 @@ EvaluateFieldPathAndWrite(bson_iter_t *document, const char *dottedPathExpressio
 		bson_iter_t childObjIterator;
 		if (bson_iter_recurse(document, &childObjIterator))
 		{
-			return EvaluateFieldPathAndWrite(&childObjIterator, remainingPath,
-											 remainingPathLength, writer, isNullOnEmpty);
+			return EvaluateFieldPathAndWriteCore(&childObjIterator, remainingPath,
+												 remainingPathLength, writer,
+												 isNullOnEmpty);
 		}
 	}
 	else if (BSON_ITER_HOLDS_ARRAY(document))
@@ -1374,9 +1436,9 @@ EvaluateFieldPathAndWrite(bson_iter_t *document, const char *dottedPathExpressio
 				if (BSON_ITER_HOLDS_DOCUMENT(&childArrayIterator) &&
 					bson_iter_recurse(&childArrayIterator, &nestedDocumentIter))
 				{
-					EvaluateFieldPathAndWrite(&nestedDocumentIter, remainingPath,
-											  remainingPathLength, &innerWriter,
-											  isNullOnEmptyWhenDocumentHasArray);
+					EvaluateFieldPathAndWriteCore(&nestedDocumentIter, remainingPath,
+												  remainingPathLength, &innerWriter,
+												  isNullOnEmptyWhenDocumentHasArray);
 				}
 			}
 
@@ -1390,15 +1452,14 @@ EvaluateFieldPathAndWrite(bson_iter_t *document, const char *dottedPathExpressio
 
 
 /*
- * Given an expression of the form "field": "$$variable.path.to.field"
- * Walks the document or array the $$variable refers to, and find the instances
- * of the dottedPathExpression.
+ * Given an expression of the form "field": "path.to.field" and a given bson value
+ * walks the value if it holds a document or an array to find the instance of the dotted expression.
  */
 static bool
-EvaluateVariableFieldPathAndWrite(bson_value_t *variableValue, const
-								  char *dottedPathExpressionSuffix,
-								  uint32_t dottedPathExpressionSuffixLength,
-								  pgbson_element_writer *writer, bool isNullOnEmpty)
+EvaluateFieldPathAndWrite(bson_value_t *value, const
+						  char *dottedPathExpression,
+						  uint32_t dottedPathExpressionLength,
+						  pgbson_element_writer *writer, bool isNullOnEmpty)
 {
 	check_stack_depth();
 	CHECK_FOR_INTERRUPTS();
@@ -1414,30 +1475,30 @@ EvaluateVariableFieldPathAndWrite(bson_value_t *variableValue, const
 	 *  The results is
 	 *  output : { "field" : [9] }
 	 */
-	uint32_t remainingPathLength = dottedPathExpressionSuffixLength;
-	bson_iter_t variableIter;
-	BsonValueInitIterator(variableValue, &variableIter);
-	if (variableValue->value_type == BSON_TYPE_DOCUMENT)
+	uint32_t remainingPathLength = dottedPathExpressionLength;
+	bson_iter_t valueIter;
+	BsonValueInitIterator(value, &valueIter);
+	if (value->value_type == BSON_TYPE_DOCUMENT)
 	{
-		return EvaluateFieldPathAndWrite(&variableIter, dottedPathExpressionSuffix,
-										 remainingPathLength, writer, isNullOnEmpty);
+		return EvaluateFieldPathAndWriteCore(&valueIter, dottedPathExpression,
+											 remainingPathLength, writer, isNullOnEmpty);
 	}
-	else if (variableValue->value_type == BSON_TYPE_ARRAY)
+	else if (value->value_type == BSON_TYPE_ARRAY)
 	{
 		/* write an array into the element */
 		pgbson_array_writer arrayWriter;
 		pgbson_element_writer innerWriter;
 		PgbsonElementWriterStartArray(writer, &arrayWriter);
 		PgbsonInitArrayElementWriter(&arrayWriter, &innerWriter);
-		while (bson_iter_next(&variableIter))
+		while (bson_iter_next(&valueIter))
 		{
 			bson_iter_t nestedDocumentIter;
-			if (BSON_ITER_HOLDS_DOCUMENT(&variableIter) &&
-				bson_iter_recurse(&variableIter, &nestedDocumentIter))
+			if (BSON_ITER_HOLDS_DOCUMENT(&valueIter) &&
+				bson_iter_recurse(&valueIter, &nestedDocumentIter))
 			{
-				EvaluateFieldPathAndWrite(&nestedDocumentIter, dottedPathExpressionSuffix,
-										  remainingPathLength, &innerWriter,
-										  isNullOnEmpty);
+				EvaluateFieldPathAndWriteCore(&nestedDocumentIter, dottedPathExpression,
+											  remainingPathLength, &innerWriter,
+											  isNullOnEmpty);
 			}
 		}
 
@@ -2198,7 +2259,10 @@ EvaluateAggregationExpressionData(const AggregationExpressionData *expressionDat
 														  elementWriter,
 														  &expressionResult->
 														  expressionResultPrivate.
-														  variableContext);
+														  variableContext,
+														  isNullOnEmpty,
+														  &expressionResult->
+														  isFieldPathExpression);
 			ExpressionResultSetValueFromWriter(expressionResult);
 			break;
 		}
@@ -2211,25 +2275,39 @@ EvaluateAggregationExpressionData(const AggregationExpressionData *expressionDat
 																elementWriter,
 																&expressionResult->
 																expressionResultPrivate.
-																variableContext);
+																variableContext,
+																isNullOnEmpty,
+																&expressionResult->
+																isFieldPathExpression);
 			ExpressionResultSetValueFromWriter(expressionResult);
 			break;
 		}
 
 		case AggregationExpressionKind_Path:
 		{
-			bson_iter_t documentIter;
-			PgbsonInitIterator(document, &documentIter);
+			/* path expressions are equivalent to $$CURRENT.<path> */
+			AggregationExpressionData currentExpressionData;
+			currentExpressionData.kind = AggregationExpressionKind_SystemVariable;
+			currentExpressionData.systemVariable.kind =
+				AggregationExpressionSystemVariableKind_Current;
+			currentExpressionData.systemVariable.pathSuffix.string =
+				expressionData->value.value.v_utf8.str + 1;
+			currentExpressionData.systemVariable.pathSuffix.length =
+				expressionData->value.value.v_utf8.len - 1;
 
-			const char *pathString = expressionData->value.value.v_utf8.str + 1;
-			uint32_t pathLength = expressionData->value.value.v_utf8.len - 1;
 
 			pgbson_element_writer *elementWriter = ExpressionResultGetElementWriter(
 				expressionResult);
-			EvaluateFieldPathAndWrite(&documentIter, pathString, pathLength,
-									  elementWriter, isNullOnEmpty);
+			EvaluateAggregationExpressionSystemVariableToWriter(&currentExpressionData,
+																document,
+																elementWriter,
+																&expressionResult->
+																expressionResultPrivate.
+																variableContext,
+																isNullOnEmpty,
+																&expressionResult->
+																isFieldPathExpression);
 
-			expressionResult->isFieldPathExpression = true;
 			ExpressionResultSetValueFromWriter(expressionResult);
 			break;
 		}
@@ -2315,39 +2393,55 @@ EvaluateAggregationExpressionDataToWriter(const AggregationExpressionData *expre
 
 		case AggregationExpressionKind_Variable:
 		{
+			bool isFieldPathExpressionIgnore = false;
 			pgbson_element_writer elementWriter;
 			PgbsonInitObjectElementWriter(writer, &elementWriter, path.string,
 										  path.length);
 			EvaluateAggregationExpressionVariableToWriter(expressionData, document,
 														  &elementWriter,
-														  variableContext);
+														  variableContext,
+														  isNullOnEmpty,
+														  &isFieldPathExpressionIgnore);
 			break;
 		}
 
 		case AggregationExpressionKind_SystemVariable:
 		{
+			bool isFieldPathExpression = false;
 			pgbson_element_writer elementWriter;
 			PgbsonInitObjectElementWriter(writer, &elementWriter, path.string,
 										  path.length);
 			EvaluateAggregationExpressionSystemVariableToWriter(expressionData, document,
 																&elementWriter,
-																variableContext);
+																variableContext,
+																isNullOnEmpty,
+																&isFieldPathExpression);
 			break;
 		}
 
 		case AggregationExpressionKind_Path:
 		{
-			bson_iter_t documentIter;
-			PgbsonInitIterator(document, &documentIter);
-
 			pgbson_element_writer elementWriter;
 			PgbsonInitObjectElementWriter(writer, &elementWriter, path.string,
 										  path.length);
 
-			const char *pathString = expressionData->value.value.v_utf8.str + 1;
-			uint32_t pathLength = expressionData->value.value.v_utf8.len - 1;
-			EvaluateFieldPathAndWrite(&documentIter, pathString, pathLength,
-									  &elementWriter, isNullOnEmpty);
+			/* path expressions are equivalent to $$CURRENT.<path> */
+			AggregationExpressionData currentExpressionData;
+			currentExpressionData.kind = AggregationExpressionKind_SystemVariable;
+			currentExpressionData.systemVariable.kind =
+				AggregationExpressionSystemVariableKind_Current;
+			currentExpressionData.systemVariable.pathSuffix.string =
+				expressionData->value.value.v_utf8.str + 1;
+			currentExpressionData.systemVariable.pathSuffix.length =
+				expressionData->value.value.v_utf8.len - 1;
+
+			bool isFieldPathExpression = false;
+			EvaluateAggregationExpressionSystemVariableToWriter(&currentExpressionData,
+																document,
+																&elementWriter,
+																variableContext,
+																isNullOnEmpty,
+																&isFieldPathExpression);
 			break;
 		}
 
@@ -2438,7 +2532,9 @@ static void
 EvaluateAggregationExpressionVariableToWriter(const AggregationExpressionData *data,
 											  pgbson *document,
 											  pgbson_element_writer *writer,
-											  ExpressionVariableContext *variableContext)
+											  ExpressionVariableContext *variableContext,
+											  bool isNullOnEmpty,
+											  bool *isFieldPathExpression)
 {
 	Assert(data->kind == AggregationExpressionKind_Variable);
 
@@ -2464,6 +2560,7 @@ EvaluateAggregationExpressionVariableToWriter(const AggregationExpressionData *d
 							   CreateStringFromStringView(&varName))));
 	}
 
+	*isFieldPathExpression = isDottedExpression;
 	if (!isDottedExpression)
 	{
 		PgbsonElementWriterWriteValue(writer, &variableValue);
@@ -2471,14 +2568,12 @@ EvaluateAggregationExpressionVariableToWriter(const AggregationExpressionData *d
 	}
 
 	/* Evaluate dotted expression for a variable */
-	bool isNullOnEmptyVariable = false;
-
 	StringView varNameDottedSuffix = StringViewFindSuffix(
 		&dottedExpression, '.');
-	EvaluateVariableFieldPathAndWrite(&variableValue, varNameDottedSuffix.string,
-									  varNameDottedSuffix.length,
-									  writer,
-									  isNullOnEmptyVariable);
+	EvaluateFieldPathAndWrite(&variableValue, varNameDottedSuffix.string,
+							  varNameDottedSuffix.length,
+							  writer,
+							  isNullOnEmpty);
 }
 
 
@@ -2489,7 +2584,9 @@ EvaluateAggregationExpressionSystemVariableToWriter(const AggregationExpressionD
 													pgbson *document,
 													pgbson_element_writer *writer,
 													ExpressionVariableContext *
-													variableContext)
+													variableContext,
+													bool isNullOnEmpty,
+													bool *isFieldPathExpression)
 {
 	Assert(data->kind == AggregationExpressionKind_SystemVariable);
 
@@ -2572,24 +2669,18 @@ EvaluateAggregationExpressionSystemVariableToWriter(const AggregationExpressionD
 		}
 	}
 
+	*isFieldPathExpression = false;
+
 	if (data->systemVariable.pathSuffix.length == 0)
 	{
 		PgbsonElementWriterWriteValue(writer, &variableValue);
 		return;
 	}
 
-	if (variableValue.value_type == BSON_TYPE_DOCUMENT ||
-		variableValue.value_type == BSON_TYPE_ARRAY)
-	{
-		bool isNullOnEmptyVariable = false;
-		bson_iter_t variableIter;
-		BsonValueInitIterator(&variableValue, &variableIter);
-		EvaluateFieldPathAndWrite(&variableIter,
-								  data->systemVariable.pathSuffix.string,
-								  data->systemVariable.pathSuffix.length,
-								  writer,
-								  isNullOnEmptyVariable);
-	}
+	*isFieldPathExpression = true;
+	EvaluateFieldPathAndWrite(&variableValue, data->systemVariable.pathSuffix.string,
+							  data->systemVariable.pathSuffix.length, writer,
+							  isNullOnEmpty);
 }
 
 
