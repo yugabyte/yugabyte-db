@@ -1553,7 +1553,14 @@ MarkIndexRequestStatus(int indexId, char cmdType, IndexCmdStatus status, pgbson 
 		appendStringInfo(cmdStr, ", global_pid = $7, start_time = $8 ");
 	}
 
-	appendStringInfo(cmdStr, " WHERE index_id = $5 AND cmd_type = $6");
+	/* We do not want to update the status of a request which is already Skippable.
+	 * This is to avoid accidental update of request when long running create index
+	 * job(build_index_concurrently) is being cancelled using dropIndexes via pg_backend_cancel(job-pid). This
+	 * operation sometimes causes job(build_index_concurrently) to resume and update the status of the same request in later phase.
+	 */
+	appendStringInfo(cmdStr,
+					 " WHERE index_id = $5 AND cmd_type = $6 and index_cmd_status < %d",
+					 IndexCmdStatus_Skippable);
 
 	int argCount = 0;
 	Oid argTypes[8];

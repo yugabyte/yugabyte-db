@@ -99,6 +99,12 @@ char * ExtensionExecuteQueryOnLocalhostViaLibPQ(char *query);
  */
 char * ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(char *query, const Oid userOid);
 
+/* Same as ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ, but it allows to execute parameterized query */
+char * ExtensionExecuteQueryWithArgsAsUserOnLocalhostViaLibPQ(char *query, const Oid
+															  userOid, int nParams,
+															  Oid *paramTypes, const
+															  char **parameterValues);
+
 /*
  * Helper method to create a string query using a variable number
  * of arguments - similar to doing

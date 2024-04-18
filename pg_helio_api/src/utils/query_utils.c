@@ -28,6 +28,9 @@ extern char *LocalhostConnectionString;
 
 static Datum SPIReturnDatum(bool *isNull, int position);
 static char * ExtensionExecuteQueryViaLibPQ(char *query, char *connStr);
+static char * ExtensionExecuteQueryWithArgsViaLibPQ(char *query, char *connStr, int
+													nParams, Oid *paramTypes, const
+													char **parameterValues);
 static void PGConnFinishConnectionEstablishment(PGconn *conn);
 static void PGConnFinishIO(PGconn *conn);
 static char * PGConnReturnFirstField(PGconn *conn);
@@ -353,6 +356,17 @@ ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(char *query, const Oid userOid)
 }
 
 
+/* Same as ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ, but it allows to execute parameterized query */
+char *
+ExtensionExecuteQueryWithArgsAsUserOnLocalhostViaLibPQ(char *query, const Oid userOid, int
+													   nParams, Oid *paramTypes, const
+													   char **parameterValues)
+{
+	return ExtensionExecuteQueryWithArgsViaLibPQ(query, GetLocalhostConnStr(userOid),
+												 nParams, paramTypes, parameterValues);
+}
+
+
 /*
  * ExtensionExecuteQueryViaLibPQ executes given query by using a non-blocking
  * libpq connection to given host, and returns first attribute of the first
@@ -404,6 +418,74 @@ ExtensionExecuteQueryViaLibPQ(char *query, char *connStr)
 							query, connStr)));
 
 	if (!PQsendQuery(conn, query))
+	{
+		PGConnReportError(conn, NULL, ERROR);
+	}
+
+	if (PQisBusy(conn))
+	{
+		/* first need to finish any pending IO to get the result */
+		PGConnFinishIO(conn);
+	}
+
+	char *retValue = PGConnReturnFirstField(conn);
+
+	PQfinish(conn);
+
+	/*
+	 * Done with connection, so need to signal connection manager to forget
+	 * about it since we cannot cancel this connection (via abort handler)
+	 * anymore.
+	 */
+	ConnMgrForgetActiveConnection();
+
+	return retValue;
+}
+
+
+/*
+ * Like ExtensionExecuteQueryViaLibPQ, but gives capability to pass parameterized query
+ */
+static char *
+ExtensionExecuteQueryWithArgsViaLibPQ(char *query, char *connStr, int nParams,
+									  Oid *paramTypes, const char **parameterValues)
+{
+	PGconn *conn = PQconnectStart(connStr);
+	if (conn == NULL)
+	{
+		/*
+		 * Similar to PQgetResult, we dont't expect PQconnectStart to return
+		 * NULL unless OOM happened.
+		 */
+		ereport(ERROR, (errmsg("could not establish connection, possibly "
+							   "due to OOM")));
+	}
+
+	/* register so that abort handler can cancel in case of abort */
+	ConnMgrResetActiveConnection(conn);
+
+	/* we don't expect PQsetnonblocking to fail here but be on the safe side */
+	int argNonBlocking = 1; /* means nonblocking=true */
+	if (PQsetnonblocking(conn, argNonBlocking) != 0)
+	{
+		PGConnReportError(conn, NULL, ERROR);
+	}
+
+	/* XXX: maybe set a notice receiver */
+
+	PGConnFinishConnectionEstablishment(conn);
+
+	if (PQstatus(conn) != CONNECTION_OK)
+	{
+		PGConnReportError(conn, NULL, ERROR);
+	}
+
+	ereport(DEBUG1, (errmsg("executing \"%s\" via connection to \"%s\"",
+							query, connStr)));
+
+	int resultFormat = 0; /* means result in text format */
+	if (!PQsendQueryParams(conn, query, nParams, paramTypes, parameterValues, NULL, NULL,
+						   resultFormat))
 	{
 		PGConnReportError(conn, NULL, ERROR);
 	}

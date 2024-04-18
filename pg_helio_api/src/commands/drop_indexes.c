@@ -209,7 +209,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 				PgbsonWriterAppendUtf8(&writer, ErrMsgKey, ErrMsgLength,
 									   "DropIndexes is requested for the index");
 				PgbsonWriterAppendInt32(&writer, ErrCodeKey, ErrCodeLength,
-										MongoInternalError);
+										MongoCannotCreateIndex);
 				pgbson *newComment = PgbsonWriterGetPgbson(&writer);
 				MarkIndexRequestStatus(indexDetails->indexId, CREATE_INDEX_COMMAND_TYPE,
 									   IndexCmdStatus_Skippable, newComment, NULL, 1);
@@ -316,7 +316,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 			PgbsonWriterAppendUtf8(&writer, ErrMsgKey, ErrMsgLength,
 								   "DropIndexes is requested for the index");
 			PgbsonWriterAppendInt32(&writer, ErrCodeKey, ErrCodeLength,
-									MongoInternalError);
+									MongoCannotCreateIndex);
 			pgbson *newComment = PgbsonWriterGetPgbson(&writer);
 
 			MarkIndexRequestStatus(matchingIndexDetails->indexId,
@@ -879,8 +879,9 @@ HandleDropIndexConcurrently(uint64 collectionId, int indexId, bool unique, bool
 	{
 		DeleteCollectionIndexRecord(collectionId, indexId);
 
-		/* Clean up existing running create index job from the queue. */
-		RemoveRequestFromIndexQueue(indexId, CREATE_INDEX_COMMAND_TYPE);
+		/* Do not delete request from the queue (via RemoveRequestFromIndexQueue inside drop_indexes_concurrently) because check_build_index_status can think that request is finished successfully
+		 * since it does not exist in the queue. Instead we have already marked the request Skippable before coming to
+		 * HandleDropIndexConcurrently, and cron-job will evict Skippable request eventually after 20 mins (IndexQueueEvictionIntervalInSec) */
 	}
 }
 
@@ -893,15 +894,15 @@ CancelIndexBuildRequest(int indexId)
 {
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
-					 "SELECT citus_pid_for_gpid(iq.global_pid) AS pid, iq.global_pid AS global_pid, iq.start_time AS timestamp");
+					 "SELECT citus_pid_for_gpid(iq.global_pid) AS pid, iq.start_time AS timestamp");
 	appendStringInfo(cmdStr,
 					 " FROM %s iq WHERE index_id = %d AND cmd_type = '%c'",
 					 GetIndexQueueName(), indexId, CREATE_INDEX_COMMAND_TYPE);
 
 	bool readOnly = true;
-	int numValues = 3;
-	bool isNull[3];
-	Datum results[3];
+	int numValues = 2;
+	bool isNull[2];
+	Datum results[2];
 	ExtensionExecuteMultiValueQueryViaSPI(cmdStr->data, readOnly, SPI_OK_SELECT, results,
 										  isNull, numValues);
 
@@ -909,22 +910,34 @@ CancelIndexBuildRequest(int indexId)
 	{
 		resetStringInfo(cmdStr);
 		Datum pid = results[0];
-		int64 globalPid = DatumGetInt64(results[1]);
-		Datum startTime = results[2];
-		appendStringInfo(cmdStr, " SELECT pg_cancel_backend(%ld) FROM pg_stat_activity ",
-						 globalPid);
+		Datum startTime = results[1];
+		appendStringInfo(cmdStr, " SELECT pg_cancel_backend(pid) FROM pg_stat_activity ");
 		appendStringInfo(cmdStr, " WHERE pid = $1 AND query_start = $2");
+
 		int nargs = 2;
 		Oid argTypes[2] = { INT4OID, TIMESTAMPTZOID };
 		Datum argValues[2] = {
 			pid, startTime
 		};
-		bool isReadOnly = true;
-		bool isNull = true;
-		ExtensionExecuteQueryWithArgsViaSPI(cmdStr->data, nargs, argTypes,
-											argValues,
-											NULL, isReadOnly, SPI_OK_SELECT,
-											&isNull);
+
+		const char **parameterValues = (const char **) palloc(nargs * sizeof(char *));
+
+		/* TODO Now we also have a provision to cancel create index only when authenticated user is same as user who has submitted the create index request if(GetAuthenticatedUserId == user_oid)*/
+		for (int i = 0; i < nargs; i++)
+		{
+			bool isVarlen;
+			Oid funcOutOid;
+			getTypeOutputInfo(argTypes[i], &funcOutOid, &isVarlen);
+			parameterValues[i] = OidOutputFunctionCall(funcOutOid, argValues[i]);
+		}
+
+		/* Run pg_cancel_backend as super user via libpq otherwise we will not be able to cancel cron-job (launched as super user) */
+		ExtensionExecuteQueryWithArgsAsUserOnLocalhostViaLibPQ(cmdStr->data,
+															   HelioApiExtensionOwner(),
+															   nargs, argTypes,
+															   parameterValues);
+
+		pfree(parameterValues);
 	}
 
 	elog(LOG, "Cancel existing index build request for %d is completed.",
