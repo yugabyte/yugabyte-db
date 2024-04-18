@@ -280,7 +280,7 @@ Status ReadQuery::DoPerform() {
     // At this point we expect that we don't have pure read serializable transactions, and
     // always write read intents to detect conflicts with other writes.
     leader_peer = VERIFY_RESULT(LookupLeaderTablet(
-        server_.tablet_peer_lookup(), req_->tablet_id(), std::move(peer_tablet)));
+        server_.tablet_peer_lookup(), req_->tablet_id(), resp_, std::move(peer_tablet)));
     // Serializable read adds intents, i.e. writes data.
     // We should check for memory pressure in this case.
     RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
@@ -288,7 +288,7 @@ Status ReadQuery::DoPerform() {
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
         req_->tablet_id(), std::move(peer_tablet.tablet_peer),
-        req_->consistency_level(), AllowSplitTablet::kFalse));
+        req_->consistency_level(), AllowSplitTablet::kFalse, resp_));
     leader_peer.leader_term = OpId::kUnknownTerm;
   }
 

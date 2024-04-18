@@ -99,6 +99,7 @@ class GetAutoFlagsConfigResponsePB;
 
 namespace tserver {
 class LocalTabletServer;
+class TabletConsensusInfoPB;
 class TabletServerServiceProxy;
 }
 
@@ -1029,6 +1030,12 @@ class YBClient {
 
   void ClearAllMetaCachesOnServer();
 
+  // Uses the TabletConsensusInfo piggybacked from a response to
+  // refresh a RemoteTablet in metacache. Returns true if the
+  // RemoteTablet was indeed refreshed, false otherwise.
+  bool RefreshTabletInfoWithConsensusInfo(
+      const tserver::TabletConsensusInfoPB& newly_received_info);
+
  private:
   class Data;
 
@@ -1056,6 +1063,7 @@ class YBClient {
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
+  FRIEND_TEST(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader);
   FRIEND_TEST(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
   FRIEND_TEST(ClientTest, TestScanTimeout);

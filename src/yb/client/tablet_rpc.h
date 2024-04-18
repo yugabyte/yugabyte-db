@@ -40,6 +40,7 @@
 namespace yb {
 
 namespace tserver {
+class TabletConsensusInfoPB;
 class TabletServerServiceProxy;
 }
 
@@ -53,6 +54,13 @@ class TabletRpc {
 
   // attempt_num starts with 1.
   virtual void SendRpcToTserver(int attempt_num) = 0;
+
+  // Called to partially refresh a tablet's tablet peers using information
+  // piggybacked from a successful or failed response of a tablet RPC.
+  // The responses in this case will have a field called tablet_consensus_info,
+  // which carries the tablet server and replicas' raft config information.
+  // Returns true if we successfully updated the metacache, otherwise false.
+  virtual bool RefreshMetaCacheWithResponse() { return false; }
 
  protected:
   ~TabletRpc() {}
@@ -94,6 +102,9 @@ class TabletInvoker {
 
   bool is_consistent_prefix() const { return consistent_prefix_; }
 
+  bool RefreshTabletInfoWithConsensusInfo(
+      const tserver::TabletConsensusInfoPB& tablet_consensus_info);
+
  private:
   friend class TabletRpcTest;
   FRIEND_TEST(TabletRpcTest, TabletInvokerSelectTabletServerRace);
@@ -128,6 +139,19 @@ class TabletInvoker {
     return (status.IsNotFound() &&
         ErrorCode(error_code) == tserver::TabletServerErrorPB::TABLET_NOT_FOUND &&
         current_ts_ != nullptr) || status.IsShutdownInProgress();
+  }
+
+  bool IsTabletConsideredNonLeader(
+      const tserver::TabletServerErrorPB* error_code, const Status& status) {
+    // The error code is undefined for some statuses like Aborted where we don't even send an RPC
+    // because the service is unavailable and thus don't have a response with an error code; to
+    // handle that here, we only check the error code for statuses we know have valid error codes
+    // and may have the error code we are looking for.
+    if (ErrorCode(error_code) == tserver::TabletServerErrorPB::NOT_THE_LEADER &&
+        current_ts_ != nullptr) {
+      return status.IsNotFound() || status.IsIllegalState();
+    }
+    return false;
   }
 
   YBClient* const client_;

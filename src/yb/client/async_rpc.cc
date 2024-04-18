@@ -486,6 +486,16 @@ void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
   }
 }
 
+template <class Req, class Resp>
+bool AsyncRpcBase<Req, Resp>::RefreshMetaCacheWithResponse() {
+  if (!resp_.has_tablet_consensus_info()) {
+    VLOG(1) << "Partial refresh of tablet for " << GetRpcName()
+            << " RPC failed because the response did not have a tablet_consensus_info";
+    return false;
+  }
+
+  return tablet_invoker_.RefreshTabletInfoWithConsensusInfo(resp_.tablet_consensus_info());
+}
 
 template <class Req, class Resp>
 FlushExtraResult AsyncRpcBase<Req, Resp>::MakeFlushExtraResult() {

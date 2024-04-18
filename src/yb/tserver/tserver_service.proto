@@ -278,6 +278,8 @@ message GetTransactionStatusResponsePB {
   // Note: The field might not be present on older versions of YB and hence its existence
   // should be checked before usage by the reader.
   repeated AppStatusPB deadlock_reason = 8;
+
+  optional TabletConsensusInfoPB tablet_consensus_info = 9;
 }
 
 message GetOldTransactionsRequestPB {

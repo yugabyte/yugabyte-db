@@ -222,7 +222,8 @@ void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
 
   Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
     const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
-    YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) override;
+    YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
+    tserver::ReadResponsePB* resp) override;
 
   Result<uint64_t> DoChecksum(const ChecksumRequestPB* req, CoarseTimePoint deadline);
 

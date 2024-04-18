@@ -652,6 +652,7 @@ void Heartbeater::Thread::RunThread() {
   // Config the "last heartbeat response" to indicate that we need to register
   // -- since we've never registered before, we know this to be true.
   last_hb_response_.set_needs_reregister(true);
+
   // Have the Master request a full tablet report on 2nd HB.
   last_hb_response_.set_needs_full_tablet_report(false);
 

@@ -203,25 +203,6 @@ Status LeaderTabletPeer::FillTerm() {
   return Status::OK();
 }
 
-Result<LeaderTabletPeer> LookupLeaderTablet(
-    TabletPeerLookupIf* tablet_manager,
-    const std::string& tablet_id,
-    TabletPeerTablet peer) {
-  if (peer.tablet_peer) {
-    LOG_IF(DFATAL, peer.tablet_peer->tablet_id() != tablet_id)
-        << "Mismatching table ids: peer " << peer.tablet_peer->tablet_id()
-        << " vs " << tablet_id;
-    LOG_IF(DFATAL, !peer.tablet) << "Empty tablet pointer for tablet id : " << tablet_id;
-  } else {
-    peer = VERIFY_RESULT(LookupTabletPeer(tablet_manager, tablet_id));
-  }
-  LeaderTabletPeer result;
-  result.FillTabletPeer(std::move(peer));
-
-  RETURN_NOT_OK(result.FillTerm());
-  return result;
-}
-
 Status CheckPeerIsReady(
     const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet) {
   auto consensus_result = tablet_peer.GetConsensus();
@@ -260,6 +241,11 @@ Status CheckPeerIsReady(
 
 Status CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer) {
   return ResultToStatus(LeaderTerm(tablet_peer));
+}
+
+bool IsErrorCodeNotTheLeader(const Status& status) {
+  auto code = TabletServerError::FromStatus(status);
+  return code && code.value() == TabletServerErrorPB::NOT_THE_LEADER;
 }
 
 namespace {
@@ -318,7 +304,7 @@ Result<TabletPeerTablet> LookupTabletPeer(
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id,
     tablet::TabletPeerPtr tablet_peer, YBConsistencyLevel consistency_level,
-    AllowSplitTablet allow_split_tablet) {
+    AllowSplitTablet allow_split_tablet, ReadResponsePB* resp) {
   tablet::TabletPtr tablet_ptr = nullptr;
   if (tablet_peer) {
     DCHECK_EQ(tablet_peer->tablet_id(), tablet_id);
@@ -338,8 +324,13 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
       LOG(FATAL) << "--TEST_assert_reads_from_follower_rejected_because_of_staleness is true but "
                     "consistency level is invalid: YBConsistencyLevel::STRONG";
     }
-
-    RETURN_NOT_OK(CheckPeerIsLeader(*tablet_peer));
+    auto status = CheckPeerIsLeader(*tablet_peer);
+    if (!status.ok()) {
+      if (IsErrorCodeNotTheLeader(status)) {
+        FillTabletConsensusInfo(resp, tablet_id, tablet_peer);
+      }
+      return status;
+    }
   } else {
     auto s = CheckPeerIsLeader(*tablet_peer.get());
 
