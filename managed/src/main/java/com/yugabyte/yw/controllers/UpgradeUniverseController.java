@@ -4,11 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -572,13 +570,6 @@ public class UpgradeUniverseController extends AuthenticatedController {
   public Result upgradeVMImage(UUID customerUuid, UUID universeUuid, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     Universe universe = Universe.getOrBadRequest(universeUuid, customer);
-
-    // TODO yb.cloud.enabled is redundant here because many tests set it during runtime,
-    // to enable this method in cloud. Clean it up later when the tests are fixed.
-    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
-        && !confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeVmImage)) {
-      throw new PlatformServiceException(METHOD_NOT_ALLOWED, "VM image upgrade is disabled.");
-    }
 
     return requestHandler(
         request,
