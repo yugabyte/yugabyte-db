@@ -294,7 +294,7 @@ EXPLAIN SELECT * FROM tab_range2 WHERE a = 1;
                           QUERY PLAN
 ---------------------------------------------------------------
  Seq Scan on tab_range2  (cost=0.00..102.50 rows=1000 width=8)
-   Remote Filter: (a = 1)
+   Storage Filter: (a = 1)
 (2 rows)
 
 --- drop colocated table with dropped index

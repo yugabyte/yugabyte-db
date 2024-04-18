@@ -41,11 +41,11 @@ SELECT /*+ SeqScan(t) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
 EXPLAIN (COSTS OFF)
 SELECT /*+ SeqScan(t) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
                   QUERY PLAN
-----------------------------------------------
+-----------------------------------------------
  Sort
    Sort Key: k
    ->  Seq Scan on subtrans_foo t
-         Remote Filter: ((k > 0) AND (v > 0))
+         Storage Filter: ((k > 0) AND (v > 0))
 (4 rows)
 
 -- PK index scan
@@ -58,11 +58,11 @@ SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 A
 EXPLAIN (COSTS OFF)
 SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
                   QUERY PLAN
-----------------------------------------------
+-----------------------------------------------
  Sort
    Sort Key: k
    ->  Seq Scan on subtrans_foo t
-         Remote Filter: ((k > 0) AND (v > 0))
+         Storage Filter: ((k > 0) AND (v > 0))
 (4 rows)
 
 -- Index scan using the secondary index that triggered the unique violation
@@ -75,11 +75,11 @@ SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 
 EXPLAIN (COSTS OFF)
 SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
                   QUERY PLAN
-----------------------------------------------
+-----------------------------------------------
  Sort
    Sort Key: k
    ->  Seq Scan on subtrans_foo t
-         Remote Filter: ((k > 0) AND (v > 0))
+         Storage Filter: ((k > 0) AND (v > 0))
 (4 rows)
 
 -- Test that each buffering eligible operations are executed in the intended

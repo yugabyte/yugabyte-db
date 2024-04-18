@@ -527,18 +527,18 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE float_4 > 0'
 :runnois;
                         QUERY PLAN
-----------------------------------------------------------
+-----------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest
-         Remote Filter: (float_4 > '0'::double precision)
+         Storage Filter: (float_4 > '0'::double precision)
          Partial Aggregate: true
 (4 rows)
 
                         QUERY PLAN
-----------------------------------------------------------
+-----------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest
-         Remote Filter: (float_4 > '0'::double precision)
+         Storage Filter: (float_4 > '0'::double precision)
          Partial Aggregate: true
 (4 rows)
 
@@ -567,28 +567,28 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_4 > 0 AND float_8 > 0'
 :runnois;
                         QUERY PLAN
-----------------------------------------------------------
+-----------------------------------------------------------
  Finalize Aggregate
    ->  Index Scan using ybaggtestindexsimple on ybaggtest
          Index Cond: (int_4 > 0)
-         Remote Filter: (float_8 > '0'::double precision)
+         Storage Filter: (float_8 > '0'::double precision)
          Partial Aggregate: true
 (5 rows)
 
                                  QUERY PLAN
-----------------------------------------------------------------------------
+-----------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest
-         Remote Filter: ((int_4 > 0) AND (float_8 > '0'::double precision))
+         Storage Filter: ((int_4 > 0) AND (float_8 > '0'::double precision))
          Partial Aggregate: true
 (4 rows)
 
                         QUERY PLAN
-----------------------------------------------------------
+-----------------------------------------------------------
  Aggregate
    ->  Index Only Scan using ybaggtestindex on ybaggtest
          Index Cond: (int_4 > 0)
-         Remote Filter: (float_8 > '0'::double precision)
+         Storage Filter: (float_8 > '0'::double precision)
 (4 rows)
 
  count
@@ -609,18 +609,18 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807'
 :runnois;
                            QUERY PLAN
-----------------------------------------------------------------
+-----------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest
-         Remote Filter: (int_8 = '9223372036854775807'::bigint)
+         Storage Filter: (int_8 = '9223372036854775807'::bigint)
          Partial Aggregate: true
 (4 rows)
 
                            QUERY PLAN
-----------------------------------------------------------------
+-----------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest
-         Remote Filter: (int_8 = '9223372036854775807'::bigint)
+         Storage Filter: (int_8 = '9223372036854775807'::bigint)
          Partial Aggregate: true
 (4 rows)
 
@@ -657,10 +657,10 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 (4 rows)
 
                                       QUERY PLAN
---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest
-         Remote Filter: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
+         Storage Filter: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
          Partial Aggregate: true
 (4 rows)
 
@@ -985,18 +985,18 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 \set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NULL'
 :runnois;
              QUERY PLAN
-------------------------------------
+-------------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest2
-         Remote Filter: (a IS NULL)
+         Storage Filter: (a IS NULL)
          Partial Aggregate: true
 (4 rows)
 
              QUERY PLAN
-------------------------------------
+-------------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest2
-         Remote Filter: (a IS NULL)
+         Storage Filter: (a IS NULL)
          Partial Aggregate: true
 (4 rows)
 
@@ -1004,7 +1004,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
-         Remote Filter: (a IS NULL)
+         Storage Filter: (a IS NULL)
          Partial Aggregate: true
 (4 rows)
 
@@ -1026,18 +1026,18 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 \set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NOT NULL'
 :runnois;
                QUERY PLAN
-----------------------------------------
+-----------------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest2
-         Remote Filter: (a IS NOT NULL)
+         Storage Filter: (a IS NOT NULL)
          Partial Aggregate: true
 (4 rows)
 
                QUERY PLAN
-----------------------------------------
+-----------------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest2
-         Remote Filter: (a IS NOT NULL)
+         Storage Filter: (a IS NOT NULL)
          Partial Aggregate: true
 (4 rows)
 
@@ -1045,7 +1045,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
-         Remote Filter: (a IS NOT NULL)
+         Storage Filter: (a IS NOT NULL)
          Partial Aggregate: true
 (4 rows)
 
@@ -2296,7 +2296,7 @@ INSERT INTO rsplit VALUES (1), (2), (3);
 ---------------------------------
  Finalize Aggregate
    ->  Seq Scan on rsplit
-         Remote Filter: (i = 2)
+         Storage Filter: (i = 2)
          Partial Aggregate: true
 (4 rows)
 
@@ -2350,7 +2350,7 @@ INSERT INTO rsplit VALUES (1), (2), (3);
 ---------------------------------
  Finalize Aggregate
    ->  Seq Scan on rsplit
-         Remote Filter: (i = 3)
+         Storage Filter: (i = 3)
          Partial Aggregate: true
 (4 rows)
 

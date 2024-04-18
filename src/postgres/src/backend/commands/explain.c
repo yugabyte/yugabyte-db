@@ -2630,15 +2630,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 						   "Order By", planstate, ancestors, es);
 			/*
 			 * YB: Distinct prefix during Distinct Index Scan.
-			 * Shown after ORDER BY clause and before remote filters since
+			 * Shown after ORDER BY clause and before storage filters since
 			 * that's currently the order of operations in DocDB.
 			 */
 			YbExplainDistinctPrefixLen(
 				((IndexScan *) plan)->yb_distinct_prefixlen, es);
 			show_scan_qual(((IndexScan *) plan)->yb_idx_pushdown.quals,
-						   "Remote Index Filter", planstate, ancestors, es);
+						   "Storage Index Filter", planstate, ancestors, es);
 			show_scan_qual(((IndexScan *) plan)->yb_rel_pushdown.quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -2665,16 +2665,16 @@ ExplainNode(PlanState *planstate, List *ancestors,
 						   "Order By", planstate, ancestors, es);
 			/*
 			 * YB: Distinct prefix during HybridScan.
-			 * Shown after ORDER BY clause and before remote filters since
+			 * Shown after ORDER BY clause and before storage filters since
 			 * that's currently the order of operations in DocDB.
 			 */
 			YbExplainDistinctPrefixLen(
 				((IndexOnlyScan *) plan)->yb_distinct_prefixlen, es);
 			/*
-			 * Remote filter is applied first, so it is output first.
+			 * Storage filter is applied first, so it is output first.
 			 */
 			show_scan_qual(((IndexOnlyScan *) plan)->yb_pushdown.quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -2731,10 +2731,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			break;
 		case T_YbSeqScan:
 			/*
-			 * Remote filter is applied first, so it is output first.
+			 * Storage filter is applied first, so it is output first.
 			 */
 			show_scan_qual(((YbSeqScan *) plan)->yb_pushdown.quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -2880,7 +2880,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
 			show_scan_qual(((ForeignScan *) plan)->fdw_recheck_quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_foreignscan_info((ForeignScanState *) planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, false/*indexScan*/, es);

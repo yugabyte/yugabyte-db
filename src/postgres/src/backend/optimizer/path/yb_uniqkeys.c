@@ -198,7 +198,7 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
  * Caveat: Do NOT mark indexkeys as constant when the constantness is not
  * part of index conditions. We can NOT ignore index keys that are constant
  * but not pushed down beyond the DISTINCT operation to the index. This may
- * change in the future when we start supporting remote filters for DISTINCT.
+ * change in the future when we start supporting storage filters for DISTINCT.
  */
 static bool
 yb_is_const_clause_for_distinct_pushdown(PlannerInfo *root,

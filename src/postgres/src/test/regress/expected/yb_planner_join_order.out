@@ -174,7 +174,7 @@ EXPLAIN (COSTS false) SELECT * FROM t_10000 t3 INNER JOIN t_1000 t2 ON t3.id = t
                ->  Seq Scan on t_100 t1
    ->  Index Scan using t_10000_pkey on t_10000 t3
          Index Cond: (id = ANY (ARRAY[t2.id, $1, $2, ..., $1023]))
-         Remote Filter: (id < 10)
+         Storage Filter: (id < 10)
 (10 rows)
 
 call update_sizes(-1, -1, -1, -1);
@@ -216,7 +216,7 @@ EXPLAIN (COSTS false) SELECT * FROM t_10000 t3 INNER JOIN t_1000 t2 ON t3.id = t
          ->  YB Batched Nested Loop Join
                Join Filter: (t3.id = t2.id)
                ->  Seq Scan on t_10000 t3
-                     Remote Filter: (id < 10)
+                     Storage Filter: (id < 10)
                ->  Index Scan using t_1000_pkey on t_1000 t2
                      Index Cond: (id = ANY (ARRAY[t3.id, $1, $2, ..., $1023]))
    ->  Sort
