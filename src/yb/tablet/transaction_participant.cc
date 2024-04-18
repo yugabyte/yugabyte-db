@@ -135,6 +135,10 @@ DEFINE_test_flag(int32, txn_participant_inject_latency_on_apply_update_txn_ms, 0
 DEFINE_test_flag(int32, txn_participant_inject_delay_on_start_shutdown_ms, 0,
                  "How much delay to inject before starting participant shutdown.");
 
+DEFINE_test_flag(double, txn_participant_error_on_load, 0.0,
+                 "Probability that the participant would error on call to SetDB before launching "
+                 "the transaction loader thread.");
+
 namespace yb {
 namespace tablet {
 
@@ -212,6 +216,7 @@ class TransactionParticipant::Impl
       return false;
     }
 
+    auto was_started = loader_.Started();
     loader_.StartShutdown();
 
     wait_queue_poller_.Shutdown();
@@ -223,7 +228,11 @@ class TransactionParticipant::Impl
       start_latch_.CountDown();
     }
 
-    shutdown_latch_.Wait();
+    // If Tablet::Open fails before launching the loader, shutdown_latch_ wouldn't be set.
+    // Hence wait on the latch only when the loader was started successfully.
+    if (was_started) {
+      shutdown_latch_.Wait();
+    }
 
     poller_.Shutdown();
 
@@ -963,6 +972,9 @@ class TransactionParticipant::Impl
     // We should only load transactions on the initial call to SetDB (when opening the tablet), not
     // in case of truncate/restore.
     if (!had_db) {
+      if (PREDICT_FALSE(RandomActWithProbability(FLAGS_TEST_txn_participant_error_on_load))) {
+        return STATUS_FORMAT(InternalError, "Flag TEST_txn_participant_error_on_load set.");
+      }
       loader_.Start(pending_op_counter_blocking_rocksdb_shutdown_start, db_);
       return Status::OK();
     }
@@ -1345,12 +1357,17 @@ class TransactionParticipant::Impl
     TransactionsModifiedUnlocked(&min_running_notifier);
   }
 
-  void LoadFinished() EXCLUDES(status_resolvers_mutex_) override {
+  void LoadFinished(Status load_status) EXCLUDES(status_resolvers_mutex_) override {
     // The start_latch will be hit either from a CountDown from Start, or from Shutdown, so make
     // sure that at the end of Load, we unblock shutdown.
     auto se = ScopeExit([&] {
       shutdown_latch_.CountDown();
     });
+    if (!load_status.ok()) {
+      LOG_WITH_PREFIX(INFO) << "Transaction Loader failed: " << load_status
+                            << ". Skipping transaction status resolution.";
+      return;
+    }
     start_latch_.Wait();
     std::vector<ScopedRWOperation> operations;
     auto pending_applies = loader_.MovePendingApplies();
@@ -1416,7 +1433,7 @@ class TransactionParticipant::Impl
 
   void TransactionsModifiedUnlocked(MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
     metric_transactions_running_->set_value(transactions_.size());
-    if (!loader_.complete()) {
+    if (auto res = loader_.Completed(); !res.ok() || !(*res)) {
       return;
     }
 
