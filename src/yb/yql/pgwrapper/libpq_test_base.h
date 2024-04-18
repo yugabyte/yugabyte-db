@@ -43,6 +43,7 @@ class LibPqTestBase : public PgWrapperTestBase {
 };
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name);
+Result<std::string> GetPGVersionString(PGConn* conn);
 
 } // namespace pgwrapper
 } // namespace yb
