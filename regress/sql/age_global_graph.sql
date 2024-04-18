@@ -90,6 +90,40 @@ SELECT * FROM cypher('ag_graph_1', $$ MATCH (n) RETURN vertex_stats(n) $$) AS (r
 --should return 1 vertice and 1 label
 SELECT * FROM cypher('ag_graph_2', $$ MATCH (a) RETURN vertex_stats(a) $$) AS (result agtype);
 
+--
+-- graph_stats command
+--
+-- what's in the current graphs?
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_1') $$) AS (result agtype);
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_2') $$) AS (result agtype);
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_3') $$) AS (result agtype);
+-- add some edges
+SELECT * FROM cypher('ag_graph_1', $$ CREATE ()-[:knows]->() $$) AS (results agtype);
+SELECT * FROM cypher('ag_graph_1', $$ CREATE ()-[:knows]->() $$) AS (results agtype);
+SELECT * FROM cypher('ag_graph_1', $$ CREATE ()-[:knows]->() $$) AS (results agtype);
+SELECT * FROM cypher('ag_graph_1', $$ CREATE ()-[:knows]->() $$) AS (results agtype);
+-- what is there now?
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_1') $$) AS (result agtype);
+-- add some more
+SELECT * FROM cypher('ag_graph_1', $$ MATCH (u)-[]->(v) SET u.id = id(u)
+                                                        SET v.id = id(v)
+                                                        SET u.name = 'u'
+                                                        SET v.name = 'v'
+                                      RETURN u,v $$) AS (u agtype, v agtype);
+SELECT * FROM cypher('ag_graph_1', $$ MATCH (u)-[]->(v) MERGE (v)-[:stalks]->(u) $$) AS (result agtype);
+SELECT * FROM cypher('ag_graph_1', $$ MATCH (u)-[e]->(v) RETURN u, e, v $$) AS (u agtype, e agtype, v agtype);
+-- what is there now?
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_1') $$) AS (result agtype);
+-- remove some vertices
+SELECT * FROM ag_graph_1._ag_label_vertex;
+DELETE FROM ag_graph_1._ag_label_vertex WHERE id::text = '281474976710661';
+DELETE FROM ag_graph_1._ag_label_vertex WHERE id::text = '281474976710662';
+DELETE FROM ag_graph_1._ag_label_vertex WHERE id::text = '281474976710664';
+SELECT * FROM ag_graph_1._ag_label_vertex;
+SELECT * FROM ag_graph_1._ag_label_edge;
+-- there should be warning messages
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_1') $$) AS (result agtype);
+
 --drop graphs
 
 SELECT * FROM drop_graph('ag_graph_1', true);

@@ -196,6 +196,13 @@ CREATE FUNCTION ag_catalog.age_vertex_stats(agtype, agtype)
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION ag_catalog.age_graph_stats(agtype)
+    RETURNS agtype
+    LANGUAGE c
+    STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 CREATE FUNCTION ag_catalog.age_delete_global_graphs(agtype)
     RETURNS boolean
     LANGUAGE c

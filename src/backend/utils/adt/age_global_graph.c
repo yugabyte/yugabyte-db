@@ -96,9 +96,9 @@ static void load_edge_hashtable(GRAPH_global_context *ggctx);
 static void freeze_GRAPH_global_hashtables(GRAPH_global_context *ggctx);
 static List *get_ag_labels_names(Snapshot snapshot, Oid graph_oid,
                                  char label_type);
-static bool insert_edge(GRAPH_global_context *ggctx, graphid edge_id,
-                        Datum edge_properties, graphid start_vertex_id,
-                        graphid end_vertex_id, Oid edge_label_table_oid);
+static bool insert_edge_entry(GRAPH_global_context *ggctx, graphid edge_id,
+                              Datum edge_properties, graphid start_vertex_id,
+                              graphid end_vertex_id, Oid edge_label_table_oid);
 static bool insert_vertex_edge(GRAPH_global_context *ggctx,
                                graphid start_vertex_id, graphid end_vertex_id,
                                graphid edge_id, char *edge_label_name);
@@ -237,39 +237,57 @@ static List *get_ag_labels_names(Snapshot snapshot, Oid graph_oid,
  * Helper function to insert one edge/edge->vertex, key/value pair, in the
  * current GRAPH global edge hashtable.
  */
-static bool insert_edge(GRAPH_global_context *ggctx, graphid edge_id,
-                        Datum edge_properties, graphid start_vertex_id,
-                        graphid end_vertex_id, Oid edge_label_table_oid)
+static bool insert_edge_entry(GRAPH_global_context *ggctx, graphid edge_id,
+                              Datum edge_properties, graphid start_vertex_id,
+                              graphid end_vertex_id, Oid edge_label_table_oid)
 {
-    edge_entry *value = NULL;
+    edge_entry *ee = NULL;
     bool found = false;
 
     /* search for the edge */
-    value = (edge_entry *)hash_search(ggctx->edge_hashtable, (void *)&edge_id,
+    ee = (edge_entry *)hash_search(ggctx->edge_hashtable, (void *)&edge_id,
                                       HASH_ENTER, &found);
+
+    /* if the hash enter returned is NULL, error out */
+    if (ee == NULL)
+    {
+        elog(ERROR, "insert_edge_entry: hash table returned NULL for ee");
+    }
+
     /*
      * If we found the key, either we have a duplicate, or we made a mistake and
      * inserted it already. Either way, this isn't good so don't insert it and
-     * return false. Likewise, if the value returned is NULL, don't do anything,
-     * just return false. This way the caller can decide what to do.
+     * return false.
      */
-    if (found || value == NULL)
+    if (found)
     {
+        ereport(WARNING,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("edge: [id: %ld, start: %ld, end: %ld, label oid: %d] %s",
+                        edge_id, start_vertex_id, end_vertex_id,
+                        edge_label_table_oid, "duplicate edge found")));
+
+        ereport(WARNING,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("previous edge: [id: %ld, start: %ld, end: %ld, label oid: %d]",
+                        ee->edge_id, ee->start_vertex_id, ee->end_vertex_id,
+                        ee->edge_label_table_oid)));
+
         return false;
     }
 
     /* not sure if we really need to zero out the entry, as we set everything */
-    MemSet(value, 0, sizeof(edge_entry));
+    MemSet(ee, 0, sizeof(edge_entry));
 
     /*
      * Set the edge id - this is important as this is the hash key value used
      * for hash function collisions.
      */
-    value->edge_id = edge_id;
-    value->edge_properties = edge_properties;
-    value->start_vertex_id = start_vertex_id;
-    value->end_vertex_id = end_vertex_id;
-    value->edge_label_table_oid = edge_label_table_oid;
+    ee->edge_id = edge_id;
+    ee->edge_properties = edge_properties;
+    ee->start_vertex_id = start_vertex_id;
+    ee->end_vertex_id = end_vertex_id;
+    ee->edge_label_table_oid = edge_label_table_oid;
 
     /* increment the number of loaded edges */
     ggctx->num_loaded_edges++;
@@ -292,9 +310,26 @@ static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
     ve = (vertex_entry *)hash_search(ggctx->vertex_hashtable,
                                      (void *)&vertex_id, HASH_ENTER, &found);
 
-    /* we should never have duplicates, return false */
+    /* if the hash enter returned is NULL, error out */
+    if (ve == NULL)
+    {
+        elog(ERROR, "insert_vertex_entry: hash table returned NULL for ve");
+    }
+
+    /* we should never have duplicates, warn and return false */
     if (found)
     {
+        ereport(WARNING,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("vertex: [id: %ld, label oid: %d] %s",
+                        vertex_id, vertex_label_table_oid,
+                        "duplicate vertex found")));
+
+        ereport(WARNING,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("previous vertex: [id: %ld, label oid: %d]",
+                        ve->vertex_id, ve->vertex_label_table_oid)));
+
         return false;
     }
 
@@ -482,10 +517,12 @@ static void load_vertex_hashtable(GRAPH_global_context *ggctx)
                                            vertex_label_table_oid,
                                            vertex_properties);
 
-            /* this insert must not fail, it means there is a duplicate */
+            /* warn if there is a duplicate */
             if (!inserted)
             {
-                 elog(ERROR, "insert_vertex_entry: failed due to duplicate");
+                 ereport(WARNING,
+                         (errcode(ERRCODE_DATA_EXCEPTION),
+                          errmsg("ignored duplicate vertex")));
             }
         }
 
@@ -598,14 +635,17 @@ static void load_edge_hashtable(GRAPH_global_context *ggctx)
             edge_properties = datumCopy(edge_properties, false, -1);
 
             /* insert edge into edge hashtable */
-            inserted = insert_edge(ggctx, edge_id, edge_properties,
-                                   edge_vertex_start_id, edge_vertex_end_id,
-                                   edge_label_table_oid);
+            inserted = insert_edge_entry(ggctx, edge_id, edge_properties,
+                                         edge_vertex_start_id,
+                                         edge_vertex_end_id,
+                                         edge_label_table_oid);
 
-            /* this insert must not fail */
+            /* warn if there is a duplicate */
             if (!inserted)
             {
-                 elog(ERROR, "insert_edge: failed to insert");
+                 ereport(WARNING,
+                         (errcode(ERRCODE_DATA_EXCEPTION),
+                          errmsg("ignored duplicate edge")));
             }
 
             /* insert the edge into the start and end vertices edge lists */
@@ -1184,6 +1224,87 @@ Datum age_vertex_stats(PG_FUNCTION_ARGS)
     agtv_temp->val.int_value = degree + self_loops;
     result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
                                    string_to_agtype_value("out_degree"));
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, agtv_temp);
+
+    /* close the object */
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
+
+    result.res->type = AGTV_OBJECT;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
+/* PG wrapper function for age_graph_stats */
+PG_FUNCTION_INFO_V1(age_graph_stats);
+
+Datum age_graph_stats(PG_FUNCTION_ARGS)
+{
+    GRAPH_global_context *ggctx = NULL;
+    agtype_value *agtv_temp = NULL;
+    agtype_value agtv_integer;
+    agtype_in_state result;
+    char *graph_name = NULL;
+    Oid graph_oid = InvalidOid;
+
+    /* the graph name is required, but this generally isn't user supplied */
+    if (PG_ARGISNULL(0))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("graph_stats: graph name cannot be NULL")));
+    }
+
+    /* get the graph name */
+    agtv_temp = get_agtype_value("graph_stats", AG_GET_ARG_AGTYPE_P(0),
+                                 AGTV_STRING, true);
+
+    graph_name = pnstrdup(agtv_temp->val.string.val,
+                          agtv_temp->val.string.len);
+
+    /*
+     * Remove any context for this graph. This is done to allow graph_stats to
+     * show any load issues.
+     */
+    delete_specific_GRAPH_global_contexts(graph_name);
+
+    /* get the graph oid */
+    graph_oid = get_graph_oid(graph_name);
+
+    /*
+     * Create or retrieve the GRAPH global context for this graph. This function
+     * will also purge off invalidated contexts.
+     */
+    ggctx = manage_GRAPH_global_contexts(graph_name, graph_oid);
+
+    /* free the graph name */
+    pfree(graph_name);
+
+    /* zero the state */
+    memset(&result, 0, sizeof(agtype_in_state));
+
+    /* start the object */
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
+                                   NULL);
+    /* store the graph name */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("graph"));
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, agtv_temp);
+
+    /* set up an integer for returning values */
+    agtv_temp = &agtv_integer;
+    agtv_temp->type = AGTV_INTEGER;
+    agtv_temp->val.int_value = 0;
+
+    /* get and store num_loaded_vertices */
+    agtv_temp->val.int_value = ggctx->num_loaded_vertices;
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("num_loaded_vertices"));
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, agtv_temp);
+
+    /* get and store num_loaded_edges */
+    agtv_temp->val.int_value = ggctx->num_loaded_edges;
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("num_loaded_edges"));
     result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, agtv_temp);
 
     /* close the object */

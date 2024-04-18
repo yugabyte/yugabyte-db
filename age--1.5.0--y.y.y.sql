@@ -117,3 +117,11 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+-- this is a new function for graph statistics
+CREATE FUNCTION ag_catalog.age_graph_stats(agtype)
+    RETURNS agtype
+    LANGUAGE c
+    STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
