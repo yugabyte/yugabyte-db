@@ -38,8 +38,9 @@ namespace tserver {
 class ReadTabletProvider {
  public:
   virtual Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
-    const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
-    YBConsistencyLevel consistency_level, AllowSplitTablet allow_split_tablet) = 0;
+      const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+      YBConsistencyLevel consistency_level, AllowSplitTablet allow_split_tablet,
+      ReadResponsePB* resp) = 0;
 
   virtual ~ReadTabletProvider() = default;
 };

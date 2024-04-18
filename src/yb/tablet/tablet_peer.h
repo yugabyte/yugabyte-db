@@ -481,6 +481,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   Preparer* DEBUG_GetPreparer();
 
+  std::string Tserver_uuid() {
+    return local_peer_pb_.permanent_uuid();
+  }
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;

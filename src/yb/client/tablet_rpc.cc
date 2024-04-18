@@ -32,6 +32,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
 using std::vector;
@@ -185,24 +186,24 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   if (consistent_prefix_ && !leader_only) {
     bool refresh_cache = false;
     if (PREDICT_FALSE(FLAGS_force_lookup_cache_refresh_secs > 0) &&
-        MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds() >
+        MonoTime::Now().GetDeltaSince(tablet_->full_refresh_time()).ToSeconds() >
         FLAGS_force_lookup_cache_refresh_secs) {
 
       refresh_cache = true;
 
       VLOG(1) << "Updating tablet " << tablet_->tablet_id() << " replicas cache "
               << "force_lookup_cache_refresh_secs: " << FLAGS_force_lookup_cache_refresh_secs
-              << ". " << MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds()
+              << ". " << MonoTime::Now().GetDeltaSince(tablet_->full_refresh_time()).ToSeconds()
               << " seconds since the last update. Replicas in current cache: "
               << tablet_->ReplicasAsString();
     } else if (FLAGS_lookup_cache_refresh_secs > 0 &&
-               MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds() >
+               MonoTime::Now().GetDeltaSince(tablet_->full_refresh_time()).ToSeconds() >
                FLAGS_lookup_cache_refresh_secs &&
                !tablet_->IsReplicasCountConsistent()) {
       refresh_cache = true;
       VLOG(1) << "Updating tablet " << tablet_->tablet_id() << " replicas cache "
               << "force_lookup_cache_refresh_secs: " << FLAGS_force_lookup_cache_refresh_secs
-              << ". " << MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds()
+              << ". " << MonoTime::Now().GetDeltaSince(tablet_->full_refresh_time()).ToSeconds()
               << " seconds since the last update. Replicas in current cache: "
               << tablet_->ReplicasAsString();
     }
@@ -263,7 +264,6 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
 
   VLOG(2) << "Tablet " << tablet_id_ << ": Sending " << command_->ToString() << " to replica "
           << current_ts_->ToString();
-
   rpc_->SendRpcToTserver(retrier_->attempt_num());
 }
 
@@ -284,10 +284,22 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
     // tablet server is marked as a follower so that it's not used during a retry for requests that
     // need to contact the leader only. This has the same effect as marking the replica as failed
     // for this specific RPC, but without affecting other RPCs.
-    followers_.emplace(current_ts_, FollowerData {
-      .status = STATUS(IllegalState, "Not the leader"),
-      .time = CoarseMonoClock::now()
-    });
+
+    // If RefreshMetaCacheWithResponse returns true it means the meta-cache information for this
+    // tablet is successfully refreshed using the tablet_consensus_info, so we need to clear the
+    // followers set to let tablet invoker use our latest leader tablet peer that has just been
+    // refreshed.
+
+    if (rpc_->RefreshMetaCacheWithResponse()) {
+      bool refresh_succeeded = true;
+      TEST_SYNC_POINT_CALLBACK("CDCSDKMetaCacheRefreshTest::Refresh", &refresh_succeeded);
+      followers_.clear();
+    } else {
+      followers_.emplace(
+          current_ts_,
+          FollowerData{
+              .status = STATUS(IllegalState, "Not the leader"), .time = CoarseMonoClock::now()});
+    }
   } else {
     VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason
             << ", old replica: " << yb::ToString(current_ts_);
@@ -308,7 +320,6 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
                    << " as failed. Replicas: " << tablet_->ReplicasAsString();
     }
   }
-
   auto status = retrier_->DelayedRetry(command_, reason);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to schedule retry on new replica: " << status;
@@ -389,6 +400,7 @@ bool TabletInvoker::Done(Status* status) {
   if (status->IsIllegalState() || status->IsServiceUnavailable() || status->IsAborted() ||
       status->IsLeaderNotReadyToServe() || status->IsLeaderHasNoLease() ||
       IsTabletConsideredNotFound(rsp_err, *status) ||
+      IsTabletConsideredNonLeader(rsp_err, *status) ||
       (status->IsTimedOut() && CoarseMonoClock::Now() < retrier_->deadline())) {
     VLOG(4) << "Retryable failure: " << *status
             << ", response: " << yb::ToString(rsp_err);
@@ -423,7 +435,8 @@ bool TabletInvoker::Done(Status* status) {
       return true;
     }
 
-    if (status->IsIllegalState() || IsTabletConsideredNotFound(rsp_err, *status)) {
+    if (status->IsIllegalState() || IsTabletConsideredNotFound(rsp_err, *status) ||
+        IsTabletConsideredNonLeader(rsp_err, *status)) {
       // The whole operation is completed if we can't schedule a retry.
       return !FailToNewReplica(*status, rsp_err).ok();
     } else {
@@ -470,6 +483,8 @@ bool TabletInvoker::Done(Status* status) {
         << "Unable to mark as leader: " << current_ts_->ToString() << " for "
         << tablet_->ToString();
   }
+  int attempt_num = retrier_->attempt_num();
+  TEST_SYNC_POINT_CALLBACK("TabletInvoker::Done", &attempt_num);
 
   return true;
 }
@@ -487,6 +502,11 @@ void TabletInvoker::InitialLookupTabletDone(const Result<RemoteTabletPtr>& resul
 
 bool TabletInvoker::IsLocalCall() const {
   return current_ts_ != nullptr && current_ts_->IsLocal();
+}
+
+bool TabletInvoker::RefreshTabletInfoWithConsensusInfo(
+    const tserver::TabletConsensusInfoPB& tablet_consensus_info) {
+    return client_->RefreshTabletInfoWithConsensusInfo(tablet_consensus_info);
 }
 
 std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const {
