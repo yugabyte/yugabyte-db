@@ -63,10 +63,12 @@ Note that the following limitations are subject to change as the feature is in [
 
 - ASH is available per node only. [Aggregations](../../../develop/learn/aggregations-ycql/) need to be done by you.
 - ASH is not available for [YB-Master](../../../architecture/yb-master/) processes.
-- ASH is available only for foreground activities or queries from customer applications. While ASH is not available for most background activities such as backups, restore, remote bootstrap, CDC, tablet splitting. ASH is available for flushes and compactions.
+- ASH is available only for foreground activities or queries from customer applications.
+
+<!-- While ASH is not available for most background activities such as backups, restore, remote bootstrap, CDC, tablet splitting. ASH is available for flushes and compactions.
 Work done in the TServer process is tracked, even for remote-bootstrap etc. However, we do not collect them under a specific query-id of sorts.
 
-copy/export done using scripts outside of the TServer process is not tracked.
+copy/export done using scripts outside of the TServer process is not tracked. -->
 - ASH does not capture start and end time of wait events.
 
 ## YSQL/YCQL views
