@@ -4385,7 +4385,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
             session_id),
         resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
-    virtual_wal = std::make_shared<CDCSDKVirtualWAL>(this);
+    virtual_wal = std::make_shared<CDCSDKVirtualWAL>(this, stream_id, session_id);
     session_virtual_wal_[session_id] = virtual_wal;
   }
 
@@ -4396,7 +4396,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
 
   HostPort hostport(context.local_address());
   Status s = virtual_wal->InitVirtualWALInternal(
-      stream_id, table_list, hostport, GetDeadline(context, client()));
+      table_list, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
     {
       std::lock_guard l(mutex_);
@@ -4448,8 +4448,8 @@ void CDCServiceImpl::GetConsistentChanges(
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
   HostPort hostport(context.local_address());
-  Status s = virtual_wal->GetConsistentChangesInternal(
-      stream_id, resp, hostport, GetDeadline(context, client()));
+  Status s =
+      virtual_wal->GetConsistentChangesInternal(resp, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
     std::string msg =
         Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
@@ -4586,7 +4586,7 @@ void CDCServiceImpl::UpdateAndPersistLSN(
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
   auto confirmed_flush_lsn = req->confirmed_flush_lsn();
   auto restart_lsn = req->restart_lsn();
-  auto res = virtual_wal->UpdateAndPersistLSNInternal(stream_id, confirmed_flush_lsn, restart_lsn);
+  auto res = virtual_wal->UpdateAndPersistLSNInternal(confirmed_flush_lsn, restart_lsn);
   if (!res.ok()) {
     std::string error_msg = Format("UpdateAndPersistLSN failed for stream_id: $0", stream_id);
     LOG(WARNING) << error_msg;
@@ -4643,7 +4643,7 @@ void CDCServiceImpl::UpdatePublicationTableList(
   }
 
   Status s = virtual_wal->UpdatePublicationTableListInternal(
-      stream_id, new_table_list, hostport, GetDeadline(context, client()));
+      new_table_list, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
     std::string error_msg =
         Format("UpdatePublicationTableList failed for stream_id: $0", stream_id);
