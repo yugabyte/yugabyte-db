@@ -16,7 +16,7 @@
 #include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
-DECLARE_bool(TEST_enable_xcluster_api_v2);
+DECLARE_bool(enable_xcluster_api_v2);
 DECLARE_string(certs_for_cdc_dir);
 
 using namespace std::chrono_literals;
@@ -32,7 +32,7 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
 
   virtual void SetUp() override {
     XClusterYsqlTestBase::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
   }
 };
 
