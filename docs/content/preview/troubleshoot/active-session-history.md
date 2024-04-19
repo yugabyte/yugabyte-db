@@ -63,12 +63,15 @@ Note that the following limitations are subject to change as the feature is in [
 
 - ASH is available per node only. [Aggregations](../../develop/learn/aggregations-ycql/) need to be done by you.
 - ASH is not available for [YB-Master](../../architecture/yb-master/) processes.
-- ASH is available only for foreground activities or queries from customer applications. ASH is not available for most background activities such as backups, restore, remote bootstrap, CDC, tablet splitting. ASH is available for flushes and compactions.
+- ASH is available only for foreground activities or queries from customer applications. While ASH is not available for most background activities such as backups, restore, remote bootstrap, CDC, tablet splitting. ASH is available for flushes and compactions.
+Work done in the TServer process is tracked, even for remote-bootstrap etc. However, we do not collect them under a specific query-id of sorts.
+
+copy/export done using scripts outside of the TServer process is not tracked.
 - ASH does not capture start and end time of wait events.
 
-## SQL views
+## YSQL/YCQL views
 
-ASH exposes the following [SQL views](../../explore/ysql-language-features/advanced-features/views/) in each node to analyze and troubleshoot performance issues.
+ASH exposes the following [views](../../explore/ysql-language-features/advanced-features/views/) in each node to analyze and troubleshoot performance issues.
 
 ### yb_active_session_history
 
@@ -83,15 +86,17 @@ Get information on wait events for each normalized query, YSQL, or YCQL request.
 | wait_event | text | Provides insight into what the RPC is waiting on. |
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for yb-tserver wait events. |
-| top_level_node_id | UUID | 16-byte yb-tserver UUID of the YSQL/YCQL node where the query is being executed. |
-| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../explore/query-1-performance/pg-stat-statements/)/ycql_stat_statements. For background activities, query ID will be a known constant (for example, log appender is 1, flush is 2, compaction is 3, consensus is 4). |
-| ysql_session_id | bigint | Same as `PgClientSessionId`. This is 0 for YCQL and background activities, as this is a YSQL specific field. |
+| top_level_node_id | UUID | 16-byte YB-TServer UUID of the YSQL/YCQL node where the query is being executed. |
+| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../explore/query-1-performance/pg-stat-statements/)/[ycql_stat_statements](#ycql-stat-statements). For background activities, query ID will be a known constant (for example, log appender is 1, flush is 2, compaction is 3, consensus is 4, and so on). |
+| ysql_session_id | bigint | Same as `PgClientSessionId` (displayed as `Session id` in logs). This is 0 for YCQL and background activities, as it is a YSQL-specific field. |
 | client_node_ip | text | Client IP for the RPC. For YSQL, it will be the client node from where the query is generated. For YB-TServer, it will be the YSQL/TServer node from where the RPC originated. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events were collected, each of the collected sample will have a weight of (200 / 100) = 2.0 |
 
 ### yb_local_tablets
 
-This view provides tablet ID metadata, state, and role information. This information is also available on the `<yb-tserver_ip>:9000/tablets` endpoint.
+This view provides tablet ID metadata, state, and role information. This information is also available on the `<yb-tserver_ip>:9000/tablets` endpoint. You can join the `wait_event_aux` with `tablet_id` in case of [YB-TServer wait events](#yb-tserver).
+
+Note that this is not an ASH-specific view, but can be beneficial to extract more information from the ASH data.
 
 | Column | Type | Description |
 | :----- | :--- | :---------- |
@@ -104,22 +109,6 @@ This view provides tablet ID metadata, state, and role information. This informa
 | partition_key_start| bytea | Start key of the partition (inclusive). |
 | partition_key_end  | bytea | End key of the partition (exclusive).|
 
-### ycql_stat_statements
-
-This view provides YCQL statement metrics that can be joined with YCQL wait events in [yb_active_session_history](#yb_active_session_history) table.
-
-| Column | Type | Description |
-| :----- | :--- | :---------- |
-| query_id | int8 | Hash code to identify identical normalized queries. |
-| query | text | Text of a representative statement. |
-| is_prepared  | bool | Indicates whether the statement is a prepared statement or an unprepared query. |
-| calls | int8 | Number of times the statement is executed.|
-| total_time | float8 | Total time spent executing the statement, in milliseconds. |
-| min_time | float8 | Minimum time spent executing the statement, in milliseconds. |
-| max_time | float8 | Maximum time spent executing the statement, in milliseconds. |
-| mean_time | float8 | Mean time spent executing the statement, in milliseconds. |
-| stddev_time | float8 | Population standard deviation of time spent executing the statement, in milliseconds. |
-
 ## Wait events
 
 List of wait events by the following request types.
@@ -128,22 +117,22 @@ List of wait events by the following request types.
 
 | Wait Event Class | Wait Event | Wait Event Type | AUX | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
-| TServer | Wait | StorageRead | null  | Waiting for a DocDB read operation |
-| CatalogRead | Network | null | null  | Waiting for a catalog read operation |
-| IndexRead | Network | null | null  | Waiting for a secondary index read operation  |
-| StorageFlush  | Network | null | null | Waiting for a storage flush request |
-| YSQLQuery | QueryProcessing| CPU | null  | Doing CPU work |
-| yb_ash_metadata | LWLock | null | null  | Waiting to update ASH metadata for a query |
-| Timeout | YBTxnConflictBackoff | Timeout | null  | PG process sleeping due to conflict in DocDB |
-| PgSleep | Timeout | null | null  | PG process sleeping due to pg_sleep(N) |
+| TServer Wait | StorageRead | Network  |  | Waiting for a DocDB read operation |
+| TServer Wait | CatalogRead | Network  |   | Waiting for a catalog read operation |
+| TServer Wait | IndexRead | Network |   | Waiting for a secondary index read operation  |
+| TServer Wait | StorageFlush  | Network |  | Waiting for a storage flush request |
+| YSQLQuery | QueryProcessing| CPU |  | Doing CPU work |
+| YSQLQuery | yb_ash_metadata | LWLock |  | Waiting to update ASH metadata for a query |
+| Timeout | YBTxnConflictBackoff | Timeout |  | PG process sleeping due to conflict in DocDB |
+| Timeout | PgSleep | Timeout |  | PG process sleeping due to pg_sleep(N) |
 
 ### YB-TServer
 
 | Wait Event Class | Wait Event | Wait Event Type | AUX | Description |
 |:---------------- | :--------- |:--------------- | :--- | :---------- |
-| Common | OnCpu_Passive | CPU | none | Waiting for a thread to pick it up |
-| Common | OnCpu_Active | CPU | ignored  | RPC is being actively processed on a thread |
-| Common | ResponseQueued | Network | ignored | Waiting for response to be transferred |
+| Common | OnCpu_Passive | CPU | | Waiting for a thread to pick it up |
+| Common | OnCpu_Active | CPU |  | RPC is being actively processed on a thread |
+| Common | ResponseQueued | Network | | Waiting for response to be transferred |
 | Tablet | AcquiringLocks | Lock | \<tablet&#8209;id>| Taking row-wise locks. May need to wait for other rpcs to release the lock. |
 | Tablet | MVCC_WaitForSafeTime | Lock | \<tablet-id>| Waiting for the SafeTime to be at least the desired read-time. |
 | Tablet | BackfillIndex_WaitForAFreeSlot | Lock | \<tablet-id> | Waiting for a slot to open if there are too many backfill requests at the same time. |
@@ -168,6 +157,24 @@ List of wait events by the following request types.
 | YBClient | LookingUpTablet | Network |  | Looking up tablet information  |
 | YBClient | YBCSyncLeaderMasterRpc  | Network |  | Waiting on an RPC to the master/master-service  |
 | YBClient | YBCFindMasterProxy | Network  | | Waiting on establishing the proxy to master leader |
+
+#### ycql_stat_statements
+
+This view provides YCQL statement metrics that can be joined with YCQL wait events in [yb_active_session_history](#yb-active-session-history) table.
+
+Note that this is not an ASH-specific view, but can be beneficial to extract more information from the ASH data.
+
+| Column | Type | Description |
+| :----- | :--- | :---------- |
+| queryid | int8 | Hash code to identify identical normalized queries. |
+| query | text | Text of a representative statement. |
+| is_prepared  | bool | Indicates whether the statement is a prepared statement or an unprepared query. |
+| calls | int8 | Number of times the statement is executed.|
+| total_time | float8 | Total time spent executing the statement, in milliseconds. |
+| min_time | float8 | Minimum time spent executing the statement, in milliseconds. |
+| max_time | float8 | Maximum time spent executing the statement, in milliseconds. |
+| mean_time | float8 | Mean time spent executing the statement, in milliseconds. |
+| stddev_time | float8 | Population standard deviation of time spent executing the statement, in milliseconds. |
 
 ## Examples
 
