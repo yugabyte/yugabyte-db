@@ -43,10 +43,4 @@ Typically, troubleshooting involves a number of steps that are rather consistent
     href="nodes/"
     icon="/images/section_icons/architecture/concepts/universe.png" aria-hidden="true">}}
 
-  {{<index/item
-    title="Active Session History"
-    body="Track details about active sessions to troubleshoot problems, analyse performance issues, and understand user behavior."
-    href="active-session-history/"
-    icon=" fa-solid fa-rectangle-vertical-history">}}
-
 {{</index/block>}}

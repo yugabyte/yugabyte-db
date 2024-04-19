@@ -2,22 +2,22 @@
 title: Active Session History capability in YugabyteDB
 headerTitle: Active Session History
 linkTitle: Active Session History
-description: Use Active Session History to get current and historical views of the database system activity.
+description: Use Active Session History to get current and past views of the database system activity.
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues.
 techPreview: /preview/releases/versioning/#feature-availability
 menu:
   preview:
     identifier: ash
-    parent: troubleshoot
+    parent: explore-observability
     weight: 860
 type: docs
 ---
 
 Active Session History (ASH) provides a current and historical view of system activity by sampling session activity in the database. A database session or connection is considered active if it is consuming CPU, or has an active RPC call that is waiting on one of the wait events.
 
-ASH exposes session activity in the form of [SQL views](../../explore/ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues. To run ASH, you need to enable [YSQL](../../api/ysql/) or [YCQL](../../api/ycql/) for YSQL or YCQL sessions respectively.
+ASH exposes session activity in the form of [SQL views](../../ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues. To run ASH, you need to enable [YSQL](../../../api/ysql/) or [YCQL](../../../api/ycql/) for their respective sessions.
 
-Currently, ASH is available for [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes. ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
+Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/) processes. ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
 Analyzing the wait events and wait event types lets you troubleshoot, answer the following questions and subsequently tune performance:
 
 - Why is a query taking longer than usual to execute?
@@ -61,8 +61,8 @@ You can also use the following flags based on your requirements.
 
 Note that the following limitations are subject to change as the feature is in [Tech Preview](/preview/releases/versioning/#feature-availability) currently.
 
-- ASH is available per node only. [Aggregations](../../develop/learn/aggregations-ycql/) need to be done by you.
-- ASH is not available for [YB-Master](../../architecture/yb-master/) processes.
+- ASH is available per node only. [Aggregations](../../../develop/learn/aggregations-ycql/) need to be done by you.
+- ASH is not available for [YB-Master](../../../architecture/yb-master/) processes.
 - ASH is available only for foreground activities or queries from customer applications. While ASH is not available for most background activities such as backups, restore, remote bootstrap, CDC, tablet splitting. ASH is available for flushes and compactions.
 Work done in the TServer process is tracked, even for remote-bootstrap etc. However, we do not collect them under a specific query-id of sorts.
 
@@ -71,7 +71,7 @@ copy/export done using scripts outside of the TServer process is not tracked.
 
 ## YSQL/YCQL views
 
-ASH exposes the following [views](../../explore/ysql-language-features/advanced-features/views/) in each node to analyze and troubleshoot performance issues.
+ASH exposes the following views in each node to analyze and troubleshoot performance issues.
 
 ### yb_active_session_history
 
@@ -87,7 +87,7 @@ Get information on wait events for each normalized query, YSQL, or YCQL request.
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for yb-tserver wait events. |
 | top_level_node_id | UUID | 16-byte YB-TServer UUID of the YSQL/YCQL node where the query is being executed. |
-| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../explore/query-1-performance/pg-stat-statements/)/[ycql_stat_statements](#ycql-stat-statements). For background activities, query ID will be a known constant (for example, log appender is 1, flush is 2, compaction is 3, consensus is 4, and so on). |
+| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](#ycql-stat-statements). For background activities, query ID will be a known constant (for example, log appender is 1, flush is 2, compaction is 3, consensus is 4, and so on). |
 | ysql_session_id | bigint | Same as `PgClientSessionId` (displayed as `Session id` in logs). This is 0 for YCQL and background activities, as it is a YSQL-specific field. |
 | client_node_ip | text | Client IP for the RPC. For YSQL, it will be the client node from where the query is generated. For YB-TServer, it will be the YSQL/TServer node from where the RPC originated. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events were collected, each of the collected sample will have a weight of (200 / 100) = 2.0 |
