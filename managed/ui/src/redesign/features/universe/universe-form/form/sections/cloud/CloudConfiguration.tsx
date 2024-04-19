@@ -40,7 +40,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
 
   const providerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.providerScope(provider?.uuid),
-    () => api.fetchRuntimeConfigs(provider?.uuid),
+    () => api.fetchRuntimeConfigs(provider?.uuid, true),
     { enabled: !!provider?.uuid }
   );
 
