@@ -1,0 +1,387 @@
+BEGIN;
+CREATE EXTENSION anon CASCADE;
+-- generalize_int4range
+SELECT anon.generalize_int4range(42);
+ generalize_int4range 
+----------------------
+ [40,50)
+(1 row)
+
+SELECT anon.generalize_int4range(42,3);
+ generalize_int4range 
+----------------------
+ [42,45)
+(1 row)
+
+SELECT anon.generalize_int4range(NULL);
+ generalize_int4range 
+----------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_int4range(NULL,3);
+ generalize_int4range 
+----------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_int4range(NULL,NULL);
+ generalize_int4range 
+----------------------
+ (,)
+(1 row)
+
+-- generalize_int8range
+SELECT anon.generalize_int8range(4345646464646);
+     generalize_int8range      
+-------------------------------
+ [4345646464640,4345646464650)
+(1 row)
+
+SELECT anon.generalize_int8range(4345646464646,10000000000);
+     generalize_int8range      
+-------------------------------
+ [4340000000000,4350000000000)
+(1 row)
+
+SELECT anon.generalize_int8range(NULL);
+ generalize_int8range 
+----------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_int8range(NULL,10000000000);
+ generalize_int8range 
+----------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_int8range(NULL,NULL);
+ generalize_int8range 
+----------------------
+ (,)
+(1 row)
+
+-- generalize_numrange
+SELECT anon.generalize_numrange(0.36683);
+ generalize_numrange 
+---------------------
+ [0,10)
+(1 row)
+
+SELECT anon.generalize_numrange(0.32378,1);
+ generalize_numrange 
+---------------------
+ [0,1)
+(1 row)
+
+SELECT anon.generalize_numrange(NULL);
+ generalize_numrange 
+---------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_numrange(NULL,4);
+ generalize_numrange 
+---------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_numrange(NULL,NULL);
+ generalize_numrange 
+---------------------
+ (,)
+(1 row)
+
+-- generalize_tsrange
+SELECT anon.generalize_tsrange('19041107');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Mon Jan 01 00:00:00 1900","Sat Jan 01 00:00:00 1910")
+(1 row)
+
+SELECT anon.generalize_tsrange(NULL);
+ generalize_tsrange 
+--------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107',NULL);
+ generalize_tsrange 
+--------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_tsrange(NULL,NULL);
+ generalize_tsrange 
+--------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','microsecond');
+                       generalize_tsrange                       
+----------------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904","Mon Nov 07 00:00:00.000001 1904")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','millisecond');
+                     generalize_tsrange                      
+-------------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904","Mon Nov 07 00:00:00.001 1904")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','second');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904","Mon Nov 07 00:00:01 1904")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','minute');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904","Mon Nov 07 00:01:00 1904")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','hour');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904","Mon Nov 07 01:00:00 1904")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','day');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904","Tue Nov 08 00:00:00 1904")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','week');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904","Mon Nov 14 00:00:00 1904")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','month');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Tue Nov 01 00:00:00 1904","Thu Dec 01 00:00:00 1904")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','year');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Fri Jan 01 00:00:00 1904","Sun Jan 01 00:00:00 1905")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','decade');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Mon Jan 01 00:00:00 1900","Sat Jan 01 00:00:00 1910")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','century');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Tue Jan 01 00:00:00 1901","Mon Jan 01 00:00:00 2001")
+(1 row)
+
+SELECT anon.generalize_tsrange('19041107','millennium');
+                   generalize_tsrange                    
+---------------------------------------------------------
+ ["Thu Jan 01 00:00:00 1001","Mon Jan 01 00:00:00 2001")
+(1 row)
+
+-- generalize_tstzrange
+SELECT anon.generalize_tstzrange('19041107');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Mon Jan 01 00:00:00 1900 PST","Sat Jan 01 00:00:00 1910 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange(NULL);
+ generalize_tstzrange 
+----------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107',NULL);
+ generalize_tstzrange 
+----------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_tstzrange(NULL,NULL);
+ generalize_tstzrange 
+----------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','microsecond');
+                          generalize_tstzrange                          
+------------------------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 07 00:00:00.000001 1904 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','millisecond');
+                        generalize_tstzrange                         
+---------------------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 07 00:00:00.001 1904 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','second');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 07 00:00:01 1904 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','minute');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 07 00:01:00 1904 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','hour');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 07 01:00:00 1904 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','day');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904 PST","Tue Nov 08 00:00:00 1904 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','week');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 14 00:00:00 1904 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','month');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Tue Nov 01 00:00:00 1904 PST","Thu Dec 01 00:00:00 1904 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','year');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Fri Jan 01 00:00:00 1904 PST","Sun Jan 01 00:00:00 1905 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','decade');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Mon Jan 01 00:00:00 1900 PST","Sat Jan 01 00:00:00 1910 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','century');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Tue Jan 01 00:00:00 1901 PST","Mon Jan 01 00:00:00 2001 PST")
+(1 row)
+
+SELECT anon.generalize_tstzrange('19041107','millennium');
+                      generalize_tstzrange                       
+-----------------------------------------------------------------
+ ["Thu Jan 01 00:00:00 1001 PST","Mon Jan 01 00:00:00 2001 PST")
+(1 row)
+
+-- generalize_daterange
+SELECT anon.generalize_daterange('19041107');
+  generalize_daterange   
+-------------------------
+ [01-01-1900,01-01-1910)
+(1 row)
+
+SELECT anon.generalize_daterange(NULL);
+ generalize_daterange 
+----------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_daterange('19041107',NULL);
+ generalize_daterange 
+----------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_daterange(NULL,NULL);
+ generalize_daterange 
+----------------------
+ (,)
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','microsecond');
+ generalize_daterange 
+----------------------
+ empty
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','millisecond');
+ generalize_daterange 
+----------------------
+ empty
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','second');
+ generalize_daterange 
+----------------------
+ empty
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','minute');
+ generalize_daterange 
+----------------------
+ empty
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','hour');
+ generalize_daterange 
+----------------------
+ empty
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','day');
+  generalize_daterange   
+-------------------------
+ [11-07-1904,11-08-1904)
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','week');
+  generalize_daterange   
+-------------------------
+ [11-07-1904,11-14-1904)
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','month');
+  generalize_daterange   
+-------------------------
+ [11-01-1904,12-01-1904)
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','year');
+  generalize_daterange   
+-------------------------
+ [01-01-1904,01-01-1905)
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','decade');
+  generalize_daterange   
+-------------------------
+ [01-01-1900,01-01-1910)
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','century');
+  generalize_daterange   
+-------------------------
+ [01-01-1901,01-01-2001)
+(1 row)
+
+SELECT anon.generalize_daterange('19041107','millennium');
+  generalize_daterange   
+-------------------------
+ [01-01-1001,01-01-2001)
+(1 row)
+
+ROLLBACK;

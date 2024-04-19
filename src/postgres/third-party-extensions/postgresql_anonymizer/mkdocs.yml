@@ -1,0 +1,26 @@
+site_name: PostgreSQL Anonymizer
+site_description: Anonymization and Data Masking with PostgreSQL
+site_author: www.dalibo.com
+copyright: Copyright 2018-2024 <a href="http://www.dalibo.com">dalibo</a>
+repo_url: https://gitlab.com/dalibo/postgresql_anonymizer
+theme:
+  name: readthedocs
+nav:
+  - 'Home': 'index.md'
+  - 'Install': 'INSTALL.md'
+  - 'Configure': 'configure.md'
+  - 'Declare Masking rules': 'declare_masking_rules.md'
+  - 'Masking Functions': 'masking_functions.md'
+  - 'Static Masking': 'static_masking.md'
+  - 'Dynamic Masking': 'dynamic_masking.md'
+  - 'Anonymous Dumps': 'anonymous_dumps.md'
+  - 'Generalization': 'generalization.md'
+  - 'Privacy By Default': 'privacy_by_default.md'
+  - 'Sampling': 'sampling.md'
+  - 'Detecting Identifiers': 'detection.md'
+  - 'Custom Fake Data': 'custom_fake_data.md'
+  - 'Concepts': 'concepts.md'
+  - 'Performances': 'performances.md'
+  - 'Upgrade': 'UPGRADE.md'
+  - 'Security': 'SECURITY.md'
+  - 'Links': 'links.md'
