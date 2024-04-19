@@ -54,7 +54,7 @@ public class ReleasesUtils {
   public final String YB_HELM_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(?:(?:(.*?)(?:-helm))|(\\d+\\.\\d+\\.\\d+)).(?:tar.gz|tgz)";
   // Match release form 2.16.1.2 and return 2.16 or 2024.1.0.0 and return 2024
-  public final String YB_VERSION_TYPE_REGEX = "(2\\.\\d+|\\d\\d\\d\\d)";
+  public final String YB_VERSION_TYPE_REGEX = "(2\\.\\d+|\\d\\d\\d\\d\\.\\d+)";
 
   public final String YB_TAG_REGEX =
       "yugabyte-(?:ee-)?(?:.*)-(?!b\\d+)(.*)-(?:alma|centos|linux|el8|darwin)(?:.*).tar.gz";
@@ -70,7 +70,10 @@ public class ReleasesUtils {
           put("2.16", "STS");
           put("2.18", "STS");
           put("2.20", "LTS");
-          put("2024", "STS");
+          put("2024.1", "STS");
+          put("2024.2", "LTS");
+          put("2025.1", "STS");
+          put("2025.2", "LTS");
         }
       };
 
@@ -180,8 +183,8 @@ public class ReleasesUtils {
           if (node.has("release_type")) {
             metadata.release_type = node.get("release_type").asText();
           } else {
-            log.warn("no release type, default to PREVIEW");
-            metadata.release_type = "PREVIEW (DEFAULT)";
+            log.warn("no release type, attempt to parse version for type");
+            metadata.release_type = releaseTypeFromVersion(metadata.version);
           }
           // Only Linux platform has architecture. K8S expects null value for architecture.
           if (metadata.platform.equals(ReleaseArtifact.Platform.LINUX)) {
