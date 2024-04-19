@@ -3790,4 +3790,53 @@ TEST_F_EX(XClusterTest, VerifyReplicationError, XClusterTestNoParam) {
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
 }
 
+// Test deleting inbound replication group without performing source stream cleanup.
+TEST_F_EX(XClusterTest, DeleteWithoutStreamCleanup, XClusterTestNoParam) {
+  constexpr int kNTabletsPerTable = 1;
+  constexpr int kReplicationFactor = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable};
+  ASSERT_OK(SetUpWithParams(tables_vector, kReplicationFactor));
+
+  ASSERT_OK(SetupReplication());
+
+  ASSERT_OK(VerifyNumCDCStreams(producer_client(), producer_cluster(), /* num_streams = */ 1));
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+
+  // Delete with skip_producer_stream_deletion set.
+  master::DeleteUniverseReplicationRequestPB req;
+  master::DeleteUniverseReplicationResponsePB resp;
+  req.set_producer_id(kReplicationGroupId.ToString());
+  req.set_skip_producer_stream_deletion(true);
+
+  auto consumer_master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+  {
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(consumer_master_proxy->DeleteUniverseReplication(req, &resp, &rpc));
+  }
+  ASSERT_FALSE(resp.has_error());
+
+  // Make sure source stream still exists.
+  ASSERT_OK(VerifyNumCDCStreams(producer_client(), producer_cluster(), /* num_streams = */ 1));
+
+  // Delete the stream manually from the source.
+  master::DeleteCDCStreamRequestPB delete_cdc_stream_req;
+  master::DeleteCDCStreamResponsePB delete_cdc_stream_resp;
+  delete_cdc_stream_req.add_stream_id(stream_id.ToString());
+  delete_cdc_stream_req.set_force_delete(true);
+  {
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    auto producer_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &producer_client()->proxy_cache(),
+        ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    ASSERT_OK(
+        producer_proxy->DeleteCDCStream(delete_cdc_stream_req, &delete_cdc_stream_resp, &rpc));
+  }
+
+  ASSERT_OK(VerifyNumCDCStreams(producer_client(), producer_cluster(), /* num_streams = */ 0));
+}
+
 }  // namespace yb

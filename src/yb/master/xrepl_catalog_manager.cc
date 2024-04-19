@@ -4217,7 +4217,7 @@ void CatalogManager::MergeUniverseReplication(
 
 Status CatalogManager::DeleteUniverseReplication(
     const cdc::ReplicationGroupId& replication_group_id, bool ignore_errors,
-    DeleteUniverseReplicationResponsePB* resp) {
+    bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp) {
   scoped_refptr<UniverseReplicationInfo> ri;
   {
     SharedLock lock(mutex_);
@@ -4265,7 +4265,7 @@ Status CatalogManager::DeleteUniverseReplication(
   }
 
   // Delete CDC stream config on the Producer.
-  if (!l->pb.table_streams().empty()) {
+  if (!l->pb.table_streams().empty() && !skip_producer_stream_deletion) {
     auto result = ri->GetOrCreateXClusterRpcTasks(l->pb.producer_master_addresses());
     if (!result.ok()) {
       LOG(WARNING) << "Unable to create cdc rpc task. CDC streams won't be deleted: " << result;
@@ -4344,7 +4344,8 @@ Status CatalogManager::DeleteUniverseReplication(
   }
 
   RETURN_NOT_OK(DeleteUniverseReplication(
-      cdc::ReplicationGroupId(req->producer_id()), req->ignore_errors(), resp));
+      cdc::ReplicationGroupId(req->producer_id()), req->ignore_errors(),
+      req->skip_producer_stream_deletion(), resp));
   LOG(INFO) << "Successfully completed DeleteUniverseReplication request from "
             << RequestorString(rpc);
   return Status::OK();
