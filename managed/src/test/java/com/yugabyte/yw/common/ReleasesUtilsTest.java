@@ -53,6 +53,26 @@ public class ReleasesUtilsTest extends FakeDBApplication {
     assertEquals("2.21.1.0-b180", em.version);
   }
 
+  @Test
+  public void testReleaseTypeFromVersion() {
+    // Test 2.x vesions
+    assertEquals("LTS", releasesUtils.releaseTypeFromVersion("2.14.1.0-b123"));
+    assertEquals("STS", releasesUtils.releaseTypeFromVersion("2.16.3.0-b13"));
+    assertEquals("STS", releasesUtils.releaseTypeFromVersion("2.16"));
+    assertEquals("STS", releasesUtils.releaseTypeFromVersion("2.18.7.0-b23"));
+    assertEquals("LTS", releasesUtils.releaseTypeFromVersion("2.20.0.0-b1"));
+    assertEquals("PREVIEW", releasesUtils.releaseTypeFromVersion("2.17.1.0-b123"));
+    assertEquals("PREVIEW", releasesUtils.releaseTypeFromVersion("2.19.1.0-b123"));
+    assertEquals("PREVIEW", releasesUtils.releaseTypeFromVersion("2.21.1.0-b123"));
+    assertEquals("PREVIEW", releasesUtils.releaseTypeFromVersion("2.23.1.0-b123"));
+
+    // Test 2024 values
+    assertEquals("STS", releasesUtils.releaseTypeFromVersion("2024.1.0.0-b3"));
+    assertEquals("STS", releasesUtils.releaseTypeFromVersion("2024.1.2.0-b3"));
+    assertEquals("STS", releasesUtils.releaseTypeFromVersion("2024.1.2.3-b3"));
+    assertEquals("LTS", releasesUtils.releaseTypeFromVersion("2024.2.0.0-b3"));
+  }
+
   private URL getMockUrl(String filename) {
     try {
       final URLConnection mockConnection = mock(URLConnection.class);
