@@ -1,6 +1,6 @@
 ---
 title: YB Documentation
-headerTitle: Evaluate YugabyteDB, build scalable applications, and learn distributed SQL
+headerTitle: Build scalable applications and learn distributed SQL
 description: Guides, examples, and reference material you need to evaluate YugabyteDB database, build scalable applications, and learn distributed SQL.
 type: indexpage
 layout: list
@@ -65,7 +65,7 @@ Problem areas in PostgreSQL and how to resolve them in YugabyteDB.
 
 ## Migrate from RBDMS
 
-##### Playlist [Database Migration using YugabyteDB Voyager](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJuqQ2ZH1cnL1yxVEi9swwR)
+##### Playlist: [Database Migration using YugabyteDB Voyager](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJuqQ2ZH1cnL1yxVEi9swwR)
 
 Learn how you can migrate databases to YugabyteDB quickly and securely.
 
