@@ -401,7 +401,7 @@ SELECT unique1, unique2 FROM tenk3 WHERE unique1 < 100 or unique2 IS NULL;
 (12 rows)
 
 --
--- test cases where we can skip fetching the table rows
+-- test cases where we could skip fetching the table rows (TODO: #22044)
 --
 -- this query does not need a recheck, so we don't need to fetch the rows for the COUNT(*)
 /*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
@@ -410,6 +410,8 @@ SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
 ---------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on tenk1 (actual rows=3594 loops=1)
+         Storage Table Read Requests: 4
+         Storage Table Rows Scanned: 3594
          ->  BitmapOr (actual rows=3594 loops=1)
                ->  Bitmap Index Scan on tenk1_unique1 (actual rows=2000 loops=1)
                      Index Cond: (unique1 < 2000)
@@ -419,11 +421,11 @@ SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
                      Index Cond: (unique2 < 2000)
                      Storage Index Read Requests: 2
                      Storage Index Rows Scanned: 2000
- Storage Read Requests: 4
- Storage Rows Scanned: 4000
+ Storage Read Requests: 8
+ Storage Rows Scanned: 7594
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(15 rows)
+(17 rows)
 
 /*+ BitmapScan(tenk1) */
 SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
@@ -589,6 +591,8 @@ SELECT 1 FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
                                QUERY PLAN
 ------------------------------------------------------------------------
  YB Bitmap Table Scan on tenk1 (actual rows=10 loops=1)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 10
    ->  BitmapOr (actual rows=10 loops=1)
          ->  Bitmap Index Scan on tenk1_unique1 (actual rows=5 loops=1)
                Index Cond: (unique1 < 5)
@@ -598,11 +602,11 @@ SELECT 1 FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
                Index Cond: (unique2 < 5)
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 5
- Storage Read Requests: 2
- Storage Rows Scanned: 10
+ Storage Read Requests: 3
+ Storage Rows Scanned: 20
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(14 rows)
+(16 rows)
 
 /*+ BitmapScan(tenk1) */
 SELECT 1 FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
@@ -625,6 +629,8 @@ SELECT random() FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
                                QUERY PLAN
 ------------------------------------------------------------------------
  YB Bitmap Table Scan on tenk1 (actual rows=10 loops=1)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 10
    ->  BitmapOr (actual rows=10 loops=1)
          ->  Bitmap Index Scan on tenk1_unique1 (actual rows=5 loops=1)
                Index Cond: (unique1 < 5)
@@ -634,11 +640,11 @@ SELECT random() FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
                Index Cond: (unique2 < 5)
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 5
- Storage Read Requests: 2
- Storage Rows Scanned: 10
+ Storage Read Requests: 3
+ Storage Rows Scanned: 20
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(14 rows)
+(16 rows)
 
 --
 -- test primary key queries

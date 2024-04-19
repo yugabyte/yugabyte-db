@@ -433,8 +433,6 @@ class PgApiImpl {
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
-  Result<bool> DmlHasRegularTargets(PgStatement *handle);
-
   Result<bool> DmlHasSystemTargets(PgStatement *handle);
 
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);

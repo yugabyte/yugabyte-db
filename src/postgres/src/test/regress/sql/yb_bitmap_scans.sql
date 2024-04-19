@@ -105,7 +105,7 @@ DELETE FROM tenk3 WHERE unique2 IS NULL OR unique1 < 1000;
 SELECT unique1, unique2 FROM tenk3 WHERE unique1 < 100 or unique2 IS NULL;
 
 --
--- test cases where we can skip fetching the table rows
+-- test cases where we could skip fetching the table rows (TODO: #22044)
 --
 -- this query does not need a recheck, so we don't need to fetch the rows for the COUNT(*)
 /*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
