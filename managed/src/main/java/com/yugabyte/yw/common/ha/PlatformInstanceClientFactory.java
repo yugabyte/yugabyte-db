@@ -36,14 +36,6 @@ public class PlatformInstanceClientFactory {
     this.configHelper = configHelper;
   }
 
-  public PlatformInstanceClient getClient(String clusterKey, String remoteAddress) {
-    return new PlatformInstanceClient(
-        new ApiHelper(wsClientRefresher.getClient(YB_HA_WS_KEY)),
-        clusterKey,
-        remoteAddress,
-        configHelper);
-  }
-
   public PlatformInstanceClient getClient(
       String clusterKey, String remoteAddress, Map<String, ConfigValue> wsOverrides) {
     return new PlatformInstanceClient(

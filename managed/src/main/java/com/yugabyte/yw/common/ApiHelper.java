@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.time.Duration;
@@ -220,5 +221,15 @@ public class ApiHelper {
   public CompletionStage<WSResponse> getSimpleRequest(String url, Map<String, String> headers) {
     WSRequest request = requestWithHeaders(url, headers).setFollowRedirects(true);
     return request.get();
+  }
+
+  public void closeClient() {
+    if (this.wsClient != null) {
+      try {
+        this.wsClient.close();
+      } catch (IOException e) {
+        log.warn("Exception while closing wsClient. Ignored.", e);
+      }
+    }
   }
 }
