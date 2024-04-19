@@ -1232,9 +1232,11 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		{
 			/* We ignore this for now (TODO Support this?) */
 		}
-		else if (StringViewEqualsCString(&keyView, "returnKey") ||
-				 StringViewEqualsCString(&keyView, "showRecordId"))
+		else if ((StringViewEqualsCString(&keyView, "returnKey") ||
+				  StringViewEqualsCString(&keyView, "showRecordId")) &&
+				 BsonValueAsBool(value))
 		{
+			/* fail if returnKey or showRecordId are present and with boolean value true, else ignore */
 			ereport(ERROR, (errcode(MongoCommandNotSupported),
 							errmsg("key %.*s is not supported yet",
 								   keyView.length, keyView.string),
