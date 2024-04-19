@@ -1789,6 +1789,17 @@ YBCStatus YBCAddForeignKeyReferenceIntent(
   });
 }
 
+YBCStatus YBCAddExplicitRowLockIntent(
+    YBCPgOid table_relfilenode_oid, uint64_t ybctid,
+    YBCPgOid database_oid, const PgExplicitRowLockParams *params, bool is_region_local) {
+  return ToYBCStatus(pgapi->AddExplicitRowLockIntent(
+      {database_oid, table_relfilenode_oid}, YbctidAsSlice(ybctid), *params, is_region_local));
+}
+
+YBCStatus YBCFlushExplicitRowLockIntents() {
+  return ToYBCStatus(pgapi->FlushExplicitRowLockIntents());
+}
+
 bool YBCIsInitDbModeEnvVarSet() {
   static bool cached_value = false;
   static bool cached = false;

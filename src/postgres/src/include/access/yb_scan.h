@@ -359,6 +359,7 @@ extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 extern HeapTuple YBCFetchTuple(Relation relation, Datum ybctid);
 extern HTSU_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 												 LockWaitPolicy wait_policy, EState* estate);
+extern void YBCFlushTupleLocks();
 
 /*
  * ANALYZE support: sampling of table data
