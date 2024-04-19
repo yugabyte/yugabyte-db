@@ -1,8 +1,7 @@
 ---
 title: YB Documentation
-headerTitle: Documentation Home
+headerTitle: Evaluate YugabyteDB, build scalable applications, and learn distributed SQL
 description: Guides, examples, and reference material you need to evaluate YugabyteDB database, build scalable applications, and learn distributed SQL.
-headcontent: Evaluate YugabyteDB, build scalable applications, and learn distributed SQL
 type: indexpage
 layout: list
 breadcrumbDisable: true
@@ -42,9 +41,7 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
   >}}
 {{< /sections/2-boxes >}}
 
-## Guide to resources
-
-### Introduction
+## Introduction to YugabyteDB
 
 ##### Video: [Introducing YugabyteDB: The Distributed SQL Database for Mission-Critical Applications](https://www.youtube.com/watch?v=j24p07Frw00)
 
@@ -66,7 +63,7 @@ Learn about the internals of query, transactions, sharding, replication, and sto
 
 Problem areas in PostgreSQL and how to resolve them in YugabyteDB.
 
-### Migrate
+## Migrate from RBDMS
 
 ##### Playlist [Database Migration using YugabyteDB Voyager](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJuqQ2ZH1cnL1yxVEi9swwR)
 
@@ -80,7 +77,7 @@ Use YugabyteDB Voyager to migrate from legacy and single-cloud databases.
 
 Simplify migration from legacy and cloud databases to YugabyteDB.
 
-### Operations
+## Deployment options
 
 ##### Blog: [Multi-Region Best Practices](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/)
 
@@ -106,15 +103,15 @@ Learn how YugabyteDB survives and recovers from outages.
 
 Handle larger workloads by adding nodes to your cluster.
 
-### Develop
+## Develop resilient applications
 
 ##### Documentation: [Hello world](preview/tutorials/build-apps/)
 
 Use your favorite programming language to build a Hello world application.
 
-##### Video: [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)<br>Documentation: [Build and learn the essential capabilities of YugabyteDB](preview/tutorials/build-and-learn/)
+##### Video: [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)
 
-Tutorial that walks you through the essentials of building scalable and fault-tolerant applications.
+Learn the essentials of building scalable and fault-tolerant applications.
 
 ##### Documentation: [Build global applications](preview/develop/build-global-apps/)
 
