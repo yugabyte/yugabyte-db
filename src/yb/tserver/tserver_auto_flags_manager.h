@@ -15,6 +15,8 @@
 
 #include "yb/server/auto_flags_manager_base.h"
 
+#include "yb/common/hybrid_time.h"
+
 namespace yb {
 namespace tserver {
 
@@ -31,7 +33,7 @@ class TserverAutoFlagsManager : public AutoFlagsManagerBase {
 
   virtual ~TserverAutoFlagsManager() {}
 
-  Status Init(const std::string& local_hosts, const server::MasterAddresses& master_addresses);
+  Status Init(rpc::Messenger* server_messenger, const server::MasterAddresses& master_addresses);
 
   Status ProcessAutoFlagsConfigOperation(const AutoFlagsConfigPB new_config) override;
 
