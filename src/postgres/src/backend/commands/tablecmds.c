@@ -17357,7 +17357,7 @@ YbATValidateChangePrimaryKey(Relation rel, IndexStmt *stmt)
 				errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
 						"16980. React with thumbs up to raise its priority")));
 
-	if (rel->rd_rel->relhasrules)
+	if (rel->rd_rules != NULL && rel->rd_rules->numLocks > 0)
 		ereport(ERROR,
 			   (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("changing primary key of a table with rules is not yet "
@@ -18863,7 +18863,7 @@ YbATValidateAlterColumnType(Relation rel)
 				errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
 						"16980. React with thumbs up to raise its priority")));
 
-	if (rel->rd_rel->relhasrules)
+	if (rel->rd_rules != NULL && rel->rd_rules->numLocks > 0)
 		ereport(ERROR,
 			   (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("changing column type of a table with rules is not yet "

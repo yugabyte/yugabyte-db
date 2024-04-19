@@ -310,6 +310,24 @@ SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('nopk2'::regcl
 CREATE TABLE range_pk_test (id int, primary key(id asc)) SPLIT AT VALUES ((5), (10), (15), (20));
 ALTER TABLE range_pk_test DROP CONSTRAINT range_pk_test_pkey;
 SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('range_pk_test'::regclass);
+-- rules:
+-- 1. new table rewrite + rule
+-- 2. old table rewrite + rule -- fail
+-- 3. new table rewrite + no more rule
+-- 4. old table rewrite + no more rule
+CREATE TABLE pk_rule_table (id int);
+CREATE RULE pk_rule AS
+    ON INSERT TO pk_rule_table
+    DO INSTEAD DELETE FROM pk_rule_table;
+ALTER TABLE pk_rule_table ADD PRIMARY KEY (id);
+SET yb_enable_alter_table_rewrite = OFF;
+ALTER TABLE pk_rule_table DROP CONSTRAINT pk_rule_table_pkey; -- should fail.
+RESET yb_enable_alter_table_rewrite;
+DROP RULE pk_rule ON pk_rule_table;
+ALTER TABLE pk_rule_table DROP CONSTRAINT pk_rule_table_pkey;
+SET yb_enable_alter_table_rewrite = OFF;
+ALTER TABLE pk_rule_table ADD PRIMARY KEY (id);
+RESET yb_enable_alter_table_rewrite;
 
 -- Tests for ALTER TYPE.
 -- basic tests.
@@ -340,17 +358,45 @@ ALTER TABLE pk_table ALTER c1 TYPE varchar;
 SELECT * from pk_table ORDER BY c1 ASC;
 INSERT INTO pk_table VALUES (1); -- should fail.
 ALTER TABLE pk_table ALTER c1 TYPE int USING length(c1);  -- should fail.
--- test ALTER TYPE on a column that is a part of a view/rule.
+-- test ALTER TYPE on a column that is a part of a view/rule:
+-- 1. column part of view --fail
+-- 2. column not part of view
+-- 3. column part of view via _RETURN rule -- fail
+-- 4. column not part of view via _RETURN rule
+-- 5. rule on other table/view that affects this table
+-- 6. rule on other table/view + rule on this table
+-- 7. rule on other table/view + rule on this table + old rewrite -- fail
+-- 8. rule on other table/view + no more rule on this table
+-- 9. rule on other table/view (this is dropped for #22063) + no more rule on this table + old rewrite
 CREATE TABLE test_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
 CREATE VIEW test_view AS SELECT c2 FROM test_table;
 ALTER TABLE test_table ALTER c2 TYPE int USING length(c2); -- should fail.
 ALTER TABLE test_table ALTER c3 TYPE varchar(1);
-CREATE TABLE dummy_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
+CREATE TABLE dummy_table (c3 varchar);
 CREATE RULE "_RETURN" AS
     ON SELECT TO dummy_table
     DO INSTEAD
-        SELECT * FROM test_table;
-ALTER TABLE test_table ALTER c4 TYPE varchar(1); -- should fail.
+        SELECT c3 FROM test_table;
+ALTER TABLE test_table ALTER c3 TYPE varchar(1); -- should fail.
+ALTER TABLE test_table ALTER c4 TYPE varchar(1);
+CREATE RULE dummy_rule AS
+    ON INSERT TO dummy_table
+    DO INSTEAD DELETE FROM test_table;
+ALTER TABLE test_table ALTER c4 TYPE char;
+CREATE RULE test_rule AS
+    ON INSERT TO test_table
+    DO INSTEAD DELETE FROM dummy_table;
+ALTER TABLE test_table ALTER c4 TYPE varchar(1);
+SET yb_enable_alter_table_rewrite = OFF;
+ALTER TABLE test_table ALTER c4 TYPE char; -- should fail.
+RESET yb_enable_alter_table_rewrite;
+DROP RULE test_rule ON test_table;
+ALTER TABLE test_table ALTER c4 TYPE char;
+SET yb_enable_alter_table_rewrite = OFF;
+-- TODO(#22063): DROP VIEW is needed to avoid non-deterministic error.
+DROP VIEW dummy_table;
+ALTER TABLE test_table ALTER c4 TYPE varchar(1);
+RESET yb_enable_alter_table_rewrite;
 DROP TABLE test_table CASCADE;
 -- test ALTER TYPE on a foreign key column.
 CREATE TABLE fk_table (c1 varchar primary key);
