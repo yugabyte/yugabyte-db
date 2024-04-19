@@ -737,6 +737,12 @@ typedef struct PgTabletsDescriptor {
   size_t partition_key_end_len;
 } YBCPgTabletsDescriptor;
 
+typedef struct PgExplicitRowLockParams {
+  int rowmark;
+  int pg_wait_policy;
+  int docdb_wait_policy;
+} YBCPgExplicitRowLockParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

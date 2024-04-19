@@ -835,6 +835,9 @@ ExecShutdownNode(PlanState *node)
 		case T_HashJoinState:
 			ExecShutdownHashJoin((HashJoinState *) node);
 			break;
+		case T_LockRowsState:
+			ExecShutdownLockRows((LockRowsState *) node);
+			break;
 		default:
 			break;
 	}

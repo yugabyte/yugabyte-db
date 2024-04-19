@@ -3616,17 +3616,50 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	return tuple;
 }
 
-HTSU_Result
-YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy pg_wait_policy,
-			 EState* estate)
+// TODO: Substitute the YBSetRowLockPolicy with this function
+static int
+YBCGetRowLockPolicy(LockWaitPolicy pg_wait_policy)
 {
 	int docdb_wait_policy;
-
 	YBSetRowLockPolicy(&docdb_wait_policy, pg_wait_policy);
+	return docdb_wait_policy;
+}
+
+/*
+ * The return value of this function depends on whether we are batching or not.
+ * Currently, batching is enabled if the GUC yb_explicit_row_locking_batch_size > 1
+ * and the wait policy is not "SKIP LOCKED".
+ * If we are batching, then the return value is just a placeholder, as we are not
+ * acquiring the lock on the row before returning.
+ * Otherwise, the returned HTSU_Result is adjusted in case of an error in acquiring the lock.
+ */
+HTSU_Result
+YBCLockTuple(
+	Relation relation, Datum ybctid, RowMarkType mode,
+	LockWaitPolicy pg_wait_policy, EState* estate)
+{
+	int docdb_wait_policy = YBCGetRowLockPolicy(pg_wait_policy);
+	const YBCPgExplicitRowLockParams lock_params = {
+		.rowmark = mode,
+		.pg_wait_policy = pg_wait_policy,
+		.docdb_wait_policy = docdb_wait_policy};
+
+	const Oid relfile_oid = YbGetRelfileNodeId(relation);
+	const Oid db_oid = YBCGetDatabaseOid(relation);
+
+	if (yb_explicit_row_locking_batch_size > 1
+	    && lock_params.pg_wait_policy != LockWaitSkip)
+	{
+		// TODO: Error message requires conversion
+		HandleYBStatus(YBCAddExplicitRowLockIntent(
+			relfile_oid, ybctid, db_oid, &lock_params, YBCIsRegionLocal(relation)));
+		YBCPgAddIntoForeignKeyReferenceCache(relfile_oid, ybctid);
+		return HeapTupleMayBeUpdated;
+	}
 
 	YBCPgStatement ybc_stmt;
-	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetRelfileNodeId(relation),
+	HandleYBStatus(YBCPgNewSelect(db_oid,
+								  relfile_oid,
 								  NULL /* prepare_params */,
 								  YBCIsRegionLocal(relation),
 								  &ybc_stmt));
@@ -3637,9 +3670,9 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy p
 
 	YBCPgExecParameters exec_params = {0};
 	exec_params.limit_count = 1;
-	exec_params.rowmark = mode;
-	exec_params.pg_wait_policy = pg_wait_policy;
-	exec_params.docdb_wait_policy = docdb_wait_policy;
+	exec_params.rowmark = lock_params.rowmark;
+	exec_params.pg_wait_policy = lock_params.pg_wait_policy;
+	exec_params.docdb_wait_policy = lock_params.docdb_wait_policy;
 	exec_params.stmt_in_txn_limit_ht_for_reads =
 		estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads;
 
@@ -3651,7 +3684,7 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy p
 		/*
 		 * Execute the select statement to lock the tuple with given ybctid.
 		 */
-		HandleYBStatus(YBCPgExecSelect(ybc_stmt, &exec_params /* exec_params */));
+		HandleYBStatus(YBCPgExecSelect(ybc_stmt, &exec_params));
 
 		bool has_data = false;
 		Datum *values = NULL;
@@ -3662,15 +3695,9 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy p
 		 * Below is done to ensure the read request is flushed to tserver.
 		 */
 		HandleYBStatus(
-				YBCPgDmlFetch(
-						ybc_stmt,
-						0,
-						(uint64_t *) values,
-						nulls,
-						&syscols,
-						&has_data));
-		YBCPgAddIntoForeignKeyReferenceCache(
-			YbGetRelfileNodeId(relation), ybctid);
+			YBCPgDmlFetch(
+				ybc_stmt, 0, (uint64_t *) values, nulls, &syscols, &has_data));
+		YBCPgAddIntoForeignKeyReferenceCache(relfile_oid, ybctid);
 	}
 	PG_CATCH();
 	{
@@ -3698,6 +3725,13 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy p
 
 	YBCPgDeleteStatement(ybc_stmt);
 	return res;
+}
+
+void
+YBCFlushTupleLocks()
+{
+	// TODO: Error message requires conversion
+	HandleYBStatus(YBCFlushExplicitRowLockIntents());
 }
 
 /*
