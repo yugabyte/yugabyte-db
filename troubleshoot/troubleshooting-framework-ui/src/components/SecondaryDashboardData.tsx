@@ -341,6 +341,26 @@ export const SecondaryDashboardData = ({
     );
   };
 
+  const getOperations = (metricData: any) => {
+    let uniqueOperations: any = new Set();
+    if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
+      metricData.data.forEach((metricItem: any) => {
+        uniqueOperations.add(metricItem.name);
+      });
+    } else if (metricData?.layout?.title === 'ASH' && isNonEmptyObject(metricData)) {
+      metricData.layout.metadata?.supportedGroupBy?.map((groupByLabel: any) => {
+        uniqueOperations.add(groupByLabel.name);
+      });
+    }
+    uniqueOperations = Array.from(uniqueOperations);
+
+    if (metricData?.layout?.title === 'ASH' && isNonEmptyObject(metricData)) {
+      uniqueOperations = uniqueOperations.reverse();
+    }
+
+    return uniqueOperations;
+  };
+
   return (
     <Box>
       <SecondaryDashboardHeader
@@ -377,14 +397,7 @@ export const SecondaryDashboardData = ({
               isNonEmptyArray(anomalyData?.mainGraphs) &&
               anomalyData?.mainGraphs.map((graph: any, graphIdx: number) => {
                 const metricData = graphData.find((data: any) => data.name === graph.name);
-                let uniqueOperations: any = new Set();
-
-                if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
-                  metricData.data.forEach((metricItem: any) => {
-                    uniqueOperations.add(metricItem.name);
-                  });
-                }
-                uniqueOperations = Array.from(uniqueOperations);
+                const operations = getOperations(metricData);
 
                 return (
                   <Box className={classes.secondaryDashboard}>
@@ -395,7 +408,7 @@ export const SecondaryDashboardData = ({
                         </span>
                       </Box>
                     )}
-                    {renderSupportingGraphs(metricData, uniqueOperations, GraphType.MAIN)}
+                    {renderSupportingGraphs(metricData, operations, GraphType.MAIN)}
                   </Box>
                 );
               })}
@@ -433,37 +446,14 @@ export const SecondaryDashboardData = ({
                   );
                 } else {
                   return reason?.name?.map((metricName: string, idx: number) => {
-                    let uniqueOperations: any = new Set();
                     const numReasons = reason.name.length - 1;
                     const isOnlyReason = reason.name.length === 1;
                     const metricData = graphData.find((data: any) => data.name === metricName);
 
-                    console.log('metricData name', metricData?.name);
-                    console.log('metricData errorMessage', metricData?.errorMessage);
-                    console.log(
-                      'metricData errorMessage',
-                      isNonEmptyString(metricData?.errorMessage)
-                    );
                     if (isNonEmptyString(metricData?.errorMessage)) {
                       return <Box>{'No data'}</Box>;
                     } else {
-                      if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
-                        metricData.data.forEach((metricItem: any) => {
-                          uniqueOperations.add(metricItem.name);
-                        });
-                      } else if (
-                        metricData?.layout?.title === 'ASH' &&
-                        isNonEmptyObject(metricData)
-                      ) {
-                        metricData.layout.metadata?.supportedGroupBy?.map((groupByLabel: any) => {
-                          uniqueOperations.add(groupByLabel.name);
-                        });
-                      }
-                      uniqueOperations = Array.from(uniqueOperations);
-
-                      if (metricData?.layout?.title === 'ASH' && isNonEmptyObject(metricData)) {
-                        uniqueOperations = uniqueOperations.reverse();
-                      }
+                      const operations = getOperations(metricData);
 
                       return (
                         <>
@@ -478,7 +468,7 @@ export const SecondaryDashboardData = ({
                                 {renderItems.push(
                                   renderSupportingGraphs(
                                     metricData,
-                                    uniqueOperations,
+                                    operations,
                                     isOnlyReason ? GraphType.MAIN : GraphType.SUPPORTING
                                   )
                                 )}
