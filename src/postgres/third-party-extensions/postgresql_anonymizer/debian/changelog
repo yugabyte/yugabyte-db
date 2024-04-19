@@ -1,0 +1,11 @@
+postgresql-anonymizer (1.2.0-1) unstable; urgency=low
+
+  * Improve debian packaging
+
+ -- Damien Clochard <damien.clodhard@dalibo.com>  Tue, 13 Jun 2023 08:00:00 +0100
+
+postgresql-anonymizer (1.1.0-1) unstable; urgency=low
+
+  * Initial release.
+
+ -- Damien Clochard <damien.clochard@dalibo.com>  Sun, 26 Sep 2022 19:19:36 +0100

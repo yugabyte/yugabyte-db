@@ -1,0 +1,18 @@
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+-- INIT
+SELECT anon.mask_init();
+ mask_init 
+-----------
+ t
+(1 row)
+
+CREATE TABLE t1 (i int);
+\! vacuumlo -v contrib_regression
+Connected to database "contrib_regression"
+Successfully removed 0 large objects from database "contrib_regression".
+--  CLEAN
+DROP EXTENSION anon CASCADE;
+NOTICE:  drop cascades to event trigger anon_mask_update
+DROP SCHEMA mask CASCADE;
+NOTICE:  drop cascades to view mask.t1
+DROP TABLE t1;
