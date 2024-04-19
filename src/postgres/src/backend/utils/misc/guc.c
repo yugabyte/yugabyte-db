@@ -195,6 +195,7 @@ static void assign_tcp_keepalives_count(int newval, void *extra);
 static const char *show_tcp_keepalives_idle(void);
 static const char *show_tcp_keepalives_interval(void);
 static const char *show_tcp_keepalives_count(void);
+static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source);
 static bool check_maxconnections(int *newval, void **extra, GucSource source);
 static const char *yb_show_maxconnections(void);
 static bool check_max_worker_processes(int *newval, void **extra, GucSource source);
@@ -2617,7 +2618,17 @@ static struct config_int ConfigureNamesInt[] =
 		1024, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
-
+	{
+		{"yb_explicit_row_locking_batch_size", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Batch size of explicit row locking"),
+			gettext_noop("Set to 1 to conserve default behavior, "
+							"batching is disabled by default."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_explicit_row_locking_batch_size,
+		1, 1, INT_MAX,
+		check_yb_explicit_row_locking_batch_size, NULL, NULL
+	},
 	{
 		{"default_statistics_target", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Sets the default statistics target."),
@@ -12436,6 +12447,12 @@ show_tcp_keepalives_count(void)
 
 	snprintf(nbuf, sizeof(nbuf), "%d", pq_getkeepalivescount(MyProcPort));
 	return nbuf;
+}
+
+static bool
+check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source)
+{
+	return *newval > 0;
 }
 
 static bool
