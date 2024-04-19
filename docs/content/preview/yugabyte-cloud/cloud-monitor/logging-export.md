@@ -113,12 +113,11 @@ Log the duration of all completed statements. Statement text is not included. Us
 
 ##### Log all statements with duration (log_min_duration_statement)
 
-Log the duration and statement text of all statements that ran for the specified duration (in ms) or longer. Use this setting to identify slow queries. If a statement has been logged for [Log SQL statements](#log-sql-statements-log_statement), the text is not repeated in the duration log message.
+Log the duration and statement text of all statements that ran for the specified duration (in ms) or longer. Use this setting to identify slow queries. If a statement has been logged for [Log SQL statements](#log-sql-statements-log-statement), the text is not repeated in the duration log message.
 
-Setting this option to 0 logs all statements, with their duration, which is not recommended unless you have low traffic. You should set this to a reasonable value for your application (for example, 1000 milliseconds), or use [log sampling](#sample-statements-with-duration-log_min_duration_sample-and-log_statement_sample_rate).
+Setting this option to 0 logs all statements, with their duration, which is not recommended unless you have low traffic. You should set this to a reasonable value for your application (for example, 1000 milliseconds)<!--, or use [log sampling](#sample-statements-with-duration-log_min_duration_sample-and-log_statement_sample_rate).This setting overrides [the sampling setting](#sample-statements-with-duration-log_min_duration_sample-and-log_statement_sample_rate); queries exceeding the minimum duration are not subject to sampling and are always logged -->.
 
-This setting overrides [the sampling setting](#sample-statements-with-duration-log_min_duration_sample-and-log_statement_sample_rate); queries exceeding the minimum duration are not subject to sampling and are always logged.
-
+<!--
 ##### Sample statements with duration (log_min_duration_sample and log_statement_sample_rate)
 
 Log a sampling of statements that ran for a specified duration (in ms) or longer. These options are used together, typically to identify slow queries while minimizing the performance impact on high traffic clusters.
@@ -126,6 +125,7 @@ Log a sampling of statements that ran for a specified duration (in ms) or longer
 For example, to log 25% of queries exceeding 1000ms, set the sample rate to 25 per cent, and set the duration to 1000.
 
 When duration is off, the sample rate has no effect.
+-->
 
 ##### Log the internal representation of the query plan (debug_print_plan)
 
