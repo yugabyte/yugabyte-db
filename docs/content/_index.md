@@ -1,5 +1,5 @@
 ---
-title: Documentation
+title: YB Documentation
 headerTitle: Documentation Home
 description: Guides, examples, and reference material you need to evaluate YugabyteDB database, build scalable applications, and learn distributed SQL.
 headcontent: Evaluate YugabyteDB, build scalable applications, and learn distributed SQL
