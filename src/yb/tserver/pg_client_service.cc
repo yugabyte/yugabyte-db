@@ -1075,9 +1075,16 @@ class PgClientServiceImpl::Impl {
               .IncludeLastPubRefreshTime(),
           &iteration_status));
 
+      int cdc_state_table_result_count = 0;
       for (auto entry_result : range_result) {
+        cdc_state_table_result_count++;
         RETURN_NOT_OK(entry_result);
         const auto& entry = *entry_result;
+
+        VLOG_WITH_FUNC(4) << "Received entry from CDC state table for stream_id: "
+                          << entry.key.stream_id << ", tablet_id: " << entry.key.tablet_id
+                          << ", active_time: "
+                          << (entry.active_time.has_value() ? *entry.active_time : 0);
 
         auto stream_id = entry.key.stream_id;
         auto active_time = entry.active_time;
@@ -1114,6 +1121,9 @@ class PgClientServiceImpl::Impl {
       SCHECK(
           iteration_status.ok(), InternalError, "Unable to read the CDC state table",
           iteration_status);
+
+      VLOG_WITH_FUNC(4) << "Received a total of " << cdc_state_table_result_count
+                        << " entries from the CDC state table";
     }
 
     auto current_time = GetCurrentTimeMicros();
