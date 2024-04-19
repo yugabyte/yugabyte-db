@@ -2600,7 +2600,7 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 	if (es->verbose)
 	{
 		sql = strVal(list_nth(fdw_private, FdwScanPrivateSelectSql));
-		ExplainPropertyText("Storage SQL", sql, es);
+		ExplainPropertyText("Remote SQL", sql, es);
 	}
 }
 
@@ -2620,7 +2620,7 @@ postgresExplainForeignModify(ModifyTableState *mtstate,
 		char	   *sql = strVal(list_nth(fdw_private,
 										  FdwModifyPrivateUpdateSql));
 
-		ExplainPropertyText("Storage SQL", sql, es);
+		ExplainPropertyText("Remote SQL", sql, es);
 	}
 }
 
@@ -2639,7 +2639,7 @@ postgresExplainDirectModify(ForeignScanState *node, ExplainState *es)
 	{
 		fdw_private = ((ForeignScan *) node->ss.ps.plan)->fdw_private;
 		sql = strVal(list_nth(fdw_private, FdwDirectModifyPrivateUpdateSql));
-		ExplainPropertyText("Storage SQL", sql, es);
+		ExplainPropertyText("Remote SQL", sql, es);
 	}
 }
 

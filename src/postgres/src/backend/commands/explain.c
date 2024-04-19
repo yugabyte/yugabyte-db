@@ -2723,7 +2723,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
 			show_scan_qual(((ForeignScan *) plan)->fdw_recheck_quals,
-						   "Storage Filter", planstate, ancestors, es);
+						   "Remote Filter", planstate, ancestors, es);
 			show_foreignscan_info((ForeignScanState *) planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, es);
