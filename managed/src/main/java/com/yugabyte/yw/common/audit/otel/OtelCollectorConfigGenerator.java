@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FileHelperService;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat.MultilineConfig;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
@@ -129,12 +130,12 @@ public class OtelCollectorConfigGenerator {
   private OtelCollectorConfigFormat.Receiver createYsqlReceiver(
       Provider provider, String logPrefix) {
     AuditLogRegexGenerator.LogRegexResult regexResult =
-        auditLogRegexGenerator.generateAuditLogRegex(logPrefix);
-    // Filter only audit logs
+        auditLogRegexGenerator.generateAuditLogRegex(logPrefix, /*onlyPrefix*/ false);
+    // Filter only single/multi-line audit logs
     OtelCollectorConfigFormat.FilterOperator filterOperator =
         new OtelCollectorConfigFormat.FilterOperator();
     filterOperator.setType("filter");
-    filterOperator.setExpr("body not matches \"^.*\\\\w+:  AUDIT:.*$\"");
+    filterOperator.setExpr("body not matches \"^.*\\\\w+:  AUDIT:(.|\\\\n|\\\\r|\\\\s)*$\"");
 
     // Parse attributes from audit logs
     OtelCollectorConfigFormat.RegexOperator regexOperator =
@@ -168,6 +169,24 @@ public class OtelCollectorConfigGenerator {
         createFileLogReceiver("ysql", ImmutableList.of(filterOperator, regexOperator));
     receiver.setInclude(ImmutableList.of(provider.getYbHome() + "/tserver/logs/postgresql-*.log"));
     receiver.setExclude(ImmutableList.of(provider.getYbHome() + "/tserver/logs/*.gz"));
+
+    // Set multiline config to split by both normal log prefix and audit log prefix instead of the
+    // default newline character.
+    // Normal log line prefix = ([A-Z]\\d{4}). Ex: I0419 ...
+    // Audit log line prefix = prefix of the audit log regex.
+    // Example regex = ((?P<timestamp_with_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[.]\d{3} \w{3})[
+    // ][[](?P<process_id>\d+)[]][ ])
+    // Example audit log line = 2024-04-19 15:26:08.973 UTC [10011] LOG:  AUDIT: ...
+    // Logic is we first split the lines by either normal log prefix or audit log prefix.
+    // Then apply more strict audit log regex patterns to filter only the audit logs.
+    MultilineConfig multilineConfig = new MultilineConfig();
+    multilineConfig.setLine_start_pattern(
+        "([A-Z]\\d{4})|("
+            + auditLogRegexGenerator
+                .generateAuditLogRegex(logPrefix, /*onlyPrefix*/ true)
+                .getRegex()
+            + ")");
+    receiver.setMultiline(multilineConfig);
     return receiver;
   }
 
