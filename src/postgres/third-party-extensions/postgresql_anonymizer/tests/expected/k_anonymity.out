@@ -1,0 +1,91 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+CREATE TABLE disease (
+  id SERIAL,
+  name TEXT,
+  treatment TEXT
+);
+SELECT anon.k_anonymity('disease');
+WARNING:  There is no identifier declared for relation 'disease'.
+HINT:  Use `SECURITY LABEL FOR k_anonymity [...]` to declare which columns are indirect identifiers.
+ k_anonymity 
+-------------
+            
+(1 row)
+
+CREATE TABLE patient (
+  ssn SERIAL,
+  firstname TEXT,
+  zipcode INTEGER,
+  birth DATE,
+  disease TEXT
+);
+COPY patient
+FROM STDIN CSV QUOTE AS '"' DELIMITER ' ';
+SELECT * FROM patient;
+ ssn | firstname | zipcode |   birth    |    disease    
+-----+-----------+---------+------------+---------------
+   1 | Alice     |   47678 | 12-29-1979 | Heart Disease
+   2 | Bob       |   47678 | 03-22-1979 | Heart Disease
+   3 | Caroline  |   47678 | 07-22-1988 | Heart Disease
+   4 | David     |   47905 | 03-04-1997 | Flu
+   5 | Eleanor   |   47909 | 12-15-1989 | Heart Disease
+   6 | Frank     |   47906 | 07-04-1998 | Cancer
+   7 | Geri      |   47605 | 10-30-1987 | Heart Disease
+   8 | Harry     |   47673 | 06-13-1978 | Cancer
+   9 | Ingrid    |   47607 | 12-12-1991 | Cancer
+(9 rows)
+
+SECURITY LABEL FOR k_anonymity ON COLUMN patient.firstname IS 'INDIRECT IDENTIFIER';
+SECURITY LABEL FOR k_anonymity ON COLUMN patient.zipcode IS 'INDIRECT IDENTIFIER';
+SECURITY LABEL FOR k_anonymity ON COLUMN patient.birth IS 'INDIRECT IDENTIFIER';
+SELECT anon.k_anonymity('patient') = min(kanonymity)
+FROM (
+  SELECT COUNT(*) as kanonymity
+  FROM patient
+  GROUP BY firstname, zipcode, birth
+) AS k
+;
+ ?column? 
+----------
+ t
+(1 row)
+
+CREATE TEMPORARY TABLE anon_patient
+AS SELECT
+  'REDACTED'::TEXT AS firstname,
+  anon.generalize_int4range(zipcode,1000) AS zipcode,
+  anon.generalize_daterange(birth,'decade') AS birth,
+  disease
+FROM patient
+;
+SECURITY LABEL FOR k_anonymity ON COLUMN anon_patient.firstname IS 'INDIRECT IDENTIFIER';
+SECURITY LABEL FOR k_anonymity ON COLUMN anon_patient.zipcode IS 'INDIRECT IDENTIFIER';
+SECURITY LABEL FOR k_anonymity ON COLUMN anon_patient.birth IS 'INDIRECT IDENTIFIER';
+SELECT * FROM anon_patient;
+ firstname |    zipcode    |          birth          |    disease    
+-----------+---------------+-------------------------+---------------
+ REDACTED  | [47000,48000) | [01-01-1970,01-01-1980) | Heart Disease
+ REDACTED  | [47000,48000) | [01-01-1970,01-01-1980) | Heart Disease
+ REDACTED  | [47000,48000) | [01-01-1980,01-01-1990) | Heart Disease
+ REDACTED  | [47000,48000) | [01-01-1990,01-01-2000) | Flu
+ REDACTED  | [47000,48000) | [01-01-1980,01-01-1990) | Heart Disease
+ REDACTED  | [47000,48000) | [01-01-1990,01-01-2000) | Cancer
+ REDACTED  | [47000,48000) | [01-01-1980,01-01-1990) | Heart Disease
+ REDACTED  | [47000,48000) | [01-01-1970,01-01-1980) | Cancer
+ REDACTED  | [47000,48000) | [01-01-1990,01-01-2000) | Cancer
+(9 rows)
+
+SELECT anon.k_anonymity('anon_patient') = min(c)
+FROM (
+  SELECT COUNT(*) as c
+  FROM anon_patient
+  GROUP BY firstname, zipcode, birth
+) AS k
+;
+ ?column? 
+----------
+ t
+(1 row)
+
+ROLLBACK;
