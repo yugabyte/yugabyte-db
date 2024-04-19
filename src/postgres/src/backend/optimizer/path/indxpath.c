@@ -3263,6 +3263,9 @@ match_rowcompare_to_indexcol(PlannerInfo *root,
 	if (index->relam != BTREE_AM_OID && index->relam != LSM_AM_OID)
 		return NULL;
 
+	if (is_hash_column_in_lsm_index(index, indexcol))
+		return NULL;
+
 	index_relid = index->rel->relid;
 	opfamily = index->opfamily[indexcol];
 	idxcollation = index->indexcollations[indexcol];

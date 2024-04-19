@@ -71,6 +71,7 @@ JAVA	org.yb.pgsql.TestPgReplicationSlot
 JAVA	org.yb.pgsql.TestPgSequences#testInt64LimitsInSequences
 JAVA	org.yb.pgsql.TestPgTransactions#testSerializableReadDelayWrite
 JAVA	org.yb.pgsql.TestPgTruncate
+JAVA	org.yb.pgsql.TestPgUniqueConstraint
 JAVA	org.yb.pgsql.TestPgWrapper#testNotNullConstraint
 JAVA	org.yb.pgsql.TestTablespaceProperties#testAlterIndexSetTablespace
 JAVA	org.yb.pgsql.TestTablespaceProperties#testAlterMatViewSetTablespace
