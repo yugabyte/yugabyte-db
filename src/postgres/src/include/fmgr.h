@@ -97,11 +97,6 @@ typedef struct FunctionCallInfoBaseData
 	NullableDatum args[FLEXIBLE_ARRAY_MEMBER];
 } FunctionCallInfoBaseData;
 
-#ifdef YB_TODO
-/* Remove the changes involving FunctionCallInfoData */
-typedef struct FunctionCallInfoData FunctionCallInfoBaseData;
-#endif
-
 /*
  * Space needed for a FunctionCallInfoBaseData struct with sufficient space
  * for `nargs` arguments.

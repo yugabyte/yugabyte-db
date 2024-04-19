@@ -164,10 +164,7 @@ static char *conf_file;
 static char *dictionary_file;
 static char *info_schema_file;
 static char *features_file;
-#ifdef YB_TODO
-/* Not applicable in YB */
 static char *system_constraints_file;
-#endif
 static char *system_functions_file;
 static char *system_views_file;
 static char *yb_system_views_file;
@@ -2667,10 +2664,7 @@ setup_data_file_paths(void)
 	set_input(&dictionary_file, "snowball_create.sql");
 	set_input(&info_schema_file, "information_schema.sql");
 	set_input(&features_file, "sql_features.txt");
-	#ifdef YB_TODO
-	/* Not applicable in YB */
 	set_input(&system_constraints_file, "system_constraints.sql");
-	#endif
 	set_input(&system_functions_file, "system_functions.sql");
 
 	set_input(&system_views_file, "system_views.sql");
@@ -2700,10 +2694,7 @@ setup_data_file_paths(void)
 	check_input(dictionary_file);
 	check_input(info_schema_file);
 	check_input(features_file);
-	#ifdef YB_TODO
-	/* Not applicable in YB */
 	check_input(system_constraints_file);
-	#endif
 	check_input(system_functions_file);
 	check_input(system_views_file);
 	if (IsYugaByteGlobalClusterInitdb())
@@ -3011,10 +3002,10 @@ initialize_data_directory(void)
 
 	setup_auth(cmdfd);
 
-	#ifdef YB_TODO
-	/* Not applicable in YB */
-	setup_run_file(cmdfd, system_constraints_file);
-	#endif
+	/* YB note: system_constraints_file is not applicable in YB. The
+	 * primary/unique key exist without it. */
+	if (!IsYugaByteGlobalClusterInitdb() && !IsYugaByteLocalNodeInitdb())
+		setup_run_file(cmdfd, system_constraints_file);
 
 	setup_run_file(cmdfd, system_functions_file);
 
