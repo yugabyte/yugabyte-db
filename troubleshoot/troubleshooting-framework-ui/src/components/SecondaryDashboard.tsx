@@ -299,7 +299,7 @@ export const SecondaryDashboard = ({
 
       let max = 0;
       metric.data.forEach((data: any) => {
-        if (metric?.layout?.title === 'ASH' && metricMeasure === MetricMeasure.OVERALL) {
+        if (metric?.layout?.title === 'ASH') {
           data.fill = 'tonexty';
           data.stackgroup = 'one';
           data.type = 'scatter';
