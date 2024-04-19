@@ -115,6 +115,10 @@ DEFINE_test_flag(uint64, delay_rpc_status_req_callback_ms, 0,
                  "in tests to assert that the wait-queue instance isn't deallocated while there "
                  "are in-progress callback executions.");
 
+DEFINE_test_flag(bool, skip_waiter_resumption_on_blocking_subtxn_rollback, false,
+                 "When set, the wait-queue doesn't signal waiter requests when there's a change "
+                 "in the blocker's aborted subtxn set.");
+
 METRIC_DEFINE_event_stats(
     tablet, wait_queue_pending_time_waiting, "Wait Queue - Still Waiting Time",
     yb::MetricUnit::kMicroseconds,
@@ -667,7 +671,8 @@ class BlockerData {
     if (txn_status_response.ok()) {
       DCHECK(!txn_status_response->status_time.is_special() || IsAbortedUnlocked());
       txn_status_ht_ = txn_status_response->status_time;
-      if (aborted_subtransactions_ != txn_status_response->aborted_subtxn_set) {
+      if (aborted_subtransactions_ != txn_status_response->aborted_subtxn_set &&
+          PREDICT_TRUE(!FLAGS_TEST_skip_waiter_resumption_on_blocking_subtxn_rollback)) {
         // TODO(wait-queues): Avoid copying the subtransaction set. See:
         // https://github.com/yugabyte/yugabyte-db/issues/13823
         aborted_subtransactions_ = std::move(txn_status_response->aborted_subtxn_set);
@@ -1334,7 +1339,7 @@ class WaitQueue::Impl {
       // from the status_tablet_id with which the previous request was registered. This may add
       // latency in deadlock detection, which should be addresed by GHI #21243.
       RETURN_NOT_OK(scoped_reporter->Register(
-          waiter_txn_id, std::move(blockers), status_tablet_id));
+          waiter_txn_id, request_id, std::move(blockers), status_tablet_id));
       DCHECK_GE(scoped_reporter->GetDataUseCount(), 1);
     }
 
