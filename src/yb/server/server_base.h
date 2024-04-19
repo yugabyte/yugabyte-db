@@ -118,7 +118,7 @@ class RpcServerBase {
                 const scoped_refptr<Clock>& clock = nullptr);
   virtual ~RpcServerBase();
 
-  virtual Status InitAutoFlags();
+  virtual Status InitAutoFlags(rpc::Messenger* messenger);
   virtual Status Init();
   virtual Status Start();
 
@@ -207,7 +207,7 @@ class RpcAndWebServerBase : public RpcServerBase {
                               const std::string caption, const std::string url);
 
   Status Init() override;
-  Status InitAutoFlags() override;
+  Status InitAutoFlags(rpc::Messenger* messenger) override;
   Status Start() override;
   void Shutdown() override;
 

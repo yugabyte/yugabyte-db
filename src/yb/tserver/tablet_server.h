@@ -117,7 +117,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // complete by calling WaitInited().
   Status Init() override;
 
-  virtual Status InitAutoFlags() override;
+  virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
 
   Status GetRegistration(ServerRegistrationPB* reg,
     server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
