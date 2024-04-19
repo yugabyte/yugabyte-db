@@ -336,10 +336,11 @@ METRICS_SNAPSHOT_LIST = [
     "handler_latency_yb_tserver_TabletServerService_Write_sum",
     "disk_usage", "cpu_usage", "node_up"
 ]
+PG_PARITY_FLAGS_LIST = [
+    "yb_enable_read_committed_isolation=true",
+    "ysql_enable_read_request_caching=true"
+]
 PG_PARITY_FLAGS_DICT = {
-"allowed_preview_flags_csv": "yb_enable_read_committed_isolation=true,"
-                             "ysql_enable_read_request_caching=true",
-
 "ysql_pg_conf_csv": "yb_enable_base_scans_cost_model=true,"
                       "yb_enable_optimizer_statistics=true,"
                       "yb_bnl_batch_size=1024,"
@@ -2750,6 +2751,26 @@ class ControlScript(object):
 
         master_flags = self.configs.saved_data.get("master_flags","")
 
+        if self.configs.temp_data.get("enable_pg_parity"):
+            # Process simple flags from PG_PARITY_FLAGS_LIST
+            existing_flags = {}
+            current_flags = master_flags.split(',')
+            for flag in current_flags:
+                if '=' in flag:
+                    key, value = flag.split('=', 1)
+                    existing_flags[key] = value
+
+            for flag in PG_PARITY_FLAGS_LIST:
+                key = flag.split('=')[0]
+                if existing_flags.get(key) is None:
+                    if master_flags and not master_flags.endswith(","):
+                        master_flags += ","
+                    # Add the missing flag to the master flags
+                    master_flags += flag
+
+            # Update the master_flags in self.configs.saved_data with pg_parity flags
+            self.configs.saved_data["master_flags"] = master_flags
+
         # if a join ip is specified, bring up a shell mode master
         if not join_ip:
             yb_master_cmd.append("--master_addresses={}".format(master_addresses))
@@ -2832,6 +2853,23 @@ class ControlScript(object):
         tserver_flags = self.configs.saved_data.get("tserver_flags","")
 
         if self.configs.temp_data.get("enable_pg_parity"):
+            # Process simple flags from PG_PARITY_FLAGS_LIST
+            existing_flags = {}
+            current_flags = tserver_flags.split(',')
+            for flag in current_flags:
+                if '=' in flag:
+                    key, value = flag.split('=', 1)
+                    existing_flags[key] = value
+
+            for flag in PG_PARITY_FLAGS_LIST:
+                key = flag.split('=')[0]
+                if existing_flags.get(key) is None:
+                    if tserver_flags and not tserver_flags.endswith(","):
+                        tserver_flags += ","
+                    # Add the missing flag to the tserver flags
+                    tserver_flags += flag
+
+            # Process CSV flags from PG_PARITY_FLAGS_DICT
             for pg_parity_flag, pg_parity_flag_values in PG_PARITY_FLAGS_DICT.items():
                 # If pg_parity_flag present in tserver_flags
                 # Extract the value and append any default missing pg_parity_flag_values
