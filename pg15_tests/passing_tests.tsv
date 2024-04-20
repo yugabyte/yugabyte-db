@@ -61,7 +61,6 @@ JAVA	org.yb.pgsql.TestPgRegressJson
 JAVA	org.yb.pgsql.TestPgRegressMatview
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy
-JAVA	org.yb.pgsql.TestPgRegressPlanner#testPgRegressDml
 JAVA	org.yb.pgsql.TestPgRegressProc
 JAVA	org.yb.pgsql.TestPgRegressPublication
 JAVA	org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
