@@ -17,7 +17,7 @@ This extension is supported on [those platforms](http://www.postgresql.org/docs/
 In Red Hat/CentOS:
 
 ```
-$ sudo yum install wal2json16
+$ sudo yum install wal2json_16
 ```
 
 In Debian/Ubuntu:
