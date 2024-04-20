@@ -103,14 +103,6 @@ command_db_stats(PG_FUNCTION_ARGS)
 
 	ReportFeatureUsage(FEATURE_COMMAND_DBSTATS);
 
-	bool isClusterVersionAtleast_1_10 = IsClusterVersionAtleastThis(1, 10, 0);
-	if (!isClusterVersionAtleast_1_10)
-	{
-		ereport(ERROR, errcode(MongoCommandNotSupported),
-				errmsg("Command dbStats not supported.")
-				);
-	}
-
 	/* Truncate the fractional part of the scale */
 	scaleDouble = trunc(scaleDouble);
 

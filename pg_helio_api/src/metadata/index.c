@@ -1622,14 +1622,6 @@ GetIndexBuildStatusFromIndexQueue(int indexId)
 	{
 		tableExists = true;
 	}
-	else if (IsClusterVersionAtleastThis(1, 11, 0))
-	{
-		char *queueName = psprintf("%s_index_queue", ExtensionObjectPrefix);
-		RangeVar *rangeVar = makeRangeVar(ApiCatalogSchemaName, queueName, -1);
-		bool missingOk = true;
-		Oid oid = RangeVarGetRelid(rangeVar, AccessShareLock, missingOk);
-		tableExists = SearchSysCacheExists1(RELOID, ObjectIdGetDatum(oid));
-	}
 
 	if (!tableExists)
 	{
@@ -1758,13 +1750,7 @@ MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWi
 char *
 GetIndexQueueName(void)
 {
-	char *queueName = "helio_api_catalog.helio_index_queue";
-	if (!IsClusterVersionAtleastThis(1, 12, 0))
-	{
-		queueName = psprintf("%s.%s_index_queue", ApiCatalogSchemaName,
-							 ExtensionObjectPrefix);
-	}
-	return queueName;
+	return "helio_api_catalog.helio_index_queue";
 }
 
 

@@ -297,13 +297,6 @@ HandleSearch(const bson_value_t *existingValue, Query *query,
 	{
 		ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_PRE_FILTER);
 
-		if (!IsClusterVersionAtleastThis(1, 12, 1))
-		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
-							errmsg(
-								"Filter is not supported for vector search on this version of the cluster.")));
-		}
-
 		/* check if the collection is unsharded */
 		if (context->mongoCollection != NULL &&
 			context->mongoCollection->shardKey != NULL)

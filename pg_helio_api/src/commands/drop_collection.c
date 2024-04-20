@@ -171,14 +171,6 @@ command_drop_collection(PG_FUNCTION_ARGS)
 	{
 		tableExists = true;
 	}
-	else if (IsClusterVersionAtleastThis(1, 11, 0))
-	{
-		char *queueName = psprintf("%s_index_queue", ExtensionObjectPrefix);
-		RangeVar *rangeVar = makeRangeVar(ApiCatalogSchemaName, queueName, -1);
-		bool missingOk = true;
-		Oid oid = RangeVarGetRelid(rangeVar, AccessShareLock, missingOk);
-		tableExists = SearchSysCacheExists1(RELOID, ObjectIdGetDatum(oid));
-	}
 
 	if (tableExists)
 	{

@@ -1082,11 +1082,6 @@ GetIndexSpecForShardedCreateIndexQuery(SingleWorkerActivity *activity)
 static void
 AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 {
-	if (!IsClusterVersionAtleastThis(1, 12, 0))
-	{
-		return;
-	}
-
 	/* This can be cleaned up to be better - but not in the current iteration */
 	StringInfo queryInfo = makeStringInfo();
 	appendStringInfo(queryInfo, " SELECT "

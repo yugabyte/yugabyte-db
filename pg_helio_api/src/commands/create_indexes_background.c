@@ -147,7 +147,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 	 * GW already has a check (EnableIndexBuildBackground && IsAtLeastVersion1_11_0)
 	 * to call create_indexes_background.
 	 */
-	if (!EnableIndexBuildBackground || !IsClusterVersionAtleastThis(1, 11, 0))
+	if (!EnableIndexBuildBackground)
 	{
 		PG_RETURN_VOID();
 	}

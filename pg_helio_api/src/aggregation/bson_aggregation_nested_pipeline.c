@@ -2435,7 +2435,7 @@ GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
 		depthQueryElement.bsonValue.value.v_int32 = args->maxDepth;
 
 		Const *depthConst = MakeBsonConst(PgbsonElementToPgbson(&depthQueryElement));
-		depthConst->consttype = GetClusterBsonQueryTypeId();
+		depthConst->consttype = BsonQueryTypeId();
 		OpExpr *depthMatchFunc = (OpExpr *) make_opclause(
 			BsonLessThanMatchRuntimeOperatorId(),
 			BOOLOID, false,

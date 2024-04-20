@@ -3619,7 +3619,7 @@ GetPartFilterExprNodeReprWalker(Node *node, void *contextArg)
 		if (!rhsNode || !IsA(rhsNode, Const) ||
 			!((Const *) rhsNode)->constvalue ||
 			(((Const *) rhsNode)->consttype != BsonTypeId() &&
-			 ((Const *) rhsNode)->consttype != GetClusterBsonQueryTypeId()))
+			 ((Const *) rhsNode)->consttype != BsonQueryTypeId()))
 		{
 			ereport(ERROR, (errmsg("got a non-Const node, or a null Const "
 								   "value, or a non-bson Const node for "

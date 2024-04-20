@@ -2561,7 +2561,7 @@ CheckAndAddIdFilter(List *opArgs, IdFilterWalkerContext *context,
 	/* We know it's a filter on the document column */
 	Const *secondConst = (Const *) secondArg;
 	Assert(secondConst->consttype == BsonTypeId() ||
-		   secondConst->consttype == GetClusterBsonQueryTypeId());
+		   secondConst->consttype == BsonQueryTypeId());
 
 	pgbson *qual = DatumGetPgBson(secondConst->constvalue);
 
