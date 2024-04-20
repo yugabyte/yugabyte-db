@@ -1,3 +1,5 @@
+-XX:MinHeapFreeRatio=10
+-XX:MaxHeapFreeRatio=20
 --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED
 --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED
 --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED
