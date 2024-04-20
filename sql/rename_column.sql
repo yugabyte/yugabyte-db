@@ -55,6 +55,12 @@ INSERT INTO w2j_rename_ri (g, b, c, f, e) VALUES(790, '2020-04-04 10:34:55', 'My
 UPDATE w2j_rename_ri SET e = 3.1415 WHERE g = 456;
 COMMIT;
 
+ALTER TABLE w2j_rename_pk REPLICA IDENTITY FULL;
+INSERT INTO w2j_rename_pk (g, b, c, f, e) VALUES(890, '2023-10-31 03:06:00', 'Crypturellus parvirostris', true, 8.90);
+UPDATE w2j_rename_pk SET e = 8.91 WHERE g = 890;
+DELETE FROM w2j_rename_pk WHERE g = 890;
+
+
 SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'include-typmod', '0', 'include-pk', '1');
 SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'include-pk', '1');
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');

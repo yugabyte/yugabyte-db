@@ -47,232 +47,295 @@ ALTER TABLE w2j_rename_ri RENAME COLUMN a TO g;
 INSERT INTO w2j_rename_ri (g, b, c, f, e) VALUES(790, '2020-04-04 10:34:55', 'Myrmecophaga tridactyla', false, 1.8);
 UPDATE w2j_rename_ri SET e = 3.1415 WHERE g = 456;
 COMMIT;
+ALTER TABLE w2j_rename_pk REPLICA IDENTITY FULL;
+INSERT INTO w2j_rename_pk (g, b, c, f, e) VALUES(890, '2023-10-31 03:06:00', 'Crypturellus parvirostris', true, 8.90);
+UPDATE w2j_rename_pk SET e = 8.91 WHERE g = 890;
+DELETE FROM w2j_rename_pk WHERE g = 890;
 SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'include-typmod', '0', 'include-pk', '1');
-                                                        data                                                         
----------------------------------------------------------------------------------------------------------------------
- {                                                                                                                  +
-         "change": [                                                                                                +
-                 {                                                                                                  +
-                         "kind": "insert",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_pk",                                                                  +
-                         "columnnames": ["a", "b", "c", "d", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Melanosuchus Niger", true, 4.560],      +
-                         "pk": {                                                                                    +
-                                 "pknames": ["a", "d"],                                                             +
-                                 "pktypes": ["int4", "bool"]                                                        +
-                         }                                                                                          +
-                 }                                                                                                  +
-         ]                                                                                                          +
+                                                           data                                                           
+--------------------------------------------------------------------------------------------------------------------------
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "insert",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_pk",                                                                       +
+                         "columnnames": ["a", "b", "c", "d", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Melanosuchus Niger", true, 4.560],           +
+                         "pk": {                                                                                         +
+                                 "pknames": ["a", "d"],                                                                  +
+                                 "pktypes": ["int4", "bool"]                                                             +
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-                 {                                                                                                  +
-                         "kind": "update",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_pk",                                                                  +
-                         "columnnames": ["a", "b", "c", "d", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Melanosuchus Niger", true, 8.760],      +
-                         "pk": {                                                                                    +
-                                 "pknames": ["a", "d"],                                                             +
-                                 "pktypes": ["int4", "bool"]                                                        +
-                         },                                                                                         +
-                         "oldkeys": {                                                                               +
-                                 "keynames": ["a", "d"],                                                            +
-                                 "keytypes": ["int4", "bool"],                                                      +
-                                 "keyvalues": [123, true]                                                           +
-                         }                                                                                          +
-                 }                                                                                                  +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "update",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_pk",                                                                       +
+                         "columnnames": ["a", "b", "c", "d", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Melanosuchus Niger", true, 8.760],           +
+                         "pk": {                                                                                         +
+                                 "pknames": ["a", "d"],                                                                  +
+                                 "pktypes": ["int4", "bool"]                                                             +
+                         },                                                                                              +
+                         "oldkeys": {                                                                                    +
+                                 "keynames": ["a", "d"],                                                                 +
+                                 "keytypes": ["int4", "bool"],                                                           +
+                                 "keyvalues": [123, true]                                                                +
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-                 {                                                                                                  +
-                         "kind": "insert",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_pk",                                                                  +
-                         "columnnames": ["a", "b", "c", "f", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 4.440],          +
-                         "pk": {                                                                                    +
-                                 "pknames": ["a", "f"],                                                             +
-                                 "pktypes": ["int4", "bool"]                                                        +
-                         }                                                                                          +
-                 }                                                                                                  +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "insert",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_pk",                                                                       +
+                         "columnnames": ["a", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 4.440],               +
+                         "pk": {                                                                                         +
+                                 "pknames": ["a", "f"],                                                                  +
+                                 "pktypes": ["int4", "bool"]                                                             +
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-                 {                                                                                                  +
-                         "kind": "update",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_pk",                                                                  +
-                         "columnnames": ["a", "b", "c", "f", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 2.718],          +
-                         "pk": {                                                                                    +
-                                 "pknames": ["a", "f"],                                                             +
-                                 "pktypes": ["int4", "bool"]                                                        +
-                         },                                                                                         +
-                         "oldkeys": {                                                                               +
-                                 "keynames": ["a", "f"],                                                            +
-                                 "keytypes": ["int4", "bool"],                                                      +
-                                 "keyvalues": [456, false]                                                          +
-                         }                                                                                          +
-                 }                                                                                                  +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "update",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_pk",                                                                       +
+                         "columnnames": ["a", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 2.718],               +
+                         "pk": {                                                                                         +
+                                 "pknames": ["a", "f"],                                                                  +
+                                 "pktypes": ["int4", "bool"]                                                             +
+                         },                                                                                              +
+                         "oldkeys": {                                                                                    +
+                                 "keynames": ["a", "f"],                                                                 +
+                                 "keytypes": ["int4", "bool"],                                                           +
+                                 "keyvalues": [456, false]                                                               +
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-                 {                                                                                                  +
-                         "kind": "insert",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_pk",                                                                  +
-                         "columnnames": ["a", "b", "c", "f", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [789, "Sun Apr 04 10:33:04 2021", "Chrysocyon brachyurus", true, 20.300],  +
-                         "pk": {                                                                                    +
-                                 "pknames": ["a", "f"],                                                             +
-                                 "pktypes": ["int4", "bool"]                                                        +
-                         }                                                                                          +
-                 }                                                                                                  +
-                 ,{                                                                                                 +
-                         "kind": "insert",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_pk",                                                                  +
-                         "columnnames": ["g", "b", "c", "f", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [790, "Sat Apr 04 10:34:55 2020", "Myrmecophaga tridactyla", false, 1.800],+
-                         "pk": {                                                                                    +
-                                 "pknames": ["g", "f"],                                                             +
-                                 "pktypes": ["int4", "bool"]                                                        +
-                         }                                                                                          +
-                 }                                                                                                  +
-                 ,{                                                                                                 +
-                         "kind": "update",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_pk",                                                                  +
-                         "columnnames": ["g", "b", "c", "f", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 3.142],          +
-                         "pk": {                                                                                    +
-                                 "pknames": ["g", "f"],                                                             +
-                                 "pktypes": ["int4", "bool"]                                                        +
-                         },                                                                                         +
-                         "oldkeys": {                                                                               +
-                                 "keynames": ["g", "f"],                                                            +
-                                 "keytypes": ["int4", "bool"],                                                      +
-                                 "keyvalues": [456, false]                                                          +
-                         }                                                                                          +
-                 }                                                                                                  +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "insert",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_pk",                                                                       +
+                         "columnnames": ["a", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [789, "Sun Apr 04 10:33:04 2021", "Chrysocyon brachyurus", true, 20.300],       +
+                         "pk": {                                                                                         +
+                                 "pknames": ["a", "f"],                                                                  +
+                                 "pktypes": ["int4", "bool"]                                                             +
+                         }                                                                                               +
+                 }                                                                                                       +
+                 ,{                                                                                                      +
+                         "kind": "insert",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_pk",                                                                       +
+                         "columnnames": ["g", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [790, "Sat Apr 04 10:34:55 2020", "Myrmecophaga tridactyla", false, 1.800],     +
+                         "pk": {                                                                                         +
+                                 "pknames": ["g", "f"],                                                                  +
+                                 "pktypes": ["int4", "bool"]                                                             +
+                         }                                                                                               +
+                 }                                                                                                       +
+                 ,{                                                                                                      +
+                         "kind": "update",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_pk",                                                                       +
+                         "columnnames": ["g", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 3.142],               +
+                         "pk": {                                                                                         +
+                                 "pknames": ["g", "f"],                                                                  +
+                                 "pktypes": ["int4", "bool"]                                                             +
+                         },                                                                                              +
+                         "oldkeys": {                                                                                    +
+                                 "keynames": ["g", "f"],                                                                 +
+                                 "keytypes": ["int4", "bool"],                                                           +
+                                 "keyvalues": [456, false]                                                               +
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-                 {                                                                                                  +
-                         "kind": "insert",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_ri",                                                                  +
-                         "columnnames": ["a", "b", "c", "d", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Melanosuchus Niger", true, 4.560]       +
-                 }                                                                                                  +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "insert",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_ri",                                                                       +
+                         "columnnames": ["a", "b", "c", "d", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Melanosuchus Niger", true, 4.560]            +
+                 }                                                                                                       +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-                 {                                                                                                  +
-                         "kind": "update",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_ri",                                                                  +
-                         "columnnames": ["a", "b", "c", "d", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Melanosuchus Niger", true, 8.760],      +
-                         "oldkeys": {                                                                               +
-                                 "keynames": ["a", "d"],                                                            +
-                                 "keytypes": ["int4", "bool"],                                                      +
-                                 "keyvalues": [123, true]                                                           +
-                         }                                                                                          +
-                 }                                                                                                  +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "update",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_ri",                                                                       +
+                         "columnnames": ["a", "b", "c", "d", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Melanosuchus Niger", true, 8.760],           +
+                         "oldkeys": {                                                                                    +
+                                 "keynames": ["a", "d"],                                                                 +
+                                 "keytypes": ["int4", "bool"],                                                           +
+                                 "keyvalues": [123, true]                                                                +
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-                 {                                                                                                  +
-                         "kind": "insert",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_ri",                                                                  +
-                         "columnnames": ["a", "b", "c", "f", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 4.440]           +
-                 }                                                                                                  +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "insert",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_ri",                                                                       +
+                         "columnnames": ["a", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 4.440]                +
+                 }                                                                                                       +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-                 {                                                                                                  +
-                         "kind": "update",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_ri",                                                                  +
-                         "columnnames": ["a", "b", "c", "f", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 2.718],          +
-                         "oldkeys": {                                                                               +
-                                 "keynames": ["a", "f"],                                                            +
-                                 "keytypes": ["int4", "bool"],                                                      +
-                                 "keyvalues": [456, false]                                                          +
-                         }                                                                                          +
-                 }                                                                                                  +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "update",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_ri",                                                                       +
+                         "columnnames": ["a", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 2.718],               +
+                         "oldkeys": {                                                                                    +
+                                 "keynames": ["a", "f"],                                                                 +
+                                 "keytypes": ["int4", "bool"],                                                           +
+                                 "keyvalues": [456, false]                                                               +
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
  }
- {                                                                                                                  +
-         "change": [                                                                                                +
-                 {                                                                                                  +
-                         "kind": "insert",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_ri",                                                                  +
-                         "columnnames": ["a", "b", "c", "f", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [789, "Sun Apr 04 10:33:04 2021", "Chrysocyon brachyurus", true, 20.300]   +
-                 }                                                                                                  +
-                 ,{                                                                                                 +
-                         "kind": "insert",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_ri",                                                                  +
-                         "columnnames": ["g", "b", "c", "f", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [790, "Sat Apr 04 10:34:55 2020", "Myrmecophaga tridactyla", false, 1.800] +
-                 }                                                                                                  +
-                 ,{                                                                                                 +
-                         "kind": "update",                                                                          +
-                         "schema": "public",                                                                        +
-                         "table": "w2j_rename_ri",                                                                  +
-                         "columnnames": ["g", "b", "c", "f", "e"],                                                  +
-                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
-                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 3.142],          +
-                         "oldkeys": {                                                                               +
-                                 "keynames": ["g", "f"],                                                            +
-                                 "keytypes": ["int4", "bool"],                                                      +
-                                 "keyvalues": [456, false]                                                          +
-                         }                                                                                          +
-                 }                                                                                                  +
-         ]                                                                                                          +
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "insert",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_ri",                                                                       +
+                         "columnnames": ["a", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [789, "Sun Apr 04 10:33:04 2021", "Chrysocyon brachyurus", true, 20.300]        +
+                 }                                                                                                       +
+                 ,{                                                                                                      +
+                         "kind": "insert",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_ri",                                                                       +
+                         "columnnames": ["g", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [790, "Sat Apr 04 10:34:55 2020", "Myrmecophaga tridactyla", false, 1.800]      +
+                 }                                                                                                       +
+                 ,{                                                                                                      +
+                         "kind": "update",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_ri",                                                                       +
+                         "columnnames": ["g", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [456, "Mon Dec 07 15:56:59 2020", "Panthera Onca", false, 3.142],               +
+                         "oldkeys": {                                                                                    +
+                                 "keynames": ["g", "f"],                                                                 +
+                                 "keytypes": ["int4", "bool"],                                                           +
+                                 "keyvalues": [456, false]                                                               +
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
  }
-(12 rows)
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+         ]                                                                                                               +
+ }
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "insert",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_pk",                                                                       +
+                         "columnnames": ["g", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [890, "Tue Oct 31 03:06:00 2023", "Crypturellus parvirostris", true, 8.900],    +
+                         "pk": {                                                                                         +
+                                 "pknames": ["g", "f"],                                                                  +
+                                 "pktypes": ["int4", "bool"]                                                             +
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
+ }
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "update",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_pk",                                                                       +
+                         "columnnames": ["g", "b", "c", "f", "e"],                                                       +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                                +
+                         "columnvalues": [890, "Tue Oct 31 03:06:00 2023", "Crypturellus parvirostris", true, 8.910],    +
+                         "pk": {                                                                                         +
+                                 "pknames": ["g", "f"],                                                                  +
+                                 "pktypes": ["int4", "bool"]                                                             +
+                         },                                                                                              +
+                         "oldkeys": {                                                                                    +
+                                 "keynames": ["g", "b", "c", "f", "e"],                                                  +
+                                 "keytypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
+                                 "keyvalues": [890, "Tue Oct 31 03:06:00 2023", "Crypturellus parvirostris", true, 8.900]+
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
+ }
+ {                                                                                                                       +
+         "change": [                                                                                                     +
+                 {                                                                                                       +
+                         "kind": "delete",                                                                               +
+                         "schema": "public",                                                                             +
+                         "table": "w2j_rename_pk",                                                                       +
+                         "pk": {                                                                                         +
+                                 "pknames": ["g", "f"],                                                                  +
+                                 "pktypes": ["int4", "bool"]                                                             +
+                         },                                                                                              +
+                         "oldkeys": {                                                                                    +
+                                 "keynames": ["g", "b", "c", "f", "e"],                                                  +
+                                 "keytypes": ["int4", "timestamp", "text", "bool", "numeric"],                           +
+                                 "keyvalues": [890, "Tue Oct 31 03:06:00 2023", "Crypturellus parvirostris", true, 8.910]+
+                         }                                                                                               +
+                 }                                                                                                       +
+         ]                                                                                                               +
+ }
+(16 rows)
 
 SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'include-pk', '1');
-                                                                                                                                                                                                                                                             data                                                                                                                                                                                                                                                             
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                                                                   data                                                                                                                                                                                                                                                                                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"action":"B"}
  {"action":"I","schema":"public","table":"w2j_rename_pk","columns":[{"name":"a","type":"integer","value":123},{"name":"b","type":"timestamp without time zone","value":"Sun Apr 26 16:23:59 2020"},{"name":"c","type":"text","value":"Melanosuchus Niger"},{"name":"d","type":"boolean","value":true},{"name":"e","type":"numeric(5,3)","value":4.560}],"pk":[{"name":"a","type":"integer"},{"name":"d","type":"boolean"}]}
  {"action":"C"}
@@ -311,7 +374,18 @@ SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'fo
  {"action":"I","schema":"public","table":"w2j_rename_ri","columns":[{"name":"g","type":"integer","value":790},{"name":"b","type":"timestamp without time zone","value":"Sat Apr 04 10:34:55 2020"},{"name":"c","type":"text","value":"Myrmecophaga tridactyla"},{"name":"f","type":"boolean","value":false},{"name":"e","type":"numeric(5,3)","value":1.800}],"pk":[]}
  {"action":"U","schema":"public","table":"w2j_rename_ri","columns":[{"name":"g","type":"integer","value":456},{"name":"b","type":"timestamp without time zone","value":"Mon Dec 07 15:56:59 2020"},{"name":"c","type":"text","value":"Panthera Onca"},{"name":"f","type":"boolean","value":false},{"name":"e","type":"numeric(5,3)","value":3.142}],"identity":[{"name":"g","type":"integer","value":456},{"name":"f","type":"boolean","value":false}],"pk":[]}
  {"action":"C"}
-(38 rows)
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_rename_pk","columns":[{"name":"g","type":"integer","value":890},{"name":"b","type":"timestamp without time zone","value":"Tue Oct 31 03:06:00 2023"},{"name":"c","type":"text","value":"Crypturellus parvirostris"},{"name":"f","type":"boolean","value":true},{"name":"e","type":"numeric(5,3)","value":8.900}],"pk":[{"name":"g","type":"integer"},{"name":"f","type":"boolean"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"w2j_rename_pk","columns":[{"name":"g","type":"integer","value":890},{"name":"b","type":"timestamp without time zone","value":"Tue Oct 31 03:06:00 2023"},{"name":"c","type":"text","value":"Crypturellus parvirostris"},{"name":"f","type":"boolean","value":true},{"name":"e","type":"numeric(5,3)","value":8.910}],"identity":[{"name":"g","type":"integer","value":890},{"name":"b","type":"timestamp without time zone","value":"Tue Oct 31 03:06:00 2023"},{"name":"c","type":"text","value":"Crypturellus parvirostris"},{"name":"f","type":"boolean","value":true},{"name":"e","type":"numeric(5,3)","value":8.900}],"pk":[{"name":"g","type":"integer"},{"name":"f","type":"boolean"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"w2j_rename_pk","identity":[{"name":"g","type":"integer","value":890},{"name":"b","type":"timestamp without time zone","value":"Tue Oct 31 03:06:00 2023"},{"name":"c","type":"text","value":"Crypturellus parvirostris"},{"name":"f","type":"boolean","value":true},{"name":"e","type":"numeric(5,3)","value":8.910}],"pk":[{"name":"g","type":"integer"},{"name":"f","type":"boolean"}]}
+ {"action":"C"}
+(49 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

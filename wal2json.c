@@ -1857,8 +1857,12 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	{
 		case REORDER_BUFFER_CHANGE_INSERT:
 			/* Print the new tuple */
+#if	PG_VERSION_NUM >= 100000
+			if (data->include_pk && OidIsValid(relation->rd_pkindex))
+#else
 			if (data->include_pk && OidIsValid(relation->rd_replidindex) &&
 					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
+#endif
 			{
 				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation);
 				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, false);
@@ -1871,9 +1875,15 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_UPDATE:
 			/* Print the new tuple */
 			columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation);
+#if	PG_VERSION_NUM >= 100000
+			if (data->include_pk && OidIsValid(relation->rd_pkindex))
+#else
 			if (data->include_pk && OidIsValid(relation->rd_replidindex) &&
 					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
+#endif
+			{
 				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, true);
+			}
 
 			/*
 			 * The old tuple is available when:
@@ -1898,9 +1908,15 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			}
 			break;
 		case REORDER_BUFFER_CHANGE_DELETE:
+#if	PG_VERSION_NUM >= 100000
+			if (data->include_pk && OidIsValid(relation->rd_pkindex))
+#else
 			if (data->include_pk && OidIsValid(relation->rd_replidindex) &&
 					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
+#endif
+			{
 				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, pkbs, true);
+			}
 
 			ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
 			identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, ribs);
