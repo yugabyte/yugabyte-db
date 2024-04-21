@@ -1864,17 +1864,31 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
 #endif
 			{
+#if	PG_VERSION_NUM >= 170000
+				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation);
+				pk_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, pkbs, false);
+#else
 				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation);
 				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, false);
+#endif
 			}
 			else
 			{
+#if	PG_VERSION_NUM >= 170000
+				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, false, relation);
+#else
 				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, false, relation);
+#endif
 			}
 			break;
 		case REORDER_BUFFER_CHANGE_UPDATE:
 			/* Print the new tuple */
+#if	PG_VERSION_NUM >= 170000
+			columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation);
+#else
 			columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation);
+#endif
+
 #if	PG_VERSION_NUM >= 100000
 			if (data->include_pk && OidIsValid(relation->rd_pkindex))
 #else
@@ -1882,7 +1896,11 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
 #endif
 			{
+#if	PG_VERSION_NUM >= 170000
+				pk_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, pkbs, true);
+#else
 				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, true);
+#endif
 			}
 
 			/*
@@ -1899,12 +1917,20 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				elog(DEBUG1, "old tuple is null");
 
 				ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
+#if	PG_VERSION_NUM >= 170000
+				identity_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, ribs);
+#else
 				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, ribs);
+#endif
 			}
 			else
 			{
 				elog(DEBUG1, "old tuple is not null");
+#if	PG_VERSION_NUM >= 170000
+				identity_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, NULL);
+#else
 				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, NULL);
+#endif
 			}
 			break;
 		case REORDER_BUFFER_CHANGE_DELETE:
@@ -1915,11 +1941,19 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
 #endif
 			{
+#if	PG_VERSION_NUM >= 170000
+				pk_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, pkbs, true);
+#else
 				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, pkbs, true);
+#endif
 			}
 
 			ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
+#if	PG_VERSION_NUM >= 170000
+			identity_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, ribs);
+#else
 			identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, ribs);
+#endif
 
 			if (change->data.tp.oldtuple == NULL)
 				elog(DEBUG1, "old tuple is null");
@@ -2375,7 +2409,11 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 	if (change->data.tp.newtuple != NULL)
 	{
 		appendStringInfoString(ctx->out, ",\"columns\":[");
+#if PG_VERSION_NUM >= 170000
+		pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_CHANGE);
+#else
 		pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_CHANGE);
+#endif
 		appendStringInfoChar(ctx->out, ']');
 	}
 
@@ -2395,7 +2433,11 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 	if (change->data.tp.oldtuple != NULL)
 	{
 		appendStringInfoString(ctx->out, ",\"identity\":[");
+#if	PG_VERSION_NUM >= 170000
+		pg_decode_write_tuple(ctx, relation, change->data.tp.oldtuple, PGOUTPUTJSON_IDENTITY);
+#else
 		pg_decode_write_tuple(ctx, relation, &change->data.tp.oldtuple->tuple, PGOUTPUTJSON_IDENTITY);
+#endif
 		appendStringInfoChar(ctx->out, ']');
 	}
 	else
@@ -2420,7 +2462,11 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 			{
 				elog(DEBUG1, "REPLICA IDENTITY: obtain old tuple using new tuple");
 				appendStringInfoString(ctx->out, ",\"identity\":[");
+#if PG_VERSION_NUM >= 170000
+				pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_IDENTITY);
+#else
 				pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_IDENTITY);
+#endif
 				appendStringInfoChar(ctx->out, ']');
 			}
 			else
@@ -2446,10 +2492,17 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 		if (OidIsValid(relation->rd_replidindex) && relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
 #endif
 		{
+#if PG_VERSION_NUM >= 170000
+			if (change->data.tp.oldtuple != NULL)
+				pg_decode_write_tuple(ctx, relation, change->data.tp.oldtuple, PGOUTPUTJSON_PK);
+			else
+				pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_PK);
+#else
 			if (change->data.tp.oldtuple != NULL)
 				pg_decode_write_tuple(ctx, relation, &change->data.tp.oldtuple->tuple, PGOUTPUTJSON_PK);
 			else
 				pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_PK);
+#endif
 		}
 		appendStringInfoChar(ctx->out, ']');
 	}
