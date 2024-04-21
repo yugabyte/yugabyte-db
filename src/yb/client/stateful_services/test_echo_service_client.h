@@ -17,14 +17,11 @@
 #include "yb/tserver/stateful_services/test_echo_service.pb.h"
 #include "yb/tserver/stateful_services/test_echo_service.proxy.h"
 
-namespace yb {
-namespace client {
+namespace yb::client {
 
-class TestEchoServiceClient : public StatefulServiceClientBase {
- public:
-  TestEchoServiceClient();
+// TestEchoServiceClient(client::YBClient & yb_client);
+DEFINE_STATEFUL_SERVICE_CLIENT(TestEcho, TEST_ECHO,
+    GetEcho,
+    GetEchoCount);
 
-  STATEFUL_SERVICE_RPCS(TestEcho, (GetEcho)(GetEchoCount));
-};
-}  // namespace client
-}  // namespace yb
+}  // namespace yb::client

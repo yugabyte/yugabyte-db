@@ -17,18 +17,18 @@
 #include <memory>
 #include <mutex>
 
-#include "yb/client/client.h"
-#include "yb/client/stateful_services/pg_auto_analyze_service_client.h"
-
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/thread.h"
-#include "yb/util/unique_lock.h"
 
 namespace yb {
+
+namespace client {
+class PgAutoAnalyzeServiceClient;
+}  // namespace client
+
 namespace tserver {
 
 class TabletServer;

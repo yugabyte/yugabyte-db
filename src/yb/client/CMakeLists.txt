@@ -50,9 +50,7 @@ set(CLIENT_SRCS
   permissions.cc
   session.cc
   schema.cc
-  stateful_services/pg_auto_analyze_service_client.cc
   stateful_services/stateful_service_client_base.cc
-  stateful_services/test_echo_service_client.cc
   table.cc
   table_alterer.cc
   table_creator.cc
