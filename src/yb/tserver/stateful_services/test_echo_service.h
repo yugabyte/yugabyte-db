@@ -33,7 +33,9 @@ class TestEchoService : public StatefulRpcServiceBase<TestEchoServiceIf> {
   Status RecordRequestInTable(const std::string& message);
   Status ReloadEchoCountFromTable();
 
-  STATEFUL_SERVICE_IMPL_METHODS((GetEcho)(GetEchoCount));
+  STATEFUL_SERVICE_IMPL_METHODS(
+      GetEcho,
+      GetEchoCount);
 
  private:
   const std::string node_uuid_;

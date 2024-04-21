@@ -32,7 +32,8 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   virtual Result<bool> RunPeriodicTask() override;
   Status UpdateMutationsSinceLastAnalyze();
 
-  STATEFUL_SERVICE_IMPL_METHODS((IncreaseMutationCounters));
+  STATEFUL_SERVICE_IMPL_METHODS(
+      IncreaseMutationCounters);
 
   tserver::PgMutationCounter pg_cluster_level_mutation_counter_;
 };

@@ -15,12 +15,10 @@
 
 #include <chrono>
 
-#include "yb/master/master_client.proxy.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/secure.h"
-#include "yb/rpc/secure_stream.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/client/client-internal.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/rpc/proxy_base.h"
+#include "yb/rpc/rpc_header.pb.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
@@ -36,71 +34,11 @@ namespace yb {
 using namespace std::chrono_literals;
 namespace client {
 
-StatefulServiceClientBase::StatefulServiceClientBase(StatefulServiceKind service_kind)
-    : service_kind_(service_kind), service_name_(StatefulServiceKind_Name(service_kind)) {}
-
-StatefulServiceClientBase::~StatefulServiceClientBase() { Shutdown(); }
-
-Status StatefulServiceClientBase::Init(
-    const std::string& local_hosts, const std::vector<std::vector<HostPort>>& masters,
-    const std::string& root_dir) {
-  std::vector<std::string> addresses;
-  for (const auto& address : masters) {
-    for (const auto& host_port : address) {
-      addresses.push_back(host_port.ToString());
-    }
-  }
-  SCHECK(!addresses.empty(), InvalidArgument, "No master address found to StatefulServiceClient.");
-
-  const auto master_addresses = JoinStrings(addresses, ",");
-
-  std::lock_guard lock(mutex_);
-  rpc::MessengerBuilder messenger_builder(service_name_ + "_Client");
-  secure_context_ =
-      VERIFY_RESULT(rpc::SetupInternalSecureContext(local_hosts, root_dir, &messenger_builder));
-
-  messenger_ = VERIFY_RESULT(messenger_builder.Build());
-
-  if (PREDICT_FALSE(FLAGS_TEST_running_test)) {
-    std::vector<HostPort> host_ports;
-    RETURN_NOT_OK(HostPort::ParseStrings(local_hosts, 0 /* default_port */, &host_ports));
-    messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host_ports[0].host())));
-  }
-
-  master_client_ = VERIFY_RESULT(
-      yb::client::YBClientBuilder()
-          .add_master_server_addr(master_addresses)
-          .default_admin_operation_timeout(FLAGS_stateful_service_operation_timeout_sec * 1s)
-          .Build(messenger_.get()));
-
-  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
-
-  return Status::OK();
-}
-
-Status StatefulServiceClientBase::TEST_Init(
-    const std::string& local_host, const std::string& master_addresses) {
-  std::lock_guard lock(mutex_);
-  rpc::MessengerBuilder messenger_builder(service_name_ + "Client");
-  secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
-      FLAGS_certs_dir, local_host, rpc::SecureContextType::kInternal, &messenger_builder));
-
-  messenger_ = VERIFY_RESULT(messenger_builder.Build());
-
-  if (PREDICT_FALSE(FLAGS_TEST_running_test)) {
-    messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(local_host)));
-  }
-
-  master_client_ = VERIFY_RESULT(
-      yb::client::YBClientBuilder()
-          .add_master_server_addr(master_addresses)
-          .default_admin_operation_timeout(FLAGS_stateful_service_operation_timeout_sec * 1s)
-          .Build(messenger_.get()));
-
-  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
-
-  return Status::OK();
-}
+StatefulServiceClientBase::StatefulServiceClientBase(
+    client::YBClient& yb_client, StatefulServiceKind service_kind)
+    : service_kind_(service_kind),
+      service_name_(StatefulServiceKind_Name(service_kind)),
+      yb_client_(yb_client) {}
 
 namespace {
 bool IsRetryableStatus(const Status& status) {
@@ -184,7 +122,6 @@ return InvokeRpcSync(
 
 void StatefulServiceClientBase::ResetServiceLocation() {
   std::lock_guard lock(mutex_);
-  service_hp_.reset();
   proxy_.reset();
 }
 
@@ -195,31 +132,18 @@ Result<std::shared_ptr<rpc::ProxyBase>> StatefulServiceClientBase::GetProxy(
     return proxy_;
   }
 
-  if (!service_hp_) {
-    auto location = VERIFY_RESULT(master_client_->GetStatefulServiceLocation(service_kind_));
+    auto location = VERIFY_RESULT(yb_client_.GetStatefulServiceLocation(service_kind_));
     auto* host_port = GetHostPort(&location);
     SCHECK(
         host_port && host_port->has_host(), IllegalState, "Service host is invalid: $0",
         location.DebugString());
-    service_hp_ = std::make_shared<HostPort>(HostPort::FromPB(*host_port));
-  }
+    auto service_hp = HostPort::FromPB(*host_port);
 
-  VLOG(3) << "Connecting to " << service_name_ << " at " << *service_hp_;
+    VLOG(3) << "Connecting to " << service_name_ << " at " << service_hp;
 
-  proxy_.reset(make_proxy(proxy_cache_.get(), *service_hp_));
-  return proxy_;
+    proxy_.reset(make_proxy(&yb_client_.proxy_cache(), service_hp));
+    return proxy_;
 }
 
-void StatefulServiceClientBase::Shutdown() {
-  std::lock_guard lock(mutex_);
-
-  if (master_client_) {
-    master_client_->Shutdown();
-  }
-
-  if (messenger_) {
-    messenger_->Shutdown();
-  }
-}
 }  // namespace client
 }  // namespace yb
