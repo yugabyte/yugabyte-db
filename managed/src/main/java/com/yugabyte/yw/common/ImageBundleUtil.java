@@ -67,15 +67,24 @@ public class ImageBundleUtil {
           bundle.update();
         }
         if (properties.getMachineImage() == null) {
-          Region r = Region.getByCode(bundle.getProvider(), region);
-          properties.setMachineImage(r.getYbImage());
-          if (properties.getMachineImage() == null) {
-            // In case it is still null, we will try to fetch from the regionMetadata.
-            Architecture arch = r.getArchitecture();
-            if (arch == null) {
-              arch = Architecture.x86_64;
+          if (bundle.getMetadata().getType() != ImageBundleType.CUSTOM) {
+            Region r = Region.getByCode(bundle.getProvider(), region);
+            // In case, AMI id is not present in the bundle - we will extract the AMI
+            // from YBA's metadata for YBA managed bundles else we will fail.
+            if (properties.getMachineImage() == null) {
+              // In case it is still null, we will try to fetch from the regionMetadata.
+              Architecture arch = r.getArchitecture();
+              if (arch == null) {
+                arch = Architecture.x86_64;
+              }
+              properties.setMachineImage(cloudQueryHelper.getDefaultImage(r, arch.toString()));
             }
-            properties.setMachineImage(cloudQueryHelper.getDefaultImage(r, arch.toString()));
+          } else {
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR,
+                String.format(
+                    "AMI information is missing from bundle %s for region %s",
+                    bundle.getName(), region));
           }
         }
         if (properties.getSshPort() == null) {
@@ -84,7 +93,7 @@ public class ImageBundleUtil {
         if (properties.getSshUser() == null) {
           properties.setSshUser(providerDetails.getSshUser());
         }
-      } else {
+      } else if (!regionsBundleInfo.containsKey(region)) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Region information is missing from the image bundle.");
       }
