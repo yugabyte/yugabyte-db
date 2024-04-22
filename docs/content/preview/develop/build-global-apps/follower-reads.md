@@ -75,4 +75,4 @@ Notice how the application in `us-west` reads from the follower in `us-central` 
 
 ## Learn more
 
-- [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/)
+- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/)

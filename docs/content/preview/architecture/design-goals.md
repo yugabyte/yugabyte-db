@@ -129,7 +129,7 @@ For more information, see [High performance in YugabyteDB](../docdb/performance/
 
 ## Geographically distributed deployments
 
-YugabyteDB supports [Row Level Geo-Partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning) of tables. This enables a specific row to be placed in a specific geography. It leverages two PostgreSQL features, [Table partitioning](../../explore/ysql-language-features/advanced-features/partitions/) and [Tablespaces](../../explore/ysql-language-features/going-beyond-sql/tablespaces/) to accomplish this elegantly.
+YugabyteDB supports [Row Level Geo-Partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning) of tables. This enables a specific row to be placed in a specific geography. It leverages two PostgreSQL features, [Table partitioning](../../explore/ysql-language-features/advanced-features/partitions/) and [Tablespaces](../../explore/going-beyond-sql/tablespaces/) to accomplish this elegantly.
 
 ## Cloud-ready
 

@@ -70,5 +70,5 @@ Another thing to note with xCluster is that transaction updates are NOT committe
 ## Learn more
 
 - [xCluster architecture](../../../architecture/docdb-replication/async-replication)
-- [xCluster deployment](../../../explore/multi-region-deployments/asynchronous-replication-ysql/)
+- [xCluster deployment](../../../explore/going-beyond-sql/asynchronous-replication-ysql/)
 - [Raft consensus protocol](../../../architecture/docdb-replication/replication)

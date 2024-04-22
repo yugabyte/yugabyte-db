@@ -56,4 +56,4 @@ Notice how the application in `us-west` reads from the follower in `us-central` 
 ## Learn more
 
 - [Read replica architecture](../../../architecture/docdb-replication/read-replicas)
-- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ysql/)
+- [Follower reads](../../going-beyond-sql/follower-reads-ysql/)

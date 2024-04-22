@@ -1,25 +1,27 @@
 ---
 title: Connection Manager in YSQL
-headerTitle: YSQL Connection Manager
-linkTitle: YSQL Connection Manager
+headerTitle: Built-in connection pooling
+linkTitle: Built-in connection pooling
 description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
 techPreview: /preview/releases/versioning/#feature-availability
+aliases:
+   - /preview/explore/connection-manager/connection-mgr-ysql/
 menu:
   preview:
-    name: YSQL Connection Manager
+    name: Built-in connection pooling
     identifier: explore-conn-mgr-ysql
-    parent: explore
-    weight: 800
+    parent: going-beyond-sql
+    weight: 600
 type: docs
 ---
 
-YugabyteDB inherits the architecture of creating one backend process for every connection to the database from PostgreSQL. These backend processes consume memory and CPU, limiting the number of connections YugabyteDB can support. To solve this problem, you can use a connection pooler, which allows multiplexing multiple client connections to a smaller number of actual server connections, thereby supporting a larger number of connections from applications. [PgBouncer](https://github.com/pgbouncer/pgbouncer) and [Odyssey](https://github.com/yandex/odyssey) are some of the popular PostgreSQL-based server-side connection pooling mechanisms which are fully compatible with YugabyteDB.
+YugabyteDB inherits the architecture of creating one backend process for every connection to the database from PostgreSQL. These backend processes consume memory and CPU, limiting the number of connections YugabyteDB can support. To solve this problem, you can use a connection pooler, which allows multiplexing multiple client connections to a smaller number of actual server connections, thereby supporting a larger number of connections from applications. [PgBouncer](https://github.com/pgbouncer/pgbouncer) and [Odyssey](https://github.com/yandex/odyssey) are some of the popular PostgreSQL-based server-side connection pooling mechanisms that are fully compatible with YugabyteDB.
 
 However, connection poolers have some limitations:
 
 - Added complexity. Deploying and maintaining a connection pooler adds complexity to your application stack.
-- They don't support all PostgreSQL features. For example, neither PgBouncer nor Odyssey support SET statements in the transaction pooling mode.
+- They don't support all PostgreSQL features. For example, neither PgBouncer nor Odyssey supports SET statements in the transaction pooling mode.
 
 To provide the advantages of connection pooling, but without the limitations, YugabyteDB includes a built-in connection pooler, YSQL Connection Manager. Because the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections without additional third-party tools. When combined with [smart drivers](../../../drivers-orms/smart-drivers/), YugabyteDB simplifies application architecture and enhances developer productivity.
 
@@ -31,7 +33,7 @@ YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../
 
 ## Key features
 
-YSQL Connection Manager is a modified version of the open source connection pooler Odyssey. YSQL Connection Manager uses Odyssey in the transaction pooling mode, and has been modified at the wire protocol level for tighter integration with YugabyteDB to overcome some SQL limitations.
+YSQL Connection Manager is a modified version of the open-source connection pooler Odyssey. YSQL Connection Manager uses Odyssey in the transaction pooling mode and has been modified at the wire protocol level for tighter integration with YugabyteDB to overcome some SQL limitations.
 
 YSQL Connection Manager has the following key features:
 
@@ -43,7 +45,7 @@ YSQL Connection Manager has the following key features:
 
 - Support for prepared statements - Odyssey supports protocol-level prepared statements and YSQL Connection Manager inherits this feature.
 
-## Use YSQL Connection Manager
+## How to use
 
 To start a YugabtyeDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
 
@@ -66,7 +68,7 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
 1. To refresh the settings, use `sudo sysctl -p`.
 {{< /note >}}
 
-### YSQL Connection Manager ports and flags
+## Configuration
 
 By default, when YSQL Connection Manager is enabled, it uses the port 5433, and the backend database is assigned a random free port.
 
@@ -86,5 +88,5 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_username | Username to be used by YSQL Connection Manager for creating database connections.| yugabyte |
 | ysql_conn_mgr_warmup_db | Database for which warmup needs to be done. | yugabyte |
 | enable_ysql_conn_mgr_stats | Enable statistics collection from YSQL Connection Manager. These statistics are displayed at the endpoint `<ip_address_of_cluster>:13000/connections`. | true |
-| ysql_conn_mgr_port | YSQL Connection Manager port to which clients can connect. This must be different from the PostreSQL port set via `pgsql_proxy_bind_address`. | 5433 |
+| ysql_conn_mgr_port | YSQL Connection Manager port to which clients can connect. This must be different from the PostgreSQL port set via `pgsql_proxy_bind_address`. | 5433 |
 | ysql_conn_mgr_dowarmup | Enable pre-creation of server connections in YSQL Connection Manager. If set to false, the server connections are created lazily (on-demand) in YSQL Connection Manager. | false |

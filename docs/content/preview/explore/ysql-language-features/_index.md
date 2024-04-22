@@ -53,13 +53,3 @@ The following table lists the advanced features in YSQL.
 | [Savepoints](advanced-features/savepoints/) | Savepoints in YSQL |
 | [Collations](advanced-features/collations/) | Collations in YSQL |
 | [Foreign data wrappers](advanced-features/foreign-data-wrappers/) | Foreign data wrappers in YSQL |
-
-## Going beyond SQL
-
-Because YugabyteDB is a distributed SQL database, YSQL has a number of features that are not present in PostgreSQL, as summarized in the following table.
-
-| YSQL Feature | Description |
-| :----------- | :---------- |
-| [Data distribution with HASH](../../architecture/docdb-sharding/sharding/) | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
-| [Tablespaces](going-beyond-sql/tablespaces/) | Enables pinning of data in tables and table partitions to different geographic locations |
-| [Follower Reads](going-beyond-sql/follower-reads-ysql/)| Enables more read IOPS with low latencies in YugabyteDB clusters |

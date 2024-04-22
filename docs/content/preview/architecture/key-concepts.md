@@ -64,6 +64,16 @@ A namespace in YSQL is referred to as a database and is logically identical to a
 
 A node is a virtual machine, physical machine, or container on which YugabyteDB is deployed.
 
+## OID
+
+Object Identifier (OID) is a unique identifier assigned to each database object, such as tables, indexes, views, functions, and other system objects. They are assigned automatically and sequentially by the system when new objects are created.
+
+While OIDs are an integral part of PostgreSQL's internal architecture, they are not always visible or exposed to users. In most cases, users interact with database objects using their names rather than their OIDs. However, there are cases where OIDs become relevant, such as when querying system catalogs or when dealing with low-level database operations.
+
+{{<note>}}
+OIDs are unique only within the context of a specific universe and are not guaranteed to be unique across different universes.
+{{</note>}}
+
 ## Primary cluster
 
 A primary cluster can perform both writes and reads, unlike a [read replica cluster](#read-replica-cluster), which can only serve reads. A [universe](#universe) can have only one primary cluster. Replication between [nodes](#node) in a primary cluster is performed synchronously.

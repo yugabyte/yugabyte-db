@@ -10,23 +10,11 @@ menu:
   preview:
     identifier: follower-reads-ycql
     parent: going-beyond-sql
-    weight: 285
+    weight: 120
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../follower-reads-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>YSQL</a>
-  </li>
-
-  <li >
-    <a href="../follower-reads-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>YCQL</a>
-  </li>
-
-</ul>
+{{<api-tabs>}}
 
 Use follower reads to lower read latencies. With follower reads, the database has less work to do at read time, including serving the read from the tablet followers. Follower reads is similar to reading from a cache, which can give more read IOPS with low latency, but might have slightly stale yet timeline-consistent data (that is, no out of order data is possible).
 
@@ -38,11 +26,11 @@ Consider the following factors when using follower reads in YCQL.
 
 You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. Changing the consistency level to `ONE` has no effect on write operations, only read operations. This is because writes in YCQL are always strongly consistent. Note that the default consistency level is `QUORUM`.
 
-Using [ycqlsh](../../../../admin/ycqlsh), you can check the consistency level using the `CONSISTENCY` command with no arguments, and set the consistency level to one using `CONSISTENCY ONE`. To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../../admin/ycqlsh/#consistency).
+Using [ycqlsh](../../../admin/ycqlsh), you can check the consistency level using the `CONSISTENCY` command with no arguments, and set the consistency level to one using `CONSISTENCY ONE`. To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../admin/ycqlsh/#consistency).
 
 ### Maximum staleness
 
-You can specify the maximum staleness of data when reading from tablet followers. If the follower hasn't heard from the leader for 10 seconds (the default), the read request is forwarded to the leader. If the tablet follower and the tablet leader are far from each other, you might need to increase the duration. To change the duration for maximum staleness, add the [`yb-tserver` `--max_stale_read_bound_time_ms`](../../../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) flag and increase the value. For information on adding this flag when creating a cluster using `yb-ctl`, refer to [Creating a local cluster with custom flags](../../../../admin/yb-ctl/#create-a-local-cluster-with-custom-flags).
+You can specify the maximum staleness of data when reading from tablet followers. If the follower hasn't heard from the leader for 10 seconds (the default), the read request is forwarded to the leader. If the tablet follower and the tablet leader are far from each other, you might need to increase the duration. To change the duration for maximum staleness, add the [`yb-tserver` `--max_stale_read_bound_time_ms`](../../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) flag and increase the value. For information on adding this flag when creating a cluster using `yb-ctl`, refer to [Creating a local cluster with custom flags](../../../admin/yb-ctl/#create-a-local-cluster-with-custom-flags).
 
 ## Try it out
 
@@ -74,7 +62,7 @@ Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-samp
 
 {{% yb-sample-apps-path %}}
 
-By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. Note that the `yb-sample-apps.jar` sets the [consistency](../../../../admin/ycqlsh/#consistency) level to ONE by default. You can populate exactly one key with a `10KB` value into the system. Because the replication factor is `3`, this key is replicated to only three of the four nodes in the cluster.
+By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. Note that the `yb-sample-apps.jar` sets the [consistency](../../../admin/ycqlsh/#consistency) level to ONE by default. You can populate exactly one key with a `10KB` value into the system. Because the replication factor is `3`, this key is replicated to only three of the four nodes in the cluster.
 
 Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local cluster, as follows:
 
@@ -149,5 +137,5 @@ $ ./bin/yb-ctl destroy
 
 ## Read more
 
-- [Read replica deployment](../../../../deploy/multi-dc/read-replica-clusters/)
-- [Read replicas](../../../multi-region-deployments/read-replicas-ycql/)
+- [Read replica deployment](../../../deploy/multi-dc/read-replica-clusters/)
+- [Read replicas](../../multi-region-deployments/read-replicas-ycql/)

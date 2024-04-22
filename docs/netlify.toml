@@ -157,8 +157,12 @@
   to = "/preview/explore/ycql-language/jsonb-ycql/"
 
 [[redirects]]
+  from = "/preview/explore/ysql-language-features/going-beyond-sql/*"
+  to = "/preview/explore/going-beyond-sql/:splat"
+
+[[redirects]]
   from = "/explore/tunable-reads/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/admin/cqlsh/"
@@ -411,11 +415,11 @@
 
 [[redirects]]
   from = "/preview/explore/follower-reads/fr-ycql/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/explore/high-performance/tunable-reads/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/explore/indexes-constraints/indexes-1/"
@@ -427,15 +431,15 @@
 
 [[redirects]]
   from = "/preview/explore/follower-reads/linux/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ycql/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ysql/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/read-replicas/"
@@ -491,7 +495,7 @@
 
 [[redirects]]
   from = "/preview/explore/ysql-language-features/tablespaces/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/tablespaces/"
+  to = "/preview/explore/going-beyond-sql/tablespaces/"
 
 [[redirects]]
   from = "/preview/faq/"

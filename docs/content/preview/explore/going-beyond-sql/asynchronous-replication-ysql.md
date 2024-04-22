@@ -1,18 +1,17 @@
 ---
 title: xCluster replication (2+ regions) in YugabyteDB
-headerTitle: xCluster (2+ regions)
-linkTitle: xCluster (2+ regions)
+headerTitle: Native asynchronous replication
+linkTitle: Asynchronous replication
 description: Multi-region deployment using asynchronous replication across two or more data centers.
-headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
+headContent: xCluster unidirectional and bidirectional replication (2+ regions)
 aliases:
   - /preview/explore/two-data-centers-linux/
-  - /preview/explore/two-data-centers/linux/
   - /preview/explore/two-data-centers/macos/
 menu:
   preview:
     identifier: explore-multi-region-deployments-async-replication-1-ysql
-    parent: explore-multi-region-deployments
-    weight: 720
+    parent: going-beyond-sql
+    weight: 350
 type: docs
 ---
 
