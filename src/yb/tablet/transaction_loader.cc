@@ -148,9 +148,9 @@ class TransactionLoader::Executor {
     intents_iterator_.Reset();
 
     RETURN_NOT_OK(CheckForShutdown());
-    context().CompleteLoad([this] {
-      loader_.state_ = TransactionLoaderState::kCompleted;
-    });
+
+    loader_.state_ = TransactionLoaderState::kCompleted;
+
     {
       // We need to lock and unlock the mutex here to avoid missing a notification in WaitLoaded
       // and WaitAllLoaded. The waiting loop in those functions is equivalent to the following,
