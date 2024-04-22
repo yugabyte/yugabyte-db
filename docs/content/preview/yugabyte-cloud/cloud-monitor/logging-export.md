@@ -36,11 +36,11 @@ SET pgaudit.log_level=notice;
 
 ## Prerequisites
 
-Create an integration. An integration defines the settings and login information for the tool that you want to export your logs to. Refer to [Integrations](../metrics-export/#export-configuration).
+Create an integration. An integration defines the settings and login information for the tool that you want to export your logs to. Refer to [Integrations](../managed-integrations).
 
 ## Recommendations
 
-- Configuring logging requires a rolling restart of your cluster. Configure logging when the cluster isn't experiencing heavy traffic.
+- Configuring logging [requires a restart](../../cloud-clusters/#locking-operations) of your cluster. Configure logging when the cluster isn't experiencing heavy traffic.
 - Configuring logging blocks other cluster operations, such as backups and maintenance. Avoid changing your settings before maintenance windows and during scheduled backups. The operation will block a backup from running.
 - Logging requires disk storage. Make sure the disk space on your cluster is sufficient for the anticipated data.
 - Logging impacts performance. If your application has high traffic, avoid logging all statements.

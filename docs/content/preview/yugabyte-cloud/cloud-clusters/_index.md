@@ -49,7 +49,7 @@ Cluster infrastructure operations lock the cluster while they are in progress, a
 | [Read replica edit](managed-read-replica/) | Create or delete; add or remove nodes | |
 | [Read replica edit](managed-read-replica/) | Increase disk size, change IOPS | Yes |
 | [Scheduled maintenance](cloud-maintenance/) | Database upgrades, certificate rotations, and cluster maintenance<br>(A backup is run automatically before a database upgrade) | Yes |
-| [Integrations](../cloud-monitor/metrics-export/) | | |
+| [Metrics export](../cloud-monitor/metrics-export/) | | |
 | [Database query log](../cloud-monitor/logging-export/) | Enable, disable, modify | Yes |
 | [Database audit log](../cloud-monitor/logging-export/) | Enable, disable, modify | Yes |
 
