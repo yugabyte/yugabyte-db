@@ -410,9 +410,9 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (FLAGS_pg_stat_statements_enabled) {
     metricsLibs.push_back("pg_stat_statements");
   }
-  metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
 #endif
+  metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pg_hint_plan");
 
   vector<string> lines;

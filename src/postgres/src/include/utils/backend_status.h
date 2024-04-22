@@ -197,7 +197,6 @@ typedef struct PgBackendStatus
 
 	/* Yugabyte attributes */
 	char 		*st_databasename; /* Used in YB Mode */
-	int			 yb_new_conn; /* new connection count */
 
 	/*
 	 * Memory usage of backend from TCMalloc, including PostgreSQL memory usage
@@ -372,5 +371,6 @@ extern void yb_pgstat_add_session_info(uint64_t session_id);
 
 extern bool yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt);
 
+extern PgBackendStatus *getBackendStatusArray(void);
 
 #endif							/* BACKEND_STATUS_H */
