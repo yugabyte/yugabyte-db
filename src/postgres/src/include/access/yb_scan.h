@@ -234,10 +234,6 @@ typedef struct YbScanDescData
 	YBParallelPartitionKeys pscan;
 } YbScanDescData;
 
-/* YB_TODO(neil) Reorganize code so that description can be placed at appropriate places.
-typedef struct YbScanDescData *YbScanDesc;
- */
-
 extern void ybc_free_ybscan(YbScanDesc ybscan);
 
 /*

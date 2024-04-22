@@ -1957,7 +1957,7 @@ YBBuildExtraUpdatedCols(Relation rel,
 	return result;
 }
 
-/* YB_REVIEW(neil) Revisit later. */
+/* YB_TODO(review) Revisit later. */
 static Bitmapset *
 YBTupleTableBuildExtraUpdatedCols(Relation rel, HeapTuple oldtuple,
 								  TupleTableSlot *slot, Bitmapset *updatedCols)
@@ -2380,7 +2380,7 @@ lreplace:;
 }
 
 /* YB_TODO(arpan): Deduplicate code between YBExecUpdateAct and ExecUpdateAct */
-/* YB_REVIEW(neil) Revisit later. */
+/* YB_TODO(review) Revisit later. */
 static bool
 YBExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
@@ -2551,7 +2551,7 @@ yb_lreplace:;
  * Closing steps of updating a tuple.  Must be called if ExecUpdateAct
  * returns indicating that the tuple was updated.
  */
-/* YB_REVIEW(neil) Revisit later. */
+/* YB_TODO(review) Revisit later. */
 static void
 ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 				   ResultRelInfo *resultRelInfo, ItemPointer tupleid,
@@ -2722,7 +2722,7 @@ ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
  *		Returns RETURNING result if any, otherwise NULL.
  * ----------------------------------------------------------------
  */
-/* YB_REVIEW(neil) Revisit later. */
+/* YB_TODO(review) Revisit later. */
 static TupleTableSlot *
 ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		   ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
@@ -5221,7 +5221,7 @@ static void YbPostProcessDml(CmdType cmd_type,
 	}
 }
 
-/* YB_REVIEW(neil) Revisit later. */
+/* YB_TODO(review) Revisit later. */
 static void
 YbTupleTablePostProcessDml(CmdType cmd_type, Relation rel, TupleTableSlot *slot)
 {
