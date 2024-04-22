@@ -47,7 +47,7 @@ CREATE TABLE user_hash (
 ```
 
 {{<note>}}
-For clarity, the word **HASH** has been explicitly added to the primary key definition to specify that this is a hash-sharded table. Hash sharding is the default distribution scheme.
+For clarity, `HASH` has been explicitly added to the primary key definition to specify that this is a hash-sharded table. Hash sharding is the default distribution scheme. You can change the default using the `yb_use_hash_splitting_by_default` flag.
 {{</note>}}
 
 Now, let's add 6 rows to the table.
@@ -108,10 +108,10 @@ You will see an output like:
  Peak Memory Usage: 24 kB
 ```
 
-The `Storage Rows Scanned: 6` metric clearly says that 6 rows were read and `rows=6` on the first line says that 6 rows were returned. Now pay attention to the `Storage Table Read Requests: 3`. This says that there were 3 different read requests to the storage subsystem. This is because 3 different requests have been sent to the 3 different tables to retrieve the rows from each of them.
+The `Storage Rows Scanned: 6` metric clearly says that 6 rows were read and `rows=6` on the first line says that 6 rows were returned. Now pay attention to the `Storage Table Read Requests: 3`. This says that there were 3 different read requests to the storage subsystem. This is because 3 different requests have been sent to the 3 different tablets to retrieve the rows from each of them.
 
 {{<tip title="Remember">}}
-Hash sharding is good for point lookups. In a hash sharded table, data is evenly distributed and is ordered on the ordering of the hash of the primary key.
+Hash sharding is good for point lookups. In a hash-sharded table, data is evenly distributed and is ordered on the ordering of the hash of the primary key.
 {{</tip>}}
 
 ## Range sharding
