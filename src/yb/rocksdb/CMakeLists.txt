@@ -14,7 +14,7 @@
 # RocksDB build.
 
 set(YB_PCH_PREFIX rocksdb)
-set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
+set(YB_PCH_DEP_LIBS yb_test_util)
 
 PROTOBUF_GENERATE_CPP(
   ROCKSDB_PROTO_SRCS ROCKSDB_PROTO_HDRS ROCKSDB_PROTO_TGTS
@@ -184,7 +184,7 @@ endif()
 
 ADD_YB_LIBRARY(rocksdb
                SRCS ${ROCKSDB_SRCS}
-               DEPS gflags gutil snappy z lz4 yb_common yb_util opid_proto)
+               DEPS gflags gutil snappy z lz4 yb_common yb_util)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc
@@ -209,7 +209,7 @@ add_library(rocksdb_test_util ${ROCKSDB_TEST_UTIL_SRCS})
 target_link_libraries(rocksdb_test_util gmock gtest rocksdb yb_rocksutil)
 
 add_executable(db_bench tools/db_bench.cc tools/db_bench_tool.cc)
-target_link_libraries(db_bench rocksdb)
+target_link_libraries(db_bench rocksdb yb_ash)
 ADD_YB_ROCKSDB_TOOL(db_sanity_test)
 ADD_YB_ROCKSDB_TOOL(db_stress)
 ADD_YB_ROCKSDB_TOOL(write_stress)

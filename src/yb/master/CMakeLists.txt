@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX master)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 YRPC_GENERATE(
   MASTER_YRPC_SRCS MASTER_YRPC_HDRS MASTER_YRPC_TGTS
@@ -85,6 +84,8 @@ set(MASTER_SRCS
   xcluster_consumer_registry_service.cc
   xcluster_rpc_tasks.cc
   scoped_leader_shared_lock.cc
+  clone/clone_state_manager.cc
+  clone/clone_state_entity.cc
   cluster_balance.cc
   cluster_balance_util.cc
   encryption_manager.cc
@@ -106,6 +107,7 @@ set(MASTER_SRCS
   master_service_base.cc
   master_tablet_service.cc
   master_test_service.cc
+  master_types.cc
   master_tserver.cc
   master-path-handlers.cc
   mini_master.cc
@@ -124,7 +126,7 @@ set(MASTER_SRCS
   sys_catalog_writer.cc
   system_tablet.cc
   table_index.cc
-  tablet_limits.cc
+  tablet_creation_limits.cc
   tablet_split_manager.cc
   tasks_tracker.cc
   test_async_rpc_manager.cc
@@ -241,6 +243,7 @@ set(YB_TEST_LINK_LIBS master
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(catalog_manager_mini_cluster_test)
+ADD_YB_TEST(clone/clone_state_manager-test)
 ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(load_balancer_mocked-test)
@@ -252,7 +255,7 @@ ADD_YB_TEST(stateful_service-test)
 ADD_YB_TEST(sys_catalog-test)
 ADD_YB_TEST(sys_catalog_xrepl-test)
 ADD_YB_TEST(table_index_test)
-ADD_YB_TEST(tablet_limits_test)
+ADD_YB_TEST(tablet_creation_limits_test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
 

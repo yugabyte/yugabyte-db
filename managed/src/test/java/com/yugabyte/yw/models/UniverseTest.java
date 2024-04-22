@@ -371,7 +371,7 @@ public class UniverseTest extends FakeDBApplication {
     Context context = new Context(getApp().config(), u);
     UniverseResourceDetails resourceDetails =
         UniverseResourceDetails.create(u.getUniverseDetails(), context);
-    JsonNode universeJson = Json.toJson(new UniverseResp(u, null, resourceDetails));
+    JsonNode universeJson = Json.toJson(new UniverseResp(u, null, resourceDetails, null));
     assertThat(
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));
@@ -760,7 +760,8 @@ public class UniverseTest extends FakeDBApplication {
                   NodeActionType.REMOVE,
                   NodeActionType.QUERY,
                   NodeActionType.REBOOT,
-                  NodeActionType.HARD_REBOOT),
+                  NodeActionType.HARD_REBOOT,
+                  NodeActionType.REPLACE),
               allowedActions);
         } else if (nodeState == NodeDetails.NodeState.Stopped) {
           assertEquals(

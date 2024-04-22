@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX server)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 #########################################
 # server_common
@@ -102,7 +101,6 @@ set(SERVER_PROCESS_SRCS
   webserver_options.cc
   webui_util.cc
   random_error_clock.cc
-  secure.cc
 )
 
 add_library(server_process ${SERVER_PROCESS_SRCS})

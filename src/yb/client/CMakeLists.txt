@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX client)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 set(CLIENT_SRCS
   async_initializer.cc

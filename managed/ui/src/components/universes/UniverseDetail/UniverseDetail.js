@@ -64,7 +64,7 @@ import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpe
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
-import { VM_PATCHING_RUNTIME_CONFIG } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { VM_PATCHING_RUNTIME_CONFIG, isImgBundleSupportedByProvider } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 //icons
@@ -135,7 +135,6 @@ class UniverseDetail extends Component {
         const primaryCluster = getPrimaryCluster(response.payload.data?.universeDetails?.clusters);
         const providerUUID = primaryCluster?.userIntent?.provider;
         this.props.fetchSupportedReleases(providerUUID);
-        this.props.fetchProviderRunTimeConfigs(providerUUID);
       });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
@@ -243,6 +242,7 @@ class UniverseDetail extends Component {
       modal,
       modal: { showModal, visibleModal },
       universe,
+      tasks,
       universe: { currentUniverse, supportedReleases },
       showSoftwareUpgradesModal,
       showLinuxSoftwareUpgradeModal,
@@ -281,11 +281,6 @@ class UniverseDetail extends Component {
     //universe state to show Rollback optin in uniiverse actions
     const isRollBackAllowed =
       universe?.currentUniverse?.data?.universeDetails?.isSoftwareRollbackAllowed;
-    const universeHasXcluster =
-      universe?.currentUniverse?.data?.universeDetails?.xclusterInfo?.sourceXClusterConfigs
-        ?.length > 0 ||
-      universe?.currentUniverse?.data?.universeDetails?.xclusterInfo?.targetXClusterConfigs
-        ?.length > 0;
     const backupRestoreInProgress =
       updateInProgress &&
       ['BackupTable', 'MultiTableBackup', 'CreateBackup', 'RestoreBackup'].includes(
@@ -747,11 +742,11 @@ class UniverseDetail extends Component {
                             <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                               Upgrade Database Version
                             </YBLabelWithIcon>
-                            {this.showUpgradeMarker() && (
+                            {/* {this.showUpgradeMarker() && (
                               <span className="badge badge-pill badge-red pull-right">
                                 {updateAvailable}
                               </span>
-                            )}
+                            )} */}
                           </YBMenuItem>
                         </RbacValidator>
                       )}
@@ -782,7 +777,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                      {!universePaused && isOsPatchingEnabled && (
+                      {!universePaused && isOsPatchingEnabled && isImgBundleSupportedByProvider(provider) && (
                         <RbacValidator
                           isControl
                           accessRequiredOn={{
@@ -1102,7 +1097,7 @@ class UniverseDetail extends Component {
                         >
                           <YBTooltip
                             title={
-                              hasAsymmetricPrimaryCluster
+                              hasAsymmetricAsyncCluster
                                 ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
                                 : ''
                             }

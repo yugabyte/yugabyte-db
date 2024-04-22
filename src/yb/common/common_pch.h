@@ -136,6 +136,9 @@
 #include <rapidjson/error/en.h>
 #include <rapidjson/prettywriter.h>
 
+#include "yb/common/opid.fwd.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bits.h"
 #include "yb/gutil/callback.h"
@@ -229,9 +232,6 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/opid.fwd.h"
-#include "yb/util/opid.messages.h"
-#include "yb/util/opid.pb.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/random.h"

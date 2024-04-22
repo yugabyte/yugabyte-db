@@ -40,11 +40,10 @@ GRPC_SERVICE_CONFIG = {
     "methodConfig": [
         {
             "name": [{"service": "nodeagent.server.NodeAgent"}],
-            "timeout": "120s",
             "retryPolicy": {
                 "maxAttempts": 5,
                 "initialBackoff": "5s",
-                "maxBackoff": "50s",
+                "maxBackoff": "30s",
                 "backoffMultiplier": 2,
                 "retryableStatusCodes": ["UNAVAILABLE", "RESOURCE_EXHAUSTED"]
             }

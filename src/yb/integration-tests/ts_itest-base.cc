@@ -13,6 +13,8 @@
 
 #include "yb/integration-tests/ts_itest-base.h"
 
+#include "yb/common/opid.h"
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
@@ -30,7 +32,6 @@
 
 #include "yb/server/server_base.proxy.h"
 
-#include "yb/util/opid.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/flags.h"

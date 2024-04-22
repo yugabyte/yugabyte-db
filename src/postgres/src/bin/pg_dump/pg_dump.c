@@ -14817,11 +14817,18 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		PQExpBuffer tag = createPQExpBuffer();
 		DumpId		aclDeps[2];
 		int			nDeps = 0;
+		PQExpBuffer use_roles_sql;
 
 		if (subname)
 			appendPQExpBuffer(tag, "COLUMN %s.%s", name, subname);
 		else
 			appendPQExpBuffer(tag, "%s %s", type, name);
+
+		if (dopt->include_yb_metadata)
+		{
+			use_roles_sql = createPQExpBuffer();
+			appendPQExpBuffer(use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+		}
 
 		aclDeps[nDeps++] = objDumpId;
 		if (altDumpId != InvalidDumpId)
@@ -14835,9 +14842,13 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 								  .owner = owner,
 								  .description = "ACL",
 								  .section = SECTION_NONE,
-								  .createStmt = sql->data,
+								  .createStmt = (dopt->include_yb_metadata ?
+												 use_roles_sql->data :
+												 sql->data),
 								  .deps = aclDeps,
 								  .nDeps = nDeps));
+		if (dopt->include_yb_metadata)
+			destroyPQExpBuffer(use_roles_sql);
 
 		destroyPQExpBuffer(tag);
 	}

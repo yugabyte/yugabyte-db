@@ -15,7 +15,7 @@
     script_to_run: "{{ yb_home_dir | default('/home/yugabyte') }}/bin/yb-server-ctl.sh"
     user_systemd: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user"
     systemd_option: "{{ systemd_services | default(false) }}"
-    is_clean_command: "{{ command == 'clean' or command == 'clean-logs'}}"
+    is_clean_command: "{{ command == 'clean' or command == 'clean-logs' or command =='clean-instance' }}"
   tasks:
     - name: Call the ctl script with appropriate args
       shell: "{{ script_to_run }} {{ process }} {{ command }}"

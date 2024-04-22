@@ -114,6 +114,8 @@
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/callback_forward.h"
@@ -180,8 +182,6 @@
 #include "yb/util/metrics_writer.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/opid.h"
-#include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"

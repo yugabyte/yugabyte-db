@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
@@ -288,6 +289,12 @@ public class TaskExecutor {
     }
   }
 
+  private void checkHAFollowerState() {
+    if (HighAvailabilityConfig.isFollower()) {
+      throw new IllegalStateException("Can not submit task on HA follower");
+    }
+  }
+
   /**
    * Instantiates the task for the task class.
    *
@@ -344,6 +351,7 @@ public class TaskExecutor {
    */
   public UUID submit(RunnableTask runnableTask, ExecutorService taskExecutorService) {
     checkTaskExecutorState();
+    checkHAFollowerState();
     checkNotNull(runnableTask, "Task runnable must not be null");
     checkNotNull(taskExecutorService, "Task executor service must not be null");
     UUID taskUUID = runnableTask.getTaskUUID();
@@ -1144,6 +1152,11 @@ public class TaskExecutor {
      */
     public void addSubTaskGroup(SubTaskGroup subTaskGroup) {
       log.info("Adding SubTaskGroup #{}: {}", subTaskGroups.size(), subTaskGroup.name);
+      if (subTaskGroup.getSubTaskCount() == 0) {
+        // Allowing to add this just messes up the positions.
+        log.info("Ignoring subtask SubTaskGroup {} as it is empty", subTaskGroup.name);
+        return;
+      }
       subTaskGroup.setRunnableTaskContext(this, subTaskPosition);
       subTaskGroups.add(subTaskGroup);
       subTaskPosition++;

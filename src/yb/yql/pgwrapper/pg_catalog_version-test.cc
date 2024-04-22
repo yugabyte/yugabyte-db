@@ -313,6 +313,12 @@ class PgCatalogVersionTest : public LibPqTestBase {
     conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
     LOG(INFO) << "Create a new database";
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+    {
+      // In PG15, SCHEMA public by default is more restrictive, grant CREATE privilege
+      // to all users to allow this test to run successfully in both PG11 and PG15.
+      auto conn_yugabyte_on_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+      ASSERT_OK(conn_yugabyte_on_test.Execute("GRANT CREATE ON SCHEMA public TO public"));
+    }
     LOG(INFO) << "Create two new test users";
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser1));
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser2));
@@ -1322,6 +1328,32 @@ TEST_F(PgCatalogVersionTest, SimulateLaggingPGInUpgradeFinalization) {
       "SELECT COUNT(*) FROM pg_yb_catalog_version"));
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), msg);
+}
+
+class PgCatalogVersionMasterLeadershipChange : public PgCatalogVersionTest {
+ protected:
+  int GetNumMasters() const override { return 3; }
+};
+
+TEST_F_EX(PgCatalogVersionTest, ChangeMasterLeadership,
+          PgCatalogVersionMasterLeadershipChange) {
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, true /* per_database_mode */));
+  RestartClusterWithDBCatalogVersionMode();
+  WaitForCatalogVersionToPropagate();
+  conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE t(id INT)"));
+  ASSERT_OK(conn_yugabyte.Execute("ALTER TABLE t ADD COLUMN c2 TEXT"));
+  LOG(INFO) << "Disable next master leader to set catalog version table in perdb mode";
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_disable_set_catalog_version_table_in_perdb_mode", "true"));
+  auto leader_master_index = CHECK_RESULT(cluster_->GetLeaderMasterIndex());
+  LOG(INFO) << "Failing over master leader.";
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  auto new_leader_master_index = CHECK_RESULT(cluster_->GetLeaderMasterIndex());
+  LOG(INFO) << "The new master leader is at " << leader_master_index;
+  CHECK_NE(leader_master_index, new_leader_master_index);
+  ASSERT_OK(conn_yugabyte.Execute("CREATE INDEX idx ON t(id)"));
 }
 
 TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {

@@ -2679,7 +2679,7 @@ TEST_F(XClusterYsqlTest, TestAlterOperationTableRewrite) {
     ASSERT_NOK(res);
     ASSERT_STR_CONTAINS(
         res.ToString(),
-        "cannot change the primary key of a table that is a part of CDC or XCluster replication.");
+        "cannot rewrite a table that is a part of CDC or XCluster replication");
     ASSERT_OK(
         conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 varchar(10)", kTableName, kColumnName));
     res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);

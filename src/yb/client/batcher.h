@@ -41,6 +41,7 @@
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
+#include "yb/common/opid.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.h"
 
@@ -50,7 +51,6 @@
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
-#include "yb/util/opid.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 

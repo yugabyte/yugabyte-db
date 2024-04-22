@@ -37,9 +37,6 @@ namespace master {
 using TabletSnapshotOperationCallback =
     std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;
 
-using ScheduleMinRestoreTime =
-    std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>;
-
 YB_STRONGLY_TYPED_BOOL(SendMetadata);
 
 // Context class for MasterSnapshotCoordinator.

@@ -61,12 +61,16 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
     try {
       if (sourceUniverse != null) {
         // Lock the source universe.
-        lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+        lockAndFreezeUniverseForUpdate(
+            sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       }
       try {
         if (targetUniverse != null) {
           // Lock the target universe.
-          lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+          lockAndFreezeUniverseForUpdate(
+              targetUniverse.getUniverseUUID(),
+              targetUniverse.getVersion(),
+              null /* Txn callback */);
         }
 
         for (XClusterConfig xcc : drConfig.getXClusterConfigs()) {

@@ -12,41 +12,24 @@
 
 #include "yb/integration-tests/cdcsdk_test_base.h"
 
-#include <algorithm>
-#include <utility>
 #include <string>
-#include <chrono>
 #include <boost/assign.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
-#include "yb/client/session.h"
-#include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/transaction.h"
-#include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_value.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -157,6 +140,9 @@ Status CDCSDKTestBase::SetUpWithParams(
   // Set max_replication_slots to a large value so that we don't run out of them during tests and
   // don't have to do cleanups after every test case.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_ddl_rollback_enabled";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rollback_enabled) = true;
+
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;
@@ -313,6 +299,9 @@ Status CDCSDKTestBase::DropColumn(
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat(
       "ALTER TABLE $0.$1 DROP COLUMN $2", schema_name, table_name + enum_suffix, column_name));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
   return Status::OK();
 }
 
@@ -428,6 +417,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 }
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
+    const std::string& slot_name,
     CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
   auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
 
@@ -441,7 +431,6 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
       break;
   }
 
-  auto slot_name = GenerateRandomReplicationSlotName();
   auto result = VERIFY_RESULT(repl_conn.FetchFormat(
       "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput $1", slot_name, snapshot_action));
   auto snapshot_name =
@@ -469,6 +458,13 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
   }
 
   return xrepl_stream_id;
+}
+
+Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
+    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
+  auto slot_name = GenerateRandomReplicationSlotName();
+  return CreateConsistentSnapshotStreamWithReplicationSlot(
+      slot_name, snapshot_option, verify_snapshot_name);
 }
 
 // This creates a Consistent Snapshot stream on the database kNamespaceName by default.

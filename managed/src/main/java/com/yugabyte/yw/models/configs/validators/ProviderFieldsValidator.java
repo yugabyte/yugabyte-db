@@ -9,7 +9,9 @@ import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
@@ -63,6 +65,15 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
     return true;
+  }
+
+  public void validatePrivateKey(List<AccessKey> allAccessKeys) {
+    for (AccessKey accessKey : allAccessKeys) {
+      String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
+      if (!CertificateHelper.isValidRsaKey(privateKeyContent)) {
+        throw new PlatformServiceException(BAD_REQUEST, "Please provide a valid RSA key");
+      }
+    }
   }
 
   public abstract void validate(Provider provider);

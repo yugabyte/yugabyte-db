@@ -1,0 +1,12 @@
+title: GFlags for tserver and master
+description: GFlags for tserver and master
+type: object
+properties:
+  tserver:
+    description: GFlags applied on TServer process
+    additionalProperties:
+      type: string
+  master:
+    description: GFlags applied on Master process
+    additionalProperties:
+      type: string

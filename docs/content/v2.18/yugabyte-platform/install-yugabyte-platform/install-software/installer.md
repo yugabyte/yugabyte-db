@@ -59,6 +59,8 @@ You can use YBA Installer only if you are about to perform a new install. Curren
   /bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
   ```
 
+- If you are installing a version earlier than v2.18.4.2, set umask for the root user to 022.
+
 ## Quick start
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:

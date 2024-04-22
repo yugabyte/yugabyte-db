@@ -72,15 +72,14 @@ class AreNodesSafeToTakeDownCallbackHandler {
 class AreNodesSafeToTakeDownDriver {
  public:
   AreNodesSafeToTakeDownDriver(
-      const AreNodesSafeToTakeDownRequestPB& req, AreNodesSafeToTakeDownResponsePB* resp,
+      const AreNodesSafeToTakeDownRequestPB& req,
       Master* master, CatalogManagerIf* catalog_manager) :
-      req_(req), resp_(resp), master_(master), catalog_manager_(catalog_manager) {}
+      req_(req), master_(master), catalog_manager_(catalog_manager) {}
 
   Status StartCallAndWait(CoarseTimePoint deadline);
 
  private:
   const AreNodesSafeToTakeDownRequestPB& req_;
-  AreNodesSafeToTakeDownResponsePB* resp_;
   Master* master_;
   CatalogManagerIf* catalog_manager_;
 

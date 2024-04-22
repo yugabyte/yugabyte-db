@@ -14,11 +14,11 @@ type: docs
 
 ## Overview
 
-ysql_dumpall is a utility for writing out (“dumping”) all YugabyteDB databases of a cluster into one plain-text, SQL script file. The script file contains SQL statements that can be used as input to `ysqlsh` to restore the databases. It does this by calling [ysql_dump](../ysql-dump/) for each database in the YugabyteDB cluster. ysql_dumpall also dumps global objects that are common to all databases, such as database roles. (ysql_dump does not export roles.)
+ysql_dumpall is a utility for writing out ("dumping") all YugabyteDB databases of a cluster into one plain-text, SQL script file. The script file contains SQL statements that can be used as input to `ysqlsh` to restore the databases. It does this by calling [ysql_dump](../ysql-dump/) for each database in the YugabyteDB cluster. ysql_dumpall also dumps global objects that are common to all databases, such as database roles. (ysql_dump does not export roles.)
 
 Because ysql_dumpall reads tables from all databases, you will most likely have to connect as a database superuser in order to produce a complete dump. Also, you will need superuser privileges to execute the saved script in order to be allowed to add roles and create databases.
 
-The SQL script will be written to the standard output. Use the [`-f|--file`](#f-file-filename) option or shell operators to redirect it into a file.
+The SQL script will be written to the standard output. Use the [`-f|--file`](#f-filename-file-filename) option or shell operators to redirect it into a file.
 
 ysql_dumpall needs to connect multiple times (once per database) to the YugabyteDB cluster. If you use password authentication, it will ask for a password each time. It is convenient to have a `~/.pgpass` file in such cases.
 
@@ -173,7 +173,7 @@ The following command line options control the database connection parameters.
 
 Specifies parameters used to connect to the server, as a connection string.
 
-The option is called `-d|--dbname` for consistency with other client applications, but because ysql_dumpall needs to connect to many databases, the database name in the connection string will be ignored. Use the [`-l|--database`](#l-database-database) option to specify the name of the database used for the initial connection, which will dump global objects and discover what other databases should be dumped.
+The option is called `-d|--dbname` for consistency with other client applications, but because ysql_dumpall needs to connect to many databases, the database name in the connection string will be ignored. Use the [`-l|--database`](#l-dbname-database-database) option to specify the name of the database used for the initial connection, which will dump global objects and discover what other databases should be dumped.
 
 #### -h *host*, --host *host*
 
@@ -193,7 +193,7 @@ The username to connect as.
 
 #### -w, --no-password
 
-Never issue a password prompt. If the server requires password authentication and a password is not available by other means such as a `~/.pgpass` file, the connection attempt will fail. This option can be useful in batch jobs and scripts where no user is present to enter a password.
+Never issue a password prompt. If the server requires password authentication and a password is not available by other means such as a `~/.pgpass` file, the connection attempt will fail. This option can be helpful in batch jobs and scripts where no user is present to enter a password.
 
 #### -W, --password
 
@@ -209,7 +209,7 @@ For each database to be dumped, a password prompt will occur. To avoid having to
 
 #### --role=*rolename*
 
-Specifies a role name to be used to create the dump. This option causes ysql_dumpall to issue a `SET ROLE <rolename>` statement after connecting to the database. It is helpful when the authenticated user (specified by [`-U|--username`](#u-username-username)) lacks privileges needed by ysql_dumpall, but can switch to a role with the required rights. Some installations have a policy against logging in directly as a superuser, and use of this option allows dumps to be made without violating the policy.
+Specifies a role name to be used to create the dump. This option causes ysql_dumpall to issue a `SET ROLE <rolename>` statement after connecting to the database. It is helpful when the authenticated user (specified by [`-U|--username`](#u-username-username-username)) lacks privileges needed by ysql_dumpall, but can switch to a role with the required rights. Some installations have a policy against logging in directly as a superuser, and use of this option allows dumps to be made without violating the policy.
 
 ## Environment
 

@@ -10,8 +10,13 @@ import { NodeOverridesModal } from '../UniverseForm/HelmOverrides';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { downloadLogs } from '../../../actions/universe';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { MenuItemsContainer } from '../UniverseDetail/compounds/MenuItemsContainer';
+import { YBMenuItem } from '../UniverseDetail/compounds/YBMenuItem';
 
 export default class NodeAction extends Component {
   constructor() {
@@ -20,7 +25,8 @@ export default class NodeAction extends Component {
       showModal: false,
       actionType: null,
       overridesModal: false,
-      currentNode: null
+      currentNode: null,
+      actionsDropdownOpen: false
     };
     this.closeModal = this.closeModal.bind(this);
     this.closeOverridesModal = this.closeOverridesModal.bind(this);
@@ -80,6 +86,8 @@ export default class NodeAction extends Component {
       caption = dedicatedTo ? 'Start ' + NodeAction.processName(dedicatedTo) : 'Start Processes';
     } else if (actionType === 'ADD') {
       caption = 'Add Node';
+    } else if (actionType === 'REPLACE') {
+      caption = 'Replace Node';
     } else if (actionType === 'CONNECT') {
       caption = 'Connect';
     } else if (actionType === 'START_MASTER') {
@@ -117,6 +125,8 @@ export default class NodeAction extends Component {
       btnIcon = 'fa fa-play-circle';
     } else if (actionType === 'ADD') {
       btnIcon = 'fa fa-plus-circle';
+    } else if (actionType === 'REPLACE') {
+      btnIcon = 'fa fa-exchange';
     } else if (actionType === 'CONNECT') {
       btnIcon = 'fa fa-link';
     } else if (actionType === 'START_MASTER') {
@@ -139,11 +149,17 @@ export default class NodeAction extends Component {
       case 'DOWNLOAD_LOGS':
       case 'LIVE_QUERIES':
       case 'SLOW_QUERIES':
-        return hasNecessaryPerm({ ...ApiPermissionMap.GET_UNIVERSES_BY_ID, onResource: { UNIVERSE: universeId } });
+        return hasNecessaryPerm({
+          ...ApiPermissionMap.GET_UNIVERSES_BY_ID,
+          onResource: { UNIVERSE: universeId }
+        });
       default:
-        return hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_UNIVERSE, onResource: { UNIVERSE: universeId } });
+        return hasNecessaryPerm({
+          ...ApiPermissionMap.MODIFY_UNIVERSE,
+          onResource: { UNIVERSE: universeId }
+        });
     }
-  }
+  };
 
   handleLiveQueryClick() {
     const { currentRow } = this.props;
@@ -169,6 +185,9 @@ export default class NodeAction extends Component {
   }
 
   render() {
+    const nodeAllowedActions = [];
+    const advancedAllowedActions = [];
+
     const {
       currentRow,
       universeUUID,
@@ -187,7 +206,16 @@ export default class NodeAction extends Component {
       isKubernetes || isOnPremManuallyProvisioned
         ? currentRow.allowedActions.filter((actionType) => actionType !== 'REBOOT')
         : currentRow.allowedActions;
-    const actionButtons = allowedActions.map((actionType) => {
+
+    allowedActions.forEach((action) => {
+      if (action === 'REMOVE' || action === 'RELEASE' || action === 'ADD' || action === 'DELETE') {
+        advancedAllowedActions.push(action);
+      } else {
+        nodeAllowedActions.push(action);
+      }
+    });
+
+    const actionButtons = nodeAllowedActions.map((actionType) => {
       const btnId = _.uniqueId('node_action_btn_');
       const isDisabled =
         disabled ||
@@ -199,11 +227,14 @@ export default class NodeAction extends Component {
           return (
             <Fragment>
               <RbacValidator
-                accessRequiredOn={{ ...ApiPermissionMap.GET_LIVE_QUERIES, onResource: { UNIVERSE: universeUUID } }}
+                accessRequiredOn={{
+                  ...ApiPermissionMap.GET_LIVE_QUERIES,
+                  onResource: { UNIVERSE: universeUUID }
+                }}
                 overrideStyle={{ display: 'block' }}
                 isControl
               >
-                <MenuItem
+                <YBMenuItem
                   key="live_queries_action_btn"
                   eventKey="live_queries_action_btn"
                   disabled={disabled}
@@ -211,14 +242,17 @@ export default class NodeAction extends Component {
                   data-testid={'NodeAction-LIVE_QUERIES'}
                 >
                   {this.getLabel('LIVE_QUERIES', currentRow.dedicatedTo)}
-                </MenuItem>
+                </YBMenuItem>
               </RbacValidator>
               <RbacValidator
-                accessRequiredOn={{ ...ApiPermissionMap.GET_SLOW_QUERIES, onResource: { UNIVERSE: universeUUID } }}
+                accessRequiredOn={{
+                  ...ApiPermissionMap.GET_SLOW_QUERIES,
+                  onResource: { UNIVERSE: universeUUID }
+                }}
                 overrideStyle={{ display: 'block' }}
                 isControl
               >
-                <MenuItem
+                <YBMenuItem
                   key="slow_queries_action_btn"
                   eventKey="slow_queries_action_btn"
                   disabled={disabled}
@@ -226,7 +260,7 @@ export default class NodeAction extends Component {
                   data-testid={'NodeAction-SLOW_QUERIES'}
                 >
                   {this.getLabel('SLOW_QUERIES', currentRow.dedicatedTo)}
-                </MenuItem>
+                </YBMenuItem>
               </RbacValidator>
             </Fragment>
           );
@@ -234,13 +268,14 @@ export default class NodeAction extends Component {
         return null;
       }
       if (!NodeAction.getCaption(actionType, currentRow.dedicatedTo)) return null;
+
       return (
         <RbacValidator
           customValidateFunction={() => this.getPermission(actionType, universeUUID)}
           overrideStyle={{ display: 'block' }}
           isControl
         >
-          <MenuItem
+          <YBMenuItem
             key={btnId}
             eventKey={btnId}
             disabled={isDisabled}
@@ -248,7 +283,35 @@ export default class NodeAction extends Component {
             data-testid={`NodeAction-${actionType}`}
           >
             {this.getLabel(actionType, currentRow.dedicatedTo)}
-          </MenuItem>
+          </YBMenuItem>
+        </RbacValidator>
+      );
+    });
+
+    const advancedActionButtons = advancedAllowedActions.map((advancedActionType) => {
+      const btnId = _.uniqueId('node_action_btn_');
+      const isDisabled =
+        disabled ||
+        (advancedActionType === 'STOP' && disableStop) ||
+        (advancedActionType === 'REMOVE' && disableRemove);
+
+      if (!NodeAction.getCaption(advancedActionType, currentRow.dedicatedTo)) return null;
+
+      return (
+        <RbacValidator
+          customValidateFunction={() => this.getPermission(advancedActionType, universeUUID)}
+          overrideStyle={{ display: 'block' }}
+          isControl
+        >
+          <YBMenuItem
+            key={btnId}
+            eventKey={btnId}
+            disabled={isDisabled}
+            onClick={() => isDisabled || this.openModal(advancedActionType)}
+            data-testid={`NodeAction-${advancedActionType}`}
+          >
+            {this.getLabel(advancedActionType, currentRow.dedicatedTo)}
+          </YBMenuItem>
         </RbacValidator>
       );
     });
@@ -257,11 +320,14 @@ export default class NodeAction extends Component {
     const btnId = _.uniqueId('node_action_btn_');
     actionButtons.push(
       <RbacValidator
-        accessRequiredOn={{ ...ApiPermissionMap.DOWNLOAD_UNIVERSE_NODE_LOGS, onResource: { UNIVERSE: universeUUID } }}
+        accessRequiredOn={{
+          ...ApiPermissionMap.DOWNLOAD_UNIVERSE_NODE_LOGS,
+          onResource: { UNIVERSE: universeUUID }
+        }}
         overrideStyle={{ display: 'block' }}
         isControl
       >
-        <MenuItem
+        <YBMenuItem
           key={btnId}
           eventKey={btnId}
           disabled={false}
@@ -269,7 +335,7 @@ export default class NodeAction extends Component {
           data-testid={'NodeAction-DOWNLOAD_LOGS'}
         >
           {this.getLabel('DOWNLOAD_LOGS', currentRow.dedicatedTo)}
-        </MenuItem>
+        </YBMenuItem>
       </RbacValidator>
     );
 
@@ -277,11 +343,14 @@ export default class NodeAction extends Component {
       const nodeOverridesID = _.uniqueId('k8s_override_action_');
       actionButtons.push(
         <RbacValidator
-          accessRequiredOn={{ ...ApiPermissionMap.MODIFY_UNIVERSE, onResource: { UNIVERSE: universeUUID } }}
+          accessRequiredOn={{
+            ...ApiPermissionMap.MODIFY_UNIVERSE,
+            onResource: { UNIVERSE: universeUUID }
+          }}
           overrideStyle={{ display: 'block' }}
           isControl
         >
-          <MenuItem
+          <YBMenuItem
             key={nodeOverridesID}
             eventKey={nodeOverridesID}
             disabled={false}
@@ -289,41 +358,92 @@ export default class NodeAction extends Component {
             data-testid={'NodeAction-HELM_OVERRIDES'}
           >
             {this.getLabel('HELM_OVERRIDES', currentRow.dedicatedTo)}
-          </MenuItem>
+          </YBMenuItem>
         </RbacValidator>
       );
     }
 
     return (
-      <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-        {!hideConnect && (
-          <NodeConnectModal
-            currentRow={currentRow}
-            providerUUID={providerUUID}
-            label={this.getLabel('CONNECT', currentRow.dedicatedTo)}
-            clusterType={clusterType}
-            universeUUID={universeUUID}
-          />
-        )}
-        {isNonEmptyArray(currentRow.allowedActions) ? (
-          <Fragment>
-            {actionButtons}
-            <NodeActionModalContainer
-              visible={this.state.showModal}
-              onHide={this.closeModal}
-              nodeInfo={currentRow}
-              actionType={this.state.actionType}
-            />
-          </Fragment>
-        ) : null}
-        {this.state.overridesModal && (
-          <NodeOverridesModal
-            visible={this.state.overridesModal}
-            onClose={this.closeOverridesModal}
-            nodeId={this.state.currentNode}
-            universeId={universeUUID}
-          />
-        )}
+      <DropdownButton
+        className="btn btn-default"
+        title="Actions"
+        id="bg-nested-dropdown"
+        onToggle={(isOpen) => this.setState({ actionsDropdownOpen: isOpen })}
+        pullRight
+      >
+        <MenuItemsContainer
+          parentDropdownOpen={this.state.actionsDropdownOpen}
+          mainMenu={(showSubmenu) => (
+            <>
+              {!hideConnect && (
+                <NodeConnectModal
+                  currentRow={currentRow}
+                  providerUUID={providerUUID}
+                  label={this.getLabel('CONNECT', currentRow.dedicatedTo)}
+                  clusterType={clusterType}
+                  universeUUID={universeUUID}
+                />
+              )}
+              {isNonEmptyArray(nodeAllowedActions) ? (
+                <Fragment>
+                  {actionButtons}
+                  <NodeActionModalContainer
+                    visible={this.state.showModal}
+                    onHide={this.closeModal}
+                    nodeInfo={currentRow}
+                    actionType={this.state.actionType}
+                  />
+                </Fragment>
+              ) : null}
+              {isNonEmptyArray(advancedAllowedActions) && (
+                <RbacValidator
+                  customValidateFunction={() =>
+                    this.getPermission(this.state.actionType, universeUUID)
+                  }
+                  overrideStyle={{ display: 'block' }}
+                  isControl
+                >
+                  <YBMenuItem
+                    key={'node_action_btn_advanced'}
+                    onClick={() => showSubmenu('advanced')}
+                    data-testid={`NodeAction-advanced`}
+                  >
+                    <YBLabelWithIcon icon="fa fa-cog">Advanced</YBLabelWithIcon>
+
+                    <span className="pull-right">
+                      <i className="fa fa-chevron-right submenu-icon" />
+                    </span>
+                  </YBMenuItem>
+                </RbacValidator>
+              )}
+              {this.state.overridesModal && (
+                <NodeOverridesModal
+                  visible={this.state.overridesModal}
+                  onClose={this.closeOverridesModal}
+                  nodeId={this.state.currentNode}
+                  universeId={universeUUID}
+                />
+              )}
+            </>
+          )}
+          subMenus={{
+            advanced: (backToMainMenu) => (
+              <>
+                <MenuItem onClick={backToMainMenu}>
+                  <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">Back</YBLabelWithIcon>
+                </MenuItem>
+                <MenuItem divider />
+                {advancedActionButtons}
+                <NodeActionModalContainer
+                  visible={this.state.showModal}
+                  onHide={this.closeModal}
+                  nodeInfo={currentRow}
+                  actionType={this.state.actionType}
+                />
+              </>
+            )
+          }}
+        />
       </DropdownButton>
     );
   }

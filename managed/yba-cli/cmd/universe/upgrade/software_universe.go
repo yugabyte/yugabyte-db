@@ -66,7 +66,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 			}
 			err = util.ConfirmCommand(
 				fmt.Sprintf("Are you sure you want to upgrade %s: %s from version %s to version %s",
-					"universe", universeName, oldYBDBVersion, ybdbVersion),
+					util.UniverseType, universeName, oldYBDBVersion, ybdbVersion),
 				viper.GetBool("force"))
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
@@ -75,7 +75,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 		}
 		err = util.ConfirmCommand(
 			fmt.Sprintf("Are you sure you want to upgrade %s: %s to version %s",
-				"universe", universeName, ybdbVersion),
+				util.UniverseType, universeName, ybdbVersion),
 			viper.GetBool("force"))
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
@@ -94,7 +94,8 @@ var upgradeSoftwareCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Upgrade Software")
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Universe", "Upgrade Software - Fetch Universes")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {

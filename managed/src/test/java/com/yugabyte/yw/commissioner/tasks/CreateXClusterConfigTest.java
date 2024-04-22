@@ -484,8 +484,9 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(4).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(4).getDetails().get("errorString").asText();
+    // Two FreeUniverse subtasks for source and target.
+    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(6).getTaskType());
+    String taskErrMsg = taskInfo.getSubTasks().get(6).getDetails().get("errorString").asText();
     assertThat(taskErrMsg, containsString(setupErrMsg));
     assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.getStatus());
 
@@ -541,8 +542,9 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(4).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(4).getDetails().get("errorString").asText();
+    // Two FreeUniverse subtasks for source and target.
+    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(6).getTaskType());
+    String taskErrMsg = taskInfo.getSubTasks().get(6).getDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "XClusterConfig(%s) operation failed: code: %s\nmessage: \"%s\"",

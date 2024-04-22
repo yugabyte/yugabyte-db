@@ -444,10 +444,9 @@ create table idxpart (a int unique, b int) partition by range ((b + a));
 create table idxpart (a int, b int, c text) partition by range (a, b);
 alter table idxpart add primary key (a);	-- not an incomplete one though
 alter table idxpart add primary key (a, b);	-- this works
--- TODO: Adding primary key to a partitioned table is not yet implemented (#14196).
--- \d idxpart
--- create table idxpart1 partition of idxpart for values from (0, 0) to (1000, 1000);
--- \d idxpart1
+\d idxpart
+create table idxpart1 partition of idxpart for values from (0, 0) to (1000, 1000);
+\d idxpart1
 drop table idxpart;
 
 -- use ALTER TABLE to add a unique constraint
@@ -507,8 +506,6 @@ create table idxpart (i int) partition by hash (i);
 create table idxpart0 partition of idxpart (i) for values with (modulus 2, remainder 0);
 create table idxpart1 partition of idxpart (i) for values with (modulus 2, remainder 1);
 alter table idxpart0 add primary key(i);
--- Uncomment when changing primary key of a partitioned table is implemented (#14196)
-/*
 alter table idxpart add primary key(i);
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
   conname, conislocal, coninhcount, connoinherit, convalidated
@@ -527,7 +524,6 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
-*/
 drop table idxpart;
 
 -- If the partition to be attached already has a primary key, fail if
@@ -551,8 +547,6 @@ drop table idxpart, idxpart1, idxpart11;
 create table idxpart (a int) partition by range (a);
 create table idxpart0 (like idxpart);
 alter table idxpart0 add primary key (a);
--- Uncomment when changing primary key of a partitioned table is implemented (#14196)
-/*
 alter table idxpart attach partition idxpart0 for values from (0) to (1000);
 alter table only idxpart add primary key (a);
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
@@ -568,17 +562,14 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
-*/
 drop table idxpart;
 
 -- if a partition has a unique index without a constraint, does not attach
 -- automatically; creates a new index instead.
-create table idxpart (a int PRIMARY KEY, b int) partition by range (a);
+create table idxpart (a int, b int) partition by range (a);
 create table idxpart1 (a int not null, b int);
 create unique index on idxpart1 (a);
--- Uncomment when changing primary key of a partitioned table is implemented (#14196).
--- For now primary key of idxpart is specified at creation time itself.
--- alter table idxpart add primary key (a);
+alter table idxpart add primary key (a);
 alter table idxpart attach partition idxpart1 for values from (1) to (1000);
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
   conname, conislocal, coninhcount, connoinherit, convalidated
@@ -588,8 +579,6 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   order by indexrelid::regclass::text collate "C";
 drop table idxpart;
 
--- Uncomment when changing primary key of a partitioned table is implemented (#14196)
-/*
 -- Can't attach an index without a corresponding constraint
 create table idxpart (a int, b int) partition by range (a);
 create table idxpart1 (a int not null, b int);
@@ -598,10 +587,6 @@ alter table idxpart attach partition idxpart1 for values from (1) to (1000);
 alter table only idxpart add primary key (a);
 alter index idxpart_pkey attach partition idxpart1_a_idx;	-- fail
 drop table idxpart;
-*/
--- YB Note: When above tests are uncommented, idxpart0 will be attached as a
--- partition to idxpart, so this drop statement will become unnecessary.
-drop table idxpart0;
 
 -- Test that unique constraints are working
 create table idxpart (a int, b text, primary key (a, b)) partition by range (a);
