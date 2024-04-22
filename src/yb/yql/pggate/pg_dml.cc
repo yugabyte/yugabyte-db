@@ -58,8 +58,7 @@ PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
   }
 }
 
-PgDml::~PgDml() {
-}
+PgDml::~PgDml() = default;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -344,18 +343,18 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
     return true;
 
   // Update request with the new batch of ybctids to fetch the next batch of rows.
-  RETURN_NOT_OK(UpdateRequestWithYbctids(retrieved_ybctids_,
-                                         secondary_index_query_->KeepOrder()));
+  RETURN_NOT_OK(UpdateRequestWithYbctids(*retrieved_ybctids_,
+                                         KeepOrder(secondary_index_query_->KeepOrder())));
 
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
 }
 
-Status PgDml::UpdateRequestWithYbctids(const std::vector<Slice> *ybctids, bool keepOrder) {
-  auto i = ybctids->begin();
-  return doc_op_->PopulateDmlByYbctidOps({make_lw_function([&i, end = ybctids->end()] {
+Status PgDml::UpdateRequestWithYbctids(const std::vector<Slice>& ybctids, KeepOrder keep_order) {
+  auto i = ybctids.begin();
+  return doc_op_->PopulateByYbctidOps({make_lw_function([&i, end = ybctids.end()] {
     return i != end ? *i++ : Slice();
-  }), ybctids->size(), keepOrder});
+  }), ybctids.size()}, keep_order);
 }
 
 Status PgDml::Fetch(int32_t natts,
