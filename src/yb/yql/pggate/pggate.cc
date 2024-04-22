@@ -242,8 +242,7 @@ class PrecastRequestSender {
 Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
                             PgOid database_id,
                             std::vector<TableYbctid>* ybctids,
-                            const std::unordered_set<PgOid>& region_local_tables,
-                            const bool keep_order) {
+                            const std::unordered_set<PgOid>& region_local_tables) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
     return a.table_id < b.table_id;
@@ -279,9 +278,9 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     exec_params.rowmark = ROW_MARK_KEYSHARE;
     RETURN_NOT_OK(doc_op.ExecuteInit(&exec_params));
     // Populate doc_op with ybctids which belong to current table.
-    RETURN_NOT_OK(doc_op.PopulateDmlByYbctidOps({make_lw_function([&it, table_id, end] {
+    RETURN_NOT_OK(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
       return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    }), static_cast<size_t>(end - it), keep_order}));
+    }), static_cast<size_t>(end - it)}));
     RETURN_NOT_OK(doc_op.Execute());
   }
 
@@ -2230,7 +2229,7 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
           [this, database_id](std::vector<TableYbctid>* ybctids,
                               const std::unordered_set<PgOid>& region_local_tables) {
             return FetchExistingYbctids(
-                pg_session_, database_id, ybctids, region_local_tables, false);
+                pg_session_, database_id, ybctids, region_local_tables);
           }));
 }
 

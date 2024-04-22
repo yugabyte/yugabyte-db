@@ -165,7 +165,7 @@ class PgDmlRead : public PgDml {
   Result<std::vector<Slice>> BuildYbctidsFromPrimaryBinds();
 
   Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params,
-                                           const std::vector<Slice> ybctids);
+                                           const std::vector<Slice>& ybctids);
   Result<dockv::DocKey> EncodeRowKeyForBound(
       YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound);
 
