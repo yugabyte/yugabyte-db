@@ -161,6 +161,6 @@ In the case of zone or region failures, followers in other regions are elected l
 
 ## Learn more
 
-- [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
+- [Tablespaces](../../../explore/going-beyond-sql/tablespaces/)
 - [Covering Indexes](../../../explore/ysql-language-features/indexes-constraints/covering-index-ysql/)
 - [Create Index](../../../api/ysql/the-sql-language/statements/ddl_create_index/)

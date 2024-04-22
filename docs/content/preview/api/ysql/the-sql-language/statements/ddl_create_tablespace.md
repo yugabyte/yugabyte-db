@@ -32,7 +32,7 @@ Use the `CREATE TABLESPACE` statement to create a tablespace in the cluster. It 
 
 ## Examples
 
-See [Tablespaces](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) and [Row Level Geo Partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) for full guides.
+See [Tablespaces](../../../../../explore/going-beyond-sql/tablespaces/) and [Row Level Geo Partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) for full guides.
 
 ## See also
 

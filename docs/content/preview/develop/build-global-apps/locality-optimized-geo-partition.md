@@ -22,7 +22,7 @@ Application instances are active in all regions, do consistent reads, and data i
 
 ![User data stored within their country's boundaries](/images/develop/global-apps/locality-optimized-geo-partition-goal.png)
 
-To do this, YugabyteDB supports [Row-level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/). This combines two well-known PostgreSQL concepts, [partitioning](../../../explore/ysql-language-features/advanced-features/partitions/), and [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
+To do this, YugabyteDB supports [Row-level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/). This combines two well-known PostgreSQL concepts, [partitioning](../../../explore/ysql-language-features/advanced-features/partitions/), and [tablespaces](../../../explore/going-beyond-sql/tablespaces/).
 
 ## Setup
 
@@ -123,6 +123,6 @@ This pattern is resilient to region failure. When any of the regions hosting one
 
 ## Learn more
 
-- [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
+- [Tablespaces](../../../explore/going-beyond-sql/tablespaces/)
 - [Table partitioning](../../../explore/ysql-language-features/advanced-features/partitions/)
 - [Row level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)
