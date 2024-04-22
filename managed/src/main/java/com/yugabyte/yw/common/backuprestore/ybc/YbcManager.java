@@ -278,11 +278,21 @@ public class YbcManager {
     if (MapUtils.isEmpty(currentThrottleParamsMap)) {
       throw new RuntimeException("Got empty map for current throttle params from YB-Controller");
     }
-    int cInstanceTypeCores =
-        (int)
-            Math.ceil(
-                InstanceType.getOrBadRequest(providerUUID, tsNodes.get(0).cloudInfo.instance_type)
-                    .getNumCores());
+    int cInstanceTypeCores;
+    if (!(Util.isKubernetesBasedUniverse(universe)
+        && confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources))) {
+      cInstanceTypeCores =
+          (int)
+              Math.ceil(
+                  InstanceType.getOrBadRequest(providerUUID, tsNodes.get(0).cloudInfo.instance_type)
+                      .getNumCores());
+    } else {
+      if (c.userIntent.tserverK8SNodeResourceSpec != null) {
+        cInstanceTypeCores = (int) Math.ceil(c.userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      } else {
+        throw new RuntimeException("Could not determine number of cores based on resource spec");
+      }
+    }
 
     // Modify throttle params map as need be, according to new values. Also cap the values
     // to instance type maximum allowed.
