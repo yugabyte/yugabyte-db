@@ -105,9 +105,12 @@ public class ReleaseController extends AuthenticatedController {
     }
 
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
+      // Validate the version
       LOG.warn("creating new style release with legacy api");
       versionDataList.forEach(
           data -> {
+            // Validate the version
+            releasesUtils.validateVersionAgainstCurrentYBA(data.version);
             if (Release.getByVersion(data.version) != null) {
               throw new PlatformServiceException(
                   BAD_REQUEST, "Release " + data.version + "already exists");
