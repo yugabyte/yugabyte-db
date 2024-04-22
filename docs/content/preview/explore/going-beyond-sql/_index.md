@@ -10,6 +10,7 @@ menu:
     weight: 210
 type: indexpage
 ---
+
 In today's digital landscape, businesses demand more from their data infrastructure than traditional databases can provide. They need databases that can seamlessly scale, deliver high performance, and ensure data resilience across geographical regions. While SQL compliance is a fundamental aspect, YugabyteDB goes further, offering a suite of advanced functionalities that address modern data challenges. In this article, we delve into some of YugabyteDB's cutting-edge capabilities and their implications for scalable, distributed applications.
 
 ## Read from followers
@@ -36,12 +37,12 @@ Sharding is a fundamental concept that determines how data is partitioned and di
 To learn more about how and when to choose Hash and Range sharding, see [Configurable data sharding](./data-sharding).
 {{</tip>}}
 
-## Native async replication
+## Native asynchronous replication
 
 Alongside strongly consistent synchronous replication, YugabyteDB with its xCluster feature, offers asynchronous replication that is designed to replicate data across independent primary clusters, providing a disaster recovery solution that is essential for maintaining business continuity. xCluster can be configured either to be uni-directional or bi-directional.
 
 {{<tip>}}
-To learn how to set up async replication and understand how it works, see [Async replication](./asynchronous-replication-ysql).
+To learn how to set up asynchronous replication and understand how it works, see [Asynchronous replication](./asynchronous-replication-ysql).
 {{</tip>}}
 
 ## Cluster topology
@@ -50,14 +51,6 @@ Cluster topology in YugabyteDB involves the arrangement of nodes in a cluster, b
 
 {{<tip>}}
 To learn more about the how to use the `yb_servers()` function, see [Cluster topology](./cluster-topology/).
-{{</tip>}}
-
-## Gen-AI
-
-As Generative AI (Gen-AI) technologies evolve, integrating them with databases opens new avenues for data-driven decision-making and user interactions. By leveraging chatbots as natural language interfaces, you can effortlessly access and interact with data stored in databases, enhancing accessibility and usability. With YugabyteDB's PostgreSQL compatibility, seamless integration with Gen-AI technologies further streamlines user interactions and data-driven workflows.
-
-{{<tip>}}
-To learn more about the how to build Gen-AI applications for YuagbyteDB, see [Gen-AI](./gen-ai-apps).
 {{</tip>}}
 
 ## Cluster-aware drivers
@@ -82,4 +75,20 @@ YugabyteDB includes a built-in connection pooling manager for YSQL. The manager 
 
 {{<tip>}}
 To learn how to use the built-in connection pooling and understand how it works, see [Connection Pooling](./connection-mgr-ysql).
+{{</tip>}}
+
+## Gen-AI applications
+
+As Generative AI (Gen-AI) technologies evolve, integrating them with databases opens new avenues for data-driven decision-making and user interactions. By leveraging chatbots as natural language interfaces, you can effortlessly access and interact with data stored in databases, enhancing accessibility and usability. With YugabyteDB's PostgreSQL compatibility, seamless integration with Gen-AI technologies further streamlines user interactions and data-driven workflows.
+
+{{<tip>}}
+To learn more about the how to build Gen-AI applications for YuagbyteDB, see [Gen-AI](./gen-ai-apps).
+{{</tip>}}
+
+## Decouple storage and compute resources
+
+YugabyteDB's flexible architecture allows you to decouple storage and compute resources for improved scalability, independent scaling, and enhanced fault tolerance, and helps you future-proof your systems.
+
+{{<tip>}}
+To learn more about the how to decouple storage and compute resources using YuagbyteDB, see [Decouple storage and compute](./decoupling-compute-storage/).
 {{</tip>}}
