@@ -12,8 +12,10 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
@@ -32,7 +34,7 @@ import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ReleasesControllerTest extends FakeDBApplication {
-  @Inject ReleasesController releasesController;
+  private ConfigHelper configHelper;
 
   Customer defaultCustomer;
   Users defaultUser;
@@ -41,6 +43,10 @@ public class ReleasesControllerTest extends FakeDBApplication {
   public void setUp() {
     this.defaultCustomer = ModelFactory.testCustomer();
     this.defaultUser = ModelFactory.testUser(defaultCustomer);
+
+    configHelper = app.injector().instanceOf(ConfigHelper.class);
+    configHelper.loadConfigToDB(
+        ConfigType.SoftwareVersion, ImmutableMap.of("version", "2.23.0.0-b1"));
   }
 
   @Test
