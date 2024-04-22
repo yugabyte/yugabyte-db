@@ -28,6 +28,7 @@
  helio_core | bson_to_bsonsequence      | helio_core.bsonsequence | helio_core.bson                            | func
  helio_core | bson_to_bytea             | bytea                   | helio_core.bson                            | func
  helio_core | bson_to_json_string       | cstring                 | helio_core.bson                            | func
+ helio_core | bson_typanalyze           | boolean                 | internal                                   | func
  helio_core | bson_unique_index_equal   | boolean                 | helio_core.bson, helio_core.bson           | func
  helio_core | bsonquery_compare         | integer                 | helio_core.bson, helio_core.bsonquery      | func
  helio_core | bsonquery_compare         | integer                 | helio_core.bsonquery, helio_core.bsonquery | func
@@ -49,7 +50,7 @@
  helio_core | bsonsequence_send         | bytea                   | helio_core.bsonsequence                    | func
  helio_core | bsonsequence_to_bytea     | bytea                   | helio_core.bsonsequence                    | func
  helio_core | row_get_bson              | helio_core.bson         | record                                     | func
-(46 rows)
+(47 rows)
 
 -- show all aggregates exported
 \da+ helio_core.*

@@ -20,4 +20,8 @@ SET search_path TO helio_api;
 #include "udfs/aggregation/bson_lookup_functions--1.16-0.sql"
 
 #include "udfs/commands_diagnostic/coll_stats--1.16-0.sql"
+
+#include "udfs/query/bson_dollar_selectivity--1.16-0.sql"
+#include "operators/bson_dollar_operators--1.16-0.sql"
+
 RESET search_path;

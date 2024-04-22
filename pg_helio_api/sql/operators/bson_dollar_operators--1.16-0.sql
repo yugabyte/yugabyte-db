@@ -1,0 +1,25 @@
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@=(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@!=(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@<(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@<=(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@>(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@>=(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@*=(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@!*=(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@~(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@%(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@?(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@@#(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@#(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@&=(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@#?(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@!&(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@!|(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@&(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.@|(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+
+ALTER OPERATOR __API_CATALOG_SCHEMA__.#=(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bsonquery) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.#>(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bsonquery) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.#>= (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bsonquery) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.#< (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bsonquery) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);
+ALTER OPERATOR __API_CATALOG_SCHEMA__.#<= (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bsonquery) SET (RESTRICT = helio_api_internal.bson_dollar_selectivity);

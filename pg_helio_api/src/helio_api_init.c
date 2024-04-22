@@ -70,6 +70,9 @@ bool UseLocalExecutionShardQueries = DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES;
 #define DEFAULT_LOOKUP_USE_LEGACY_EXTRACT_FUNCTIONS false
 bool LookupUseLegacyExtractFunctions = DEFAULT_LOOKUP_USE_LEGACY_EXTRACT_FUNCTIONS;
 
+#define DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY false
+bool EnableNewOperatorSelectivityMode = DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY;
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -587,6 +590,14 @@ InitApiConfigurations(char *prefix)
 			"Determines whether to use the legacy extract function if set to true."),
 		NULL, &LookupUseLegacyExtractFunctions,
 		DEFAULT_LOOKUP_USE_LEGACY_EXTRACT_FUNCTIONS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableNewSelectivityMode",
+		gettext_noop(
+			"Determines whether to use the new selectivity logic."),
+		NULL, &EnableNewOperatorSelectivityMode,
+		DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 
