@@ -17,7 +17,7 @@ type: docs
 
 YugabyteDB supports the following types of reads:
 
-- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
+- [Follower reads](../../going-beyond-sql/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
 - Observer reads that use read replicas. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
 
 A data center (also known as a [universe](../../../architecture/concepts#universe)) can have one primary cluster and several read replica clusters.
@@ -282,4 +282,4 @@ For additional information, see [Fault Tolerance](../../fault-tolerance/macos/).
 ## Learn more
 
 - [Read replica architecture](../../../architecture/docdb-replication/read-replicas)
-- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/)
+- [Follower reads](../../going-beyond-sql/follower-reads-ycql/)

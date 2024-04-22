@@ -104,7 +104,7 @@ For best performance as well as lower data transfer costs, you want to minimize 
 
 YugabyteDB offers tunable global reads that allow read requests to trade off some consistency for lower read latency. By default, read requests in a YugabyteDB cluster are handled by the leader of the Raft group associated with the target tablet to ensure strong consistency. In situations where you are willing to sacrifice some consistency in favor of lower latency, you can choose to read from a tablet follower that is closer to the client rather than from the leader. YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers.
 
-For more information on follower reads, refer to the [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ysql/) example.
+For more information on follower reads, refer to the [Follower reads](../../going-beyond-sql/follower-reads-ysql/) example.
 
 ### Preferred region
 
