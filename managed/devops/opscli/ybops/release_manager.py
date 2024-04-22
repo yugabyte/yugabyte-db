@@ -56,39 +56,6 @@ class ReleaseManager(object):
 
         return release_manifest
 
-    def check_for_uncommitted_changes(self):
-        """This method checks if the git repository isn't dirty.
-        """
-        local_changes = subprocess.check_output(
-            ["git", "diff", "origin/master"]).decode("utf-8").strip()
-
-        if not local_changes:
-            return
-
-        ybutils.log_message(logging.ERROR,
-                            "Repository {} appears to have uncommitted changes. "
-                            "The source release will not include your local changes."
-                            .format(self.repository))
-        if not self.force_yes:
-            ybutils.confirm_prompt("Continue?")
-
-    def check_for_local_commits(self):
-        """This method checks if there is local commits which haven't been pushed upstream.
-        """
-        subprocess.call(["git", "fetch", "origin"])
-        local_commits = subprocess.check_output(
-            ["git", "log", "origin/master..HEAD", "--oneline"]).decode("utf-8")
-        if not local_commits:
-            return
-
-        ybutils.log_message(logging.ERROR,
-                            "Repository {} appears to have local commits:\n {} "
-                            "This should not be an official release!"
-                            .format(self.repository, local_commits))
-
-        if not self.force_yes:
-            ybutils.confirm_prompt("Continue?")
-
     def create_tarball(self):
         """This method creates a tar file based on the release manifest.
         Returns:
@@ -137,8 +104,6 @@ class ReleaseManager(object):
         current_dir = os.getcwd()
         try:
             os.chdir(self.repository)
-            self.check_for_uncommitted_changes()
-            self.check_for_local_commits()
             tar_file = self.create_tarball()
             ybutils.log_message(logging.INFO, "Release generation succeeded!")
         finally:
