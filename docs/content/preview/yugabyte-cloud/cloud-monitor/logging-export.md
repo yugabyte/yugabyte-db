@@ -12,12 +12,14 @@ menu:
 type: docs
 ---
 
-Export cluster database logs to third-party tools for analysis and customization. You can export the following types of logs:
+Export YSQL database logs to third-party tools for security monitoring, to build operations and health dashboards, troubleshooting, and more. You can export the following types of logs:
 
 - Database query log. This is the standard [PostgreSQL logging](https://www.postgresql.org/docs/11/runtime-config-logging.html) facility. Using these settings you can log query statements and errors.
-- Database audit log. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides more fine-grained logs often required to comply with government, financial, or ISO certifications.
+- Database audit log. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
 
-Exporting logs may incur additional costs for network transfer, especially for cross-region and internet-based transfers. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
+Note that YugabyteDB is based on PostgreSQL 11 and uses pgaudit v1.3.2.
+
+Exporting logs may incur additional costs for network transfer within a cloud region, between cloud regions, and across the internet. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
 {{< tip title="Session logging" >}}
 
