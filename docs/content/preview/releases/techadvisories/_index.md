@@ -47,7 +47,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 |Correctness issue for queries using SELECT DISTINCT
 | {{<product "ysql">}}
 | {{<release "2.20.1.x">}}
-| {{<nobreak "02 Feb 2024">}}
+| {{<nobreak "06 Feb 2024">}}
 |
 | {{<ta 20398>}}
 |Slow execution of copy command and multi-row inserts
