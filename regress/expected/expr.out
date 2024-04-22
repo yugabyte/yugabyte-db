@@ -3077,6 +3077,22 @@ $$) AS (toBoolean agtype);
  false
 (1 row)
 
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(1)
+$$) AS (toBoolean agtype);
+ toboolean 
+-----------
+ true
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(0)
+$$) AS (toBoolean agtype);
+ toboolean 
+-----------
+ false
+(1 row)
+
 -- should return null
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean("false_")
@@ -3095,10 +3111,6 @@ $$) AS (toBoolean agtype);
 (1 row)
 
 -- should fail
-SELECT * FROM cypher('expr', $$
-    RETURN toBoolean(1)
-$$) AS (toBoolean agtype);
-ERROR:  toBoolean() unsupported argument agtype 3
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean()
 $$) AS (toBoolean agtype);
@@ -3129,6 +3141,14 @@ $$) AS (toBooleanList agtype);
     tobooleanlist    
 ---------------------
  [true, false, true]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([0,1,2,3,4])
+$$) AS (toBooleanList agtype);
+          tobooleanlist          
+---------------------------------
+ [false, true, true, true, true]
 (1 row)
 
 -- should return null
@@ -3162,14 +3182,6 @@ $$) AS (toBooleanList agtype);
  tobooleanlist 
 ---------------
  [null, null]
-(1 row)
-
-SELECT * FROM cypher('expr', $$
-    RETURN toBooleanList([0,1,2,3,4])
-$$) AS (toBooleanList agtype);
-         tobooleanlist          
---------------------------------
- [null, null, null, null, null]
 (1 row)
 
 -- should fail
