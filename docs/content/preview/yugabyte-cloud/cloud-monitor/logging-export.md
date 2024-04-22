@@ -19,7 +19,7 @@ Export YSQL database logs to third-party tools for security monitoring, to build
 
 Note that YugabyteDB is based on PostgreSQL 11 and uses pgaudit v1.3.2.
 
-Exporting logs may incur additional costs for network transfer within a cloud region, between cloud regions, and across the internet. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
+Exporting logs may incur additional costs for network transfer within a cloud region, between cloud regions, and across the Internet. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
 {{< tip title="Session logging" >}}
 
