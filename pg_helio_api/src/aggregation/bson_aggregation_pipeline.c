@@ -3920,9 +3920,11 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	Datum collectionNameDatum = PointerGetDatum(
 		cstring_to_text_with_len(collectionNameView->string, collectionNameView->length));
 
-	MongoCollection *collection =
-		GetMongoCollectionOrViewByNameDatum(databaseDatum, collectionNameDatum,
-											AccessShareLock);
+	MongoCollection *collection = context->allowShardBaseTable ?
+								  GetMongoCollectionOrViewByNameDatumWithLocalShard(
+		databaseDatum, collectionNameDatum, AccessShareLock) :
+								  GetMongoCollectionOrViewByNameDatum(
+		databaseDatum, collectionNameDatum, AccessShareLock);
 
 	/* CollectionUUID mismatch when collection doesn't exist */
 	if (collectionUuid != NULL)
@@ -4019,14 +4021,6 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	{
 		rte->rtekind = RTE_RELATION;
 		rte->relid = collection->relationId;
-		if (context->allowShardBaseTable)
-		{
-			Oid shardOid = TryGetCollectionShardTable(collection, AccessShareLock);
-			if (shardOid != InvalidOid)
-			{
-				rte->relid = shardOid;
-			}
-		}
 
 		rte->alias = makeAlias(collectionAlias, NIL);
 		rte->eref = makeAlias(collectionAlias, colNames);

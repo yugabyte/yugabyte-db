@@ -119,6 +119,11 @@ MongoCollection * GetMongoCollectionOrViewByNameDatum(Datum dbNameDatum,
 													  Datum collectionNameDatum,
 													  LOCKMODE lockMode);
 
+MongoCollection * GetMongoCollectionOrViewByNameDatumWithLocalShard(Datum dbNameDatum,
+																	Datum
+																	collectionNameDatum,
+																	LOCKMODE lockMode);
+
 MongoCollection * GetTempMongoCollectionByNameDatum(Datum dbNameDatum,
 													Datum collectionNameDatum,
 													char *collectionName,

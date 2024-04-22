@@ -122,7 +122,8 @@ static Oid GetRelationIdForCollectionTableName(char *collectionTableName,
 static AttrNumber GetMongoDataCreationTimeVarAttrNumber(Oid collectionOid);
 static MongoCollection * GetMongoCollectionByNameDatumCore(Datum databaseNameDatum,
 														   Datum collectionNameDatum,
-														   LOCKMODE lockMode);
+														   LOCKMODE lockMode,
+														   bool allowLocalShard);
 static Datum GetCollectionOrViewCore(PG_FUNCTION_ARGS, bool allowViews);
 
 /*
@@ -397,8 +398,20 @@ MongoCollection *
 GetMongoCollectionOrViewByNameDatum(Datum databaseNameDatum, Datum collectionNameDatum,
 									LOCKMODE lockMode)
 {
+	bool allowLocalShard = false;
 	return GetMongoCollectionByNameDatumCore(databaseNameDatum, collectionNameDatum,
-											 lockMode);
+											 lockMode, allowLocalShard);
+}
+
+
+MongoCollection *
+GetMongoCollectionOrViewByNameDatumWithLocalShard(Datum databaseNameDatum,
+												  Datum collectionNameDatum,
+												  LOCKMODE lockMode)
+{
+	bool allowLocalShard = true;
+	return GetMongoCollectionByNameDatumCore(databaseNameDatum, collectionNameDatum,
+											 lockMode, allowLocalShard);
 }
 
 
@@ -410,9 +423,10 @@ MongoCollection *
 GetMongoCollectionByNameDatum(Datum databaseNameDatum, Datum collectionNameDatum,
 							  LOCKMODE lockMode)
 {
+	bool allowLocalShard = false;
 	MongoCollection *collection =
 		GetMongoCollectionByNameDatumCore(databaseNameDatum, collectionNameDatum,
-										  lockMode);
+										  lockMode, allowLocalShard);
 
 	if (collection != NULL && collection->viewDefinition != NULL)
 	{
@@ -468,7 +482,7 @@ TryGetCollectionShardTable(MongoCollection *collection, LOCKMODE lockMode)
  */
 static MongoCollection *
 GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameDatum,
-								  LOCKMODE lockMode)
+								  LOCKMODE lockMode, bool allowLocalShard)
 {
 	/* make sure hashes exist */
 	InitializeCollectionsHash();
@@ -501,18 +515,27 @@ GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameD
 	NameToCollectionCacheEntry *entryByName =
 		hash_search(NameToCollectionHash, &qualifiedName, HASH_FIND, &foundInCache);
 
+	Oid shardOid = InvalidOid;
 	if (foundInCache)
 	{
 		/* refresh relation ID based on the name */
 		if (entryByName->collection.viewDefinition == NULL)
 		{
-			entryByName->collection.relationId =
-				GetRelationIdForCollectionTableName(entryByName->collection.tableName,
-													lockMode);
-			if (!OidIsValid(entryByName->collection.relationId))
+			if (allowLocalShard)
 			{
-				/* table was dropped */
-				return NULL;
+				shardOid = TryGetCollectionShardTable(&entryByName->collection, lockMode);
+			}
+
+			if (shardOid == InvalidOid)
+			{
+				entryByName->collection.relationId =
+					GetRelationIdForCollectionTableName(entryByName->collection.tableName,
+														lockMode);
+				if (!OidIsValid(entryByName->collection.relationId))
+				{
+					/* table was dropped */
+					return NULL;
+				}
 			}
 		}
 
@@ -531,7 +554,15 @@ GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameD
 		}
 		else if (entryByName->isValid)
 		{
-			return CopyMongoCollection(&(entryByName->collection));
+			MongoCollection *copiedColl = CopyMongoCollection(&(entryByName->collection));
+
+			/* Now that we have a separate copy, retain the shardOid if requested */
+			if (shardOid != InvalidOid)
+			{
+				copiedColl->relationId = shardOid;
+			}
+
+			return copiedColl;
 		}
 	}
 
