@@ -2,10 +2,7 @@
   {
     "data": [
       {
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "Average",
         "x": [
           1706271600000,
@@ -35,10 +32,7 @@
         ]
       },
       {
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "Max",
         "x": [
           1706271600000,
@@ -68,10 +62,7 @@
         ]
       },
       {
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "Mean",
         "x": [
           1706271600000,
@@ -101,10 +92,7 @@
         ]
       },
       {
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "P90",
         "x": [
           1706271600000,
@@ -134,10 +122,7 @@
         ]
       },
       {
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "P99",
         "x": [
           1706271600000,
@@ -168,10 +153,7 @@
       },
       {
         "instanceName": "node2",
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "Average",
         "x": [
           1706271600000,
@@ -202,10 +184,7 @@
       },
       {
         "instanceName": "node2",
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "Max",
         "x": [
           1706271600000,
@@ -236,10 +215,7 @@
       },
       {
         "instanceName": "node2",
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "Mean",
         "x": [
           1706271600000,
@@ -270,10 +246,7 @@
       },
       {
         "instanceName": "node2",
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "P90",
         "x": [
           1706271600000,
@@ -304,10 +277,7 @@
       },
       {
         "instanceName": "node2",
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "P99",
         "x": [
           1706271600000,
@@ -338,10 +308,7 @@
       },
       {
         "instanceName": "node3",
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "Average",
         "x": [
           1706271600000,
@@ -372,10 +339,7 @@
       },
       {
         "instanceName": "node3",
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "Max",
         "x": [
           1706271600000,
@@ -406,10 +370,7 @@
       },
       {
         "instanceName": "node3",
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "Mean",
         "x": [
           1706271600000,
@@ -440,10 +401,7 @@
       },
       {
         "instanceName": "node3",
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "P90",
         "x": [
           1706271600000,
@@ -474,10 +432,7 @@
       },
       {
         "instanceName": "node3",
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1"
-        },
+        "labels": {},
         "name": "P99",
         "x": [
           1706271600000,

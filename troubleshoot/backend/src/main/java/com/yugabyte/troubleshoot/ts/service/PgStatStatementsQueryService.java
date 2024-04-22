@@ -54,6 +54,21 @@ public class PgStatStatementsQueryService
         .toList();
   }
 
+  public List<PgStatStatementsQuery> listByDatabaseId(UUID universeUuid, String dbId) {
+    return new QPgStatStatementsQuery().id.universeId.eq(universeUuid).id.dbId.eq(dbId).findList();
+  }
+
+  public List<PgStatStatementsQuery> listByQueryId(UUID universeUuid, Long queryId) {
+    return new QPgStatStatementsQuery()
+        .id
+        .universeId
+        .eq(universeUuid)
+        .id
+        .queryId
+        .eq(queryId)
+        .findList();
+  }
+
   public List<PgStatStatementsQuery> listByUniverseId(UUID universeUuid) {
     return new QPgStatStatementsQuery().id.universeId.eq(universeUuid).findList();
   }

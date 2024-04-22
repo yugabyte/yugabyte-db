@@ -60,17 +60,17 @@ public class GraphServiceTest {
     pgStatStatementsService.save(createStatements("node2", 1L, 30));
     pgStatStatementsService.save(createStatements("node3", 1L, 30));
     activeSessionHistoryService.save(
-        createAshEntries("node1", "TServer", "Consensus", "WAL_Sync", 1L, 50));
+        createAshEntries("node1", "TServer", "Consensus", "WAL_Sync", 1L, "0.0.0.0", 50));
     activeSessionHistoryService.save(
-        createAshEntries("node1", "YSQL", "YSQLQuery", "QueryProcessing", 200L, 30));
+        createAshEntries("node1", "YSQL", "YSQLQuery", "QueryProcessing", 200L, "1.1.1.1", 30));
     activeSessionHistoryService.save(
-        createAshEntries("node1", "YSQL", "TServerWait", "CatalogRead", 200L, 50));
+        createAshEntries("node1", "YSQL", "TServerWait", "CatalogRead", 200L, "1.1.1.1", 50));
     activeSessionHistoryService.save(
-        createAshEntries("node2", "TServer", "Consensus", "WAL_Sync", 1L, 30));
+        createAshEntries("node2", "TServer", "Consensus", "WAL_Sync", 1L, "0.0.0.0", 30));
     activeSessionHistoryService.save(
-        createAshEntries("node2", "YSQL", "YSQLQuery", "QueryProcessing", 200L, 50));
+        createAshEntries("node2", "YSQL", "YSQLQuery", "QueryProcessing", 200L, "2.2.2.2", 50));
     activeSessionHistoryService.save(
-        createAshEntries("node2", "YSQL", "TServerWait", "CatalogRead", 300L, 50));
+        createAshEntries("node2", "YSQL", "TServerWait", "CatalogRead", 300L, "2.2.2.2", 50));
 
     server = MockRestServiceServer.createServer(prometheusClientTemplate);
   }
@@ -122,6 +122,33 @@ public class GraphServiceTest {
 
   @SneakyThrows
   @Test
+  public void testOutlierGroupByClientAshGraph() {
+    GraphQuery graphQuery = new GraphQuery();
+    graphQuery.setEnd(periodEnd);
+    graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
+    graphQuery.setName("active_session_history");
+    GraphSettings settings = new GraphSettings();
+    settings.setSplitMode(GraphSettings.SplitMode.TOP);
+    settings.setSplitType(GraphSettings.SplitType.NODE);
+    settings.setSplitCount(2);
+    settings.setReturnAggregatedValue(true);
+    graphQuery.setGroupBy(GraphLabel.clientNodeIp);
+    graphQuery.setSettings(settings);
+
+    List<GraphResponse> response =
+        graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
+
+    String expectedResponseStr =
+        CommonUtils.readResource("query/outlier_group_by_client_ash_response.json");
+    JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
+
+    assertThat(actualResponse).isEqualTo(expectedResponse);
+  }
+
+  @SneakyThrows
+  @Test
   public void testQueryAshGraph() {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
@@ -148,6 +175,52 @@ public class GraphServiceTest {
 
   @SneakyThrows
   @Test
+  public void testAshGroupByQueryGraph() {
+    GraphQuery graphQuery = new GraphQuery();
+    graphQuery.setEnd(periodEnd);
+    graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
+    graphQuery.setName("active_session_history");
+    graphQuery.setFilters(ImmutableMap.of(GraphLabel.regionCode, ImmutableList.of("us-west-1")));
+    graphQuery.setGroupBy(GraphLabel.queryId);
+    graphQuery.setSettings(new GraphSettings());
+
+    List<GraphResponse> response =
+        graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
+
+    String expectedResponseStr =
+        CommonUtils.readResource("query/overall_group_by_query_ash_response.json");
+    JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
+
+    assertThat(actualResponse).isEqualTo(expectedResponse);
+  }
+
+  @SneakyThrows
+  @Test
+  public void testAshGroupByClientIPGraph() {
+    GraphQuery graphQuery = new GraphQuery();
+    graphQuery.setEnd(periodEnd);
+    graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
+    graphQuery.setName("active_session_history");
+    graphQuery.setFilters(ImmutableMap.of(GraphLabel.regionCode, ImmutableList.of("us-west-1")));
+    graphQuery.setGroupBy(GraphLabel.clientNodeIp);
+    graphQuery.setSettings(new GraphSettings());
+
+    List<GraphResponse> response =
+        graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
+
+    String expectedResponseStr =
+        CommonUtils.readResource("query/overall_group_by_client_ash_response.json");
+    JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
+
+    assertThat(actualResponse).isEqualTo(expectedResponse);
+  }
+
+  @SneakyThrows
+  @Test
   public void testOverallPssGraph() {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
@@ -156,6 +229,8 @@ public class GraphServiceTest {
         ImmutableMap.of(
             GraphLabel.queryId,
             ImmutableList.of("1"),
+            GraphLabel.dbId,
+            ImmutableList.of("12345"),
             GraphLabel.regionCode,
             ImmutableList.of("us-west-1")));
     graphQuery.setName("query_latency");
@@ -178,7 +253,10 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setFilters(ImmutableMap.of(GraphLabel.queryId, ImmutableList.of("1")));
+    graphQuery.setFilters(
+        ImmutableMap.of(
+            GraphLabel.queryId, ImmutableList.of("1"),
+            GraphLabel.dbId, ImmutableList.of("12345")));
     graphQuery.setName("query_latency");
     GraphSettings settings = new GraphSettings();
     settings.setSplitMode(GraphSettings.SplitMode.TOP);
@@ -395,6 +473,7 @@ public class GraphServiceTest {
       String waitEventClass,
       String waitEvent,
       long queryId,
+      String clientNodeIp,
       int count) {
     return IntStream.range(0, count)
         .mapToObj(
@@ -406,7 +485,7 @@ public class GraphServiceTest {
                     waitEventClass,
                     waitEvent,
                     queryId,
-                    (double) i))
+                    clientNodeIp))
         .collect(Collectors.toList());
   }
 
@@ -417,7 +496,7 @@ public class GraphServiceTest {
       String waitEventClass,
       String waitEvent,
       long queryId,
-      Double value) {
+      String clientNodeIp) {
     return new ActiveSessionHistory()
         .setSampleTime(Instant.ofEpochSecond(periodEnd.getEpochSecond() - beforeSeconds))
         .setUniverseId(metadata.getId())
@@ -430,7 +509,7 @@ public class GraphServiceTest {
         .setTopLevelNodeId(UUID.randomUUID())
         .setQueryId(queryId)
         .setYsqlSessionId(new Random().nextLong())
-        .setClientNodeIp("1.1.1.1")
+        .setClientNodeIp(clientNodeIp)
         .setWaitEventAux(String.valueOf(new Random().nextLong()))
         .setSampleWeight(1);
   }
