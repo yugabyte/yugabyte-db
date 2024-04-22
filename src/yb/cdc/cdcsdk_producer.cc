@@ -652,6 +652,9 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
               << " from system catalog table with read hybrid time: " << read_hybrid_time;
     }
 
+    VLOG(1) << "Populating schema details for table " << req_table_id
+            << " tablet " << tablet->tablet_id();
+
     const auto& schema_details = (*cached_schema_details)[cur_table_id];
     FillDDLInfo(tablet_peer, schema_details, table_name, resp);
 
@@ -1429,8 +1432,8 @@ Status PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
       resp, client);
 
   if (!status.ok()) {
-    VLOG_WITH_FUNC(1) << "Recevied error status: " << status.ToString()
-                      << ", while prcoessing WRITE_OP, with op_id: " << msg->id().ShortDebugString()
+    VLOG_WITH_FUNC(1) << "Received error status: " << status.ToString()
+                      << ", while processing WRITE_OP, with op_id: " << msg->id().ShortDebugString()
                       << ", on tablet: " << tablet_peer->tablet_id();
     // Remove partial remnants created while processing the write record
     while (resp->cdc_sdk_proto_records_size() > records_size_before) {
@@ -1680,8 +1683,8 @@ Status PrcoessIntentsWithInvalidSchemaRetry(
       commit_time);
 
   if (!status.ok()) {
-    VLOG_WITH_FUNC(1) << "Recevied error status: " << status.ToString()
-                      << ", while prcoessing intents for transaction: " << transaction_id
+    VLOG_WITH_FUNC(1) << "Received error status: " << status.ToString()
+                      << ", while processing intents for transaction: " << transaction_id
                       << ", with APPLY op_id: " << op_id
                       << ", on tablet: " << tablet_peer->tablet_id();
     // Remove partial remnants created while processing intents

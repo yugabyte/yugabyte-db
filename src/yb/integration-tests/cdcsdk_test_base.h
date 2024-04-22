@@ -53,6 +53,7 @@ namespace cdc {
 constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
+static const std::string kEnumTypeName = "coupon_discount_type";
 constexpr static const char* const kTableName = "test_table";
 constexpr static const char* const kKeyColumnName = "key";
 constexpr static const char* const kValueColumnName = "value_1";

@@ -821,7 +821,7 @@ namespace cdc {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const int tablet_idx, int64 index, int64 term, std::string key, int32_t write_id,
       int64 snapshot_time, const TableId table_id, int64 safe_hybrid_time,
-      int32_t wal_segment_index, const bool populate_checkpoint) {
+      int32_t wal_segment_index, const bool populate_checkpoint, const bool need_schema_info) {
     change_req->set_stream_id(stream_id.ToString());
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
     if (populate_checkpoint) {
@@ -836,6 +836,7 @@ namespace cdc {
       change_req->set_table_id(table_id);
     }
     change_req->set_safe_hybrid_time(safe_hybrid_time);
+    change_req->set_need_schema_info(need_schema_info);
   }
 
   void CDCSDKYsqlTest::PrepareChangeRequest(
@@ -1387,14 +1388,15 @@ namespace cdc {
       int64 safe_hybrid_time,
       int wal_segment_index,
       const bool populate_checkpoint,
-      const bool should_retry) {
+      const bool should_retry,
+      const bool need_schema_info) {
     GetChangesRequestPB change_req;
     GetChangesResponsePB change_resp;
 
     if (cp == nullptr) {
       PrepareChangeRequest(
           &change_req, stream_id, tablets, tablet_idx, 0, 0, "", 0, 0, "", safe_hybrid_time,
-          wal_segment_index, populate_checkpoint);
+          wal_segment_index, populate_checkpoint, need_schema_info);
     } else {
       PrepareChangeRequest(
           &change_req, stream_id, tablets, *cp, tablet_idx, "", safe_hybrid_time,
