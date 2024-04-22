@@ -73,6 +73,30 @@ public class ReleasesUtilsTest extends FakeDBApplication {
     assertEquals("LTS", releasesUtils.releaseTypeFromVersion("2024.2.0.0-b3"));
   }
 
+  @Test
+  public void testValidateVersionAgainstCurrentYBA() {
+    when(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion))
+        .thenReturn(getVersionMap("2024.1.0.0-b23"));
+
+    // Should pass
+    releasesUtils.validateVersionAgainstCurrentYBA("2024.1.0.0-b23");
+    releasesUtils.validateVersionAgainstCurrentYBA("2024.1.0.0-b22");
+    releasesUtils.validateVersionAgainstCurrentYBA("2024.0.0.0-b23");
+    releasesUtils.validateVersionAgainstCurrentYBA("2024.0.0.0-b24");
+    releasesUtils.validateVersionAgainstCurrentYBA("2.20.1.2-b99");
+
+    // Should fail
+    assertThrows(
+        PlatformServiceException.class,
+        () -> releasesUtils.validateVersionAgainstCurrentYBA("2024.1.0.0-b100"));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> releasesUtils.validateVersionAgainstCurrentYBA("2024.2.0.0-b1"));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> releasesUtils.validateVersionAgainstCurrentYBA("2025.1.0.0-b1"));
+  }
+
   private URL getMockUrl(String filename) {
     try {
       final URLConnection mockConnection = mock(URLConnection.class);

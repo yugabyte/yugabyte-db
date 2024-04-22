@@ -1,7 +1,9 @@
 package com.yugabyte.yw.controllers;
 
+import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -49,6 +51,7 @@ import play.mvc.Result;
     hidden = true)
 @Slf4j
 public class ReleasesController extends AuthenticatedController {
+  @Inject ReleasesUtils releasesUtils;
 
   @ApiOperation(
       value = "Create a release",
@@ -75,6 +78,10 @@ public class ReleasesController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     CreateRelease reqRelease =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), CreateRelease.class);
+
+    // Validate the version
+    releasesUtils.validateVersionAgainstCurrentYBA(reqRelease.version);
+
     // Validate the version/tag combo doesn't exist
     if (reqRelease.release_uuid == null) {
       log.trace("generating random release UUID as one was not provided");
