@@ -240,7 +240,7 @@ For applications that have writes happening from a single zone or region but wan
 
 **Consistency**: The data in the replica clusters is timeline consistent, which is better than eventual consistency.
 
-**Latency**: Reads from both the primary cluster and read replicas can be fast (single digit millisecond latency) because read replicas can serve timeline consistent reads without having to go to the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) in the primary cluster. Read replicas don't handle write requests; these are redirected to the primary cluster. So the write latency will depend on the distance between the client and the primary cluster.
+**Latency**: Reads from both the primary cluster and read replicas can be fast (single digit millisecond latency) because read replicas can serve timeline consistent reads without having to go to the [tablet leader](../../../architecture/key-concepts/#tablet-leader) in the primary cluster. Read replicas don't handle write requests; these are redirected to the primary cluster. So the write latency will depend on the distance between the client and the primary cluster.
 
 **Strengths**
 
