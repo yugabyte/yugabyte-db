@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: architecture-isolation-levels
     parent: architecture-acid-transactions
-    weight: 20
+    weight: 500
 type: docs
 ---
 

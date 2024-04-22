@@ -26,7 +26,7 @@ Specify the name of the sequence.
 
 ## Caching values on the YB-TServer
 
-If [ysql_sequence_cache_method](../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-method) is set to `server`, sequence values are cached on the YB-TServer, to be shared with all connections on that YB-TServer. This is beneficial when many connections on the server are expected to get the next value of a sequence. Normally, each connection waits for replication to complete, which can be expensive, especially in a multi-region cluster. With the server cache method, only one connection waits for RAFT replication and the rest retrieve values from the same cached range.
+If [ysql_sequence_cache_method](../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-method) is set to `server`, sequence values are cached on the YB-TServer, to be shared with all connections on that YB-TServer. This is beneficial when many connections on the server are expected to get the next value of a sequence. Normally, each connection waits for replication to complete, which can be expensive, especially in a multi-region cluster. With the server cache method, only one connection waits for Raft replication and the rest retrieve values from the same cached range.
 
 When the server cache method is used, the connection cache size is implicitly set to 1. When the cache method is changed from `connection` to `server`, sequences continue to use the connection cache until it is exhausted, at which point they begin using the server cache. When the cache method is changed from `server` to `connection`, sequences immediately begin using a connection cache. The server cache is not cleared in this case, and its values can later be retrieved if the cache method is again set to `server`.
 

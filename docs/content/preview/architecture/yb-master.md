@@ -19,7 +19,7 @@ The YB-Master service keeps the system metadata and records, such as tables and 
 
 The YB-Master service is also responsible for coordinating background operations, such as load-balancing or initiating replication of under-replicated data, as well as performing a variety of administrative operations such as creating, altering, and dropping tables.
 
-The YB-Master is highly available, as it forms a Raft group with its peers, and it is not in the critical path of I/O against user tables.
+The YB-Master is [highly available](#high-availability), as it forms a Raft group with its peers, and it is not in the critical path of I/O against user tables.
 
 ![master_overview](/images/architecture/master_overview.png)
 
@@ -42,6 +42,10 @@ The YB-Master stores important system-wide metadata, which includes information 
 This system metadata is crucial for managing and coordinating the entire YugabyteDB cluster. The YB-Master stores this system metadata in an internal table. This allows the metadata to be managed and accessed like any other table in the database.
 
 To ensure redundancy and prevent data loss, the system metadata is replicated across all YB-Master nodes using a replication protocol called Raft. This means that if one YB-Master fails, the others will still have the up-to-date system metadata.
+
+## Table creation
+
+The YB-Master leader validates the table schema and decides the desired number of tablets for the table and creates metadata for each of them. The table schema and the tablet metadata information is replicated to YB-Master Raft group. This ensures that the table creation can succeed even if the current YB-Master leader fails. After this, as the operation is asynchronous and can proceed even if the current YB-Master leader fails, the table creation API returns a success.
 
 ## Tablet assignments
 
@@ -68,3 +72,7 @@ If the YB-Master detects that a YB-TServer has failed (stopped sending heartbeat
 Specifically, the YB-Master identifies replacement YB-TServer nodes and re-replicates (copies) the tablet data from the failed node to the new nodes. This re-replication process ensures that the data remains available and redundant, even after a node failure.
 
 However, the YB-Master carefully throttles (limits) the rate of re-replication to avoid impacting the ongoing, regular operations of the database cluster. This throttling prevents the re-replication from overloading the system and affecting the performance of user queries and other foreground activities.
+
+## High availability
+
+The YB-Master is not in the critical path of normal I/O operations, therefore its failure does not affect a functioning universe. Nevertheless, the YB-Master is a part of a Raft group with the peers running on different nodes. The number of peers is decided by the [replication factor](../key-concepts/#replication-factor-rf) of the [universe](../key-concepts/#universe). One of these peers is the active master and the others are active standbys. If the active master (the YB-Master leader) fails, these peers detect the leader failure and re-elect a new YB-Master leader which becomes the active master in seconds of the failure.

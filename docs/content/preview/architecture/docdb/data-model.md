@@ -37,7 +37,7 @@ The values in a DocDB document data model can be of the following types:
 - Primitive types, such as int32, int64, double, text, timestamp, and so on.
 - Non-primitive types (sorted maps), where objects map scalar keys to values that could be either scalar or sorted maps.
 
-This model allows multiple levels of nesting and corresponds to a JSON-like format. Other data structures such as lists, sorted sets, and so on are implemented using DocDB's object type with special key encodings. In DocDB, [hybrid timestamps](../../transactions/transactions-overview/#mvcc-using-hybrid-time) of each update are recorded carefully, making it possible to recover the state of any document at some point in the past. Overwritten or deleted versions of data are garbage-collected as soon as there are no transactions reading at a snapshot at which the old value would be visible.
+This model allows multiple levels of nesting and corresponds to a JSON-like format. Other data structures such as lists, sorted sets, and so on are implemented using DocDB's object type with special key encodings. In DocDB, [hybrid timestamps](../../transactions/transactions-overview/#hybrid-logical-clocks) of each update are recorded carefully, making it possible to recover the state of any document at some point in the past. Overwritten or deleted versions of data are garbage-collected as soon as there are no transactions reading at a snapshot at which the old value would be visible.
 
 ## Encoding documents
 

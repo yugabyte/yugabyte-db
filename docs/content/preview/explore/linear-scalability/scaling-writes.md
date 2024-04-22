@@ -4,6 +4,8 @@ headerTitle: Scaling writes
 linkTitle: Scaling writes
 description: Writes scale horizontally in YugabyteDB as you add more nodes
 headcontent: Write performance when scaling horizontally
+aliases:
+- /preview/architecture/core-functions/write-path
 menu:
   preview:
     identifier: scaling-writes
@@ -12,7 +14,7 @@ menu:
 type: docs
 ---
 
-Writes scale linearly in YugabyteDB as more nodes are added to the cluster. [Write](../../../architecture/transactions/single-row-transactions/) operations are more involved than [reads](../scaling-reads). This is because the write operation has to be replicated to a quorum before it is acknowledged to the application. Although writes are internally considered as transactions, YugabyteDB has a lot of [optimizations for single-row transactions](../../../architecture/transactions/transactions-overview/#single-row-transactions) and achieves high performance.
+Writes scale linearly in YugabyteDB as more nodes are added to the cluster. [Write](../../../architecture/transactions/single-row-transactions/) operations are more involved than [reads](../scaling-reads). This is because the write operation has to be replicated to a quorum before it is acknowledged to the application. Although writes are internally considered as transactions, YugabyteDB has a lot of [optimizations for single-row transactions](../../../architecture/transactions/single-row-transactions) and achieves high performance.
 
 Let's go over how writes work and see how well they scale in YugabyteDB.
 
@@ -59,6 +61,5 @@ The cluster configuration is shown in the following illustration.
 ## Learn more
 
 - [TPC-C benchmark](../../../benchmark/tpcc-ysql)
-- [Write I/O path](../../../architecture/core-functions/write-path/)
 - [YugabyteDB Benchmarks](../../../benchmark)
 - [Scaling: YugabyteDB vs Cockroach vs Aurora](https://www.yugabyte.com/blog/yugabytedb-vs-cockroachdb-vs-aurora/)

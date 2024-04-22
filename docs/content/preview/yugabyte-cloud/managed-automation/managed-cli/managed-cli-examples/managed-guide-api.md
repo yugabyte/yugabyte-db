@@ -1,8 +1,6 @@
-<!--
-+++
-private = true
-+++
--->
+---
+private: true
+---
 <!---
 title: Guide for ybm API automation
 headerTitle: "Tutorial: Create a cluster using the REST API"
@@ -205,7 +203,7 @@ YBM_CLUSTER_ID=$(
 curl -s --request GET \
   --url https://cloud.yugabyte.com/api/public/v1/accounts/$YBM_ACCOUNT_ID/projects/$YBM_PROJECT_ID/clusters \
   --header "Authorization: Bearer $YBM_API_KEY" \
-  --header 'Content-Type: application/json' | 
+  --header 'Content-Type: application/json' |
   tee /dev/stderr |
   jq -r '.data[] | select(.spec.name=="'$YBM_CLUSTER'") | .info.id'
 )
@@ -239,7 +237,7 @@ PGHOST=$(
 curl -s --request GET \
   --url https://cloud.yugabyte.com/api/public/v1/accounts/$YBM_ACCOUNT_ID/projects/$YBM_PROJECT_ID/clusters \
   --header "Authorization: Bearer $YBM_API_KEY" \
-  --header 'Content-Type: application/json' | 
+  --header 'Content-Type: application/json' |
   tee /dev/stderr |
   jq -r '.data[] | select(.spec.name=="'$YBM_CLUSTER'") | .info.cluster_endpoints[0].host '
 )

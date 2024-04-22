@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: architecture-transactional-io-path
     parent: architecture-acid-transactions
-    weight: 80
+    weight: 300
 type: docs
 ---
 
@@ -18,8 +18,6 @@ For an overview of common concepts used in YugabyteDB's implementation of distri
 The write path of a transaction is used for modifying multiple keys and the read path is used for reading a consistent combination of values from multiple tablets.
 
 ## Write path
-
-The write path can be demonstrated through the lifecycle of a single distributed write-only transaction. Suppose it is required to modify rows with keys `k1` and `k2`. If they belong to the same tablet, the transaction can be executed as a [single-shard transaction](../../core-functions/write-path/), in which case atomicity would be ensured by the fact that both updates would be replicated as part of the same Raft log record. However, in the most general case, these keys would belong to different tablets, and that is the working assumption.
 
 The following diagram depicts the high-level steps of a distributed write-only transaction, not including
 any conflict resolution:

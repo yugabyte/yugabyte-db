@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-A log-structured merge-tree (LSM tree) is a data structure and storage architecture used by RocksDB, the underlying key-value store of DocDB. LSM trees strike a balance between write and read performance, making them suitable for workloads that involve both frequent writes and efficient reads.
+A log-structured merge-tree (LSM tree) is a data structure and storage architecture used by [RocksDB](http://rocksdb.org/), the underlying key-value store of DocDB. LSM trees strike a balance between write and read performance, making them suitable for workloads that involve both frequent writes and efficient reads.
 
 The core idea behind an LSM tree is to separate the write and read paths, allowing writes to be sequential and buffered in memory making them faster than random writes, while reads can still access data efficiently through a hierarchical structure of sorted files on disk.
 
@@ -21,6 +21,13 @@ An LSM tree has 2 primary components - Memtable and SSTs. Let's look into each o
 {{<note>}}
 Typically in LSMs there is a third component - WAL (Write ahead log). DocDB uses the Raft logs for this purpose. For more details, see [Raft log vs LSM WAL](../performance/#raft-vs-rocksdb-wal-logs).
 {{</note>}}
+
+## Comparison to B-tree
+
+Most traditional databases (for example, MySQL, PostgreSQL, Oracle) have a [B-tree](https://en.wikipedia.org/wiki/B-tree) based storage system. But YugabyteDB had to chose an LSM based storage to build a highly scalable database for of the following reasons.
+
+- Write operations (insert, update, delete) are more expensive in a B-tree. As it involves random writes and in place node splitting and rebalancing. In an LSM-based storage, data is added to the [memtable](#memtable) and written onto a [SST](#sst) file as a batch.
+- The append-only nature of LSM makes it more efficient for concurrent write operations.
 
 ## Memtable
 

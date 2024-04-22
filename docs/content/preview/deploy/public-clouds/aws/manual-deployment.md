@@ -118,7 +118,7 @@ The following steps are a guide to help use the additional volumes (install a fi
 
 #### Locate drives
 
-On each of the nodes, locate the SSD devices to be used as the data directories for YugabyteDB to store data on (such as RAFT/txn logs, SSTable files, logs, and so on).
+On each of the nodes, locate the SSD devices to be used as the data directories for YugabyteDB to store data on (such as Raft/txn logs, SSTable files, logs, and so on).
 
 ```sh
 $ lsblk
