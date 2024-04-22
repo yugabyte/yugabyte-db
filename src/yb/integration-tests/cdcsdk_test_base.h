@@ -51,6 +51,7 @@ DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
 namespace yb {
 using client::YBClient;
@@ -132,6 +133,8 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
     google::SetVLOGLevel("cdc*", 4);
     google::SetVLOGLevel("tablet*", 1);
