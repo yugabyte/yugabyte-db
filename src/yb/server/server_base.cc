@@ -776,8 +776,6 @@ void TEST_SetupConnectivity(rpc::Messenger* messenger, size_t index) {
   CHECK_GE(index, kMinServerIdx);
   CHECK_LE(index, kMaxServers);
 
-  messenger->TEST_SetOutboundIpBase(
-      CHECK_RESULT(HostToAddress(TEST_RpcAddress(index, Private::kTrue))));
   auto server_group = ServerGroupNum(index);
   for (int other_server_idx = kMinServerIdx; other_server_idx <= kMaxServers; ++other_server_idx) {
     // We group servers by 2. When servers belongs to the same group, they should use
