@@ -40,6 +40,7 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
 
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus.pb.h"
@@ -52,7 +53,6 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/lockfree.h"
-#include "yb/util/opid.h"
 #include "yb/util/trace.h"
 
 namespace yb {

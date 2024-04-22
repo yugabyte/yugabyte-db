@@ -43,7 +43,9 @@ Perform the following steps to install yb-voyager using yum for RHEL 7/8 and Cen
     ```sh
     # For RHEL 7
     sudo yum --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    ```
 
+    ```sh
     # For RHEL 8
     sudo yum --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
     ```
@@ -78,6 +80,7 @@ Note that if you're using **RHEL 8** or **CentOS 8**, perform the following two 
     ```sh
     sudo yum install yb-voyager
     ```
+
     {{< note >}}
 
 Install a specific version of `yb-voyager` on your machine using the following command:

@@ -101,11 +101,11 @@ DEFINE_UNKNOWN_string(metrics_snapshotter_table_metrics_whitelist,
     "Table metrics to record in native metrics storage.");
 TAG_FLAG(metrics_snapshotter_table_metrics_whitelist, advanced);
 
-constexpr int kTServerMetricsSnapshotterYbClientDefaultTimeoutMs =
+constexpr int kTServerMetricsSnapshotterYBClientDefaultTimeoutMs =
   yb::RegularBuildVsSanitizers(5, 60) * 1000;
 
 DEFINE_UNKNOWN_int32(tserver_metrics_snapshotter_yb_client_default_timeout_ms,
-    kTServerMetricsSnapshotterYbClientDefaultTimeoutMs,
+    kTServerMetricsSnapshotterYBClientDefaultTimeoutMs,
     "Default timeout for the YBClient embedded into the tablet server that is used "
     "by metrics snapshotter.");
 TAG_FLAG(tserver_metrics_snapshotter_yb_client_default_timeout_ms, advanced);

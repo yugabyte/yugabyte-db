@@ -15,8 +15,8 @@ syntax = "proto2";
 package yb.docdb;
 
 import "yb/common/common.proto";
+import "yb/common/opid.proto";
 import "yb/common/transaction.proto";
-import "yb/util/opid.proto";
 
 option java_package = "org.yb.docdb";
 

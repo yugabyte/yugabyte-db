@@ -24,9 +24,11 @@
  */
 
 #include "postgres.h"
+
 #include "access/xact.h"
 #include "replication/yb_decode.h"
 #include "utils/rel.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 static void
 YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
@@ -52,20 +54,9 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 {
 	elog(DEBUG4,
 		 "YBLogicalDecodingProcessRecord: Decoding record with action = %d.",
-		 record->yb_virtual_wal_record->data->action);
-	switch (record->yb_virtual_wal_record->data->action)
+		 record->yb_virtual_wal_record->action);
+	switch (record->yb_virtual_wal_record->action)
 	{
-		/*
-		 * TODO(#20726): Remove this unknown action from this switch case. We
-		 * are currently getting the SAFEPOINT record as well which is not
-		 * relevant here. We won't receive it once we start using the
-		 * GetConsistentChanges RPC.
-		 */
-		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN: switch_fallthrough();
-		case YB_PG_ROW_MESSAGE_ACTION_DDL:
-			/* Ignore UNKNOWN/DDL records. */
-			return;
-
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
 			/*
 			 * Start a transaction so that we can get the relation by oid in
@@ -98,6 +89,10 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 			Assert(!IsTransactionState());
 			break;
 		}
+
+		/* Should never happen. */
+		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN:
+			pg_unreachable();
 	}
 }
 
@@ -107,13 +102,13 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 static void
 YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
-	ReorderBufferChange		*change = ReorderBufferGetChange(ctx->reorder);
-	Relation				relation;
-	TupleDesc				tupdesc;
-	int						nattrs;
-	HeapTuple				tuple;
-	ReorderBufferTupleBuf	*tuple_buf;
+	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
+	ReorderBufferChange			*change = ReorderBufferGetChange(ctx->reorder);
+	Relation					relation;
+	TupleDesc					tupdesc;
+	int							nattrs;
+	HeapTuple					tuple;
+	ReorderBufferTupleBuf		*tuple_buf;
 
 	change->action = REORDER_BUFFER_CHANGE_INSERT;
 	change->lsn = yb_record->lsn;
@@ -142,9 +137,9 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	bool is_nulls[nattrs];
 	/* Set value to null by default so that we treat dropped columns as null. */
 	memset(is_nulls, true, sizeof(is_nulls));
-	for (int col_idx = 0; col_idx < yb_record->data->col_count; col_idx++)
+	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
-		YBCPgDatumMessage *col = &yb_record->data->cols[col_idx];
+		const YBCPgDatumMessage *col = &yb_record->cols[col_idx];
 		int attr_idx = 0;
 		for (attr_idx = 0; attr_idx < nattrs; attr_idx++)
 		{
@@ -191,17 +186,16 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
-	XLogRecPtr				commit_lsn = yb_record->lsn;
-	XLogRecPtr				end_lsn = yb_record->lsn + 1;
-	XLogRecPtr				origin_lsn = yb_record->lsn;
+	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
+	XLogRecPtr					commit_lsn = yb_record->lsn;
+	XLogRecPtr					end_lsn = yb_record->lsn + 1;
+	XLogRecPtr					origin_lsn = yb_record->lsn;
 	/*
 	 * We do not send the replication origin information. So any dummy value is
 	 * sufficient here.
 	 */
-	RepOriginId				origin_id = 1;
+	RepOriginId					origin_id = 1;
 
-	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn,
-						end_lsn, yb_record->data->commit_time, origin_id,
-						origin_lsn);
+	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
+						yb_record->commit_time, origin_id, origin_lsn);
 }

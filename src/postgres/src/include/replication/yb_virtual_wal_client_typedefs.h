@@ -22,17 +22,9 @@
 #ifndef YB_VIRTUAL_WAL_CLIENT_TYPEDEFS_H
 #define YB_VIRTUAL_WAL_CLIENT_TYPEDEFS_H
 
-#include "access/xlogdefs.h"
 #include "c.h"
-#include "nodes/pg_list.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-typedef struct PgVirtualWalRecord
-{
-	YBCPgRowMessage *data;
-	XLogRecPtr lsn;
-	TransactionId xid;
-	Oid table_oid;
-} YBCPgVirtualWalRecord;
+typedef YBCPgRowMessage YBCPgVirtualWalRecord;
 
 #endif

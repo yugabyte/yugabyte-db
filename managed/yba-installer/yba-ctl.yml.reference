@@ -195,3 +195,4 @@ prometheus:
     enableAuth: false         # enable authentication for prometheus
     authUsername: prometheus  # username to authenticate to prometheus (if enableAuth)
     authPassword: ""          # password to authenticate to prometheus (if enableAuth)
+    oomScoreAdjust: 500       # OOMScoreAdjust value for the prometheus systemd service

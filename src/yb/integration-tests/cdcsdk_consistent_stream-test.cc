@@ -50,7 +50,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   t1.join();
   t2.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -132,8 +132,8 @@ TEST_F(CDCSDKConsistentStreamTest,
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table1.table_id()}, false, 1000, false));
-  ASSERT_OK(test_client()->FlushTables({table2.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table1.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table2.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -266,7 +266,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -344,6 +344,9 @@ TEST_F(CDCSDKConsistentStreamTest,
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_1;"));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
 
   std::thread t3([&]() -> void {
     PerformSingleAndMultiShardQueries(
@@ -365,7 +368,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -424,6 +427,9 @@ TEST_F(CDCSDKConsistentStreamTest,
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_1;"));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
 
   std::thread t3([&]() -> void {
     PerformSingleAndMultiShardQueries(
@@ -445,7 +451,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -551,8 +557,8 @@ TEST_F(CDCSDKConsistentStreamTest,
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table1.table_id()}, false, 1000, false));
-  ASSERT_OK(test_client()->FlushTables({table2.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table1.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table2.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -613,7 +619,7 @@ void CDCSDKConsistentStreamTest::TestCDCSDKConsistentStreamWithTabletSplit(
   t1.join();
   t2.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
@@ -629,7 +635,7 @@ void CDCSDKConsistentStreamTest::TestCDCSDKConsistentStreamWithTabletSplit(
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_first_split;
@@ -761,7 +767,7 @@ TEST_F(CDCSDKConsistentStreamTest,
 
   // Committed transactions should change max_op_id.
   ASSERT_OK(WriteRowsHelper(0, 100, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
 
   OpId historical_max_op_id;
   ASSERT_OK(WaitFor(
@@ -809,7 +815,7 @@ TEST_F(CDCSDKConsistentStreamTest,
       MonoDelta::FromSeconds(5),
       "historical_max_op_id should change"));
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
@@ -940,7 +946,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   t1.join();
   t2.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   auto get_changes_resp = GetAllPendingChangesWithRandomReqSafeTimeChanges(stream_id, tablets);
   std::unordered_set<int32_t> seen_unique_pk_values;
@@ -978,7 +984,7 @@ TEST_F(CDCSDKConsistentStreamTest,
 
   // Commit another transaction while we still have the previous one open.
   ASSERT_OK(WriteRowsHelper(100, 200, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   uint32 seen_insert_records = 0;
   auto update_insert_count = [&](const GetChangesResponsePB& change_resp) {

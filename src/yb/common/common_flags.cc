@@ -80,6 +80,13 @@ DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_m
     " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms.");
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, advanced);
 
+// TODO(#13369): use this flag in tserver.
+DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
+    "Lease period between master and tserver that guarantees YSQL system catalog is not stale."
+    " Must be higher than --heartbeat_interval_ms, preferrably many times higher.");
+TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
+TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
+
 // We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
 // Otherwise such batch would be rejected by RPC layer.
 DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
@@ -106,6 +113,21 @@ DEFINE_RUNTIME_PG_FLAG(bool, TEST_enable_replication_slot_consumption, false,
 TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, unsafe);
 TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, hidden);
 
+// The following flags related to the cloud, region and availability zone that an instance is
+// started in. These are passed in from whatever provisioning mechanics start the servers. They
+// are used for generic placement policies on table creation and tablet load balancing, to
+// either constrain data to a certain location (table A should only live in aws.us-west2.a), or to
+// define the required level of fault tolerance expected (table B should have N replicas, across
+// two regions of AWS and one of GCE).
+//
+// These are currently for use in a cloud-based deployment, but could be retrofitted to work for
+// an on-premise deployment as well, with datacenter, cluster and rack levels, for example.
+DEFINE_NON_RUNTIME_string(placement_cloud, "cloud1",
+              "The cloud in which this instance is started.");
+DEFINE_NON_RUNTIME_string(placement_region, "datacenter1",
+              "The cloud region in which this instance is started.");
+DEFINE_NON_RUNTIME_string(placement_zone, "rack1",
+              "The cloud availability zone in which this instance is started.");
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;

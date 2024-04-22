@@ -1,5 +1,6 @@
 import yaml
 import copy
+import logging
 
 '''
 This script takes the openapi.yaml that contains the complete set of API definitions and generates
@@ -65,6 +66,7 @@ def remove_internal_paths():
         # remove the internal methods
         for method in methods_to_remove:
             path_details.pop(method)
+            logger.debug("Removed internal path " + method + " " + path)
         # remove entire path if no visible methods are remaining
         if not set(path_details.keys()).intersection(set(http_methods)):
             paths_to_remove.append(path)
@@ -83,21 +85,25 @@ def remove_internal_schemas_and_properties():
     for schema_name, schema in global_component_list["schemas"].items():
         if is_internal(schema):
             schemas_to_remove.append(schema_name)
-            break
+            continue
         props_to_remove = []
-        for prop_name, prop in schema["properties"].items():
-            if is_internal(prop):
-                props_to_remove.append(prop_name)
+        if "properties" in schema:
+            for prop_name, prop in schema["properties"].items():
+                if is_internal(prop):
+                    props_to_remove.append(prop_name)
         # remove internal properties
         for prop_name in props_to_remove:
             schema["properties"].pop(prop_name)
+            logger.debug("Removed internal property " + prop_name + " from " + schema_name)
         # remove entire schema if no visible properties are remaining
-        if not schema["properties"]:
+        if "properties" in schema and schema["properties"] is None:
             schemas_to_remove.append(schema_name)
+            logger.debug("Removed internal schema " + schema_name)
 
     # remove internal schemas
     for schema_name in schemas_to_remove:
         global_component_list["schemas"].pop(schema_name)
+        logger.debug("Removed internal schema " + schema_name)
     # Update the global_openapi_dict with the removed components
     global_openapi_dict["components"] = global_component_list
 
@@ -148,12 +154,13 @@ def process_visibility_in_schemas_and_properties():
                 add_visibility_desc(schema, visibility)
 
             # process properties
-            for prop_name, prop in schema["properties"].items():
-                if has_visibility(prop, visibility):
-                    if X_YBA_API_SINCE not in prop:
-                        props_with_errors.append((prop_name, schema_name))
-                        continue
-                    add_visibility_desc(prop, visibility)
+            if "properties" in schema:
+                for prop_name, prop in schema["properties"].items():
+                    if has_visibility(prop, visibility):
+                        if X_YBA_API_SINCE not in prop:
+                            props_with_errors.append((prop_name, schema_name))
+                            continue
+                        add_visibility_desc(prop, visibility)
 
             global_component_list["schemas"][schema_name] = schema
 
@@ -210,17 +217,21 @@ def is_internal(obj):
     return has_visibility(obj, X_YBA_API_VISIBILITY_INTERNAL)
 
 
+logging.basicConfig(format='%(asctime)s [%(filename)s:%(lineno)d] %(message)s',
+                    datefmt='%Y-%m-%d:%H:%M:%S',
+                    level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 load_global_file()
-print("Removing paths that are marked 'x-yba-api-vibility: internal'")
+logger.info("Removing paths that are marked 'x-yba-api-vibility: internal'")
 remove_internal_paths()
-print("Removing schemas and properties that are marked 'x-yba-api-vibility: internal'")
+logger.info("Removing schemas and properties that are marked 'x-yba-api-vibility: internal'")
 remove_internal_schemas_and_properties()
-print("Processing paths that are marked 'x-yba-api-vibility: deprecated' or 'preview'")
+logger.info("Processing paths that are marked 'x-yba-api-vibility: deprecated' or 'preview'")
 process_visibility_in_paths()
-print(("Processing schemas and properties that are marked 'x-yba-api-vibility: deprecated'"
-      " or 'preview'"))
+logger.info(("Processing schemas and properties that are marked 'x-yba-api-vibility: deprecated'"
+             " or 'preview'"))
 process_visibility_in_schemas_and_properties()
 
 # write the openapi_public.yaml file
 generate_openapi_public_file()
-print("Generated public openapi successfully at:", OPENAPI_PUBLIC_YML_PATH)
+logger.info("Generated public openapi successfully at: " + OPENAPI_PUBLIC_YML_PATH)

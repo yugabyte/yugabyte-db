@@ -7,7 +7,6 @@ JAVA	org.yb.pgsql.TestIndexBackfill#insertsWhileCreatingIndex
 JAVA	org.yb.pgsql.TestJWTAuth
 JAVA	org.yb.pgsql.TestPg15Regress
 JAVA	org.yb.pgsql.TestPgAlterTable#testAddColumnWithNotNullConstraint
-JAVA	org.yb.pgsql.TestPgAlterTableChangePrimaryKey#nulls
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testAlterPartitionColumnTypeFailure
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testMultipleRewrites
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testNotNullConstraints
@@ -64,7 +63,6 @@ JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy
 JAVA	org.yb.pgsql.TestPgRegressProc
 JAVA	org.yb.pgsql.TestPgRegressPublication
 JAVA	org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
-JAVA	org.yb.pgsql.TestPgRegressReplicationSlot
 JAVA	org.yb.pgsql.TestPgRegressTabletSplit
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgHintPlan
 JAVA	org.yb.pgsql.TestPgRegressTransactionSavepoints#testPgRegressTransaction
@@ -109,7 +107,6 @@ JAVA	org.yb.ysqlconnmgr.TestSessionParameters#testSetLocalStmt
 JAVA	org.yb.ysqlconnmgr.TestStickyConnections
 JAVA	org.yb.ysqlconnmgr.TestUnstickyConnections
 ash_wait_state-test	WaitStateTest.*
-cdcsdk_ysql-test	CDCSDKYsqlTest.TestReplicationSlotDropWithActiveInvalid
 docdb_pgapi-test	YbGateTest.*
 external_intents_batch_writer-test	ExternalIntentsBatchWriterTest.*
 integration-tests/retryable_request-test	RetryableRequestTest.SysCatalogRequestTimeoutSecs

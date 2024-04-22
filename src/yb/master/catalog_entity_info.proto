@@ -138,7 +138,7 @@ message SysTablesEntryPB {
   // This prevents column ID reuse.
   optional int32 next_column_id = 8;
 
-  // Replication information for this tablet.
+  // Replication information for this table.
   optional ReplicationInfoPB replication_info = 5;
 
   // Debug state for the table.
@@ -283,6 +283,10 @@ message SysTabletsEntryPB {
   // tables hosted on this tablet is computed at load time by finding all child tables of the
   // parent table of this tablet.
   optional bool hosted_tables_mapped_by_parent_id = 18;
+
+  // Whether this tablet was created by DB cloning. If true, we should not try to send
+  // CreateTablet requests for this tablet (it should be created by tservers applying the clone op).
+  optional bool created_by_clone = 19 [ default = false ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -334,6 +338,8 @@ message SysNamespaceEntryPB {
   optional TransactionMetadataPB transaction = 6;
 
   optional State state = 5 [ default = UNKNOWN ];
+
+  optional uint32 clone_request_seq_no = 7;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
@@ -569,6 +575,31 @@ message SysSnapshotEntryPB {
   optional int32 retention_duration_hours = 8;
 }
 
+message SysCloneStatePB {
+  // State for clone operation.
+  enum State {
+    CREATING = 1;
+    RESTORING = 2;
+    RESTORED = 3;
+  }
+
+  message TabletData {
+    optional string source_tablet_id = 1;
+    optional string target_tablet_id = 2;
+  }
+
+  repeated TabletData tablet_data = 1;
+  optional bytes source_snapshot_id = 2;
+  optional bytes target_snapshot_id = 3;
+  optional string source_namespace_id = 4;
+  optional uint32 clone_request_seq_no = 5;
+  optional fixed64 restore_time = 6;
+
+  // Aggregate state of the clone operation. Valid transitions:
+  // CREATING --> RESTORING --> RESTORED
+  optional State aggregate_state = 7;
+}
+
 message SchemaVersionMappingPB {
   required uint32 producer_schema_version = 1;
   required uint32 consumer_schema_version = 2;
@@ -792,7 +823,7 @@ message SysXClusterOutboundReplicationGroupEntryPB {
   // Namespace Id -> NamespaceInfoPB
   map<string, NamespaceInfoPB> namespace_infos = 1;
 
-  message TargetUniverseInfo {
+  message TargetUniverseInfoPB {
     required bytes universe_uuid = 1;
 
     enum State {
@@ -805,7 +836,7 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     optional AppStatusPB error_status = 3; // Set when status is FAILED
   }
 
-  optional TargetUniverseInfo target_universe_info = 2;
+  optional TargetUniverseInfoPB target_universe_info = 2;
 
   enum State {
     READY = 0;

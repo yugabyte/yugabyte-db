@@ -367,9 +367,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<yb::tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
       const ReplicationSlotName& slot_name);
 
-  Result<yb::tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
-      const ReplicationSlotName& slot_name);
-
   [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
 
   Result<yb::tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();

@@ -376,13 +376,11 @@ select pg_sleep(1);
 
 (1 row)
 
--- currently, alter table primary key resets the idx_scan count to zero
--- this does not happen in upstream Postgres, will need to fix
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'basic_table_idx.' or indexrelname='basic_table_pkey' order by (indexrelname);
    indexrelname   | idx_scan
 ------------------+----------
- basic_table_idx1 |        0
- basic_table_idx2 |        0
+ basic_table_idx1 |        1
+ basic_table_idx2 |        1
  basic_table_pkey |        0
 (3 rows)
 
@@ -401,8 +399,8 @@ select pg_sleep(1);
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'basic_table_idx.' or indexrelname='basic_table_pkey' order by (indexrelname);
    indexrelname   | idx_scan
 ------------------+----------
- basic_table_idx1 |        0
- basic_table_idx2 |        0
+ basic_table_idx1 |        1
+ basic_table_idx2 |        1
  basic_table_pkey |        1
 (3 rows)
 
@@ -421,8 +419,8 @@ select pg_sleep(1);
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'basic_table_idx.' or indexrelname='basic_table_pkey' order by (indexrelname);
    indexrelname   | idx_scan
 ------------------+----------
- basic_table_idx1 |        0
- basic_table_idx2 |        1
+ basic_table_idx1 |        1
+ basic_table_idx2 |        2
  basic_table_pkey |        1
 (3 rows)
 

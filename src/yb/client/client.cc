@@ -2560,12 +2560,18 @@ Result<bool> YBClient::CheckIfPitrActive() {
 }
 
 Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
-                                                      bool exclude_ysql) {
+                                                      bool exclude_ysql,
+                                                      const std::string& ysql_db_filter) {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
 
   if (!filter.empty()) {
     req.set_name_filter(filter);
+  }
+
+  if (!ysql_db_filter.empty()) {
+    req.mutable_namespace_()->set_name(ysql_db_filter);
+    req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
   }
 
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);

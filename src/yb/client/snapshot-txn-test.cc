@@ -29,6 +29,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction_error.h"
 
@@ -53,7 +54,6 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/enums.h"
 #include "yb/util/lockfree.h"
-#include "yb/util/opid.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"

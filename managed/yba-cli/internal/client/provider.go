@@ -15,6 +15,12 @@ func (a *AuthAPIClient) GetListOfProviders() (
 	return a.APIClient.CloudProvidersApi.GetListOfProviders(a.ctx, a.CustomerUUID)
 }
 
+// GetProvider fetches provider associated with the customer and providerUUID
+func (a *AuthAPIClient) GetProvider(pUUID string) (
+	ybaclient.CloudProvidersApiApiGetProviderRequest) {
+	return a.APIClient.CloudProvidersApi.GetProvider(a.ctx, a.CustomerUUID, pUUID)
+}
+
 // CreateProvider calls the create provider API
 func (a *AuthAPIClient) CreateProvider() (
 	ybaclient.CloudProvidersApiApiCreateProvidersRequest) {

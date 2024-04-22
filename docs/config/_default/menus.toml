@@ -359,6 +359,7 @@
   url = "/preview/yugabyte-cloud/"
   [home.params]
     showSection = true
+    hideChildren = true
 
 [[home]]
   name = "YugabyteDB Voyager"
@@ -367,6 +368,7 @@
   url = "/preview/yugabyte-voyager/"
   [home.params]
     showSection = true
+    hideChildren = true
 
 ########## Menus for preview
 
@@ -561,7 +563,7 @@
   parent = "integrations"
 
 [[preview_integrations]]
-  name = "Platforms (HW, SW, Data Management)"
+  name = "Infrastructure (HW, SW, Data Mgmt)"
   weight = 12
   identifier = "integrations-platforms"
   parent = "integrations"
@@ -727,6 +729,23 @@
   weight = 5
   identifier = "yba-releases"
   url = "/preview/releases/yba-releases/"
+  [preview_releases.params]
+    classes = "separator"
+    showSection = true
+
+[[preview_releases]]
+  name = "YugabyteDB Managed"
+  weight = 6
+  identifier = "ybm-releases"
+  url = "/preview/yugabyte-cloud/release-notes/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
+  name = "YugabyteDB Voyager"
+  weight = 7
+  identifier = "voy-releases"
+  url = "/preview/yugabyte-voyager/release-notes/"
   [preview_releases.params]
     showSection = true
 

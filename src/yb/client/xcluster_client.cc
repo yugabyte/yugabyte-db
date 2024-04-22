@@ -19,7 +19,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/util/path_util.h"
 
 DECLARE_bool(use_node_to_node_encryption);
@@ -48,8 +48,8 @@ Status XClusterRemoteClient::Init(
     if (!certs_for_cdc_dir_.empty()) {
       certs_dir = JoinPathSegments(certs_for_cdc_dir_, replication_group_id.ToString());
     }
-    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        certs_dir, /*root_dir=*/"", /*name=*/"", server::SecureContextType::kInternal,
+    secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
+        certs_dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal,
         &messenger_builder));
   }
   messenger_ = VERIFY_RESULT(messenger_builder.Build());

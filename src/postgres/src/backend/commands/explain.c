@@ -6120,17 +6120,19 @@ YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
 		yb_instr->tbl_reads.rows_scanned + yb_instr->index_reads.rows_scanned;
 
 	// RPC Storage Metrics
-	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
-		es->yb_stats.storage_gauge_metrics[i] += yb_instr->storage_gauge_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
-		es->yb_stats.storage_counter_metrics[i] += yb_instr->storage_counter_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
-		YbPgEventMetric* agg = &es->yb_stats.storage_event_metrics[i];
-		const YbPgEventMetric* val = &yb_instr->storage_event_metrics[i];
-		agg->sum += val->sum;
-		agg->count += val->count;
+	if (es->yb_debug) {
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			es->yb_stats.storage_gauge_metrics[i] += yb_instr->storage_gauge_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+			es->yb_stats.storage_counter_metrics[i] += yb_instr->storage_counter_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+			YbPgEventMetric* agg = &es->yb_stats.storage_event_metrics[i];
+			const YbPgEventMetric* val = &yb_instr->storage_event_metrics[i];
+			agg->sum += val->sum;
+			agg->count += val->count;
+		}
 	}
 }
 

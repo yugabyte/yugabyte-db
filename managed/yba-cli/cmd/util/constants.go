@@ -76,9 +76,36 @@ const (
 	AbortedTaskStatus = "Aborted"
 )
 
+// Node operations allowed on universe
+const (
+	// AddNode operation
+	AddNode = "ADD"
+	// StartNode operation
+	StartNode = "START"
+	// RebootNode operation
+	RebootNode = "REBOOT"
+	// StopNode operation
+	StopNode = "STOP"
+	// RemoveNode operation
+	RemoveNode = "REMOVE"
+	// ReprovisionNode operation
+	ReprovisionNode = "REPROVISION"
+	// ReleaseNode operation
+	ReleaseNode = "RELEASE"
+)
+
 const (
 	// StorageCustomerConfigType field name to denote in request bodies
 	StorageCustomerConfigType = "STORAGE"
+)
+
+// Different resource types that are supported in CLI
+const (
+	// UniverseType resource
+	UniverseType = "universe"
+
+	// ProviderType resource
+	ProviderType = "provider"
 )
 
 // CompletedStates returns set of states that mark the task as completed

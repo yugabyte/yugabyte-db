@@ -65,7 +65,7 @@ public class LdapUnivSync extends UniverseTaskBase {
     taskParams().ldapGroups = ldapGroups;
 
     try {
-      lockUniverseForUpdate(taskParams().getUniverseUUID(), -1);
+      lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
 
       // queryLdap
       createQueryLdapServerTask(taskParams()).setSubTaskGroupType(SubTaskGroupType.QueryLdapServer);

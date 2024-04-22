@@ -134,7 +134,7 @@ public class NodeAgentHandler {
               NodeAgentResp nodeAgentResp = new NodeAgentResp(nodeAgent);
               nodeAgentResp.setReachable(nodeAgent.getUpdatedAt().after(startTime));
               nodeAgentResp.setVersionMatched(
-                  Util.compareYbVersions(ybaVersion, nodeAgent.getVersion(), true) == 0);
+                  Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true));
               Object obj = r.get("provider_name");
               if (obj != null) {
                 nodeAgentResp.setProviderName((String) obj);

@@ -322,8 +322,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
 
   // Verify failure case.
   ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 ADD PRIMARY KEY(value, key)", alter_test)));
-  VerifyTableNotExists(client.get(), "yugabyte", alter_test + "_temp_old", 20);
-  VerifyTableExists(client.get(), "yugabyte", alter_test, 10);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(alter_test)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new DocDB table to be dropped."));
   // Insert duplicate rows.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'value1', 1.1), (1, 'value1', 1.1)",
                                alter_test));
@@ -331,8 +334,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
 
   // Verify success case.
   ASSERT_OK(conn.Execute(Format("ALTER TABLE $0 ADD PRIMARY KEY(value, key)", alter_test)));
-  VerifyTableNotExists(client.get(), "yugabyte", alter_test + "_temp_old", 20);
-  VerifyTableExists(client.get(), "yugabyte", alter_test, 10);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(alter_test)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for old DocDB table to be dropped."));
   ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'value1', 1.1), (1, 'value1', 1.1)",
                                 alter_test));
 }
@@ -1474,12 +1480,13 @@ TEST_P(PgLibPqTableRewrite,
   ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=true"));
   ASSERT_NOK(conn.ExecuteFormat("REINDEX INDEX $0", kIndex));
   ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c SERIAL", kTable));
+  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTable));
   ASSERT_NOK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kMaterializedView));
 
   // Verify that we created orphaned DocDB tables.
   const auto client = ASSERT_RESULT(cluster_->CreateClient());
   vector<client::YBTableName> tables = ASSERT_RESULT(client->ListTables(kTable));
-  ASSERT_EQ(tables.size(), 2);
+  ASSERT_EQ(tables.size(), 3);
   tables = ASSERT_RESULT(client->ListTables(kIndex));
   ASSERT_EQ(tables.size(), 2);
   tables = ASSERT_RESULT(client->ListTables(kMaterializedView));

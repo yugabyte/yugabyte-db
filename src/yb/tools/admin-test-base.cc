@@ -59,7 +59,8 @@ Result<rapidjson::Document> AdminTestBase::ParseJson(const std::string& raw) {
   rapidjson::Document result;
   if (result.Parse(raw.c_str(), raw.length()).HasParseError()) {
     return STATUS_FORMAT(
-        InvalidArgument, "Failed to parse json output $0: $1", result.GetParseError(), raw);
+        InvalidArgument, "Failed to parse json output (error code $0). Raw string: $1",
+        result.GetParseError(), raw);
   }
   return result;
 }

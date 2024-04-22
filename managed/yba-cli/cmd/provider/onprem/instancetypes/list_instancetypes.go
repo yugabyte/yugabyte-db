@@ -57,6 +57,11 @@ var listInstanceTypesCmd = &cobra.Command{
 			return
 		}
 
+		if r[0].GetCode() != "onprem" {
+			errMessage := "Operation only supported for On-premises providers."
+			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
+		}
+
 		providerUUID := r[0].GetUuid()
 
 		rList, response, err := authAPI.ListOfInstanceType(providerUUID).Execute()

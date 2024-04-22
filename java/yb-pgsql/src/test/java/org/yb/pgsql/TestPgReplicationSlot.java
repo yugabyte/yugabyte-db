@@ -47,6 +47,7 @@ import com.yugabyte.util.PSQLException;
 @RunWith(value = YBTestRunner.class)
 public class TestPgReplicationSlot extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgReplicationSlot.class);
+  private static int kMaxClockSkewMs = 100;
 
   @Override
   protected int getInitialNumTServers() {
@@ -56,20 +57,48 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_commands");
+    flagMap.put("allowed_preview_flags_csv",
+        "ysql_yb_enable_replication_commands,yb_enable_cdc_consistent_snapshot_streams");
     flagMap.put("ysql_yb_enable_replication_commands", "true");
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
+    flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
     flagMap.put("vmodule", "cdc_service=4,cdcsdk_producer=4");
+    flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
     return flagMap;
   }
 
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_commands");
+    flagMap.put("allowed_preview_flags_csv",
+        "ysql_yb_enable_replication_commands,yb_enable_cdc_consistent_snapshot_streams");
     flagMap.put("ysql_yb_enable_replication_commands", "true");
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
+    flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
+    flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
     return flagMap;
+  }
+
+  void waitForSnapshotTimeToPass() throws Exception {
+    // When a slot (stream) is created, we choose the current time as the consistent snapshot time
+    // to tackle clock skew. This time could be `max_clock_skew_usec` in the future. Any inserts
+    // done before this time could end up being part of the snapshot instead of the changes. This is
+    // not a correctness issue and just an unintuitive behavior.
+    //
+    // In the tests, we want to wait for this time to pass, so that any DMLs we do end up being part
+    // of the changes and not the snapshot.
+    Thread.sleep(kMaxClockSkewMs);
+  }
+
+  void createStreamAndWaitForSnapshotTimeToPass(
+      PGReplicationConnection replConnection, String slotName) throws Exception {
+    replConnection.createReplicationSlot()
+        .logical()
+        .withSlotName(slotName)
+        .withOutputPlugin("pgoutput")
+        .make();
+
+    waitForSnapshotTimeToPass();
   }
 
   @Test
@@ -176,11 +205,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   // 3. Transactions with savepoints (commit/abort subtxns)
   // 4. Transactions after table rewrite operations like ADD PRIMARY KEY
 
-  @Test
-  @Ignore("YB_TODO(stiwary)")
-  public void replicationConnectionConsumption() throws Exception {
+  void testReplicationConnectionConsumption(String slotName) throws Exception {
     try (Statement stmt = connection.createStatement()) {
-      stmt.execute("CREATE TABLE t1 (a int primary key, b text) SPLIT INTO 1 TABLETS");
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
       stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
     }
 
@@ -188,13 +216,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    replConnection.createReplicationSlot()
-        .logical()
-        .withSlotName("test_slot_repl_conn")
-        .withOutputPlugin("pgoutput")
-        .make();
-
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
     try (Statement stmt = connection.createStatement()) {
+      // Do more than 2 inserts, since replicationConnectionConsumptionMultipleBatches tests the
+      // case when #records > cdcsdk_max_consistent_records.
       stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
       stmt.execute("INSERT INTO t1 VALUES(2, 'defg')");
       stmt.execute("INSERT INTO t1 VALUES(3, 'hijk')");
@@ -202,7 +227,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     PGReplicationStream stream = replConnection.replicationStream()
                                      .logical()
-                                     .withSlotName("test_slot_repl_conn")
+                                     .withSlotName(slotName)
                                      .withStartPosition(LogSequenceNumber.valueOf(0L))
                                      .withSlotOption("proto_version", 1)
                                      .withSlotOption("publication_names", "pub")
@@ -220,7 +245,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     // completed.
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 1));
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
         add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'd',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
@@ -231,7 +256,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
 
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 1));
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
             Arrays.asList(
                 new PgOutputMessageTupleColumnValue("2"),
@@ -239,7 +264,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
 
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 1));
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
             Arrays.asList(
                 new PgOutputMessageTupleColumnValue("3"),
@@ -270,6 +295,24 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       outputFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssxxx");
     }
     return zonedDateTime.format(outputFormatter);
+  }
+
+  @Test
+  @Ignore("YB_TODO(stiwary)")
+  public void replicationConnectionConsumption() throws Exception {
+    testReplicationConnectionConsumption("test_repl_slot_consumption");
+  }
+
+  @Test
+  @Ignore("YB_TODO(stiwary)")
+  public void replicationConnectionConsumptionMultipleBatches() throws Exception {
+    markClusterNeedsRecreation();
+    Map<String, String> tserverFlags = super.getTServerFlags();
+    // Set the batch size to a smaller value than the default of 500, so that the test is fast.
+    tserverFlags.put("cdcsdk_max_consistent_records", "2");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    testReplicationConnectionConsumption("test_repl_slot_consumption_mul_batches");
   }
 
   @Test
@@ -311,7 +354,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         + "col_tsrange TSRANGE, "
         + "col_tstzrange TSTZRANGE, "
         + "col_daterange DATERANGE, "
-        + "col_discount coupon_discount_type) SPLIT INTO 1 TABLETS";
+        + "col_discount coupon_discount_type)";
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TYPE coupon_discount_type AS ENUM ('FIXED', 'PERCENTAGE');");
@@ -322,12 +365,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Connection conn =
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-
-    replConnection.createReplicationSlot()
-        .logical()
-        .withSlotName("test_slot_repl_conn_all_data_types")
-        .withOutputPlugin("pgoutput")
-        .make();
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, "test_slot_repl_conn_all_data_types");
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO test_table VALUES ("
@@ -360,7 +398,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 1));
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
         add(PgOutputTypeMessage.CreateForComparison("public", "coupon_discount_type"));
         add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'd',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
@@ -458,7 +496,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
 
     try (Statement stmt = connection.createStatement()) {
-      stmt.execute("CREATE TABLE t1 (a int primary key, b text) SPLIT INTO 1 TABLETS");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
       stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
     }
 
@@ -500,7 +538,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   @Ignore("YB_TODO(stiwary)")
   public void replicationConnectionConsumptionAttributeDroppedRecreated() throws Exception {
     try (Statement stmt = connection.createStatement()) {
-      stmt.execute("CREATE TABLE t1 (a int primary key, b text) SPLIT INTO 1 TABLETS");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
       stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
 
       stmt.execute("ALTER TABLE t1 DROP COLUMN b");
@@ -509,12 +547,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-
-    replConnection.createReplicationSlot()
-        .logical()
-        .withSlotName("test_slot_repl_conn_attribute_dropped")
-        .withOutputPlugin("pgoutput")
-        .make();
+    createStreamAndWaitForSnapshotTimeToPass(
+        replConnection, "test_slot_repl_conn_attribute_dropped");
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES(1, 1)");
@@ -540,7 +574,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     // completed.
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 1));
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
         add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'd',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
@@ -549,14 +583,11 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
       }
     };
     assertEquals(expectedResult, result);
 
     stream.close();
   }
-
-  // TODO(#20726): Add a test case which verifies that operations with #changes > batch_size works
-  // fine. This should be done once we have moved to using the `GetConsistentChanges` RPC.
 }

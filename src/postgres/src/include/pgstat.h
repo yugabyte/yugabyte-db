@@ -19,7 +19,6 @@
 #include "utils/relcache.h"
 #include "utils/wait_event.h"	/* for backward compatibility */
 
-
 /* ----------
  * Paths for the statistics files (relative to installation's $PGDATA).
  * ----------

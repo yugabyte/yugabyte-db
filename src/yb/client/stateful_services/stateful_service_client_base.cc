@@ -16,8 +16,10 @@
 #include <chrono>
 
 #include "yb/master/master_client.proxy.h"
-#include "yb/tserver/tablet_server.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/client/client-internal.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
@@ -53,8 +55,8 @@ Status StatefulServiceClientBase::Init(tserver::TabletServer* server) {
 
   std::lock_guard lock(mutex_);
   rpc::MessengerBuilder messenger_builder(service_name_ + "_Client");
-  secure_context_ = VERIFY_RESULT(
-      server::SetupInternalSecureContext(local_hosts, *server->fs_manager(), &messenger_builder));
+  secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(
+      local_hosts, server->fs_manager()->GetDefaultRootDir(), &messenger_builder));
 
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
 
@@ -79,8 +81,8 @@ Status StatefulServiceClientBase::TESTInit(
     const std::string& local_host, const std::string& master_addresses) {
   std::lock_guard lock(mutex_);
   rpc::MessengerBuilder messenger_builder(service_name_ + "Client");
-  secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-      FLAGS_certs_dir, local_host, server::SecureContextType::kInternal, &messenger_builder));
+  secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
+      FLAGS_certs_dir, local_host, rpc::SecureContextType::kInternal, &messenger_builder));
 
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
 

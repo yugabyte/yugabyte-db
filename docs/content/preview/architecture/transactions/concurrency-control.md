@@ -300,7 +300,7 @@ commit;
 
 ### Best-effort internal retries for first statement in a transaction
 
-Note that we see the error message `All transparent retries exhausted` in the preceding example because if the transaction T1, when executing the first statement, finds another concurrent conflicting transaction with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transaction will be done in some time. The number of retries are configurable by the `yb_max_query_layer_retries` session variable and the exponential backoff parameters are the same as the ones described in [Performance tuning](../read-committed/#performance-tuning).
+Note that we see the error message `All transparent retries exhausted` in the preceding example because if the transaction T1, when executing the first statement, finds another concurrent conflicting transaction with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transaction will be done in some time. The number of retries are configurable by the `yb_max_query_layer_retries` YSQL configuration parameter and the exponential backoff parameters are the same as the ones described in [Performance tuning](../read-committed/#performance-tuning).
 
 Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided as T1 and T2 would no longer be "concurrent".
 
@@ -1223,19 +1223,20 @@ commit;
 
 ### Versioning and upgrades
 
-When turning `enable_wait_queues` on or off, or during a rolling restart, where during an update the flag could be on on nodes with a more recent version, if some nodes have wait-on-conflict behavior enabled and some don’t, you will experience mixed (but still correct) behavior.
+When turning `enable_wait_queues` on or off, or during a rolling restart, where during an update the flag could be on nodes with a more recent version, if some nodes have wait-on-conflict behavior enabled and some don't, you will experience mixed (but still correct) behavior.
 
 A mix of both fail-on-conflict and wait-on-conflict traffic results in the following additional YSQL-specific semantics:
 
 - If a transaction using fail-on-conflict encounters transactions that have conflicting writes -
-    - If there is even a single conflicting transaction that uses wait-on-conflict, the transaction aborts.
-    - Otherwise, YugabyteDB uses the regular [fail-on-conflict semantics](#fail-on-conflict), which is to abort the lower priority transaction.
+  - If there is even a single conflicting transaction that uses wait-on-conflict, the transaction aborts.
+  - Otherwise, YugabyteDB uses the regular [fail-on-conflict semantics](#fail-on-conflict), which is to abort the lower priority transaction.
 - If a transaction using wait-on-conflict encounters transactions that have conflicting writes, it waits for all conflicting transactions to end (including any using fail-on-conflict semantics).
 
 ### Fairness
 
 When multiple requests are waiting on the same resource in the wait queue, and that resource becomes available, YugabyteDB generally uses the following process to decide in which order those waiting requests should get access to the contentious resource:
-1. Sort all waiting requests based on the _transaction start time_, with requests from the oldest transactions first
+
+1. Sort all waiting requests based on the _transaction start time_, with requests from the oldest transactions first.
 2. Resume requests in order:
     1. Re-run conflict resolution and acquire locks on the requested resource.
     2. If the resource is no longer available because another waiting request acquired it, re-enter the wait queue.

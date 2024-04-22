@@ -131,6 +131,8 @@ class Master : public tserver::DbServerBase {
 
   MasterAutoFlagsManager* GetAutoFlagsManagerImpl() { return auto_flags_manager_.get(); }
 
+  CloneStateManager* clone_state_manager() const;
+
   scoped_refptr<MetricEntity> metric_entity_cluster();
 
   void SetMasterAddresses(std::shared_ptr<server::MasterAddresses> master_addresses) {

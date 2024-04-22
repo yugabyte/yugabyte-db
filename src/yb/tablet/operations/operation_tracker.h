@@ -37,10 +37,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/common/opid.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 

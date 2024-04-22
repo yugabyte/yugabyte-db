@@ -131,7 +131,7 @@ This would add the grammar and syntax tabs as follows:
 
 The syntax and grammar diagrams are generated in the same order as included in the `ebnf` shortcode.
 
-Suppose that a syntax rule includes a reference to another syntax rule. If the referenced syntax rule is included in the same [_syntax diagram set_](#syntax-diagram-set), then the name of the syntax rule in the referring [_syntax diagram_](#syntax-diagram) becomes a link to the syntax rule in that same syntax diagram set. Otherwise the generated link target of the referring rule is in the [_grammar diagrams file_](#grammar-diagrams-file). The way that this link is spelled depends on the location, in the [_ysql directory_](#ysql-directory) tree, of the `.md` file that includes the generated syntax diagram.
+Suppose that a syntax rule includes a reference to another syntax rule. If the referenced syntax rule is included in the same [_syntax diagram set_](#syntax-diagram-set), then the name of the syntax rule in the referring [_syntax diagram_](#syntax-diagram) becomes a link to the syntax rule in that same syntax diagram set. Otherwise the generated link target of the referring rule is in the [_grammar diagrams file_](#grammar-diagrams-file). The way that this link is spelled depends on the location of the `.md` file that includes the generated syntax diagram.
 
 In the case you have multiple syntax diagram sets on the same page and would like to cross-reference each other on the same page, specify the local rules that need to be cross referenced as comma separated values in the `localrefs` argument of the `ebnf` shortcode. For example,
 

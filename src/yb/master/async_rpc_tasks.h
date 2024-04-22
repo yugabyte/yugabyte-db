@@ -1034,5 +1034,30 @@ class AsyncUpdateTransactionTablesVersion: public RetrySpecificTSRpcTask {
   tserver::UpdateTransactionTablesVersionResponsePB resp_;
 };
 
+class AsyncCloneTablet: public AsyncTabletLeaderTask {
+ public:
+  AsyncCloneTablet(
+      Master* master,
+      ThreadPool* callback_pool,
+      const TabletInfoPtr& tablet,
+      LeaderEpoch epoch,
+      tablet::CloneTabletRequestPB req);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kCloneTablet;
+  }
+
+  std::string type_name() const override { return "Clone Tablet"; }
+
+  std::string description() const override;
+
+ private:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  tablet::CloneTabletRequestPB req_;
+  tserver::CloneTabletResponsePB resp_;
+};
+
 } // namespace master
 } // namespace yb

@@ -503,9 +503,7 @@ const validateForm = async (
             sourceUniverse.universeUUID,
             values.targetUniverse.value.universeUUID,
             sourceUniverseTables,
-            [] /* Table UUIDs currently in config */,
-            values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC,
-            false /* used for dr */
+            values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC
           );
         } catch (error: any) {
           toast.error(

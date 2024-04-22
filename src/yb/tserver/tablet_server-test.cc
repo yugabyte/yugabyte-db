@@ -66,8 +66,10 @@
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/flags.h"
+#include "yb/util/monotime.h"
 
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -93,6 +95,7 @@ DECLARE_string(metric_node_name);
 METRIC_DECLARE_counter(rows_inserted);
 METRIC_DECLARE_counter(rows_updated);
 METRIC_DECLARE_counter(rows_deleted);
+METRIC_DECLARE_gauge_uint64(untracked_memory);
 
 namespace yb {
 namespace tserver {
@@ -968,6 +971,21 @@ TEST_F(TabletServerTest, TestGFlagsCallHome) {
   CHECK_OK(env_->CreateDir(GetWebserverDir()));
   TestGFlagsCallHome<TabletServer, TserverCallHome>(mini_server_->server());
 }
+
+#if YB_TCMALLOC_ENABLED
+TEST_F(TabletServerTest, TestUntrackedMemory) {
+  auto server_metric_entity = mini_server_->server()->metric_entity();
+  ASSERT_TRUE(server_metric_entity->TEST_ContainMetricName("untracked_memory"));
+
+  const size_t kBufferSize = 10_MB;
+  std::unique_ptr<char[]> alloc(new char[kBufferSize]);
+  // Clang in release mode can optimize out the above allocation unless
+  // we do something with the pointer... so we just log it.
+  VLOG(8) << static_cast<void*>(alloc.get());
+  ASSERT_LE(kBufferSize, server_metric_entity->FindOrNull<FunctionGauge<uint64_t>>(
+      METRIC_untracked_memory)->value());
+}
+#endif
 
 } // namespace tserver
 } // namespace yb

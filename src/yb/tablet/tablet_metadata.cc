@@ -73,6 +73,7 @@
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -300,6 +301,10 @@ Status TableInfo::MergeSchemaPackings(
         << " but version is " << schema_version;
   }
   RETURN_NOT_OK(doc_read_context->MergeWithRestored(pb, overwrite));
+  VLOG_WITH_PREFIX(1) << Format("After merging schema packings, latest schema version of"
+                                "table $0($1) is $2",
+                                table_name, table_id, schema_version);
+
   // After the merge, the latest packing should be in sync with
   // the latest schema.
   const dockv::SchemaPacking& latest_packing = VERIFY_RESULT(
@@ -350,8 +355,24 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
   }
   auto packing = self->doc_read_context->schema_packing_storage.GetPacking(schema_version);
   if (!packing.ok()) {
-    return STATUS_FORMAT(Corruption, "Cannot find packing for table: $0, schema version: $1",
-                         self->table_id, schema_version);
+    Status s = STATUS_FORMAT(Corruption, "Cannot find packing with version $0 for table $1 "
+                             "(table_id=$2 schema version=$3 cotable_id=$4$5): $6",
+                             schema_version,
+                             self->table_name,
+                             self->table_id,
+                             self->schema_version,
+                             self->cotable_id,
+                             self->schema().has_colocation_id()
+                                 ? Format(" colocation_id=$0", self->schema().colocation_id())
+                                 : "",
+                             packing.status());
+    if (VLOG_IS_ON(2)) {
+      LOG(INFO) << self->LogPrefix() << "Get packing failed: " << s << ". Failure stack trace: "
+                << GetStackTrace();
+      // It's important for debugging, make sure all INFO level logs are flushed to log file.
+      google::FlushLogFiles(google::INFO);
+    }
+    return s;
   }
   docdb::ColumnIds deleted_before_history_cutoff;
   for (const auto& deleted_col : self->deleted_cols) {
@@ -410,6 +431,7 @@ Status KvStoreInfo::LoadTablesFromPB(
     if (schema.has_colocation_id()) {
       colocation_to_table.emplace(schema.colocation_id(), table_info);
     }
+    VLOG(1) << tablet_log_prefix << "Loaded table " << AsString(table_info);
   }
   return Status::OK();
 }
@@ -582,6 +604,8 @@ void KvStoreInfo::UpdateColocationMap(const TableInfoPtr& table_info) {
   auto colocation_id = table_info->schema().colocation_id();
   if (colocation_id) {
     colocation_to_table.emplace(colocation_id, table_info);
+    VLOG(1) << table_info->LogPrefix() << Format("Updated colocation map: $0 -> {$1}",
+                                                 colocation_id, table_info);
   }
 }
 
@@ -1362,6 +1386,9 @@ void RaftGroupMetadata::RemoveTable(const TableId& table_id, const OpId& op_id) 
   if (it != tables.end()) {
     auto colocation_id = it->second->schema().colocation_id();
     if (colocation_id) {
+      VLOG(1) << it->second->LogPrefix()
+              << Format("Removing from colocation map: $0 -> {$1}",
+                        colocation_id, it->second);
       kv_store_.colocation_to_table.erase(colocation_id);
     }
     tables.erase(it);
@@ -1734,6 +1761,9 @@ Status RaftGroupMetadata::OldSchemaGC(
       auto new_value = std::make_shared<TableInfo>(
           *it->second, schema_version);
       it->second = new_value;
+      VLOG_WITH_PREFIX(1)
+          << Format("After old schema GC, latest schema version of table $0($1) is $2",
+                    it->second->table_name, it->second->table_id, it->second->schema_version);
       need_flush = true;
     }
   }

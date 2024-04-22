@@ -39,6 +39,7 @@
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
@@ -99,7 +100,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
-#include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status.h"

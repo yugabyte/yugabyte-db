@@ -33,6 +33,15 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBefore
   ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
   ASSERT_OK(UpdatePrimaryKey(1 /* key */, 9 /* value */, &test_cluster_));
 
+  OpId historical_max_op_id;
+  ASSERT_OK(WaitFor(
+      [&]() {
+        historical_max_op_id = GetHistoricalMaxOpId(tablets);
+        return historical_max_op_id > OpId::Invalid();
+      },
+      MonoDelta::FromSeconds(5),
+      "historical_max_op_id should change"));
+
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 2, 1, 1, 0, 0};
   const uint32_t expected_count_with_packed_row[] = {1, 3, 0, 1, 0, 0};
@@ -85,9 +94,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageRetention))
   LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion)";
   SleepFor(MonoDelta::FromSeconds(2));
 
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false,
-      /* timeout_secs = */ kCompactionTimeoutSec, /* is_compaction = */ true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, kCompactionTimeoutSec, true));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 1, 2, 0, 0, 0};
@@ -1224,6 +1231,9 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 4 WHERE key = 1"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {3, 1, 2, 0, 0, 0};
@@ -1492,7 +1502,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWith
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
   constexpr int kCompactionTimeoutSec = 60;
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ kCompactionTimeoutSec, /* is_compaction = */ true));
 
@@ -1503,6 +1513,9 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWith
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 4 WHERE key = 1"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 5 WHERE key = 1"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 5 WHERE key = 1"));
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 1"));
 

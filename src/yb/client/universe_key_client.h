@@ -30,8 +30,6 @@
 
 namespace yb {
 
-class FsManager;
-
 namespace client {
 
 class UniverseKeyClient {
@@ -47,9 +45,9 @@ class UniverseKeyClient {
   // Synchronous call from tserver Init to get the full universe key registry from master
   // leader.
   static Result<encryption::UniverseKeyRegistryPB> GetFullUniverseKeyRegistry(
-      const std::string& local_hosts,
-      const std::string& master_addresses,
-      const FsManager& fs_manager);
+      const std::string& local_hosts, const std::string& master_addresses,
+      const std::string& root_dir);
+
  private:
 
   void ProcessGetUniverseKeyRegistryResponse(

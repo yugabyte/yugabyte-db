@@ -35,11 +35,11 @@ package yb.tserver;
 
 option java_package = "org.yb.tserver";
 
+import "yb/common/opid.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/rpc/rpc_header.proto";
 import "yb/tablet/metadata.proto";
-import "yb/util/opid.proto";
 
 // RaftConfig remote bootstrap RPC calls.
 service RemoteBootstrapService {

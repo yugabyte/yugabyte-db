@@ -636,6 +636,12 @@ extern bool yb_test_fail_table_rewrite_after_creation;
 extern bool yb_test_stay_in_global_catalog_version_mode;
 
 /*
+ * If set to true, any DDLs that rewrite tables/indexes will not drop the
+ * old relfilenode/DocDB table.
+ */
+extern bool yb_test_table_rewrite_keep_old_table;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure.
 */
