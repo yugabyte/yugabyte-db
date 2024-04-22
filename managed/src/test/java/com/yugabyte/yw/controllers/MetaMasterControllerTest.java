@@ -66,6 +66,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(mockKubernetesManager.getKubernetesServiceIPPort(any(), any())).thenCallRealMethod();
     } catch (Exception e) {
       fail();
     }
