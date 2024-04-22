@@ -3,8 +3,7 @@
     "data": [
       {
         "labels": {},
-        "name": "Samples",
-        "waitEvent": "CatalogRead",
+        "name": "CatalogRead",
         "waitEventClass": "TServerWait",
         "waitEventComponent": "YSQL",
         "x": [
@@ -94,8 +93,7 @@
       },
       {
         "labels": {},
-        "name": "Samples",
-        "waitEvent": "QueryProcessing",
+        "name": "QueryProcessing",
         "waitEventClass": "YSQLQuery",
         "waitEventComponent": "YSQL",
         "x": [
@@ -186,6 +184,7 @@
     ],
     "layout": {
       "metadata": {
+        "currentGroupBy": "waitEvent",
         "supportedGroupBy": [
           {
             "label": "waitEvent",
@@ -198,6 +197,14 @@
           {
             "label": "waitEventComponent",
             "name": "Component"
+          },
+          {
+            "label": "queryId",
+            "name": "Query"
+          },
+          {
+            "label": "clientNodeIp",
+            "name": "Client IP"
           }
         ]
       },

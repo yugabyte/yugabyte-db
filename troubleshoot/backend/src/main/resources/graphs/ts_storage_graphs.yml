@@ -5,12 +5,12 @@ query_latency:
     universeUuid:
       name: universe_id
       type: type_uuid
+      neverRead: true
     dbId:
       name: db_id
     queryId:
       name: query_id
       type: type_int
-      defaultGroupBy: true
       assumesGroupBy: ["dbId"]
     instanceName:
       name: node_name
@@ -39,12 +39,12 @@ query_rps:
     universeUuid:
       name: universe_id
       type: type_uuid
+      neverRead: true
     dbId:
       name: db_id
     queryId:
       name: query_id
       type: type_int
-      defaultGroupBy: true
       assumesGroupBy: ["dbId"]
     instanceName:
       name: node_name
@@ -63,13 +63,13 @@ query_rows_avg:
     universeUuid:
       name: universe_id
       type: type_uuid
+      neverRead: true
     dbId:
       name: db_id
       alwaysGroupBy: true
     queryId:
       name: query_id
       type: type_int
-      defaultGroupBy: true
       assumesGroupBy: ["dbId"]
     instanceName:
       name: node_name
@@ -88,6 +88,7 @@ active_session_history:
     universeUuid:
       name: universe_id
       type: type_uuid
+      neverRead: true
     queryId:
       name: query_id
       type: type_int
@@ -126,3 +127,7 @@ active_session_history:
           name: Class
         - label: waitEventComponent
           name: Component
+        - label: queryId
+          name: Query
+        - label: clientNodeIp
+          name: Client IP
