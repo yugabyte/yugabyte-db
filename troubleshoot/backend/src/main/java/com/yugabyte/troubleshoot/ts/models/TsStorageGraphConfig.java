@@ -33,6 +33,7 @@ public class TsStorageGraphConfig {
   public static class FilterColumn {
     private String name;
     private FilterColumnType type = FilterColumnType.type_text;
+    private boolean neverRead = false;
     private boolean alwaysGroupBy = false;
     private boolean defaultGroupBy = false;
     private List<String> assumesGroupBy = Collections.emptyList();

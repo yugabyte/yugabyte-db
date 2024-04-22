@@ -67,6 +67,7 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
             .setSettings(settings)
             .setReplaceNaN(false)
             .setFillMissingPoints(false)
+            .setGroupBy(GraphLabel.queryId)
             .setFilters(
                 ImmutableMap.of(
                     GraphLabel.universeUuid, ImmutableList.of(context.getUniverseUuid().toString()),
