@@ -94,6 +94,8 @@ Get information on wait events for each normalized query, YSQL, or YCQL request.
 | client_node_ip | text | Client IP for the RPC. For YSQL, it will be the client node from where the query is generated. For YB-TServer, it will be the YSQL/TServer node from where the RPC originated. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events were collected, each of the collected sample will have a weight of (200 / 100) = 2.0 |
 
+<!--
+This is not ASH related. We need to mostly create a new page
 ### yb_local_tablets
 
 This view provides tablet ID metadata, state, and role information. This information is also available on the `<yb-tserver_ip>:9000/tablets` endpoint. You can join the `wait_event_aux` with `tablet_id` in case of [YB-TServer wait events](#yb-tserver).
@@ -109,7 +111,7 @@ Note that this is not an ASH-specific view, but can be beneficial to extract mor
 | ysql_schema_name | text | YSQL schema name. Empty for YCQL, System, and Unknown table types. |
 | table_name | text | Name of the table which the tablet is part of. |
 | partition_key_start| bytea | Start key of the partition (inclusive). |
-| partition_key_end  | bytea | End key of the partition (exclusive).|
+| partition_key_end  | bytea | End key of the partition (exclusive).| -->
 
 ## Wait events
 
@@ -160,7 +162,9 @@ List of wait events by the following request types.
 | YBClient | YBCSyncLeaderMasterRpc  | Network |  | Waiting on an RPC to the master/master-service  |
 | YBClient | YBCFindMasterProxy | Network  | | Waiting on establishing the proxy to master leader |
 
-#### ycql_stat_statements
+<!-- #### ycql_stat_statements
+
+This is not ASH related. We need to mostly create a new page
 
 This view provides YCQL statement metrics that can be joined with YCQL wait events in [yb_active_session_history](#yb-active-session-history) table.
 
@@ -176,7 +180,7 @@ Note that this is not an ASH-specific view, but can be beneficial to extract mor
 | min_time | float8 | Minimum time spent executing the statement, in milliseconds. |
 | max_time | float8 | Maximum time spent executing the statement, in milliseconds. |
 | mean_time | float8 | Mean time spent executing the statement, in milliseconds. |
-| stddev_time | float8 | Population standard deviation of time spent executing the statement, in milliseconds. |
+| stddev_time | float8 | Population standard deviation of time spent executing the statement, in milliseconds. | -->
 
 ## Examples
 
