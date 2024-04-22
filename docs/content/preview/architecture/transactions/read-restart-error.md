@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: architecture-read-restart-error
     parent: architecture-acid-transactions
-    weight: 50
+    weight: 900
 type: docs
 rightNav:
   hideH4: true
