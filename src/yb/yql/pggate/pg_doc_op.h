@@ -33,10 +33,10 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 YB_STRONGLY_TYPED_BOOL(RequestSent);
+YB_STRONGLY_TYPED_BOOL(KeepOrder);
 
 //--------------------------------------------------------------------------------------------------
 // PgDocResult represents a batch of rows in ONE reply from tablet servers.
@@ -171,7 +171,7 @@ class PgDocResult {
 //      The same requests are constructed for each tablet server.
 //    - PopulateNextHashPermutationOps() Parallel processing SELECT by hash conditions.
 //      Hash permutations will be group into different request based on their hash_codes.
-//    - PopulateDmlByYbctidOps() Parallel processing SELECT by ybctid values.
+//    - PopulateByYbctidOps() Parallel processing SELECT by ybctid values.
 //      Ybctid values will be group into different request based on their hash_codes.
 //      This function is a bit different from other formulating function because it is used for an
 //      internal request within PgGate. Other populate functions are used for external requests
@@ -276,21 +276,21 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   struct YbctidGenerator {
     using Next = LWFunction<Slice()>;
 
-    YbctidGenerator(const Next& next_, size_t capacity_, bool keep_order_)
-        : next(next_), capacity(capacity_), keep_order(keep_order_) {}
+    YbctidGenerator(const Next& next_, size_t capacity_)
+        : next(next_), capacity(capacity_) {}
 
     const Next& next;
     const size_t capacity;
-    const bool keep_order;
   };
 
   // This operation is requested internally within PgGate, and that request does not go through
   // all the steps as other operation from Postgres thru PgDocOp. This is used to create requests
   // for the following select.
   //   SELECT ... FROM <table> WHERE ybctid IN (SELECT base_ybctids from INDEX)
-  // After ybctids are queried from INDEX, PgGate will call "PopulateDmlByYbctidOps" to create
+  // After ybctids are queried from INDEX, PgGate will call "PopulateByYbctidOps" to create
   // operators to fetch rows whose rowids equal queried ybctids.
-  Status PopulateDmlByYbctidOps(const YbctidGenerator& generator);
+  // Response will have same order of ybctids as request in case of using KeepOrder::kTrue.
+  Status PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder = KeepOrder::kFalse);
 
   bool has_out_param_backfill_spec() {
     return !out_param_backfill_spec_.empty();
@@ -318,7 +318,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Populate Protobuf requests using the collected information for this DocDB operator.
   virtual Result<bool> DoCreateRequests() = 0;
 
-  virtual Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) = 0;
+  virtual Status DoPopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) = 0;
 
   // Only active operators are kept in the active range [0, active_op_count_)
   // - Not execute operators that are outside of range [0, active_op_count_).
@@ -463,7 +463,7 @@ class PgDocReadOp : public PgDocOp {
     return false;
   }
 
-  Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) override;
+  Status DoPopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) override;
 
   Status ResetPgsqlOps();
 
@@ -597,7 +597,7 @@ class PgDocReadOp : public PgDocOp {
   //   * If (partition_count == 1), only one operator is needed for the entire partition range.
   //   * If (partition_count > 1), each operator is used for a specific partition range.
   //   * This optimization is used by
-  //       PopulateDmlByYbctidOps()
+  //       PopulateByYbctidOps()
   //       PopulateParallelSelectOps()
   // - When parallelism by arguments is applied, each operator has only one argument.
   //   When tablet server will run the requests in parallel as it assigned one thread per request.
@@ -695,7 +695,7 @@ class PgDocWriteOp : public PgDocOp {
   // For write ops, we are not yet batching ybctid from index query.
   // TODO(neil) This function will be implemented when we push down sub-query inside WRITE ops to
   // the proxy layer. There's many scenarios where this optimization can be done.
-  Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) override {
+  Status DoPopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) override {
     LOG(FATAL) << "Not yet implemented";
     return Status::OK();
   }
@@ -711,5 +711,4 @@ class PgDocWriteOp : public PgDocOp {
 PgDocOp::SharedPtr MakeDocReadOpWithData(
     const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data);
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate
