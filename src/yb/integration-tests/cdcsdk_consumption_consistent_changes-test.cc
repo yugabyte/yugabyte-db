@@ -2471,5 +2471,63 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureSettingRetentionBarrie
   }
 }
 
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestRetentionBarrierMovementForTablesNotInPublication) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 5;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_2"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+  ASSERT_OK(test_client()->GetTablets(table_1, 0, &tablets_1, nullptr));
+  ASSERT_EQ(tablets_1.size(), 1);
+  auto tablet_peer_1 =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets_1.begin()->tablet_id()));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets_2, nullptr));
+  ASSERT_EQ(tablets_2.size(), 1);
+  auto tablet_peer_2 =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets_2.begin()->tablet_id()));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Set the replica identity for both tables to FULL. This is needed for Update Peers and Metrics
+  // to update safe time.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table_2 REPLICA IDENTITY FULL"));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // This simulates the situation where table_2 is not included in the publication.
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  ASSERT_NE(tablet_peer_2->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  auto safe_time = tablet_peer_2->get_cdc_sdk_safe_time();
+
+  ASSERT_OK(WriteRowsHelper(1, 10, &test_cluster_, true));
+
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 11);
+  uint64_t restart_lsn = change_resp.cdc_sdk_proto_records().Get(10).row_message().pg_lsn() + 1;
+
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, restart_lsn, restart_lsn));
+
+  // Sleep (as per the flags value) to ensure that revision of retention barriers is not blocked.
+  SleepFor(MonoDelta::FromSeconds(
+      FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs * 2 * kTimeMultiplier));
+
+  // Update Peers and Metrics should have moved forward the safe time for table_2.
+  ASSERT_GT(tablet_peer_2->get_cdc_sdk_safe_time(), safe_time);
+
+  // The safetime for both the table's tablets should be equal to slot's commit time.
+  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_EQ(tablet_peer_1->get_cdc_sdk_safe_time(), slot_row.record_id_commit_time);
+  ASSERT_EQ(tablet_peer_2->get_cdc_sdk_safe_time(), slot_row.record_id_commit_time);
+}
+
 }  // namespace cdc
 }  // namespace yb

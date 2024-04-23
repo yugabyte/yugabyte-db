@@ -2466,6 +2466,48 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
   return is_before_image_active;
 }
 
+Result<std::unordered_map<NamespaceId, uint64_t>>
+CDCServiceImpl::GetNamespaceMinRecordIdCommitTimeMap(
+    const CDCStateTableRange& table_range, Status* iteration_status) {
+  std::unordered_map<NamespaceId, uint64_t> namespace_to_min_record_id_commit_time;
+
+  // Iterate over all the slot entries and find the minimum record_id_commit_time for each
+  // namespace.
+  for (auto entry_result : table_range) {
+    if (!entry_result) {
+      LOG(WARNING) << "Failed to get min record_id_commit_time per namespace. "
+                   << entry_result.status();
+      return entry_result.status();
+    }
+    const auto& entry = *entry_result;
+
+    if (entry.key.tablet_id != kCDCSDKSlotEntryTabletId) {
+      continue;
+    }
+
+    const auto& stream_id = entry.key.stream_id;
+
+    RSTATUS_DCHECK(
+        entry.record_id_commit_time.has_value(), InternalError,
+        Format("The slot entry for the stream $0 did not have a value for record_id_commit_time"),
+        stream_id);
+
+    auto stream_metadata = VERIFY_RESULT(GetStream(stream_id));
+    auto namespace_id = stream_metadata->GetNamespaceId();
+
+    auto record_id_commit_time = *entry.record_id_commit_time;
+    if (!namespace_to_min_record_id_commit_time.contains(namespace_id)) {
+      namespace_to_min_record_id_commit_time.insert({namespace_id, record_id_commit_time});
+      continue;
+    }
+    namespace_to_min_record_id_commit_time[namespace_id] =
+        std::min(namespace_to_min_record_id_commit_time[namespace_id], record_id_commit_time);
+  }
+
+  RETURN_NOT_OK(*iteration_status);
+  return namespace_to_min_record_id_commit_time;
+}
+
 Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     const TabletId& input_tablet_id, TabletIdStreamIdSet* tablet_stream_to_be_deleted) {
   TabletIdCDCCheckpointMap tablet_min_checkpoint_map;
@@ -2476,6 +2518,14 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
   auto table_range = VERIFY_RESULT(cdc_state_table_->GetTableRange(
       CDCStateTableEntrySelector().IncludeCheckpoint().IncludeLastReplicationTime().IncludeData(),
       &iteration_status));
+
+  // Get the minimum record_id_commit_time for each namespace by looking at all the slot entries.
+  std::unordered_map<NamespaceId, uint64_t> namespace_to_min_record_id_commit_time;
+  if (FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+    namespace_to_min_record_id_commit_time =
+        VERIFY_RESULT(GetNamespaceMinRecordIdCommitTimeMap(table_range, &iteration_status));
+  }
+
   for (auto entry_result : table_range) {
     if (!entry_result) {
       LOG(WARNING) << "Populate tablet checkpoint failed for row. " << entry_result.status();
@@ -2494,8 +2544,9 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     const auto& checkpoint = *entry.checkpoint;
     count++;
 
-    // kCDCSDKSlotEntryTabletId represent cdc_state entry for a replication slot. Ignore it while
-    // moving retention barriers.
+    // kCDCSDKSlotEntryTabletId represent cdc_state entry for a replication slot. The required
+    // information from slot entry has been extracted and stored into
+    // 'namespace_to_min_record_id_commit_time' map.
     if (tablet_id == kCDCSDKSlotEntryTabletId) {
       continue;
     }
@@ -2554,8 +2605,6 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
 
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
     int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
-    // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
-    // taking the snapshot of any table.
     auto is_before_image_active_result = CheckBeforeImageActive(tablet_id, record, tablet_peeer);
     if (!is_before_image_active_result.ok()) {
       LOG(WARNING) << "Unable to obtain before image / replica identity information for tablet: "
@@ -2564,8 +2613,24 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     }
     bool is_before_image_active = *is_before_image_active_result;
 
-    if (entry.cdc_sdk_safe_time && (is_before_image_active || entry.snapshot_key.has_value())) {
-      cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
+    // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
+    // taking the snapshot of any table.
+    auto namespace_id = record.GetNamespaceId();
+    if ((is_before_image_active || entry.snapshot_key.has_value())) {
+      // For replication slot consumption we can set the cdc_sdk_safe_time to the minimum
+      // acknowledged commit time among all the slots on the namespace.
+      if (FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+        // This is possible when Update Peers and Metrics thread comes into action before the slot
+        // entry is added to the cdc_state table.
+        if (!namespace_to_min_record_id_commit_time.contains(namespace_id)) {
+          LOG(WARNING) << "Did not find any value for record_id_commit_time for the namespace: "
+                       << namespace_id;
+          continue;
+        }
+        cdc_sdk_safe_time = HybridTime(namespace_to_min_record_id_commit_time[namespace_id]);
+      } else if (entry.cdc_sdk_safe_time) {
+        cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
+      }
     }
 
     if (entry.active_time) {
