@@ -28,6 +28,7 @@ public class AnomalyMetadata {
 
   public enum AnomalyType {
     SQL_QUERY_LATENCY_INCREASE,
+    SQL_QUERY_LOCK_CONTENTION,
     HOT_NODE_CPU,
     HOT_NODE_READS_WRITES,
     HOT_NODE_YSQL_QUERIES,

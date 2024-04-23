@@ -22,7 +22,7 @@ public class GraphLayout {
   @Accessors(chain = true)
   public static class Metadata {
     private List<GroupByLabel> supportedGroupBy;
-    private GraphLabel currentGroupBy;
+    private List<GraphLabel> currentGroupBy;
   }
 
   @Data

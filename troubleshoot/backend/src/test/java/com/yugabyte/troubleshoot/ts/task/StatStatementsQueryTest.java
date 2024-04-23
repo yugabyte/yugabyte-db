@@ -41,6 +41,7 @@ public class StatStatementsQueryTest {
   @Autowired private PgStatStatementsQueryService pgStatStatementsQueryService;
   @Autowired private ThreadPoolTaskExecutor pgStatStatementsQueryExecutor;
   @Autowired private ThreadPoolTaskExecutor pgStatStatementsNodesQueryExecutor;
+  @Autowired private RuntimeConfigService runtimeConfigService;
   @Autowired private ObjectMapper objectMapper;
 
   private StatStatementsQuery statStatementsQuery;
@@ -55,6 +56,7 @@ public class StatStatementsQueryTest {
             universeDetailsService,
             pgStatStatementsService,
             pgStatStatementsQueryService,
+            runtimeConfigService,
             pgStatStatementsQueryExecutor,
             pgStatStatementsNodesQueryExecutor,
             objectMapper,
@@ -159,6 +161,7 @@ public class StatStatementsQueryTest {
     assertThat(queries).hasSize(2);
     assertThat(queries).allMatch(q -> q.getScheduledTimestamp() != null);
     queries.forEach(pgStatStatementsQuery -> pgStatStatementsQuery.setScheduledTimestamp(null));
+    expectedQueries.forEach(q -> q.setLastActive(Instant.parse("2023-12-25T15:58:39.246982Z")));
     assertThat(queries).containsExactlyInAnyOrderElementsOf(expectedQueries);
 
     assertThat(stats).hasSize(3);

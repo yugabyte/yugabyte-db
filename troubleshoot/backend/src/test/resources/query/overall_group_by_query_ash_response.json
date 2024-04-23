@@ -2,7 +2,9 @@
   {
     "data": [
       {
-        "labels": {},
+        "labels": {
+          "queryId": "1"
+        },
         "name": "1",
         "x": [
           1706272200000,
@@ -90,7 +92,9 @@
         ]
       },
       {
-        "labels": {},
+        "labels": {
+          "queryId": "200"
+        },
         "name": "200",
         "x": [
           1706272200000,
@@ -178,7 +182,9 @@
         ]
       },
       {
-        "labels": {},
+        "labels": {
+          "queryId": "300"
+        },
         "name": "300",
         "x": [
           1706272200000,
@@ -268,7 +274,9 @@
     ],
     "layout": {
       "metadata": {
-        "currentGroupBy": "queryId",
+        "currentGroupBy": [
+          "queryId"
+        ],
         "supportedGroupBy": [
           {
             "label": "waitEvent",
