@@ -406,7 +406,11 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_
   dtreq.mutable_table()->set_table_name(table->name());
   dtreq.mutable_table()->set_table_id(table->id());
   dtreq.set_is_index_table(table->is_index());
-  return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch);
+  RETURN_NOT_OK(DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch));
+
+  RemoveDdlTransactionState(table->id(), {txn_data.ddl_txn_id});
+
+  return Status::OK();
 }
 
 Status CatalogManager::WaitForDdlVerificationToFinish(
