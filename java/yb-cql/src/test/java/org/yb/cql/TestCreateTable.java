@@ -24,6 +24,8 @@ import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 
 import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
 
 import org.yb.YBTestRunner;
 import org.junit.runner.RunWith;
@@ -189,6 +191,10 @@ public class TestCreateTable extends BaseCQLTest {
 
   @Test
   public void testCreateTableWithColumnNamedGroup() throws Exception {
+    // Run test with error suppressed as GROUP BY is not supported.
+    Map<String, String> flags = new HashMap<>();
+    flags.put("ycql_suppress_group_by_error", "true");
+    restartClusterWithTSFlags(flags);
     LOG.info("Start test: " + getCurrentTestMethodName());
     testCreateTableWithColumnNamedKeyword("group");
 
