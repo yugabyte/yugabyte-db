@@ -1036,6 +1036,8 @@ class YBClient {
   bool RefreshTabletInfoWithConsensusInfo(
       const tserver::TabletConsensusInfoPB& newly_received_info);
 
+  int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
+
  private:
   class Data;
 

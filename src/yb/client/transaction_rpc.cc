@@ -118,6 +118,7 @@ class TransactionRpc : public TransactionRpcBase {
 
   bool RefreshMetaCacheWithResponse() override {
     if constexpr (tserver::HasTabletConsensusInfo<typename Traits::Response>::value) {
+      DCHECK(client::internal::CheckIfConsensusInfoUnexpectedlyMissing(req_, resp_));
       if (resp_.has_tablet_consensus_info()) {
         return GetInvoker().RefreshTabletInfoWithConsensusInfo(resp_.tablet_consensus_info());
       }
@@ -126,6 +127,12 @@ class TransactionRpc : public TransactionRpcBase {
                  "have a tablet_consensus_info";
     }
     return false;
+  }
+
+  void SetRequestRaftConfigOpidIndex(int64_t opid_index) override {
+    if constexpr (tserver::HasRaftConfigOpidIndex<typename Traits::Request>::value) {
+      req_.set_raft_config_opid_index(opid_index);
+    }
   }
 
  private:

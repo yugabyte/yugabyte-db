@@ -250,6 +250,7 @@ message GetTransactionStatusRequestPB {
   optional fixed64 propagated_hybrid_time = 3;
   // Reserved for xcluster deprecated field external_hybrid_time.
   reserved 4;
+  optional int64 raft_config_opid_index = 5;
 }
 
 message GetTransactionStatusResponsePB {

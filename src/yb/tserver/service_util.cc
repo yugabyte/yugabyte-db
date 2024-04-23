@@ -248,6 +248,19 @@ bool IsErrorCodeNotTheLeader(const Status& status) {
   return code && code.value() == TabletServerErrorPB::NOT_THE_LEADER;
 }
 
+std::shared_ptr<TabletConsensusInfoPB> GetTabletConsensusInfoFromTabletPeer(
+    const tablet::TabletPeerPtr& peer) {
+  if (auto consensus = peer->GetRaftConsensus()) {
+    std::shared_ptr<TabletConsensusInfoPB> tablet_consensus_info =
+        std::make_shared<TabletConsensusInfoPB>();
+    tablet_consensus_info->set_tablet_id(peer->tablet_id());
+    *(tablet_consensus_info->mutable_consensus_state()) =
+        consensus.get()->GetConsensusStateFromCache();
+    return tablet_consensus_info;
+  }
+  return nullptr;
+}
+
 namespace {
 
 template <class Key>
@@ -315,7 +328,6 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     tablet_peer = std::move(tablet_peer_result.tablet_peer);
     tablet_ptr = std::move(tablet_peer_result.tablet);
   }
-
   RETURN_NOT_OK(CheckPeerIsReady(*tablet_peer, allow_split_tablet));
 
   // Check for leader only in strong consistency level.
@@ -333,7 +345,6 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     }
   } else {
     auto s = CheckPeerIsLeader(*tablet_peer.get());
-
     // Peer is not the leader, so check that the time since it last heard from the leader is less
     // than FLAGS_max_stale_read_bound_time_ms.
     if (PREDICT_FALSE(!s.ok())) {
@@ -372,14 +383,12 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
       }
     }
   }
-
   auto tablet = tablet_peer->shared_tablet();
   if (PREDICT_FALSE(!tablet)) {
     return STATUS_EC_FORMAT(
         IllegalState, TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING),
         "Tablet $0 is not running", tablet_id);
   }
-
   return tablet;
 }
 

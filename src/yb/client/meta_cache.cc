@@ -125,6 +125,7 @@ METRIC_DEFINE_event_stats(
 
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
+DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);
 
 namespace yb {
 
@@ -1253,6 +1254,18 @@ Status MetaCache::RefreshTabletInfoWithConsensusInfo(
     }
     return remote->RefreshFromRaftConfig(ts_cache_, raft_config, consensus_state);
   }
+}
+
+int64_t MetaCache::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
+  SharedLock lock(mutex_);
+  if (GetAtomicFlag(&FLAGS_TEST_always_return_consensus_info_for_succeeded_rpc)) {
+    return RemoteTablet::kUnknownOpIdIndex;
+  }
+  auto remote_tablet = FindPtrOrNull(tablets_by_id_, tablet_id);
+  if (remote_tablet == nullptr) {
+    return RemoteTablet::kUnknownOpIdIndex;
+  }
+  return remote_tablet->raft_config_opid_index();
 }
 
 std::unordered_map<TableId, TableData>::iterator MetaCache::InitTableDataUnlocked(

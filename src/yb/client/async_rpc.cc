@@ -488,6 +488,7 @@ void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
 
 template <class Req, class Resp>
 bool AsyncRpcBase<Req, Resp>::RefreshMetaCacheWithResponse() {
+  DCHECK(client::internal::CheckIfConsensusInfoUnexpectedlyMissing(req_, resp_));
   if (!resp_.has_tablet_consensus_info()) {
     VLOG(1) << "Partial refresh of tablet for " << GetRpcName()
             << " RPC failed because the response did not have a tablet_consensus_info";
@@ -495,6 +496,11 @@ bool AsyncRpcBase<Req, Resp>::RefreshMetaCacheWithResponse() {
   }
 
   return tablet_invoker_.RefreshTabletInfoWithConsensusInfo(resp_.tablet_consensus_info());
+}
+
+template <class Req, class Resp>
+void AsyncRpcBase<Req, Resp>::SetRequestRaftConfigOpidIndex(int64_t opid_index) {
+  req_.set_raft_config_opid_index(opid_index);
 }
 
 template <class Req, class Resp>
