@@ -167,7 +167,7 @@ public class LdapUniverseSyncControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testLdapUnivSyncWithoutUserfield() {
+  public void testLdapUnivSyncWithoutUserfieldAndUserfieldAttr() {
     setUniverseRuntimeConfig("true");
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ysql);
     ldapUnivSyncFormData.setDbUser("");
@@ -179,7 +179,10 @@ public class LdapUniverseSyncControllerTest extends FakeDBApplication {
             () -> syncLdapWithUniv(defaultUniverse.getUniverseUUID(), bodyJson));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertErrorNodeValue(resultJson, "ldapUserfield", "error.required");
+    assertValue(
+        resultJson,
+        "error",
+        "Either of the ldapUserfield or ldapUserfieldAttribute is necessary to perform the sync");
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
 

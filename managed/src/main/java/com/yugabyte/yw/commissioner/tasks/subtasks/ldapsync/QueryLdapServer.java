@@ -59,15 +59,42 @@ public class QueryLdapServer extends AbstractTaskBase {
             ldapUnivSyncFormData.getLdapBasedn(),
             ldapUnivSyncFormData.getLdapSearchFilter(),
             SearchScope.SUBTREE,
-            ldapUnivSyncFormData.getLdapGroupMemberOfAttribute());
+            "*");
 
     while (cursor.next()) {
       Entry entry = cursor.get();
       if (enabledDetailedLogs) {
         log.debug("LDAP user entry retrieved: {}", entry.toString());
       }
-      String dn = entry.getDn().toString();
-      String userKey = retrieveValueFromDN(dn, ldapUnivSyncFormData.getLdapUserfield());
+
+      String userKey = "";
+      // user's name is retrieved from the ldapUserfieldAttribute if specified
+      if (StringUtils.isNotEmpty(ldapUnivSyncFormData.getLdapUserfieldAttribute())) {
+        Attribute userAttribute = entry.get(ldapUnivSyncFormData.getLdapUserfieldAttribute());
+        if (enabledDetailedLogs) {
+          log.debug("User's name retrieved from attribute: '{}'", userAttribute);
+        }
+        if (userAttribute != null) {
+          userKey = userAttribute.get().getString();
+        } else {
+          if (enabledDetailedLogs) {
+            log.warn(
+                "{} is not set for this user on the LDAP Server, hence excluded from the sync",
+                ldapUnivSyncFormData.getLdapUserfieldAttribute());
+          }
+        }
+      } else {
+        // user's name is retrieved from the dn if ldapUserfieldAttribute is not specified
+        String dn = entry.getDn().toString();
+        if (enabledDetailedLogs) {
+          log.debug(
+              "User's name retrieved from {} in {}", ldapUnivSyncFormData.getLdapUserfield(), dn);
+        }
+        userKey = retrieveValueFromDN(dn, ldapUnivSyncFormData.getLdapUserfield());
+      }
+      if (enabledDetailedLogs) {
+        log.debug("user name retrieved: {}", userKey);
+      }
 
       if (!StringUtils.isEmpty(userKey)) {
         Attribute groups = entry.get(ldapUnivSyncFormData.getLdapGroupMemberOfAttribute());

@@ -36,6 +36,7 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -91,6 +92,13 @@ public class LdapUniverseSyncController extends AuthenticatedController {
     // Parse request body
     LdapUnivSyncFormData ldapUnivSyncFormData =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), LdapUnivSyncFormData.class);
+
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapUserfield())
+        && StringUtils.isEmpty(ldapUnivSyncFormData.getLdapUserfieldAttribute())) {
+      errorMsg =
+          "Either of the ldapUserfield or ldapUserfieldAttribute is necessary to perform the sync";
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
 
     if (ldapUnivSyncFormData.getTargetApi().equals(LdapUnivSyncFormData.TargetApi.ycql)) {
       if (!(ldapUnivSyncFormData.getDbUser().equals("cassandra"))) {
