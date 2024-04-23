@@ -88,17 +88,19 @@ public class TsStorageGraphService implements GraphSourceIF {
       // Will group data for all the nodes into single line.
       groupByLabels.add(GraphLabel.instanceName.name());
     }
-    String groupByColumn = null;
-    if (query.getGroupBy() != null) {
+    List<String> groupByColumns;
+    if (CollectionUtils.isNotEmpty(query.getGroupBy())) {
+      groupByColumns =
+          query.getGroupBy().stream().map(GraphLabel::name).collect(Collectors.toList());
       groupByLabels.addAll(
           config.getFilterColumns().entrySet().stream()
-              .filter(e -> e.getKey().equals(query.getGroupBy().name()))
+              .filter(e -> groupByColumns.contains(e.getKey()))
               .flatMap(
                   e ->
                       Streams.concat(
                           Stream.of(e.getKey()), e.getValue().getAssumesGroupBy().stream()))
+              .distinct()
               .collect(Collectors.toSet()));
-      groupByColumn = query.getGroupBy().name();
     } else {
       groupByLabels.addAll(
           config.getFilterColumns().entrySet().stream()
@@ -108,15 +110,18 @@ public class TsStorageGraphService implements GraphSourceIF {
                       Streams.concat(
                           Stream.of(e.getKey()), e.getValue().getAssumesGroupBy().stream()))
               .collect(Collectors.toSet()));
-      groupByColumn =
+      groupByColumns =
           config.getFilterColumns().entrySet().stream()
               .filter(e -> e.getValue().isDefaultGroupBy())
               .map(Map.Entry::getKey)
-              .findFirst()
-              .orElse(null);
+              .collect(Collectors.toList());
     }
-    if (response.getLayout().getMetadata() != null && groupByColumn != null) {
-      response.getLayout().getMetadata().setCurrentGroupBy(GraphLabel.valueOf(groupByColumn));
+    if (response.getLayout().getMetadata() != null && CollectionUtils.isNotEmpty(groupByColumns)) {
+      response
+          .getLayout()
+          .getMetadata()
+          .setCurrentGroupBy(
+              groupByColumns.stream().map(GraphLabel::valueOf).collect(Collectors.toList()));
     }
     Set<String> filterByLabels =
         query.getFilters().keySet().stream().map(GraphLabel::name).collect(Collectors.toSet());
@@ -294,7 +299,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     Map<String, TsStorageGraphConfig.DataColumn> dataColumnByAlias =
         config.getDataColumns().entrySet().stream()
             .collect(Collectors.toMap(e -> e.getValue().getAlias(), Map.Entry::getValue));
-    String nameColumn = groupByColumn;
+    String nameColumn = groupByColumns.stream().findFirst().orElse(null);
     Stream.concat(groupedLines.entrySet().stream(), averageLines.entrySet().stream())
         .forEach(
             groupedLineEntry -> {
@@ -303,7 +308,7 @@ public class TsStorageGraphService implements GraphSourceIF {
               GraphData graphData = new GraphData();
               String alias = key.getLabels().remove(ALIAS);
               if (nameColumn != null && config.getDataColumns().size() == 1) {
-                graphData.setName(key.getLabels().remove(nameColumn));
+                graphData.setName(key.getLabels().get(nameColumn));
               } else {
                 graphData.setName(alias);
               }

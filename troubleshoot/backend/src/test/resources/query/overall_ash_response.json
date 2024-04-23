@@ -4,6 +4,7 @@
       {
         "labels": {},
         "name": "CatalogRead",
+        "waitEvent": "CatalogRead",
         "waitEventClass": "TServerWait",
         "waitEventComponent": "YSQL",
         "x": [
@@ -94,6 +95,7 @@
       {
         "labels": {},
         "name": "QueryProcessing",
+        "waitEvent": "QueryProcessing",
         "waitEventClass": "YSQLQuery",
         "waitEventComponent": "YSQL",
         "x": [
@@ -184,6 +186,7 @@
       {
         "labels": {},
         "name": "WAL_Sync",
+        "waitEvent": "WAL_Sync",
         "waitEventClass": "Consensus",
         "waitEventComponent": "TServer",
         "x": [
@@ -274,6 +277,9 @@
     ],
     "layout": {
       "metadata": {
+        "currentGroupBy": [
+          "waitEvent"
+        ],
         "supportedGroupBy": [
           {
             "label": "waitEvent",
@@ -295,8 +301,7 @@
             "label": "clientNodeIp",
             "name": "Client IP"
           }
-        ],
-        "currentGroupBy": "waitEvent"
+        ]
       },
       "title": "ASH",
       "type": "ASH",
