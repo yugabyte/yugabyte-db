@@ -629,6 +629,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   Status RefreshTabletInfoWithConsensusInfo(
       const tserver::TabletConsensusInfoPB& tablet_consensus_info);
 
+  int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
+
  private:
   friend class LookupRpc;
   friend class LookupByKeyRpc;

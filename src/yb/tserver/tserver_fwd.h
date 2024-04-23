@@ -65,5 +65,12 @@ struct HasTabletConsensusInfo<
     T, std::void_t<decltype(std::declval<T>().tablet_consensus_info())>>
     : std::true_type {};
 
+template <typename, typename = std::void_t<>>
+struct HasRaftConfigOpidIndex : std::false_type {};
+
+template <typename T>
+struct HasRaftConfigOpidIndex<
+    T, std::void_t<decltype(std::declval<T>().raft_config_opid_index())>>
+    : std::true_type {};
 } // namespace tserver
 } // namespace yb

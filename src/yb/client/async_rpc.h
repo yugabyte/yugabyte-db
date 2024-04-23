@@ -149,6 +149,8 @@ class AsyncRpcBase : public AsyncRpc {
 
   bool RefreshMetaCacheWithResponse() override;
 
+  void SetRequestRaftConfigOpidIndex(int64_t opid_index) override;
+
   virtual std::string GetRpcName() = 0;
 
  protected:

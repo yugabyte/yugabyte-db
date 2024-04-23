@@ -2958,5 +2958,9 @@ bool YBClient::RefreshTabletInfoWithConsensusInfo(
   return true;
 }
 
+int64_t YBClient::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
+  return data_->meta_cache_->GetRaftConfigOpidIndex(tablet_id);
+}
+
 }  // namespace client
 }  // namespace yb

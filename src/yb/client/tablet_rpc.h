@@ -34,8 +34,11 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_fwd.h"
+
+DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);
 
 namespace yb {
 
@@ -62,11 +65,24 @@ class TabletRpc {
   // Returns true if we successfully updated the metacache, otherwise false.
   virtual bool RefreshMetaCacheWithResponse() { return false; }
 
+  virtual void SetRequestRaftConfigOpidIndex(int64_t opid_index) {}
+
  protected:
   ~TabletRpc() {}
 };
 
 tserver::TabletServerErrorPB_Code ErrorCode(const tserver::TabletServerErrorPB* error);
+
+template <class Resp, class Req>
+inline bool CheckIfConsensusInfoUnexpectedlyMissing(const Req& request, const Resp& response) {
+  if (tserver::HasTabletConsensusInfo<Resp>::value) {
+    if (GetAtomicFlag(&FLAGS_TEST_always_return_consensus_info_for_succeeded_rpc) &&
+        !response.has_error()) {
+      return response.has_tablet_consensus_info();
+    }
+  }
+  return true;
+}
 
 class TabletInvoker {
  public:
@@ -122,7 +138,8 @@ class TabletInvoker {
   // Marks all replicas on current_ts_ as failed and retries the write on a
   // new replica.
   Status FailToNewReplica(const Status& reason,
-                          const tserver::TabletServerErrorPB* error_code = nullptr);
+                          const tserver::TabletServerErrorPB* error_code = nullptr,
+                          bool consensus_info_refresh_succeeded = false);
 
   // Called when we finish a lookup (to find the new consensus leader). Retries
   // the rpc after a short delay.
@@ -150,7 +167,7 @@ class TabletInvoker {
     if (ErrorCode(error_code) == tserver::TabletServerErrorPB::NOT_THE_LEADER &&
         current_ts_ != nullptr) {
       return status.IsNotFound() || status.IsIllegalState();
-    }
+}
     return false;
   }
 

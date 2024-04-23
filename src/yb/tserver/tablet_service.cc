@@ -363,6 +363,7 @@ void PerformAtLeader(
   if (*context) {
     resp->set_propagated_hybrid_time(server->Clock()->Now().ToUint64());
     if (status.ok()) {
+      FillTabletConsensusInfoIfRequestOpIdStale(tablet_peer.peer, req, resp);
       context->RespondSuccess();
     } else {
       SetupErrorAndRespond(resp->mutable_error(), status, context);
@@ -439,6 +440,7 @@ class WriteQueryCompletionCallback {
       response_->set_trace_buffer(trace_->DumpToString(true));
     }
     response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
+    FillTabletConsensusInfoIfRequestOpIdStale(tablet_peer_, query_->client_request(), response_);
     context_->RespondSuccess();
     VLOG(1) << __PRETTY_FUNCTION__ << " RespondedSuccess";
   }
@@ -2248,6 +2250,7 @@ Status TabletServiceImpl::PerformWrite(
   if (!has_operations && tablet.tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.
+    FillTabletConsensusInfoIfRequestOpIdStale(tablet.peer, req, resp);
     MakeRpcOperationCompletionCallback(std::move(*context), resp, server_->Clock())(Status::OK());
     return Status::OK();
   }
@@ -2279,6 +2282,7 @@ Status TabletServiceImpl::PerformWrite(
     return Status::OK();
   }
 
+  FillTabletConsensusInfoIfRequestOpIdStale(tablet.peer, req, resp);
   query->set_callback(WriteQueryCompletionCallback(
       tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace(),
       req->has_leader_term()));
@@ -2331,6 +2335,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 #endif // NDEBUG
 
   if (FLAGS_TEST_tserver_noop_read_write) {
+    LOG(INFO) << "returning do tue no op read_write";
     context.RespondSuccess();
     return;
   }
