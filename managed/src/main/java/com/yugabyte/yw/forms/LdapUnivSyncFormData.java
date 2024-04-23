@@ -61,14 +61,15 @@ public class LdapUnivSyncFormData {
   private String ldapGroupMemberOfAttribute = "memberOf";
 
   @ApiModelProperty(
-      value = "LDAP field to get the user information",
-      required = true,
-      example = "cn")
-  @Constraints.Required()
+      value = "LDAP attribute to get the user's name from",
+      example = "sAMAccountName")
+  private String ldapUserfieldAttribute;
+
+  @ApiModelProperty(value = "User dn field to get the user's name from", example = "cn")
   private String ldapUserfield;
 
   @ApiModelProperty(
-      value = "LDAP field to get the group information",
+      value = "Group dn field to get the group's name from",
       required = true,
       example = "cn")
   @Constraints.Required()
