@@ -5,6 +5,7 @@
 package kubernetes
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -14,6 +15,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"gopkg.in/yaml.v2"
 )
 
 // createK8sProviderCmd represents the provider command
@@ -71,6 +73,20 @@ var createK8sProviderCmd = &cobra.Command{
 		logrus.Debug("Reading Kubernetes Pull Secret\n")
 		pullSecretContent := util.YAMLtoString(pullSecretFilePath)
 
+		pullSecretName := filepath.Base(pullSecretFilePath)
+
+		var kubernetesPullSecretYAML util.KubernetesPullSecretYAML
+
+		// Unmarshal YAML string into struct
+		if err := yaml.Unmarshal([]byte(pullSecretContent), &kubernetesPullSecretYAML); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		kubernetesImagePullSecretName := ""
+		if kubernetesPullSecretYAML.Metadata != nil {
+			kubernetesImagePullSecretName = kubernetesPullSecretYAML.Metadata.Name
+		}
+
 		configFilePath, err := cmd.Flags().GetString("kubeconfig-file")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -105,11 +121,13 @@ var createK8sProviderCmd = &cobra.Command{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
 				CloudInfo: &ybaclient.CloudInfo{
 					Kubernetes: &ybaclient.KubernetesInfo{
-						KubernetesImageRegistry:     util.GetStringPointer(imageRegistry),
-						KubernetesProvider:          util.GetStringPointer(providerType),
-						KubernetesPullSecretContent: util.GetStringPointer(pullSecretContent),
-						KubernetesStorageClass:      util.GetStringPointer(storageClass),
-						KubeConfigContent:           util.GetStringPointer(configContent),
+						KubernetesImageRegistry:       util.GetStringPointer(imageRegistry),
+						KubernetesProvider:            util.GetStringPointer(providerType),
+						KubernetesPullSecretContent:   util.GetStringPointer(pullSecretContent),
+						KubernetesPullSecretName:      util.GetStringPointer(pullSecretName),
+						KubernetesImagePullSecretName: util.GetStringPointer(kubernetesImagePullSecretName),
+						KubernetesStorageClass:        util.GetStringPointer(storageClass),
+						KubeConfigContent:             util.GetStringPointer(configContent),
 					},
 				},
 			},

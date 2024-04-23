@@ -37,6 +37,16 @@ type AzureCredentials struct {
 	ResourceGroup  string `json:"resource_group"`
 }
 
+// KuberenetesMetadata to extract image pull secret name
+type KuberenetesMetadata struct {
+	Name string `yaml:"name"`
+}
+
+// KuberenetesPullSecretYAML to extract image pull secret name
+type KubernetesPullSecretYAML struct {
+	Metadata *KuberenetesMetadata `yaml:"metadata"`
+}
+
 // gcpGetCredentials retrieves the GCE credentials from env variable and returns gcpCredentials
 // struct
 func gcpGetCredentials(filePath string) (GCPCredentials, error) {
