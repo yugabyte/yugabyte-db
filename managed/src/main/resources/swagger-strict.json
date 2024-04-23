@@ -8681,6 +8681,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "createdForDr" : {
+          "description" : "Created for DR",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "customerUUID" : {
           "description" : "Customer UUID of this config",
           "format" : "uuid",

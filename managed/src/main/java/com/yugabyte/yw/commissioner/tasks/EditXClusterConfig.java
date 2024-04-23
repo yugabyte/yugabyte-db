@@ -26,6 +26,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
 import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
 @Slf4j
 public class EditXClusterConfig extends CreateXClusterConfig {
@@ -120,8 +121,30 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 taskParams().getTableIdsToRemove(),
                 XClusterTableConfig.Status.Updating);
 
+            Set<String> databaseNamesToBeDropped = new HashSet<>();
+            List<TableInfo> tableInfoList =
+                getTableInfoList(ybService, sourceUniverse, xClusterConfig.getTableIds());
+            Map<String, List<TableInfo>> namespaceTableMap =
+                XClusterConfigTaskBase.groupByNamespaceName(tableInfoList);
+            for (Map.Entry<String, List<TableInfo>> entry : namespaceTableMap.entrySet()) {
+              boolean deleteAllTables = true;
+              for (TableInfo tableInfo : entry.getValue()) {
+                if (!taskParams()
+                    .getTableIdsToRemove()
+                    .contains(tableInfo.getId().toStringUtf8())) {
+                  deleteAllTables = false;
+                  break;
+                }
+              }
+              if (deleteAllTables) {
+                databaseNamesToBeDropped.add(entry.getKey());
+              }
+            }
             createRemoveTableFromXClusterConfigSubtasks(
-                xClusterConfig, taskParams().getTableIdsToRemove(), false /* keepEntry */);
+                xClusterConfig,
+                taskParams().getTableIdsToRemove(),
+                false /* keepEntry */,
+                databaseNamesToBeDropped);
           }
         } else {
           throw new RuntimeException("No edit operation was specified in editFormData");

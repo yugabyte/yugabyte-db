@@ -3634,8 +3634,41 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       String keyspaceName,
       TableType tableType,
       long retentionPeriodSeconds,
+      long snapshotIntervalSeconds) {
+    return createCreatePitrConfigTask(
+        universe,
+        keyspaceName,
+        tableType,
+        retentionPeriodSeconds,
+        snapshotIntervalSeconds,
+        null /* xClusterConfig */);
+  }
+
+  protected SubTaskGroup createCreatePitrConfigTask(
+      Universe universe,
+      String keyspaceName,
+      TableType tableType,
+      long retentionPeriodSeconds,
       long snapshotIntervalSeconds,
       @Nullable XClusterConfig xClusterConfig) {
+    return createCreatePitrConfigTask(
+        universe,
+        keyspaceName,
+        tableType,
+        retentionPeriodSeconds,
+        snapshotIntervalSeconds,
+        xClusterConfig,
+        false /* createdForDr */);
+  }
+
+  protected SubTaskGroup createCreatePitrConfigTask(
+      Universe universe,
+      String keyspaceName,
+      TableType tableType,
+      long retentionPeriodSeconds,
+      long snapshotIntervalSeconds,
+      @Nullable XClusterConfig xClusterConfig,
+      boolean createdForDr) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CreatePitrConfig");
     CreatePitrConfigParams createPitrConfigParams = new CreatePitrConfigParams();
     createPitrConfigParams.setUniverseUUID(universe.getUniverseUUID());
@@ -3646,27 +3679,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     createPitrConfigParams.retentionPeriodInSeconds = retentionPeriodSeconds;
     createPitrConfigParams.xClusterConfig = xClusterConfig;
     createPitrConfigParams.intervalInSeconds = snapshotIntervalSeconds;
+    createPitrConfigParams.createdForDr = createdForDr;
 
     CreatePitrConfig task = createTask(CreatePitrConfig.class);
     task.initialize(createPitrConfigParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
-  }
-
-  protected SubTaskGroup createCreatePitrConfigTask(
-      Universe universe,
-      String keyspaceName,
-      TableType tableType,
-      long retentionPeriodSeconds,
-      long snapshotIntervalSeconds) {
-    return createCreatePitrConfigTask(
-        universe,
-        keyspaceName,
-        tableType,
-        retentionPeriodSeconds,
-        snapshotIntervalSeconds,
-        null /* xClusterConfig */);
   }
 
   protected SubTaskGroup createRestoreSnapshotScheduleTask(
@@ -5198,10 +5217,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected void createRemoveTableFromXClusterConfigSubtasks(
       XClusterConfig xClusterConfig, Set<String> tableIds, boolean keepEntry) {
+    createRemoveTableFromXClusterConfigSubtasks(
+        xClusterConfig, tableIds, keepEntry, null /* droppedDatabases */);
+  }
+
+  protected void createRemoveTableFromXClusterConfigSubtasks(
+      XClusterConfig xClusterConfig,
+      Set<String> tableIds,
+      boolean keepEntry,
+      Set<String> droppedDatabases) {
     // Remove the tables from the replication group.
     createXClusterConfigModifyTablesTask(
             xClusterConfig, tableIds, XClusterConfigModifyTables.Params.Action.REMOVE)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+    if (!CollectionUtils.isEmpty(droppedDatabases)) {
+      // Filter pitr configs for dropped database and which were created as part of xcluster/DR.
+      Set<PitrConfig> pitrConfigsToBeDropped =
+          xClusterConfig.getPitrConfigs().stream()
+              .filter(pitr -> droppedDatabases.contains(pitr.getDbName()) && pitr.isCreatedForDr())
+              .collect(Collectors.toSet());
+      for (PitrConfig pitrConfig : pitrConfigsToBeDropped) {
+        createDeletePitrConfigTask(
+            pitrConfig.getUuid(), xClusterConfig.getTargetUniverseUUID(), false /* ignoreErrors */);
+      }
+    }
 
     // Delete bootstrap IDs created by bootstrap universe subtask.
     createDeleteBootstrapIdsTask(xClusterConfig, tableIds, false /* forceDelete */)
@@ -5240,6 +5280,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         && xClusterConfig.getTargetUniverseUUID() != null) {
       List<PitrConfig> pitrConfigs = xClusterConfig.getPitrConfigs();
       for (PitrConfig pitrConfig : pitrConfigs) {
+        // Only delete PITR config which were specifically created for DR.
+        if (!pitrConfig.isCreatedForDr()) {
+          continue;
+        }
         createDeletePitrConfigTask(
             pitrConfig.getUuid(),
             xClusterConfig.getTargetUniverseUUID(),
