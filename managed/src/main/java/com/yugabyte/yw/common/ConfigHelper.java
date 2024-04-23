@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 import javax.inject.Singleton;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -99,8 +100,14 @@ public class ConfigHelper {
           FilenameUtils.getName(configFile));
       Yaml yaml =
           new Yaml(new CustomClassLoaderConstructor(environment.classLoader(), loaderOptions));
-      return yaml.load(environment.resourceAsStream("version.txt"));
+      inputStream = environment.resourceAsStream("version.txt");
+      try {
+        return yaml.load(inputStream);
+      } finally {
+        IOUtils.closeQuietly(inputStream);
+      }
     }
+    // Method parse closes the stream.
     JsonNode jsonNode = Json.parse(inputStream);
     String buildNumber = jsonNode.get("build_number").asText();
 
