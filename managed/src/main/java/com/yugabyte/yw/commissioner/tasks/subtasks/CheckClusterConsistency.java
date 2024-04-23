@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashSet;
 import java.util.List;
@@ -53,6 +54,12 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
     String certificate = universe.getCertificateNodetoNode();
     log.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
     Set<String> errors;
+    String softwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (CommonUtils.isReleaseBefore(CommonUtils.MIN_LIVE_TABLET_SERVERS_RELEASE, softwareVersion)) {
+      log.debug("ListLiveTabletServers is not supported for {} version", softwareVersion);
+      return;
+    }
     try (YBClient ybClient = ybService.getClient(masterAddresses, certificate)) {
       errors = doCheckServers(ybClient, universe);
     } catch (Exception e) {
