@@ -1300,6 +1300,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const yb::HybridTime& proposed_snapshot_time,
       bool require_history_cutoff) override;
 
+  Status PopulateCDCStateTableOnNewTableCreation(
+    const scoped_refptr<TableInfo>& table,
+    const TabletId& tablet_id,
+    const OpId& safe_opid) override;
+
   Status WaitForSnapshotSafeOpIdToBePopulated(
       const xrepl::StreamId& stream_id,
       const std::vector<TableId>& table_ids,

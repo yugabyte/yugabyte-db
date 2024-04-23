@@ -1176,6 +1176,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   bool IsXClusterStream() const;
   bool IsCDCSDKStream() const;
 
+  HybridTime GetConsistentSnapshotHybridTime() const;
+
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;
   ~CDCStreamInfo() = default;

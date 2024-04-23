@@ -327,13 +327,18 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
  private:
   TabletServer* const server_;
 
-  Status DoCreateTablet(const CreateTabletRequestPB* req, CreateTabletResponsePB* resp);
+  Status DoCreateTablet(
+      const CreateTabletRequestPB* req, CreateTabletResponsePB* resp, const MonoDelta& timeout);
 
   Status DoClonePgSchema(const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp);
 
   Status SetupCDCSDKRetention(
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
       const tablet::TabletPeerPtr& peer);
+
+  Status SetupCDCSDKRetentionOnNewTablet(
+      const MonoDelta& timeout, CreateTabletResponsePB* resp,
+      const tablet::TabletPeerPtr& tablet_peer);
 
   // Used to implement wait/signal mechanism for backfill requests.
   // Since the number of concurrently allowed backfill requests is

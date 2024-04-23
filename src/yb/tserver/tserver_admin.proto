@@ -163,10 +163,17 @@ message CreateTabletRequestPB {
   optional bytes pg_table_id = 18;
 
   optional uint32 wal_retention_secs = 19;
+
+  // If set to true, retention barriers will be set on the tablet.
+  optional bool cdc_sdk_set_retention_barriers = 20;
 }
 
 message CreateTabletResponsePB {
   optional TabletServerErrorPB error = 1;
+
+  // CDC SDK Create dynamic table context. The initial safe_op_id for a tablet of a
+  // dynamically added table.
+  optional OpIdPB cdc_sdk_safe_op_id = 2;
 }
 
 message PrepareDeleteTransactionTabletRequestPB {
