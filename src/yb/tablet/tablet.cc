@@ -4434,7 +4434,9 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
   if (!metadata_->colocated()) {
     // For colocated table, we don't populate table_id field of TabletLockInfoPB message. Instead,
     // it is populated in LockInfoPB by downstream code.
-    tablet_lock_info->set_table_id(metadata_->table_id());
+    auto pg_table_id = metadata_->primary_table_info()->pg_table_id.empty() ?
+        metadata_->table_id() : metadata_->primary_table_info()->pg_table_id;
+    tablet_lock_info->set_pg_table_id(pg_table_id);
   }
   tablet_lock_info->set_tablet_id(tablet_id());
 
