@@ -1,6 +1,5 @@
 package com.yugabyte.troubleshoot.ts.models;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +14,7 @@ public class GraphQuery {
   private Long stepSeconds;
   private String name;
   private Map<GraphLabel, List<String>> filters;
-  @JsonIgnore private List<GraphLabel> groupBy;
+  private List<GraphLabel> groupBy;
   private GraphSettings settings;
   private boolean replaceNaN = true;
   private boolean fillMissingPoints = true;
