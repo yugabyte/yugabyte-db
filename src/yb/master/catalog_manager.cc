@@ -7113,6 +7113,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   TRACE("Looking up table");
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
 
+  if (table->GetTableType() == PGSQL_TABLE_TYPE) {
+    LOG_WITH_PREFIX(INFO) << "PG table OID for AlterTable request: " << table->GetPgTableOid();
+  }
   NamespaceId new_namespace_id;
 
   if (req->has_new_namespace()) {

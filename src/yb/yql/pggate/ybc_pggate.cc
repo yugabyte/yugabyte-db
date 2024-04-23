@@ -1885,6 +1885,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_pg_per_database_oid_allocator,
       .ysql_enable_db_catalog_version_mode =
           &FLAGS_ysql_enable_db_catalog_version_mode,
+      .TEST_ysql_hide_catalog_version_increment_log =
+          &FLAGS_TEST_ysql_hide_catalog_version_increment_log,
   };
   // clang-format on
   return &accessor;
