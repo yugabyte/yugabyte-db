@@ -47,6 +47,7 @@ namespace cdc {
 
 class CDCServiceContext;
 class CDCSDKVirtualWAL;
+class CDCStateTableRange;
 
 }  // namespace cdc
 
@@ -443,6 +444,9 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<bool> CheckBeforeImageActive(
       const TabletId& tablet_id, const StreamMetadata& stream_metadata,
       const tablet::TabletPeerPtr& tablet_peer);
+
+  Result<std::unordered_map<NamespaceId, uint64_t>> GetNamespaceMinRecordIdCommitTimeMap(
+      const CDCStateTableRange& table_range, Status* iteration_status);
 
   Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id = "",
