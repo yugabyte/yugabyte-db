@@ -2038,6 +2038,11 @@ public class NodeManager extends DevopsBase {
           } else {
             imageBundleDefaultImage = taskParam.getRegion().getYbImage();
           }
+          if (StringUtils.isNotBlank(taskParam.machineImage)) {
+            // YBM use case - in case machineImage is used for deploying the universe we should
+            // fallback to sshUser configured in the provider.
+            taskParam.sshUserOverride = provider.getDetails().getSshUser();
+          }
           String ybImage =
               Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);
           if (ybImage != null && !ybImage.isEmpty()) {
