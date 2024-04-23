@@ -339,6 +339,11 @@ class CatalogManagerIf {
       const yb::HybridTime& proposed_snapshot_time,
       const bool require_history_cutoff) = 0;
 
+  virtual Status PopulateCDCStateTableOnNewTableCreation(
+      const scoped_refptr<TableInfo>& table,
+      const TabletId& tablet_id,
+      const OpId& safe_opid) = 0;
+
   virtual Status WaitForSnapshotSafeOpIdToBePopulated(
       const xrepl::StreamId& stream_id,
       const std::vector<TableId>& table_ids,
