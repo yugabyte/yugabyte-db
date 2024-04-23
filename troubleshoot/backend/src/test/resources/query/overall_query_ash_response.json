@@ -4,6 +4,7 @@
       {
         "labels": {},
         "name": "CatalogRead",
+        "waitEvent": "CatalogRead",
         "waitEventClass": "TServerWait",
         "waitEventComponent": "YSQL",
         "x": [
@@ -94,6 +95,7 @@
       {
         "labels": {},
         "name": "QueryProcessing",
+        "waitEvent": "QueryProcessing",
         "waitEventClass": "YSQLQuery",
         "waitEventComponent": "YSQL",
         "x": [
@@ -184,7 +186,9 @@
     ],
     "layout": {
       "metadata": {
-        "currentGroupBy": "waitEvent",
+        "currentGroupBy": [
+          "waitEvent"
+        ],
         "supportedGroupBy": [
           {
             "label": "waitEvent",

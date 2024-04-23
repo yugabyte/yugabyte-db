@@ -4,6 +4,7 @@
       {
         "labels": {},
         "name": "CatalogRead",
+        "waitEvent": "CatalogRead",
         "waitEventClass": "TServerWait",
         "waitEventComponent": "YSQL",
         "x": [
@@ -94,6 +95,7 @@
       {
         "labels": {},
         "name": "QueryProcessing",
+        "waitEvent": "QueryProcessing",
         "waitEventClass": "YSQLQuery",
         "waitEventComponent": "YSQL",
         "x": [
@@ -184,6 +186,7 @@
       {
         "labels": {},
         "name": "WAL_Sync",
+        "waitEvent": "WAL_Sync",
         "waitEventClass": "Consensus",
         "waitEventComponent": "TServer",
         "x": [
@@ -275,6 +278,7 @@
         "instanceName": "node1",
         "labels": {},
         "name": "CatalogRead",
+        "waitEvent": "CatalogRead",
         "waitEventClass": "TServerWait",
         "waitEventComponent": "YSQL",
         "x": [
@@ -366,6 +370,7 @@
         "instanceName": "node1",
         "labels": {},
         "name": "QueryProcessing",
+        "waitEvent": "QueryProcessing",
         "waitEventClass": "YSQLQuery",
         "waitEventComponent": "YSQL",
         "x": [
@@ -457,6 +462,7 @@
         "instanceName": "node1",
         "labels": {},
         "name": "WAL_Sync",
+        "waitEvent": "WAL_Sync",
         "waitEventClass": "Consensus",
         "waitEventComponent": "TServer",
         "x": [
@@ -548,6 +554,7 @@
         "instanceName": "node2",
         "labels": {},
         "name": "CatalogRead",
+        "waitEvent": "CatalogRead",
         "waitEventClass": "TServerWait",
         "waitEventComponent": "YSQL",
         "x": [
@@ -639,6 +646,7 @@
         "instanceName": "node2",
         "labels": {},
         "name": "QueryProcessing",
+        "waitEvent": "QueryProcessing",
         "waitEventClass": "YSQLQuery",
         "waitEventComponent": "YSQL",
         "x": [
@@ -730,6 +738,7 @@
         "instanceName": "node2",
         "labels": {},
         "name": "WAL_Sync",
+        "waitEvent": "WAL_Sync",
         "waitEventClass": "Consensus",
         "waitEventComponent": "TServer",
         "x": [
@@ -820,7 +829,9 @@
     ],
     "layout": {
       "metadata": {
-        "currentGroupBy": "waitEvent",
+        "currentGroupBy": [
+          "waitEvent"
+        ],
         "supportedGroupBy": [
           {
             "label": "waitEvent",

@@ -132,7 +132,7 @@ public class GraphServiceTest {
     settings.setSplitType(GraphSettings.SplitType.NODE);
     settings.setSplitCount(2);
     settings.setReturnAggregatedValue(true);
-    graphQuery.setGroupBy(GraphLabel.clientNodeIp);
+    graphQuery.setGroupBy(ImmutableList.of(GraphLabel.clientNodeIp));
     graphQuery.setSettings(settings);
 
     List<GraphResponse> response =
@@ -181,7 +181,7 @@ public class GraphServiceTest {
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
     graphQuery.setName("active_session_history");
     graphQuery.setFilters(ImmutableMap.of(GraphLabel.regionCode, ImmutableList.of("us-west-1")));
-    graphQuery.setGroupBy(GraphLabel.queryId);
+    graphQuery.setGroupBy(ImmutableList.of(GraphLabel.queryId));
     graphQuery.setSettings(new GraphSettings());
 
     List<GraphResponse> response =
@@ -204,7 +204,7 @@ public class GraphServiceTest {
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
     graphQuery.setName("active_session_history");
     graphQuery.setFilters(ImmutableMap.of(GraphLabel.regionCode, ImmutableList.of("us-west-1")));
-    graphQuery.setGroupBy(GraphLabel.clientNodeIp);
+    graphQuery.setGroupBy(ImmutableList.of(GraphLabel.clientNodeIp));
     graphQuery.setSettings(new GraphSettings());
 
     List<GraphResponse> response =

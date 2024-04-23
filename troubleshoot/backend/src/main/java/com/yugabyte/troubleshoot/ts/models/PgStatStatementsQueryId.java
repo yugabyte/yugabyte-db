@@ -1,5 +1,7 @@
 package com.yugabyte.troubleshoot.ts.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.troubleshoot.ts.cvs.UuidConverter;
 import java.util.UUID;
 import javax.persistence.Embeddable;
@@ -22,5 +24,11 @@ public class PgStatStatementsQueryId {
   private String dbId;
 
   @CsvField(pos = 3)
+  @JsonIgnore
   private long queryId;
+
+  @JsonProperty("queryId")
+  public String getQueryIdAsString() {
+    return String.valueOf(queryId);
+  }
 }

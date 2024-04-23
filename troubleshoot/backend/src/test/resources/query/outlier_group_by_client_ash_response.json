@@ -2,7 +2,9 @@
   {
     "data": [
       {
-        "labels": {},
+        "labels": {
+          "clientNodeIp": "0.0.0.0"
+        },
         "name": "0.0.0.0",
         "x": [
           1706272200000,
@@ -90,7 +92,9 @@
         ]
       },
       {
-        "labels": {},
+        "labels": {
+          "clientNodeIp": "1.1.1.1"
+        },
         "name": "1.1.1.1",
         "x": [
           1706272200000,
@@ -178,7 +182,9 @@
         ]
       },
       {
-        "labels": {},
+        "labels": {
+          "clientNodeIp": "2.2.2.2"
+        },
         "name": "2.2.2.2",
         "x": [
           1706272200000,
@@ -267,7 +273,9 @@
       },
       {
         "instanceName": "node1",
-        "labels": {},
+        "labels": {
+          "clientNodeIp": "0.0.0.0"
+        },
         "name": "0.0.0.0",
         "x": [
           1706272200000,
@@ -356,7 +364,9 @@
       },
       {
         "instanceName": "node1",
-        "labels": {},
+        "labels": {
+          "clientNodeIp": "1.1.1.1"
+        },
         "name": "1.1.1.1",
         "x": [
           1706272200000,
@@ -445,7 +455,9 @@
       },
       {
         "instanceName": "node2",
-        "labels": {},
+        "labels": {
+          "clientNodeIp": "0.0.0.0"
+        },
         "name": "0.0.0.0",
         "x": [
           1706272200000,
@@ -534,7 +546,9 @@
       },
       {
         "instanceName": "node2",
-        "labels": {},
+        "labels": {
+          "clientNodeIp": "2.2.2.2"
+        },
         "name": "2.2.2.2",
         "x": [
           1706272200000,
@@ -624,7 +638,9 @@
     ],
     "layout": {
       "metadata": {
-        "currentGroupBy": "clientNodeIp",
+        "currentGroupBy": [
+          "clientNodeIp"
+        ],
         "supportedGroupBy": [
           {
             "label": "waitEvent",

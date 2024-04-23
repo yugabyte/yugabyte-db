@@ -4,6 +4,8 @@ import lombok.Getter;
 
 @Getter
 public enum RuntimeConfigKey {
+  PSS_QUERY_ACTIVE_PERIOD("task.pg_stat_statements_query.active.period"),
+
   ASH_QUERY_BATCH("task.active_session_history_query.batch"),
   ASH_AGGREGATION_PERIOD("task.active_session_history_query.aggregation_period"),
 
@@ -12,6 +14,10 @@ public enum RuntimeConfigKey {
   QUERY_LATENCY_MIN_ANOMALY_VALUE("anomaly.query_latency.min_anomaly_value"),
   QUERY_LATENCY_BASELINE_POINTS_RATIO("anomaly.query_latency.baseline_points_ratio"),
   QUERY_LATENCY_THRESHOLD_RATIO("anomaly.query_latency.threshold_ratio"),
+
+  QUERY_LOCK_CONTENTION_BATCH_SIZE("anomaly.query_lock_contention.batch_size"),
+  QUERY_LOCK_CONTENTION_MIN_ANOMALY_DURATION("anomaly.query_lock_contention.min_anomaly_duration"),
+  QUERY_LOCK_CONTENTION_THRESHOLD_RATIO("anomaly.query_lock_contention.threshold_ratio"),
 
   SLOW_DISKS_MIN_ANOMALY_DURATION("anomaly.slow_disks.min_anomaly_duration"),
   SLOW_DISKS_THRESHOLD_IO_TIME("anomaly.slow_disks.threshold.disk_io_time"),
