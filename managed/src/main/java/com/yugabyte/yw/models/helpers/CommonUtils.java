@@ -73,6 +73,8 @@ public class CommonUtils {
 
   public static final String MIN_PROMOTE_AUTO_FLAG_RELEASE = "2.17.0.0";
 
+  public static final String MIN_LIVE_TABLET_SERVERS_RELEASE = "2.8.0.0";
+
   private static final Configuration JSONPATH_CONFIG =
       Configuration.builder()
           .jsonProvider(new JacksonJsonNodeJsonProvider())
