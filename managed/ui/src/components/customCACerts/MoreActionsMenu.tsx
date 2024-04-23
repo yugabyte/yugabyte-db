@@ -20,7 +20,7 @@ type MoreOptionsProps = {
     isDivider?: boolean;
     disabled?: boolean;
     menuItemWrapper?: (elem: JSX.Element) => JSX.Element;
-    "data-testid"?: string;
+    dataTestId?: string;
   }[];
 };
 
@@ -74,11 +74,11 @@ export const MoreActionsMenu: FC<MoreOptionsProps> = ({ children, menuOptions })
           horizontal: 'right'
         }}
       >
-        {menuOptions.map((m,i) => {
+        {menuOptions.map((m, i) => {
           const menuItem = (
             <MenuItem
               key={i}
-              data-testid={m['data-testid'] ?? `ca-cert-${m.text}`}
+              data-testid={m['dataTestId'] ?? `ca-cert-${m.text}`}
               className={m.className}
               onClick={() => {
                 handleClose();
@@ -90,9 +90,14 @@ export const MoreActionsMenu: FC<MoreOptionsProps> = ({ children, menuOptions })
               {m.text}
             </MenuItem>
           );
-          return m.isDivider ? (<Divider key={i} />) : m.menuItemWrapper ? m.menuItemWrapper(menuItem) : menuItem;
-        }
-        )}
+          return m.isDivider ? (
+            <Divider key={i} />
+          ) : m.menuItemWrapper ? (
+            m.menuItemWrapper(menuItem)
+          ) : (
+            menuItem
+          );
+        })}
       </Menu>
     </>
   );
