@@ -26,6 +26,7 @@
 
 #include "pg_yb_utils.h"
 
+#include <arpa/inet.h>
 #include <assert.h>
 #include <inttypes.h>
 #include <sys/stat.h>
@@ -829,6 +830,34 @@ typedef struct YbSessionStats
 
 static YbSessionStats yb_session_stats = {0};
 
+static void
+IpAddressToBytes(YBCPgAshConfig *ash_config)
+{
+	if (!YbAshIsClientAddrSet())
+		return;
+
+	uint8_t addr_family = ash_config->metadata->addr_family;
+
+	switch (addr_family)
+	{
+		case AF_UNIX:
+			switch_fallthrough();
+		case AF_UNSPEC:
+			break;
+		case AF_INET:
+			switch_fallthrough();
+		case AF_INET6:
+			if (inet_ntop(addr_family, ash_config->metadata->client_addr,
+						  ash_config->host, INET6_ADDRSTRLEN) == NULL)
+				ereport(LOG,
+						(errmsg("failed converting IP address from binary to string")));
+			break;
+		default:
+			ereport(LOG,
+					(errmsg("unknown address family found: %u", addr_family)));
+	}
+}
+
 void
 YBInitPostgresBackend(
 	const char *program_name,
@@ -862,6 +891,7 @@ YBInitPostgresBackend(
 		ash_config.metadata = &MyProc->yb_ash_metadata;
 		ash_config.is_metadata_set = &MyProc->yb_is_ash_metadata_set;
 		ash_config.yb_enable_ash = &yb_enable_ash;
+		IpAddressToBytes(&ash_config);
 		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
 		YBCInstallTxnDdlHook();
 		if (yb_ash_enable_infra)

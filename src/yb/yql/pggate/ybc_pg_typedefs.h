@@ -708,6 +708,8 @@ typedef struct PgAshConfig {
   bool* is_metadata_set;
   bool* yb_enable_ash;
   unsigned char yql_endpoint_tserver_uuid[16];
+  // length of host should be equal to INET6_ADDRSTRLEN
+  char host[46];
 } YBCPgAshConfig;
 
 typedef struct YBCBindColumn {

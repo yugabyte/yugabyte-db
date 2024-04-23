@@ -645,7 +645,11 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			Assert(metadata->addr_family == AF_UNIX);
+			/*
+			 * internal operations such as flushes and compactions are not tied to any client
+			 * and they might have the addr_family as AF_UNSPEC
+			 */
+			Assert(metadata->addr_family == AF_UNIX || metadata->addr_family == AF_UNSPEC);
 			nulls[j++] = true;
 		}
 

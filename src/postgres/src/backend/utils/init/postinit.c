@@ -693,19 +693,19 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	if (!bootstrap)
 		pgstat_initialize();
 
-	/* Connect to YugaByte cluster. */
-	if (bootstrap)
-		YBInitPostgresBackend("postgres", "", username, session_id);
-	else
-		YBInitPostgresBackend("postgres", in_dbname, username, session_id);
-
 	/*
 	 * Set client_addr and client_host in ASH metadata which will remain
 	 * constant throughout the session. We don't want to do this during
 	 * bootstrap because it won't have client address anyway.
 	 */
-	if (IsYugaByteEnabled() && yb_ash_enable_infra && !bootstrap)
+	if (YbAshIsClientAddrSet())
 		YbSetAshClientAddrAndPort();
+
+	/* Connect to YugaByte cluster. */
+	if (bootstrap)
+		YBInitPostgresBackend("postgres", "", username, session_id);
+	else
+		YBInitPostgresBackend("postgres", in_dbname, username, session_id);
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
