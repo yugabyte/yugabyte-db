@@ -54,6 +54,9 @@ DEFINE_UNKNOWN_bool(enable_uncovered_index_select, true,
             "Enable executing select statements using uncovered index");
 TAG_FLAG(enable_uncovered_index_select, advanced);
 
+DEFINE_RUNTIME_AUTO_bool(ycql_suppress_group_by_error, kLocalVolatile, true, false,
+            "Enable to suppress the error raised when using GROUP BY clause");
+
 namespace yb {
 namespace ql {
 
