@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -64,6 +65,12 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
     if (cloudEnabled) {
       log.debug("Skipping check for ybm");
+      return;
+    }
+    String softwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (CommonUtils.isReleaseBefore(CommonUtils.MIN_LIVE_TABLET_SERVERS_RELEASE, softwareVersion)) {
+      log.debug("ListLiveTabletServers is not supported for {} version", softwareVersion);
       return;
     }
     try (YBClient ybClient = ybService.getClient(masterAddresses, certificate)) {
