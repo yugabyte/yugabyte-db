@@ -112,7 +112,9 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
               replicationGroupName,
               sourceUniverse.getUniverseUUID(),
               targetUniverse.getUniverseUUID(),
-              config.getConsumerRegistry().getTransactional() ? ConfigType.Txn : ConfigType.Basic,
+              config.getConsumerRegistry().getDEPRECATEDTransactional()
+                  ? ConfigType.Txn
+                  : ConfigType.Basic,
               true /* imported */);
       log.info("Creating new XClusterConfig({})", xClusterConfig.getUuid());
     } else {
@@ -169,7 +171,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
                     xClusterConfigName,
                     sourceUniverseUUID,
                     targetUniverseUUID,
-                    config.getConsumerRegistry().getTransactional()
+                    config.getConsumerRegistry().getDEPRECATEDTransactional()
                         ? ConfigType.Txn
                         : ConfigType.Basic);
             log.info("Creating new XClusterConfig({})", xClusterConfig.getUuid());

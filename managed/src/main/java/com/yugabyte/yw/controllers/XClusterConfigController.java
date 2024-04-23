@@ -624,6 +624,10 @@ public class XClusterConfigController extends AuthenticatedController {
     }
 
     if (!tableIdsToRemove.isEmpty()) {
+      // Ignore index tables check on dropped tables as they are not queryable.
+      Set<String> droppedTables =
+          XClusterConfigTaskBase.getDroppedTableIds(ybService, sourceUniverse, tableIdsToRemove);
+      tableIdsToRemove.removeAll(droppedTables);
       // Remove index tables if its main table is removed.
       Map<String, List<String>> mainTableIndexTablesMap =
           XClusterConfigTaskBase.getMainTableIndexTablesMap(
@@ -634,6 +638,7 @@ public class XClusterConfigController extends AuthenticatedController {
               .filter(currentTableIds::contains)
               .collect(Collectors.toSet());
       tableIdsToRemove.addAll(indexTableIdSet);
+      tableIdsToRemove.addAll(droppedTables);
     }
 
     if (tableIdsToAdd.isEmpty() && tableIdsToRemove.isEmpty()) {

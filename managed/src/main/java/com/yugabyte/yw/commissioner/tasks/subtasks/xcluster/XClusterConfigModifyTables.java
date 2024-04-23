@@ -18,6 +18,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.yb.client.AlterUniverseReplicationResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -128,6 +129,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
     }
     log.info("Modifying tables in XClusterConfig({})", xClusterConfig.getUuid());
 
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
@@ -208,15 +210,17 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
 
           // Remove the tables from the replication group if there is any.
           if (!tableIdsToRemoveWithReplication.isEmpty()) {
-            AlterUniverseReplicationResponse resp =
-                client.alterUniverseReplicationRemoveTables(
-                    xClusterConfig.getReplicationGroupName(), tableIdsToRemoveWithReplication);
-            if (resp.hasError()) {
-              throw new RuntimeException(
-                  String.format(
-                      "Failed to remove tables from XClusterConfig(%s): %s",
-                      xClusterConfig.getUuid(), resp.errorMessage()));
-            }
+            Set<String> droppedTables =
+                XClusterConfigTaskBase.getDroppedTableIds(
+                    ybService, sourceUniverse, tableIdsToRemoveWithReplication);
+            tableIdsToRemoveWithReplication.removeAll(droppedTables);
+            removeTablesFromReplication(
+                client,
+                xClusterConfig,
+                tableIdsToRemoveWithReplication,
+                false /* removeTableIgnoreErrors */);
+            removeTablesFromReplication(
+                client, xClusterConfig, droppedTables, true /* removeTableIgnoreErrors */);
 
             if (HighAvailabilityConfig.get().isPresent()) {
               getUniverse().incrementVersion();
@@ -224,6 +228,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
             xClusterConfig
                 .getTablesById(tableIdsToRemoveWithReplication)
                 .forEach(XClusterTableConfig::reset);
+            xClusterConfig.getTablesById(droppedTables).forEach(XClusterTableConfig::reset);
           }
 
           // For the rest of the tables, do not reset the bootstrap ids because this subtask did
@@ -251,5 +256,22 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
     }
 
     log.info("Completed {}", getName());
+  }
+
+  private void removeTablesFromReplication(
+      YBClient client, XClusterConfig xClusterConfig, Set<String> tableIds, boolean ignoreErrors)
+      throws Exception {
+    if (CollectionUtils.isEmpty(tableIds)) {
+      return;
+    }
+    AlterUniverseReplicationResponse resp =
+        client.alterUniverseReplicationRemoveTables(
+            xClusterConfig.getReplicationGroupName(), tableIds, ignoreErrors);
+    if (resp.hasError()) {
+      throw new RuntimeException(
+          String.format(
+              "Failed to remove tables from XClusterConfig(%s): %s",
+              xClusterConfig.getUuid(), resp.errorMessage()));
+    }
   }
 }
