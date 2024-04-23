@@ -1695,6 +1695,16 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public AlterUniverseReplicationResponse alterUniverseReplicationRemoveTables(
+    String replicationGroupName,
+    Set<String> sourceTableIdsToRemove,
+    boolean removeTableIgnoreErrors) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationRemoveTables(
+        replicationGroupName, sourceTableIdsToRemove, removeTableIgnoreErrors);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public AlterUniverseReplicationResponse alterUniverseReplicationSourceMasterAddresses(
     String replicationGroupName,
     Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
