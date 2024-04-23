@@ -499,10 +499,109 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     return zonedDateTime.format(outputFormatter);
   }
 
-  // TODO(#21643): Add test to verify dynamic table addition behavior for a publication created with
-  // ALL TABLES and a table is created after stream creation.
   @Test
-  public void dynamicTableAdditionForTablesCreatedBeforeStreamCreation() throws Exception {
+  public void testDynamicTableAdditionForAllTablesPublication() throws Exception {
+    String slotName = "test_dynamic_table_addition_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("DROP TABLE IF EXISTS t2");
+      stmt.execute("DROP TABLE IF EXISTS t3");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn =
+      getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
+      stmt.execute("INSERT INTO t2 VALUES(2, 'defg')");
+      stmt.execute("COMMIT");
+      stmt.execute("CREATE TABLE t3 (a int primary key, b text)");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+
+    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES(3, 'mnop')");
+      stmt.execute("INSERT INTO t2 VALUES(4, 'qrst')");
+      stmt.execute("INSERT INTO t3 values(5, 'uvwx')");
+      stmt.execute("COMMIT");
+    }
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    // 4 from first txn and 5 from second txn.
+    result.addAll(receiveMessage(stream, 12));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        // begin
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 2));
+        // insert 1
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("1"),
+            new PgOutputMessageTupleColumnValue("abcd")))));
+        // insert 2
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("2"),
+            new PgOutputMessageTupleColumnValue("defg")))));
+        // commit
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+
+        // begin
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 3));
+        // insert 1
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("3"),
+            new PgOutputMessageTupleColumnValue("mnop")))));
+        // insert 2
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("4"),
+            new PgOutputMessageTupleColumnValue("qrst")))));
+        // insert 3
+        add(PgOutputRelationMessage.CreateForComparison("public", "t3", 'c',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("5"),
+            new PgOutputMessageTupleColumnValue("uvwx")))));
+        // commit
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+      }
+    };
+
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
+
+  @Test
+  public void testDynamicTableAdditionForTablesCreatedBeforeStreamCreation() throws Exception {
     String slotName = "test_dynamic_table_addition_slot";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");

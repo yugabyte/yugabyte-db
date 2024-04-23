@@ -1245,6 +1245,11 @@ bool CDCStreamInfo::IsCDCSDKStream() const {
   return l->pb.has_namespace_id() && !l->pb.namespace_id().empty();
 }
 
+HybridTime CDCStreamInfo::GetConsistentSnapshotHybridTime() const {
+  auto l = LockForRead();
+  return HybridTime(l->pb.cdcsdk_stream_metadata().snapshot_time());
+}
+
 const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() const {
   auto l = LockForRead();
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());

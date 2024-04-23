@@ -717,10 +717,12 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
                                        const string& permanent_uuid,
                                        const scoped_refptr<TabletInfo>& tablet,
                                        const std::vector<SnapshotScheduleId>& snapshot_schedules,
-                                       LeaderEpoch epoch)
+                                       LeaderEpoch epoch,
+                                       CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers)
   : RetrySpecificTSRpcTaskWithTable(master, callback_pool, permanent_uuid, tablet->table(),
                            std::move(epoch), /* async_task_throttler */ nullptr),
-    tablet_id_(tablet->tablet_id()) {
+    tablet_id_(tablet->tablet_id()),
+    cdc_sdk_set_retention_barriers_(cdc_sdk_set_retention_barriers) {
   deadline_ = start_timestamp_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
@@ -754,6 +756,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   }
 
   req_.mutable_hosted_stateful_services()->CopyFrom(table_pb.hosted_stateful_services());
+  req_.set_cdc_sdk_set_retention_barriers(cdc_sdk_set_retention_barriers);
 }
 
 std::string AsyncCreateReplica::description() const {
@@ -775,6 +778,23 @@ void AsyncCreateReplica::HandleResponse(int attempt) {
     }
 
     return;
+  }
+  if (cdc_sdk_set_retention_barriers_) {
+    if (!resp_.has_cdc_sdk_safe_op_id()) {
+      LOG(WARNING) << "Response did not include cdcsdk_safe_op_id. Not inserting any rows into "
+                   << "cdc_state table for tablet id: " << tablet_id();
+      return;
+    }
+    auto status = master_->catalog_manager()->PopulateCDCStateTableOnNewTableCreation(
+        table(), tablet_id_, OpId::FromPB(resp_.cdc_sdk_safe_op_id()));
+    if (!status.ok()) {
+      WARN_NOT_OK(
+          status, Format(
+                      "$0 failed while populating cdc_state table in "
+                      "AsyncCreateReplica::HandleResponse.",
+                      description()));
+      return;
+    }
   }
 
   TransitionToCompleteState();

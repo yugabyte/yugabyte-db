@@ -260,6 +260,9 @@ DEFINE_test_flag(bool, pause_before_tablet_health_response, false,
 
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
+DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
+    "Fail setting retention barrier on newly created tablets");
+
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
 
@@ -1538,7 +1541,13 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CreateTablet", req, resp, &context)) {
     return;
   }
-  auto status = DoCreateTablet(req, resp);
+
+  CoarseTimePoint deadline = context.GetClientDeadline();
+  CoarseTimePoint now = CoarseMonoClock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(deadline - now);
+  MonoDelta timeout = MonoDelta::FromNanoseconds(duration.count());
+
+  auto status = DoCreateTablet(req, resp, timeout);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
   } else {
@@ -1547,7 +1556,8 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
 }
 
 Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
-                                              CreateTabletResponsePB* resp) {
+                                              CreateTabletResponsePB* resp,
+                                              const MonoDelta& timeout) {
   if (PREDICT_FALSE(FLAGS_TEST_txn_status_table_tablet_creation_delay_ms > 0 &&
                     req->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE)) {
     std::this_thread::sleep_for(FLAGS_TEST_txn_status_table_tablet_creation_delay_ms * 1ms);
@@ -1603,14 +1613,46 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
     hosted_services.insert((StatefulServiceKind)service_kind);
   }
 
-  status = ResultToStatus(server_->tablet_manager()->CreateNewTablet(
+  auto const tablet_peer_result = server_->tablet_manager()->CreateNewTablet(
       table_info, req->tablet_id(), partition, req->config(), req->colocated(), snapshot_schedules,
-      hosted_services));
-  if (PREDICT_FALSE(!status.ok())) {
+      hosted_services);
+  if (PREDICT_FALSE(!tablet_peer_result.ok())) {
+    status = tablet_peer_result.status();
     return status.IsAlreadyPresent()
         ? status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_ALREADY_EXISTS))
         : status;
   }
+  bool cdc_sdk_setup_retention =
+      req->has_cdc_sdk_set_retention_barriers() && req->cdc_sdk_set_retention_barriers();
+  if (!cdc_sdk_setup_retention) {
+    return Status::OK();
+  }
+  auto tablet_peer = *tablet_peer_result;
+  status = SetupCDCSDKRetentionOnNewTablet(timeout, resp, tablet_peer);
+  if (!status.ok()) {
+     tablet_peer->SetFailed(status);
+     return status;
+  }
+  return Status::OK();
+}
+
+Status TabletServiceAdminImpl::SetupCDCSDKRetentionOnNewTablet(
+    const MonoDelta& timeout, CreateTabletResponsePB* resp,
+    const tablet::TabletPeerPtr& tablet_peer) {
+  RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(timeout));
+
+  tablet::RemoveIntentsData data;
+  RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+
+  if (FLAGS_TEST_cdc_sdk_fail_setting_retention_barrier) {
+     return STATUS_FORMAT(IllegalState, "TEST failing before attempting to set retention barrier");
+  }
+  RETURN_NOT_OK(ResultToStatus(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+      data.op_id, server_->Clock()->Now(), false /* require_history_cutoff */)));
+
+  TEST_SYNC_POINT("SetupCDCSDKRetentionOnNewTablet::End");
+
+  data.op_id.ToPB(resp->mutable_cdc_sdk_safe_op_id());
   return Status::OK();
 }
 

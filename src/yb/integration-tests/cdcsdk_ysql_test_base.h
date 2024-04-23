@@ -111,6 +111,7 @@ DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_uint32(cdcsdk_max_consistent_records);
 DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
 DECLARE_uint64(cdcsdk_publication_list_refresh_interval_micros);
+DECLARE_bool(TEST_cdc_sdk_fail_setting_retention_barrier);
 
 namespace yb {
 

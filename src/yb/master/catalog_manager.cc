@@ -11790,9 +11790,31 @@ Status CatalogManager::SendCreateTabletRequests(
         schedules.push_back(pair.first);
       }
     }
+
+    bool stream_exists_on_namespace = false;
+    auto namespace_id = tablet->table()->namespace_id();
+    {
+      SharedLock lock(mutex_);
+      for (const auto& entry : cdc_stream_map_) {
+        const auto stream = entry.second;
+        if (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id) {
+          stream_exists_on_namespace =  true;
+          break;
+        }
+      }
+    }
+
     for (const RaftPeerPB& peer : config.peers()) {
-      auto task = std::make_shared<AsyncCreateReplica>(
-          master_, AsyncTaskPool(), peer.permanent_uuid(), tablet, schedules, epoch);
+      shared_ptr<AsyncCreateReplica> task;
+      if (stream_exists_on_namespace && FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+        task = std::make_shared<AsyncCreateReplica>(
+            master_, AsyncTaskPool(), peer.permanent_uuid(), tablet, schedules, epoch,
+              CDCSDKSetRetentionBarriers::kTrue /* cdc_sdk_set_retention_barriers */);
+      } else {
+        task = std::make_shared<AsyncCreateReplica>(
+            master_, AsyncTaskPool(), peer.permanent_uuid(), tablet, schedules, epoch,
+            CDCSDKSetRetentionBarriers::kFalse /* cdc_sdk_set_retention_barriers */);
+      }
       tablet->table()->AddTask(task);
       WARN_NOT_OK(ScheduleTask(task), "Failed to send new tablet request");
     }
