@@ -194,7 +194,8 @@ select * from myview;
 (0 rows)
 
 alter table myview drop d;
-ERROR:  "myview" is not a table, composite type, or foreign table
+ERROR:  ALTER action DROP COLUMN cannot be performed on relation "myview"
+DETAIL:  This operation is not supported for views.
 drop view myview;
 -- test some commands to make sure they fail on the dropped column
 create index "testing_idx" on atacc1(a);
@@ -227,9 +228,9 @@ select * from test2;
 drop table test2;
 -- test constraints
 alter table atacc1 add constraint checkb check (b < 0); -- should fail
-ERROR:  check constraint "checkb" is violated by some row
+ERROR:  check constraint "checkb" of relation "atacc1" is violated by some row
 alter table if exists atacc1 add constraint checkb check (b < 0); -- should fail
-ERROR:  check constraint "checkb" is violated by some row
+ERROR:  check constraint "checkb" of relation "atacc1" is violated by some row
 alter table atacc1 add constraint checkb check (b > 0);
 alter table atacc1 add constraint checkb2 check (b > 10);
 alter table atacc1 add constraint checkb3 check (b > 10);
@@ -366,9 +367,11 @@ ERROR:  column "bar" of relation "atacc1" does not exist
 -- try creating a view and altering that, should fail
 create view myview as select * from atacc1;
 alter table myview alter column test drop not null;
-ERROR:  "myview" is not a table or foreign table
+ERROR:  ALTER action ALTER COLUMN ... DROP NOT NULL cannot be performed on relation "myview"
+DETAIL:  This operation is not supported for views.
 alter table myview alter column test set not null;
-ERROR:  "myview" is not a table or foreign table
+ERROR:  ALTER action ALTER COLUMN ... SET NOT NULL cannot be performed on relation "myview"
+DETAIL:  This operation is not supported for views.
 drop view myview;
 drop table atacc1;
 -- test setting and removing default values
@@ -561,7 +564,7 @@ ALTER TABLE test_identity ALTER COLUMN c1 ADD GENERATED ALWAYS AS IDENTITY;
  c2     | integer |           | not null |
 
 INSERT INTO test_identity (c1, c2) VALUES (0, 0);
-ERROR:  cannot insert into column "c1"
+ERROR:  cannot insert a non-DEFAULT value into column "c1"
 DETAIL:  Column "c1" is an identity column defined as GENERATED ALWAYS.
 HINT:  Use OVERRIDING SYSTEM VALUE to override.
 INSERT INTO test_identity (c2) VALUES (1);
