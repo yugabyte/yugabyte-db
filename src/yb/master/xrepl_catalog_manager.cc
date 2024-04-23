@@ -1391,6 +1391,65 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
   return cdc_state_table_->UpsertEntries(entries);
 }
 
+Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
+    const scoped_refptr<TableInfo>& table,
+    const TabletId& tablet_id,
+    const OpId& safe_opid) {
+
+  TEST_SYNC_POINT("PopulateCDCStateTableOnNewTableCreation::Start");
+
+  auto namespace_id = table->namespace_id();
+  std::vector<CDCStreamInfoPtr> streams;
+
+  // Get all the CDCSDK streams on the namespace
+  {
+    SharedLock lock(mutex_);
+    for (const auto& entry : cdc_stream_map_) {
+      const auto& stream_info = entry.second;
+      if (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id) {
+        streams.emplace_back(stream_info);
+      }
+    }
+  }
+
+  // This is not expected to happen since we check atleast one stream exists before calling create
+  // tablet rpc
+  RSTATUS_DCHECK(
+      !streams.empty(), NotFound, "Did not find any stream on the namespace: $0", namespace_id);
+
+  std::vector<cdc::CDCStateTableEntry> entries;
+  entries.reserve(streams.size());
+
+  for (auto const& stream : streams) {
+    entries.emplace_back(tablet_id, stream->StreamId());
+    auto& entry = entries.back();
+    if (stream->IsConsistentSnapshotStream()) {
+      auto consistent_snapshot_time = stream->GetConsistentSnapshotHybridTime();
+      entry.checkpoint = safe_opid;
+      entry.active_time = GetCurrentTimeMicros();
+      entry.cdc_sdk_safe_time = consistent_snapshot_time.ToUint64();
+      entry.last_replication_time = consistent_snapshot_time.GetPhysicalValueMicros();
+    } else {
+      entry.checkpoint = OpId::Invalid();
+      entry.active_time = 0;
+      entry.cdc_sdk_safe_time = 0;
+    }
+    LOG_WITH_FUNC(INFO) << "Table id: " << table->id() << ", tablet id: " << tablet_id
+                        << ", stream id: " << stream->StreamId()
+                        << ", Safe OpId: " << safe_opid.term << " and " << safe_opid.index
+                        << ", cdc_sdk_safe_time: " << *(entry.cdc_sdk_safe_time);
+  }
+
+  auto status = cdc_state_table_->InsertEntries(entries);
+  if (!status.ok()) {
+    LOG(WARNING) << "Encoutered error while trying to add tablet:" << tablet_id
+                 << " of table: " << table->id() << ", to cdc_state table: " << status;
+    return status;
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::WaitForSnapshotSafeOpIdToBePopulated(
     const xrepl::StreamId& stream_id, const std::vector<TableId>& table_ids,
     CoarseTimePoint deadline) {
@@ -1782,7 +1841,9 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
  * This involves
  *   1) Enabling the WAL retention for the tablets of the table
  *   2) INSERTING records for the tablets of this table and each stream for which
- *      this table is relevant into the cdc_state table
+ *      this table is relevant into the cdc_state table. This is not requirred for replication slot
+ *      consumption since setting up of retention barriers and inserting state table entries is done
+ *      at the time of table creation.
  *   3) Storing the replica identity of the table in the stream metadata
  */
 Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
@@ -1797,31 +1858,35 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
     }
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
-    req.mutable_table()->set_table_id(table_id);
-    req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
-    req.set_require_tablets_running(true);
-    req.set_include_inactive(false);
+    Status s;
+    if (!FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+      req.mutable_table()->set_table_id(table_id);
+      req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
+      req.set_require_tablets_running(true);
+      req.set_include_inactive(false);
 
-    auto s = GetTableLocations(&req, &resp);
+      s = GetTableLocations(&req, &resp);
 
-    if (!s.ok()) {
-      if (s.IsNotFound()) {
-        // The table has been deleted. We will remove the table's entry from the stream's metadata.
-        RemoveTableFromCDCSDKUnprocessedMap(table_id, streams.begin()->get()->namespace_id());
-        VLOG(1) << "Removed table: " << table_id
-                << ", from namespace_to_cdcsdk_unprocessed_table_map_ , beacuse table not found";
-      } else {
-        LOG(WARNING) << "Encountered error calling: 'GetTableLocations' for table: " << table_id
-                     << "while trying to add tablet details to cdc_state table. Error: " << s;
+      if (!s.ok()) {
+        if (s.IsNotFound()) {
+          // The table has been deleted. We will remove the table's entry from the stream's
+          // metadata.
+          RemoveTableFromCDCSDKUnprocessedMap(table_id, streams.begin()->get()->namespace_id());
+          VLOG(1) << "Removed table: " << table_id
+                  << ", from namespace_to_cdcsdk_unprocessed_table_map_ , beacuse table not found";
+        } else {
+          LOG(WARNING) << "Encountered error calling: 'GetTableLocations' for table: " << table_id
+                       << "while trying to add tablet details to cdc_state table. Error: " << s;
+        }
+        continue;
       }
-      continue;
-    }
 
-    if (!resp.IsInitialized()) {
-      VLOG(2) << "The table: " << table_id
-              << ", is not initialised yet. Will add entries for tablets to cdc_state table once "
-                 "all tablets are up and running";
-      continue;
+      if (!resp.IsInitialized()) {
+        VLOG(2) << "The table: " << table_id
+                << ", is not initialised yet. Will add entries for tablets to cdc_state table once "
+                   "all tablets are up and running";
+        continue;
+      }
     }
 
     // Set the WAL retention for this new table
@@ -1836,35 +1901,39 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       continue;
     }
 
-    // INSERT the required cdc_state table entries
     NamespaceId namespace_id;
     bool stream_pending = false;
+    Status status;
     for (const auto& stream : streams) {
       if PREDICT_FALSE (stream == nullptr) {
         LOG(WARNING) << "Could not find CDC stream: " << stream->id();
         continue;
       }
 
-      std::vector<TabletId> tablet_ids;
-      const auto& tablets = resp.tablet_locations();
-      std::vector<cdc::CDCStateTableEntry> entries;
-      entries.reserve(tablets.size());
+      // INSERT the required cdc_state table entries. This is not requirred for replication slot
+      // consumption since setting up of retention barriers and inserting state table entries is
+      // done at the time of table creation.
+      if (!FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+        const auto& tablets = resp.tablet_locations();
+        std::vector<cdc::CDCStateTableEntry> entries;
+        entries.reserve(tablets.size());
 
-      for (const auto& tablet : tablets) {
-        cdc::CDCStateTableEntry entry(tablet.tablet_id(), stream->StreamId());
-        entry.checkpoint = OpId::Invalid();
-        entry.active_time = 0;
-        entry.cdc_sdk_safe_time = 0;
-        entries.push_back(std::move(entry));
-      }
+        for (const auto& tablet : tablets) {
+          cdc::CDCStateTableEntry entry(tablet.tablet_id(), stream->StreamId());
+          entry.checkpoint = OpId::Invalid();
+          entry.active_time = 0;
+          entry.cdc_sdk_safe_time = 0;
+          entries.push_back(std::move(entry));
+        }
 
-      auto status = cdc_state_table_->InsertEntries(entries);
+        status = cdc_state_table_->InsertEntries(entries);
 
-      if (!status.ok()) {
-        LOG(WARNING) << "Encoutered error while trying to add tablets of table: " << table_id
-                     << ", to cdc_state table for stream: " << stream->id() << ": " << status;
-        stream_pending = true;
-        continue;
+        if (!status.ok()) {
+          LOG(WARNING) << "Encoutered error while trying to add tablets of table: " << table_id
+                       << ", to cdc_state table for stream" << stream->id() << ": " << status;
+          stream_pending = true;
+          continue;
+        }
       }
 
       auto stream_lock = stream->LockForWrite();

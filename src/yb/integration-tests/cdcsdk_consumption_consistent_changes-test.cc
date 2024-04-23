@@ -2314,5 +2314,225 @@ TEST_F(
   CheckRecordCount(final_resp, total_dml_performed);
 }
 
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAdditionForTableCreatedAfterStream) {
+  auto publication_refresh_interval = MonoDelta::FromSeconds(1);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_micros) =
+      publication_refresh_interval.ToMicroseconds();
+
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test1"));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
+  // that order.
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  int expected_count[] = {1, 3, 0, 0, 0, 0, 2, 2};
+
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (1,1)"));
+
+  // Create a dynamic table.
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test2 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
+  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  vector<CDCSDKProtoRecordPB> records;
+  GetConsistentChangesResponsePB change_resp;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        records.insert(
+            records.end(), change_resp.cdc_sdk_proto_records().begin(),
+            change_resp.cdc_sdk_proto_records().end());
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting to receive the records"));
+
+  ASSERT_EQ(records.size(), 3);
+  for (auto record : records) {
+    UpdateRecordCount(record, count);
+  }
+
+  ASSERT_GT(change_resp.publication_refresh_time(), 0);
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (2,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (3,1)"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  // Since we received the notification to update publication's table list, we now call
+  // UpdatePublicationTableList with updated table list.
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+
+  bool has_records_from_test1 = false;
+  bool has_records_from_test2 = false;
+  records.clear();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        records.insert(
+            records.end(), change_resp.cdc_sdk_proto_records().begin(),
+            change_resp.cdc_sdk_proto_records().end());
+        return records.size() == 5;
+      },
+      MonoDelta::FromSeconds(60),
+      "Timed out waiting to receive the records of second transaction"));
+
+  for (auto record : records) {
+    if (record.row_message().table() == "test1") {
+      has_records_from_test1 = true;
+    } else if (record.row_message().table() == "test2") {
+      has_records_from_test2 = true;
+    }
+    UpdateRecordCount(record, count);
+  }
+  ASSERT_TRUE(has_records_from_test1 && has_records_from_test2);
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+}
+
+// Test for the possible race condition between create tablet and UpdatePeersAndMetrics thread. In
+// this test we verify that UpdatePeersAndMetrics does not remove the retention barrier on the
+// dynamically created tablets before their entries are added to the cdc_state table.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarrierRaceWithUpdatePeersAndMetrics) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 10;
+  google::SetVLOGLevel("tablet*", 1);
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"SetupCDCSDKRetentionOnNewTablet::End", "UpdatePeersAndMetrics::Start"},
+       {"UpdateTabletPeersWithMaxCheckpoint::Done",
+        "PopulateCDCStateTableOnNewTableCreation::Start"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Create another table after stream creation.
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table2"));
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
+
+  // Verify that table has been added to the stream.
+  ASSERT_OK(WaitFor(
+                [&]() -> Result<bool> {
+                  auto stream_info = VERIFY_RESULT(GetDBStreamInfo(stream_id));
+                  for (auto table_info : stream_info.table_info()) {
+                    if (table_info.table_id() == table.table_id()) {
+                      return true;
+                    }
+                  }
+                  return false;
+                },
+                MonoDelta::FromSeconds(60),
+                "Timed out waiting for the table to get added to stream"));
+
+  // Check that UpdatePeersAndMetrics has not removed retention barriers.
+  auto checkpoint_result =
+      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_id, tablet_peer->tablet_id()));
+  LogRetentionBarrierAndRelatedDetails(checkpoint_result, tablet_peer);
+  // A dynamically added table in replication slot consumption will not be snapshotted and will have
+  // replica identity "CHANGE". Hence the cdc_sdk_safe_time in tablet peer will be invalid.
+  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+
+  // Now, drop the consistent snapshot stream and check that retention barriers are released.
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 1;
+  VerifyTransactionParticipant(tablet_peer->tablet_id(), OpId::Max());
+  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+}
+
+// Test that creation of dynamic table fails when setting retention barrier on its tablets fails.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureSettingRetentionBarrierOnDynamicTable) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test1"));
+
+  ASSERT_RESULT(CreateConsistentSnapshotStream());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_sdk_fail_setting_retention_barrier) = true;
+
+  auto table_2_result = CreateTable(&test_cluster_, kNamespaceName, "test2");
+  if (table_2_result.ok()) {
+    auto table_2 = *table_2_result;
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets, nullptr));
+    ASSERT_EQ(tablets.size(), 1);
+    auto tablet_peer =
+        ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
+    ASSERT_NE(tablet_peer->state(), tablet::RaftGroupStatePB::RUNNING);
+  }
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestRetentionBarrierMovementForTablesNotInPublication) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 5;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_2"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+  ASSERT_OK(test_client()->GetTablets(table_1, 0, &tablets_1, nullptr));
+  ASSERT_EQ(tablets_1.size(), 1);
+  auto tablet_peer_1 =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets_1.begin()->tablet_id()));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets_2, nullptr));
+  ASSERT_EQ(tablets_2.size(), 1);
+  auto tablet_peer_2 =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets_2.begin()->tablet_id()));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Set the replica identity for both tables to FULL. This is needed for Update Peers and Metrics
+  // to update safe time.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table_2 REPLICA IDENTITY FULL"));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // This simulates the situation where table_2 is not included in the publication.
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  ASSERT_NE(tablet_peer_2->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  auto safe_time = tablet_peer_2->get_cdc_sdk_safe_time();
+
+  ASSERT_OK(WriteRowsHelper(1, 10, &test_cluster_, true));
+
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 11);
+  uint64_t restart_lsn = change_resp.cdc_sdk_proto_records().Get(10).row_message().pg_lsn() + 1;
+
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, restart_lsn, restart_lsn));
+
+  // Sleep (as per the flags value) to ensure that revision of retention barriers is not blocked.
+  SleepFor(MonoDelta::FromSeconds(
+      FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs * 2 * kTimeMultiplier));
+
+  // Update Peers and Metrics should have moved forward the safe time for table_2.
+  ASSERT_GT(tablet_peer_2->get_cdc_sdk_safe_time(), safe_time);
+
+  // The safetime for both the table's tablets should be equal to slot's commit time.
+  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_EQ(tablet_peer_1->get_cdc_sdk_safe_time(), slot_row.record_id_commit_time);
+  ASSERT_EQ(tablet_peer_2->get_cdc_sdk_safe_time(), slot_row.record_id_commit_time);
+}
+
 }  // namespace cdc
 }  // namespace yb
