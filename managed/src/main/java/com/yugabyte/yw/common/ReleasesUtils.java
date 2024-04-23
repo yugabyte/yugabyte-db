@@ -111,12 +111,13 @@ public class ReleasesUtils {
         return metadataFromHelmChart(
             new BufferedInputStream(Files.newInputStream(releaseFilePath)));
       }
-      ExtractedMetadata em =
-          versionMetadataFromInputStream(
-              new BufferedInputStream(new FileInputStream(releaseFilePath.toFile())));
-      em.sha256 = sha256;
-      em.releaseTag = tagFromName(releaseFilePath.toString());
-      return em;
+      try (BufferedInputStream stream =
+          new BufferedInputStream(new FileInputStream(releaseFilePath.toFile()))) {
+        ExtractedMetadata em = versionMetadataFromInputStream(stream);
+        em.sha256 = sha256;
+        em.releaseTag = tagFromName(releaseFilePath.toString());
+        return em;
+      }
     } catch (MetadataParseException e) {
       // Fallback to file name validation
       log.warn("falling back to file name metadata parsing for file " + releaseFilePath.toString());
@@ -132,9 +133,13 @@ public class ReleasesUtils {
   public ExtractedMetadata versionMetadataFromURL(URL url) {
     try {
       if (isHelmChart(url.getFile())) {
-        return metadataFromHelmChart(new BufferedInputStream(url.openStream()));
+        try (BufferedInputStream stream = new BufferedInputStream(url.openStream())) {
+          return metadataFromHelmChart(stream);
+        }
       }
-      return versionMetadataFromInputStream(new BufferedInputStream(url.openStream()));
+      try (BufferedInputStream stream = new BufferedInputStream(url.openStream())) {
+        return versionMetadataFromInputStream(stream);
+      }
     } catch (MetadataParseException e) {
       // Fallback to file name validation
       log.warn("falling back to file name metadata parsing for url " + url.toString(), e);
