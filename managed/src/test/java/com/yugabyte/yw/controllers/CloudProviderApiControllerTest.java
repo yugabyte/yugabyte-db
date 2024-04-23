@@ -938,6 +938,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ObjectNode ybImage = Json.newObject().put("ybImage", "image_id");
     ObjectNode regions = Json.newObject().set("us-west-2", ybImage);
     ObjectNode details = Json.newObject().put("arch", "x86_64").set("regions", regions);
+    details.put("sshPort", 22);
     ObjectNode imageBundle = Json.newObject().put("name", "test-image").set("details", details);
     imageBundlesList.add(imageBundle);
     bodyJson.set("imageBundles", imageBundlesList);
@@ -1060,7 +1061,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "random_arch arch on image image_id is not supported, "
                 + "random_device_type root device type on image image_id is not supported, "
                 + "windows platform on image image_id is not supported\"],"
-                + "\"data.SSH_PORT\":[\"22 is not open on security group sg_id\"],"
                 + "\"errorSource\":[\"providerValidation\"]}}"));
 
     image.setArchitecture("x86_64");
@@ -1072,10 +1072,10 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertBadRequestValidationResult(
         result,
         Util.convertStringToJson(
-            "{\"success\":false,\"error\":{"
-                + "\"data.REGION.us-west-2.SECURITY_GROUP\":[\""
-                + "sg_id is not attached to vpc: vpc_id\"],"
-                + "\"data.REGION.us-west-2.SUBNETS\":[\"subnet-a is not associated with vpc_id\"],"
+            "{\"success\":false,\"error\":{\"data.REGION.us-west-2.SECURITY_GROUP\":[\"sg_id is not"
+                + " attached to vpc: vpc_id\"],\"data.REGION.us-west-2.SUBNETS\":[\"subnet-a is not"
+                + " associated with vpc_id\"],\"data.REGION.us-west-2.IMAGE.test-image.SSH_PORT\":"
+                + "[\"22 is not open on security group sg_id\"],"
                 + "\"errorSource\":[\"providerValidation\"]}}"));
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
         .thenReturn(UUID.randomUUID());
@@ -1356,6 +1356,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
     regionImageInfo.put("us-west-2", new ImageBundleDetails.BundleInfo());
     ibDetails.setRegions(regionImageInfo);
+    ibDetails.setArch(Architecture.x86_64);
     ImageBundle ib = ImageBundle.create(p, "ib-1", ibDetails, true);
     // Add zone to the region.
     AvailabilityZone az1 =
@@ -1443,8 +1444,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
     result = getProvider(p.getUuid());
     Provider provider = Json.fromJson(Json.parse(contentAsString(result)), Provider.class);
-    // Default for the bundle can be changed in case it is associated to the universe.
-    provider.getImageBundles().get(0).setUseAsDefault(false);
     JsonNode providerJson = Json.toJson(provider);
     JsonNode regionJson = providerJson.get("regions");
     ObjectMapper objectMapper = new ObjectMapper();

@@ -802,11 +802,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     ImageBundle ib = new ImageBundle();
     ib.setName("ib-2");
     ib.setProvider(p);
-    ib.setUseAsDefault(true);
     ib.setDetails(details);
 
     List<ImageBundle> ibs = p.getImageBundles();
-    ibs.get(0).setUseAsDefault(false);
     ibs.add(ib);
     p.setImageBundles(ibs);
     UUID taskUUID = doEditProvider(p, false);
@@ -818,7 +816,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     p.getImageBundles()
         .forEach(
             bundle -> {
-              if (bundle.getName().equals("ib-1")) {
+              if (bundle.getName().equals("ib-2")) {
                 assertEquals(false, bundle.getUseAsDefault());
               } else {
                 assertEquals(true, bundle.getUseAsDefault());
@@ -896,6 +894,10 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testImageBundleEditViaProviderRegionAdd() throws InterruptedException {
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.enableVMOSPatching.getKey(), "false");
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
     Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");
     ImageBundle.Metadata metadata = new ImageBundle.Metadata();
@@ -970,6 +972,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testEditProviderRegionAddYBADeprecatedBundle() throws InterruptedException {
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
     Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");
     ImageBundle.Metadata metadata = new ImageBundle.Metadata();
