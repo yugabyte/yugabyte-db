@@ -23,6 +23,13 @@ var createAzureProviderCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create an Azure YugabyteDB Anywhere provider",
 	Long:  "Create an Azure provider in YugabyteDB Anywhere",
+	Example: `./yba provider azure create -n <provider-name> \
+	--region region-name=westus2,vnet=<vnet> --zone zone-name=westus2-1,region-name=westus2,subnet=<subnet> \
+	--rg=<az-resource-group> \
+	--client-id=<az-client-id> \
+	--tenant-id=<az-tenant-id> \
+	--client-secret=<az-client-secret> \
+	--subscription-id=<az-subscription-id>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
