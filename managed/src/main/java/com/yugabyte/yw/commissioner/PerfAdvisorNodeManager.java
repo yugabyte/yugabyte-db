@@ -55,24 +55,26 @@ public class PerfAdvisorNodeManager implements NodeManagerInterface {
                   .processErrors();
         } else if (command instanceof FileUploadCommand) {
           FileUploadCommand fileUpload = (FileUploadCommand) command;
-          InputStream s =
-              Class.forName("org.yb.perf_advisor.Utils")
-                  .getClassLoader()
-                  .getResourceAsStream(fileUpload.getSrcFilePath());
-          String pythonText = new Scanner(s).useDelimiter("\\A").next();
-          String prefix = String.format("pa_script_%s", UUID.randomUUID());
-          tempPath = fileHelperService.createTempFile(prefix, ".py");
-          Files.write(tempPath, pythonText.getBytes(StandardCharsets.UTF_8));
-          response =
-              nodeUniverseManager
-                  .uploadFileToNode(
-                      universeConfig.getNodeDetails(),
-                      universe,
-                      tempPath.toString(),
-                      fileUpload.getDestFilePath(),
-                      fileUpload.getFilePermissions(),
-                      universeConfig.getShellProcessContext())
-                  .processErrors();
+          try (InputStream s =
+                  Class.forName("org.yb.perf_advisor.Utils")
+                      .getClassLoader()
+                      .getResourceAsStream(fileUpload.getSrcFilePath());
+              Scanner scanner = new Scanner(s)) {
+            String pythonText = scanner.useDelimiter("\\A").next();
+            String prefix = String.format("pa_script_%s", UUID.randomUUID());
+            tempPath = fileHelperService.createTempFile(prefix, ".py");
+            Files.write(tempPath, pythonText.getBytes(StandardCharsets.UTF_8));
+            response =
+                nodeUniverseManager
+                    .uploadFileToNode(
+                        universeConfig.getNodeDetails(),
+                        universe,
+                        tempPath.toString(),
+                        fileUpload.getDestFilePath(),
+                        fileUpload.getFilePermissions(),
+                        universeConfig.getShellProcessContext())
+                    .processErrors();
+          }
         }
       }
       return response.extractRunCommandOutput();
