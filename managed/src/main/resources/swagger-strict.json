@@ -6569,7 +6569,7 @@
           "type" : "string"
         },
         "ldapGroupfield" : {
-          "description" : "LDAP field to get the group information",
+          "description" : "Group dn field to get the group's name from",
           "example" : "cn",
           "type" : "string"
         },
@@ -6593,8 +6593,13 @@
           "type" : "string"
         },
         "ldapUserfield" : {
-          "description" : "LDAP field to get the user information",
+          "description" : "User dn field to get the user's name from",
           "example" : "cn",
+          "type" : "string"
+        },
+        "ldapUserfieldAttribute" : {
+          "description" : "LDAP attribute to get the user's name from",
+          "example" : "sAMAccountName",
           "type" : "string"
         },
         "targetApi" : {
@@ -6606,7 +6611,7 @@
           "type" : "boolean"
         }
       },
-      "required" : [ "dbuserPassword", "ldapGroupfield", "ldapUserfield", "targetApi" ],
+      "required" : [ "dbuserPassword", "ldapGroupfield", "targetApi" ],
       "type" : "object"
     },
     "LocalCloudInfo" : {
