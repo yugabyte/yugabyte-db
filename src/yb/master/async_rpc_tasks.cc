@@ -88,6 +88,8 @@ DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
+DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+
 namespace yb {
 namespace master {
 
@@ -1595,6 +1597,7 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
     *add_table.mutable_partition_schema() = l->pb.partition_schema();
   }
   add_table.set_pg_table_id(table_->pg_table_id());
+  add_table.set_skip_table_tombstone_check(FLAGS_ysql_yb_enable_alter_table_rewrite);
 }
 
 string AsyncAddTableToTablet::description() const {
