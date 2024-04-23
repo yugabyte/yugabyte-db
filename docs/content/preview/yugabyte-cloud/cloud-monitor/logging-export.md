@@ -42,8 +42,7 @@ Create an integration. An integration defines the settings and login information
 
 - Configuring logging [requires a restart](../../cloud-clusters/#locking-operations) of your cluster. Configure logging when the cluster isn't experiencing heavy traffic.
 - Configuring logging blocks other cluster operations, such as backups and maintenance. Avoid changing your settings before maintenance windows and during scheduled backups. The operation will block a backup from running.
-- Logging requires disk storage. Make sure the disk space on your cluster is sufficient for the anticipated data.
-- Logging impacts performance. If your application has high traffic, avoid logging all statements.
+- To limit performance impact and control costs, log and export only what you need. The default settings are based on best practices from open source PostgreSQL, the broader community, and YugabyteDB Managed testing to ensure the impact is bounded and insignificant.
 
 ## Database Query Log
 
@@ -51,15 +50,15 @@ To enable database query logging for a cluster, do the following:
 
 1. On the cluster **Settings** tab, select **Database Query Log**.
 1. Click **Enable Database Query Logging**.
-1. Set the [Database query log settings](#database-query-log-settings).
-1. Select the export configuration to use.
+1. Set the [logging settings](#logging-settings).
+1. Select the [export configuration](../managed-integrations/) to use.
 1. Click **Enable YSQL Query Logging**.
 
 YugabyteDB Managed begins the rolling restart.
 
-### Database query log settings
+### Logging settings
 
-Database query logging provides access to a subset of the standard PostegreSQL logging settings. For more information, refer to [Error Reporting and Logging](https://www.postgresql.org/docs/11/runtime-config-logging.html) in the PostgreSQL documentation.
+Database query logging provides access to the following subset of the standard [PostegreSQL logging settings](https://www.postgresql.org/docs/11/runtime-config-logging.html).
 
 ##### Log SQL statements (log_statement)
 
@@ -103,7 +102,7 @@ timestamp : remote hostname and port : username@database : [process ID]:
 
 ##### Log SQL statements with severity (log_min_error_statement)
 
-Control which SQL statements that cause an error condition are logged. For the severity levels, refer to [Message Severity Levels](https://www.postgresql.org/docs/11/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) in the PostgreSQL documentation.
+Controls which SQL statements that cause an error condition are logged. The current SQL statement is included in the log entry for any message of the specified severity or higher. This parameter is set to ERROR, which means statements causing errors, log messages, fatal errors, or panics are logged.
 
 ##### Set verbosity (log_error_verbosity)
 

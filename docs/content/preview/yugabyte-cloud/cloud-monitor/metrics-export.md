@@ -29,10 +29,8 @@ To enable metrics export for a cluster, do the following:
 1. Select the export configuration to use.
 1. Click **Export Metrics**.
 
-You can assign a metrics configuration to one or more clusters to begin exporting metrics from those clusters. You can also pause and resume metrics export for a cluster.
+To modify the metrics export configuration, on the cluster **Settings** tab, select **Edit Metrics Export Configuration** and choose a different Export Configuration.
 
-To assign an export configuration to a cluster, in the **Export Metrics by Cluster** table, in the **Export Configurations** column, choose a configuration for the cluster.
+To pause or resume metrics export from a cluster, on the cluster **Settings** tab, select **Edit Metrics Export Configuration** and choose **Pause Metrics Export** or **Resume Metrics Export**.
 
-To remove an export configuration from a cluster, in the **Export Metrics by Cluster** table, set the **Export Configurations** column to **None**.
-
-To pause or resume metrics export from a cluster, in the **Export Metrics by Cluster** table, click the **...** button for the cluster, and choose **Pause** or **Resume**.
+To remove metrics export from a cluster, on the cluster **Settings** tab, select **Edit Metrics Export Configuration** and choose **Disable Metrics Export**.
