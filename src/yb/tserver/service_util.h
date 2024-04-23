@@ -266,7 +266,9 @@ class CatalogVersionChecker {
           InvalidArgument, "Different db_oid values are not expected");
       if (version_info.version < tserver_version_info_->version) {
         return STATUS(
-            QLError, "The catalog snapshot used for this transaction has been invalidated",
+            QLError,
+            Format("The catalog snapshot used for this transaction has been invalidated: "
+                   "expected: $0, got: $1", tserver_version_info_->version, version_info.version),
             TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
       }
     }
