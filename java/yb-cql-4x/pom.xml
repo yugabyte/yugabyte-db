@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.64.5-SNAPSHOT</version>
+    <version>0.8.64.6-SNAPSHOT</version>
   </parent>
   <artifactId>yb-cql-4x</artifactId>
   <name>YB CQL Support for 4.x Driver</name>

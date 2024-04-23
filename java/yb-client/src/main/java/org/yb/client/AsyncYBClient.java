@@ -1242,6 +1242,19 @@ public class AsyncYBClient implements AutoCloseable {
       null);
   }
 
+  public Deferred<AlterUniverseReplicationResponse> alterUniverseReplicationRemoveTables(
+    String replicationGroupName,
+    Set<String> sourceTableIdsToRemove,
+    boolean removeTableIgnoreErrors) {
+    return alterUniverseReplication(
+      replicationGroupName,
+      new HashMap<>(),
+      sourceTableIdsToRemove,
+      new HashSet<>(),
+      null,
+      removeTableIgnoreErrors);
+  }
+
   public Deferred<AlterUniverseReplicationResponse>
   alterUniverseReplicationSourceMasterAddresses(
     String replicationGroupName,
@@ -1265,6 +1278,20 @@ public class AsyncYBClient implements AutoCloseable {
       newReplicationGroupName);
   }
 
+  private Deferred<AlterUniverseReplicationResponse> alterUniverseReplication(
+    String replicationGroupName,
+    Map<String, String> sourceTableIdsToAddBootstrapIdMap,
+    Set<String> sourceTableIdsToRemove,
+    Set<CommonNet.HostPortPB> sourceMasterAddresses,
+    String newReplicationGroupName) {
+      return alterUniverseReplication(replicationGroupName,
+      sourceTableIdsToAddBootstrapIdMap,
+      sourceTableIdsToRemove,
+      sourceMasterAddresses,
+      newReplicationGroupName,
+      false);
+    }
+
   /**
    * Alter existing xCluster replication relationships by modifying which tables to replicate from a
    * source universe, as well as the master addresses of the source universe
@@ -1282,6 +1309,7 @@ public class AsyncYBClient implements AutoCloseable {
    * @param sourceMasterAddresses New list of master addresses for the source universe
    * @param newReplicationGroupName The new source universe's UUID and the config name if desired to
    *                                be changed (format: sourceUniverseUUID_configName)
+   * @param removeTableIgnoreErrors Ignore errors while removing tables
    * @return a deferred object that yields an alter xCluster replication response.
    */
   private Deferred<AlterUniverseReplicationResponse> alterUniverseReplication(
@@ -1289,7 +1317,8 @@ public class AsyncYBClient implements AutoCloseable {
     Map<String, String> sourceTableIdsToAddBootstrapIdMap,
     Set<String> sourceTableIdsToRemove,
     Set<CommonNet.HostPortPB> sourceMasterAddresses,
-    String newReplicationGroupName) {
+    String newReplicationGroupName,
+    boolean removeTableIgnoreErrors) {
     int addedTables = sourceTableIdsToAddBootstrapIdMap.isEmpty() ? 0 : 1;
     int removedTables = sourceTableIdsToRemove.isEmpty() ? 0 : 1;
     int changedMasterAddresses = sourceMasterAddresses.isEmpty() ? 0 : 1;
@@ -1307,7 +1336,8 @@ public class AsyncYBClient implements AutoCloseable {
         sourceTableIdsToAddBootstrapIdMap,
         sourceTableIdsToRemove,
         sourceMasterAddresses,
-        newReplicationGroupName);
+        newReplicationGroupName,
+        removeTableIgnoreErrors);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

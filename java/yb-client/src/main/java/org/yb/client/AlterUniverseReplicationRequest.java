@@ -29,6 +29,7 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
   private final Set<String> sourceTableIdsToRemove;
   private final Set<HostPortPB> sourceMasterAddresses;
   private final String newReplicationGroupName;
+  private final boolean removeTableIgnoreErrors;
 
   AlterUniverseReplicationRequest(
     YBTable table,
@@ -36,13 +37,15 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
     Map<String, String> sourceTableIdsToAddBootstrapIdMap,
     Set<String> sourceTableIdsToRemove,
     Set<CommonNet.HostPortPB> sourceMasterAddresses,
-    String newReplicationGroupName) {
+    String newReplicationGroupName,
+    boolean removeTableIgnoreErrors) {
     super(table);
     this.replicationGroupName = replicationGroupName;
     this.sourceTableIdsToAddBootstrapIdMap = sourceTableIdsToAddBootstrapIdMap;
     this.sourceTableIdsToRemove = sourceTableIdsToRemove;
     this.sourceMasterAddresses = sourceMasterAddresses;
     this.newReplicationGroupName = newReplicationGroupName;
+    this.removeTableIgnoreErrors = removeTableIgnoreErrors;
   }
 
   @Override
@@ -58,11 +61,12 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
     });
 
     final MasterReplicationOuterClass.AlterUniverseReplicationRequestPB.Builder builder =
-      MasterReplicationOuterClass.AlterUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(replicationGroupName)
-        .addAllProducerMasterAddresses(sourceMasterAddresses)
-        .addAllProducerTableIdsToAdd(sourceTableIdsToAdd)
-        .addAllProducerTableIdsToRemove(sourceTableIdsToRemove);
+        MasterReplicationOuterClass.AlterUniverseReplicationRequestPB.newBuilder()
+            .setProducerId(replicationGroupName)
+            .addAllProducerMasterAddresses(sourceMasterAddresses)
+            .addAllProducerTableIdsToAdd(sourceTableIdsToAdd)
+            .addAllProducerTableIdsToRemove(sourceTableIdsToRemove)
+            .setRemoveTableIgnoreErrors(removeTableIgnoreErrors);
     if (newReplicationGroupName != null) {
       builder.setNewProducerUniverseId(newReplicationGroupName);
     }

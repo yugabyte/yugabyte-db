@@ -1309,6 +1309,25 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return mainTableIndexTablesMap;
   }
 
+  public static final Set<String> getDroppedTableIds(
+      YBClientService ybService, Universe universe, Set<String> tableIds) {
+    if (tableIds.isEmpty()) {
+      return Collections.emptySet();
+    }
+    Set<String> droppedTables = new HashSet<>();
+    Set<String> allTables =
+        getTableInfoList(ybService, universe).stream()
+            .map(table -> table.getId().toStringUtf8())
+            .collect(Collectors.toSet());
+    for (String tableUuid : tableIds) {
+      tableUuid = tableUuid.replace("-", "");
+      if (!allTables.contains(tableUuid)) {
+        droppedTables.add(tableUuid);
+      }
+    }
+    return droppedTables;
+  }
+
   public static Set<String> getTableIdsToAdd(
       Set<String> currentTableIds, Set<String> destinationTableIds) {
     return destinationTableIds.stream()
