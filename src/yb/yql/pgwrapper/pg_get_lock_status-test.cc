@@ -905,5 +905,46 @@ TEST_F(PgGetLockStatusTestRF3, TestLocksOfSingleShardWaiters) {
   thread_holder.WaitAndStop(5s * kTimeMultiplier);
 }
 
+TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterTableRewrite) {
+  const auto colo_db = "colo_db";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation=true", colo_db));
+  conn = ASSERT_RESULT(ConnectToDB(colo_db));
+  std::set<std::string> table_names = {"foo", "bar"};
+  for (const auto& table_name : table_names) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) $1", table_name,
+        table_name == "foo" ? "WITH (colocation=false)" : ""));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT generate_series(1, 10), 0", table_name));
+    // Perform a table rewrite so that the DocDB table UUID doesn't match the PG table oid.
+    ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN new_column SERIAL", table_name));
+  }
+
+  const auto key = "1";
+  TestThreadHolder thread_holder;
+  CountDownLatch fetched_locks{1};
+  for (const auto& table_name : table_names) {
+    thread_holder.AddThreadFunctor([this, &colo_db, &fetched_locks, table_name, key] {
+      auto conn = ASSERT_RESULT(ConnectToDB(colo_db));
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table_name, key));
+      ASSERT_TRUE(fetched_locks.WaitFor(15s * kTimeMultiplier));
+    });
+  }
+
+  SleepFor(5s * kTimeMultiplier);
+  // Assert that the locks held belong to tables "foo", "bar".
+  auto values = ASSERT_RESULT(conn.FetchRows<std::string>(
+    "SELECT relname FROM pg_class WHERE oid IN (SELECT DISTINCT relation FROM pg_locks)"));
+  ASSERT_EQ(values.size(), 2);
+  for (const auto& relname : values) {
+    ASSERT_TRUE(table_names.find(relname) != table_names.end());
+  }
+  fetched_locks.CountDown();
+  thread_holder.WaitAndStop(25s * kTimeMultiplier);
+}
+
 } // namespace pgwrapper
 } // namespace yb
