@@ -12,6 +12,8 @@
 //
 #pragma once
 
+#include <sys/socket.h>
+
 #include <atomic>
 #include <string>
 
@@ -204,6 +206,7 @@ struct AshMetadata {
   uint64_t session_id = 0;
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
+  uint8_t addr_family = AF_UNSPEC;
 
   void set_client_host_port(const HostPort& host_port);
 
@@ -227,6 +230,9 @@ struct AshMetadata {
     }
     if (other.client_host_port != HostPort()) {
       client_host_port = other.client_host_port;
+    }
+    if (other.addr_family != AF_UNSPEC) {
+      addr_family = other.addr_family;
     }
   }
 
@@ -262,6 +268,11 @@ struct AshMetadata {
     } else {
       pb->clear_client_host_port();
     }
+    if (addr_family != AF_UNSPEC) {
+      pb->set_addr_family(addr_family);
+    } else {
+      pb->clear_addr_family();
+    }
   }
 
   template <class PB>
@@ -288,7 +299,8 @@ struct AshMetadata {
         pb.query_id(),                         // query_id
         pb.session_id(),                       // session_id
         pb.rpc_request_id(),                   // rpc_request_id
-        HostPortFromPB(pb.client_host_port())  // client_host_port
+        HostPortFromPB(pb.client_host_port()), // client_host_port
+        static_cast<uint8_t>(pb.addr_family()) // addr_family
     };
   }
 };

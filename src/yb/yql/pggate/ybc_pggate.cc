@@ -301,17 +301,27 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YBCPgSysTablePrefetcherCacheMode 
   return PrefetchingCacheMode::RENEW_CACHE_HARD;
 }
 
-// Sets the client address in the ASH circular buffer and returns the address family.
-// The host comes from the class HostPort and that only accepts IPv4/IPv6 as of today,
-// that's why there is no check for a unix domain socket here.
-uint8_t AshGetTServerClientAddress(const std::string& host, unsigned char* client_addr) {
-  if (host.find(':') == std::string::npos) { // IPv4 address
-    inet_pton(AF_INET, host.c_str(), client_addr);
-    return AF_INET;
+// Sets the client address in the ASH circular buffer.
+void AshGetTServerClientAddress(
+    uint8_t addr_family, const std::string& host, unsigned char* client_addr) {
+  // If addr_family is AF_UNIX or AF_UNSPEC, it will be nulled out in the view.
+  switch (addr_family) {
+    case AF_UNIX:
+    case AF_UNSPEC:
+      break;
+    case AF_INET:
+    case AF_INET6: {
+      int res = inet_pton(addr_family, host.c_str(), client_addr);
+      if (res == 0) {
+        LOG(DFATAL) << "IP address not in presentation format";
+      } else if (res == -1) {
+        LOG(DFATAL) << "Not a valid address family: " << addr_family;
+      }
+      break;
+    }
+    default:
+      LOG(DFATAL) << "Unknown address family found: " << addr_family;
   }
-  // IPv6 address
-  inet_pton(AF_INET6, host.c_str(), client_addr);
-  return AF_INET6;
 }
 
 uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) {
@@ -341,7 +351,6 @@ void AshCopyTServerSample(
 
   cb_metadata->query_id = tserver_metadata.query_id();
   cb_metadata->session_id = tserver_metadata.session_id();
-  cb_metadata->client_port =  static_cast<uint16_t>(tserver_metadata.client_host_port().port());
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
       AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_status_code());
@@ -358,8 +367,10 @@ void AshCopyTServerSample(
 
   AshCopyAuxInfo(tserver_sample, component, cb_sample);
 
-  cb_metadata->addr_family = AshGetTServerClientAddress(
-      tserver_metadata.client_host_port().host(), cb_metadata->client_addr);
+  cb_metadata->addr_family = tserver_metadata.addr_family();
+  AshGetTServerClientAddress(cb_metadata->addr_family, tserver_metadata.client_host_port().host(),
+                             cb_metadata->client_addr);
+  cb_metadata->client_port =  static_cast<uint16_t>(tserver_metadata.client_host_port().port());
 }
 
 void AshCopyTServerSamples(

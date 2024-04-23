@@ -634,6 +634,8 @@ message AshMetadataPB {
   optional bytes root_request_id = 1;
   // The client which sent the request to YSQL-Pg/YCQL.
   optional HostPortPB client_host_port = 2;
+  // The address family of the client host
+  optional uint32 addr_family = 7;
   // The uuid of the local tserver which received the request from the client.
   // i.e. the local tserver running the YSQL-Pg backend/YCQL proxy. if set,
   // should be 16 bytes in length.

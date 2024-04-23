@@ -215,7 +215,9 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     ash::AshMetadata metadata{
         .root_request_id = Uuid::Generate(),
-        .client_host_port = HostPort(inbound_call->remote_address())};
+        .client_host_port = HostPort(inbound_call->remote_address()),
+        .addr_family = static_cast<uint8_t>(inbound_call->remote_address().address().is_v4()
+            ? AF_INET : AF_INET6)};
     auto uuid_res = Uuid::FromHexStringBigEndian(server_->instance_pb().permanent_uuid());
     if (uuid_res.ok()) {
       metadata.yql_endpoint_tserver_uuid = *uuid_res;

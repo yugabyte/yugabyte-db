@@ -150,6 +150,28 @@ struct ResponseReadyTraits<Result<rpc::CallData>> {
   }
 };
 
+void AshMetadataToPB(const YBCPgAshConfig& ash_config, tserver::PgPerformOptionsPB* options) {
+  // Don't send ASH metadata if it's not set
+  if (!(*ash_config.yb_enable_ash) || !(*ash_config.is_metadata_set)) {
+    return;
+  }
+
+  // session_id is not set here as it's already set in PgPerformRequestPB
+  auto* ash_metadata = options->mutable_ash_metadata();
+  const auto* pg_metadata = ash_config.metadata;
+  ash_metadata->set_yql_endpoint_tserver_uuid(ash_config.yql_endpoint_tserver_uuid, 16);
+  ash_metadata->set_root_request_id(pg_metadata->root_request_id, 16);
+  ash_metadata->set_query_id(pg_metadata->query_id);
+
+  uint8_t addr_family = pg_metadata->addr_family;
+  ash_metadata->set_addr_family(addr_family);
+  // unix addresses are displayed as null, so we only send IPv4 and IPv6 addresses.
+  if (addr_family == AF_INET || addr_family == AF_INET6) {
+      ash_metadata->mutable_client_host_port()->set_host(ash_config.host);
+      ash_metadata->mutable_client_host_port()->set_port(pg_metadata->client_port);
+  }
+}
+
 } // namespace
 
 struct PerformData : public FetchBigDataCallback {
@@ -684,19 +706,7 @@ class PgClient::Impl : public BigDataFetcher {
       tserver::PgPerformOptionsPB* options, PgsqlOps* operations) {
     auto& arena = operations->front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
-    if (*ash_config_.yb_enable_ash) {
-      // Don't send ASH metadata if it's not set
-      // ash_metadata_ can be null during tests which directly create the
-      // pggate layer without the PG backend.
-      // session_id is not set here as it's already set in PgPerformRequestPB
-      if (*ash_config_.is_metadata_set) {
-        auto* ash_metadata = options->mutable_ash_metadata();
-        ash_metadata->set_yql_endpoint_tserver_uuid(ash_config_.yql_endpoint_tserver_uuid, 16);
-        ash_metadata->set_root_request_id(ash_config_.metadata->root_request_id, 16);
-        ash_metadata->set_query_id(ash_config_.metadata->query_id);
-      }
-    }
-
+    AshMetadataToPB(ash_config_, options);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
