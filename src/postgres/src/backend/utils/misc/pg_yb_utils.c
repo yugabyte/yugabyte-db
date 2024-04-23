@@ -1423,6 +1423,7 @@ typedef struct DdlTransactionState
 	CatalogModificationAspects catalog_modification_aspects;
 	bool is_global_ddl;
 	NodeTag original_node_tag;
+	const char *original_ddl_command_tag;
 } DdlTransactionState;
 
 static DdlTransactionState ddl_transaction_state = {0};
@@ -1577,7 +1578,8 @@ YBDecrementDdlNestingLevel()
 				(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
 				YbIncrementMasterCatalogVersionTableEntry(
 					mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
-					ddl_transaction_state.is_global_ddl);
+					ddl_transaction_state.is_global_ddl,
+					ddl_transaction_state.original_ddl_command_tag);
 
 			is_silent_altering = (mode == YB_DDL_MODE_SILENT_ALTERING);
 		}
@@ -1675,6 +1677,8 @@ YbDdlModeOptional YbGetDdlMode(
 		 * be incremented.
 		 */
 		ddl_transaction_state.original_node_tag = node_tag;
+		ddl_transaction_state.original_ddl_command_tag =
+			CreateCommandTag(parsetree);
 	}
 	else
 	{

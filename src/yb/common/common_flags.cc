@@ -117,6 +117,10 @@ DEFINE_RUNTIME_PG_FLAG(bool, TEST_enable_replication_slot_consumption, false,
 TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, unsafe);
 TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, hidden);
 
+DEFINE_NON_RUNTIME_bool(TEST_ysql_hide_catalog_version_increment_log, false,
+                        "Hide catalog version increment log messages.");
+TAG_FLAG(TEST_ysql_hide_catalog_version_increment_log, hidden);
+
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
 // are used for generic placement policies on table creation and tablet load balancing, to
