@@ -1810,6 +1810,11 @@ public class NodeManager extends DevopsBase {
               // Backward compatiblity.
               imageBundleDefaultImage = taskParam.getRegion().getYbImage();
             }
+            if (StringUtils.isNotBlank(taskParam.getMachineImage())) {
+              // YBM use case - in case machineImage is used for deploying the universe we should
+              // fallback to sshUser configured in the provider.
+              taskParam.sshUserOverride = provider.getDetails().getSshUser();
+            }
             String ybImage =
                 Optional.ofNullable(taskParam.getMachineImage()).orElse(imageBundleDefaultImage);
             if (ybImage != null && !ybImage.isEmpty()) {
@@ -1888,6 +1893,11 @@ public class NodeManager extends DevopsBase {
             imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
           } else {
             imageBundleDefaultImage = taskParam.getRegion().getYbImage();
+          }
+          if (StringUtils.isNotBlank(taskParam.machineImage)) {
+            // YBM use case - in case machineImage is used for deploying the universe we should
+            // fallback to sshUser configured in the provider.
+            taskParam.sshUserOverride = provider.getDetails().getSshUser();
           }
           String ybImage =
               Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);
