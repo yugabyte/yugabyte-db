@@ -73,6 +73,9 @@ void SetupError(LWTabletServerErrorPB* error, const Status& s);
 
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer);
 
+std::shared_ptr<TabletConsensusInfoPB> GetTabletConsensusInfoFromTabletPeer(
+    const tablet::TabletPeerPtr& peer);
+
 // Template helpers.
 
 template<class ReqClass>
@@ -247,6 +250,24 @@ Result<LeaderTabletPeer> LookupLeaderTablet(
     return status;
   }
   return result;
+}
+
+template <class Req, class Resp>
+void FillTabletConsensusInfoIfRequestOpIdStale(
+    tablet::TabletPeerPtr peer, const Req* req, Resp* resp) {
+  if constexpr (HasTabletConsensusInfo<Resp>::value) {
+    auto outgoing_tablet_consensus_info = resp->mutable_tablet_consensus_info();
+    if (auto consensus = peer->GetRaftConsensus()) {
+      auto cstate = consensus.get()->GetConsensusStateFromCache();
+      if (cstate.has_config() && req->raft_config_opid_index() < cstate.config().opid_index()) {
+        outgoing_tablet_consensus_info->set_tablet_id(peer->tablet_id());
+        *(outgoing_tablet_consensus_info->mutable_consensus_state()) = cstate;
+        VLOG(1) << "Sending out Consensus state for tablet: " << peer->tablet_id()
+                  << ", leader TServer is: "
+                  << outgoing_tablet_consensus_info->consensus_state().leader_uuid();
+      }
+    }
+  }
 }
 
 // The "peer" argument could be provided by the caller in case the caller has already performed

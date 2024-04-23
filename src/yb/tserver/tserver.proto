@@ -97,6 +97,8 @@ message WriteRequestPB {
   optional uint64 start_time_micros = 22;
 
   optional AshMetadataPB ash_metadata = 23;
+
+  optional int64 raft_config_opid_index = 24;
 }
 
 message WriteResponsePB {
@@ -238,6 +240,8 @@ message ReadRequestPB {
   optional uint64 start_time_micros = 16;
 
   optional AshMetadataPB ash_metadata = 17;
+
+  optional int64 raft_config_opid_index = 18;
 }
 
 message ReadResponsePB {

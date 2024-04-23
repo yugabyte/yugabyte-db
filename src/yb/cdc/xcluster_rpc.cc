@@ -178,6 +178,7 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   }
 
   bool RefreshMetaCacheWithResponse() override {
+    DCHECK(client::internal::CheckIfConsensusInfoUnexpectedlyMissing(req_, resp_));
     if (!resp_.has_tablet_consensus_info()) {
       VLOG(1) << "Partial refresh of tablet for XClusterWrite RPC failed because the response did "
                  "not have a tablet_consensus_info";
@@ -185,6 +186,10 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
     }
 
     return invoker_.RefreshTabletInfoWithConsensusInfo(resp_.tablet_consensus_info());
+  }
+
+  void SetRequestRaftConfigOpidIndex(int64_t opid_index) override {
+    req_.set_raft_config_opid_index(opid_index);
   }
 
  private:
@@ -323,6 +328,7 @@ class GetChangesRpc : public rpc::Rpc, public client::internal::TabletRpc {
   }
 
   bool RefreshMetaCacheWithResponse() override {
+    DCHECK(client::internal::CheckIfConsensusInfoUnexpectedlyMissing(req_, resp_));
     if (!resp_.has_tablet_consensus_info()) {
       VLOG(1) << "Partial refresh of tablet for GetChanges RPC failed because the response did not "
                  "have a tablet_consensus_info";
@@ -330,6 +336,10 @@ class GetChangesRpc : public rpc::Rpc, public client::internal::TabletRpc {
     }
 
     return invoker_.RefreshTabletInfoWithConsensusInfo(resp_.tablet_consensus_info());
+  }
+
+  void SetRequestRaftConfigOpidIndex(int64_t opid_index) override {
+    req_.set_raft_config_opid_index(opid_index);
   }
 
  private:

@@ -102,6 +102,7 @@ DECLARE_string(vmodule);
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
 
+DECLARE_bool(enable_metacache_partial_refresh);
 namespace yb {
 
 namespace log {
@@ -1037,6 +1038,8 @@ class CDCServiceTestMultipleServersOneTablet : public CDCServiceTest {
 // serving as a proxy, the proxy should receive a TabletConsensusInfo that
 // it can use to refresh its metacache.
 TEST_F(CDCServiceTestMultipleServersOneTablet, TestGetChangesRpcTabletConsensusInfo) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) =
+      true;
   // Find the leader and followers for our tablet.
   const MonoDelta timeout = MonoDelta::FromSeconds(10);
   const auto proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());

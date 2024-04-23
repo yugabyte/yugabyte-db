@@ -29,6 +29,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -55,6 +56,16 @@ DEFINE_UNKNOWN_int32(lookup_cache_refresh_secs, 60, "When non-zero, specifies ho
 DEFINE_test_flag(int32, assert_failed_replicas_less_than, 0,
                  "If greater than 0, this process will crash if the number of failed replicas for "
                  "a RemoteTabletServer is greater than the specified number.");
+DEFINE_test_flag(
+    bool, always_return_consensus_info_for_succeeded_rpc, false,
+    "If set to true, we will always pass a stale raft_config_opid_index to the request when it is "
+    "possible for the request. This is turned on in debug mode to test that our metacache "
+    "will always be refreshed when a successful Write/Read/TransactionStatus/GetChanges RPC "
+    "responds.");
+DEFINE_RUNTIME_bool(
+    enable_metacache_partial_refresh, false,
+    "If set, we will attempt to refresh the tablet metadata cache with a TabletConsensusInfoPB in "
+    "the tablet invoker.");
 
 using namespace std::placeholders;
 
@@ -264,11 +275,14 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
 
   VLOG(2) << "Tablet " << tablet_id_ << ": Sending " << command_->ToString() << " to replica "
           << current_ts_->ToString();
+  int64_t opid_index = client_->GetRaftConfigOpidIndex(tablet_id_);
+  rpc_->SetRequestRaftConfigOpidIndex(opid_index);
   rpc_->SendRpcToTserver(retrier_->attempt_num());
 }
 
 Status TabletInvoker::FailToNewReplica(const Status& reason,
-                                       const tserver::TabletServerErrorPB* error_code) {
+                                       const tserver::TabletServerErrorPB* error_code,
+                                       bool consensus_info_refresh_succeeded) {
   TRACE_TO(trace_, "FailToNewReplica($0)", reason.ToString());
   if (ErrorCode(error_code) == tserver::TabletServerErrorPB::STALE_FOLLOWER) {
     VLOG(1) << "Stale follower for " << command_->ToString() << " just retry";
@@ -289,10 +303,9 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
     // tablet is successfully refreshed using the tablet_consensus_info, so we need to clear the
     // followers set to let tablet invoker use our latest leader tablet peer that has just been
     // refreshed.
-
-    if (rpc_->RefreshMetaCacheWithResponse()) {
-      bool refresh_succeeded = true;
-      TEST_SYNC_POINT_CALLBACK("CDCSDKMetaCacheRefreshTest::Refresh", &refresh_succeeded);
+    if (consensus_info_refresh_succeeded) {
+      TEST_SYNC_POINT_CALLBACK(
+          "CDCSDKMetaCacheRefreshTest::Refresh", &consensus_info_refresh_succeeded);
       followers_.clear();
     } else {
       followers_.emplace(
@@ -333,7 +346,14 @@ bool TabletInvoker::Done(Status* status) {
 
   bool assign_new_leader = assign_new_leader_;
   assign_new_leader_ = false;
-
+  bool consensus_info_refresh_succeeded = false;
+  if (GetAtomicFlag(&FLAGS_enable_metacache_partial_refresh)) {
+    consensus_info_refresh_succeeded = rpc_->RefreshMetaCacheWithResponse();
+    if (status->ok()) {
+      TEST_SYNC_POINT_CALLBACK(
+          "TabletInvoker::RefreshFinishedWithOkRPCResponse", &consensus_info_refresh_succeeded);
+    }
+  }
   if (status->IsAborted() || retrier_->finished()) {
     if (status->ok()) {
       *status = retrier_->controller().status();
@@ -438,7 +458,7 @@ bool TabletInvoker::Done(Status* status) {
     if (status->IsIllegalState() || IsTabletConsideredNotFound(rsp_err, *status) ||
         IsTabletConsideredNonLeader(rsp_err, *status)) {
       // The whole operation is completed if we can't schedule a retry.
-      return !FailToNewReplica(*status, rsp_err).ok();
+      return !FailToNewReplica(*status, rsp_err, consensus_info_refresh_succeeded).ok();
     } else {
       tserver::TabletServerDelay delay(*status);
       auto retry_status = delay.value().Initialized()

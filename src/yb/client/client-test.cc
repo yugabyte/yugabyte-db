@@ -140,6 +140,8 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
+DECLARE_bool(enable_metacache_partial_refresh);
+
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 
@@ -2800,6 +2802,8 @@ Result<client::internal::RemoteTabletPtr> GetRemoteTablet(
 // tablet server, thus it will have the latest information about who the leader really is, and
 // thus should always succeed with exactly 2 RPCs.
 TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) =
+      true;
   shared_ptr<YBTable> pgsql_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId, &pgsql_table));
   std::shared_ptr<YBSession> session = CreateSession(client_.get());
@@ -2878,6 +2882,8 @@ TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
   const auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, proxy_cache_.get()));
   auto target_details = ts_map.at(tserver_uuids[target_index]).get();
   auto leader_ts = ts_map.at(leader_server_uuid).get();
+  // Step down to target replica and wait until the leader is elected on the target.
+  // Wait for all peers to get ready.
   ASSERT_OK(
       (itest::WaitForAllPeersToCatchup(tablet.tablet_id(), TServerDetailsVector(ts_map), timeout)));
   ASSERT_OK(itest::LeaderStepDown(

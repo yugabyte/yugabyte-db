@@ -1582,7 +1582,8 @@ void CDCServiceImpl::GetChanges(
       resp->mutable_error(),
       CDCErrorPB::LEADER_NOT_READY,
       context);
-
+  // Fill in tablet consensus info now we know that the tablet exists and is leader.
+  tserver::FillTabletConsensusInfoIfRequestOpIdStale(tablet_peer, req, resp);
   auto stream_meta_ptr = RPC_VERIFY_RESULT(
       GetStream(stream_id, RefreshStreamMapOption::kIfInitiatedState), resp->mutable_error(),
       CDCErrorPB::INTERNAL_ERROR, context);
@@ -1615,7 +1616,6 @@ void CDCServiceImpl::GetChanges(
       streaming_checkpoint_pb.set_key("");
       streaming_checkpoint_pb.set_write_id(0);
       resp->mutable_cdc_sdk_checkpoint()->CopyFrom(streaming_checkpoint_pb);
-
       context.RespondSuccess();
       return;
     }
