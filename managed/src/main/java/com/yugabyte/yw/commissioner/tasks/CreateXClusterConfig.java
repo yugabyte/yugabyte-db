@@ -293,13 +293,17 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                     pitrConfigOptional.get().getUuid(),
                     targetUniverse.getUniverseUUID(),
                     false /* ignoreErrors */);
+                // We mark this PITR config as not created during DR as it existed before DR with
+                // different params.
+                // In Future, we will set the PITR config with old params if it not required by DR.
                 createCreatePitrConfigTask(
                     targetUniverse,
                     namespace.getName(),
                     tableType,
                     retentionPeriodSeconds,
                     snapshotIntervalSeconds,
-                    xClusterConfig);
+                    xClusterConfig,
+                    false /* createdForDr */);
               } else {
                 log.info("Reusing the existing PITR config because it has the right parameters");
                 xClusterConfig.addPitrConfig(pitrConfigOptional.get());
@@ -312,7 +316,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                   tableType,
                   retentionPeriodSeconds,
                   snapshotIntervalSeconds,
-                  xClusterConfig);
+                  xClusterConfig,
+                  true /* createdForDr */);
             }
           });
     }
@@ -395,7 +400,11 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               xClusterConfig.getTargetUniverseUUID(),
               tableType,
               namespaceName); // Need to drop pitr configs that may be dangling.
+      boolean hadPitrBeforeDr = false;
       if (xClusterConfig.getType().equals(ConfigType.Txn)) {
+        if (pitrConfigOptional.isPresent()) {
+          hadPitrBeforeDr = true;
+        }
         pitrConfigOptional.ifPresent(
             pitrConfig ->
                 createDeletePitrConfigTask(
@@ -497,7 +506,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             tableType,
             retentionPeriodSeconds,
             snapshotIntervalSeconds,
-            xClusterConfig);
+            xClusterConfig,
+            !hadPitrBeforeDr);
       }
 
       if (isReplicationConfigCreated) {
