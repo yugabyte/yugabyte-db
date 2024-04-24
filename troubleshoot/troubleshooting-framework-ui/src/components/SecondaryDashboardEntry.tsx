@@ -78,7 +78,6 @@ export const SecondaryDashboardEntry = ({
     () => TroubleshootAPI.fetchQueries(universeUuid, hostUrl),
     {
       onSuccess: (data) => {
-        console.log('setUniverseQueryData', data);
         setUniverseQueryData(data);
       },
       onError: (error: any) => {
