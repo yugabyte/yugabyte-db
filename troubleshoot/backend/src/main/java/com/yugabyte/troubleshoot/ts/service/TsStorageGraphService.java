@@ -81,7 +81,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     GraphResponse response = new GraphResponse();
     response.setSuccessful(true);
     response.setName(query.getName());
-    response.setLayout(config.getLayout());
+    response.setLayout(config.getLayout().toBuilder().build());
     response.setStepSeconds(query.getStepSeconds());
 
     Set<String> groupByLabels = new LinkedHashSet<>();
@@ -120,9 +120,11 @@ public class TsStorageGraphService implements GraphSourceIF {
     if (response.getLayout().getMetadata() != null && CollectionUtils.isNotEmpty(groupByColumns)) {
       response
           .getLayout()
-          .getMetadata()
-          .setCurrentGroupBy(
-              groupByColumns.stream().map(GraphLabel::valueOf).collect(Collectors.toList()));
+          .setMetadata(
+              response.getLayout().getMetadata().toBuilder()
+                  .currentGroupBy(
+                      groupByColumns.stream().map(GraphLabel::valueOf).collect(Collectors.toList()))
+                  .build());
     }
     Set<String> filterByLabels =
         query.getFilters().keySet().stream().map(GraphLabel::name).collect(Collectors.toSet());
