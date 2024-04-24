@@ -17,6 +17,7 @@ class YBTabsWithLinksPanel extends Component {
   };
 
   tabSelect = (selectedKey) => {
+    if(!selectedKey) return;
     const currentLocation = this.props.location;
     if (this.props.routePrefix) {
       currentLocation.pathname = this.props.routePrefix + selectedKey;
