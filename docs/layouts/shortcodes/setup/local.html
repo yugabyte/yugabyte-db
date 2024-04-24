@@ -12,7 +12,8 @@
     {{- end -}}
 {{- end -}}
 {{- $masterip := default (index $ips 0) (.Get "masterip") -}}
-{{- $locations := split (replace (default "aws.us-east-2.us-east-2a,aws.us-east-2.us-east-2b,aws.us-east-2.us-east-2c" (.Get "locations")) " " "") "," -}}
+{{- $locations := default "aws.us-east-2.us-east-2a,aws.us-east-2.us-east-2b,aws.us-east-2.us-east-2c" (.Get "locations") -}}
+{{- $locations = split (replace (replace $locations "\n" "") " " "") "," -}}
 {{- $destroy := default "yes" (.Get "destroy") }}
 {{- $dataplacement := default "yes" (.Get "dataplacement") }}
 {{- $status := default "yes" (.Get "status") }}

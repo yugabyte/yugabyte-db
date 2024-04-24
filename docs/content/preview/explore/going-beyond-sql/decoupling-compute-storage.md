@@ -28,15 +28,30 @@ Let us see how to accomplish this separation in YugabyteDB.
 
 ## Cluster setup
 
-Set up a local cluster with 6 nodes with IP addresses `127.0.0.[1-6]` and place them in zones `a-f`.
+Set up a local cluster with 8 nodes with IP addresses `127.0.0.[1-8]` and place them in zones `a-f`.
 
-{{<setup/local numnodes=6 locations="aws.east.zone-a,aws.east.zone-b,aws.east.zone-c,aws.east.zone-d,aws.east.zone-e,aws.east.zone-f," >}}
+{{<note>}}
+For clarity, we are placing the nodes across 6 zones, a through f.
 
-{{<note>}}For clarity, we are placing the nodes across 6 zones, a through f. This also ensures both your compute and storage nodes are spread across multiple zones.{{</note>}}
+We will later allocate 3 zones for storage and 3 for compute. This also ensures both your compute and storage nodes are spread across multiple zones to survive zone failures.
+
+The zones d, e and f can be virtual zones mapped to a, b and c respectively and need not be entirely different zones.
+{{</note>}}
+
+{{<setup/local numnodes=8
+    locations=`aws.east.zone-a,
+               aws.east.zone-b,
+               aws.east.zone-c,
+               aws.east.zone-a,
+               aws.east.zone-b,
+               aws.east.zone-d,
+               aws.east.zone-e,
+               aws.east.zone-f`
+>}}
 
 ## Standard behaviour
 
-Typically, the application connects to all the nodes in the cluster. In our local cluster, the application will connect to the 6 nodes as shown in the following illustration.
+Typically, the application connects to all the nodes in the cluster. In our local cluster, the application will connect to the 8 nodes in the 6 zones as shown in the following illustration.
 
 ![Basic cluster](/images/explore/decoupling-compute-storage-setup.png)
 
@@ -48,11 +63,14 @@ You can use the [Tablespace](../tablespaces) feature in YugabyteDB to restrict t
 
 ```sql
 CREATE TABLESPACE storage
-  WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
+  WITH (replica_placement='{
+  "num_replicas": 3,
+  "placement_blocks": [
     {"cloud":"aws","region":"east","zone":"zone-a","min_num_replicas":1},
     {"cloud":"aws","region":"east","zone":"zone-b","min_num_replicas":1},
     {"cloud":"aws","region":"east","zone":"zone-c","min_num_replicas":1}
-]}');
+  ]
+}');
 ```
 
 Now when you create tables, you have to attach them to these tablespaces. Say you have a user table; when you create the table, attach it to the storage tablespace as follows:
@@ -67,7 +85,7 @@ This automatically ensures that the data is only stored in zones a, b, and c. No
 
 ## Separating compute
 
-Now that you have restricted storage to specific zones, the machines in the remaining zones can be used for query processing by having your applications connect only to the nodes in zones d, e, and f. You can either configure your applications to only connect to the remaining nodes (127.0.0.4, 127.0.0.5, 127.0.0.6), or use a [YugabyteDB Smart Driver](../../../drivers-orms/smart-drivers) to connect only to the nodes in zones d, e, and f using [topology_keys](../../../drivers-orms/smart-drivers/#topology-keys). For example:
+Now that you have restricted storage to specific zones, the machines in the remaining zones can be used for query processing by having your applications connect only to the nodes in zones d, e, and f. You can either configure your applications to only connect to the remaining nodes (127.0.0.6, 127.0.0.7, 127.0.0.8), or use a [YugabyteDB Smart Driver](../../../drivers-orms/smart-drivers) to connect only to the nodes in zones d, e, and f using [topology_keys](../../../drivers-orms/smart-drivers/#topology-keys). For example:
 
 ```java
 topology_keys = "topology_keys=aws.east.zone-d,aws.east.zone-e,aws.east.zone-f";
@@ -76,7 +94,7 @@ conn_str = "jdbc:yugabytedb://localhost:5433/yugabyte?load-balance=true&" + topo
 
 ## Decoupled cluster
 
-You have now effectively divided your cluster into two groups of nodes with distinct responsibilities. Nodes 4-6 process queries and perform sorts and joins, which are compute-heavy. Nodes 1-3 manage the storage of table data. Your setup should look like the following illustration.
+You have now effectively divided your cluster into two groups of nodes with distinct responsibilities. Nodes 6-8 in zones d, e and f process queries and perform sorts and joins, which are compute-heavy. Nodes 1-5 in zones a, b, and c manage the storage of table data. Your setup should look like the following illustration.
 
 ![Decoupled cluster](/images/explore/decoupling-compute-storage-final.png)
 
