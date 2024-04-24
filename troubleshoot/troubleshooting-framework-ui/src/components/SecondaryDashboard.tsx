@@ -531,9 +531,7 @@ export const SecondaryDashboard = ({
     showDropdown = true;
     if (isNonEmptyArray(operations)) {
       metricOperationsDropdown = operations?.slice(operations.length - numButtonsInDropdown);
-      console.log('metricOperationsDropdown', metricOperationsDropdown);
       metricOperationsDisplayed = operations?.slice(0, operations.length - numButtonsInDropdown);
-      console.log('metricOperationsDisplayed', metricOperationsDisplayed);
     }
   }
   const inFocusButton = focusedButton ? focusedButton : operations?.[0];
