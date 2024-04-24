@@ -11,6 +11,7 @@
 // under the License.
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/test_macros.h"
 
@@ -2527,6 +2528,93 @@ TEST_F(
   auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
   ASSERT_EQ(tablet_peer_1->get_cdc_sdk_safe_time(), slot_row.record_id_commit_time);
   ASSERT_EQ(tablet_peer_2->get_cdc_sdk_safe_time(), slot_row.record_id_commit_time);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsumptionAfterDroppingTableNotInPublication) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test1 (id int primary key, value_1 int) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test2 (id int primary key, value_1 int) SPLIT INTO 3 TABLETS"));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_1_tablets;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_2_tablets;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &table_1_tablets, nullptr));
+  ASSERT_EQ(table_1_tablets.size(), 3);
+  ASSERT_OK(test_client()->GetTablets(table2, 0, &table_2_tablets, nullptr));
+  ASSERT_EQ(table_2_tablets.size(), 3);
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  // insert 200 records in both tables.
+  int dml_records_per_table = 200;
+  for (int i = 0; i < dml_records_per_table; i++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1)", i, i + 1));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", i, i + 1));
+  }
+
+  std::thread t1([&]() -> void {
+    // Drop test2 which is not part of the publication.
+    LOG(INFO) << "Dropping table: " << table2.table_name();
+    DropTable(&test_cluster_, table2.table_name().c_str());
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          while (true) {
+            auto get_resp = GetDBStreamInfo(stream_id);
+            // Wait until the background thread cleanup up the drop table metadata.
+            if (get_resp.ok() && !get_resp->has_error() && get_resp->table_info_size() == 1) {
+              return true;
+            }
+            SleepFor(MonoDelta::FromSeconds(2));
+          }
+        },
+        MonoDelta::FromSeconds(30), "Waiting for stream metadata cleanup."));
+
+    // Verify state table entries for tablets of test2 are also removed.
+    std::unordered_set<TabletId> expected_tablets;
+    expected_tablets.insert(kCDCSDKSlotEntryTabletId);
+    for (auto& entry : table_1_tablets) {
+      expected_tablets.insert(entry.tablet_id());
+    }
+    CDCStateTable cdc_state_table(test_client());
+    Status s;
+    auto table_range =
+        ASSERT_RESULT(cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeAll(), &s));
+
+    bool seen_slot_entry = false;
+    std::unordered_set<TabletId> tablets_found;
+    for (auto row_result : table_range) {
+      ASSERT_OK(row_result);
+      auto& row = *row_result;
+      tablets_found.insert(row.key.tablet_id);
+      if (row.key.stream_id == stream_id && row.key.tablet_id == kCDCSDKSlotEntryTabletId) {
+        seen_slot_entry = true;
+      }
+    }
+    ASSERT_OK(s);
+    ASSERT_TRUE(seen_slot_entry);
+    LOG(INFO) << "tablets found: " << AsString(tablets_found)
+              << ", expected tablets: " << AsString(expected_tablets);
+    ASSERT_EQ(tablets_found, expected_tablets);
+  });
+
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table1.table_id()}, dml_records_per_table, true /* init_virtual_wal */,
+      kVWALSessionId1));
+  LOG(INFO) << "Got " << get_consistent_changes_resp.records.size() << " records from table 1.";
+
+  auto last_record =
+      get_consistent_changes_resp.records[get_consistent_changes_resp.records.size() - 1];
+
+  t1.join();
+  // This will check the slot's entry as well as its fields.
+  VerifyLastRecordAndProgressOnSlot(stream_id, last_record);
+  CheckRecordsConsistencyFromVWAL(get_consistent_changes_resp.records);
+  CheckRecordCount(get_consistent_changes_resp, dml_records_per_table);
 }
 
 }  // namespace cdc
