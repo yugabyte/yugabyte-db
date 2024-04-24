@@ -19,6 +19,13 @@ On this page:
 
 ## Change log
 
+### April 22, 2024
+
+**New Features**
+
+- Support for incremental backups for faster backups with greater frequency. Incremental backups only include the data that has changed since the last backup, be it a full or incremental backup.
+- Ability to size each region in partition by region clusters to its load. Number of nodes, number of vCPUs, disk size, and IOPS can now be set independently for each region. Add extra horsepower in high-traffic regions, and provision lower-traffic regions with fewer nodes.
+
 ### April 17, 2024
 
 **Database**
