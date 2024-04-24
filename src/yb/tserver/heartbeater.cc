@@ -356,7 +356,12 @@ void Heartbeater::Thread::SetupCommonField(master::TSToMasterCommonPB* common) {
 Status Heartbeater::Thread::SetupRegistration(master::TSRegistrationPB* reg) {
   reg->Clear();
   RETURN_NOT_OK(server_->GetRegistration(reg->mutable_common()));
-
+  auto* resources = reg->mutable_resources();
+  resources->set_core_count(base::NumCPUs());
+  int64_t tablet_overhead_limit = yb::tserver::ComputeTabletOverheadLimit();
+  if (tablet_overhead_limit > 0) {
+    resources->set_tablet_overhead_ram_in_bytes(tablet_overhead_limit);
+  }
   return Status::OK();
 }
 
@@ -393,12 +398,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
     LOG_WITH_PREFIX(INFO) << "Registering TS with master...";
     RETURN_NOT_OK_PREPEND(SetupRegistration(req.mutable_registration()),
                           "Unable to set up registration");
-    auto* resources = req.mutable_registration()->mutable_resources();
-    resources->set_core_count(base::NumCPUs());
-    int64_t tablet_overhead_limit = yb::tserver::ComputeTabletOverheadLimit();
-    if (tablet_overhead_limit > 0) {
-      resources->set_tablet_overhead_ram_in_bytes(tablet_overhead_limit);
-    }
   }
 
   if (last_hb_response_.needs_full_tablet_report()) {
