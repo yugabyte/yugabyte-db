@@ -81,7 +81,7 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_tserver");
     graphQuery.setSettings(new GraphSettings());
 
     List<GraphResponse> response =
@@ -101,7 +101,7 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_ysql");
     GraphSettings settings = new GraphSettings();
     settings.setSplitMode(GraphSettings.SplitMode.TOP);
     settings.setSplitType(GraphSettings.SplitType.NODE);
@@ -126,7 +126,7 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_ysql");
     GraphSettings settings = new GraphSettings();
     settings.setSplitMode(GraphSettings.SplitMode.TOP);
     settings.setSplitType(GraphSettings.SplitType.NODE);
@@ -153,7 +153,7 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_ysql");
     graphQuery.setFilters(
         ImmutableMap.of(
             GraphLabel.queryId,
@@ -179,7 +179,7 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_ysql");
     graphQuery.setFilters(ImmutableMap.of(GraphLabel.regionCode, ImmutableList.of("us-west-1")));
     graphQuery.setGroupBy(ImmutableList.of(GraphLabel.queryId));
     graphQuery.setSettings(new GraphSettings());
@@ -202,7 +202,7 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_ysql");
     graphQuery.setFilters(ImmutableMap.of(GraphLabel.regionCode, ImmutableList.of("us-west-1")));
     graphQuery.setGroupBy(ImmutableList.of(GraphLabel.clientNodeIp));
     graphQuery.setSettings(new GraphSettings());
