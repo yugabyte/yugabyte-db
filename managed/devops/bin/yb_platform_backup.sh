@@ -77,9 +77,9 @@ set -u # Disallow undefined variables
 # Takes docker container and command as arguments. Executes docker cmd if docker-based or not.
 docker_aware_cmd() {
   if [[ "$DOCKER_BASED" = false ]]; then
-    $2
+    sh -c "$2"
   else
-    docker exec -i "${1}" $2
+    docker exec -i "${1}" sh -c "$2"
   fi
 }
 
@@ -173,7 +173,9 @@ restore_postgres_backup() {
   verbose="$5"
   yba_installer="$6"
   pgrestore_path="$7"
+  skip_dump_check="$8"
   pg_restore="pg_restore"
+  psql="psql"
 
   # Determine pg_restore path in yba-installer cases where postgres is installed in data_dir.
   if [[ "${yba_installer}" = true ]] && \
@@ -183,22 +185,32 @@ restore_postgres_backup() {
     pg_restore=${pgrestore_path}
   fi
 
-  if [[ "${verbose}" = true ]]; then
-    restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c -v -d \
-      ${PLATFORM_DB_NAME}"
-  else
-    restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c -d \
-      ${PLATFORM_DB_NAME}"
+  if [[ "${pg_restore}" == "${pgrestore_path}" ]]; then
+    psql=$(dirname "${pgrestore_path}")/psql
   fi
 
-  # Run pg_restore.
-  echo "Restoring Yugabyte Platform DB backup ${backup_path}..."
-  if [[ "$migration" = true ]]; then
-    set +e
+  if grep -iq "COPY.*customer" "${backup_path}" || [[ "${skip_dump_check}" = true ]]; then
+    # Drop public schema so it is guaranteed to be a clean restore
+    drop_cmd="${psql} -h ${db_host} -p ${db_port} -U ${db_username} -d ${PLATFORM_DB_NAME} \
+      -c \"DROP SCHEMA IF EXISTS public CASCADE;CREATE SCHEMA public;\""
+    docker_aware_cmd "postgres" "${drop_cmd}"
+
+    if [[ "${verbose}" = true ]]; then
+      restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists -v \
+        -d ${PLATFORM_DB_NAME}"
+    else
+      restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists \
+        -d ${PLATFORM_DB_NAME}"
+    fi
+
+    # Run pg_restore.
+    echo "Restoring Yugabyte Platform DB backup ${backup_path}..."
+    docker_aware_cmd "postgres" "${restore_cmd}" < "${backup_path}"
+    echo "Done"
+  else
+    echo "${backup_path} potentially might be empty, skipping restore. Use --skip_dump_check to \
+      proceed"
   fi
-  docker_aware_cmd "postgres" "${restore_cmd}" < "${backup_path}"
-  set -e
-  echo "Done"
 }
 
 # Creates a DB backup of YB Platform running on YBDB.
@@ -455,6 +467,8 @@ restore_backup() {
   ybdb="${14}"
   ysqlsh_path="${15}"
   ybai_data_dir="${16}"
+  skip_old_files="${17}"
+  skip_dump_check="${18}"
   prometheus_dir_regex="\.\/${PROMETHEUS_SNAPSHOT_DIR}\/[[:digit:]]{8}T[[:digit:]]{6}Z-[[:alnum:]]{16}\/$"
 
   # Perform K8s restore.
@@ -478,16 +492,15 @@ restore_backup() {
     fi
     backup_script="/opt/yugabyte/devops/bin/yb_platform_backup.sh"
 
-    #Passing in the required argument for --disable_version_check if set to true, since
-    #the script is called again within the Kubernetes container.
-    d="--disable_version_check"
-
+    # Skip old files as script was called outside of container so may lack permissions to overwrite
     if [ "$disable_version_check" != true ]; then
       kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file}"
+        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} \
+        --skip_old_files"
     else
       kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} ${d}"
+        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} \
+        --disable_version_check --skip_old_files"
     fi
 
     # Delete backup archive from container.
@@ -604,8 +617,7 @@ restore_backup() {
       fi
     done
   else
-    # Skipping old files due to issues with k8s restore without permission to overwrite
-    $tar_cmd "${input_path}" --directory "${untar_dir}" --skip-old-files
+    $tar_cmd "${input_path}" --directory "${destination}" "${skip_old_files}"
   fi
 
   db_backup_path="${untar_dir}"/"${PLATFORM_DUMP_FNAME}"
@@ -616,7 +628,7 @@ restore_backup() {
   else
     # do we need set +e?
     restore_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-      "${verbose}" "${yba_installer}" "${pgrestore_path}"
+      "${verbose}" "${yba_installer}" "${pgrestore_path}" "${skip_dump_check}"
   fi
 
   # Restore prometheus data.
@@ -740,6 +752,8 @@ print_restore_usage() {
   echo "  --ysqlsh_path                  path to ysqlsh to restore ybdb (default: false)"
   echo "  --migration                    migration from Replicated or Yugabundle (default: false)"
   echo "  --ybai_data_dir                YBA data dir (default: /opt/yugabyte/data/yb-platform)"
+  echo "  --skip_old_files               skip old files when untarring backup"
+  echo "  --skip_dump_check              skip pg dump empty check before restore (default: false)"
   echo "  -?, --help                     show restore help, then exit"
   echo
 }
@@ -793,6 +807,8 @@ ysqlsh_path=""
 migration=false
 ybai_data_dir=/opt/yugabyte/data/yb-platform
 yba_user=yugabyte
+skip_old_files=""
+skip_dump_check=false
 
 case $command in
   -?|--help)
@@ -1039,6 +1055,14 @@ case $command in
           USE_SYSTEM_PG=true
           shift
           ;;
+        --skip_old_files)
+          skip_old_files="--skip-old-files"
+          shift
+          ;;
+        --skip_dump_check)
+          skip_dump_check=true
+          shift
+          ;;
         -?|--help)
           print_restore_usage
           exit 0
@@ -1066,7 +1090,8 @@ case $command in
 
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
     "$prometheus_host" "$prometheus_port" "$data_dir" "$k8s_namespace" "$k8s_pod" \
-    "$disable_version_check" "$pgrestore_path" "$ybdb" "$ysqlsh_path" "$ybai_data_dir"
+    "$disable_version_check" "$pgrestore_path" "$ybdb" "$ysqlsh_path" "$ybai_data_dir" \
+    "$skip_old_files" "$skip_dump_check"
     exit 0
     ;;
   *)
