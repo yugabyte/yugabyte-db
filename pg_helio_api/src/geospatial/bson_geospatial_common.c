@@ -754,7 +754,7 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 
 
 	if (processState->opInfo != NULL &&
-		processState->opInfo->queryOperatorType == QUERY_OPERATOR_GEOWITHIN &&
+		IsGeoWithinQueryOperator(processState->opInfo->queryOperatorType) &&
 		parseState.type == GeoJsonType_POLYGON && parseState.numOfRingsInPolygon > 1)
 	{
 		/* TODO: Fix polygon with holes geowithin comparision, for now we throw unsupported error because of

@@ -48,6 +48,12 @@ typedef struct
 	 * mongo operators.
 	 */
 	MongoIndexOperatorInfo indexQueryOperator;
+
+	/*
+	 * Whether or not this operator is valid for the public API contract
+	 * internal operators will set this to false.
+	 */
+	bool isPublicOperator;
 } MongoOperatorInfo;
 
 
@@ -56,7 +62,7 @@ static const MongoQueryOperator UnknownOperator = {
 	INVALID_QUERY_OPERATOR_FEATURE_TYPE
 };
 static const MongoIndexOperatorInfo UnknownIndexOperator = {
-	NULL, BSON_INDEX_STRATEGY_INVALID
+	NULL, BSON_INDEX_STRATEGY_INVALID, false
 };
 
 /* known Mongo query operators, should match order of values in MongoQueryOperatorType */
@@ -69,7 +75,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
 		{ "$eq", QUERY_OPERATOR_EQ, BsonTypeId, BsonValueEqualMatchFunctionId, NULL, NULL,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@=", BSON_INDEX_STRATEGY_DOLLAR_EQUAL }
+		{ "@=", BSON_INDEX_STRATEGY_DOLLAR_EQUAL, false },
+		true,
 	},
 	{
 		{ "$gt", QUERY_OPERATOR_GT, GetClusterBsonQueryTypeId,
@@ -79,7 +86,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$gt", QUERY_OPERATOR_GT, BsonTypeId, BsonValueGreaterThanMatchFunctionId, NULL,
 		  NULL,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@>", BSON_INDEX_STRATEGY_DOLLAR_GREATER }
+		{ "@>", BSON_INDEX_STRATEGY_DOLLAR_GREATER, false },
+		true,
 	},
 	{
 		{ "$gte", QUERY_OPERATOR_GTE, GetClusterBsonQueryTypeId,
@@ -90,7 +98,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$gte", QUERY_OPERATOR_GTE, BsonTypeId,
 		  BsonValueGreaterThanEqualMatchFunctionId, NULL, NULL,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@>=", BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL }
+		{ "@>=", BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL, false },
+		true,
 	},
 	{
 		{ "$lt", QUERY_OPERATOR_LT, GetClusterBsonQueryTypeId,
@@ -100,7 +109,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$lt", QUERY_OPERATOR_LT, BsonTypeId, BsonValueLessThanMatchFunctionId, NULL,
 		  NULL,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@<", BSON_INDEX_STRATEGY_DOLLAR_LESS }
+		{ "@<", BSON_INDEX_STRATEGY_DOLLAR_LESS, false },
+		true,
 	},
 	{
 		{ "$lte", QUERY_OPERATOR_LTE, GetClusterBsonQueryTypeId,
@@ -109,7 +119,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
 		{ "$lte", QUERY_OPERATOR_LTE, BsonTypeId, BsonValueLessThanEqualMatchFunctionId,
 		  NULL, NULL, INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@<=", BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL }
+		{ "@<=", BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL, false },
+		true,
 	},
 	{
 		{ "$ne", QUERY_OPERATOR_NE, BsonTypeId, BsonNotEqualMatchFunctionId, NULL,
@@ -118,7 +129,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$ne", QUERY_OPERATOR_NE, BsonTypeId, BsonValueNotEqualMatchFunctionId, NULL,
 		  BsonValueNotEqualMatchFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@!=", BSON_INDEX_STRATEGY_DOLLAR_NOT_EQUAL }
+		{ "@!=", BSON_INDEX_STRATEGY_DOLLAR_NOT_EQUAL, false },
+		true,
 	},
 	{
 		{ "$in", QUERY_OPERATOR_IN, BsonTypeId, BsonInMatchFunctionId, NULL,
@@ -127,7 +139,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$in", QUERY_OPERATOR_IN, BsonTypeId, BsonValueInMatchFunctionId, NULL,
 		  BsonValueInMatchFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@*=", BSON_INDEX_STRATEGY_DOLLAR_IN }
+		{ "@*=", BSON_INDEX_STRATEGY_DOLLAR_IN, false },
+		true,
 	},
 	{
 		{ "$nin", QUERY_OPERATOR_NIN, BsonTypeId, BsonNinMatchFunctionId, NULL,
@@ -136,7 +149,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$nin", QUERY_OPERATOR_NIN, BsonTypeId, BsonValueNinMatchFunctionId, NULL,
 		  BsonValueNinMatchFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@!*=", BSON_INDEX_STRATEGY_DOLLAR_NOT_IN }
+		{ "@!*=", BSON_INDEX_STRATEGY_DOLLAR_NOT_IN, false },
+		true,
 	},
 	{
 		{ "$all", QUERY_OPERATOR_ALL, BsonTypeId, BsonAllMatchFunctionId, NULL,
@@ -145,7 +159,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$all", QUERY_OPERATOR_ALL, BsonTypeId, BsonValueAllMatchFunctionId, NULL,
 		  BsonValueAllMatchFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@&=", BSON_INDEX_STRATEGY_DOLLAR_ALL }
+		{ "@&=", BSON_INDEX_STRATEGY_DOLLAR_ALL, false },
+		true,
 	},
 
 	/* logical */
@@ -156,7 +171,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$and", QUERY_OPERATOR_AND, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
 		  InvalidQueryOperatorFuncOid,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ NULL, BSON_INDEX_STRATEGY_INVALID }
+		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
+		true,
 	},
 	{
 		{ "$or", QUERY_OPERATOR_OR, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
@@ -165,7 +181,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$or", QUERY_OPERATOR_OR, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
 		  InvalidQueryOperatorFuncOid,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ NULL, BSON_INDEX_STRATEGY_INVALID }
+		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
+		true,
 	},
 	{
 		{ "$not", QUERY_OPERATOR_NOT, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
@@ -174,7 +191,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$not", QUERY_OPERATOR_NOT, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
 		  InvalidQueryOperatorFuncOid,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ NULL, BSON_INDEX_STRATEGY_INVALID }
+		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
+		true,
 	},
 	{
 		{ "$nor", QUERY_OPERATOR_NOR, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
@@ -183,7 +201,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$nor", QUERY_OPERATOR_NOR, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
 		  InvalidQueryOperatorFuncOid,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ NULL, BSON_INDEX_STRATEGY_INVALID }
+		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
+		true,
 	},
 	{
 		{ "$alwaysTrue", QUERY_OPERATOR_ALWAYS_TRUE, BsonTypeId,
@@ -194,7 +213,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		  InvalidQueryOperatorFuncOid, NULL,
 		  InvalidQueryOperatorFuncOid,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ NULL, BSON_INDEX_STRATEGY_INVALID }
+		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
+		true,
 	},
 	{
 		{ "$alwaysFalse", QUERY_OPERATOR_ALWAYS_FALSE, BsonTypeId,
@@ -205,7 +225,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		  InvalidQueryOperatorFuncOid, NULL,
 		  InvalidQueryOperatorFuncOid,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ NULL, BSON_INDEX_STRATEGY_INVALID }
+		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
+		true,
 	},
 
 	/* element */
@@ -215,7 +236,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
 		{ "$exists", QUERY_OPERATOR_EXISTS, BsonTypeId, BsonValueExistsMatchFunctionId,
 		  NULL, BsonValueExistsMatchFunctionId, INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@?", BSON_INDEX_STRATEGY_DOLLAR_EXISTS }
+		{ "@?", BSON_INDEX_STRATEGY_DOLLAR_EXISTS, false },
+		true,
 	},
 	{
 		{ "$type", QUERY_OPERATOR_TYPE, BsonTypeId, BsonTypeMatchFunctionId, NULL,
@@ -224,7 +246,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$type", QUERY_OPERATOR_TYPE, BsonTypeId, BsonValueTypeMatchFunctionId, NULL,
 		  BsonValueTypeMatchFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@#", BSON_INDEX_STRATEGY_DOLLAR_TYPE }
+		{ "@#", BSON_INDEX_STRATEGY_DOLLAR_TYPE, false },
+		true,
 	},
 	{
 		{ "$size", QUERY_OPERATOR_SIZE, BsonTypeId, BsonSizeMatchFunctionId, NULL,
@@ -233,7 +256,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$size", QUERY_OPERATOR_SIZE, BsonTypeId, BsonValueSizeMatchFunctionId, NULL,
 		  BsonValueSizeMatchFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@@#", BSON_INDEX_STRATEGY_DOLLAR_SIZE }
+		{ "@@#", BSON_INDEX_STRATEGY_DOLLAR_SIZE, false },
+		true,
 	},
 	{
 		{ "$elemMatch", QUERY_OPERATOR_ELEMMATCH, BsonTypeId,
@@ -242,7 +266,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$elemMatch", QUERY_OPERATOR_ELEMMATCH, BsonTypeId,
 		  BsonValueElemMatchMatchFunctionId,
 		  NULL, BsonValueElemMatchMatchFunctionId, INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@#?", BSON_INDEX_STRATEGY_DOLLAR_ELEMMATCH }
+		{ "@#?", BSON_INDEX_STRATEGY_DOLLAR_ELEMMATCH, false },
+		true,
 	},
 
 	/* evaluation */
@@ -253,7 +278,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$regex", QUERY_OPERATOR_REGEX, BsonTypeId, BsonValueRegexMatchFunctionId, NULL,
 		  BsonValueRegexMatchFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@~", BSON_INDEX_STRATEGY_DOLLAR_REGEX }
+		{ "@~", BSON_INDEX_STRATEGY_DOLLAR_REGEX, false },
+		true,
 	},
 	{
 		{ "$mod", QUERY_OPERATOR_MOD, BsonTypeId, BsonModMatchFunctionId, NULL,
@@ -262,8 +288,30 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$mod", QUERY_OPERATOR_MOD, BsonTypeId, BsonValueModMatchFunctionId, NULL,
 		  BsonValueModMatchFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@%", BSON_INDEX_STRATEGY_DOLLAR_MOD }
+		{ "@%", BSON_INDEX_STRATEGY_DOLLAR_MOD, false },
+		true,
 	},
+	{
+		{ "$text", QUERY_OPERATOR_TEXT, BsonTypeId, BsonTextFunctionId, NULL,
+		  BsonTextFunctionId,
+		  FEATURE_QUERY_OPERATOR_TEXT },
+		{ "$text", QUERY_OPERATOR_TEXT, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "@#%", BSON_INDEX_STRATEGY_DOLLAR_TEXT, false },
+		true,
+	},
+	{
+		{ "$expr", QUERY_OPERATOR_EXPR, BsonTypeId, BsonExprFunctionId, NULL,
+		  BsonExprFunctionId,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "$expr", QUERY_OPERATOR_EXPR, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
+		true,
+	},
+
 
 	/* bitwise */
 	{
@@ -274,7 +322,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		  BsonTypeId, BsonValueBitsAllClearFunctionId, NULL,
 		  BsonValueBitsAllClearFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@!&", BSON_INDEX_STRATEGY_DOLLAR_BITS_ALL_CLEAR }
+		{ "@!&", BSON_INDEX_STRATEGY_DOLLAR_BITS_ALL_CLEAR, false },
+		true,
 	},
 
 	/* bitwise */
@@ -286,7 +335,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		  BsonTypeId, BsonValueBitsAnyClearFunctionId, NULL,
 		  BsonValueBitsAnyClearFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@!|", BSON_INDEX_STRATEGY_DOLLAR_BITS_ANY_CLEAR }
+		{ "@!|", BSON_INDEX_STRATEGY_DOLLAR_BITS_ANY_CLEAR, false },
+		true,
 	},
 
 	/* bitwise */
@@ -297,7 +347,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$bitsAllSet", QUERY_OPERATOR_BITS_ALL_SET,
 		  BsonTypeId, BsonValueBitsAllSetFunctionId, NULL, BsonValueBitsAllSetFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@&", BSON_INDEX_STRATEGY_DOLLAR_BITS_ALL_SET }
+		{ "@&", BSON_INDEX_STRATEGY_DOLLAR_BITS_ALL_SET, false },
+		true,
 	},
 
 	/* bitwise */
@@ -308,18 +359,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$bitsAnySet", QUERY_OPERATOR_BITS_ANY_SET,
 		  BsonTypeId, BsonValueBitsAnySetFunctionId, NULL, BsonValueBitsAnySetFunctionId,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@|", BSON_INDEX_STRATEGY_DOLLAR_BITS_ANY_SET }
-	},
-
-	/* expr */
-	{
-		{ "$expr", QUERY_OPERATOR_EXPR, BsonTypeId, BsonExprFunctionId, NULL,
-		  BsonExprFunctionId,
-		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "$expr", QUERY_OPERATOR_EXPR, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
-		  InvalidQueryOperatorFuncOid,
-		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ NULL, BSON_INDEX_STRATEGY_INVALID }
+		{ "@|", BSON_INDEX_STRATEGY_DOLLAR_BITS_ANY_SET, false },
+		true,
 	},
 
 	/*
@@ -333,11 +374,12 @@ static const MongoOperatorInfo QueryOperators[] = {
 	 * we are bound support this and it is just another name for $geoWithin for us.
 	 */
 	{
-		{ "$within", QUERY_OPERATOR_GEOWITHIN, BsonTypeId, BsonDollarGeowithinFunctionOid,
+		{ "$within", QUERY_OPERATOR_WITHIN, BsonTypeId, BsonDollarGeowithinFunctionOid,
 		  NULL, BsonDollarGeowithinFunctionOid, FEATURE_QUERY_OPERATOR_GEOWITHIN },
-		{ "$within", QUERY_OPERATOR_GEOWITHIN, BsonTypeId, InvalidQueryOperatorFuncOid,
+		{ "$within", QUERY_OPERATOR_WITHIN, BsonTypeId, InvalidQueryOperatorFuncOid,
 		  NULL, InvalidQueryOperatorFuncOid, INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@|-|", BSON_INDEX_STRATEGY_DOLLAR_GEOWITHIN }
+		{ "@|-|", BSON_INDEX_STRATEGY_DOLLAR_GEOWITHIN, false },
+		true,
 	},
 
 	{
@@ -346,7 +388,8 @@ static const MongoOperatorInfo QueryOperators[] = {
 		  FEATURE_QUERY_OPERATOR_GEOWITHIN },
 		{ "$geoWithin", QUERY_OPERATOR_GEOWITHIN, BsonTypeId, InvalidQueryOperatorFuncOid,
 		  NULL, InvalidQueryOperatorFuncOid, INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@|-|", BSON_INDEX_STRATEGY_DOLLAR_GEOWITHIN }
+		{ "@|-|", BSON_INDEX_STRATEGY_DOLLAR_GEOWITHIN, false },
+		true,
 	},
 
 	{
@@ -357,20 +400,54 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ "$geoIntersects", QUERY_OPERATOR_GEOINTERSECTS, BsonTypeId,
 		  InvalidQueryOperatorFuncOid,
 		  NULL, InvalidQueryOperatorFuncOid, INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@|#|", BSON_INDEX_STRATEGY_DOLLAR_GEOINTERSECTS }
+		{ "@|#|", BSON_INDEX_STRATEGY_DOLLAR_GEOINTERSECTS, false },
+		true,
 	},
 
 	/*
-	 * text
+	 * $negator operators
 	 */
 	{
-		{ "$text", QUERY_OPERATOR_TEXT, BsonTypeId, BsonTextFunctionId, NULL,
-		  BsonTextFunctionId,
-		  FEATURE_QUERY_OPERATOR_TEXT },
-		{ "$text", QUERY_OPERATOR_TEXT, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
+		{ "$ngt", QUERY_OPERATOR_NOT_GT, BsonTypeId, BsonNotGreaterThanFunctionId, NULL,
+		  BsonNotGreaterThanFunctionId,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "$ngt", QUERY_OPERATOR_NOT_GT, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
 		  InvalidQueryOperatorFuncOid,
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
-		{ "@#%", BSON_INDEX_STRATEGY_DOLLAR_TEXT }
+		{ "@!>", BSON_INDEX_STRATEGY_DOLLAR_NOT_GT, true },
+		false,
+	},
+	{
+		{ "$ngte", QUERY_OPERATOR_NOT_GTE, BsonTypeId, BsonNotGreaterThanEqualFunctionId,
+		  NULL,
+		  BsonNotGreaterThanEqualFunctionId,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "$ngte", QUERY_OPERATOR_NOT_GTE, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "@!>=", BSON_INDEX_STRATEGY_DOLLAR_NOT_GTE, true },
+		false,
+	},
+	{
+		{ "$nlt", QUERY_OPERATOR_NOT_LT, BsonTypeId, BsonNotLessThanFunctionId, NULL,
+		  BsonNotLessThanFunctionId,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "$nlt", QUERY_OPERATOR_NOT_LT, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "@!<", BSON_INDEX_STRATEGY_DOLLAR_NOT_LT, true },
+		false,
+	},
+	{
+		{ "$nlte", QUERY_OPERATOR_NOT_LTE, BsonTypeId, BsonNotLessThanEqualFunctionId,
+		  NULL,
+		  BsonNotLessThanEqualFunctionId,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "$nlte", QUERY_OPERATOR_NOT_LTE, BsonTypeId, InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "@!<=", BSON_INDEX_STRATEGY_DOLLAR_NOT_LTE, true },
+		false,
 	}
 };
 
@@ -447,7 +524,9 @@ GetMongoQueryOperatorOid(const MongoIndexOperatorInfo *operator)
 		rightHandSideOid = TSQUERYOID;
 	}
 
-	List *qualifiedOperatorName = list_make2(makeString(ApiCatalogSchemaName),
+	char *schemaName = operator->isApiInternalSchema ? "helio_api_internal" :
+					   ApiCatalogSchemaName;
+	List *qualifiedOperatorName = list_make2(makeString(schemaName),
 											 makeString(operator->postgresOperatorName));
 	return OpernameGetOprid(qualifiedOperatorName, BsonTypeId(), rightHandSideOid);
 }
@@ -547,7 +626,8 @@ GetMongoQueryOperatorByMongoOpName(const char *key, MongoQueryOperatorInputType 
 	{
 		const MongoOperatorInfo *operator = &(QueryOperators[operatorIndex]);
 
-		if (strcmp(key, operator->bsonQueryOperator.mongoOperatorName) == 0)
+		if (strcmp(key, operator->bsonQueryOperator.mongoOperatorName) == 0 &&
+			operator->isPublicOperator)
 		{
 			return GetQueryOperatorCore(operator, inputType);
 		}

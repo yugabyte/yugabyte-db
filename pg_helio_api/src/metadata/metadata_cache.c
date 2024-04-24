@@ -66,7 +66,8 @@ static Oid GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 									   Oid leftTypeOid, Oid rightTypeOid);
 static Oid GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId,
 													char *operatorName,
-													Oid leftTypeOid, Oid rightTypeOid);
+													Oid leftTypeOid, Oid rightTypeOid,
+													bool missingOk);
 static Oid GetBinaryOperatorFunctionIdMissingOk(Oid *operatorFuncId, char *operatorName,
 												Oid leftTypeOid, Oid rightTypeOid,
 												const char *releaseName);
@@ -291,6 +292,18 @@ typedef struct HelioApiOidCacheData
 
 	/* Oid of the $range runtime operator #<> */
 	Oid BsonRangeMatchOperatorOid;
+
+	/* OID of the $not: { $lte: {} } function */
+	Oid BsonNotLessThanEqualFunctionId;
+
+	/* OID of the $not: { $lt: {} } function */
+	Oid BsonNotLessThanFunctionId;
+
+	/* OID of the $not: { $gte: {} } function */
+	Oid BsonNotGreaterThanEqualFunctionId;
+
+	/* OID of the $not: { $gt: {} } function */
+	Oid BsonNotGreaterThanFunctionId;
 
 	/* OID of the $in function for bson */
 	Oid BsonInMatchFunctionId;
@@ -1378,6 +1391,59 @@ BsonRangeMatchFunctionId(void)
 {
 	return GetBinaryOperatorFunctionId(&Cache.BsonRangeMatchFunctionId,
 									   "bson_dollar_range", BsonTypeId(), BsonTypeId());
+}
+
+
+/*
+ * Returns the OID of ApiCatalogSchemaName.bson_dollar_not_lte function.
+ */
+Oid
+BsonNotLessThanEqualFunctionId(void)
+{
+	bool missingOk = true;
+	return GetHelioInternalBinaryOperatorFunctionId(&Cache.BsonNotLessThanEqualFunctionId,
+													"bson_dollar_not_lte", BsonTypeId(),
+													BsonTypeId(), missingOk);
+}
+
+
+/*
+ * Returns the OID of ApiCatalogSchemaName.bson_dollar_not_lt function.
+ */
+Oid
+BsonNotLessThanFunctionId(void)
+{
+	bool missingOk = true;
+	return GetHelioInternalBinaryOperatorFunctionId(&Cache.BsonNotLessThanFunctionId,
+													"bson_dollar_not_lt", BsonTypeId(),
+													BsonTypeId(), missingOk);
+}
+
+
+/*
+ * Returns the OID of ApiCatalogSchemaName.bson_dollar_not_gt function.
+ */
+Oid
+BsonNotGreaterThanFunctionId(void)
+{
+	bool missingOk = true;
+	return GetHelioInternalBinaryOperatorFunctionId(&Cache.BsonNotGreaterThanFunctionId,
+													"bson_dollar_not_gt", BsonTypeId(),
+													BsonTypeId(), missingOk);
+}
+
+
+/*
+ * Returns the OID of ApiCatalogSchemaName.bson_dollar_not_gte function.
+ */
+Oid
+BsonNotGreaterThanEqualFunctionId(void)
+{
+	bool missingOk = true;
+	return GetHelioInternalBinaryOperatorFunctionId(
+		&Cache.BsonNotGreaterThanEqualFunctionId,
+		"bson_dollar_not_gte", BsonTypeId(),
+		BsonTypeId(), missingOk);
 }
 
 
@@ -2903,20 +2969,22 @@ BsonLookupExtractFilterExpressionFunctionOid(void)
 Oid
 BsonLookupExtractFilterArrayFunctionOid(void)
 {
+	bool missingOk = false;
 	return GetHelioInternalBinaryOperatorFunctionId(
 		&Cache.ApiCatalogBsonLookupExtractFilterArrayOid,
 		"bson_dollar_lookup_extract_filter_array",
-		BsonTypeId(), BsonTypeId());
+		BsonTypeId(), BsonTypeId(), missingOk);
 }
 
 
 Oid
 HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid(void)
 {
+	bool missingOk = false;
 	return GetHelioInternalBinaryOperatorFunctionId(
 		&Cache.HelioInternalBsonLookupExtractFilterExpressionOid,
 		"bson_dollar_lookup_extract_filter_expression",
-		BsonTypeId(), BsonTypeId());
+		BsonTypeId(), BsonTypeId(), missingOk);
 }
 
 
@@ -4497,7 +4565,8 @@ GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 
 static Oid
 GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
-										 Oid leftTypeOid, Oid rightTypeOid)
+										 Oid leftTypeOid, Oid rightTypeOid,
+										 bool missingOK)
 {
 	InitializeHelioApiExtensionCache();
 
@@ -4506,7 +4575,6 @@ GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName
 		List *functionNameList = list_make2(makeString("helio_api_internal"),
 											makeString(operatorName));
 		Oid paramOids[2] = { leftTypeOid, rightTypeOid };
-		bool missingOK = false;
 
 		*operatorFuncId =
 			LookupFuncName(functionNameList, 2, paramOids, missingOK);

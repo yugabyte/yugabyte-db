@@ -146,10 +146,11 @@ static Datum * GinBsonExtractQueryDollarType(BsonExtractQueryArgs *args);
 static Datum * GinBsonExtractQueryDollarAll(BsonExtractQueryArgs *args);
 static Datum * GinBsonExtractQueryDollarBitWiseOperators(BsonExtractQueryArgs *args);
 static Datum * GinBsonExtractQueryDollarRange(BsonExtractQueryArgs *args);
-static Datum * GinBsonExtractQueryGreater(BsonExtractQueryArgs *args);
-static Datum * GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args);
-static Datum * GinBsonExtractQueryLess(BsonExtractQueryArgs *args);
-static Datum * GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args);
+static Datum * GinBsonExtractQueryGreater(BsonExtractQueryArgs *args, bool isNegation);
+static Datum * GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args, bool
+											   isNegation);
+static Datum * GinBsonExtractQueryLess(BsonExtractQueryArgs *args, bool isNegation);
+static Datum * GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args, bool isNegation);
 
 static int32_t GinBsonComparePartialGreater(BsonIndexTerm *queryValue,
 											BsonIndexTerm *compareValue);
@@ -427,6 +428,65 @@ HandleConsistentArrayOpForEqualsNull(bool *check, DollarArrayOpQueryData *queryD
 }
 
 
+static bool
+HandleConsistentGreaterLess(bool *check, bool *recheck, int numKeys, Datum *queryKeys)
+{
+	if (check[0])
+	{
+		/* $gt/$lt from the index can be fully trusted for hits */
+		*recheck = false;
+		return check[0];
+	}
+
+	bool isTermTruncated = false;
+	if (numKeys >= 2)
+	{
+		isTermTruncated = IsSerializedIndexTermTruncated(DatumGetByteaPP(
+															 queryKeys[1]));
+	}
+
+	if (!isTermTruncated)
+	{
+		/* The index can be fully trusted for scenarios where there's no truncation */
+		*recheck = false;
+		return check[0];
+	}
+
+	/* Otherwise, we need to validate the equality case. */
+	if (check[1])
+	{
+		/* Equality can't be exact since we know it's truncated */
+		*recheck = true;
+		return check[1];
+	}
+
+	*recheck = false;
+	return false;
+}
+
+
+static bool
+HandleConsistentGreaterEquals(Pointer *extra_data, bool *check, bool *recheck,
+							  Datum *queryKeys, bytea *indexClassOptions)
+{
+	/* we translate $exists: true to $gte: MinKey at the planner level
+	 * We can't use queryKeys here and check if $gte: MinKey since we need to know if it is compare partial or not
+	 * and that we can't tell from the query keys. */
+	DollarExistsQueryData *existsQueryData = extra_data != NULL ?
+											 (DollarExistsQueryData *) extra_data[
+		0] : NULL;
+
+	if (existsQueryData != NULL)
+	{
+		/* $exists: true case. */
+		return HandleConsistentExists(check, recheck, existsQueryData);
+	}
+
+	return HandleConsistentGreaterLessEquals(queryKeys, check, recheck,
+											 indexClassOptions);
+}
+
+
 bool
 GinBsonConsistentCore(BsonIndexStrategy strategy,
 					  bool *check,
@@ -441,43 +501,21 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 		case BSON_INDEX_STRATEGY_DOLLAR_GREATER:
 		case BSON_INDEX_STRATEGY_DOLLAR_LESS:
 		{
-			if (check[0])
+			return HandleConsistentGreaterLess(check, recheck, numKeys, queryKeys);
+		}
+
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_GT:
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_LT:
+		{
+			bool greaterLessResult = HandleConsistentGreaterLess(check, recheck, numKeys,
+																 queryKeys);
+			if (*recheck)
 			{
-				/* $gt/$lt from the index can be fully trusted for hits */
-				*recheck = false;
-				return check[0];
+				/* Thunk to the runtime to handle this */
+				return true;
 			}
 
-			bool isTermTruncated = false;
-			if (numKeys == 2)
-			{
-				isTermTruncated = IsSerializedIndexTermTruncated(DatumGetByteaPP(
-																	 queryKeys[1]));
-			}
-
-			if (!isTermTruncated)
-			{
-				/* The index can be fully trusted for scenarios where there's no truncation */
-				*recheck = false;
-				return check[0];
-			}
-
-			if (numKeys != 2)
-			{
-				ereport(PANIC, (errmsg(
-									"Unexpected - NumTerms for truncated queries should be 2")));
-			}
-
-			/* Otherwise, we need to validate the equality case. */
-			if (check[1])
-			{
-				/* Equality can't be exact since we know it's truncated */
-				*recheck = true;
-				return check[1];
-			}
-
-			*recheck = false;
-			return false;
+			return !greaterLessResult;
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_MOD:
@@ -569,27 +607,38 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 
 		case BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL:
 		{
-			/* we translate $exists: true to $gte: MinKey at the planner level
-			 * We can't use queryKeys here and check if $gte: MinKey since we need to know if it is compare partial or not
-			 * and that we can't tell from the query keys. */
-			DollarExistsQueryData *existsQueryData = extra_data != NULL ?
-													 (DollarExistsQueryData *) extra_data[
-				0] : NULL;
-
-			if (existsQueryData != NULL)
-			{
-				/* $exists: true case. */
-				return HandleConsistentExists(check, recheck, existsQueryData);
-			}
-
-			return HandleConsistentGreaterLessEquals(queryKeys, check, recheck,
-													 indexClassOptions);
+			return HandleConsistentGreaterEquals(extra_data, check, recheck, queryKeys,
+												 indexClassOptions);
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL:
 		{
 			return HandleConsistentGreaterLessEquals(queryKeys, check, recheck,
 													 indexClassOptions);
+		}
+
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_GTE:
+		{
+			bool result = HandleConsistentGreaterEquals(extra_data, check, recheck,
+														queryKeys, indexClassOptions);
+			if (*recheck)
+			{
+				return true;
+			}
+
+			return !result;
+		}
+
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_LTE:
+		{
+			bool result = HandleConsistentGreaterLessEquals(queryKeys, check, recheck,
+															indexClassOptions);
+			if (*recheck)
+			{
+				return true;
+			}
+
+			return !result;
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_EXISTS:
@@ -1317,22 +1366,50 @@ GinBsonExtractQueryCore(BsonIndexStrategy strategy, BsonExtractQueryArgs *args)
 
 		case BSON_INDEX_STRATEGY_DOLLAR_GREATER:
 		{
-			return GinBsonExtractQueryGreater(args);
+			bool isNegation = false;
+			return GinBsonExtractQueryGreater(args, isNegation);
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL:
 		{
-			return GinBsonExtractQueryGreaterEqual(args);
+			bool isNegation = false;
+			return GinBsonExtractQueryGreaterEqual(args, isNegation);
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_LESS:
 		{
-			return GinBsonExtractQueryLess(args);
+			bool isNegation = false;
+			return GinBsonExtractQueryLess(args, isNegation);
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL:
 		{
-			return GinBsonExtractQueryLessEqual(args);
+			bool isNegation = false;
+			return GinBsonExtractQueryLessEqual(args, isNegation);
+		}
+
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_GT:
+		{
+			bool isNegation = true;
+			return GinBsonExtractQueryGreater(args, isNegation);
+		}
+
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_GTE:
+		{
+			bool isNegation = true;
+			return GinBsonExtractQueryGreaterEqual(args, isNegation);
+		}
+
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_LT:
+		{
+			bool isNegation = true;
+			return GinBsonExtractQueryLess(args, isNegation);
+		}
+
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_LTE:
+		{
+			bool isNegation = true;
+			return GinBsonExtractQueryLessEqual(args, isNegation);
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_IN:
@@ -1675,6 +1752,30 @@ GinBsonExtractQueryNotEqual(BsonExtractQueryArgs *args)
 
 
 /*
+ * Adds the Root terms for negation scenarios into the entries.
+ */
+static void
+GenerateNegationTerms(Datum *entries, int nextIndex,
+					  bool *partialMatch,
+					  IndexTermCreateMetadata *termMetadata)
+{
+	/* non exists term. */
+	entries[nextIndex] = GenerateRootNonExistsTerm(termMetadata);
+	partialMatch[nextIndex] = false;
+	nextIndex++;
+
+	/* the next term generated is the root exists term */
+	entries[nextIndex] = GenerateRootExistsTerm(termMetadata);
+	partialMatch[nextIndex] = false;
+	nextIndex++;
+
+	/* the next term generated is the root term for back-compatibility */
+	entries[nextIndex] = GenerateRootTerm(termMetadata);
+	partialMatch[nextIndex] = false;
+}
+
+
+/*
  * GinBsonExtractQueryGreaterEqual generates the index term needed to match
  * $gte on a dotted path and value.
  * In this case, We return a lower bound value of the item being queried.
@@ -1684,7 +1785,7 @@ GinBsonExtractQueryNotEqual(BsonExtractQueryArgs *args)
  * i.e. a BsonElement.
  */
 static Datum *
-GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args)
+GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args, bool isNegation)
 {
 	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
@@ -1709,8 +1810,9 @@ GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args)
 										   &args->termMetadata);
 	}
 
-	entries = (Datum *) palloc(sizeof(Datum) * 2);
-	*partialmatch = (bool *) palloc(sizeof(bool) * 2);
+	int numTerms = isNegation ? 5 : 2;
+	entries = (Datum *) palloc(sizeof(Datum) * numTerms);
+	*partialmatch = (bool *) palloc(sizeof(bool) * numTerms);
 	*nentries = 2;
 
 	BsonIndexTermSerialized serializedTerm = SerializeBsonIndexTerm(&element,
@@ -1722,6 +1824,12 @@ GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args)
 	/* Add an equals match for $gte */
 	entries[1] = PointerGetDatum(serializedTerm.indexTermVal);
 	(*partialmatch)[1] = false;
+
+	if (isNegation)
+	{
+		GenerateNegationTerms(entries, 2, *partialmatch, &args->termMetadata);
+		*nentries = *nentries + 3;
+	}
 
 	return entries;
 }
@@ -1737,7 +1845,7 @@ GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args)
  * i.e. a BsonElement.
  */
 static Datum *
-GinBsonExtractQueryGreater(BsonExtractQueryArgs *args)
+GinBsonExtractQueryGreater(BsonExtractQueryArgs *args, bool isNegation)
 {
 	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
@@ -1746,8 +1854,10 @@ GinBsonExtractQueryGreater(BsonExtractQueryArgs *args)
 
 	pgbsonelement element;
 	PgbsonToSinglePgbsonElement(query, &element);
-	entries = (Datum *) palloc(sizeof(Datum) * 2);
-	*partialmatch = (bool *) palloc(sizeof(bool) * 2);
+
+	int numTerms = isNegation ? 5 : 2;
+	entries = (Datum *) palloc(sizeof(Datum) * numTerms);
+	*partialmatch = (bool *) palloc(sizeof(bool) * numTerms);
 	*nentries = 1;
 
 	BsonIndexTermSerialized serializedTerm = SerializeBsonIndexTerm(&element,
@@ -1756,19 +1866,26 @@ GinBsonExtractQueryGreater(BsonExtractQueryArgs *args)
 	entries[0] = PointerGetDatum(serializedTerm.indexTermVal);
 	(*partialmatch)[0] = true;
 
-	if (serializedTerm.isIndexTermTruncated)
+	if (serializedTerm.isIndexTermTruncated || isNegation)
 	{
 		/* Add the truncated term */
 		*nentries = 2;
 		entries[1] = PointerGetDatum(serializedTerm.indexTermVal);
 		(*partialmatch)[1] = false;
 	}
+
+	if (isNegation)
+	{
+		GenerateNegationTerms(entries, *nentries, *partialmatch, &args->termMetadata);
+		*nentries += 3;
+	}
+
 	return entries;
 }
 
 
 static Datum *
-GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args)
+GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args, bool isNegation)
 {
 	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
@@ -1789,9 +1906,10 @@ GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args)
 	}
 	else
 	{
-		entries = (Datum *) palloc(sizeof(Datum) * 2);
-		*partialmatch = (bool *) palloc(sizeof(bool) * 2);
-		*extra_data = (Pointer *) palloc(sizeof(Pointer) * 2);
+		int numTerms = isNegation ? 5 : 2;
+		entries = (Datum *) palloc(sizeof(Datum) * numTerms);
+		*partialmatch = (bool *) palloc(sizeof(bool) * numTerms);
+		*extra_data = (Pointer *) palloc(sizeof(Pointer) * numTerms);
 		*nentries = 2;
 		(*partialmatch)[0] = true;
 
@@ -1817,7 +1935,14 @@ GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args)
 		(*partialmatch)[1] = false;
 		(*extra_data)[1] = NULL;
 		entries[1] = PointerGetDatum(serializedTerm.indexTermVal);
+
+		if (isNegation)
+		{
+			GenerateNegationTerms(entries, 2, *partialmatch, &args->termMetadata);
+			*nentries = 5;
+		}
 	}
+
 	return entries;
 }
 
@@ -1834,7 +1959,7 @@ GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args)
  * i.e. a BsonElement.
  */
 static Datum *
-GinBsonExtractQueryLess(BsonExtractQueryArgs *args)
+GinBsonExtractQueryLess(BsonExtractQueryArgs *args, bool isNegation)
 {
 	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
@@ -1847,8 +1972,9 @@ GinBsonExtractQueryLess(BsonExtractQueryArgs *args)
 	/* Clone it for now */
 	pgbsonelement queryElement = documentElement;
 
-	entries = (Datum *) palloc(sizeof(Datum) * 2);
-	*partialmatch = (bool *) palloc(sizeof(bool) * 2);
+	int numEntries = isNegation ? 5 : 2;
+	entries = (Datum *) palloc(sizeof(Datum) * numEntries);
+	*partialmatch = (bool *) palloc(sizeof(bool) * numEntries);
 	*nentries = 1;
 	(*partialmatch)[0] = true;
 
@@ -1859,8 +1985,7 @@ GinBsonExtractQueryLess(BsonExtractQueryArgs *args)
 	BsonIndexTermSerialized serializedTerm =
 		SerializeBsonIndexTerm(&queryElement, &args->termMetadata);
 
-
-	*extra_data = (Pointer *) palloc(sizeof(Pointer) * 2);
+	*extra_data = (Pointer *) palloc0(sizeof(Pointer) * numEntries);
 	(*extra_data)[0] = (Pointer) serializedTerm.indexTermVal;
 
 	/* now create a bson for that path which has the min value for the field */
@@ -1874,12 +1999,17 @@ GinBsonExtractQueryLess(BsonExtractQueryArgs *args)
 								 indexTermVal);
 
 	/* In the case where we have truncation, also track equality on $lt */
-	if (serializedTerm.isIndexTermTruncated)
+	if (serializedTerm.isIndexTermTruncated || isNegation)
 	{
 		*nentries = 2;
 		(*partialmatch)[1] = false;
-		(*extra_data)[1] = NULL;
 		entries[1] = PointerGetDatum(serializedTerm.indexTermVal);
+	}
+
+	if (isNegation)
+	{
+		GenerateNegationTerms(entries, *nentries, *partialmatch, &args->termMetadata);
+		*nentries += 3;
 	}
 
 	return entries;
@@ -2838,6 +2968,8 @@ GinBsonComparePartialCore(BsonIndexStrategy strategy, BsonIndexTerm *queryValue,
 {
 	switch (strategy)
 	{
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_GT:
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_GTE:
 		case BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL:
 		case BSON_INDEX_STRATEGY_DOLLAR_GREATER:
 		{
@@ -2850,6 +2982,8 @@ GinBsonComparePartialCore(BsonIndexStrategy strategy, BsonIndexTerm *queryValue,
 			return GinBsonComparePartialDollarRange(rangeValue, queryValue, compareValue);
 		}
 
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_LT:
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_LTE:
 		case BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL:
 		case BSON_INDEX_STRATEGY_DOLLAR_LESS:
 		{

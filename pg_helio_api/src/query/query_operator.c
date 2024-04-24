@@ -51,6 +51,7 @@
 #include "types/pcre_regex.h"
 #include "query/bson_dollar_operators.h"
 #include "commands/commands_common.h"
+#include "utils/version_utils.h"
 
 /*
  * ReplaceBsonQueryOperatorsContext is passed down while looking for
@@ -184,6 +185,7 @@ static void ValidateVectorQuerySpec(pgbson *specIter, char **queryVectorPath,
 
 static Expr * WithIndexSupportExpression(Expr *docExpr, Expr *geoOperatorExpr,
 										 const char *path, bool isSpherical);
+static Expr * TryOptimizeNotInnerExpr(Expr *innerExpr, BsonQueryOperatorContext *context);
 
 /* Return true if double value can be represented as fixed integer
  * e.g., 10.023 -> this number can not be represented as fixed integer so return false
@@ -1794,6 +1796,12 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 									"$not needs a regex or a document")));
 			}
 
+			Expr *optimizedExpr = TryOptimizeNotInnerExpr(innerExpr, context);
+			if (optimizedExpr != NULL)
+			{
+				return optimizedExpr;
+			}
+
 			Const *falseConst = makeConst(BOOLOID, -1, InvalidOid, 1,
 										  BoolGetDatum(false), false, true);
 
@@ -1829,6 +1837,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 								"$text operator is not yet implemented")));
 		}
 
+		case QUERY_OPERATOR_WITHIN:
 		case QUERY_OPERATOR_GEOWITHIN:
 		{
 			EnsureGeospatialFeatureEnabled();
@@ -4193,4 +4202,155 @@ WithIndexSupportExpression(Expr *docExpr, Expr *geoOperatorExpr,
 	List *argsList = list_make2(validateExpr, lsecond(geoOperatorFuncExpr->args));
 	geoOperatorFuncExpr->args = argsList;
 	return (Expr *) geoOperatorFuncExpr;
+}
+
+
+/*
+ * Tries to get the negator for a given query operator if one is available.
+ */
+static const MongoQueryOperator *
+GetNegationOperatorForQueryOperator(const MongoQueryOperator *queryOperator,
+									Datum filterValue,
+									BsonQueryOperatorContext *context)
+{
+	/* See if we can convert the Expr into an equivalent NOT version */
+	switch (queryOperator->operatorType)
+	{
+		case QUERY_OPERATOR_EQ:
+		{
+			return GetMongoQueryOperatorByQueryOperatorType(QUERY_OPERATOR_NE,
+															context->inputType);
+		}
+
+		case QUERY_OPERATOR_IN:
+		{
+			return GetMongoQueryOperatorByQueryOperatorType(QUERY_OPERATOR_NIN,
+															context->inputType);
+		}
+
+		case QUERY_OPERATOR_NE:
+		{
+			return GetMongoQueryOperatorByQueryOperatorType(QUERY_OPERATOR_EQ,
+															context->inputType);
+		}
+
+		case QUERY_OPERATOR_GT:
+		{
+			return GetMongoQueryOperatorByQueryOperatorType(QUERY_OPERATOR_NOT_GT,
+															context->inputType);
+		}
+
+		case QUERY_OPERATOR_GTE:
+		{
+			pgbson *filterbson = DatumGetPgBsonPacked(filterValue);
+			pgbsonelement greaterElement;
+			PgbsonToSinglePgbsonElement(filterbson, &greaterElement);
+			if (greaterElement.bsonValue.value_type == BSON_TYPE_MINKEY)
+			{
+				/* This is the { exists: true } query - don't optimize this */
+				return NULL;
+			}
+
+			return GetMongoQueryOperatorByQueryOperatorType(QUERY_OPERATOR_NOT_GTE,
+															context->inputType);
+		}
+
+		case QUERY_OPERATOR_LT:
+		{
+			return GetMongoQueryOperatorByQueryOperatorType(QUERY_OPERATOR_NOT_LT,
+															context->inputType);
+		}
+
+		case QUERY_OPERATOR_LTE:
+		{
+			pgbson *filterbson = DatumGetPgBsonPacked(filterValue);
+			pgbsonelement greaterElement;
+			PgbsonToSinglePgbsonElement(filterbson, &greaterElement);
+			if (greaterElement.bsonValue.value_type == BSON_TYPE_MAXKEY)
+			{
+				/* This is a cross-type comparison query - don't optimize this */
+				return NULL;
+			}
+
+			return GetMongoQueryOperatorByQueryOperatorType(QUERY_OPERATOR_NOT_LTE,
+															context->inputType);
+		}
+
+		default:
+		{
+			return NULL;
+		}
+	}
+}
+
+
+/*
+ * Tries to optimize an expression that is in a $not operator to see if it
+ * can be pushed into a child context.
+ */
+static Expr *
+TryOptimizeNotInnerExpr(Expr *innerExpr, BsonQueryOperatorContext *context)
+{
+	if (context->inputType != MongoQueryOperatorInputType_Bson ||
+		!context->simplifyOperators)
+	{
+		return NULL;
+	}
+
+	if (!IsClusterVersionAtleastThis(1, 16, 0))
+	{
+		/* These operators are only added with 1.16 */
+		return NULL;
+	}
+
+	const MongoQueryOperator *queryOperator = NULL;
+	List *args = NIL;
+	if (IsA(innerExpr, FuncExpr))
+	{
+		FuncExpr *funcExpr = (FuncExpr *) innerExpr;
+		queryOperator = GetMongoQueryOperatorByPostgresFuncId(funcExpr->funcid);
+		args = funcExpr->args;
+	}
+	else if (IsA(innerExpr, OpExpr))
+	{
+		OpExpr *opExpr = (OpExpr *) innerExpr;
+		queryOperator = GetMongoQueryOperatorByPostgresFuncId(opExpr->opfuncid);
+		args = opExpr->args;
+	}
+
+	if (queryOperator == NULL ||
+		queryOperator->operatorType == QUERY_OPERATOR_UNKNOWN ||
+		list_length(args) != 2)
+	{
+		return NULL;
+	}
+
+	Node *second = lsecond(args);
+	if (!IsA(second, Const))
+	{
+		return NULL;
+	}
+
+	Const *secondConst = (Const *) second;
+
+	const MongoQueryOperator *negator = GetNegationOperatorForQueryOperator(queryOperator,
+																			secondConst->
+																			constvalue,
+																			context);
+	if (negator == NULL || negator->operatorType == QUERY_OPERATOR_UNKNOWN)
+	{
+		return NULL;
+	}
+
+	Oid negatorFunc = negator->postgresRuntimeFunctionOidLookup();
+
+	if (negatorFunc == InvalidOid)
+	{
+		return NULL;
+	}
+
+	secondConst->consttype = negator->operandTypeOid();
+	return (Expr *) makeFuncExpr(negatorFunc, BOOLOID,
+								 args, InvalidOid, InvalidOid,
+								 COERCE_EXPLICIT_CALL);
 }

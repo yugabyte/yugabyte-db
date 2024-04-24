@@ -225,4 +225,15 @@ EnsureGeospatialFeatureEnabled()
 }
 
 
+/*
+ * Validates whether this is a geo-within query operator (for both variants)
+ */
+static inline bool
+IsGeoWithinQueryOperator(MongoQueryOperatorType queryOperatorType)
+{
+	return queryOperatorType == QUERY_OPERATOR_GEOWITHIN ||
+		   queryOperatorType == QUERY_OPERATOR_WITHIN;
+}
+
+
 #endif

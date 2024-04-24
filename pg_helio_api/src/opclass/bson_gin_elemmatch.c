@@ -551,6 +551,10 @@ ProcessFuncExprForIndexPushdown(FuncExpr *function,
 		case BSON_INDEX_STRATEGY_DOLLAR_NOT_IN:
 		case BSON_INDEX_STRATEGY_DOLLAR_NOT_EQUAL:
 		case BSON_INDEX_STRATEGY_DOLLAR_EXISTS:
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_GT:
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_GTE:
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_LT:
+		case BSON_INDEX_STRATEGY_DOLLAR_NOT_LTE:
 		{
 			/* These operators produce incorrect results unless evaluated as an expression */
 

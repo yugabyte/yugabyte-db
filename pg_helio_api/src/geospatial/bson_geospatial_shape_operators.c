@@ -612,7 +612,7 @@ BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 					errmsg("$geometry: could not extract a valid geo value")));
 	}
 
-	if (opInfo->queryOperatorType == QUERY_OPERATOR_GEOWITHIN &&
+	if (IsGeoWithinQueryOperator(opInfo->queryOperatorType) &&
 		parseState.type != GeoJsonType_POLYGON && parseState.type !=
 		GeoJsonType_MULTIPOLYGON)
 	{
@@ -623,7 +623,7 @@ BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 					errhint("$geoWithin not supported with provided geometry.")));
 	}
 
-	if (opInfo->queryOperatorType == QUERY_OPERATOR_GEOWITHIN &&
+	if (IsGeoWithinQueryOperator(opInfo->queryOperatorType) &&
 		parseState.numOfRingsInPolygon > 1)
 	{
 		/* TODO: Fix polygon with holes geowithin comparision, for now we throw unsupported error because of

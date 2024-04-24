@@ -23,5 +23,8 @@ SET search_path TO helio_api;
 
 #include "udfs/query/bson_dollar_selectivity--1.16-0.sql"
 #include "operators/bson_dollar_operators--1.16-0.sql"
+#include "udfs/query/bson_dollar_negation--1.16-0.sql"
+#include "operators/bson_dollar_negation_operators--1.16-0.sql"
+#include "schema/index_operator_classes_negation--1.16-0.sql"
 
 RESET search_path;

@@ -18,7 +18,10 @@
 /* Invalid Feature counter tag for query operators that are not defined */
 #define INVALID_QUERY_OPERATOR_FEATURE_TYPE MAX_FEATURE_INDEX
 
-/* type of Mongo query operator */
+/* type of Mongo query operator
+ * Note for every entry here there must be an entry in the mongo_query_operators
+ * array that matches the exact index.
+ */
 typedef enum MongoQueryOperatorType
 {
 	/* comparison */
@@ -34,9 +37,9 @@ typedef enum MongoQueryOperatorType
 
 	/* logical */
 	QUERY_OPERATOR_AND,
+	QUERY_OPERATOR_OR,
 	QUERY_OPERATOR_NOT,
 	QUERY_OPERATOR_NOR,
-	QUERY_OPERATOR_OR,
 	QUERY_OPERATOR_ALWAYS_TRUE,
 	QUERY_OPERATOR_ALWAYS_FALSE,
 
@@ -59,10 +62,15 @@ typedef enum MongoQueryOperatorType
 	QUERY_OPERATOR_BITS_ANY_SET,
 
 	/* Geospatial operators */
-	QUERY_OPERATOR_GEOINTERSECTS,
+	QUERY_OPERATOR_WITHIN,
 	QUERY_OPERATOR_GEOWITHIN,
-	QUERY_OPERATOR_NEAR,
-	QUERY_OPERATOR_NEARSPHERE,
+	QUERY_OPERATOR_GEOINTERSECTS,
+
+	/* Negation operators */
+	QUERY_OPERATOR_NOT_GT,
+	QUERY_OPERATOR_NOT_GTE,
+	QUERY_OPERATOR_NOT_LT,
+	QUERY_OPERATOR_NOT_LTE,
 
 	QUERY_OPERATOR_UNKNOWN
 } MongoQueryOperatorType;
@@ -131,6 +139,9 @@ typedef struct
 
 	/* The indexing strategy for this operator */
 	BsonIndexStrategy indexStrategy;
+
+	/* Whether the operator is in the internal schema */
+	bool isApiInternalSchema;
 } MongoIndexOperatorInfo;
 
 const MongoQueryOperator * GetMongoQueryOperatorByMongoOpName(const char *key,

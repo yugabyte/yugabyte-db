@@ -437,6 +437,10 @@ PG_FUNCTION_INFO_V1(bson_dollar_expr);
 PG_FUNCTION_INFO_V1(bson_dollar_text);
 PG_FUNCTION_INFO_V1(bson_dollar_range);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_join_filter);
+PG_FUNCTION_INFO_V1(bson_dollar_not_gt);
+PG_FUNCTION_INFO_V1(bson_dollar_not_gte);
+PG_FUNCTION_INFO_V1(bson_dollar_not_lt);
+PG_FUNCTION_INFO_V1(bson_dollar_not_lte);
 
 PG_FUNCTION_INFO_V1(bson_value_dollar_eq);
 PG_FUNCTION_INFO_V1(bson_value_dollar_gt);
@@ -969,6 +973,24 @@ bson_value_dollar_gt(PG_FUNCTION_ARGS)
 
 
 /*
+ * implements the Mongo's $not: { $gt: {} } functionality
+ * in the runtime. Checks that the value in the element provided
+ * is greater than the value in the filter.
+ */
+Datum
+bson_dollar_not_gt(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *query = (pgbson *) PG_GETARG_PGBSON(1);
+
+	IsQueryFilterNullFunc isNullFilterEquality = NULL;
+	bool result = CompareBsonAgainstQuery(document, query, CompareGreaterMatch,
+										  isNullFilterEquality);
+	PG_RETURN_BOOL(!result);
+}
+
+
+/*
  * bson_dollar_gte implements the Mongo's $gte functionality
  * in the runtime. This traverses the document based on Mongo's
  * filter dot-notation syntax and for all possible values, checks
@@ -983,6 +1005,25 @@ bson_dollar_gte(PG_FUNCTION_ARGS)
 	IsQueryFilterNullFunc isNullFilterEquality = IsQueryFilterNullForValue;
 	PG_RETURN_BOOL(CompareBsonAgainstQuery(document, filter, CompareGreaterEqualMatch,
 										   isNullFilterEquality));
+}
+
+
+/*
+ * bson_dollar_gte implements the Mongo's $not: { $gte: {} } functionality
+ * in the runtime. This traverses the document based on Mongo's
+ * filter dot-notation syntax and for all possible values, checks
+ * that at least one matches the greater than or equal
+ *  semantics on the value provided.
+ */
+Datum
+bson_dollar_not_gte(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *filter = PG_GETARG_PGBSON(1);
+	IsQueryFilterNullFunc isNullFilterEquality = IsQueryFilterNullForValue;
+	bool result = CompareBsonAgainstQuery(document, filter, CompareGreaterEqualMatch,
+										  isNullFilterEquality);
+	PG_RETURN_BOOL(!result);
 }
 
 
@@ -1079,6 +1120,26 @@ bson_value_dollar_gte(PG_FUNCTION_ARGS)
 
 
 /*
+ * bson_dollar_not_lt implements the Mongo's $not: { $lt: {}} functionality
+ * in the runtime. This traverses the document based on Mongo's
+ * filter dot-notation syntax and for all possible values, checks
+ * that at least one matches the less than
+ *  semantics on the value provided.
+ */
+Datum
+bson_dollar_not_lt(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *filter = PG_GETARG_PGBSON(1);
+
+	IsQueryFilterNullFunc isNullFilterEquality = NULL;
+	bool result = CompareBsonAgainstQuery(document, filter, CompareLessMatch,
+										  isNullFilterEquality);
+	PG_RETURN_BOOL(!result);
+}
+
+
+/*
  * bson_dollar_lt implements the Mongo's $lt functionality
  * in the runtime. This traverses the document based on Mongo's
  * filter dot-notation syntax and for all possible values, checks
@@ -1130,6 +1191,26 @@ bson_dollar_lte(PG_FUNCTION_ARGS)
 	IsQueryFilterNullFunc isNullFilterEquality = IsQueryFilterNullForValue;
 	PG_RETURN_BOOL(CompareBsonAgainstQuery(document, filter, CompareLessEqualMatch,
 										   isNullFilterEquality));
+}
+
+
+/*
+ * bson_dollar_not_lte implements the Mongo's $not: { $lte: {}} functionality
+ * in the runtime. This traverses the document based on Mongo's
+ * filter dot-notation syntax and for all possible values, checks
+ * that at least one matches the less than or equal
+ *  semantics on the value provided.
+ */
+Datum
+bson_dollar_not_lte(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *filter = PG_GETARG_PGBSON(1);
+
+	IsQueryFilterNullFunc isNullFilterEquality = IsQueryFilterNullForValue;
+	bool result = CompareBsonAgainstQuery(document, filter, CompareLessEqualMatch,
+										  isNullFilterEquality);
+	PG_RETURN_BOOL(!result);
 }
 
 

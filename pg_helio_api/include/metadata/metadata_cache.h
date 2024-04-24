@@ -96,6 +96,10 @@ Oid BsonValueBitsAllClearFunctionId(void);
 Oid BsonValueBitsAnyClearFunctionId(void);
 Oid BsonValueBitsAllSetFunctionId(void);
 Oid BsonValueBitsAnySetFunctionId(void);
+Oid BsonNotLessThanEqualFunctionId(void);
+Oid BsonNotLessThanFunctionId(void);
+Oid BsonNotGreaterThanFunctionId(void);
+Oid BsonNotGreaterThanEqualFunctionId(void);
 
 /* operators */
 Oid BigintEqualOperatorId(void);
