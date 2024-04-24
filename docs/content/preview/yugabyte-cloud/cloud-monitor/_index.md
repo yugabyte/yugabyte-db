@@ -36,7 +36,7 @@ Export database metrics and logs to third-party tools for analysis.
 | Feature | Description |
 | :--- | :--- |
 | [Metrics export](metrics-export/) | Export metrics to third-party monitoring tools such as Datadog, Grafana Cloud, and Sumo Logic. |
-| [Log export](logging-export/) | Export database audit and PostgreSQL logs to third-party monitoring tools. |
+| [Log export](logging-export/) | Export database PostgreSQL logs to third-party monitoring tools. |
 
 ### Cluster properties
 

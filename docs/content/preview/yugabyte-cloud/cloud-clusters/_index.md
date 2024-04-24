@@ -50,9 +50,10 @@ Cluster infrastructure operations lock the cluster while they are in progress, a
 | [Read replica edit](managed-read-replica/) | Increase disk size, change IOPS | Yes |
 | [Scheduled maintenance](cloud-maintenance/) | Database upgrades, certificate rotations, and cluster maintenance<br>(A backup is run automatically before a database upgrade) | Yes |
 | [Metrics export](../cloud-monitor/metrics-export/) | | |
-| [Database query log](../cloud-monitor/logging-export/) | Enable, disable, modify | Yes |
-| [Database audit log](../cloud-monitor/logging-export/) | Enable, disable, modify | Yes |
-
+| [Database query logging](../cloud-monitor/logging-export/) | Enable, disable, modify | Yes |
+<!--
+| [Database audit logging](../cloud-monitor/logging-export/) | Enable, disable, modify | Yes |
+-->
 Keep in mind the following:
 
 - For clusters with Node, Availability Zone, or Region fault tolerance, and read replicas with a replication factor greater than 1, restarts are rolling. Your database will continue to function normally during infrastructure operations, but these operations can temporarily degrade application performance.

@@ -14,7 +14,7 @@ type: docs
 
 You can export [cluster metrics](../overview/) to third-party tools for analysis and customization.
 
-Exporting cluster metrics may incur additional costs for network transfer within a cloud region, between cloud regions, and across the Internet. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
+Exporting cluster metrics may incur additional costs for network transfer in a cloud region, between cloud regions, and across the Internet. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ To enable metrics export for a cluster, do the following:
 
 1. On the cluster **Settings** tab, select **Export Metrics**.
 1. Click **Export Metrics**.
-1. Select the export configuration to use.
+1. Select the [export configuration](../managed-integrations/) to use.
 1. Click **Export Metrics**.
 
 To modify the metrics export configuration, on the cluster **Settings** tab, select **Edit Metrics Export Configuration** and choose a different Export Configuration.

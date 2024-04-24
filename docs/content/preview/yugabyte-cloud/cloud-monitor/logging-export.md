@@ -1,9 +1,9 @@
 ---
-title: Export audit and PostgreSQL logs from YugabyteDB Managed clusters
+title: Export PostgreSQL logs from YugabyteDB Managed clusters
 headerTitle: Export logs
 linkTitle: Export logs
 description: Export cluster metrics to third-party tools.
-headcontent: Export audit and PostgreSQL logs from YugabyteDB Managed clusters
+headcontent: Export PostgreSQL logs from YugabyteDB Managed clusters
 menu:
   preview_yugabyte-cloud:
     identifier: export-logs
@@ -14,16 +14,18 @@ type: docs
 
 Export YSQL database logs to third-party tools for security monitoring, to build operations and health dashboards, troubleshooting, and more. You can export the following types of logs:
 
-- Database query log. This is the standard [PostgreSQL logging](https://www.postgresql.org/docs/11/runtime-config-logging.html) facility. Using these settings you can log query statements and errors.
-- Database audit log. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
+- Database query logging. This is the standard [PostgreSQL logging](https://www.postgresql.org/docs/11/runtime-config-logging.html) facility. Using these settings you can log query statements and errors.
+<!-- Database audit logging. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
+-->
+Note that YugabyteDB is based on PostgreSQL 11<!-- and uses pgaudit v1.3.2-->.
 
-Note that YugabyteDB is based on PostgreSQL 11 and uses pgaudit v1.3.2.
-
-Exporting logs may incur additional costs for network transfer within a cloud region, between cloud regions, and across the Internet. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
+Exporting logs may incur additional costs for network transfer in a cloud region, between cloud regions, and across the Internet. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
 {{< tip title="Session logging" >}}
 
-You can use all the PostgreSQL and pgaudit logging options in a [ysqlsh](../../cloud-connect/connect-client-shell/) or [Cloud Shell](../../cloud-connect/connect-cloud-shell/) session using the SET command. For example, to view DDL statements using pgaudit in a shell session, you would do the following:
+You can use all the PostgreSQL <!--and pgaudit--> logging options in a [ysqlsh](../../cloud-connect/connect-client-shell/) or [Cloud Shell](../../cloud-connect/connect-cloud-shell/) session [using the SET command](../../../api/ysql/the-sql-language/statements/cmd_set/).
+
+<!--For example, to view DDL statements using pgaudit in a shell session, you would do the following:
 
 ```sh
 CREATE EXTENSION IF NOT EXISTS pgaudit;
@@ -31,7 +33,7 @@ SET pgaudit.log='DDL';
 SET pgaudit.log_client=ON;
 SET pgaudit.log_level=notice;
 ```
-
+-->
 {{< /tip >}}
 
 ## Prerequisites
@@ -44,11 +46,11 @@ Create an integration. An integration defines the settings and login information
 - Configuring logging blocks other cluster operations, such as backups and maintenance. Avoid changing your settings before maintenance windows and during scheduled backups. The operation will block a backup from running.
 - To limit performance impact and control costs, log and export only what you need. The default settings are based on best practices from open source PostgreSQL, the broader community, and YugabyteDB Managed testing to ensure the impact is bounded and insignificant.
 
-## Database Query Log
+## Database Query Logging
 
 To enable database query logging for a cluster, do the following:
 
-1. On the cluster **Settings** tab, select **Database Query Log**.
+1. On the cluster **Settings** tab, select **Database Query Logging**.
 1. Click **Enable Database Query Logging**.
 1. Set the [logging settings](#logging-settings).
 1. Select the [export configuration](../managed-integrations/) to use.
@@ -142,6 +144,7 @@ Log all connection attempts, along with successfully completed client authentica
 
 Log session termination and duration of the session.
 
+<!--
 ## Database Audit Log
 
 To enable database audit logging for a cluster, do the following:
@@ -183,3 +186,4 @@ The YSQL audit logging settings are derived from the settings for logging used b
 - [Logging in YugabyteDB](../../../secure/audit-logging/)
 - [PostgreSQL Error Reporting and Logging](https://www.postgresql.org/docs/11/runtime-config-logging.html)
 - [Annotated PostgreSQL configuration settings](https://github.com/jberkus/annotated.conf)
+-->
