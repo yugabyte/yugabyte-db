@@ -47,7 +47,7 @@ public class AvailabilityZone extends Model {
   @ApiModelProperty(value = "AZ UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
-  @Column(length = 25, nullable = false)
+  @Column(length = 100, nullable = false)
   @ApiModelProperty(value = "AZ code", example = "us-west1-a")
   private String code;
 
