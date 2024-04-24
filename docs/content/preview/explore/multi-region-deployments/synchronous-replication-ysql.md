@@ -55,58 +55,12 @@ You can also use the described steps for deploying universes in any public cloud
 
 ## Create a synchronized multi-region universe
 
-Start a three-node universe with an RF of `3` and with each replica placed in different AWS regions (`us-west-2`, `us-east-1`, `ap-northeast-1`), as follows:
+Start a three-node universe with an RF of `3` and with each replica placed in different AWS regions (`us-west-2`, `us-east-1`, `ap-northeast-1`), as follows.
 
-1. Create a single-node universe by executing the following command:
-
-    ```sh
-    ./bin/yugabyted start \
-                    --advertise_address 127.0.0.1 \
-                    --base_dir=/tmp/ybd1 \
-                    --cloud_location aws.us-west-2.us-west-2a \
-                    --fault_tolerance region
-    ```
-
-1. If you are creating a local universe on MacOS, the additional nodes need loopback addresses configured, as follows:
-
-    ```sh
-    sudo ifconfig lo0 alias 127.0.0.2
-    sudo ifconfig lo0 alias 127.0.0.3
-    ```
-
-1. Join two more nodes with the previous node, as follows:
-
-    ```sh
-    ./bin/yugabyted start \
-                    --advertise_address 127.0.0.2 \
-                    --base_dir=/tmp/ybd2 \
-                    --cloud_location aws.us-east-1.us-east-1a \
-                    --fault_tolerance region \
-                    --join 127.0.0.1
-    ```
-
-    ```sh
-    ./bin/yugabyted start \
-                    --advertise_address 127.0.0.3 \
-                    --base_dir=/tmp/ybd3 \
-                    --cloud_location aws.ap-northeast-1.ap-northeast-1a \
-                    --fault_tolerance region \
-                    --join 127.0.0.1
-    ```
-
-    By default, [yugabyted](../../../reference/configuration/yugabyted/) creates a universe with an RF of `3` when the third node is added.
-
-1. After starting the yugabyted processes on all the nodes, configure the data placement constraint of the universe, as follows:
-
-    ```sh
-    ./bin/yugabyted configure data_placement --base_dir=/tmp/ybd1 --fault_tolerance=region
-    ```
-
-    If you are running a YugabyteDB version earlier than 2.17.1.0, execute the following command instead:
-
-    ```sh
-    ./bin/yugabyted configure --base_dir=/tmp/ybd1 --fault_tolerance=region
-    ```
+{{<setup/local
+    locations="aws.us-west-2.us-west-2a, aws.us-east-1.us-east-1a, aws.ap-northeast-1.ap-northeast-1a"
+    fault-domain="region"
+>}}
 
 The [configure](../../../reference/configuration/yugabyted/#configure) command determines the data placement constraint based on the `--cloud_location` of each node in the universe. If three or more regions are available in the universe, `configure` configures the universe to survive at least one region failure. Otherwise, it outputs a warning message. The command can be executed on any node where you already started YugabyteDB.
 

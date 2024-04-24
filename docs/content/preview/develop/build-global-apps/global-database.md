@@ -116,15 +116,7 @@ The **Global database** is automatically resilient to a single region failure. W
 
 To simulate the failure of the `us-east` region, stop the 2 nodes in `us-east` as follows:
 
-```bash
-./bin/yugabyted stop --base_dir=/tmp/ybd1
-./bin/yugabyted stop --base_dir=/tmp/ybd2
-```
-
-```output
-Stopped yugabyted using config /private/tmp/ybd1/conf/yugabyted.conf.
-Stopped yugabyted using config /private/tmp/ybd2/conf/yugabyted.conf.
-```
+{{%cluster/cmd op="stop" nodes="1,2"%}}
 
 ![Global Database - Application Failover](/images/develop/global-apps/global-database-failover.png)
 
