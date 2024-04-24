@@ -6,6 +6,7 @@ import { Anomaly, GraphResponse } from './helpers/dtos';
 export enum QUERY_KEY {
   fetchAnamolies = 'fetchAnamolies',
   fetchGraphs = 'fetchGraphs',
+  fetchQueries = 'fetchQueries'
 }
 
 class ApiService {
@@ -46,6 +47,16 @@ class ApiService {
         // mocked: true
       }
     }).then((resp) => resp.data);
+  };
+
+  fetchQueries = (universeUuid: string, hostUrl?: string) => {
+    const baseUrl = hostUrl ??  IN_DEVELOPMENT_MODE ? DEV_HOST_URL : PROD_HOST_URL;
+    const requestURL = `${baseUrl}/queries`;
+    const params = {
+      universe_uuid: universeUuid
+    }
+    return axios.get<any>(requestURL, {
+      params: params}).then((res) => res.data);
   };
 }
 

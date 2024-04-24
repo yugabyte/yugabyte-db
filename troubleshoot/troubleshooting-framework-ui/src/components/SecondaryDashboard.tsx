@@ -15,15 +15,17 @@ import {
   timeFormatXAxis,
   isNonEmptyString
 } from '@yugabytedb/ui-components';
-import { Anomaly, AppName, GraphType, MetricMeasure } from '../helpers/dtos';
-import { METRIC_FONT, MetricConsts } from '../helpers/constants';
+import { Anomaly, AppName, GraphLabel, GraphType, MetricMeasure } from '../helpers/dtos';
+import { ASH, METRIC_FONT, MetricConsts } from '../helpers/constants';
 
 import PrometheusIcon from '../assets/prometheus-icon.svg';
 
 export const ASH_GROUPBY_VALUES = {
   WAIT_EVENT_COMPONENT: 'waitEventComponent',
   WAIT_EVENT_CLASS: 'waitEventClass',
-  WAIT_EVENT: 'waitEvent'
+  WAIT_EVENT: 'waitEvent',
+  CLIENT_NODE_IP: 'clientNodeIp',
+  QUERY: 'queryId'
 };
 
 const Plotly = require('plotly.js/lib/index-basic.js');
@@ -44,7 +46,8 @@ interface SecondaryDashboardProps {
   timezone?: string;
   className?: any;
   graphType: GraphType;
-  onSelectAshLabel: (groupBy: string) => void;
+  queryData?: any;
+  onSelectAshLabel: (groupBy: string, metricData: any) => void;
 }
 
 const MIN_OUTLIER_BUTTONS_WIDTH = 250;
@@ -95,13 +98,22 @@ const useStyles = makeStyles((theme) => ({
     },
     '& .MuiInput-root': {
       color: '#2b59c3 !important',
+
       background: 'linear-gradient(0deg, rgba(43, 89, 195, 0.1), rgba(43, 89, 195, 0.1)), #FFFFFF'
     }
   },
   overrideDefaultMuiSelect: {
+    maxHeight: '200px',
+    overflowY: 'scroll',
     '& .MuiInput-root': {
       height: '32px',
       borderRadius: '0 8px 8px 0'
+    }
+  },
+  overrideDefaultMuiFormControl: {
+    flexDirection: 'row',
+    '& .MuiFormControl-root': {
+      flexDirection: 'row'
     }
   },
   menuItem: {
@@ -148,6 +160,7 @@ export const SecondaryDashboard = ({
   className,
   timezone,
   graphType,
+  queryData,
   onSelectAshLabel
 }: SecondaryDashboardProps) => {
   const classes = useStyles();
@@ -232,14 +245,15 @@ export const SecondaryDashboard = ({
           dataItem['fullname'] = MetricConsts.NODE_AVERAGE;
         } else if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
           dataItem['fullname'] = dataItem['tableName'];
-        } else if (metric?.layout?.title === 'ASH' && metricMeasure === MetricMeasure.OVERALL) {
-          if (matchingMetricOperation === 'Component') {
-            dataItem['fullname'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT_COMPONENT];
-          } else if (matchingMetricOperation === 'Class') {
-            dataItem['fullname'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT_CLASS];
-          } else {
-            dataItem['fullname'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT];
-          }
+        } else if (
+          metric?.layout?.type === ASH &&
+          metricMeasure === MetricMeasure.OVERALL &&
+          metric?.layout?.metadata?.currentGroupBy?.[0] === GraphLabel.QUERY_ID
+        ) {
+          const queryObject = queryData?.find((data: any) => {
+            return data.id.queryId === dataItem['name'];
+          });
+          dataItem['fullname'] = queryObject?.query;
         } else {
           dataItem['fullname'] = dataItem['name'];
         }
@@ -249,16 +263,12 @@ export const SecondaryDashboard = ({
         // - trace name longer than the max name legnth
         const shouldAbbreviate =
           shouldAbbreviateTraceName && dataItem['name'].length > MAX_NAME_LENGTH;
-        if (metric?.layout?.title === 'ASH' && metricMeasure === MetricMeasure.OVERALL) {
-          // dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
-
-          if (matchingMetricOperation === 'Component') {
-            dataItem['name'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT_COMPONENT];
-          } else if (matchingMetricOperation === 'Class') {
-            dataItem['name'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT_CLASS];
-          } else {
-            dataItem['name'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT];
-          }
+        if (
+          metric?.layout?.type === ASH &&
+          metricMeasure === MetricMeasure.OVERALL &&
+          metric?.layout?.metadata?.currentGroupBy?.[0] === GraphLabel.QUERY_ID
+        ) {
+          dataItem['name'] = dataItem['fullname']?.substring(0, MAX_NAME_LENGTH) + '...';
         } else if (shouldAbbreviate && !(metricMeasure === MetricMeasure.OUTLIER)) {
           dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
           // Legend name from outlier should be based on instance name in case of outliers
@@ -298,8 +308,16 @@ export const SecondaryDashboard = ({
         : '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
 
       let max = 0;
+      const isASHWithOperations =
+        metric?.layout?.type === ASH &&
+        !(
+          metric?.layout?.metadata?.currentGroupBy?.[0] === GraphLabel.QUERY_ID ||
+          metric?.layout?.metadata?.currentGroupBy?.[0] === GraphLabel.CLIENT_NODE_IP
+        ) &&
+        metricMeasure === MetricMeasure.OVERALL;
+
       metric.data.forEach((data: any) => {
-        if (metric?.layout?.title === 'ASH') {
+        if (isASHWithOperations) {
           data.fill = 'tonexty';
           data.stackgroup = 'one';
           data.type = 'scatter';
@@ -311,7 +329,7 @@ export const SecondaryDashboard = ({
           data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
         }
 
-        if (data.y && metric?.layout?.title === 'ASH') {
+        if (data.y && isASHWithOperations) {
           data.y.forEach((y: any) => {
             y = parseFloat(y) * 2.5;
             if (y > max) max = y;
@@ -429,11 +447,17 @@ export const SecondaryDashboard = ({
     }
   };
 
-  const loadDataByMetricOperation = (metricOperation: string, itemInDropdown: boolean) => {
+  const loadDataByMetricOperation = (
+    metricOperation: string,
+    itemInDropdown: boolean,
+    metricData: any
+  ) => {
     setFocusedButton(metricOperation);
     setItemInDropdown(itemInDropdown);
-    metricData?.layout?.title === 'ASH' && metricMeasure === MetricMeasure.OVERALL
-      ? onSelectAshLabel(metricOperation)
+    metricData?.layout?.type === ASH &&
+    metricMeasure === MetricMeasure.OVERALL &&
+    isNonEmptyArray(operations)
+      ? onSelectAshLabel(metricOperation, metricData)
       : plotGraph(metricOperation);
   };
 
@@ -450,7 +474,7 @@ export const SecondaryDashboard = ({
         width: width ?? getGraphWidth(containerWidth!)
       });
     }
-  }, [containerWidth, width, metricData]);
+  }, [containerWidth, width, metricData, operations]);
 
   useEffect(() => {
     if (previousMetricData && metricData && !_.isEqual(previousMetricData, metricData)) {
@@ -499,12 +523,18 @@ export const SecondaryDashboard = ({
       numButtonsInDropdown = 2;
     } else if (operations.length > 3 && operations.length < 6) {
       numButtonsInDropdown = 3;
-    } else if (operations.length >= 6) {
+    } else if (operations.length >= 6 && operations.length < 12) {
       numButtonsInDropdown = 4;
+    } else if (operations.length >= 12) {
+      numButtonsInDropdown = 6;
     }
     showDropdown = true;
-    metricOperationsDisplayed = operations?.slice(0, operations.length - numButtonsInDropdown);
-    metricOperationsDropdown = operations?.slice(operations.length - numButtonsInDropdown);
+    if (isNonEmptyArray(operations)) {
+      metricOperationsDropdown = operations?.slice(operations.length - numButtonsInDropdown);
+      console.log('metricOperationsDropdown', metricOperationsDropdown);
+      metricOperationsDisplayed = operations?.slice(0, operations.length - numButtonsInDropdown);
+      console.log('metricOperationsDisplayed', metricOperationsDisplayed);
+    }
   }
   const inFocusButton = focusedButton ? focusedButton : operations?.[0];
 
@@ -531,9 +561,17 @@ export const SecondaryDashboard = ({
   );
 
   return (
-    <Box id={metricKey} className={clsx(className, classes.metricPanel)}>
+    <Box
+      id={metricKey}
+      className={clsx(className, classes.metricPanel)}
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
+    >
       <span ref={outlierButtonsRef} className={classes.outlierButtonContainer}>
-        {((metricData?.layout?.title === 'ASH' && metricMeasure === MetricMeasure.OVERALL) ||
+        {((metricData?.layout?.type === ASH &&
+          metricMeasure === MetricMeasure.OVERALL &&
+          isNonEmptyArray(operations)) ||
           metricMeasure === MetricMeasure.OUTLIER ||
           metricMeasure === MetricMeasure.OUTLIER_TABLES) &&
           operations.length > 0 &&
@@ -553,7 +591,7 @@ export const SecondaryDashboard = ({
                 variant="secondary"
                 onClick={(event) => {
                   setActive(false);
-                  loadDataByMetricOperation(operation, false);
+                  loadDataByMetricOperation(operation, false, metricData);
                   event.stopPropagation();
                 }}
               >
@@ -563,7 +601,11 @@ export const SecondaryDashboard = ({
           })}
         {showDropdown && metricOperationsDropdown.length >= 1 && (
           <YBSelect
-            className={clsx(active && classes.overideMuiSelect, classes.overrideDefaultMuiSelect)}
+            className={clsx(
+              active && classes.overideMuiSelect,
+              classes.overrideDefaultMuiSelect,
+              classes.overrideDefaultMuiFormControl
+            )}
             // inputProps={{ IconComponent: () => null }}
           >
             {!active && <MenuItem>{'...'}</MenuItem>}
@@ -579,7 +621,7 @@ export const SecondaryDashboard = ({
                   // active={operation === inFocusButton}
                   onClick={(event) => {
                     setActive(true);
-                    loadDataByMetricOperation(operation, true);
+                    loadDataByMetricOperation(operation, true, metricData);
                     event.stopPropagation();
                   }}
                 >

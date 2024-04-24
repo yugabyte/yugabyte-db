@@ -3,6 +3,7 @@ import { MetricMeasure, SplitMode } from "./dtos";
 export const ALL_REGIONS = 'All Regions and Clusters';
 export const ALL = 'All';
 export const ALL_ZONES = 'All Zones and Nodes';
+export const ASH = 'ASH';
 
 export const MIN_OUTLIER_NUM_NODES = 1;
 export const MAX_OUTLIER_NUM_NODES = 5;
