@@ -225,7 +225,18 @@
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
                 },
-                "name": "active_session_history"
+                "name": "active_session_history_tserver"
+              },
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "active_session_history_ysql"
               }
             ]
           }
@@ -461,7 +472,18 @@
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
                 },
-                "name": "active_session_history"
+                "name": "active_session_history_tserver"
+              },
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "active_session_history_ysql"
               }
             ]
           }

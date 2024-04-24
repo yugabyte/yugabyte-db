@@ -28,12 +28,9 @@
           ],
           "universeUuid": [
             "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
-          ],
-          "waitEventComponent": [
-            "TServer"
           ]
         },
-        "name": "active_session_history"
+        "name": "active_session_history_tserver"
       }
     ],
     "metadataUuid": "1d3ad67b-fdf8-4766-9bf8-6c516f3475fb",
@@ -117,7 +114,7 @@
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ]
                 },
-                "name": "active_session_history"
+                "name": "active_session_history_tserver"
               }
             ]
           }

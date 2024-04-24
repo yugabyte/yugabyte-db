@@ -199,10 +199,6 @@
             "name": "Class"
           },
           {
-            "label": "waitEventComponent",
-            "name": "Component"
-          },
-          {
             "label": "queryId",
             "name": "Query"
           },
@@ -212,14 +208,14 @@
           }
         ]
       },
-      "title": "ASH",
+      "title": "YSQL ASH",
       "type": "ASH",
       "xaxis": {
         "alias": {},
         "type": "date"
       }
     },
-    "name": "active_session_history",
+    "name": "active_session_history_ysql",
     "stepSeconds": 120,
     "successful": true
   }
