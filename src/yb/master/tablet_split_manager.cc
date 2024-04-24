@@ -249,6 +249,12 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         NotSupported,
         "Tablet splitting is not supported for YEDIS tables, table_id: $0", table->id());
   }
+  if (table->IsXClusterDDLReplicationTable()) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for xCluster DDL Replication tables, table_id: $0",
+        table->id());
+  }
 
   auto replication_info = VERIFY_RESULT(filter_->GetTableReplicationInfo(table));
   auto s = filter_->CanAddPartitionsToTable(

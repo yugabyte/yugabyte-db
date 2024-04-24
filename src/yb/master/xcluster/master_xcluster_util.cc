@@ -46,8 +46,7 @@ bool IsTableEligibleForXClusterReplication(const master::TableInfo& table) {
     return false;
   }
 
-  if (table.name() == xcluster::kDDLReplicatedTableName &&
-      table.pgschema_name() == xcluster::kDDLQueuePgSchemaName) {
+  if (table.IsXClusterDDLReplicationReplicatedDDLsTable()) {
     // replicated_ddls is only used on the target, so we do not want to replicate it.
     return false;
   }

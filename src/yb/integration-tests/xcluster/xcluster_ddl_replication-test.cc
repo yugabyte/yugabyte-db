@@ -75,9 +75,23 @@ class XClusterDDLReplicationTest : public XClusterYsqlTestBase {
         xcluster::kDDLQueuePgSchemaName));
     auto c_conn = VERIFY_RESULT(consumer_cluster_.Connect());
     RETURN_NOT_OK(c_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
-    return c_conn.ExecuteFormat(
+    RETURN_NOT_OK(c_conn.ExecuteFormat(
         "ALTER DATABASE $0 SET $1.replication_role = TARGET", namespace_name,
-        xcluster::kDDLQueuePgSchemaName);
+        xcluster::kDDLQueuePgSchemaName));
+
+    // Ensure that tables are properly created with only one tablet each.
+    RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+      for (const auto& table_name :
+           {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+        auto yb_table_name = VERIFY_RESULT(
+            GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table_name));
+        std::shared_ptr<client::YBTable> table;
+        RETURN_NOT_OK(producer_client()->OpenTable(yb_table_name, &table));
+        SCHECK_EQ(table->GetPartitionCount(), 1, IllegalState, "Expected 1 tablet");
+      }
+      return Status::OK();
+    }));
+    return Status::OK();
   }
 
   void InsertRowsIntoProducerTableAndVerifyConsumer(
@@ -106,6 +120,27 @@ class XClusterDDLReplicationTest : public XClusterYsqlTestBase {
     ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
   }
 };
+
+TEST_F(XClusterDDLReplicationTest, DisableSplitting) {
+  // Ensure that splitting of xCluster DDL Replication tables is disabled on both sides.
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(EnableDDLReplicationExtension());
+
+  for (auto* cluster : {&producer_cluster_, &consumer_cluster_}) {
+    for (const auto& table : {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+      auto yb_table_name = ASSERT_RESULT(
+          GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table));
+
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+      ASSERT_OK(cluster->client_->GetTabletsFromTableId(yb_table_name.table_id(), 1, &tablets));
+
+      auto res = CallAdmin(cluster->mini_cluster_.get(), "split_tablet", tablets[0].tablet_id());
+      ASSERT_NOK(res);
+      ASSERT_TRUE(res.status().message().Contains(
+          "Tablet splitting is not supported for xCluster DDL Replication tables"));
+    }
+  }
+}
 
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(SetUpClusters());

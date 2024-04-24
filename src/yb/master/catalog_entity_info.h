@@ -731,6 +731,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsTablegroupParentTable() const;
   bool IsColocatedUserTable() const;
   bool IsSequencesSystemTable() const;
+  bool IsXClusterDDLReplicationDDLQueueTable() const;
+  bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
+  bool IsXClusterDDLReplicationTable() const {
+    return IsXClusterDDLReplicationDDLQueueTable() || IsXClusterDDLReplicationReplicatedDDLsTable();
+  }
 
   // Provides the ID of the tablespace that will be used to determine
   // where the tablets for this table should be placed when the table

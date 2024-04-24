@@ -34,6 +34,7 @@
 
 #include <string>
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/common/colocated_util.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/dockv/partition.h"
@@ -982,6 +983,16 @@ bool TableInfo::IsSequencesSystemTable() const {
     }
   }
   return false;
+}
+
+bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
+  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLQueueTableName;
+}
+
+bool TableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
+  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLReplicatedTableName;
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
