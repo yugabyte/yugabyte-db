@@ -3853,6 +3853,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         indexed_table->LockForRead(), resp));
   }
 
+  // Validate schema.
+  Schema schema;
+  RETURN_NOT_OK(SchemaFromPB(req.schema(), &schema));
+  RETURN_NOT_OK(ValidateCreateTableSchema(schema, resp));
+
   // Pre-colocation GA colocated tables in a legacy colocated database are colocated via database,
   // but after GA, colocated tables are colocated via tablegroups.
   bool is_colocated_via_database;
@@ -3873,7 +3878,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         // Opt out of colocation if the request says so.
         (!req.has_is_colocated_via_database() || req.is_colocated_via_database()) &&
         // Opt out of colocation if the indexed table opted out of colocation.
-        (!indexed_table || indexed_table->colocated());
+        (!indexed_table || indexed_table->colocated()) &&
+        // Any tables created in the xCluster DDL replication extension should not be colocated.
+        schema.SchemaName() != xcluster::kDDLQueuePgSchemaName;
   }
 
   const bool colocated = is_colocated_via_database || req.has_tablegroup_id();
@@ -3897,11 +3904,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       col_pb.set_is_hash_key(false);
     }
   }
-
-  // Validate schema.
-  Schema schema;
-  RETURN_NOT_OK(SchemaFromPB(req.schema(), &schema));
-  RETURN_NOT_OK(ValidateCreateTableSchema(schema, resp));
 
   // checking that referenced user-defined types (if any) exist.
   {
@@ -8017,6 +8019,7 @@ bool CatalogManager::IsUserCreatedTable(const TableInfo& table) const {
 bool CatalogManager::IsUserCreatedTableUnlocked(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE || table.GetTableType() == YQL_TABLE_TYPE) {
     if (!IsSystemTable(table) && !table.IsSequencesSystemTable() &&
+        !table.IsXClusterDDLReplicationTable() &&
         GetNamespaceNameUnlocked(table.namespace_id()) != kSystemNamespaceName &&
         !table.IsColocationParentTable()) {
       return true;
@@ -12091,6 +12094,14 @@ Result<int> CatalogManager::CalculateNumTabletsForTableCreation(
     num_tablets = GetInitialNumTabletsPerTable(request.table_type(), num_live_tservers);
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with " << num_live_tservers
               << " primary servers";
+  }
+
+  if (schema.SchemaName() == xcluster::kDDLQueuePgSchemaName &&
+      (request.name() == xcluster::kDDLQueueTableName ||
+       request.name() == xcluster::kDDLReplicatedTableName)) {
+    // xCluster DDL queue tables need to be single tablet tables - This ensures that we have a
+    // singular stream of DDLs which simplifies ordering guarantees.
+    num_tablets = 1;
   }
   return num_tablets;
 }
