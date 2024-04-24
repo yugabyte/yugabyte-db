@@ -1251,9 +1251,9 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.security.oidc_enable_auto_create_users",
           ScopeType.GLOBAL,
           "Auto create user on SSO login",
-          "Enable user creation on OIDC login",
+          "Enable user creation on SSO login",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   // TODO(bhavin192): this could be removed or moved to customer keys
   // later.
   public static final ConfKeyInfo<Boolean> enableK8sProviderValidation =
