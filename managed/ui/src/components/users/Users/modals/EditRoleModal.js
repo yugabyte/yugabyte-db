@@ -2,6 +2,7 @@ import { Field, Formik } from 'formik';
 import { Col, Row } from 'react-bootstrap';
 import { YBModal, YBFormSelect } from '../../../common/forms/fields';
 import { userRoles } from './AddUserModal';
+import { toast } from 'react-toastify';
 
 export const EditRoleModal = ({ modalVisible, onHide, user, changeUserRole, getCustomerUsers }) => {
   if (!user) return null;
@@ -11,7 +12,13 @@ export const EditRoleModal = ({ modalVisible, onHide, user, changeUserRole, getC
   const submitForm = async (data) => {
     const newRole = data.role.value;
     try {
-      await changeUserRole(user.uuid, newRole);
+      const resp = await changeUserRole(user.uuid, newRole);
+      if (resp.error) {
+        toast.error(resp.payload.response.data.error);
+      }
+      else {
+        toast.success("Role changed successfully!");
+      }
     } catch (error) {
       console.error('Failed to change user role', error);
     } finally {
