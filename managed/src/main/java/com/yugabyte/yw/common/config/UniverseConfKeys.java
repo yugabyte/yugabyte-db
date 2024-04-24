@@ -80,15 +80,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The maximum time (in milliseconds) that we allow a tserver to be behind its peers",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO(naorem): Add correct metadata
-  public static final ConfKeyInfo<Boolean> ybUpgradeVmImage =
-      new ConfKeyInfo<>(
-          "yb.upgrade.vmImage",
-          ScopeType.UNIVERSE,
-          "Upgrade VM Image",
-          "TODO - Leave this for feature owners to fill in",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<Boolean> allowDowngrades =
       new ConfKeyInfo<>(
