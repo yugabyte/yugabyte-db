@@ -3769,6 +3769,19 @@ Status CatalogManager::CanAddPartitionsToTable(
   return Status::OK();
 }
 
+Status CatalogManager::CanSupportAdditionalTabletsForTableCreation(
+    int num_tablets, const ReplicationInfoPB& replication_info,
+    const TSDescriptorVector& ts_descs) {
+  // Don't check for tablet limits if we potentially don't have information from all the live
+  // TServers.  To make sure we have the needed information, don't check for
+  // FLAGS_initial_tserver_registration_duration_secs after a master leadership change.
+  if (TimeSinceElectedLeader() <
+      MonoDelta::FromSeconds(FLAGS_initial_tserver_registration_duration_secs)) {
+    return Status::OK();
+  }
+  return CanCreateTabletReplicas(num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
+}
+
 Status CatalogManager::CanSupportAdditionalTablet(
     const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const {
   return CanCreateTabletReplicas(1, replication_info, GetAllLiveNotBlacklistedTServers());
@@ -3944,12 +3957,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   int num_tablets = VERIFY_RESULT(CalculateNumTabletsForTableCreation(req, schema, placement_info));
   Status s = CanAddPartitionsToTable(num_tablets, placement_info);
-  // Don't check for tablet limits if we potentially don't have information from all the live
-  // TServers.  To make sure we have the needed information, don't check for
-  // FLAGS_initial_tserver_registration_duration_secs after a master leadership change.
-  if (s.ok() && (TimeSinceElectedLeader() >=
-                 MonoDelta::FromSeconds(FLAGS_initial_tserver_registration_duration_secs))) {
-    s = CanCreateTabletReplicas(num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
+  if (s.ok()) {
+    s = CanSupportAdditionalTabletsForTableCreation(
+        num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
   }
   if (!s.ok()) {
     LOG(WARNING) << s;

@@ -96,7 +96,7 @@ DEFINE_test_flag(bool, skip_partitioning_version_validation, false,
                  "When set, skips partitioning_version checks to prevent tablet splitting.");
 
 DEFINE_RUNTIME_bool(
-    split_respects_tablet_replica_limits, true,
+    split_respects_tablet_replica_limits, false,
     "Whether to check the cluster tablet replica limit before splitting a tablet. If true, the "
     "system will no longer split tablets when the limit machinery determines the cluster cannot "
     "support any more tablet replicas.");

@@ -2474,6 +2474,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CanSupportAdditionalTablet(
       const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const override;
 
+  Status CanSupportAdditionalTabletsForTableCreation(
+    int num_tablets, const ReplicationInfoPB& replication_info,
+    const TSDescriptorVector& ts_descs);
+
   void IncrementSplitBlockedByTabletLimitCounter() override;
 
  private:
