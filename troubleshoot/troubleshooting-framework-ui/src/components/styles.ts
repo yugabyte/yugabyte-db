@@ -194,5 +194,19 @@ export const useHelperStyles = makeStyles((theme) => ({
     flexDirection: 'row',
     overflow: 'hidden',
     flexWrap: 'wrap'
+  },
+    inProgressIcon: {
+    color: '#1A44A5'
+  },
+  icon: {
+    height: '40px',
+    width: '40px'
+  },
+  loadingBox: {
+    position: 'fixed',
+    left: '50%',
+    top: '50%',
+    width: '100%',
+    height: '100%'
   }
 }));
