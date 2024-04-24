@@ -716,11 +716,7 @@ To destroy a local single-node cluster, use the [destroy](#destroy) command as f
 
 To destroy a local multi-node cluster, use the `destroy` command with the `--base_dir` flag set to the base directory path of each of the nodes. For example, for a three node cluster, you would execute commands similar to the following:
 
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-./bin/yugabyted destroy --base_dir=/tmp/ybd3
-```
+{{%cluster/cmd op="destroy" nodes="1,2,3"%}}
 
 ```sh
 ./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1

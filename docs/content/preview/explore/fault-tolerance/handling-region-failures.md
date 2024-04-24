@@ -64,9 +64,7 @@ If the third (least preferred) region fails, availability is not affected at all
 {{<collapse title="Simulate failure of the third region locally">}}
 To simulate the failure of the 3rd region locally, you can just stop the third node.
 
-```bash
-./bin/yugabyted stop --base_dir=/tmp/ybd3
-```
+{{%cluster/cmd op="stop" nodes="3"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}
@@ -94,9 +92,7 @@ When the second preferred region fails, availability is not affected at all. Thi
 {{<collapse title="Simulate failure of the secondary region locally" >}}
 To simulate the failure of the secondary region locally, you can just stop the second node.
 
-```bash
-./bin/yugabyted stop --base_dir=/tmp/ybd2
-```
+{{%cluster/cmd op="stop" nodes="2"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}
@@ -124,9 +120,7 @@ When the preferred region fails, there is no data loss but availability will be 
 {{<collapse title="Simulate failure of the primary region locally" >}}
 To simulate the failure of the primary region locally, you can just stop the first node.
 
-```bash
-./bin/yugabyted stop --base_dir=/tmp/ybd1
-```
+{{%cluster/cmd op="stop" nodes="1"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}

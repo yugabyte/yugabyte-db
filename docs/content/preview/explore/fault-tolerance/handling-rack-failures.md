@@ -68,7 +68,7 @@ for rack in a b c ; do
         then
            JOIN="--join=127.0.0.1"
         fi
-        yugabyted start ${JOIN} --advertise_address=127.0.0.${server} --cloud_location=dc1.newyork.rack-${rack} --base_dir=/tmp/ybd{server}
+        yugabyted start ${JOIN} --advertise_address=127.0.0.${server} --cloud_location=dc1.newyork.rack-${rack} --base_dir=${HOME}/var/node{server}
     done
 done
 ```
