@@ -108,8 +108,10 @@ SELECT * FROM default_test;
  zippo | 42
 (1 row)
 
+-- We need a shell type to test some CREATE TYPE failure cases with
+CREATE TYPE bogus_type;
 -- invalid: non-lowercase quoted identifiers
-CREATE TYPE case_int42 (
+CREATE TYPE bogus_type (
 	"Internallength" = 4,
 	"Input" = int42_in,
 	"Output" = int42_out,
@@ -136,6 +138,20 @@ WARNING:  type attribute "Passedbyvalue" not recognized
 LINE 7:  "Passedbyvalue"
          ^
 ERROR:  type input function must be specified
+-- invalid: input/output function incompatibility
+CREATE TYPE bogus_type (INPUT = array_in,
+    OUTPUT = array_out,
+    ELEMENT = int,
+    INTERNALLENGTH = 32);
+ERROR:  type input function array_in must return type bogus_type
+DROP TYPE bogus_type;
+-- It no longer is possible to issue CREATE TYPE without making a shell first
+CREATE TYPE bogus_type (INPUT = array_in,
+    OUTPUT = array_out,
+    ELEMENT = int,
+    INTERNALLENGTH = 32);
+ERROR:  type "bogus_type" does not exist
+HINT:  Create the type as a shell type, then create its I/O functions, then do a full CREATE TYPE.
 -- Test stand-alone composite type
 CREATE TYPE default_test_row AS (f1 text_w_default, f2 int42);
 CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
@@ -162,31 +178,25 @@ ERROR:  type "text_w_default" already exists
 DROP TYPE default_test_row CASCADE;
 NOTICE:  drop cascades to function get_default_test()
 DROP TABLE default_test;
--- Check type create with input/output incompatibility
-CREATE TYPE not_existing_type (INPUT = array_in,
-    OUTPUT = array_out,
-    ELEMENT = int,
-    INTERNALLENGTH = 32);
-ERROR:  function array_out(not_existing_type) does not exist
--- Check dependency transfer of opaque functions when creating a new type
-CREATE FUNCTION base_fn_in(cstring) RETURNS opaque AS 'boolin'
+-- Check dependencies are established when creating a new type
+CREATE TYPE base_type;
+CREATE FUNCTION base_fn_in(cstring) RETURNS base_type AS 'boolin'
     LANGUAGE internal IMMUTABLE STRICT;
-CREATE FUNCTION base_fn_out(opaque) RETURNS opaque AS 'boolout'
+NOTICE:  return type base_type is only a shell
+CREATE FUNCTION base_fn_out(base_type) RETURNS cstring AS 'boolout'
     LANGUAGE internal IMMUTABLE STRICT;
+NOTICE:  argument type base_type is only a shell
 CREATE TYPE base_type(INPUT = base_fn_in, OUTPUT = base_fn_out);
-WARNING:  changing argument type of function base_fn_out from "opaque" to base_type
-WARNING:  changing return type of function base_fn_in from opaque to base_type
-WARNING:  changing return type of function base_fn_out from opaque to cstring
-\set VERBOSITY terse \\ -- suppress cascade details
+\set VERBOSITY terse \\ -- YB: suppress cascade details
 DROP FUNCTION base_fn_in(cstring); -- error
 ERROR:  cannot drop function base_fn_in(cstring) because other objects depend on it
-DROP FUNCTION base_fn_out(opaque); -- error
-ERROR:  function base_fn_out(opaque) does not exist
+DROP FUNCTION base_fn_out(base_type); -- error
+ERROR:  cannot drop function base_fn_out(base_type) because other objects depend on it
 DROP TYPE base_type; -- error
 ERROR:  cannot drop type base_type because other objects depend on it
 DROP TYPE base_type CASCADE;
 NOTICE:  drop cascades to 2 other objects
-\set VERBOSITY default
+\set VERBOSITY default \\ -- YB: unsuppress cascade details
 -- Check usage of typmod with a user-defined type
 -- (we have borrowed numeric's typmod functions)
 CREATE TEMP TABLE mytab (foo widget(42,13,7));     -- should fail
@@ -255,6 +265,16 @@ CREATE TABLE city (
 	location 	box,
 	budget 		city_budget
 );
+INSERT INTO city VALUES
+('Podunk', '(1,2),(3,4)', '100,127,1000'),
+('Gotham', '(1000,34),(1100,334)', '123456,127,-1000,6789');
+TABLE city ORDER BY name DESC; -- YB-added ordering
+  name  |       location       |        budget         
+--------+----------------------+-----------------------
+ Podunk | (3,4),(1,2)          | 100,127,1000,0
+ Gotham | (1100,334),(1000,34) | 123456,127,-1000,6789
+(2 rows)
+
 --
 -- Test CREATE/ALTER TYPE using a type that's compatible with varchar,
 -- so we can re-use those support functions
@@ -328,29 +348,11 @@ FROM pg_type WHERE typname = '_myvarchardom';
 (1 row)
 
 -- ensure dependencies are straight
--- YB note: trivial ordering difference in DETAIL as compared to PG
+\set VERBOSITY terse \\ -- YB: suppress cascade details
 DROP FUNCTION myvarcharsend(myvarchar);  -- fail
 ERROR:  cannot drop function myvarcharsend(myvarchar) because other objects depend on it
-DETAIL:  function myvarcharin(cstring,oid,integer) depends on type myvarchar
-function myvarcharout(myvarchar) depends on type myvarchar
-function myvarcharrecv(internal,oid,integer) depends on type myvarchar
-type myvarchar depends on function myvarcharsend(myvarchar)
-type myvarchardom depends on function myvarcharsend(myvarchar)
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.
--- YB note: trivial ordering difference in DETAIL as compared to PG
 DROP TYPE myvarchar;  -- fail
 ERROR:  cannot drop type myvarchar because other objects depend on it
-DETAIL:  function myvarcharin(cstring,oid,integer) depends on type myvarchar
-function myvarcharout(myvarchar) depends on type myvarchar
-function myvarcharrecv(internal,oid,integer) depends on type myvarchar
-function myvarcharsend(myvarchar) depends on type myvarchar
-type myvarchardom depends on type myvarchar
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.
--- YB note: trivial ordering difference in DETAIL as compared to PG
 DROP TYPE myvarchar CASCADE;
 NOTICE:  drop cascades to 5 other objects
-DETAIL:  drop cascades to function myvarcharin(cstring,oid,integer)
-drop cascades to function myvarcharout(myvarchar)
-drop cascades to function myvarcharrecv(internal,oid,integer)
-drop cascades to function myvarcharsend(myvarchar)
-drop cascades to type myvarchardom
+\set VERBOSITY default \\ -- YB: unsuppress cascade details

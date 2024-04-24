@@ -10,30 +10,32 @@ CREATE OPERATOR ## (
 );
 
 CREATE OPERATOR @#@ (
-   rightarg = int8,		-- left unary
-   procedure = numeric_fac
-);
-
-CREATE OPERATOR #@# (
-   leftarg = int8,		-- right unary
-   procedure = numeric_fac
+   rightarg = int8,		-- prefix
+   procedure = factorial
 );
 
 CREATE OPERATOR #%# (
-   leftarg = int8,		-- right unary
-   procedure = numeric_fac
+   leftarg = int8,		-- fail, postfix is no longer supported
+   procedure = factorial
 );
 
 -- Test operator created above
 SELECT @#@ 24;
 
 -- Test comments
-COMMENT ON OPERATOR ###### (int4, NONE) IS 'bad right unary';
+COMMENT ON OPERATOR ###### (NONE, int4) IS 'bad prefix';
+COMMENT ON OPERATOR ###### (int4, NONE) IS 'bad postfix';
+COMMENT ON OPERATOR ###### (int4, int8) IS 'bad infix';
 
--- => is disallowed now
+-- Check that DROP on a nonexistent op behaves sanely, too
+DROP OPERATOR ###### (NONE, int4);
+DROP OPERATOR ###### (int4, NONE);
+DROP OPERATOR ###### (int4, int8);
+
+-- => is disallowed as an operator name now
 CREATE OPERATOR => (
-   leftarg = int8,		-- right unary
-   procedure = numeric_fac
+   rightarg = int8,
+   procedure = factorial
 );
 
 -- lexing of <=, >=, <>, != has a number of edge cases
@@ -41,10 +43,12 @@ CREATE OPERATOR => (
 
 -- this is legal because ! is not allowed in sql ops
 CREATE OPERATOR !=- (
-   leftarg = int8,		-- right unary
-   procedure = numeric_fac
+   rightarg = int8,
+   procedure = factorial
 );
-SELECT 2 !=-;
+SELECT !=- 10;
+-- postfix operators don't work anymore
+SELECT 10 !=-;
 -- make sure lexer returns != as <> even in edge cases
 SELECT 2 !=/**/ 1, 2 !=/**/ 2;
 SELECT 2 !=-- comment to be removed by psql
@@ -75,8 +79,8 @@ GRANT USAGE ON SCHEMA schema_op1 TO PUBLIC;
 REVOKE USAGE ON SCHEMA schema_op1 FROM regress_rol_op1;
 SET ROLE regress_rol_op1;
 CREATE OPERATOR schema_op1.#*# (
-   leftarg = int8,		-- right unary
-   procedure = numeric_fac
+   rightarg = int8,
+   procedure = factorial
 );
 ROLLBACK;
 
@@ -85,7 +89,7 @@ ROLLBACK;
 BEGIN TRANSACTION;
 CREATE OPERATOR #*# (
    leftarg = SETOF int8,
-   procedure = numeric_fac
+   procedure = factorial
 );
 ROLLBACK;
 
@@ -94,7 +98,7 @@ ROLLBACK;
 BEGIN TRANSACTION;
 CREATE OPERATOR #*# (
    rightarg = SETOF int8,
-   procedure = numeric_fac
+   procedure = factorial
 );
 ROLLBACK;
 
@@ -119,19 +123,19 @@ ROLLBACK;
 
 -- Should fail. Invalid attribute
 CREATE OPERATOR #@%# (
-   leftarg = int8,		-- right unary
-   procedure = numeric_fac,
+   rightarg = int8,
+   procedure = factorial,
    invalid_att = int8
 );
 
--- Should fail. At least leftarg or rightarg should be mandatorily specified
+-- Should fail. At least rightarg should be mandatorily specified
 CREATE OPERATOR #@%# (
-   procedure = numeric_fac
+   procedure = factorial
 );
 
 -- Should fail. Procedure should be mandatorily specified
 CREATE OPERATOR #@%# (
-   leftarg = int8
+   rightarg = int8
 );
 
 -- Should fail. CREATE OPERATOR requires USAGE on TYPE
