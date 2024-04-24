@@ -201,8 +201,8 @@ export const SecondaryDashboardData = ({
     if (ashGraph) {
       ashGraph.groupBy = [groupBy];
     }
-    graphParamsCopy.map((obj: any) => {
-      if (obj.name === metricData?.name) {
+    graphParamsCopy.map((obj: any, paramsIdx: number) => {
+      if (paramsIdx > 0 && obj.name === metricData?.name) {
         return ashGraph;
       }
       return obj;
@@ -309,7 +309,11 @@ export const SecondaryDashboardData = ({
       <Box mt={3} mr={8}>
         <SecondaryDashboard
           metricData={metricData}
-          metricKey={metricData.name}
+          metricKey={
+            metricData.name?.startsWith('active_session_history')
+              ? `${metricData.name}-${uniqueOperations?.[0]}`
+              : metricData.name
+          }
           containerWidth={null}
           prometheusQueryEnabled={true}
           metricMeasure={metricMeasure}
@@ -449,7 +453,7 @@ export const SecondaryDashboardData = ({
                     const numReasons = reason.name.length - 1;
                     const isOnlyReason = reason.name.length === 1;
                     const metricData = graphData.find(
-                      (data: any, idx: number) => idx > 0 && data.name === metricName
+                      (data: any, metricIdx: number) => metricIdx > 0 && data.name === metricName
                     );
 
                     if (isNonEmptyString(metricData?.errorMessage)) {
