@@ -55,4 +55,13 @@ bool IsTableEligibleForXClusterReplication(const master::TableInfo& table) {
   return true;
 }
 
+std::string GetFullTableName(const TableInfo& table_info) {
+  const auto& schema_name = table_info.pgschema_name();
+  if (schema_name.empty()) {
+    return table_info.name();
+  }
+
+  return Format("$0.$1", schema_name, table_info.name());
+}
+
 }  // namespace yb::master

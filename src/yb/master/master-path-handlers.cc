@@ -2877,14 +2877,13 @@ void MasterPathHandlers::HandleXCluster(
 
   uint32 outbound_group_table_id = 0;
   if (!xcluster_status.outbound_replication_group_statuses.empty()) {
-    output << "<h3>Outbound ReplicationGroups</h3>\n";
+    output << "<br><h3>Outbound Replication Groups</h3>\n";
     for (const auto& outbound_replication_group :
          xcluster_status.outbound_replication_group_statuses) {
       auto group_fs = AutoFieldsetScope(
           output, Format("Group: $0", outbound_replication_group.replication_group_id));
 
-      output << "<pre class=\"prettyprint\">"
-             << "state: " << outbound_replication_group.state;
+      output << "<pre class=\"prettyprint\">" << "state: " << outbound_replication_group.state;
       if (!outbound_replication_group.target_universe_info.empty()) {
         output << "\ntarget_universe_info: " << outbound_replication_group.target_universe_info;
       }
@@ -2902,14 +2901,14 @@ void MasterPathHandlers::HandleXCluster(
         output << "</pre>";
 
         HTML_PRINT_TABLE_WITH_HEADER_ROW_WITH_ID(
-            outbound_replication_group, outbound_group_table_id, "Table Id", "Stream Id", "State",
-            "Checkpointing", "Part of initial bootstrap");
+            outbound_replication_group, outbound_group_table_id, "Table name", "Table Id",
+            "Stream Id", "State", "Checkpointing", "Part of initial bootstrap");
         outbound_group_table_id++;
 
         for (const auto& table_status : namespace_status.table_statuses) {
           HTML_PRINT_TABLE_ROW(
-              table_status.table_id, table_status.stream_id, table_status.state,
-              BoolToString(table_status.is_checkpointing),
+              table_status.full_table_name, table_status.table_id, table_status.stream_id,
+              table_status.state, BoolToString(table_status.is_checkpointing),
               BoolToString(table_status.is_part_of_initial_bootstrap));
         }
         HTML_END_TABLE;
@@ -2919,22 +2918,24 @@ void MasterPathHandlers::HandleXCluster(
 
   if (!xcluster_status.outbound_table_stream_statuses.empty()) {
     output << "<br><h3>Outbound table streams</h3>\n";
-    HTML_PRINT_TABLE_WITH_HEADER_ROW(outbound_table_streams, "Table Id", "Stream Id", "State");
+    HTML_PRINT_TABLE_WITH_HEADER_ROW(
+        outbound_table_streams, "Table name", "Table Id", "Stream Id", "State");
     for (const auto& table_status : xcluster_status.outbound_table_stream_statuses) {
-      HTML_PRINT_TABLE_ROW(table_status.table_id, table_status.stream_id, table_status.state);
+      HTML_PRINT_TABLE_ROW(
+          table_status.full_table_name, table_status.table_id, table_status.stream_id,
+          table_status.state);
     }
     HTML_END_TABLE;
   }
 
-  output << "<br><h3>Inbound ReplicationGroups</h3>\n";
+  output << "<br><h3>Inbound Replication Groups</h3>\n";
 
   uint32 inbound_group_table_id = 0;
   for (const auto& inbound_replication_group : xcluster_status.inbound_replication_group_statuses) {
     auto group_fs = AutoFieldsetScope(
         output, Format("Group: $0", inbound_replication_group.replication_group_id));
 
-    output << "<pre class=\"prettyprint\">"
-           << "state: " << inbound_replication_group.state
+    output << "<pre class=\"prettyprint\">" << "state: " << inbound_replication_group.state
            << "\ndisable_stream: " << BoolToString(inbound_replication_group.disable_stream)
            << "\ntransactional: " << BoolToString(inbound_replication_group.transactional)
            << "\nmaster_addrs: " << inbound_replication_group.master_addrs;
@@ -2949,20 +2950,26 @@ void MasterPathHandlers::HandleXCluster(
            << inbound_replication_group.compatible_auto_flag_config_version;
     output << "</pre>";
 
-    HTML_PRINT_TABLE_WITH_HEADER_ROW_WITH_ID(
-        inbound_replication_group, inbound_group_table_id, "Producer Table Id", "Stream Id",
-        "Consumer Table Id", "Producer Tablet Count", "Consumer Tablet Count",
-        "Local tserver optimized", "Producer schema version", "Consumer schema version", "Status");
-    inbound_group_table_id++;
+    for (const auto& [namespace_name, table_statuses] :
+         inbound_replication_group.table_statuses_by_namespace) {
+      auto namespace_fs = AutoFieldsetScope(output, Format("Namespace: $0", namespace_name));
 
-    for (const auto& table_status : inbound_replication_group.table_statuses) {
-      HTML_PRINT_TABLE_ROW(
-          table_status.source_table_id, table_status.stream_id, table_status.target_table_id,
-          table_status.source_tablet_count, table_status.target_tablet_count,
-          BoolToString(table_status.local_tserver_optimized), table_status.source_schema_version,
-          table_status.target_schema_version, table_status.status);
+      HTML_PRINT_TABLE_WITH_HEADER_ROW_WITH_ID(
+          inbound_replication_group, inbound_group_table_id, "Table name", "Producer Table Id",
+          "Stream Id", "Consumer Table Id", "Producer Tablet Count", "Consumer Tablet Count",
+          "Local tserver optimized", "Producer schema version", "Consumer schema version",
+          "Status");
+      inbound_group_table_id++;
+      for (const auto& table_status : table_statuses) {
+        HTML_PRINT_TABLE_ROW(
+            table_status.full_table_name, table_status.source_table_id, table_status.stream_id,
+            table_status.target_table_id, table_status.source_tablet_count,
+            table_status.target_tablet_count, BoolToString(table_status.local_tserver_optimized),
+            table_status.source_schema_version, table_status.target_schema_version,
+            table_status.status);
+      }
+      HTML_END_TABLE;
     }
-    HTML_END_TABLE;
   }
 
   HTML_ADD_SORT_AND_FILTER_TABLE_SCRIPT;
