@@ -2121,11 +2121,14 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
   for (const auto& entry_result : all_entry_keys) {
     RETURN_NOT_OK(entry_result);
     const auto& entry = *entry_result;
-    // only add those entries that belong to the received list of streams.
-    if(stream_ids_metadata_to_be_cleaned_up.contains(entry.key.stream_id)) {
+    // Only add those entries that belong to the received list of streams and does not represent the
+    // replication slot's state table entry. Replication slot's entry is skipped in order to avoid
+    // its deletion since it does not represent a real tablet_id and the cleanup algorithm works
+    // under the assumption that all cdc state entires are representing real tablet_ids.
+    if (entry.key.tablet_id != kCDCSDKSlotEntryTabletId &&
+        stream_ids_metadata_to_be_cleaned_up.contains(entry.key.stream_id)) {
       cdc_state_entries.emplace_back(entry.key);
     }
-
   }
   RETURN_NOT_OK(iteration_status);
   TEST_SYNC_POINT("CleanUpCDCStreamMetadata::CompletedStep1");
