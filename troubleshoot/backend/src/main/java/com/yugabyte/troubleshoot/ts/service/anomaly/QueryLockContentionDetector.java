@@ -5,7 +5,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
 import com.yugabyte.troubleshoot.ts.service.PgStatStatementsQueryService;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -26,7 +25,7 @@ public class QueryLockContentionDetector extends QueryAnomalyDetector {
 
   @Override
   protected String getGraphName() {
-    return "active_session_history";
+    return "active_session_history_tserver";
   }
 
   @Override
@@ -38,11 +37,7 @@ public class QueryLockContentionDetector extends QueryAnomalyDetector {
   protected GraphQuery createQuery(
       AnomalyDetectionContext context, String dbId, Map<String, PgStatStatementsQuery> queryMap) {
     GraphQuery result = super.createQuery(context, dbId, queryMap);
-    Map<GraphLabel, List<String>> filter = new HashMap<>(result.getFilters());
-    // We only want TServer events for now, unless we discover something else
-    filter.put(GraphLabel.waitEventComponent, ImmutableList.of("TServer"));
     result.setGroupBy(ImmutableList.of(GraphLabel.waitEvent, GraphLabel.queryId));
-    result.setFilters(filter);
     result.setFillMissingPoints(true);
     result.setReplaceNaN(true);
     return result;
