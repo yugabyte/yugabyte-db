@@ -473,7 +473,7 @@ public class StatStatementsQuery {
   private static class QueryData {
     String dbName;
     String query;
-    Instant activeTimestamp;
+    @EqualsAndHashCode.Exclude Instant activeTimestamp;
   }
 
   @Value

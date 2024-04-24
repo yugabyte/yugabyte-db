@@ -395,13 +395,12 @@
         "possibleCauseDescription": "Various query processing step times can change due to various reasons.",
         "troubleshootingRecommendations": [
           {
-            "recommendation": "Check ASH graph for this query",
+            "recommendation": "Check ASH graph per query/client",
             "supportingGraphs": [
               {
                 "name": "active_session_history",
                 "filters": {
-                  "universeUuid": [],
-                  "queryId": []
+                  "universeUuid": []
                 }
               }
             ]
@@ -462,13 +461,12 @@
         "possibleCauseDescription": "Particular clients started to send more queries, etc.",
         "troubleshootingRecommendations": [
           {
-            "recommendation": "Check ASH graph for this query",
+            "recommendation": "Check ASH graph per query/client",
             "supportingGraphs": [
               {
                 "name": "active_session_history",
                 "filters": {
-                  "universeUuid": [],
-                  "queryId": []
+                  "universeUuid": []
                 },
                 "groupBy": ["clientNodeIp"]
               }
