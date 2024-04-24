@@ -61,6 +61,8 @@ DECLARE_int64(transaction_abort_check_interval_ms);
 DECLARE_uint64(transaction_manager_workers_limit);
 DECLARE_bool(transactions_poll_check_aborted);
 
+DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
+DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_uint64(TEST_inject_txn_get_status_delay_ms);
@@ -103,6 +105,9 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_enable_infra) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ash) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_export_wait_state_names) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ash_fetch_wait_states_for_raft_log) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction) =
+        true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_collect_end_to_end_traces) = true;
     pgwrapper::PgMiniTestBase::SetUp();
 
