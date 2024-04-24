@@ -54,7 +54,9 @@ To enable database query logging for a cluster, do the following:
 1. Select the [export configuration](../managed-integrations/) to use.
 1. Click **Enable YSQL Query Logging**.
 
-YugabyteDB Managed begins the rolling restart.
+YugabyteDB Managed begins the (rolling) restart.
+
+Logs are exported to the third-party tool in near real time. After the setup is complete and YSQL database queries are submitted, verify that the YSQL database query logs are visible in the tool; they should be available in minutes. Logs are exported with preset tags and a [log line prefix](#include-in-the-log-prefix-log_line_prefix) so that you can filter them further by cloud, region, availability zone, cluster_id, node-type, and node-name. Depending on your tool, you can also perform text searches of the logs.
 
 ### Logging settings
 
