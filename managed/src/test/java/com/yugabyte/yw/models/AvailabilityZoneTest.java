@@ -110,4 +110,15 @@ public class AvailabilityZoneTest extends FakeDBApplication {
     assertNotNull(az.getUuid());
     assertNotNull(envVars.toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
+
+  @Test
+  public void testAzCodeLength() {
+    String azCode = String.valueOf('A').repeat(110);
+    try {
+      AvailabilityZone az =
+          AvailabilityZone.createOrThrow(defaultRegion, azCode, "A Zone", "subnet-1");
+    } catch (Exception e) {
+      assertTrue(e.getMessage().contains("Unable to create zone: " + azCode));
+    }
+  }
 }
