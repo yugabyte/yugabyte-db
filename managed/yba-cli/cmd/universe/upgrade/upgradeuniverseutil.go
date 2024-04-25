@@ -5,6 +5,7 @@
 package upgrade
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	universeFormatter "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/universe"
+	"gopkg.in/yaml.v2"
 )
 
 func waitForUpgradeUniverseTask(
@@ -139,4 +141,50 @@ func FetchTServerGFlags(
 		}
 	}
 	return tserverGFlagsList
+}
+
+// ProcessMasterGflagsJSONString takes in a JSON string and returns it as a map
+func ProcessMasterGflagsJSONString(jsonData string) map[string]string {
+	// Parse the JSON input into a map
+	var singleMap map[string]string
+	if err := json.Unmarshal([]byte(jsonData), &singleMap); err != nil {
+		logrus.Fatalf(formatter.Colorize(
+			fmt.Sprintln("Error parsing JSON:", err), formatter.RedColor))
+	}
+	logrus.Debug("Master GFlags from JSON string: ", singleMap)
+	return singleMap
+}
+
+// ProcessMasterGflagsYAMLString takes in a YAML string and returns it as a map
+func ProcessMasterGflagsYAMLString(yamlData string) map[string]string {
+	// Parse the YAML input into a map
+	var singleMap map[string]string
+	if err := yaml.Unmarshal([]byte(yamlData), &singleMap); err != nil {
+		logrus.Fatalf(formatter.Colorize(
+			fmt.Sprintln("Error parsing YAML:", err), formatter.RedColor))
+	}
+	logrus.Debug("Master GFlags from YAML string: ", singleMap)
+	return singleMap
+}
+
+func ProcessTServerGFlagsFromString(input string, data interface{}) error {
+	if err := json.Unmarshal([]byte(input), data); err == nil {
+		logrus.Debug("Tserver GFlags from JSON string: ", data)
+		return nil
+	}
+
+	if err := yaml.Unmarshal([]byte(input), data); err == nil {
+		logrus.Debug("Tserver GFlags from YAML string: ", data)
+		return nil
+	}
+
+	return fmt.Errorf("TServer GFlags is neither valid JSON nor valid YAML")
+}
+
+func ProcessTServerGFlagsFromConfig(input map[string]interface{}) map[string]map[string]string {
+	data := make(map[string]map[string]string, 0)
+	for k, v := range input {
+		data[k] = *util.StringMap(v.(map[string]interface{}))
+	}
+	return data
 }
