@@ -432,6 +432,7 @@ Status KvStoreInfo::LoadTablesFromPB(
     const std::string& tablet_log_prefix,
     const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id) {
   tables.clear();
+  colocation_to_table.clear();
   for (const auto& table_pb : pbs) {
     TableInfoPtr table_info = VERIFY_RESULT(TableInfo::LoadFromPB(
         tablet_log_prefix, primary_table_id, table_pb));
