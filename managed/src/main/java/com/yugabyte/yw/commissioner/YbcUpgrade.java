@@ -592,10 +592,8 @@ public class YbcUpgrade {
             .timeoutSecs(YBC_REMOTE_TIMEOUT_SEC)
             .build();
     String targetFile = ybcManager.getYbcPackageTmpLocation(universe, node, ybcVersion);
-    nodeUniverseManager
-        .uploadFileToNode(
-            node, universe, ybcServerPackage, targetFile, PACKAGE_PERMISSIONS, context)
-        .processErrors();
+    nodeUniverseManager.uploadFileToNode(
+        node, universe, ybcServerPackage, targetFile, PACKAGE_PERMISSIONS, context);
   }
 
   private void checkCronStatus(Universe universe, NodeDetails node) {

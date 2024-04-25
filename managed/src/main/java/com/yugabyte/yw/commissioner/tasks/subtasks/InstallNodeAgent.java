@@ -134,15 +134,13 @@ public class InstallNodeAgent extends AbstractTaskBase {
                   f.getTargetPath(),
                   nodeAgent.getUuid());
               String filePerm = StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
-              nodeUniverseManager
-                  .uploadFileToNode(
-                      node,
-                      universe,
-                      f.getSourcePath().toString(),
-                      f.getTargetPath().toString(),
-                      filePerm,
-                      shellContext)
-                  .processErrors();
+              nodeUniverseManager.uploadFileToNode(
+                  node,
+                  universe,
+                  f.getSourcePath().toString(),
+                  f.getTargetPath().toString(),
+                  filePerm,
+                  shellContext);
             });
     Path nodeAgentHomePath = Paths.get(nodeAgent.getHome());
     Path nodeAgentInstallPath = nodeAgentHomePath.getParent();

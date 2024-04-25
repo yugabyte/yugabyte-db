@@ -93,9 +93,6 @@ public class YbcUpgradeTest extends FakeDBApplication {
     lenient()
         .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
         .thenReturn(dummyShellUploadResponse);
-    lenient()
-        .when(mockNodeUniverseManager.uploadFileToNode(any(), any(), any(), any(), any(), any()))
-        .thenReturn(dummyShellUploadResponse);
     lenient().when(mockYbcManager.getYbcPackageTmpLocation(any(), any(), any())).thenReturn("/tmp");
     mockYbcClient = mock(YbcClient.class);
     mockYbcClient2 = mock(YbcClient.class);

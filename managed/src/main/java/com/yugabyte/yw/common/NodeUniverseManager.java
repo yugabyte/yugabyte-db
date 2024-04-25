@@ -58,27 +58,33 @@ public class NodeUniverseManager extends DevopsBase {
   private final KeyLock<UUID> universeLock = new KeyLock<>();
 
   @Inject ImageBundleUtil imageBundleUtil;
-  @Inject NodeAgentClient nodeAgentClient;
   @Inject NodeAgentPoller nodeAgentPoller;
   @Inject RuntimeConfGetter confGetter;
   @Inject LocalNodeUniverseManager localNodeUniverseManager;
+  @Inject NodeActionRunner nodeActionRunner;
 
   @Override
   protected String getCommandType() {
     return "node";
   }
 
-  public ShellResponse downloadNodeLogs(
-      NodeDetails node, Universe universe, String targetLocalFile) {
+  public void downloadNodeLogs(NodeDetails node, Universe universe, String targetLocalFile) {
     universeLock.acquireLock(universe.getUniverseUUID());
     try {
-      List<String> actionArgs = new ArrayList<>();
-      actionArgs.add("--yb_home_dir");
-      actionArgs.add(getYbHomeDir(node, universe));
-      actionArgs.add("--target_local_file");
-      actionArgs.add(targetLocalFile);
-      return executeNodeAction(
-          UniverseNodeAction.DOWNLOAD_LOGS, universe, node, actionArgs, DEFAULT_CONTEXT);
+      Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+      if (optional.isPresent()) {
+        nodeActionRunner.downloadLogs(
+            optional.get(), node, getYbHomeDir(node, universe), targetLocalFile, DEFAULT_CONTEXT);
+      } else {
+        List<String> actionArgs = new ArrayList<>();
+        actionArgs.add("--yb_home_dir");
+        actionArgs.add(getYbHomeDir(node, universe));
+        actionArgs.add("--target_local_file");
+        actionArgs.add(targetLocalFile);
+        executeNodeAction(
+                UniverseNodeAction.DOWNLOAD_LOGS, universe, node, actionArgs, DEFAULT_CONTEXT)
+            .processErrors();
+      }
     } finally {
       universeLock.releaseLock(universe.getUniverseUUID());
     }
@@ -106,7 +112,7 @@ public class NodeUniverseManager extends DevopsBase {
     try {
       Files.createFile(Paths.get(tempFilePath));
     } catch (IOException e) {
-      log.error("Error creating file: " + e.getMessage());
+      log.error("Error creating file: {}", e.getMessage());
       return null;
     }
 
@@ -117,13 +123,13 @@ public class NodeUniverseManager extends DevopsBase {
       }
       log.info("Above values written to file.");
     } catch (IOException e) {
-      log.error("Error writing to file: " + e.getMessage());
+      log.error("Error writing to file: {}", e.getMessage());
       return null;
     }
     return tempFilePath;
   }
 
-  public ShellResponse downloadNodeFile(
+  public void downloadNodeFile(
       NodeDetails node,
       Universe universe,
       String ybHomeDir,
@@ -132,48 +138,59 @@ public class NodeUniverseManager extends DevopsBase {
     universeLock.acquireLock(universe.getUniverseUUID());
     String filesListFilePath = "";
     try {
-      List<String> actionArgs = new ArrayList<>();
-      // yb_home_dir denotes a custom starting directory for the remote file. (Eg: ~/, /mnt/d0,
-      // etc.)
-      actionArgs.add("--yb_home_dir");
-      actionArgs.add(ybHomeDir);
-
       filesListFilePath = createTempFileWithSourceFiles(sourceNodeFiles);
       if (filesListFilePath == null) {
         throw new RuntimeException(
             "Could not create temp file while downloading node file for universe "
-                + universe.getUniverseUUID().toString());
+                + universe.getUniverseUUID());
       }
-      actionArgs.add("--source_node_files_path");
-      actionArgs.add(filesListFilePath);
-
-      actionArgs.add("--target_local_file");
-      actionArgs.add(targetLocalFile);
-      return executeNodeAction(
-          UniverseNodeAction.DOWNLOAD_FILE, universe, node, actionArgs, DEFAULT_CONTEXT);
+      Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+      if (optional.isPresent()) {
+        nodeActionRunner.downloadFile(
+            optional.get(), node, ybHomeDir, filesListFilePath, targetLocalFile, DEFAULT_CONTEXT);
+      } else {
+        List<String> actionArgs = new ArrayList<>();
+        // yb_home_dir denotes a custom starting directory for the remote file. (Eg: ~/, /mnt/d0,
+        // etc.)
+        actionArgs.add("--yb_home_dir");
+        actionArgs.add(ybHomeDir);
+        actionArgs.add("--source_node_files_path");
+        actionArgs.add(filesListFilePath);
+        actionArgs.add("--target_local_file");
+        actionArgs.add(targetLocalFile);
+        executeNodeAction(
+                UniverseNodeAction.DOWNLOAD_FILE, universe, node, actionArgs, DEFAULT_CONTEXT)
+            .processErrors();
+      }
     } finally {
       FileUtils.deleteQuietly(new File(filesListFilePath));
       universeLock.releaseLock(universe.getUniverseUUID());
     }
   }
 
-  public ShellResponse copyFileFromNode(
+  public void copyFileFromNode(
       NodeDetails node, Universe universe, String remoteFile, String localFile) {
-    return copyFileFromNode(node, universe, remoteFile, localFile, DEFAULT_CONTEXT);
+    copyFileFromNode(node, universe, remoteFile, localFile, DEFAULT_CONTEXT);
   }
 
-  public ShellResponse copyFileFromNode(
+  public void copyFileFromNode(
       NodeDetails node,
       Universe universe,
       String remoteFile,
       String localFile,
       ShellProcessContext context) {
-    List<String> actionArgs = new ArrayList<>();
-    actionArgs.add("--remote_file");
-    actionArgs.add(remoteFile);
-    actionArgs.add("--local_file");
-    actionArgs.add(localFile);
-    return executeNodeAction(UniverseNodeAction.COPY_FILE, universe, node, actionArgs, context);
+    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    if (optional.isPresent()) {
+      nodeActionRunner.copyFile(optional.get(), remoteFile, localFile, DEFAULT_CONTEXT);
+    } else {
+      List<String> actionArgs = new ArrayList<>();
+      actionArgs.add("--remote_file");
+      actionArgs.add(remoteFile);
+      actionArgs.add("--local_file");
+      actionArgs.add(localFile);
+      executeNodeAction(UniverseNodeAction.COPY_FILE, universe, node, actionArgs, context)
+          .processErrors();
+    }
   }
 
   public ShellResponse bulkCheckFilesExist(
@@ -198,30 +215,36 @@ public class NodeUniverseManager extends DevopsBase {
     }
   }
 
-  public ShellResponse uploadFileToNode(
+  public void uploadFileToNode(
       NodeDetails node,
       Universe universe,
       String sourceFile,
       String targetFile,
       String permissions) {
-    return uploadFileToNode(node, universe, sourceFile, targetFile, permissions, DEFAULT_CONTEXT);
+    uploadFileToNode(node, universe, sourceFile, targetFile, permissions, DEFAULT_CONTEXT);
   }
 
-  public ShellResponse uploadFileToNode(
+  public void uploadFileToNode(
       NodeDetails node,
       Universe universe,
       String sourceFile,
       String targetFile,
       String permissions,
       ShellProcessContext context) {
-    List<String> actionArgs = new ArrayList<>();
-    actionArgs.add("--source_file");
-    actionArgs.add(sourceFile);
-    actionArgs.add("--target_file");
-    actionArgs.add(targetFile);
-    actionArgs.add("--permissions");
-    actionArgs.add(permissions);
-    return executeNodeAction(UniverseNodeAction.UPLOAD_FILE, universe, node, actionArgs, context);
+    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    if (optional.isPresent()) {
+      nodeActionRunner.uploadFile(optional.get(), sourceFile, targetFile, permissions, context);
+    } else {
+      List<String> actionArgs = new ArrayList<>();
+      actionArgs.add("--source_file");
+      actionArgs.add(sourceFile);
+      actionArgs.add("--target_file");
+      actionArgs.add(targetFile);
+      actionArgs.add("--permissions");
+      actionArgs.add(permissions);
+      executeNodeAction(UniverseNodeAction.UPLOAD_FILE, universe, node, actionArgs, context)
+          .processErrors();
+    }
   }
 
   public ShellResponse runCommand(
@@ -235,6 +258,10 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runCommand(
       NodeDetails node, Universe universe, List<String> command, ShellProcessContext context) {
+    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    if (optional.isPresent()) {
+      return nodeActionRunner.runCommand(optional.get(), command, context);
+    }
     List<String> actionArgs = new ArrayList<>();
     if (MapUtils.isNotEmpty(context.getRedactedVals())) {
       actionArgs.add("--skip_cmd_logging");
@@ -292,6 +319,10 @@ public class NodeUniverseManager extends DevopsBase {
       String localScriptPath,
       List<String> params,
       ShellProcessContext context) {
+    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    if (optional.isPresent()) {
+      return nodeActionRunner.runScript(optional.get(), localScriptPath, params, context);
+    }
     List<String> actionArgs = new ArrayList<>();
     actionArgs.add("--local_script_path");
     actionArgs.add(localScriptPath);
@@ -433,6 +464,38 @@ public class NodeUniverseManager extends DevopsBase {
     return "/tmp";
   }
 
+  private Optional<NodeAgent> maybeGetNodeAgent(
+      Universe universe, NodeDetails node, boolean checkJavaClient) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    CloudType cloudType = universe.getNodeDeploymentMode(node);
+    if (cloudType == CloudType.kubernetes) {
+      log.debug("Node agent is not supported on provider type {}", cloudType);
+      return Optional.empty();
+    }
+    // Check the feature flag to either enable or disable Java client.
+    if (checkJavaClient
+        && !confGetter.getConfForScope(
+            universe, UniverseConfKeys.nodeAgentNodeActionUseJavaClient)) {
+      log.debug("Node agent is not enabled for java client");
+      return Optional.empty();
+    }
+    UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+    Provider provider = Provider.getOrBadRequest(providerUUID);
+    Optional<NodeAgent> optional =
+        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
+    if (!optional.isPresent()) {
+      log.debug(
+          "Node agent is not enabled for provider {}({})", provider.getName(), provider.getUuid());
+      return optional;
+    }
+    NodeAgent nodeAgent = optional.get();
+    if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+      nodeAgent.refresh();
+    }
+    return optional;
+  }
+
   private void addConnectionParams(
       Universe universe,
       NodeDetails node,
@@ -459,15 +522,13 @@ public class NodeUniverseManager extends DevopsBase {
       Provider provider = Provider.getOrBadRequest(providerUUID);
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
+      // No need to check the feature flag as this is not for java client.
       Optional<NodeAgent> optional =
-          getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
+          maybeGetNodeAgent(universe, node, false /*check feature flag*/);
       if (optional.isPresent()) {
         NodeAgent nodeAgent = optional.get();
         commandArgs.add("rpc");
-        if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
-          nodeAgent.refresh();
-        }
-        nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+        getNodeAgentClient().addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
       } else {
         String sshPort = provider.getDetails().sshPort.toString();
         UUID imageBundleUUID =
@@ -579,25 +640,24 @@ public class NodeUniverseManager extends DevopsBase {
    * @return
    */
   public boolean isNodeReachable(NodeDetails node, Universe universe, long timeoutSecs) {
-    List<String> params = new ArrayList<>();
-    params.add("check_file_exists");
-    params.add("master/logs");
+    List<String> command = new ArrayList<>();
+    command.add("echo");
+    command.add("'test'");
 
     ShellProcessContext context =
         ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSecs).build();
 
-    ShellResponse scriptOutput = runScript(node, universe, NODE_UTILS_SCRIPT, params, context);
+    ShellResponse response = runCommand(node, universe, command, context);
 
-    if (!scriptOutput.isSuccess()) {
-      log.warn(
-          "Node '{}' is unreachable for '{}' sec, or threw an error: '{}'.",
-          node.getNodeName(),
-          timeoutSecs,
-          scriptOutput.getMessage());
-      return false;
-    } else {
+    if (response.isSuccess()) {
       return true;
     }
+    log.warn(
+        "Node '{}' is unreachable for '{}' sec, or threw an error: '{}'.",
+        node.getNodeName(),
+        timeoutSecs,
+        response.getMessage());
+    return false;
   }
 
   /**
@@ -627,7 +687,7 @@ public class NodeUniverseManager extends DevopsBase {
     findCommandParams.add(fileType);
     findCommandParams.add(remoteTempFilePath);
 
-    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams);
+    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams).processErrors();
     // Download the files list.
     copyFileFromNode(node, universe, remoteTempFilePath, localTempFilePath);
 
@@ -673,7 +733,7 @@ public class NodeUniverseManager extends DevopsBase {
     findCommandParams.add(remoteDirPath);
     findCommandParams.add(remoteTempFilePath);
 
-    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams);
+    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams).processErrors();
     // Download the files list.
     copyFileFromNode(node, universe, remoteTempFilePath, localTempFilePath);
 
