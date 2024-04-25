@@ -822,7 +822,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PITRScheduleListResponse'
+                $ref: '#/components/schemas/PITRSchedule'
           description: List of PITR Schedules in the cluster
         "400":
           content:
@@ -839,6 +839,33 @@ paths:
       summary: Get PITR Schedules
       tags:
       - pitr-info
+  /backup:
+    get:
+      description: Retrieve the list of databases on which backup is enabled.
+      operationId: getBackupDetails
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackupDetails'
+          description: Retrieve the list of databases on which backup is enabled in
+            the YugabyteDB cluster.
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get Backup Details
+      tags:
+      - backup-info
   /restore:
     get:
       description: Retrieve the list of databases on which restore is run in the YugabyteDB
@@ -1002,6 +1029,13 @@ components:
           schema:
             $ref: '#/components/schemas/PITRSchedule'
       description: List of PITR Schedules in the cluster
+    BackupDetailsListResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BackupDetails'
+      description: Retrieve the list of databases on which backup is enabled in the
+        YugabyteDB cluster.
     RestoreDetailsListResponse:
       content:
         application/json:
@@ -3119,9 +3153,31 @@ components:
       - data
       title: Alerts Response
       type: object
-    RestoreDetails:
+    Schedules_Response:
       example:
         schedules:
+        - databaseKeyspace: databaseKeyspace
+          interval: interval
+          id: 0
+          retention: retention
+          earliestRecoverableTime: earliestRecoverableTime
+        - databaseKeyspace: databaseKeyspace
+          interval: interval
+          id: 0
+          retention: retention
+          earliestRecoverableTime: earliestRecoverableTime
+      properties:
+        schedules:
+          items:
+            $ref: '#/components/schemas/PITRSchedule'
+          type: array
+          uniqueItems: true
+      required:
+      - schedules
+      type: object
+    Backup_Response:
+      example:
+        backup:
         - bytes_transferred: bytes_transferred
           actual_size: actual_size
           user_operation: user_operation
@@ -3143,7 +3199,39 @@ components:
           time_taken: time_taken
           task_start_time: task_start_time
       properties:
-        schedules:
+        backup:
+          items:
+            $ref: '#/components/schemas/BackupDetails'
+          type: array
+          uniqueItems: true
+      required:
+      - backup
+      type: object
+    Restore_Response:
+      example:
+        restore:
+        - bytes_transferred: bytes_transferred
+          actual_size: actual_size
+          user_operation: user_operation
+          task_status: task_status
+          database_keyspace: database_keyspace
+          ybdb_api: ybdb_api
+          ybc_task_id: ybc_task_id
+          tserver_ip: tserver_ip
+          time_taken: time_taken
+          task_start_time: task_start_time
+        - bytes_transferred: bytes_transferred
+          actual_size: actual_size
+          user_operation: user_operation
+          task_status: task_status
+          database_keyspace: database_keyspace
+          ybdb_api: ybdb_api
+          ybc_task_id: ybc_task_id
+          tserver_ip: tserver_ip
+          time_taken: time_taken
+          task_start_time: task_start_time
+      properties:
+        restore:
           items:
             $ref: '#/components/schemas/RestoreDetails'
           type: array
