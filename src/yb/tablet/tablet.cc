@@ -4723,17 +4723,31 @@ Status Tablet::GetTabletKeyRanges(
 
 namespace {
 
+YB_DEFINE_ENUM(RetrieveFullDocKeyResult, (kFound)(kSkipDataBlock)(kReachedEnd));
+
+template<Direction direction>
+const rocksdb::KeyValueEntry& MoveIterator(rocksdb::Iterator*);
+template<>
+const rocksdb::KeyValueEntry& MoveIterator<Direction::kForward>(rocksdb::Iterator* iter) {
+  return iter->Next();
+}
+template<>
+const rocksdb::KeyValueEntry& MoveIterator<Direction::kBackward>(rocksdb::Iterator* iter) {
+  return iter->Prev();
+}
+
 // Retrieves from the data block full doc key pointed by index_iter.
-// If its length less or equal to max_key_length, pushes the key to the callback, updates
-// last_key and returns true.
-// Otherwise, skips the data block and returns false.
+// If its length less or equal to max_key_length and key is less than end_bound,
+// pushes the key to the callback, updates last_key and returns kFound.
+// Otherwise, returns kSkipDataBlock or kReachedEnd if we've reached end_bound.
 template<Direction direction, typename Callback>
-Result<bool> RetrieveFullDocKey(
+Result<RetrieveFullDocKeyResult> RetrieveFullDocKey(
     const std::string& log_prefix, rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter,
-    std::string* last_key, const uint32_t max_key_length, Callback callback) {
-  RSTATUS_DCHECK(
-    index_iter->Valid(), InternalError,
-    "Not expected to reach this line when index iterator is invalid");
+    std::string* last_key, const uint32_t max_key_length, const Slice end_bound,
+    Callback callback) {
+  if (!index_iter->Valid()) {
+    return RetrieveFullDocKeyResult::kReachedEnd;
+  }
   auto data_entry = data_iter->Seek(index_iter->key());
   RSTATUS_DCHECK(
       data_entry.Valid(), InternalError,
@@ -4741,8 +4755,7 @@ Result<bool> RetrieveFullDocKey(
           "Invalid data iterator after seeking to key from SST index: $0",
           index_iter->KeyDebugHexString()));
 
-  for (; data_entry.Valid();
-       data_entry = (direction == Direction::kForward ? data_iter->Next() : data_iter->Prev())) {
+  for (; data_entry.Valid(); data_entry = MoveIterator<direction>(data_iter)) {
     VLOG_WITH_FUNC(2) << log_prefix << "data_entry.key: " << data_entry.key.ToDebugHexString();
     // Use encoded doc key to avoid breaking data related to the same row into halves.
     const auto doc_key_size_result =
@@ -4756,19 +4769,37 @@ Result<bool> RetrieveFullDocKey(
     }
     if (doc_key_size_result.get() > max_key_length) {
       // Skip keys longer than max_key_length. Also skip the whole block for efficiency.
-      return false;
+      return RetrieveFullDocKeyResult::kSkipDataBlock;
     }
     const auto key = data_entry.key.Prefix(doc_key_size_result.get());
-    if (direction == Direction::kBackward && !last_key->empty() && key >= *last_key) {
-      // Skips keys larger than last_key (can only happen during reverse scan).
-      continue;
+
+    switch (direction) {
+      case Direction::kBackward:
+        if (!end_bound.empty() && key <= end_bound) {
+          return RetrieveFullDocKeyResult::kReachedEnd;
+        }
+        if (!last_key->empty() && key >= *last_key) {
+          // Skips keys larger than or equal to last_key.
+          continue;
+        }
+        break;
+      case Direction::kForward:
+        if (!end_bound.empty() && key >= end_bound) {
+          return RetrieveFullDocKeyResult::kReachedEnd;
+        }
+        if (key == *last_key) {
+          // Skips keys equal to last_key. Also skip the whole block for efficiency.
+          return RetrieveFullDocKeyResult::kSkipDataBlock;
+        }
+        break;
     }
+
     VLOG_WITH_FUNC(2) << log_prefix << "key: " << key.ToDebugHexString();
     callback(key);
     *last_key = key.ToBuffer();
-    return true;
+    return RetrieveFullDocKeyResult::kFound;
   }
-  return false;
+  return RetrieveFullDocKeyResult::kReachedEnd;
 }
 
 template <
@@ -4779,7 +4810,8 @@ Status DoGetTabletKeyRanges(
     std::string* last_key, NoMoreKeysFunc no_more_keys_func, SkipKeyFunc skip_key_func,
     HasKeyChangedFunc has_key_changed_func, const uint64_t max_num_ranges,
     uint64_t num_blocks_to_skip, const uint64_t num_blocks_to_skip_after_first,
-    const uint32_t max_key_length, const Slice key_to_add_as_last, Callback callback) {
+    const uint32_t max_key_length, const bool use_empty_as_last_key, const Slice end_bound,
+    Callback callback) {
   uint64_t num_keys = 1;
 
   while (num_keys <= max_num_ranges) {
@@ -4793,14 +4825,36 @@ Status DoGetTabletKeyRanges(
                       << ", num_keys: " << num_keys;
 
     if (no_more_keys) {
-      VLOG_WITH_FUNC(2) << log_prefix << "key: " << key_to_add_as_last.ToDebugHexString();
-      callback(key_to_add_as_last);
+      Slice key = use_empty_as_last_key ? Slice() : end_bound;
+      VLOG_WITH_FUNC(2) << log_prefix << "key: " << key.ToDebugHexString();
+      callback(key);
       break;
     }
 
-    if (VERIFY_RESULT(RetrieveFullDocKey<direction>(
-            log_prefix, index_iter, data_iter, last_key, max_key_length, callback))) {
-      ++num_keys;
+    for (;;) {
+      auto retrieve_full_doc_key_result = VERIFY_RESULT(RetrieveFullDocKey<direction>(
+          log_prefix, index_iter, data_iter, last_key, max_key_length, end_bound,
+          callback));
+      VLOG_WITH_FUNC(2) << log_prefix << "retrieve_full_doc_key_result: "
+                        << AsString(retrieve_full_doc_key_result);
+      bool handled = false;
+      switch (retrieve_full_doc_key_result) {
+        case RetrieveFullDocKeyResult::kFound:
+          ++num_keys;
+          handled = true;
+          break;
+        case RetrieveFullDocKeyResult::kSkipDataBlock:
+          MoveIterator<direction>(index_iter);
+          continue;
+        case RetrieveFullDocKeyResult::kReachedEnd:
+          handled = true;
+          break;
+      }
+      if (!handled) {
+        FATAL_INVALID_ENUM_VALUE(RetrieveFullDocKeyResult, retrieve_full_doc_key_result);
+      }
+
+      break;
     }
   }
   return Status::OK();
@@ -4825,13 +4879,15 @@ Status DoGetTabletKeyRanges<Direction::kForward>(
     index_iter->SeekToFirst();
   } else {
     index_iter->Seek(lower_bound_key);
+    if (index_iter->Valid() && index_iter->key() == lower_bound_key) {
+      index_iter->Next();
+    }
   }
   VLOG_WITH_FUNC(2) << log_prefix << "index_iter: " << index_iter->KeyDebugHexString();
 
   // First index key is the last key in first data block, so we treat it as we've already
   // skipped one data block.
-  const auto treat_first_block_as_skipped =
-      index_iter->Valid() && index_iter->key() != lower_bound_key;
+  const auto treat_first_block_as_skipped = index_iter->Valid();
 
   std::string last_key = lower_bound_key.ToBuffer();
 
@@ -4852,8 +4908,8 @@ Status DoGetTabletKeyRanges<Direction::kForward>(
   return DoGetTabletKeyRanges<Direction::kForward>(
       log_prefix, index_iter, data_iter, &last_key, no_more_keys_func, skip_key_func,
       has_iter_key_changed_func, max_num_ranges, num_blocks_to_skip - treat_first_block_as_skipped,
-      num_blocks_to_skip, max_key_length, use_empty_as_last_key ? Slice{} : upper_bound_key,
-      callback);
+      num_blocks_to_skip, max_key_length, use_empty_as_last_key, upper_bound_key,
+      std::move(callback));
 }
 
 template<>
@@ -4891,7 +4947,7 @@ Status DoGetTabletKeyRanges<Direction::kBackward>(
   return DoGetTabletKeyRanges<Direction::kBackward>(
       log_prefix, index_iter, data_iter, &last_key, no_more_keys_func, skip_key_func,
       has_iter_key_changed_func, max_num_ranges, num_blocks_to_skip, num_blocks_to_skip,
-      max_key_length, use_empty_as_last_key ? Slice{} : upper_bound_key, callback);
+      max_key_length, use_empty_as_last_key, lower_bound_key, std::move(callback));
 }
 
 } // namespace
