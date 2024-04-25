@@ -5,7 +5,7 @@ linkTitle: YQL - Query layer
 description: Understand how a query is processed
 image: fa-sharp fa-thin fa-language
 aliases:
-  - /architecture/query-layer/overview/
+  - /preview/architecture/query-layer/overview/
 menu:
   preview:
     identifier: architecture-query-layer

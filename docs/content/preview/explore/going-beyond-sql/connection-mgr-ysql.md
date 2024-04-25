@@ -7,6 +7,7 @@ headcontent: Built-in server-side connection pooler for YSQL
 techPreview: /preview/releases/versioning/#feature-availability
 aliases:
    - /preview/explore/connection-manager/connection-mgr-ysql/
+   - /preview/explore/connection-manager/
 menu:
   preview:
     name: Built-in connection pooling
