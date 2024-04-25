@@ -32,6 +32,11 @@
 DEFINE_RUNTIME_PREVIEW_bool(enable_xcluster_api_v2, false,
     "Allow the usage of v2 xCluster APIs that support DB Scoped replication groups");
 
+DEFINE_RUNTIME_bool(disable_xcluster_db_scoped_new_table_processing, false,
+    "When set disables automatic checkpointing of newly created tables on the source and adding "
+    "table to inbound replication group on target");
+TAG_FLAG(disable_xcluster_db_scoped_new_table_processing, advanced);
+
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
 
@@ -365,9 +370,35 @@ Status XClusterManager::IsCreateXClusterReplicationDone(
   return Status::OK();
 }
 
+Status XClusterManager::RepairOutboundXClusterReplicationGroupAddTable(
+    const RepairOutboundXClusterReplicationGroupAddTableRequestPB* req,
+    RepairOutboundXClusterReplicationGroupAddTableResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  return XClusterSourceManager::RepairOutboundReplicationGroupAddTable(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->table_id(),
+      VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id())), epoch);
+}
+
+Status XClusterManager::RepairOutboundXClusterReplicationGroupRemoveTable(
+    const RepairOutboundXClusterReplicationGroupRemoveTableRequestPB* req,
+    RepairOutboundXClusterReplicationGroupRemoveTableResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  return XClusterSourceManager::RepairOutboundReplicationGroupRemoveTable(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->table_id(), epoch);
+}
+
 std::vector<std::shared_ptr<PostTabletCreateTaskBase>> XClusterManager::GetPostTabletCreateTasks(
     const TableInfoPtr& table_info, const LeaderEpoch& epoch) {
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> result;
+
+  if (FLAGS_disable_xcluster_db_scoped_new_table_processing) {
+    return result;
+  }
+
   {
     auto tasks = XClusterSourceManager::GetPostTabletCreateTasks(table_info, epoch);
     MoveCollection(&tasks, &result);
