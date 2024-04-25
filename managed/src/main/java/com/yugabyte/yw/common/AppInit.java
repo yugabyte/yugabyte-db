@@ -337,6 +337,13 @@ public class AppInit {
 
         setYbaVersion(ConfigHelper.getCurrentVersion(environment));
 
+        // Fix up DB paths again to handle any new files (ybc) that moved during AppInit.
+        if (config.getBoolean("yb.fixPaths")) {
+          log.debug("Fixing up file paths a second time.");
+          fileDataService.fixUpPaths(storagePath);
+          releaseManager.fixFilePaths();
+        }
+
         log.info("AppInit completed");
       }
     } catch (Throwable t) {
