@@ -10882,6 +10882,16 @@
       },
       "type" : "object"
     },
+    "RoleAttribute" : {
+      "properties" : {
+        "name" : {
+          "enum" : [ "SUPERUSER", "NOSUPERUSER", "CREATEDB", "NOCREATEDB", "CREATEROLE", "NOCREATEROLE", "INHERIT", "NOINHERIT", "LOGIN", "NOLOGIN", "REPLICATION", "NOREPLICATION", "BYPASSRLS", "NOBYPASSRLS" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "name" ],
+      "type" : "object"
+    },
     "RoleBinding" : {
       "properties" : {
         "createTime" : {

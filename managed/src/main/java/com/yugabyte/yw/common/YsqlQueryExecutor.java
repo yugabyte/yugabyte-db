@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
+import com.yugabyte.yw.forms.DatabaseUserFormData.RoleAttribute;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -304,6 +305,15 @@ public class YsqlQueryExecutor {
                 "GRANT EXECUTE ON FUNCTION pg_stat_statements_reset TO \"%1$s\"; ", data.username))
         .append(DEL_PG_ROLES_CMD_1);
 
+    // Construct ALTER ROLE statements based on the roleAttributes specified
+    if (data.dbRoleAttributes != null) {
+      for (RoleAttribute roleAttribute : data.dbRoleAttributes) {
+        createUserWithPrivileges.append(
+            String.format(
+                "ALTER ROLE \"%s\" %s;", data.username, roleAttribute.getName().toString()));
+      }
+    }
+
     try {
       runUserDbCommands(createUserWithPrivileges.toString(), data.dbName, universe);
       LOG.info("Created restricted user and deleted dependencies");
@@ -407,6 +417,16 @@ public class YsqlQueryExecutor {
               "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION", DB_ADMIN_ROLE_NAME, data.username);
       allQueries.append(String.format("%s; ", query));
     }
+
+    // Construct ALTER ROLE statements based on the roleAttributes specified
+    if (data.dbRoleAttributes != null) {
+      for (RoleAttribute roleAttribute : data.dbRoleAttributes) {
+        allQueries.append(
+            String.format(
+                "ALTER ROLE \"%s\" %s;", data.username, roleAttribute.getName().toString()));
+      }
+    }
+
     query = "SELECT pg_stat_statements_reset();";
     allQueries.append(query);
 
