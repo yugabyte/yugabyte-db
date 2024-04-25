@@ -347,24 +347,31 @@ public class TsStorageGraphService implements GraphSourceIF {
 
               graphData.setLabels(key.getLabels());
               for (var valueGroup : groupedLine.values.entrySet()) {
-                double aggregated = Double.NaN;
-                DoubleStream valuesStream = valueGroup.getValue().stream().mapToDouble(a -> a);
+                OptionalDouble aggregated = OptionalDouble.empty();
+                DoubleStream valuesStream =
+                    valueGroup.getValue().stream()
+                        .filter(value -> !value.isNaN())
+                        .mapToDouble(a -> a);
                 TsStorageGraphConfig.DataColumn dataColumn = dataColumnByAlias.get(alias);
                 switch (dataColumn.getAggregation()) {
-                  case avg -> aggregated = valuesStream.average().getAsDouble();
-                    // Fast hack to calculate average for ASH. Need to rebuild with TimescaleDB
-                    // anyway.
+                  case avg -> aggregated = valuesStream.average();
                   case sum -> aggregated =
-                      groupedLine.getNodesListForAvg().isEmpty()
-                          ? valuesStream.sum()
-                          : valuesStream.sum() / groupedLine.getNodesListForAvg().size();
-                  case max -> aggregated = valuesStream.max().getAsDouble();
-                  case min -> aggregated = valuesStream.min().getAsDouble();
+                      OptionalDouble.of(
+                          // Fast hack to calculate average for ASH. Need to rebuild with
+                          // TimescaleDB
+                          // anyway.
+                          groupedLine.getNodesListForAvg().isEmpty()
+                              ? valuesStream.sum()
+                              : valuesStream.sum() / groupedLine.getNodesListForAvg().size());
+                  case max -> aggregated = valuesStream.max();
+                  case min -> aggregated = valuesStream.min();
                 }
                 graphData
                     .getPoints()
                     .add(
-                        new GraphPoint().setX(valueGroup.getKey().toEpochMilli()).setY(aggregated));
+                        new GraphPoint()
+                            .setX(valueGroup.getKey().toEpochMilli())
+                            .setY(aggregated.orElse(Double.NaN)));
               }
               response.getData().add(graphData);
             });

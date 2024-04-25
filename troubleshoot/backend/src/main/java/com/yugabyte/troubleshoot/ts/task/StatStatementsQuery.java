@@ -423,7 +423,7 @@ public class StatStatementsQuery {
       if (stats.getP99Latency().isNaN() && callsCount >= calls * 0.99) {
         stats.setP99Latency(upperBound);
       }
-      if (callsCount == calls) {
+      if (stats.getMaxLatency().isNaN() && callsCount == calls) {
         stats.setMaxLatency(upperBound);
       }
     }
