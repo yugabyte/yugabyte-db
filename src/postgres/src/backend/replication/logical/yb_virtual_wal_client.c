@@ -248,6 +248,8 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
 								   &cached_records);
 
 		cached_records_last_sent_row_idx = 0;
+		YbWalSndTotalTimeInYBDecodeMicros = 0;
+		YbWalSndTotalTimeInReorderBufferMicros = 0;
 		YbWalSndTotalTimeInSendingMicros = 0;
 		last_getconsistentchanges_response_receipt_time = GetCurrentTimestamp();
 	}
@@ -317,10 +319,26 @@ PreProcessBeforeFetchingNextBatch()
 	{
 		TimestampDifference(last_getconsistentchanges_response_receipt_time,
 							GetCurrentTimestamp(), &secs, &microsecs);
+
+		/*
+		 * Note that this processing time does not include the time taken for
+		 * the conversion from QLValuePB (proto) to PG datum values. This is
+		 * done in ybc_pggate and is logged separately.
+		 *
+		 * The time being logged here is the total time it took for processing
+		 * and sending a whole batch AFTER converting all the values to the PG
+		 * format.
+		 */
 		elog(DEBUG1,
 			 "Walsender processing time for the last batch is (%ld s, %d us)",
 			 secs, microsecs);
-		elog(DEBUG1, "Time spent in sending data (socket): %" PRIu64 " us",
+		elog(DEBUG1,
+			 "Time Distribution. "
+			 "yb_decode: %" PRIu64 " us, "
+			 "reorder buffer: %" PRIu64 " us, "
+			 "socket: %" PRIu64 " us.",
+			 YbWalSndTotalTimeInYBDecodeMicros,
+			 YbWalSndTotalTimeInReorderBufferMicros,
 			 YbWalSndTotalTimeInSendingMicros);
 	}
 
