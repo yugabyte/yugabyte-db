@@ -67,33 +67,30 @@ public class QueryLdapServer extends AbstractTaskBase {
         log.debug("LDAP user entry retrieved: {}", entry.toString());
       }
 
-      String userKey = "";
-      // user's name is retrieved from the ldapUserfieldAttribute if specified
-      if (StringUtils.isNotEmpty(ldapUnivSyncFormData.getLdapUserfieldAttribute())) {
-        Attribute userAttribute = entry.get(ldapUnivSyncFormData.getLdapUserfieldAttribute());
-        if (enabledDetailedLogs) {
-          log.debug("User's name retrieved from attribute: '{}'", userAttribute);
-        }
-        if (userAttribute != null) {
-          userKey = userAttribute.get().getString();
-        } else {
-          if (enabledDetailedLogs) {
-            log.warn(
-                "{} is not set for this user on the LDAP Server, hence excluded from the sync",
-                ldapUnivSyncFormData.getLdapUserfieldAttribute());
-          }
-        }
-      } else {
-        // user's name is retrieved from the dn if ldapUserfieldAttribute is not specified
-        String dn = entry.getDn().toString();
+      // search for the userfield in the DN
+      String dn = entry.getDn().toString();
+      String userKey = retrieveValueFromDN(dn, ldapUnivSyncFormData.getLdapUserfield());
+      if (StringUtils.isEmpty(userKey)) {
         if (enabledDetailedLogs) {
           log.debug(
-              "User's name retrieved from {} in {}", ldapUnivSyncFormData.getLdapUserfield(), dn);
+              "User dn {} does not contain {}(userfield). Fetching user attributes...",
+              dn,
+              ldapUnivSyncFormData.getLdapUserfield());
         }
-        userKey = retrieveValueFromDN(dn, ldapUnivSyncFormData.getLdapUserfield());
+        // if userfield is not found in the DN, search in the rest of the attributes
+        Attribute userAttribute = entry.get(ldapUnivSyncFormData.getLdapUserfield());
+        if (userAttribute != null) {
+          userKey = userAttribute.get().getString();
+          if (enabledDetailedLogs) {
+            log.debug("User name: {} retrieved from user attribute: {}", userKey, userAttribute);
+          }
+        }
       }
-      if (enabledDetailedLogs) {
-        log.debug("user name retrieved: {}", userKey);
+      if (enabledDetailedLogs && StringUtils.isEmpty(userKey)) {
+        log.warn(
+            "User {} does not contain '{}'(userfield). Skipping the user from the sync...",
+            dn,
+            ldapUnivSyncFormData.getLdapUserfield());
       }
 
       if (!StringUtils.isEmpty(userKey)) {
