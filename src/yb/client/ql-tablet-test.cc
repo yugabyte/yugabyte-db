@@ -1937,6 +1937,91 @@ TEST_F_EX(QLTabletTest, TruncateTableDuringLongRead, QLTabletRf1Test) {
   });
 }
 
+class GetTabletKeyRangesTest : public QLTabletRf1TestToggleEnablePackedRow {
+ protected:
+  void SetUp() override {
+    FLAGS_db_block_size_bytes = 4_KB;
+    FLAGS_db_write_buffer_size = 200_KB;
+    QLTabletRf1TestToggleEnablePackedRow::SetUp();
+  }
+
+  Result<TableHandle> CreateTestTable() {
+    TableHandle table;
+
+    YBSchemaBuilder builder;
+    // TODO(get_table_key_ranges): also test for hash-based sharding as soon as it is properly
+    // supported by GetTabletKeyRanges.
+    builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->PrimaryKey()->NotNull();
+    builder.AddColumn(kValueColumn)->Type(DataType::STRING);
+    RETURN_NOT_OK(table.Create(kTable1Name, /* num_tablets = */ 1, client_.get(), &builder));
+    return table;
+  }
+
+  Result<tablet::TabletPtr> WriteData(
+      const TableHandle& table, std::function<std::shared_ptr<YBqlWriteOp>()> write_op_generator) {
+    std::atomic<size_t> num_rows_inserted{0};
+    TestThreadHolder write_threads;
+
+    LOG(INFO) << "Starting workload ...";
+    Stopwatch s(Stopwatch::ALL_THREADS);
+    s.start();
+
+    for (auto t = 0; t < kNumWriteThreads; ++t) {
+      write_threads.AddThreadFunctor([this, &stop_requested = write_threads.stop_flag(),
+                                      &num_rows_inserted, &write_op_generator] {
+        auto session = CreateSession();
+        size_t num_ops_applied = 0;
+
+        while (!stop_requested) {
+          auto write_op = write_op_generator();
+          session->Apply(write_op);
+          if (++num_ops_applied == kWriteBatchSize) {
+            const auto flush_status = session->TEST_FlushAndGetOpsErrors();
+            ASSERT_OK(flush_status.status);
+            ASSERT_EQ(flush_status.errors.size(), 0);
+            num_rows_inserted.fetch_add(num_ops_applied);
+            num_ops_applied = 0;
+          }
+        }
+      });
+    }
+
+    const auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    SCHECK_EQ(peers.size(), 1, InternalError, "Expected single tablet");
+    const auto tablet = peers[0]->shared_tablet();
+    SCHECK_NOTNULL(tablet);
+    auto* db = tablet->regular_db();
+
+    while (std_util::cmp_less(
+               db->GetCurrentVersionSstFilesUncompressedSize(),
+               kNumFlushes * FLAGS_db_write_buffer_size) ||
+           db->GetCurrentVersionNumSSTFiles() < kNumSstFiles) {
+      std::this_thread::sleep_for(100ms);
+    }
+
+    write_threads.Stop();
+    s.stop();
+    LOG(INFO) << "Workload stopped, it took: " << AsString(s.elapsed());
+
+    LOG(INFO) << "Rows inserted: " << num_rows_inserted;
+    LOG(INFO) << "Number of SST files: " << db->GetCurrentVersionNumSSTFiles();
+    LOG(INFO) << "SST data size: " << db->GetCurrentVersionSstFilesUncompressedSize();
+    return tablet;
+  }
+
+  static constexpr auto kValueSize = 16;
+  static constexpr auto kWriteBatchSize = 128;
+  static constexpr auto kNumWriteThreads = 2;
+
+  static constexpr auto kNumSstFiles = 4;
+  static constexpr auto kNumFlushes = 15;
+
+  static constexpr auto kNumWorkers = 5;
+  static constexpr auto kMinMaxKeysRatioLimit = 0.75;
+};
+
+INSTANTIATE_TEST_SUITE_P(, GetTabletKeyRangesTest, ::testing::Bool());
+
 namespace {
 
 Status CalcKeysDistributionAcrossWorkers(
@@ -1998,85 +2083,82 @@ Status CalcKeysDistributionAcrossWorkers(
   return Status::OK();
 }
 
+Status CheckRangeKeysOrder(
+    const std::vector<std::string>& range_boundary_keys, tablet::Direction direction) {
+  SCHECK_GE(
+      range_boundary_keys.size(), size_t(1), InternalError, "We should have at least 1 range.");
+
+  for (size_t i = 0; i + 2 < range_boundary_keys.size(); ++i) {
+    switch (direction) {
+      case tablet::Direction::kForward:
+        SCHECK_LT(range_boundary_keys[i], range_boundary_keys[i + 1], InternalError, "Wrong order");
+        continue;
+      case tablet::Direction::kBackward:
+        SCHECK_GT(range_boundary_keys[i], range_boundary_keys[i + 1], InternalError, "Wrong order");
+        continue;
+    }
+    FATAL_INVALID_ENUM_VALUE(tablet::Direction, direction);
+  }
+  return Status::OK();
+}
+
+Status CheckBoundariesAreExcluded(
+    const std::vector<std::string>& test_range_keys, tablet::Tablet* tablet,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, tablet::Direction direction,
+    uint32_t max_key_length) {
+  auto is_not_empty = [](const std::string& key) { return !key.empty(); };
+  Slice first_key = test_range_keys.front();
+  if (first_key.empty()) {
+    SCHECK_EQ(
+        test_range_keys.size(), 1, InternalError,
+        "Shouldn't have empty first range key when it is not the only one.");
+    return Status::OK();
+  }
+  Slice last_key =
+      *std::find_if(test_range_keys.rbegin(), test_range_keys.rend(), is_not_empty);
+
+  Slice lower_bound_key = std::min(first_key, last_key);
+  Slice upper_bound_key = std::max(first_key, last_key);
+
+  LOG(INFO) << "Check for boundaries to be exclusive, lower_bound_key: "
+            << lower_bound_key.ToDebugHexString()
+            << " upper_bound_key: " << upper_bound_key.ToDebugHexString();
+
+  std::vector<std::string> range_keys;
+  RETURN_NOT_OK(tablet->TEST_GetTabletKeyRanges(
+      lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, direction,
+      max_key_length, [&range_keys](Slice key) {
+        LOG(INFO) << "Got range boundary key: " << key.ToDebugHexString();
+        range_keys.push_back(key.ToBuffer());
+      }));
+
+  RETURN_NOT_OK(CheckRangeKeysOrder(range_keys, direction));
+
+  for (auto& key : range_keys) {
+    if (key.empty()) {
+      continue;
+    }
+    SCHECK_GT(key, lower_bound_key, InternalError, "Expected key to be greater than lower bound");
+    SCHECK_LT(key, upper_bound_key, InternalError, "Expected key to be less than upper bound");
+  }
+  return Status::OK();
+}
+
 } // namespace
 
-TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetTabletKeyRanges) {
-  constexpr auto kValueSize = 16;
-  constexpr auto kWriteBatchSize = 128;
-  constexpr auto kNumWriteThreads = 2;
+TEST_P(GetTabletKeyRangesTest, Distribution) {
+  auto table = ASSERT_RESULT(CreateTestTable());
 
-  constexpr auto kNumSstFiles = 4;
-  constexpr auto kNumFlushes = 15;
+  auto tablet = ASSERT_RESULT(WriteData(table, [&table](){
+    auto insert = table.NewInsertOp();
+    auto req = insert->mutable_request();
+    const auto key = RandomUniformInt<int32_t>();
 
-  constexpr auto kNumWorkers = 5;
-  constexpr auto kMinMaxKeysRatioLimit = 0.75;
-
-  FLAGS_db_block_size_bytes = 4_KB;
-  FLAGS_db_write_buffer_size = 200_KB;
-
-  TableHandle table;
-
-  {
-    YBSchemaBuilder builder;
-    // TODO(get_table_key_ranges): also test for hash-based sharding as soon as it is properly
-    // supported by GetTabletKeyRanges.
-    builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->PrimaryKey()->NotNull();
-    builder.AddColumn(kValueColumn)->Type(DataType::STRING);
-    ASSERT_OK(table.Create(kTable1Name, /* num_tablets = */ 1, client_.get(), &builder));
-    table.NewInsertOp();
-  }
-
-  std::atomic<size_t> num_rows_inserted{0};
-  TestThreadHolder write_threads;
-
-  LOG(INFO) << "Starting workload ...";
-  Stopwatch s(Stopwatch::ALL_THREADS);
-  s.start();
-
-  for (auto t = 0; t < kNumWriteThreads; ++t) {
-    write_threads.AddThreadFunctor(
-        [this, &stop_requested = write_threads.stop_flag(), &table, &num_rows_inserted] {
-          auto session = CreateSession();
-          size_t num_ops_applied = 0;
-
-          while (!stop_requested) {
-            auto insert = table.NewInsertOp();
-            auto req = insert->mutable_request();
-            const auto key = RandomUniformInt<int32_t>();
-
-            QLAddInt32RangeValue(req, key);
-            table.AddStringColumnValue(req, kValueColumn, RandomString(kValueSize));
-            session->Apply(insert);
-            if (++num_ops_applied == kWriteBatchSize) {
-              const auto flush_status = session->TEST_FlushAndGetOpsErrors();
-              ASSERT_OK(flush_status.status);
-              ASSERT_EQ(flush_status.errors.size(), 0);
-              num_rows_inserted.fetch_add(num_ops_applied);
-              num_ops_applied = 0;
-            }
-          }
-        });
-  }
-
-  const auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
-  ASSERT_EQ(peers.size(), 1);
-  const auto tablet = ASSERT_NOTNULL(peers[0]->shared_tablet());
+    QLAddInt32RangeValue(req, key);
+    table.AddStringColumnValue(req, kValueColumn, RandomString(kValueSize));
+    return insert;
+  }));
   auto* db = tablet->regular_db();
-
-  while (std_util::cmp_less(
-             db->GetCurrentVersionSstFilesUncompressedSize(),
-             kNumFlushes * FLAGS_db_write_buffer_size) ||
-         db->GetCurrentVersionNumSSTFiles() < kNumSstFiles) {
-    std::this_thread::sleep_for(100ms);
-  }
-
-  write_threads.Stop();
-  s.stop();
-  LOG(INFO) << "Workload stopped, it took: " << AsString(s.elapsed());
-
-  LOG(INFO) << "Rows inserted: " << num_rows_inserted;
-  LOG(INFO) << "Number of SST files: " << db->GetCurrentVersionNumSSTFiles();
-  LOG(INFO) << "SST data size: " << db->GetCurrentVersionSstFilesUncompressedSize();
 
   NO_PENDING_FATALS();
 
@@ -2099,21 +2181,8 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetTabletKeyRanges) {
 
       LOG(INFO) << "Ranges count: " << range_boundary_keys.size();
 
-      // We should have at least 1 range.
-      ASSERT_GE(range_boundary_keys.size(), 1);
-
+      ASSERT_OK(CheckRangeKeysOrder(range_boundary_keys, direction));
       ASSERT_EQ(range_boundary_keys.back(), "");
-      for (size_t i = 0; i + 2 < range_boundary_keys.size(); ++i) {
-        switch (direction) {
-          case tablet::Direction::kForward:
-            ASSERT_LT(range_boundary_keys[i], range_boundary_keys[i + 1]);
-            continue;
-          case tablet::Direction::kBackward:
-            ASSERT_GT(range_boundary_keys[i], range_boundary_keys[i + 1]);
-            continue;
-        }
-        FATAL_INVALID_ENUM_VALUE(tablet::Direction, direction);
-      }
 
       // TODO(get_table_key_ranges): For now we are returning full DocKeys and skipping ones that
       // are longer than max_key_length, because truncated DocKeys are not supported as lower/upper
@@ -2134,22 +2203,36 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetTabletKeyRanges) {
         LOG(INFO) << "Getting tablet key ranges starting from: "
                   << Slice(start_key).ToDebugHexString() << " direction: " << AsString(direction);
 
-        ASSERT_OK(tablet->TEST_GetTabletKeyRanges(
-            direction == tablet::Direction::kForward ? start_key : Slice(),
-            direction == tablet::Direction::kForward ? Slice() : start_key, kNumRangesPerBatch,
-            range_size_bytes, direction, max_key_length, [&range_boundary_keys_batch](Slice key) {
-              LOG(INFO) << "Got range boundary key: " << key.ToDebugHexString();
-              range_boundary_keys_batch.push_back(key.ToBuffer());
-            }));
+        {
+          auto lower_bound_key = direction == tablet::Direction::kForward ? start_key : Slice();
+          auto upper_bound_key = direction == tablet::Direction::kForward ? Slice() : start_key;
 
-        ASSERT_LE(range_boundary_keys_batch.size(), kNumRangesPerBatch);
+          ASSERT_OK(tablet->TEST_GetTabletKeyRanges(
+              lower_bound_key, upper_bound_key, kNumRangesPerBatch,
+              range_size_bytes, direction, max_key_length, [&range_boundary_keys_batch](Slice key) {
+                LOG(INFO) << "Got range boundary key: " << key.ToDebugHexString();
+                range_boundary_keys_batch.push_back(key.ToBuffer());
+              }));
 
-        // We should have at least 1 range.
-        ASSERT_GE(range_boundary_keys_batch.size(), 1);
+          ASSERT_LE(range_boundary_keys_batch.size(), kNumRangesPerBatch);
 
-        for (const auto& key : range_boundary_keys_batch) {
-          range_boundary_keys_from_batches.push_back(key);
+          // We should have at least 1 range.
+          ASSERT_GE(range_boundary_keys_batch.size(), 1);
+
+          for (const auto& key : range_boundary_keys_batch) {
+            if (!key.empty()) {
+              ASSERT_GT(key, lower_bound_key);
+            }
+            if (!upper_bound_key.empty()) {
+              ASSERT_LT(key, upper_bound_key);
+            }
+            range_boundary_keys_from_batches.push_back(key);
+          }
         }
+
+        ASSERT_OK(CheckBoundariesAreExcluded(
+            range_boundary_keys, tablet.get(), kNumRangesPerBatch, range_size_bytes, direction,
+            max_key_length));
 
         if (range_boundary_keys_batch.back().empty()) {
           // We've reached the end.
@@ -2166,6 +2249,56 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetTabletKeyRanges) {
           tablet.get(), range_boundary_keys_from_batches, kNumWorkers, min_max_keys_ratio_limit,
           direction));
     }
+  }
+}
+
+TEST_P(GetTabletKeyRangesTest, Boundaries) {
+  constexpr auto kNumDifferentKeys = 3;
+  constexpr auto kMaxKeyLength = 1024;
+
+  auto table = ASSERT_RESULT(CreateTestTable());
+
+  std::atomic<int32_t> ops_generated{0};
+
+  auto tablet = ASSERT_RESULT(WriteData(table, [&table, &ops_generated](){
+    const auto ops_already_generated = ops_generated.fetch_add(1);
+    const auto key = ops_already_generated % kNumDifferentKeys;
+
+    auto insert = table.NewInsertOp();
+    auto req = insert->mutable_request();
+
+    QLAddInt32RangeValue(req, key);
+    table.AddStringColumnValue(req, kValueColumn, RandomString(kValueSize));
+    return insert;
+  }));
+  auto* db = tablet->regular_db();
+
+  NO_PENDING_FATALS();
+
+  const auto range_size_bytes = db->GetCurrentVersionSstFilesUncompressedSize() / 50;
+
+  for (auto direction : {tablet::Direction::kForward, tablet::Direction::kBackward}) {
+    LOG(INFO) << "direction: " << AsString(direction);
+
+    std::vector<std::string> range_boundary_keys;
+    auto add_range_boundary_key = [&range_boundary_keys](Slice key) {
+      LOG(INFO) << "Got range boundary key: " << key.ToDebugHexString();
+      range_boundary_keys.push_back(key.ToBuffer());
+    };
+
+    ASSERT_OK(tablet->TEST_GetTabletKeyRanges(
+        Slice(), Slice(), std::numeric_limits<uint64_t>::max(), range_size_bytes, direction,
+        kMaxKeyLength, add_range_boundary_key));
+
+    LOG(INFO) << "Ranges count: " << range_boundary_keys.size();
+
+    ASSERT_OK(CheckRangeKeysOrder(range_boundary_keys, direction));
+    ASSERT_TRUE(range_boundary_keys.back().empty());
+    ASSERT_GT(range_boundary_keys.size(), 2);
+
+    ASSERT_OK(CheckBoundariesAreExcluded(
+        range_boundary_keys, tablet.get(), std::numeric_limits<uint64_t>::max(), range_size_bytes,
+        direction, kMaxKeyLength));
   }
 }
 
