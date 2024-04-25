@@ -278,6 +278,13 @@
                   "universeUuid": [],
                   "queryId": []
                 }
+              },
+              {
+                "name": "active_session_history_ysql",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": []
+                }
               }
             ]
           }
@@ -408,6 +415,12 @@
                 "filters": {
                   "universeUuid": []
                 }
+              },
+              {
+                "name": "active_session_history_ysql",
+                "filters": {
+                  "universeUuid": []
+                }
               }
             ]
           }
@@ -469,6 +482,12 @@
           {
             "recommendation": "Check ASH graph per query/client",
             "supportingGraphs": [
+              {
+                "name": "active_session_history_tserver",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
               {
                 "name": "active_session_history_ysql",
                 "filters": {
