@@ -120,15 +120,13 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
                   .collect(Collectors.toList());
 
           for (NodeDetails node : activeNodes) {
-            nodeUniverseManager
-                .uploadFileToNode(
-                    node,
-                    universe,
-                    localGflagFilePath.toString(),
-                    remoteGFlagPath,
-                    PACKAGE_PERMISSIONS,
-                    context)
-                .processErrors();
+            nodeUniverseManager.uploadFileToNode(
+                node,
+                universe,
+                localGflagFilePath.toString(),
+                remoteGFlagPath,
+                PACKAGE_PERMISSIONS,
+                context);
           }
 
           // Delete the local directory.
@@ -171,10 +169,8 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
     for (NodeDetails node : universe.getNodes()) {
       String xxhsumTargetPathParent = nodeUniverseManager.getYbTmpDir();
       String xxhsumTargetPath = xxhsumTargetPathParent + "/xxhash.tar.gz";
-      nodeUniverseManager
-          .uploadFileToNode(
-              node, universe, xxhsumPackagePath, xxhsumTargetPath, PACKAGE_PERMISSIONS, context)
-          .processErrors();
+      nodeUniverseManager.uploadFileToNode(
+          node, universe, xxhsumPackagePath, xxhsumTargetPath, PACKAGE_PERMISSIONS, context);
 
       String extractxxhSumBinaryCmd =
           String.format(

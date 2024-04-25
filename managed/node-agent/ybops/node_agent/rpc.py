@@ -24,6 +24,7 @@ from ybops.node_agent.server_pb2 import DownloadFileRequest, ExecuteCommandReque
     PingRequest, UploadFileRequest, SubmitTaskRequest, DescribeTaskRequest, AbortTaskRequest, \
     CommandInput, Error
 from ybops.node_agent.server_pb2_grpc import NodeAgentStub
+from ybops.common.exceptions import YBOpsRuntimeError
 
 SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
@@ -171,7 +172,7 @@ class RpcClient(object):
                         else output.stdout + response.output
         except Exception as e:
             output.rc = 1
-            output.stderr = str(e)
+            output.stderr = str(self._handle_rpc_error(e))
         return output
 
     def exec_command_async(self, cmd, **kwargs):
@@ -222,7 +223,7 @@ class RpcClient(object):
         except Exception as e:
             self.abort_task(task_id, **kwargs)
             output.rc = 1
-            output.stderr = str(e)
+            output.stderr = str(self._handle_rpc_error(e))
         return output
 
     def invoke_method_async(self, param, **kwargs):
@@ -265,16 +266,16 @@ class RpcClient(object):
         except Exception as e:
             self.abort_task(task_id, **kwargs)
             output.rc = 1
-            output.stderr = str(e)
+            output.stderr = str(self._handle_rpc_error(e))
         return output
 
     def abort_task(self, task_id, **kwargs):
         try:
             timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
             self.stub.AbortTask(AbortTaskRequest(taskId=task_id), timeout=timeout_sec)
-        except Exception:
+        except Exception as e:
             # Ignore error.
-            logging.error("Failed to abort remote task {}".format(task_id))
+            logging.error("Failed to abort remote task {} - {}".format(task_id, str(e)))
 
     def read_iterfile(self, user, in_path, out_path, chmod=0, chunk_size=FILE_UPLOAD_CHUNK_BYTES):
         file_info = FileInfo()
@@ -294,8 +295,11 @@ class RpcClient(object):
         """
         chmod = kwargs.get('chmod', 0)
         timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
-        self.stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
-                             timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY)
+        try:
+            self.stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
+                                 timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY)
+        except RpcError as e:
+            raise self._handle_rpc_error(e)
 
     def fetch_file(self, in_path, out_path, **kwargs):
         """
@@ -303,11 +307,14 @@ class RpcClient(object):
         """
 
         timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
-        for response in self.stub.DownloadFile(
-                DownloadFileRequest(filename=in_path, user=self.user),
-                timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY):
-            with open(out_path, mode="ab") as f:
-                f.write(response.chunkData)
+        try:
+            for response in self.stub.DownloadFile(
+                    DownloadFileRequest(filename=in_path, user=self.user),
+                    timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY):
+                with open(out_path, mode="ab") as f:
+                    f.write(response.chunkData)
+        except RpcError as e:
+            raise self._handle_rpc_error(e)
 
     def wait_for_server(self, num_retries=SERVER_READY_RETRY_LIMIT, **kwargs):
         """
@@ -361,3 +368,18 @@ class RpcClient(object):
                         continue
                     return obj
         raise TypeError("Unknown response type: " + str(type(response)))
+
+    def _handle_rpc_error(self, e):
+        logging.error(str(e))
+        if isinstance(e, RpcError):
+            rpc_error = RpcError(e)
+            if e.code() == StatusCode.DEADLINE_EXCEEDED:
+                return YBOpsRuntimeError("Timed out while connecting to node agent at {}:{}"
+                                         .format(self.ip, self.port))
+            if rpc_error.code() == StatusCode.UNAVAILABLE:
+                return YBOpsRuntimeError("Node agent is unreachable at {}:{}"
+                                         .format(self.ip, self.port))
+            return YBOpsRuntimeError("RPC error while connecting to node agent at {}:{} - {}"
+                                     .format(self.ip, self.port, rpc_error.code()))
+        return YBOpsRuntimeError("Unknown error while connecting to node agent at {}:{} - {}"
+                                 .format(self.ip, self.port, str(e)))

@@ -915,15 +915,13 @@ public class HealthChecker {
           generateCollectMetricsScript(universe.getUniverseUUID(), nodeInfo);
 
       String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
-      nodeUniverseManager
-          .uploadFileToNode(
-              nodeInfo.nodeDetails,
-              universe,
-              generatedScriptPath,
-              scriptPath,
-              SCRIPT_PERMISSIONS,
-              context)
-          .processErrors();
+      nodeUniverseManager.uploadFileToNode(
+          nodeInfo.nodeDetails,
+          universe,
+          generatedScriptPath,
+          scriptPath,
+          SCRIPT_PERMISSIONS,
+          context);
     }
 
     String scriptPath =
@@ -937,15 +935,13 @@ public class HealthChecker {
       log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
       String generatedScriptPath = generateNodeCheckScript(universe.getUniverseUUID(), nodeInfo);
 
-      nodeUniverseManager
-          .uploadFileToNode(
-              nodeInfo.nodeDetails,
-              universe,
-              generatedScriptPath,
-              scriptPath,
-              SCRIPT_PERMISSIONS,
-              context)
-          .processErrors();
+      nodeUniverseManager.uploadFileToNode(
+          nodeInfo.nodeDetails,
+          universe,
+          generatedScriptPath,
+          scriptPath,
+          SCRIPT_PERMISSIONS,
+          context);
     }
     uploadedNodeInfo.put(nodeKey, nodeInfo);
 
