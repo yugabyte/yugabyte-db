@@ -40,8 +40,8 @@ Before installing **wal2json**, you should have PostgreSQL 9.4+ installed (inclu
 If you compile PostgreSQL by yourself and install it in `/home/euler/pg16`:
 
 ```
-$ tar -zxf wal2json-wal2json_2_5.tar.gz
-$ cd wal2json-wal2json_2_5
+$ tar -zxf wal2json-wal2json_2_6.tar.gz
+$ cd wal2json-wal2json_2_6
 $ export PATH=/home/euler/pg16/bin:$PATH
 $ make
 $ make install
@@ -51,8 +51,8 @@ If you are using [PostgreSQL yum repository](https://yum.postgresql.org):
 
 ```
 $ sudo yum install postgresql16-devel
-$ tar -zxf wal2json-wal2json_2_5.tar.gz
-$ cd wal2json-wal2json_2_5
+$ tar -zxf wal2json-wal2json_2_6.tar.gz
+$ cd wal2json-wal2json_2_6
 $ export PATH=/usr/pgsql-16/bin:$PATH
 $ make
 $ make install
@@ -62,8 +62,8 @@ If you are using [PostgreSQL apt repository](https://wiki.postgresql.org/wiki/Ap
 
 ```
 $ sudo apt-get install postgresql-server-dev-16
-$ tar -zxf wal2json-wal2json_2_5.tar.gz
-$ cd wal2json-wal2json_2_5
+$ tar -zxf wal2json-wal2json_2_6.tar.gz
+$ cd wal2json-wal2json_2_6
 $ export PATH=/usr/lib/postgresql/16/bin:$PATH
 $ make
 $ make install

@@ -34,8 +34,8 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-#define WAL2JSON_VERSION				"2.5dev"
-#define WAL2JSON_VERSION_NUM			205
+#define WAL2JSON_VERSION				"2.6"
+#define WAL2JSON_VERSION_NUM			206
 
 #define	WAL2JSON_FORMAT_VERSION			2
 #define	WAL2JSON_FORMAT_MIN_VERSION		1
