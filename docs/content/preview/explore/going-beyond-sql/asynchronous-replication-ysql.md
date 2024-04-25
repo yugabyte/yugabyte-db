@@ -7,6 +7,7 @@ headContent: xCluster unidirectional and bidirectional replication (2+ regions)
 aliases:
   - /preview/explore/two-data-centers-linux/
   - /preview/explore/two-data-centers/macos/
+  - /preview/explore/multi-region-deployments/asynchronous-replication-ysql/
 menu:
   preview:
     identifier: explore-multi-region-deployments-async-replication-1-ysql
