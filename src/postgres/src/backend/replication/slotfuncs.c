@@ -269,7 +269,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 {
 #define PG_GET_REPLICATION_SLOTS_COLS 11
 /* YB specific fields in pg_get_replication_slots */
-#define YB_PG_GET_REPLICATION_SLOTS_COLS 1
+#define YB_PG_GET_REPLICATION_SLOTS_COLS 2
 
 	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
 		ereport(ERROR,
@@ -355,6 +355,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 		const char	*yb_stream_id;
 		bool		yb_stream_active;
+		uint64      yb_restart_commit_ht;
 
 		if (IsYugaByteEnabled())
 		{
@@ -368,6 +369,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 			restart_lsn = slot->restart_lsn;
 			confirmed_flush_lsn = slot->confirmed_flush;
+			yb_restart_commit_ht = slot->record_id_commit_time_ht;
 			xmin = slot->xmin;
 			/*
 			 * Set catalog_xmin as xmin to make the PG Debezium connector work.
@@ -452,9 +454,15 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			nulls[i++] = true;
 
 		if (IsYugaByteEnabled())
+		{
 			values[i++] = CStringGetTextDatum(yb_stream_id);
+			values[i++] = Int64GetDatum(yb_restart_commit_ht);
+		}
 		else
+		{
 			nulls[i++] = true;
+			nulls[i++] = true;
+		}
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}

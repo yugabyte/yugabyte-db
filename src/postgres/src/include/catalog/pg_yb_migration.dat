@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V49__19132__yb_local_tablets.sql
-{ major => '49', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V50__22040__yb_restart_commit_ht_in_pg_replication_slots.sql
+{ major => '50', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]
