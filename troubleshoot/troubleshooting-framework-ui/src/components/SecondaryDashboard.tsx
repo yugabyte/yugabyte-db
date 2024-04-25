@@ -39,6 +39,7 @@ interface SecondaryDashboardProps {
   prometheusQueryEnabled: boolean;
   metricMeasure: string;
   operations: string[];
+  groupByOperations: string[];
   height?: number;
   width?: number;
   shouldAbbreviateTraceName: boolean;
@@ -152,6 +153,7 @@ export const SecondaryDashboard = ({
   prometheusQueryEnabled,
   metricMeasure,
   operations,
+  groupByOperations,
   anomalyData,
   height,
   width,
@@ -179,6 +181,9 @@ export const SecondaryDashboard = ({
   const [focusedButton, setFocusedButton] = useState<any>(null);
   const [itemInDropdown, setItemInDropdown] = useState<boolean>(false);
   const [active, setActive] = useState<boolean>(false);
+  const [selectedGroupByOperation, setSelectedGroupByOperation] = useState<any>(
+    groupByOperations?.[0]
+  );
 
   // Ref and Previous variavles
   const outlierButtonsRef: any = useRef(null);
@@ -447,6 +452,12 @@ export const SecondaryDashboard = ({
     }
   };
 
+  const loadDataByGroupByOperation = (groupByOperation: string, metricData: any) => {
+    metricData?.layout?.type === ASH &&
+      (metricMeasure === MetricMeasure.OUTLIER || metricMeasure === MetricMeasure.OUTLIER_TABLES) &&
+      onSelectAshLabel(groupByOperation, metricData);
+  };
+
   const loadDataByMetricOperation = (
     metricOperation: string,
     itemInDropdown: boolean,
@@ -530,8 +541,12 @@ export const SecondaryDashboard = ({
     }
     showDropdown = true;
     if (isNonEmptyArray(operations)) {
-      metricOperationsDropdown = operations?.slice(operations.length - numButtonsInDropdown);
-      metricOperationsDisplayed = operations?.slice(0, operations.length - numButtonsInDropdown);
+      metricOperationsDropdown =
+        operations.length === 1 ? [] : operations?.slice(operations.length - numButtonsInDropdown);
+      metricOperationsDisplayed =
+        operations.length === 1
+          ? operations?.slice(0, 1)
+          : operations?.slice(0, operations.length - numButtonsInDropdown);
     }
   }
   const inFocusButton = focusedButton ? focusedButton : operations?.[0];
@@ -567,6 +582,38 @@ export const SecondaryDashboard = ({
       }}
     >
       <span ref={outlierButtonsRef} className={classes.outlierButtonContainer}>
+        {metricData?.layout?.type === ASH &&
+          (metricMeasure === MetricMeasure.OUTLIER ||
+            metricMeasure === MetricMeasure.OUTLIER_TABLES) &&
+          isNonEmptyArray(groupByOperations) && (
+            <Box ml={2} mr={2}>
+              <YBSelect
+                value={selectedGroupByOperation}
+                className={clsx(
+                  classes.outlierOnlyButton,
+                  classes.overrideDefaultMuiSelect,
+                  classes.overrideDefaultMuiFormControl
+                )}
+              >
+                {groupByOperations?.map((groupByOperation: string, operationIdx: number) => {
+                  return (
+                    <MenuItem
+                      key={operationIdx}
+                      value={groupByOperation}
+                      onClick={(event) => {
+                        loadDataByGroupByOperation(groupByOperation, metricData);
+                        setSelectedGroupByOperation(groupByOperation);
+                        event.stopPropagation();
+                      }}
+                    >
+                      {groupByOperation}
+                    </MenuItem>
+                  );
+                })}
+              </YBSelect>
+            </Box>
+          )}
+
         {((metricData?.layout?.type === ASH &&
           metricMeasure === MetricMeasure.OVERALL &&
           isNonEmptyArray(operations)) ||
@@ -616,7 +663,6 @@ export const SecondaryDashboard = ({
                   )}
                   key={idx}
                   value={operation}
-                  // active={operation === inFocusButton}
                   onClick={(event) => {
                     setActive(true);
                     loadDataByMetricOperation(operation, true, metricData);

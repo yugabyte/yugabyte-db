@@ -309,7 +309,6 @@ export const getRecommendationMetricsMap = (anomalyData: Anomaly) => {
   const recommendationMetricsMap = new Set(flattenedRecommendationMetrics);
   const recommendationMetrics = Array.from(recommendationMetricsMap);
   
-  console.log('recommendationMetrics', recommendationMetrics);
   return recommendationMetrics;
 };
 
