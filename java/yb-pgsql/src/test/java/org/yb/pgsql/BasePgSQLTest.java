@@ -163,6 +163,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "connections will be using same physical conn, due to which it will affect the memory " +
         "allocated to connection1 by connection2";
 
+  protected static final String CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN =
+      "Test needs two different physical connections while testing catalog cache misses." +
+      "With Connection Manager, logical connections will share the same physical connection " +
+      "due to which catalog cache hits occur for the same query executed on different logical " +
+      "connections";
+
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
   protected boolean startRedisProxy = false;
