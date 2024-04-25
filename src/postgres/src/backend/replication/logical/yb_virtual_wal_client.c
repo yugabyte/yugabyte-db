@@ -42,6 +42,7 @@ static YBCPgChangeRecordBatch *cached_records = NULL;
 static size_t cached_records_last_sent_row_idx = 0;
 static bool last_getconsistentchanges_response_empty = false;
 static TimestampTz last_getconsistentchanges_response_receipt_time;
+static XLogRecPtr last_txn_begin_lsn = InvalidXLogRecPtr;
 
 /*
  * Marker to refresh publication's tables list. If set to true call
@@ -139,6 +140,7 @@ YBCInitVirtualWal(List *yb_publication_names)
 	unacked_transactions = NIL;
 	last_getconsistentchanges_response_empty = false;
 	last_getconsistentchanges_response_receipt_time = 0;
+	last_txn_begin_lsn = InvalidXLogRecPtr;
 
 	needs_publication_table_list_refresh = false;
 }
@@ -183,7 +185,8 @@ InitVirtualWal(List *publication_names)
 	List		*tables;
 	Oid			*table_oids;
 
-	YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_last_pub_refresh_time);
+	YBCUpdateYbReadTimeAndInvalidateRelcache(
+		MyReplicationSlot->data.yb_last_pub_refresh_time);
 
 	tables = YBCGetTables(publication_names);
 	table_oids = YBCGetTableOids(tables);	
@@ -245,6 +248,8 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
 								   &cached_records);
 
 		cached_records_last_sent_row_idx = 0;
+		YbWalSndTotalTimeInYBDecodeMicros = 0;
+		YbWalSndTotalTimeInReorderBufferMicros = 0;
 		YbWalSndTotalTimeInSendingMicros = 0;
 		last_getconsistentchanges_response_receipt_time = GetCurrentTimestamp();
 	}
@@ -314,10 +319,26 @@ PreProcessBeforeFetchingNextBatch()
 	{
 		TimestampDifference(last_getconsistentchanges_response_receipt_time,
 							GetCurrentTimestamp(), &secs, &microsecs);
+
+		/*
+		 * Note that this processing time does not include the time taken for
+		 * the conversion from QLValuePB (proto) to PG datum values. This is
+		 * done in ybc_pggate and is logged separately.
+		 *
+		 * The time being logged here is the total time it took for processing
+		 * and sending a whole batch AFTER converting all the values to the PG
+		 * format.
+		 */
 		elog(DEBUG1,
 			 "Walsender processing time for the last batch is (%ld s, %d us)",
 			 secs, microsecs);
-		elog(DEBUG1, "Time spent in sending data (socket): %" PRIu64 " us",
+		elog(DEBUG1,
+			 "Time Distribution. "
+			 "yb_decode: %" PRIu64 " us, "
+			 "reorder buffer: %" PRIu64 " us, "
+			 "socket: %" PRIu64 " us.",
+			 YbWalSndTotalTimeInYBDecodeMicros,
+			 YbWalSndTotalTimeInReorderBufferMicros,
 			 YbWalSndTotalTimeInSendingMicros);
 	}
 
@@ -329,7 +350,6 @@ PreProcessBeforeFetchingNextBatch()
 static void
 TrackUnackedTransaction(YBCPgVirtualWalRecord *record)
 {
-	YBUnackedTransactionInfo *transaction = NULL;
 	MemoryContext			 caller_context;
 
 	caller_context = GetCurrentMemoryContext();
@@ -339,32 +359,20 @@ TrackUnackedTransaction(YBCPgVirtualWalRecord *record)
 	{
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
 		{
-			transaction = palloc(sizeof(YBUnackedTransactionInfo));
-			transaction->xid = record->xid;
-			transaction->begin_lsn = record->lsn;
-			transaction->commit_lsn = InvalidXLogRecPtr;
-
-			unacked_transactions = lappend(unacked_transactions, transaction);
+			last_txn_begin_lsn = record->lsn;
 			break;
 		}
 
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 		{
-			YBUnackedTransactionInfo *txninfo = NULL;
+			YBUnackedTransactionInfo *transaction =
+				palloc(sizeof(YBUnackedTransactionInfo));
+			transaction->xid = record->xid;
+			Assert(last_txn_begin_lsn != InvalidXLogRecPtr);
+			transaction->begin_lsn = last_txn_begin_lsn;
+			transaction->commit_lsn = record->lsn;
 
-			/*
-			 * We should at least have one transaction which we appended while
-			 * handling the corresponding BEGIN record.
-			 */
-			Assert(list_length(unacked_transactions) > 0);
-
-			txninfo = (YBUnackedTransactionInfo *) lfirst(
-				list_tail((List *) unacked_transactions));
-			Assert(txninfo->xid == record->xid);
-			Assert(txninfo->begin_lsn != InvalidXLogRecPtr);
-			Assert(txninfo->commit_lsn == InvalidXLogRecPtr);
-
-			txninfo->commit_lsn = record->lsn;
+			unacked_transactions = lappend(unacked_transactions, transaction);
 			break;
 		}
 
@@ -416,8 +424,8 @@ YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush)
 	elog(DEBUG1, "Updating confirmed_flush to %lu and restart_lsn_hint to %lu",
 		 confirmed_flush, restart_lsn_hint);
 
-	YBCUpdateAndPersistLSN(MyReplicationSlot->data.yb_stream_id, restart_lsn_hint,
-						   confirmed_flush, &restart_lsn);
+	YBCUpdateAndPersistLSN(MyReplicationSlot->data.yb_stream_id,
+						   restart_lsn_hint, confirmed_flush, &restart_lsn);
 
 	elog(DEBUG1, "The restart_lsn calculated by the virtual wal is %" PRIu64,
 		 restart_lsn);

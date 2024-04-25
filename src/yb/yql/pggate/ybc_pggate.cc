@@ -2357,6 +2357,7 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   *DCHECK_NOTNULL(record_batch) = NULL;
   const auto resp = result.get();
   VLOG(4) << "The GetConsistentChangesForCDC response: " << resp.DebugString();
+  auto response_to_pg_conversion_start = GetCurrentTimeMicros();
   auto row_count = resp.cdc_sdk_proto_records_size();
 
   // Used for logging a summary of the response received from the CDC service.
@@ -2501,6 +2502,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   } else {
     VLOG(1) << "Received 0 rows in GetConsistentChangesResponsePB response\n";
   }
+
+  auto time_in_conversion = GetCurrentTimeMicros() - response_to_pg_conversion_start;
+  VLOG(1) << "Time spent in converting from QLValuePB to PG datum in PgGate: "
+          << time_in_conversion << " us";
 
   return YBCStatusOK();
 }

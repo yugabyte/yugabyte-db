@@ -4716,3 +4716,14 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 	assign_yb_read_time(read_time, NULL);
 	YbRelationCacheInvalidate();
 }
+
+uint64_t
+YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
+{
+	long secs;
+	int microsecs;
+
+	TimestampDifference(yb_start_time, GetCurrentTimestamp(), &secs,
+						&microsecs);
+	return secs * USECS_PER_SEC + microsecs;
+}

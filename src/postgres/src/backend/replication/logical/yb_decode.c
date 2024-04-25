@@ -29,6 +29,7 @@
 
 #include "access/xact.h"
 #include "pg_yb_utils.h"
+#include "replication/walsender_private.h"
 #include "replication/yb_decode.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -71,6 +72,8 @@ void
 YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 							   XLogReaderState *record)
 {
+	TimestampTz start_time = GetCurrentTimestamp();
+
 	elog(DEBUG4,
 		 "YBLogicalDecodingProcessRecord: Decoding record with action = %d.",
 		 record->yb_virtual_wal_record->action);
@@ -129,6 +132,9 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN:
 			pg_unreachable();
 	}
+
+	YbWalSndTotalTimeInYBDecodeMicros +=
+		YbCalculateTimeDifferenceInMicros(start_time);
 }
 
 /*
