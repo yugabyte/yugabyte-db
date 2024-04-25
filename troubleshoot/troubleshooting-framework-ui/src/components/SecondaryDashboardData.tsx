@@ -3,7 +3,7 @@ import { usePrevious } from 'react-use';
 import { useMutation } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { Box, Typography } from '@material-ui/core';
-import _ from 'lodash';
+import _, { groupBy } from 'lodash';
 import clsx from 'clsx';
 import { SecondaryDashboardHeader } from './SecondaryDashboardHeader';
 import { ASH_GROUPBY_VALUES, SecondaryDashboard } from './SecondaryDashboard';
@@ -116,7 +116,7 @@ export const SecondaryDashboardData = ({
     const formattedStartDate = startDateTime?.toISOString();
     const formattedEndDate = endDateTime?.toISOString();
 
-    graphParamsCopy?.map((params: GraphQuery) => {
+    graphParamsCopy?.map((params: GraphQuery, paramsIdx: number) => {
       const settings = params.settings;
       const filters = params.filters;
       let start = params.start;
@@ -140,6 +140,9 @@ export const SecondaryDashboardData = ({
       }
       if (isNonEmptyString(node) && node !== ALL) {
         filters.instanceName = [node];
+      }
+      if (params.name.startsWith('active_session_history')) {
+        params.groupBy = [];
       }
       settings.returnAggregatedValue = metricMeasure !== MetricMeasure.OVERALL;
       settings.splitType =
@@ -304,20 +307,26 @@ export const SecondaryDashboardData = ({
     }
   };
 
-  const renderSupportingGraphs = (metricData: any, uniqueOperations: any, graphType: GraphType) => {
+  const renderSupportingGraphs = (
+    metricData: any,
+    uniqueOperations: any,
+    groupByOperations: any,
+    graphType: GraphType
+  ) => {
     return (
       <Box mt={3} mr={8}>
         <SecondaryDashboard
           metricData={metricData}
           metricKey={
             metricData.name?.startsWith('active_session_history')
-              ? `${metricData.name}-${uniqueOperations?.[0]}`
+              ? `${metricData.name}-${Math.random() * 1000}`
               : metricData.name
           }
           containerWidth={null}
           prometheusQueryEnabled={true}
           metricMeasure={metricMeasure}
           operations={uniqueOperations}
+          groupByOperations={groupByOperations}
           shouldAbbreviateTraceName={true}
           isMetricLoading={false}
           anomalyData={anomalyData}
@@ -331,36 +340,65 @@ export const SecondaryDashboardData = ({
     );
   };
 
-  const getOperations = (metricData: any) => {
+  const getAshOperations = (metricData: any) => {
     let uniqueOperations: any = new Set();
-    if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
+    let defaultGroupBy: any = {};
+    const defaultGroupByLabel = metricData.layout.metadata?.currentGroupBy?.[0];
+    const param = graphQueryParams.find(
+      (queryParam: any, paramIdx: number) => paramIdx > 0 && queryParam.name === metricData.name
+    );
+    metricData.layout?.metadata?.supportedGroupBy?.map((groupBy: any) => {
+      if (groupBy.label === defaultGroupByLabel) {
+        defaultGroupBy = groupBy;
+      }
+      // TODO: Next iteration, display query as well
+      // if (!(groupBy.label === GraphLabel.QUERY_ID && isNonEmptyArray(param.filters?.queryId))) {
+      if (!(groupBy.label === GraphLabel.QUERY_ID)) {
+        uniqueOperations.add(groupBy.name);
+      }
+    });
+
+    uniqueOperations = Array.from(uniqueOperations);
+
+    // if (param.name === 'active_session_history' && isEmptyArray(param.groupBy)) {
+    if (isEmptyArray(param.groupBy)) {
+      uniqueOperations.sort((a: string, b: string) => {
+        return a == defaultGroupBy.name ? -1 : b == defaultGroupBy.name ? 1 : 0;
+      });
+    }
+
+    return uniqueOperations;
+  };
+
+  const getOperations = (metricData: any, graphType: GraphType) => {
+    let uniqueOperations: any = new Set();
+    let groupByOperations: any = new Set();
+    const isOutlier =
+      metricMeasure === MetricMeasure.OUTLIER || metricMeasure === MetricMeasure.OUTLIER_TABLES;
+    if (
+      metricData?.layout?.type === ASH &&
+      isNonEmptyObject(metricData) &&
+      isOutlier &&
+      graphType === GraphType.SUPPORTING
+    ) {
+      groupByOperations = getAshOperations(metricData);
+    } else {
+      groupByOperations = Array.from(groupByOperations);
+    }
+
+    if (isOutlier && isNonEmptyObject(metricData)) {
       metricData.data.forEach((metricItem: any) => {
         uniqueOperations.add(metricItem.name);
       });
       uniqueOperations = Array.from(uniqueOperations);
     } else if (metricData?.layout?.type === ASH && isNonEmptyObject(metricData)) {
-      let defaultGroupBy: any = {};
-      const defaultGroupByLabel = metricData.layout.metadata?.currentGroupBy?.[0];
-      const param = graphQueryParams.find((queryParam: any) => queryParam.name === metricData.name);
-      metricData.layout.metadata?.supportedGroupBy?.map((groupBy: any) => {
-        if (groupBy.label === defaultGroupByLabel) {
-          defaultGroupBy = groupBy;
-        }
-        if (!(groupBy.label === GraphLabel.QUERY_ID && isNonEmptyArray(param.filters?.queryId))) {
-          uniqueOperations.add(groupBy.name);
-        }
-      });
-      uniqueOperations = Array.from(uniqueOperations);
-
-      // if (param.name === 'active_session_history' && isEmptyArray(param.groupBy)) {
-      if (isEmptyArray(param.groupBy)) {
-        uniqueOperations.sort((a: string, b: string) => {
-          return a == defaultGroupBy.name ? -1 : b == defaultGroupBy.name ? 1 : 0;
-        });
+      uniqueOperations = getAshOperations(metricData);
+      if (!uniqueOperations) {
+        uniqueOperations = Array.from(new Set());
       }
     }
 
-    return uniqueOperations;
+    return { uniqueOperations, groupByOperations };
   };
 
   return (
@@ -401,7 +439,9 @@ export const SecondaryDashboardData = ({
                 const metricData = graphData.find((data: any) => data.name === graph.name);
                 // ASH can have buttons (operations) in OVERALL, but it should not have any controls if it is the MAIN graph
                 const operations =
-                  metricMeasure === MetricMeasure.OVERALL ? [] : getOperations(metricData);
+                  metricMeasure === MetricMeasure.OVERALL
+                    ? { uniqueOperations: [], groupByOperations: [] }
+                    : getOperations(metricData, GraphType.MAIN);
 
                 return (
                   <Box className={classes.secondaryDashboard}>
@@ -412,7 +452,12 @@ export const SecondaryDashboardData = ({
                         </span>
                       </Box>
                     )}
-                    {renderSupportingGraphs(metricData, operations, GraphType.MAIN)}
+                    {renderSupportingGraphs(
+                      metricData,
+                      operations.uniqueOperations,
+                      operations.groupByOperations,
+                      GraphType.MAIN
+                    )}
                   </Box>
                 );
               })}
@@ -459,7 +504,7 @@ export const SecondaryDashboardData = ({
                     if (isNonEmptyString(metricData?.errorMessage)) {
                       return <Box>{}</Box>;
                     } else {
-                      const operations = getOperations(metricData);
+                      const operations = getOperations(metricData, GraphType.SUPPORTING);
 
                       return (
                         <>
@@ -474,7 +519,8 @@ export const SecondaryDashboardData = ({
                                 {renderItems.push(
                                   renderSupportingGraphs(
                                     metricData,
-                                    operations,
+                                    operations.uniqueOperations,
+                                    operations.groupByOperations,
                                     isOnlyReason ? GraphType.MAIN : GraphType.SUPPORTING
                                   )
                                 )}
