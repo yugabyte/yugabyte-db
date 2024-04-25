@@ -919,6 +919,10 @@ Status XClusterSourceManager::PopulateXClusterStatus(
   for (const auto& [table_id, streams] : GetAllStreams()) {
     for (const auto& stream : streams) {
       XClusterOutboundTableStreamStatus table_stream_status;
+      auto table_info_res = catalog_manager_.GetTableById(table_id);
+      if (table_info_res) {
+        table_stream_status.full_table_name = GetFullTableName(*table_info_res.get());
+      }
       table_stream_status.table_id = table_id;
       table_stream_status.stream_id = stream->StreamId();
       table_stream_status.state =
@@ -960,7 +964,6 @@ Status XClusterSourceManager::PopulateXClusterStatus(
 
       for (const auto& [table_id, table_info] : namespace_status.table_infos()) {
         XClusterOutboundReplicationGroupTableStatus table_status;
-        table_status.table_id = table_id;
         if (table_info.has_stream_id()) {
           auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(table_info.stream_id()));
           auto stream_status = FindOrNull(stream_status_map, stream_id);

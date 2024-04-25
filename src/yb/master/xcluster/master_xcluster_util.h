@@ -13,10 +13,15 @@
 
 #pragma once
 
+#include <string>
+
 namespace yb::master {
 class TableInfo;
 
 // Should the table be automatically added to xCluster replication?
 bool IsTableEligibleForXClusterReplication(const master::TableInfo& table);
+
+// Get the table name along with the YSQL schema name if this is a YSQL table.
+std::string GetFullTableName(const TableInfo& table_info);
 
 }  // namespace yb::master
