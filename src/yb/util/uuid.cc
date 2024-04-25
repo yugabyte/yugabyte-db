@@ -17,6 +17,7 @@
 #include <boost/uuid/detail/sha1.hpp>
 #include <boost/uuid/nil_generator.hpp>
 #include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/string_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
 #include "yb/gutil/endian.h"
@@ -340,6 +341,18 @@ Result<Uuid> Uuid::FromString(const std::string& strval) {
   }
   try {
     return Uuid(boost::lexical_cast<boost::uuids::uuid>(strval));
+  } catch (std::exception& e) {
+    return STATUS(Corruption, "Couldn't read Uuid from string", strval);
+  }
+}
+
+Result<Uuid> Uuid::FromHexStringBigEndian(const std::string& strval) {
+  if (strval.empty()) {
+    return Uuid::Nil();
+  }
+  try {
+    boost::uuids::string_generator uuid_gen;
+    return Uuid(uuid_gen(strval));
   } catch (std::exception& e) {
     return STATUS(Corruption, "Couldn't read Uuid from string", strval);
   }

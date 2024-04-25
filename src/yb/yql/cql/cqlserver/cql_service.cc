@@ -218,7 +218,7 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
     ash::AshMetadata metadata{
         .root_request_id = Uuid::Generate(),
         .client_host_port = HostPort(inbound_call->remote_address())};
-    auto uuid_res = Uuid::FromHexString(server_->instance_pb().permanent_uuid());
+    auto uuid_res = Uuid::FromHexStringBigEndian(server_->instance_pb().permanent_uuid());
     if (uuid_res.ok()) {
       metadata.yql_endpoint_tserver_uuid = *uuid_res;
     }

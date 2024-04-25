@@ -61,8 +61,7 @@ DEFINE_test_flag(uint32, yb_ash_sleep_at_wait_state_ms, 0,
     "How long to sleep/delay when entering a particular wait state.");
 DEFINE_test_flag(uint32, yb_ash_wait_code_to_sleep_at, 0,
     "If enabled, add a sleep/delay when we enter the specified wait state.");
-DEFINE_test_flag(bool, export_ash_uuids_as_hex_strings, yb::IsDebug(),
-    "Exports wait-state name as a human understandable string.");
+DEPRECATE_FLAG(bool, TEST_export_ash_uuids_as_hex_strings, "04_2024");
 DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
     " of the method tserver is running");
 DEFINE_test_flag(bool, ash_fetch_wait_states_for_raft_log, false, "Should ASH fetch "
