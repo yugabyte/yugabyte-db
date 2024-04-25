@@ -145,7 +145,8 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
         <Typography variant="body2" className={classes.emptyContainerSubtitle}>
           {t('cdc.emptyContainerSubtitle')}
         </Typography>
-        <Box display="flex" flexDirection="row" mt={2} alignItems={'end'}>
+        {/* Enable below link when we get something to display */}
+        {/* <Box display="flex" flexDirection="row" mt={2} alignItems={'end'}>
           <img src={Flash} alt="--" /> &nbsp;
           <Link
             component={'button'}
@@ -155,7 +156,7 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
           >
             {t('cdc.emptyContainerLink')}
           </Link>
-        </Box>
+        </Box> */}
       </Box>
     );
 };
