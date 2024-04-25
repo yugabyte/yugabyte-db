@@ -8,6 +8,7 @@ import { ModalTitle, ReleaseArtifacts, ReleasePlatform, ReleasePlatformArchitect
 
 interface ImportedArchitectureProps {
   artifacts: ReleaseArtifacts[] | undefined;
+  isDisabled: boolean;
   onEditArchitectureClick: () => void;
   onSetModalTitle: (modalTitle: string) => void;
   onSetReleaseArchitecture: (selectedArchitecture: ReleasePlatformArchitecture | null) => void;
@@ -70,6 +71,7 @@ const IMPORT_OPTIONS = {
 
 export const ImportedArchitecture = ({
   artifacts,
+  isDisabled,
   onEditArchitectureClick,
   onSidePanelClose,
   onSetModalTitle,
@@ -147,6 +149,7 @@ export const ImportedArchitecture = ({
               <YBButton
                 variant="secondary"
                 size="large"
+                disabled={isDisabled}
                 startIcon={<Edit />}
                 onClick={() => {
                   if (artifact.architecture === ReleasePlatformArchitecture.X86) {
