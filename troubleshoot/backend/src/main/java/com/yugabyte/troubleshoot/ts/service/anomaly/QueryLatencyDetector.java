@@ -60,9 +60,12 @@ public class QueryLatencyDetector extends QueryAnomalyDetector {
       PgStatStatementsQuery query,
       List<GraphData> graphDataList) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
+
+    List<GraphData> graphsWithoutMaxLatency =
+        graphDataList.stream().filter(gd -> !gd.getName().equals("Max")).toList();
     List<GraphAnomaly> anomalies =
         anomalyDetectionService.getAnomalies(
-            GraphAnomaly.GraphAnomalyType.INCREASE, graphDataList, detectionSettings);
+            GraphAnomaly.GraphAnomalyType.INCREASE, graphsWithoutMaxLatency, detectionSettings);
 
     AnomalyDetectionContext updatedContext =
         context.toBuilder()

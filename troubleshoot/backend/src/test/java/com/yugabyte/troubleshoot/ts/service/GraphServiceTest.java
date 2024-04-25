@@ -83,6 +83,7 @@ public class GraphServiceTest {
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
     graphQuery.setName("active_session_history_tserver");
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -108,6 +109,7 @@ public class GraphServiceTest {
     settings.setSplitCount(2);
     settings.setReturnAggregatedValue(true);
     graphQuery.setSettings(settings);
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -134,6 +136,7 @@ public class GraphServiceTest {
     settings.setReturnAggregatedValue(true);
     graphQuery.setGroupBy(ImmutableList.of(GraphLabel.clientNodeIp));
     graphQuery.setSettings(settings);
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -161,6 +164,7 @@ public class GraphServiceTest {
             GraphLabel.regionCode,
             ImmutableList.of("us-west-1")));
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -183,6 +187,7 @@ public class GraphServiceTest {
     graphQuery.setFilters(ImmutableMap.of(GraphLabel.regionCode, ImmutableList.of("us-west-1")));
     graphQuery.setGroupBy(ImmutableList.of(GraphLabel.queryId));
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -206,6 +211,7 @@ public class GraphServiceTest {
     graphQuery.setFilters(ImmutableMap.of(GraphLabel.regionCode, ImmutableList.of("us-west-1")));
     graphQuery.setGroupBy(ImmutableList.of(GraphLabel.clientNodeIp));
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -235,6 +241,7 @@ public class GraphServiceTest {
             ImmutableList.of("us-west-1")));
     graphQuery.setName("query_latency");
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -264,6 +271,7 @@ public class GraphServiceTest {
     settings.setSplitCount(2);
     settings.setReturnAggregatedValue(true);
     graphQuery.setSettings(settings);
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -284,6 +292,7 @@ public class GraphServiceTest {
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
     graphQuery.setName("ysql_sql_latency");
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     String expectedQuery =
         "http://localhost:9090/api/v1/query_range?query="
@@ -327,7 +336,9 @@ public class GraphServiceTest {
         ImmutableMap.of(
             GraphLabel.regionCode, ImmutableList.of("us-west-1"),
             GraphLabel.instanceType, ImmutableList.of("tserver")));
+    graphQuery.setFillMissingPoints(false);
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     String expectedQuery =
         "http://localhost:9090/api/v1/query_range?query="
@@ -374,12 +385,14 @@ public class GraphServiceTest {
         ImmutableMap.of(
             GraphLabel.regionCode, ImmutableList.of("us-west-1"),
             GraphLabel.instanceType, ImmutableList.of("tserver")));
+    graphQuery.setFillMissingPoints(false);
     GraphSettings settings = new GraphSettings();
     settings.setSplitMode(GraphSettings.SplitMode.TOP);
     settings.setSplitType(GraphSettings.SplitType.NODE);
     settings.setSplitCount(2);
     settings.setReturnAggregatedValue(true);
     graphQuery.setSettings(settings);
+    graphQuery.setFillMissingPoints(false);
 
     String expectedQuery =
         "http://localhost:9090/api/v1/query_range?query=((avg(rate(rpc_latency_sum%7B"
