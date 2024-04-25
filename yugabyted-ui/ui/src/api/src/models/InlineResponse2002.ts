@@ -27,7 +27,7 @@ export interface InlineResponse2002  {
    * @type {RestoreDetails[]}
    * @memberof InlineResponse2002
    */
-  schedules?: RestoreDetails[];
+  restore: RestoreDetails[];
 }
 
 

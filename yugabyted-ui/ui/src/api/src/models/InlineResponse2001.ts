@@ -27,7 +27,7 @@ export interface InlineResponse2001  {
    * @type {BackupDetails[]}
    * @memberof InlineResponse2001
    */
-  schedules?: BackupDetails[];
+  backup: BackupDetails[];
 }
 
 

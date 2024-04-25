@@ -42,7 +42,7 @@ export const BackupList: FC = () => {
 
   const { data, isFetching, refetch } = useGetBackupDetailsQuery();
 
-  const backupData = data?.schedules ?? [];
+  const backupData = data?.backup ?? [];
 
   const filteredData = useMemo(
     () =>

@@ -42,7 +42,7 @@ export const RestoreList: FC = () => {
 
   const { data, isFetching, refetch } = useGetRestoreDetailsQuery();
 
-  const restoreData = data?.schedules ?? [];
+  const restoreData = data?.restore ?? [];
 
   const filteredData = useMemo(
     () =>
