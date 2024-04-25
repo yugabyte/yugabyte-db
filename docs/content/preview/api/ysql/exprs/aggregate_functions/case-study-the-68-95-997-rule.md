@@ -6,6 +6,8 @@ linkTitle: >
 headerTitle: >
   Case study: using aggregate functions to demonstrate the "68–95–99.7" rule
 description: Case study to show the use of percentile_cont() to illustrate the well-known "68–95–99.7" rule about a normal distribution.
+aliases:
+  - /preview/api/ysql/exprs/aggregate_functions/case-study-the-6895997-rule/
 menu:
   preview:
     identifier: case-study-the-68–95–997-rule
