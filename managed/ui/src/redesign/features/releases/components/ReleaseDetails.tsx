@@ -259,6 +259,7 @@ export const ReleaseDetails = ({
           <YBButton
             className={helperClasses.deleteButton}
             variant="secondary"
+            disabled={data?.universes?.length > 0}
             size="large"
             startIcon={<Delete />}
             onClick={() => {
@@ -271,6 +272,7 @@ export const ReleaseDetails = ({
           <YBButton
             variant="secondary"
             size="large"
+            disabled={data?.universes?.length > 0}
             onClick={() => {
               onDisableReleaseButtonClick();
               onSidePanelClose();
@@ -344,6 +346,7 @@ export const ReleaseDetails = ({
               </YBButton>
               <Box mt={8}>
                 <ImportedArchitecture
+                  isDisabled={data?.universes?.length > 0}
                   artifacts={data?.artifacts}
                   onSetModalTitle={onSetModalTitle}
                   onSidePanelClose={onSidePanelClose}
