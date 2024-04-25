@@ -305,7 +305,7 @@ func YAMLtoString(filePath string) string {
 			formatter.Colorize("Error reading YAML file: "+err.Error()+"\n",
 				formatter.RedColor))
 	}
-	var data map[string]interface{}
+	var data yaml.MapSlice
 
 	// Unmarshal the YAML content into the map
 	err = yaml.Unmarshal(yamlContent, &data)
