@@ -336,6 +336,7 @@ create_backup() {
 
   gzip -9 < ${tar_name} > ${tgz_name}
   cleanup "${tar_name}"
+  delete_postgres_backup "${db_backup_path}"
 
   # Delete the version metadata backup if we had created it earlier
   docker_aware_cmd "yugaware" "rm -f ${data_dir}/${VERSION_METADATA_BACKUP}"
