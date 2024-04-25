@@ -936,7 +936,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   @Value
   @Builder
-  public static class UpgradeContext {
+  protected static class UpgradeContext {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;

@@ -2450,45 +2450,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           targetDiskUsagePercentage);
       return;
     }
-
-    boolean masterChanged = true;
-    boolean tserverChanged = true;
-    boolean isDedicated = cluster.userIntent.dedicatedNodes;
-    Set<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(clusterNodes);
-    Set<NodeDetails> mastersToBeRemoved = PlacementInfoUtil.getMastersToBeRemoved(clusterNodes);
-    if (CollectionUtils.isEmpty(mastersToBeRemoved)
-        && CollectionUtils.isEmpty(tserversToBeRemoved)) {
+    Set<NodeDetails> nodesToBeRemoved = PlacementInfoUtil.getNodesToBeRemoved(clusterNodes);
+    if (nodesToBeRemoved.isEmpty()) {
       log.debug("No nodes are getting removed");
-    }
-    if (cluster.userIntent.providerType != CloudType.onprem) {
-      DeviceInfo taskDeviceInfo = cluster.userIntent.deviceInfo;
-      DeviceInfo existingDeviceInfo = universe.getCluster(cluster.uuid).userIntent.deviceInfo;
-      if (taskDeviceInfo == null
-          || existingDeviceInfo == null
-          || (Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
-              && Objects.equals(taskDeviceInfo.volumeSize, existingDeviceInfo.volumeSize))) {
-        log.debug("No change in the volume configuration");
-        tserverChanged = CollectionUtils.isNotEmpty(tserversToBeRemoved);
-        if (!isDedicated) {
-          masterChanged = CollectionUtils.isNotEmpty(mastersToBeRemoved);
-        } else {
-          DeviceInfo taskMasterDeviceInfo = cluster.userIntent.masterDeviceInfo;
-          DeviceInfo existingMasterDeviceInfo =
-              universe.getCluster(cluster.uuid).userIntent.masterDeviceInfo;
-          if (taskMasterDeviceInfo == null
-              || existingMasterDeviceInfo == null
-              || (Objects.equals(
-                      taskMasterDeviceInfo.numVolumes, existingMasterDeviceInfo.numVolumes)
-                  && Objects.equals(
-                      taskMasterDeviceInfo.volumeSize, existingMasterDeviceInfo.volumeSize))) {
-            log.debug("No change in the master volume configuration");
-            masterChanged = CollectionUtils.isNotEmpty(mastersToBeRemoved);
-          }
+      if (cluster.userIntent.providerType != CloudType.onprem) {
+        DeviceInfo taskDeviceInfo = cluster.userIntent.deviceInfo;
+        DeviceInfo existingDeviceInfo = universe.getCluster(cluster.uuid).userIntent.deviceInfo;
+        if (taskDeviceInfo == null
+            || existingDeviceInfo == null
+            || (Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
+                && Objects.equals(taskDeviceInfo.volumeSize, existingDeviceInfo.volumeSize))) {
+          log.debug("No change in the volume configuration");
+          return;
         }
       }
-    }
-    if (!masterChanged && !tserverChanged) {
-      return;
     }
     SubTaskGroup validateSubTaskGroup =
         createSubTaskGroup(
@@ -2497,8 +2472,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         Json.fromJson(Json.toJson(taskParams()), ValidateNodeDiskSize.Params.class);
     params.clusterUuid = cluster.uuid;
     params.nodePrefix = universe.getUniverseDetails().nodePrefix;
-    params.mastersChanged = masterChanged;
-    params.tserversChanged = tserverChanged;
     params.targetDiskUsagePercentage = targetDiskUsagePercentage;
     ValidateNodeDiskSize task = createTask(ValidateNodeDiskSize.class);
     task.initialize(params);

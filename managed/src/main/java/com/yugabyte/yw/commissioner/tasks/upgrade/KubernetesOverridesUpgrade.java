@@ -38,7 +38,6 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
   }
 

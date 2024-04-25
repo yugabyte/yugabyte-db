@@ -39,7 +39,6 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
   }
 

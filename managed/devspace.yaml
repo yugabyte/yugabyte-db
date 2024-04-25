@@ -43,8 +43,6 @@ deployments:
         yugaware:
           service:
             type: ClusterIP
-          storage: 100Gi
-          storageClass: yb-standard
       # valuesFiles:
       # -
 

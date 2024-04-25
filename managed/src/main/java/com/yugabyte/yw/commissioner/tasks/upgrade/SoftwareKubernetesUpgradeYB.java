@@ -51,13 +51,7 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
   }
 
   @Override
-  protected String getTargetSoftwareVersion() {
-    return taskParams().ybSoftwareVersion;
-  }
-
-  @Override
   protected void createPrecheckTasks(Universe universe) {
-    super.createPrecheckTasks(universe);
     createSoftwareUpgradePrecheckTasks(taskParams().ybSoftwareVersion);
     addBasicPrecheckTasks();
   }
