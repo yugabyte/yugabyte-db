@@ -64,14 +64,16 @@ import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
   protected Universe defaultUniverse;
+  protected YBClient mockClient;
   protected static final String NODE_PREFIX = "demo-universe";
-  protected static final String YB_SOFTWARE_VERSION_OLD = "2.15.0.0-b1";
-  protected static final String YB_SOFTWARE_VERSION_NEW = "2.17.0.0-b1";
+  protected static final String YB_SOFTWARE_VERSION_OLD = "2.14.12.0-b1";
+  protected static final String YB_SOFTWARE_VERSION_NEW = "2.18.2.0-b65";
   protected Map<String, String> config = new HashMap<>();
 
   @Before
   public void setUp() {
     super.setUp();
+    mockClient = mock(YBClient.class);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 
@@ -117,7 +119,6 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
         when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
       } catch (Exception e) {
       }
-      YBClient mockClient = mock(YBClient.class);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =

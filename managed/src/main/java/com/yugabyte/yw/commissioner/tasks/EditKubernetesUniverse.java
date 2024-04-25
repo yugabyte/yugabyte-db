@@ -51,6 +51,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -73,18 +74,32 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    if (isFirstTry) {
+      // Verify the task params.
+      verifyParams(UniverseOpType.EDIT);
+    }
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    addBasicPrecheckTasks();
+    if (isFirstTry()) {
+      createValidateDiskSizeOnEdit(universe);
+    }
+  }
+
+  @Override
   public void run() {
     Throwable th = null;
     try {
       checkUniverseVersion();
-      // Verify the task params.
-      verifyParams(UniverseOpType.EDIT);
       // TODO: Would it make sense to have a precheck k8s task that does
       // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
       Universe universe =
           lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion, null /* Txn callback */);
-      addBasicPrecheckTasks();
 
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
@@ -433,6 +448,20 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     if (azOverrides == null) {
       azOverrides = new HashMap<String, String>();
     }
+
+    // Add master/tserver pods to list of pods to check safe to take down.
+    // Added here since the pods can be removed in any of the subtasks below.
+    List<NodeDetails> checkNodesSafeToDelete = new ArrayList<>();
+    if (CollectionUtils.isNotEmpty(mastersToRemove)) {
+      checkNodesSafeToDelete.addAll(mastersToRemove);
+    }
+    if (CollectionUtils.isNotEmpty(tserversToRemove)) {
+      checkNodesSafeToDelete.addAll(tserversToRemove);
+    }
+    if (CollectionUtils.isNotEmpty(checkNodesSafeToDelete)) {
+      createCheckNodeSafeToDeleteTasks(universe, checkNodesSafeToDelete);
+    }
+
     // Now roll all the old pods that haven't been removed and aren't newly added.
     // This will update the master addresses as well as the instance type changes.
     if (restartAllPods) {

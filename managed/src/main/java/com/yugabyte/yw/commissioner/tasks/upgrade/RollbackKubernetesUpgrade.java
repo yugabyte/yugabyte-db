@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -42,6 +43,20 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   @Override
+  protected String getTargetSoftwareVersion() {
+    Universe universe = getUniverse();
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig =
+        universe.getUniverseDetails().prevYBSoftwareConfig;
+    String newVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (prevYBSoftwareConfig != null
+        && !newVersion.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
+      newVersion = prevYBSoftwareConfig.getSoftwareVersion();
+    }
+    return newVersion;
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
@@ -70,7 +85,8 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               true,
               true,
               taskParams().isEnableYbc(),
-              taskParams().getYbcSoftwareVersion());
+              taskParams().getYbcSoftwareVersion(),
+              getRollbackUpgradeContext(newVersion));
 
           // Update Software version
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
@@ -80,5 +96,15 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
               false /* isSoftwareRollbackAllowed */);
         });
+  }
+
+  private UpgradeContext getRollbackUpgradeContext(String targetSoftwareVersion) {
+    return UpgradeContext.builder()
+        .reconfigureMaster(false)
+        .runBeforeStopping(false)
+        .processInactiveMaster(true)
+        .processTServersFirst(true)
+        .targetSoftwareVersion(targetSoftwareVersion)
+        .build();
   }
 }
