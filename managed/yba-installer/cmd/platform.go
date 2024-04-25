@@ -174,7 +174,7 @@ func (plat Platform) SetDataDirPerms() error {
 func (plat Platform) createNecessaryDirectories() error {
 	dirs := []string{
 		common.GetSoftwareRoot() + "/yb-platform",
-		common.GetBaseInstall() + "/data/yb-platform/releases/" + plat.version,
+		common.GetBaseInstall() + "/data/yb-platform/releases",
 		common.GetBaseInstall() + "/data/yb-platform/ybc/release",
 		common.GetBaseInstall() + "/data/yb-platform/ybc/releases",
 		common.GetBaseInstall() + "/data/yb-platform/node-agent/releases",
