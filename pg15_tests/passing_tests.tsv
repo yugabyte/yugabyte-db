@@ -30,6 +30,7 @@ JAVA	org.yb.pgsql.TestPgPrefetchControl#testSizeBasedFetch
 JAVA	org.yb.pgsql.TestPgPushdown#in_primaryKeySimple
 JAVA	org.yb.pgsql.TestPgRegressAggregates
 JAVA	org.yb.pgsql.TestPgRegressAnalyze
+JAVA	org.yb.pgsql.TestPgRegressArrays
 JAVA	org.yb.pgsql.TestPgRegressBackfillIndex
 JAVA	org.yb.pgsql.TestPgRegressBufferingWithSQLErrors
 JAVA	org.yb.pgsql.TestPgRegressColocation
