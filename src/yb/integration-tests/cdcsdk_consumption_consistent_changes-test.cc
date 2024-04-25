@@ -2101,7 +2101,12 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
     ASSERT_OK(conn.Execute("COMMIT;"));
   }
 
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        return change_resp.cdc_sdk_proto_records_size() != 0;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for records"));
 
   if (pub_refresh_record_in_separate_response) {
     // We will receive 5 records in the previous GetConsistentChanges response. This is because the
@@ -2335,6 +2340,14 @@ TEST_F(
   ASSERT_OK(
       conn.Execute("CREATE TABLE test2 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
   auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+
+  ASSERT_OK(WaitFor(
+      [&]()-> Result<bool> {
+        auto tables_in_stream = VERIFY_RESULT(GetCDCStreamTableIds(stream_id));
+        return tables_in_stream.size() == 2;
+        },
+      MonoDelta::FromSeconds(60),
+      "Timed out waiting for the table to get added to the stream"));
 
   ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
 
