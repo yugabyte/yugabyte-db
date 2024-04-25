@@ -404,5 +404,119 @@ TEST_F(XClusterOutboundReplicationGroupTest, MasterRestartDuringCheckpoint) {
   // ASSERT_OK(VerifyWalRetentionOfTable(table_id_2));
 }
 
+TEST_F(XClusterOutboundReplicationGroupTest, Repair) {
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
+
+  ASSERT_OK(XClusterClient().XClusterCreateOutboundReplicationGroup(
+      kReplicationGroupId, {kNamespaceName}));
+
+  auto resp = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+  ASSERT_EQ(resp.table_infos_size(), 2);
+
+  ASSERT_NOK_STR_CONTAINS(
+      XClusterClient().RepairOutboundXClusterReplicationGroupRemoveTable(
+          xcluster::ReplicationGroupId("BadId"), table_id_1),
+      "xClusterOutboundReplicationGroup BadId not found");
+
+  ASSERT_NOK_STR_CONTAINS(
+      XClusterClient().RepairOutboundXClusterReplicationGroupRemoveTable(
+          kReplicationGroupId, "BadId"),
+      "Table BadId not found in xClusterOutboundReplicationGroup");
+
+  ASSERT_OK(XClusterClient().RepairOutboundXClusterReplicationGroupRemoveTable(
+      kReplicationGroupId, table_id_1));
+
+  ASSERT_NOK_STR_CONTAINS(
+      XClusterClient().RepairOutboundXClusterReplicationGroupRemoveTable(
+          kReplicationGroupId, table_id_1),
+      "not found in xClusterOutboundReplicationGroup");
+
+  resp = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+  ASSERT_EQ(resp.table_infos_size(), 1);
+  ASSERT_EQ(resp.table_infos(0).table_id(), table_id_2);
+  const auto table2_stream_id =
+      ASSERT_RESULT(xrepl::StreamId::FromString(resp.table_infos(0).xrepl_stream_id()));
+
+  ASSERT_NOK_STR_CONTAINS(
+      GetXClusterStreams(kReplicationGroupId, namespace_id_, {kTableName1}, {kPgSchemaName}),
+      "not found in xClusterOutboundReplicationGroup");
+
+  const auto new_stream_ids =
+      ASSERT_RESULT(BootstrapProducer(producer_cluster(), client_, {table_id_1}));
+  ASSERT_EQ(new_stream_ids.size(), 1);
+  const auto& new_stream_id = new_stream_ids.front();
+
+  ASSERT_NOK_STR_CONTAINS(
+      XClusterClient().RepairOutboundXClusterReplicationGroupAddTable(
+          xcluster::ReplicationGroupId("BadId"), table_id_1, new_stream_id),
+      "xClusterOutboundReplicationGroup BadId not found");
+
+  ASSERT_NOK_STR_CONTAINS(
+      XClusterClient().RepairOutboundXClusterReplicationGroupAddTable(
+          kReplicationGroupId, "BadId", new_stream_id),
+      "Table with identifier BadId not found");
+
+  ASSERT_NOK_STR_CONTAINS(
+      XClusterClient().RepairOutboundXClusterReplicationGroupAddTable(
+          kReplicationGroupId, table_id_1, xrepl::StreamId::GenerateRandom()),
+      "not found");
+
+  ASSERT_NOK_STR_CONTAINS(
+      XClusterClient().RepairOutboundXClusterReplicationGroupAddTable(
+          kReplicationGroupId, table_id_1, table2_stream_id),
+      "belongs to a different table");
+
+  ASSERT_OK(XClusterClient().RepairOutboundXClusterReplicationGroupAddTable(
+      kReplicationGroupId, table_id_1, new_stream_id));
+
+  ASSERT_NOK_STR_CONTAINS(
+      XClusterClient().RepairOutboundXClusterReplicationGroupAddTable(
+          kReplicationGroupId, table_id_1, new_stream_id),
+      "already exists in");
+
+  resp = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+  ASSERT_EQ(resp.table_infos_size(), 2);
+  ASSERT_EQ(resp.table_infos(0).table_id(), table_id_2);
+  for (const auto& table_info : resp.table_infos()) {
+    auto stream_id_str = new_stream_id.ToString();
+    if (table_info.table_id() == table_id_2) {
+      stream_id_str = table2_stream_id.ToString();
+    }
+    ASSERT_EQ(table_info.xrepl_stream_id(), stream_id_str);
+  }
+}
+
+TEST_F(XClusterOutboundReplicationGroupTest, RepairWithYbAdmin) {
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
+
+  ASSERT_OK(XClusterClient().XClusterCreateOutboundReplicationGroup(
+      kReplicationGroupId, {kNamespaceName}));
+
+  auto resp = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+  ASSERT_EQ(resp.table_infos_size(), 2);
+
+  ASSERT_OK(CallAdmin(
+      producer_cluster(), "repair_xcluster_outbound_replication_remove_table", kReplicationGroupId,
+      table_id_1));
+
+  resp = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+  ASSERT_EQ(resp.table_infos_size(), 1);
+  ASSERT_EQ(resp.table_infos(0).table_id(), table_id_2);
+
+  const auto new_stream_ids =
+      ASSERT_RESULT(BootstrapProducer(producer_cluster(), client_, {table_id_1}));
+  ASSERT_EQ(new_stream_ids.size(), 1);
+  const auto& new_stream_id = new_stream_ids.front();
+
+  ASSERT_OK(CallAdmin(
+      producer_cluster(), "repair_xcluster_outbound_replication_add_table", kReplicationGroupId,
+      table_id_1, new_stream_id.ToString()));
+
+  resp = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+  ASSERT_EQ(resp.table_infos_size(), 2);
+}
+
 }  // namespace master
 }  // namespace yb

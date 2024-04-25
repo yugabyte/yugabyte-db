@@ -636,6 +636,25 @@ message IsCreateXClusterReplicationDoneResponsePB {
   optional AppStatusPB replication_error = 3;
 }
 
+message RepairOutboundXClusterReplicationGroupAddTableRequestPB {
+  required string replication_group_id = 1;
+  required bytes table_id = 2;
+  required bytes stream_id = 3;
+}
+
+message RepairOutboundXClusterReplicationGroupAddTableResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message RepairOutboundXClusterReplicationGroupRemoveTableRequestPB {
+  required string replication_group_id = 1;
+  required bytes table_id = 2;
+}
+
+message RepairOutboundXClusterReplicationGroupRemoveTableResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -726,6 +745,12 @@ service MasterReplication {
       returns (IsXClusterBootstrapRequiredResponsePB);
   rpc GetXClusterStreams(GetXClusterStreamsRequestPB)
       returns (GetXClusterStreamsResponsePB);
+  rpc RepairOutboundXClusterReplicationGroupAddTable(
+      RepairOutboundXClusterReplicationGroupAddTableRequestPB)
+      returns (RepairOutboundXClusterReplicationGroupAddTableResponsePB);
+  rpc RepairOutboundXClusterReplicationGroupRemoveTable(
+      RepairOutboundXClusterReplicationGroupRemoveTableRequestPB)
+      returns (RepairOutboundXClusterReplicationGroupRemoveTableResponsePB);
 
   // xCluster APIsV2
   rpc CreateXClusterReplication(CreateXClusterReplicationRequestPB)

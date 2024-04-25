@@ -474,6 +474,13 @@ class ClusterAdminClient {
   Status DeleteXClusterOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id);
 
+  Status RepairOutboundXClusterReplicationGroupAddTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+      const xrepl::StreamId& stream_id);
+
+  Status RepairOutboundXClusterReplicationGroupRemoveTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const TabletId& tablet_id,

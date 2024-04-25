@@ -113,6 +113,12 @@ class XClusterOutboundReplicationGroup
 
   void StartPostLoadTasks(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
+  Status RepairAddTable(
+      const NamespaceId& namespace_id, const TableId& table_id, const xrepl::StreamId& stream_id,
+      const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
+  Status RepairRemoveTable(const TableId& table_id, const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
  private:
   friend class XClusterOutboundReplicationGroupMocked;
   friend class AddTableToXClusterSourceTask;

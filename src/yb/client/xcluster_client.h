@@ -80,6 +80,13 @@ class XClusterClient {
       const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
       const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback);
 
+  Status RepairOutboundXClusterReplicationGroupAddTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+      const xrepl::StreamId& stream_id);
+
+  Status RepairOutboundXClusterReplicationGroupRemoveTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id);
+
  private:
   template <typename ResponsePB, typename RequestPB, typename Method>
   Result<ResponsePB> SyncLeaderMasterRpc(

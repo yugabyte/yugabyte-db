@@ -1077,4 +1077,33 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
 
   return Status::OK();
 }
+
+Status XClusterSourceManager::RepairOutboundReplicationGroupAddTable(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+    const xrepl::StreamId& stream_id, const LeaderEpoch& epoch) {
+  auto table_info = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
+
+  auto stream_info = VERIFY_RESULT(catalog_manager_.GetXReplStreamInfo(stream_id));
+  auto stream_table_ids = stream_info->table_id();
+  SCHECK(
+      stream_info->IsXClusterStream() && stream_table_ids.size() == 1, InvalidArgument,
+      Format("Stream $0 is not valid for use in xCluster", stream_id));
+  SCHECK_EQ(
+      stream_table_ids.Get(0), table_id, InvalidArgument,
+      Format("Stream $0 belongs to a different table", stream_id));
+
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+  return outbound_replication_group->RepairAddTable(
+      table_info->namespace_id(), table_id, stream_id, epoch);
+}
+
+Status XClusterSourceManager::RepairOutboundReplicationGroupRemoveTable(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+    const LeaderEpoch& epoch) {
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+  return outbound_replication_group->RepairRemoveTable(table_id, epoch);
+}
+
 }  // namespace yb::master

@@ -549,10 +549,15 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
 
   for (const auto& table_info : table_infos) {
     const auto& table_id = table_info->id();
-    SCHECK(
-        namespace_info->table_infos().count(table_id), IllegalState,
-        Format(
-            "Table $0 exists in namespace $1, but not in $2", table_id, namespace_id, ToString()));
+    if (namespace_info->table_infos().count(table_id) == 0) {
+      // We do not have this table! It has been manually removed using the repair APIs.
+      // If user explicitly requested this table then fail the request.
+      // Else we are getting all tables in the database so ignore it.
+      SCHECK(
+          table_names.empty(), NotFound, Format("Table $0 not found in $1", table_id, ToString()));
+      continue;
+    }
+
     auto& namespace_table_info = namespace_info->table_infos().at(table_id);
     if (!namespace_table_info.has_stream_id() || namespace_table_info.is_checkpointing()) {
       VLOG_WITH_PREFIX_AND_FUNC(1) << "xCluster stream for Table " << table_id << " in Namespace "
@@ -876,6 +881,8 @@ Status XClusterOutboundReplicationGroup::RemoveStreams(
 
   bool upsert_needed = false;
   for (const auto& stream : streams) {
+    VLOG_WITH_PREFIX(1) << "Removing stream " << stream->ToString();
+
     for (const auto& table_id : stream->table_id()) {
       for (auto& [ns_id, ns_info] : *pb.mutable_namespace_infos()) {
         auto table_info = FindOrNull(ns_info.table_infos(), table_id);
@@ -916,6 +923,45 @@ void XClusterOutboundReplicationGroup::StartPostLoadTasks(const LeaderEpoch& epo
   }
 
   StartNamespaceCheckpointTasks(namespace_ids, epoch);
+}
+
+Status XClusterOutboundReplicationGroup::RepairAddTable(
+    const NamespaceId& namespace_id, const TableId& table_id, const xrepl::StreamId& stream_id,
+    const LeaderEpoch& epoch) {
+  std::lock_guard mutex_lock(mutex_);
+  auto l = VERIFY_RESULT(LockForWrite());
+
+  auto* ns_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
+  SCHECK(
+      !ns_info->mutable_table_infos()->count(table_id), AlreadyPresent,
+      "Table $0 already exists in $1", table_id, ToString());
+
+  NamespaceInfoPB::TableInfoPB table_info;
+  table_info.set_stream_id(stream_id.ToString());
+  table_info.set_is_checkpointing(false);
+  table_info.set_is_part_of_initial_bootstrap(false);
+  ns_info->mutable_table_infos()->insert({table_id, std::move(table_info)});
+
+  return Upsert(l, epoch);
+}
+
+Status XClusterOutboundReplicationGroup::RepairRemoveTable(
+    const TableId& table_id, const LeaderEpoch& epoch) {
+  std::lock_guard mutex_lock(mutex_);
+  auto l = VERIFY_RESULT(LockForWrite());
+  auto& outbound_group_pb = l.mutable_data()->pb;
+
+  bool table_removed = false;
+  for (auto& [namespace_id, namespace_info] : *outbound_group_pb.mutable_namespace_infos()) {
+    if (namespace_info.mutable_table_infos()->erase(table_id)) {
+      table_removed = true;
+      break;
+    }
+  }
+
+  SCHECK(table_removed, NotFound, "Table $0 not found in $1", table_id, ToString());
+
+  return Upsert(l, epoch);
 }
 
 }  // namespace yb::master
