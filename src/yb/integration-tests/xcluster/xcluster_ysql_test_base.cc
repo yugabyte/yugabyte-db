@@ -383,7 +383,7 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
       strings::Substitute("Unable to find table $0 in namespace $1", table_name, namespace_name));
 }
 
-Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster* cluster, const YBTableName& table_name) {
+Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster& cluster, const YBTableName& table_name) {
   master::ListTablesRequestPB req;
   master::ListTablesResponsePB resp;
 
@@ -393,8 +393,8 @@ Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster* cluster, const YBTabl
   req.set_include_not_running(true);
 
   master::MasterDdlProxy master_proxy(
-      &cluster->client_->proxy_cache(),
-      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+      &cluster.client_->proxy_cache(),
+      VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -411,6 +411,13 @@ Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster* cluster, const YBTabl
     }
   }
   return true;
+}
+
+Status XClusterYsqlTestBase::WaitForTableToFullyDelete(
+    Cluster& cluster, const client::YBTableName& table_name, MonoDelta timeout) {
+  return LoggedWaitFor(
+      [&]() -> Result<bool> { return IsTableDeleted(cluster, producer_table_->name()); }, timeout,
+      "Wait for table to transition to deleted.");
 }
 
 Status XClusterYsqlTestBase::DropYsqlTable(

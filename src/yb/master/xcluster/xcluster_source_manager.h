@@ -139,6 +139,14 @@ class XClusterSourceManager {
   Status MarkIndexBackfillCompleted(
       const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch);
 
+  Status RepairOutboundReplicationGroupAddTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+      const xrepl::StreamId& stream_id, const LeaderEpoch& epoch);
+
+  Status RepairOutboundReplicationGroupRemoveTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+      const LeaderEpoch& epoch);
+
  private:
   friend class XClusterOutboundReplicationGroup;
 
