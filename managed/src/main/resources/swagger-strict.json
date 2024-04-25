@@ -6593,13 +6593,8 @@
           "type" : "string"
         },
         "ldapUserfield" : {
-          "description" : "User dn field to get the user's name from",
-          "example" : "cn",
-          "type" : "string"
-        },
-        "ldapUserfieldAttribute" : {
-          "description" : "LDAP attribute to get the user's name from",
-          "example" : "sAMAccountName",
+          "description" : "Dn/Attribute field to get the user's name from",
+          "example" : "cn, sAMAccountName",
           "type" : "string"
         },
         "targetApi" : {
@@ -6611,7 +6606,7 @@
           "type" : "boolean"
         }
       },
-      "required" : [ "dbuserPassword", "ldapGroupfield", "targetApi" ],
+      "required" : [ "dbuserPassword", "ldapGroupfield", "ldapUserfield", "targetApi" ],
       "type" : "object"
     },
     "LocalCloudInfo" : {
