@@ -416,6 +416,19 @@ public class ReleasesUtils {
     return httpLocation;
   }
 
+  public void validateVersionAgainstCurrentYBA(String version) {
+    String currVersion = ybaCurrentVersion();
+    if (Util.compareYbVersions(version, currVersion) > 0) {
+      log.error("invalid version {} is newer then the yba version {}", version, currVersion);
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Release version %s is newer then yba version %s and is not compatible",
+              version, currVersion));
+    }
+    log.trace("version {} is valid", currVersion);
+  }
+
   private String getAndValidateYbaMinimumVersion(JsonNode node) {
     if (node.has("minimum_yba_version")) {
       String minVersion = node.get("minimum_yba_version").asText();
