@@ -46,6 +46,7 @@ void out_cypher_relationship(StringInfo str, const ExtensibleNode *node);
 void out_cypher_bool_const(StringInfo str, const ExtensibleNode *node);
 void out_cypher_param(StringInfo str, const ExtensibleNode *node);
 void out_cypher_map(StringInfo str, const ExtensibleNode *node);
+void out_cypher_map_projection(StringInfo str, const ExtensibleNode *node);
 void out_cypher_list(StringInfo str, const ExtensibleNode *node);
 
 // comparison expression

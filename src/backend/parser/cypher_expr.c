@@ -73,6 +73,8 @@ static Node *transform_AEXPR_IN(cypher_parsestate *cpstate, A_Expr *a);
 static Node *transform_cypher_param(cypher_parsestate *cpstate,
                                     cypher_param *cp);
 static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm);
+static Node *transform_cypher_map_projection(cypher_parsestate *cpstate,
+                                             cypher_map_projection *cmp);
 static Node *transform_cypher_list(cypher_parsestate *cpstate,
                                    cypher_list *cl);
 static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
@@ -187,6 +189,11 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
         {
             return transform_cypher_map(cpstate, (cypher_map *)expr);
         }
+        if (is_ag_node(expr, cypher_map_projection))
+        {
+            return transform_cypher_map_projection(
+                cpstate, (cypher_map_projection *)expr);
+        }
         if (is_ag_node(expr, cypher_list))
         {
             return transform_cypher_list(cpstate, (cypher_list *)expr);
@@ -220,7 +227,7 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
         ereport(ERROR,
                 (errmsg_internal("unrecognized ExtensibleNode: %s",
                                  ((ExtensibleNode *)expr)->extnodename)));
-        
+
         return NULL;
     }
     case T_FuncCall:
@@ -823,6 +830,166 @@ static Node *transform_cypher_param(cypher_parsestate *cpstate,
     func_expr->location = cp->location;
 
     return (Node *)func_expr;
+}
+
+static Node *transform_cypher_map_projection(cypher_parsestate *cpstate,
+                                             cypher_map_projection *cmp)
+{
+    ParseState *pstate;
+    ListCell *lc;
+    List *keyvals;
+    Oid foid_agtype_build_map;
+    FuncExpr *fexpr_new_map;
+    bool has_all_prop_selector;
+    Node *transformed_map_var;
+    Oid foid_age_properties;
+    FuncExpr *fexpr_orig_map;
+
+    pstate = (ParseState *)cpstate;
+    keyvals = NIL;
+    has_all_prop_selector = false;
+    fexpr_new_map = NULL;
+
+    /*
+     * Builds the original map: `age_properties(cmp->map_var)`. Whether map_var
+     * is compatible (map, vertex or edge) is checked during the execution of
+     * age_properties().
+     */
+    transformed_map_var = transform_cypher_expr_recurse(cpstate,
+                                                        (Node *)cmp->map_var);
+    foid_age_properties = get_ag_func_oid("age_properties", 1, AGTYPEOID);
+    fexpr_orig_map = makeFuncExpr(foid_age_properties, AGTYPEOID,
+                                  list_make1(transformed_map_var), InvalidOid,
+                                  InvalidOid, COERCE_EXPLICIT_CALL);
+    fexpr_orig_map->location = cmp->location;
+
+    /*
+     * Builds a new map. Each map projection element is transformed into a key
+     * value pair (except for the ALL_PROPERTIES_SELECTOR type).
+     */
+    foreach (lc, cmp->map_elements)
+    {
+        cypher_map_projection_element *elem;
+        Const *key;
+        Node *val;
+
+        elem = lfirst(lc);
+        key = NULL;
+        val = NULL;
+
+        if (elem->type == ALL_PROPERTIES_SELECTOR)
+        {
+            has_all_prop_selector = true;
+            continue;
+        }
+
+        /* Makes key and val based on elem->type */
+        switch (elem->type)
+        {
+            case PROPERTY_SELECTOR:
+            {
+                Oid foid_access_op;
+                FuncExpr *fexpr_access_op;
+                ArrayExpr *args_access_op;
+                Const *key_agtype;
+
+                /* Makes key from elem->key */
+                key = makeConst(TEXTOID, -1, InvalidOid, -1,
+                                CStringGetTextDatum(elem->key), false, false);
+
+                /* Makes val from `age_properties(cmp->map_var).key` */
+                key_agtype = makeConst(AGTYPEOID, -1, InvalidOid, -1,
+                                       string_to_agtype(elem->key), false,
+                                       false);
+                foid_access_op = get_ag_func_oid("agtype_access_operator", 1,
+                                                 AGTYPEARRAYOID);
+                args_access_op = make_agtype_array_expr(
+                    list_make2(fexpr_orig_map, key_agtype));
+                fexpr_access_op = makeFuncExpr(foid_access_op, AGTYPEOID,
+                                               list_make1(args_access_op),
+                                               InvalidOid, InvalidOid,
+                                               COERCE_EXPLICIT_CALL);
+                fexpr_access_op->funcvariadic = true;
+                fexpr_access_op->location = -1;
+                val = (Node *)fexpr_access_op;
+
+                break;
+            }
+            case LITERAL_ENTRY:
+            {
+                key = makeConst(TEXTOID, -1, InvalidOid, -1,
+                                CStringGetTextDatum(elem->key), false, false);
+                val = transform_cypher_expr_recurse(cpstate, elem->value);
+                break;
+            }
+            case VARIABLE_SELECTOR:
+            {
+                char *key_str;
+                List *fields;
+
+                Assert(IsA(elem->value, ColumnRef));
+
+                /* Makes key from the ColumnRef's field */
+                fields = ((ColumnRef *)elem->value)->fields;
+                key_str = strVal(lfirst(list_head(fields)));
+                key = makeConst(TEXTOID, -1, InvalidOid, -1,
+                                CStringGetTextDatum(key_str), false, false);
+
+                val = transform_cypher_expr_recurse(cpstate, elem->value);
+                break;
+            }
+            case ALL_PROPERTIES_SELECTOR:
+            {
+                /*
+                 * Key value pairs of the original map are added later outside
+                 * the loop. Control never reaches this block.
+                 */
+                break;
+            }
+            default:
+            {
+                elog(ERROR, "unknown map projection element type");
+            }
+        }
+
+        Assert(key);
+        Assert(val);
+        keyvals = lappend(lappend(keyvals, key), val);
+    }
+
+    if (keyvals)
+    {
+        foid_agtype_build_map = get_ag_func_oid("agtype_build_map_nonull", 1,
+                                                ANYOID);
+        fexpr_new_map = makeFuncExpr(foid_agtype_build_map, AGTYPEOID, keyvals,
+                                     InvalidOid, InvalidOid,
+                                     COERCE_EXPLICIT_CALL);
+        fexpr_new_map->location = cmp->location;
+    }
+
+    /*
+     * In case .* is present, returns age_properties(cmp->map_var) + the new
+     * map. Else, returns the new map.
+     */
+    if (has_all_prop_selector)
+    {
+        if (!keyvals)
+        {
+            return (Node *)fexpr_orig_map;
+        }
+        else
+        {
+            return (Node *)make_op(pstate, list_make1(makeString("+")),
+                                   (Node *)fexpr_orig_map,
+                                   (Node *)fexpr_new_map,
+                                   pstate->p_last_srf, -1);
+        }
+    }
+    else
+    {
+        Assert(!has_all_prop_selector && fexpr_new_map);
+        return (Node *)fexpr_new_map;
+    }
 }
 
 static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm)

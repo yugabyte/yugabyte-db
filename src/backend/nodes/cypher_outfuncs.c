@@ -251,6 +251,15 @@ void out_cypher_map(StringInfo str, const ExtensibleNode *node)
     WRITE_LOCATION_FIELD(location);
 }
 
+void out_cypher_map_projection(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_map_projection);
+
+    WRITE_NODE_FIELD(map_var);
+    WRITE_NODE_FIELD(map_elements);
+    WRITE_LOCATION_FIELD(location);
+}
+
 // serialization function for the cypher_list ExtensibleNode.
 void out_cypher_list(StringInfo str, const ExtensibleNode *node)
 {

@@ -152,6 +152,9 @@
 %type <node> expr_case expr_case_when expr_case_default
 %type <list> expr_case_when_list
 
+%type <node> map_projection map_projection_elem
+%type <list> map_projection_elem_list
+
 %type <node> expr_var expr_func expr_func_norm expr_func_subexpr
 %type <list> expr_list expr_list_opt map_keyval_list_opt map_keyval_list
 %type <node> property_value
@@ -2006,6 +2009,7 @@ expr_literal:
             $$ = make_null_const(@1);
         }
     | map
+    | map_projection
     | list
     ;
 
@@ -2037,6 +2041,82 @@ map_keyval_list:
     | map_keyval_list ',' property_key_name ':' expr
         {
             $$ = lappend(lappend($1, makeString($3)), $5);
+        }
+    ;
+
+map_projection:
+    expr_var '{' map_projection_elem_list '}'
+        {
+            cypher_map_projection *n;
+
+            n = make_ag_node(cypher_map_projection);
+            n->map_var = (ColumnRef *)$1;
+            n->map_elements = $3;
+            n->location = @1;
+
+            $$ = (Node *)n;
+        }
+    ;
+
+map_projection_elem_list:
+    map_projection_elem
+        {
+            $$ = list_make1($1);
+        }
+    | map_projection_elem_list ',' map_projection_elem
+        {
+            $$ = lappend($1, $3);
+        }
+    ;
+
+map_projection_elem:
+    '.' property_key_name
+        {
+            cypher_map_projection_element *n;
+
+            n = make_ag_node(cypher_map_projection_element);
+            n->type = PROPERTY_SELECTOR;
+            n->key = $2;
+            n->value = NULL;
+            n->location = @1;
+
+            $$ = (Node *)n;
+        }
+    | expr_var
+        {
+            cypher_map_projection_element *n;
+
+            n = make_ag_node(cypher_map_projection_element);
+            n->type = VARIABLE_SELECTOR;
+            n->key = NULL;
+            n->value = (Node *)$1;
+            n->location = @1;
+
+            $$ = (Node *)n;
+        }
+    | property_key_name ':' expr
+        {
+            cypher_map_projection_element *n;
+
+            n = make_ag_node(cypher_map_projection_element);
+            n->type = LITERAL_ENTRY;
+            n->key = $1;
+            n->value = (Node *)$3;
+            n->location = @1;
+
+            $$ = (Node *)n;
+        }
+    | '.' '*'
+        {
+            cypher_map_projection_element *n;
+
+            n = make_ag_node(cypher_map_projection_element);
+            n->type = ALL_PROPERTIES_SELECTOR;
+            n->key = NULL;
+            n->value = NULL;
+            n->location = @1;
+
+            $$ = (Node *)n;
         }
     ;
 
