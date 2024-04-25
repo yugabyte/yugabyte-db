@@ -1,6 +1,16 @@
 #!/bin/bash
 # Copyright (c) YugaByte, Inc.
 
+if [[ $(uname -m) != "x86_64" ]]; then
+  echo "This target doesn't support $(uname -m)."
+  exit 0
+fi
+
+if [[ $(uname) != "Linux" ]]; then
+  echo "This target doesn't support $(uname)."
+  exit 0
+fi
+
 set -euo pipefail
 
 print_help() {
