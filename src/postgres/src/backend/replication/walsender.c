@@ -206,6 +206,27 @@ static volatile sig_atomic_t replication_active = false;
 static LogicalDecodingContext *logical_decoding_ctx = NULL;
 static XLogRecPtr logical_startptr = InvalidXLogRecPtr;
 
+/*
+ * Total time spent in the yb_decode steps in a batch of changes. This includes
+ * the time spent in:
+ * 1. Creating heap tuples
+ * 2. Storing heap tuples in the reorder buffer
+ * 3. Processing time of the reorder buffer
+ * 4. Processing time of the output plugin
+ * 5. Sending the data to the client including the socket time
+ */
+uint64_t YbWalSndTotalTimeInYBDecodeMicros = 0;
+/*
+ * Total time spent in the reorderbuffer steps in a batch of changes. This
+ * includes the time spent in:
+ * 1. Storing heap tuples in the reorder buffer
+ * 2. Processing time of the reorder buffer
+ * 3. Processing time of the output plugin
+ * 4. Sending the data to the client including the socket time
+ *
+ * A subset of the yb_decode time.
+ */
+uint64_t YbWalSndTotalTimeInReorderBufferMicros = 0;
 /* Total time spent in the WalSndWriteData function in a batch of changes. */
 uint64_t YbWalSndTotalTimeInSendingMicros = 0;
 
@@ -264,8 +285,6 @@ static TimeOffset LagTrackerRead(int head, XLogRecPtr lsn, TimestampTz now);
 static bool TransactionIdInRecentPast(TransactionId xid, uint32 epoch);
 
 static void XLogRead(char *buf, XLogRecPtr startptr, Size count);
-
-static void YbWalSndUpdateTotalTimeInSendingMicros(TimestampTz yb_start_time);
 
 /* Initialize walsender process before entering the main command loop */
 void
@@ -1346,7 +1365,8 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 		!pq_is_send_pending())
 	{
 		if (IsYugaByteEnabled())
-			YbWalSndUpdateTotalTimeInSendingMicros(yb_start_time);
+			YbWalSndTotalTimeInSendingMicros +=
+				YbCalculateTimeDifferenceInMicros(yb_start_time);
 
 		return;
 	}
@@ -1405,21 +1425,11 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 	}
 
 	if (IsYugaByteEnabled())
-		YbWalSndUpdateTotalTimeInSendingMicros(yb_start_time);
+		YbWalSndTotalTimeInSendingMicros +=
+			YbCalculateTimeDifferenceInMicros(yb_start_time);
 
 	/* reactivate latch so WalSndLoop knows to continue */
 	SetLatch(MyLatch);
-}
-
-static void
-YbWalSndUpdateTotalTimeInSendingMicros(TimestampTz yb_start_time)
-{
-	long secs;
-	int microsecs;
-
-	TimestampDifference(yb_start_time, GetCurrentTimestamp(), &secs,
-						&microsecs);
-	YbWalSndTotalTimeInSendingMicros += (secs * USECS_PER_SEC + microsecs);
 }
 
 /*
