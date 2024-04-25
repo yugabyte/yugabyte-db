@@ -9089,11 +9089,17 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
         resp->set_id(ns->id());
         auto pg_createdb_oid_collision_errcode =
             PgsqlError(YBPgErrorCode::YB_PG_DUPLICATE_DATABASE);
-        return_status = STATUS(AlreadyPresent,
-                               Format("Keyspace with id '$0' already exists", req->namespace_id()),
-                               Slice(),
-                               db_type == YQL_DATABASE_PGSQL && by_id
-                                   ? &pg_createdb_oid_collision_errcode : nullptr);
+        if (by_id) {
+          return_status = STATUS(AlreadyPresent,
+                                 Format("Keyspace with id '$0' already exists",
+                                        req->namespace_id()),
+                                 Slice(),
+                                 db_type == YQL_DATABASE_PGSQL
+                                     ? &pg_createdb_oid_collision_errcode : nullptr);
+        } else {
+          return_status = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists",
+                                            req->name());
+        }
         LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed creating keyspace with error: "
                      << return_status.ToString() << " Request:\n" << req->DebugString();
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT,
