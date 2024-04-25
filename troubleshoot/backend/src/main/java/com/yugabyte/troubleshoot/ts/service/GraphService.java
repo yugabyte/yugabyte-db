@@ -146,11 +146,13 @@ public class GraphService {
       try {
         GraphResponse response = future.getValue().get();
         if (query.isFillMissingPoints()) {
-          Set<Long> allTimestamps =
-              response.getData().stream()
-                  .flatMap(data -> data.getPoints().stream())
-                  .map(GraphPoint::getX)
-                  .collect(Collectors.toCollection(TreeSet::new));
+          List<Long> allTimestamps = new ArrayList<>();
+          long stepMillis = Duration.ofSeconds(query.getStepSeconds()).toMillis();
+          for (long timestamp = query.getStart().toEpochMilli() + stepMillis;
+              timestamp <= query.getEnd().toEpochMilli();
+              timestamp += stepMillis) {
+            allTimestamps.add(timestamp);
+          }
           response
               .getData()
               .forEach(
