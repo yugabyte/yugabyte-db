@@ -281,7 +281,7 @@ Result<bool> ShouldAddTableToReplicationGroup(
     return false;
   }
 
-  if (universe_pb.has_db_scoped_info()) {
+  if (l->IsDbScoped()) {
     if (!IncludesConsumerNamespace(universe, table_info.namespace_id())) {
       return false;
     }
@@ -374,7 +374,7 @@ Result<std::shared_ptr<client::XClusterRemoteClient>> GetXClusterRemoteClient(
 
 Result<bool> IsSafeTimeReady(
     const SysUniverseReplicationEntryPB& universe_pb, const XClusterManagerIf& xcluster_manager) {
-  if (!universe_pb.has_db_scoped_info()) {
+  if (!IsDbScoped(universe_pb)) {
     // Only valid in Db scoped replication.
     return true;
   }
@@ -443,19 +443,72 @@ Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
   return is_done ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
 }
 
+Status RemoveNamespaceFromReplicationGroup(
+    scoped_refptr<UniverseReplicationInfo> universe, const NamespaceId& producer_namespace_id,
+    CatalogManager& catalog_manager, const LeaderEpoch& epoch) {
+  SCHECK(
+      universe->IsDbScoped(), IllegalState, "Replication group $0 is not DB Scoped",
+      universe->id());
+
+  auto l = universe->LockForWrite();
+  auto& universe_pb = l.mutable_data()->pb;
+
+  NamespaceId consumer_namespace_id;
+  auto* namespace_infos = universe_pb.mutable_db_scoped_info()->mutable_namespace_infos();
+  for (auto it = namespace_infos->begin(); it != namespace_infos->end(); ++it) {
+    if (it->producer_namespace_id() == producer_namespace_id) {
+      consumer_namespace_id = it->consumer_namespace_id();
+      namespace_infos->erase(it);
+      break;
+    }
+  }
+  if (consumer_namespace_id.empty()) {
+    LOG(INFO) << "Producer Namespace " << producer_namespace_id
+              << " not found in xCluster replication group " << universe->ReplicationGroupId();
+    return Status::OK();
+  }
+
+  auto consumer_tables =
+      VERIFY_RESULT(catalog_manager.GetTableInfosForNamespace(consumer_namespace_id));
+  std::unordered_set<TableId> consumer_table_ids;
+  for (const auto& table_info : consumer_tables) {
+    consumer_table_ids.insert(table_info->id());
+  }
+
+  std::vector<TableId> producer_table_ids;
+  for (const auto& [producer_table_id, consumer_table_id] : universe_pb.validated_tables()) {
+    if (consumer_table_ids.contains(consumer_table_id)) {
+      producer_table_ids.push_back(producer_table_id);
+    }
+  }
+
+  // For DB Scoped replication the streams will be cleaned up when the namespace is removed from
+  // the outbound replication group on the source.
+  return RemoveTablesFromReplicationGroupInternal(
+      *universe, l, producer_table_ids, catalog_manager, epoch, /*cleanup_source_streams=*/false);
+}
+
 Status RemoveTablesFromReplicationGroup(
     scoped_refptr<UniverseReplicationInfo> universe, const std::vector<TableId>& producer_table_ids,
     CatalogManager& catalog_manager, const LeaderEpoch& epoch) {
+  auto l = universe->LockForWrite();
+  return RemoveTablesFromReplicationGroupInternal(
+      *universe, l, producer_table_ids, catalog_manager, epoch, /*cleanup_source_streams=*/true);
+}
+
+Status RemoveTablesFromReplicationGroupInternal(
+    UniverseReplicationInfo& universe, UniverseReplicationInfo::WriteLock& l,
+    const std::vector<TableId>& producer_table_ids, CatalogManager& catalog_manager,
+    const LeaderEpoch& epoch, bool cleanup_source_streams) {
   RSTATUS_DCHECK(!producer_table_ids.empty(), InvalidArgument, "No tables to remove");
 
-  auto& replication_group_id = universe->ReplicationGroupId();
+  auto& replication_group_id = universe.ReplicationGroupId();
 
   std::set<TableId> producer_table_ids_to_remove(
       producer_table_ids.begin(), producer_table_ids.end());
   std::set<TableId> consumer_table_ids_to_remove;
 
   // 1. Get the corresponding stream ids and consumer table ids for the tables to remove.
-  auto l = universe->LockForWrite();
   auto& universe_pb = l.mutable_data()->pb;
 
   // Filter out any tables that aren't in the existing replication config.
@@ -500,16 +553,16 @@ Status RemoveTablesFromReplicationGroup(
   }
 
   // 2. Delete xCluster streams on the Producer.
-  if (!streams_to_remove.empty()) {
+  if (!streams_to_remove.empty() && cleanup_source_streams) {
     auto rpc_task = VERIFY_RESULT(
-        universe->GetOrCreateXClusterRpcTasks(universe_pb.producer_master_addresses()));
+        universe.GetOrCreateXClusterRpcTasks(universe_pb.producer_master_addresses()));
 
     // Atomicity cannot be guaranteed for both producer and consumer deletion. So ignore any errors
     // due to missing streams.
     RETURN_NOT_OK_PREPEND(
         rpc_task->client()->DeleteCDCStream(
             streams_to_remove, true /* force_delete */, true /* remove_table_ignore_errors */),
-        "Unable to delete xCluster streams on source. Try setting the ignore-errors option");
+        "Unable to delete xCluster streams on source");
   }
 
   // 3. Update the Consumer Registry (removes from TServers) and Master Configs.
@@ -533,7 +586,7 @@ Status RemoveTablesFromReplicationGroup(
     Erase(table_id, universe_pb.mutable_tables());
   }
 
-  RETURN_NOT_OK(catalog_manager.sys_catalog()->Upsert(epoch, universe.get(), cluster_config.get()));
+  RETURN_NOT_OK(catalog_manager.sys_catalog()->Upsert(epoch, &universe, cluster_config.get()));
 
   // 4. Clear in-mem maps.
   catalog_manager.SyncXClusterConsumerReplicationStatusMap(replication_group_id, producer_map);
@@ -543,6 +596,43 @@ Status RemoveTablesFromReplicationGroup(
 
   l.Commit();
   cl.Commit();
+
+  return Status::OK();
+}
+
+Status ValidateTableListForDbScopedReplication(
+    UniverseReplicationInfo& universe, const std::vector<NamespaceId>& namespace_ids,
+    const std::set<TableId>& replicated_tables, const CatalogManager& catalog_manager) {
+  std::set<TableId> validated_tables;
+
+  for (const auto& namespace_id : namespace_ids) {
+    auto table_infos =
+        VERIFY_RESULT(GetTablesEligibleForXClusterReplication(catalog_manager, namespace_id));
+
+    std::vector<TableId> missing_tables;
+
+    for (const auto& table_info : table_infos) {
+      const auto& table_id = table_info->id();
+      if (replicated_tables.contains(table_id)) {
+        validated_tables.insert(table_id);
+      } else {
+        missing_tables.push_back(table_id);
+      }
+    }
+
+    SCHECK_FORMAT(
+        missing_tables.empty(), IllegalState,
+        "Namespace $0 has additional tables that were not added to xCluster DB Scoped replication "
+        "group $1: $2",
+        namespace_id, universe.id(), yb::ToString(missing_tables));
+  }
+
+  auto diff = STLSetSymmetricDifference(replicated_tables, validated_tables);
+  SCHECK_FORMAT(
+      diff.empty(), IllegalState,
+      "xCluster DB Scoped replication group $0 contains tables $1 that do not belong to replicated "
+      "namespaces $2",
+      universe.id(), yb::ToString(diff), yb::ToString(namespace_ids));
 
   return Status::OK();
 }

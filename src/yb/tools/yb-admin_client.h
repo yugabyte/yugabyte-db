@@ -428,7 +428,8 @@ class ClusterAdminClient {
       const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
       const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
       const std::vector<std::string>& producer_bootstrap_ids_to_add,
-      const std::string& new_replication_group_id, bool remove_table_ignore_errors = false);
+      const std::string& new_replication_group_id, const NamespaceId& source_namespace_to_remove,
+      bool remove_table_ignore_errors = false);
 
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                    const std::string& new_universe_name);
@@ -456,23 +457,18 @@ class ClusterAdminClient {
 
   Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
 
-  Result<std::vector<NamespaceId>> CheckpointXClusterReplication(
-      const xcluster::ReplicationGroupId& replication_group_id,
-      const std::vector<NamespaceName> databases);
-
   Result<bool> IsXClusterBootstrapRequired(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId namespace_id);
-
-  Status CreateXClusterReplication(
-      const xcluster::ReplicationGroupId& replication_group_id,
-      const std::string& target_master_addresses);
 
   Status WaitForCreateXClusterReplication(
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::string& target_master_addresses);
 
-  Status DeleteXClusterOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id);
+  Status WaitForAlterXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::string& target_master_addresses);
+
+  client::XClusterClient XClusterClient();
 
   Status RepairOutboundXClusterReplicationGroupAddTable(
       const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
@@ -559,8 +555,6 @@ class ClusterAdminClient {
 
   Result<master::IsTabletSplittingCompleteResponsePB> IsTabletSplittingCompleteInternal(
       bool wait_for_parent_deletion, const MonoDelta timeout = MonoDelta());
-
-  client::XClusterClient XClusterClient();
 
   std::string master_addr_list_;
   HostPort init_master_addr_;

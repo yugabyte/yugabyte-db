@@ -85,5 +85,18 @@ Status RemoveTablesFromReplicationGroup(
     scoped_refptr<UniverseReplicationInfo> universe, const std::vector<TableId>& producer_table_ids,
     CatalogManager& catalog_manager, const LeaderEpoch& epoch);
 
+Status RemoveTablesFromReplicationGroupInternal(
+    UniverseReplicationInfo& universe, UniverseReplicationInfo::WriteLock& l,
+    const std::vector<TableId>& producer_table_ids, CatalogManager& catalog_manager,
+    const LeaderEpoch& epoch, bool cleanup_source_streams);
+
+Status RemoveNamespaceFromReplicationGroup(
+    scoped_refptr<UniverseReplicationInfo> universe, const NamespaceId& producer_namespace_id,
+    CatalogManager& catalog_manager, const LeaderEpoch& epoch);
+
+Status ValidateTableListForDbScopedReplication(
+    UniverseReplicationInfo& universe, const std::vector<NamespaceId>& namespace_ids,
+    const std::set<TableId>& replicated_table_ids, const CatalogManager& catalog_manager);
+
 }  // namespace master
 }  // namespace yb

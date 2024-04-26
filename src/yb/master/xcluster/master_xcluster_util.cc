@@ -14,6 +14,7 @@
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 
 namespace yb::master {
 
@@ -63,4 +64,17 @@ std::string GetFullTableName(const TableInfo& table_info) {
   return Format("$0.$1", schema_name, table_info.name());
 }
 
+Result<std::vector<TableInfoPtr>> GetTablesEligibleForXClusterReplication(
+    const CatalogManager& catalog_manager, const NamespaceId& namespace_id) {
+  auto table_infos = VERIFY_RESULT(catalog_manager.GetTableInfosForNamespace(namespace_id));
+  EraseIf(
+      [](const TableInfoPtr& table) { return !IsTableEligibleForXClusterReplication(*table); },
+      &table_infos);
+  return table_infos;
+}
+
+bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info) {
+  return replication_info.has_db_scoped_info() &&
+         replication_info.db_scoped_info().namespace_infos_size() > 0;
+}
 }  // namespace yb::master

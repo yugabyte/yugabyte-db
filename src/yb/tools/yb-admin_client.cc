@@ -4219,7 +4219,8 @@ Status ClusterAdminClient::AlterUniverseReplication(
     const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
     const std::vector<std::string>& producer_bootstrap_ids_to_add,
-    const std::string& new_replication_group_id, bool remove_table_ignore_errors) {
+    const std::string& new_replication_group_id, const NamespaceId& source_namespace_to_remove,
+    bool remove_table_ignore_errors) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_replication_group_id(replication_group_id);
@@ -4266,6 +4267,10 @@ Status ClusterAdminClient::AlterUniverseReplication(
 
   if (!new_replication_group_id.empty()) {
     req.set_new_replication_group_id(new_replication_group_id);
+  }
+
+  if (!source_namespace_to_remove.empty()) {
+    req.set_producer_namespace_id_to_remove(source_namespace_to_remove);
   }
 
   RpcController rpc;
@@ -4528,30 +4533,16 @@ Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime(bool include
   return document;
 }
 
-Result<std::vector<NamespaceId>> ClusterAdminClient::CheckpointXClusterReplication(
-    const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<NamespaceName> databases) {
-  SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
-
-  return XClusterClient().XClusterCreateOutboundReplicationGroup(replication_group_id, databases);
-}
-
 Result<bool> ClusterAdminClient::IsXClusterBootstrapRequired(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId namespace_id) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
 
   auto deadline = CoarseMonoClock::now() + timeout_;
   auto promise = std::promise<Result<bool>>();
-  RETURN_NOT_OK(XClusterClient().IsXClusterBootstrapRequired(
+  RETURN_NOT_OK(XClusterClient().IsBootstrapRequired(
       deadline, replication_group_id, namespace_id,
       [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
   return promise.get_future().get();
-}
-
-Status ClusterAdminClient::CreateXClusterReplication(
-    const xcluster::ReplicationGroupId& replication_group_id,
-    const std::string& target_master_addresses) {
-  return XClusterClient().CreateXClusterReplication(replication_group_id, target_master_addresses);
 }
 
 Status ClusterAdminClient::WaitForCreateXClusterReplication(
@@ -4570,24 +4561,20 @@ Status ClusterAdminClient::WaitForCreateXClusterReplication(
   }
 }
 
-Status ClusterAdminClient::DeleteXClusterOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id) {
+Status ClusterAdminClient::WaitForAlterXClusterReplication(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::string& target_master_addresses) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
 
-  return XClusterClient().XClusterDeleteOutboundReplicationGroup(replication_group_id);
-}
+  for (;;) {
+    auto result = XClusterClient().IsAlterXClusterReplicationDone(
+        replication_group_id, target_master_addresses);
+    if (result && result->done()) {
+      return result->status();
+    }
 
-Status ClusterAdminClient::RepairOutboundXClusterReplicationGroupAddTable(
-    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
-    const xrepl::StreamId& stream_id) {
-  return XClusterClient().RepairOutboundXClusterReplicationGroupAddTable(
-      replication_group_id, table_id, stream_id);
-}
-
-Status ClusterAdminClient::RepairOutboundXClusterReplicationGroupRemoveTable(
-    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id) {
-  return XClusterClient().RepairOutboundXClusterReplicationGroupRemoveTable(
-      replication_group_id, table_id);
+    std::this_thread::sleep_for(100ms);
+  }
 }
 
 client::XClusterClient ClusterAdminClient::XClusterClient() {
