@@ -91,7 +91,7 @@ Status XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed(
     ScheduleNextStepWithDelay(
         std::bind(
             &XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed, this, std::move(result)),
-        "CheckpointStreams", MonoDelta::FromMilliseconds(100));
+        "MarkTablesAsCheckpointed", MonoDelta::FromMilliseconds(100));
     return Status::OK();
   }
 

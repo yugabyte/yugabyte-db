@@ -75,19 +75,20 @@ class XClusterOutboundReplicationGroup
 
   Result<SysXClusterOutboundReplicationGroupEntryPB> GetMetadata() const EXCLUDES(mutex_);
 
-  Result<std::vector<NamespaceId>> AddNamespaces(
-      const LeaderEpoch& epoch, const std::vector<NamespaceName>& namespace_names) EXCLUDES(mutex_);
-
-  Result<NamespaceId> AddNamespace(const LeaderEpoch& epoch, const NamespaceName& namespace_name)
+  Status AddNamespaces(const LeaderEpoch& epoch, const std::vector<NamespaceId>& namespace_ids)
       EXCLUDES(mutex_);
 
-  Status RemoveNamespace(const LeaderEpoch& epoch, const NamespaceId& namespace_id)
-      EXCLUDES(mutex_);
+  Status AddNamespace(const LeaderEpoch& epoch, const NamespaceId& namespace_id) EXCLUDES(mutex_);
+
+  Status RemoveNamespace(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      const std::vector<HostPort>& target_master_addresses) EXCLUDES(mutex_);
 
   Status RemoveStreams(const std::vector<CDCStreamInfo*>& streams, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
 
-  Status Delete(const LeaderEpoch& epoch) EXCLUDES(mutex_);
+  Status Delete(const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
 
   // Returns std::nullopt if the namespace is not yet ready.
   Result<std::optional<bool>> IsBootstrapRequired(const NamespaceId& namespace_id) const
@@ -106,6 +107,14 @@ class XClusterOutboundReplicationGroup
       EXCLUDES(mutex_);
 
   Result<IsOperationDoneResult> IsCreateXClusterReplicationDone(
+      const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
+
+  Status AddNamespaceToTarget(
+      const std::vector<HostPort>& target_master_addresses, const NamespaceId& source_namespace_id,
+      const LeaderEpoch& epoch) const EXCLUDES(mutex_);
+
+  Result<IsOperationDoneResult> IsAlterXClusterReplicationDone(
       const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
 
@@ -135,11 +144,11 @@ class XClusterOutboundReplicationGroup
   Result<XClusterOutboundReplicationGroupInfo::WriteLock> LockForWrite() REQUIRES(mutex_);
 
   Result<scoped_refptr<NamespaceInfo>> GetYbNamespaceInfo(const NamespaceId& namespace_id) const;
-  Result<NamespaceId> GetNamespaceId(const NamespaceName& namespace_name) const;
   Result<NamespaceName> GetNamespaceName(const NamespaceId& namespace_id) const;
 
-  Result<NamespaceId> AddNamespaceInternal(
-      const NamespaceName& namespace_name, XClusterOutboundReplicationGroupInfo::WriteLock& l,
+  // Returns true if we added the table. Returns false if the table already existed.
+  Result<bool> AddNamespaceInternal(
+      const NamespaceId& namespace_id, XClusterOutboundReplicationGroupInfo::WriteLock& l,
       const LeaderEpoch& epoch) REQUIRES(mutex_);
 
   Status Upsert(
@@ -219,6 +228,8 @@ class XClusterOutboundReplicationGroup
   // error.
   void MarkCheckpointNamespaceAsFailed(
       const NamespaceId& namespace_id, const LeaderEpoch& epoch, const Status& status);
+
+  Status VerifyNoTasksInProgress() REQUIRES(mutex_);
 
   HelperFunctions helper_functions_;
 

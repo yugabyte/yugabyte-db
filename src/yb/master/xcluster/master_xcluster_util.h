@@ -14,6 +14,9 @@
 #pragma once
 
 #include <string>
+#include <vector>
+
+#include "yb/master/master_fwd.h"
 
 namespace yb::master {
 class TableInfo;
@@ -23,5 +26,10 @@ bool IsTableEligibleForXClusterReplication(const master::TableInfo& table);
 
 // Get the table name along with the YSQL schema name if this is a YSQL table.
 std::string GetFullTableName(const TableInfo& table_info);
+
+Result<std::vector<TableInfoPtr>> GetTablesEligibleForXClusterReplication(
+    const CatalogManager& catalog_manager, const NamespaceId& namespace_id);
+
+bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info);
 
 }  // namespace yb::master

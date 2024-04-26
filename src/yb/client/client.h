@@ -680,12 +680,6 @@ class YBClient {
       const std::vector<TableName>& table_names,
       BootstrapProducerCallback callback);
 
-  Result<NamespaceId> XClusterAddNamespaceToOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id,
-      const NamespaceName& namespace_name);
-
-  Status XClusterRemoveNamespaceFromOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id);
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(

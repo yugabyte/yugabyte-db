@@ -1783,40 +1783,6 @@ Status YBClient::BootstrapProducer(
       this, db_type, namespace_name, pg_schema_names, table_names, deadline, std::move(callback));
 }
 
-Result<NamespaceId> YBClient::XClusterAddNamespaceToOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceName& namespace_name) {
-  master::XClusterAddNamespaceToOutboundReplicationGroupRequestPB req;
-  req.set_replication_group_id(replication_group_id.ToString());
-  req.set_namespace_name(namespace_name);
-
-  master::XClusterAddNamespaceToOutboundReplicationGroupResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC_EX(
-      Replication, req, resp, XClusterAddNamespaceToOutboundReplicationGroup);
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
-  return resp.namespace_id();
-}
-
-Status YBClient::XClusterRemoveNamespaceFromOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id) {
-  master::XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB req;
-  req.set_replication_group_id(replication_group_id.ToString());
-  req.set_namespace_id(namespace_id);
-
-  master::XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC_EX(
-      Replication, req, resp, XClusterRemoveNamespaceFromOutboundReplicationGroup);
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
-  return Status::OK();
-}
-
 Status YBClient::UpdateConsumerOnProducerSplit(
     const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
     const master::ProducerSplitTabletInfoPB& split_info) {
