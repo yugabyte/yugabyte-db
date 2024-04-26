@@ -3897,4 +3897,60 @@ TEST_F_EX(XClusterTest, DeleteWithoutStreamCleanup, XClusterTestNoParam) {
   ASSERT_OK(VerifyNumCDCStreams(producer_client(), producer_cluster(), /* num_streams = */ 0));
 }
 
+TEST_F_EX(XClusterTest, DeleteWhenSourceIsDown, XClusterTestNoParam) {
+  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
+
+  // Create 2 tables with 3 tablets each.
+  ASSERT_OK(SetUpWithParams({3, 3}, /*replication_factor=*/3));
+  ASSERT_OK(SetupReplication());
+
+  master::ListCDCStreamsRequestPB list_streams_req;
+  master::ListCDCStreamsResponsePB list_streams_resp;
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+  {
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(master_proxy->ListCDCStreams(list_streams_req, &list_streams_resp, &rpc));
+  }
+  ASSERT_EQ(list_streams_resp.streams_size(), 2);
+
+  producer_cluster()->StopSync();
+
+  {
+    auto consumer_master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(2 * kRpcTimeout));
+    master::DeleteUniverseReplicationRequestPB delete_req;
+    master::DeleteUniverseReplicationResponsePB delete_resp;
+    delete_req.set_ignore_errors(true);
+    delete_req.set_replication_group_id(kReplicationGroupId.ToString());
+
+    ASSERT_OK(consumer_master_proxy->DeleteUniverseReplication(delete_req, &delete_resp, &rpc));
+    ASSERT_FALSE(delete_resp.has_error()) << delete_resp.DebugString();
+  }
+
+  ASSERT_OK(VerifyUniverseReplicationDeleted(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, kRpcTimeout));
+  ASSERT_OK(CorrectlyPollingAllTablets(0));
+
+  ASSERT_OK(producer_cluster()->StartSync());
+
+  master::DeleteCDCStreamRequestPB delete_cdc_stream_req;
+  master::DeleteCDCStreamResponsePB delete_cdc_stream_resp;
+  for (const auto& stream : list_streams_resp.streams()) {
+    delete_cdc_stream_req.add_stream_id(stream.stream_id());
+  }
+  delete_cdc_stream_req.set_force_delete(true);
+
+  {
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(master_proxy->DeleteCDCStream(delete_cdc_stream_req, &delete_cdc_stream_resp, &rpc));
+  }
+}
+
 }  // namespace yb

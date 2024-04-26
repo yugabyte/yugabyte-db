@@ -1223,6 +1223,8 @@ struct PersistentUniverseReplicationInfo
   bool is_active() const {
     return pb.state() == SysUniverseReplicationEntryPB::ACTIVE;
   }
+
+  bool IsDbScoped() const;
 };
 
 class UniverseReplicationInfo : public UniverseReplicationInfoBase,

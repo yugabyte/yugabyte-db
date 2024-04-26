@@ -7897,7 +7897,7 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
 }
 
 Result<std::vector<scoped_refptr<TableInfo>>> CatalogManager::GetTableInfosForNamespace(
-    const NamespaceId& namespace_id) {
+    const NamespaceId& namespace_id) const {
   std::vector<scoped_refptr<TableInfo>> table_infos;
   SharedLock lock(mutex_);
   for (const auto& table : tables_->GetAllTables()) {
@@ -13964,6 +13964,20 @@ bool CatalogManager::ShouldRetainHiddenTablet(
   }
 
   return false;
+}
+
+std::optional<UniverseUuid> CatalogManager::GetUniverseUuidIfExists() const {
+  auto l = ClusterConfig()->LockForRead();
+  if (!l->pb.has_universe_uuid()) {
+    return std::nullopt;
+  }
+  auto universe_uuid_res = UniverseUuid::FromString(l->pb.universe_uuid());
+  if (!universe_uuid_res.ok()) {
+    LOG(WARNING) << "Failed to parse universe UUID: " << universe_uuid_res.status();
+    return std::nullopt;
+  }
+
+  return *universe_uuid_res;
 }
 
 }  // namespace master

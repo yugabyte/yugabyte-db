@@ -40,6 +40,7 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
@@ -1303,6 +1304,12 @@ Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCrea
 }
 
 // ================================================================================================
+// PersistentUniverseReplicationInfo
+// ================================================================================================
+
+bool PersistentUniverseReplicationInfo::IsDbScoped() const { return yb::master::IsDbScoped(pb); }
+
+// ================================================================================================
 // UniverseReplicationInfo
 // ================================================================================================
 std::string UniverseReplicationInfo::ToString() const {
@@ -1322,10 +1329,7 @@ Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
   return setup_universe_replication_error_;
 }
 
-bool UniverseReplicationInfo::IsDbScoped() const {
-  auto l = LockForRead();
-  return l->pb.has_db_scoped_info() && l->pb.db_scoped_info().namespace_infos_size() > 0;
-}
+bool UniverseReplicationInfo::IsDbScoped() const { return LockForRead()->IsDbScoped(); }
 
 // ================================================================================================
 // PersistentUniverseReplicationBootstrapInfo

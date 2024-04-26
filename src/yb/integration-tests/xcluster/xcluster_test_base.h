@@ -340,6 +340,8 @@ class XClusterTestBase : public YBTest {
 
   Result<master::MasterReplicationProxy> GetProducerMasterProxy();
 
+  Status ClearFailedUniverse(Cluster& cluster);
+
  protected:
   CoarseTimePoint PropagationDeadline() const {
     return CoarseMonoClock::Now() + propagation_timeout_;
