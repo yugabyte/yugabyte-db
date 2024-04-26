@@ -103,7 +103,6 @@ Next, open a database connection and run a few SQL requests:
 
     ```shell
     \q
-    exit
     ```
 
 ## Explore YugabyteDB UI
