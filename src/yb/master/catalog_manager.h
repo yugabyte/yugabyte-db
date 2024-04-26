@@ -542,22 +542,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Returns the system tablet in catalog manager by the id.
   Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(const TabletId& id) override;
 
-  // TODO(asrivastava): Get rid of this struct and move the logic for this function into the
-  // master heartbeat service code.
-  struct ReportedTablet {
-    TabletId tablet_id;
-    TabletInfoPtr info;
-    const ReportedTabletPB* report;
-    std::map<TableId, scoped_refptr<TableInfo>> tables;
-  };
-  using ReportedTablets = std::vector<ReportedTablet>;
-  void GetReportedAndOrphanedTabletsFromReport(
-      int num_tablets,
-      const TabletReportPB& full_report,
-      TabletReportUpdatesPB* full_report_update,
-      ReportedTablets* reported_tablets,
-      std::set<TabletId>* orphaned_tablets);
-
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
   void SendDeleteTabletRequest(const TabletId& tablet_id,
@@ -797,8 +781,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   bool IsLoadBalancerEnabled() override;
 
   // Return the table info for the table with the specified UUID, if it exists.
-  TableInfoPtr GetTableInfo(const TableId& table_id) override;
+  TableInfoPtr GetTableInfo(const TableId& table_id) EXCLUDES(mutex_) override;
   TableInfoPtr GetTableInfoUnlocked(const TableId& table_id) REQUIRES_SHARED(mutex_);
+
+  // Gets the table info for each table id, or sets it to null if the table id was not found.
+  std::unordered_map<TableId, TableInfoPtr> GetTableInfos(const std::vector<TableId>& table_ids)
+      EXCLUDES(mutex_);
 
   // Get Table info given namespace id and table name.
   // Very inefficient for YSQL tables.
@@ -871,6 +859,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TabletServerId& tserver_uuid, const TabletId& tablet_id,
       const TableInfoPtr& table, const LeaderEpoch& epoch,
       server::MonitoredTaskState task_state) override;
+  bool IsDeletedTabletLoadedFromSysCatalog(const TabletId& tablet_id) const;
 
   // For a DeleteTable, we first mark tables as DELETING then move them to DELETED once all
   // outstanding tasks are complete and the TS side tablets are deleted.
@@ -1661,6 +1650,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) override
       EXCLUDES(mutex_);
+
+  // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
+  TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
 
   // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
   Status DropXReplStreams(
@@ -2706,8 +2698,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       ExternalTableSnapshotData* table_data);
   Status PreprocessTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
   Status ImportTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
-
-  TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
 
   Result<std::map<std::string, KeyRange>> GetTableKeyRanges(const TableId& table_id);
 

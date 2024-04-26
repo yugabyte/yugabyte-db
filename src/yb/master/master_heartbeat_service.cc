@@ -11,6 +11,11 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <iterator>
+
+#include <google/protobuf/repeated_field.h>
+
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
@@ -21,9 +26,12 @@
 
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_heartbeat.service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_partitions_vtable.h"
 
@@ -67,6 +75,14 @@ DEFINE_RUNTIME_double(heartbeat_safe_deadline_ratio, .20,
     "When the heartbeat deadline has this percentage of time remaining, "
     "the master should halt tablet report processing so it can respond in time.");
 
+DEFINE_RUNTIME_bool(master_enable_deletion_check_for_orphaned_tablets, true,
+    "When set, this flag adds stricter protection around the deletion of orphaned tablets. When "
+    "master leader is processing a tablet report and doesn't know about a tablet, explicitly "
+    "check that the tablet has been deleted in the past. If it has, then issue a DeleteTablet "
+    "to the tservers. Otherwise, it means that tserver has heartbeated to the wrong cluster, "
+    "or there has been sys catalog corruption. In this case, log an error but don't actually "
+    "delete any data.");
+
 // Temporary.  Can be removed after long-run testing.
 // TODO: how temporary is this?
 DEFINE_RUNTIME_bool(master_ignore_stale_cstate, true,
@@ -78,6 +94,10 @@ DEFINE_RUNTIME_bool(master_tombstone_evicted_tablet_replicas, true,
     "are no longer part of the latest reported raft config.");
 TAG_FLAG(master_tombstone_evicted_tablet_replicas, hidden);
 
+DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
+    "If the leader lease in master's view has expired for this amount of seconds, "
+    "treat the lease as expired for too long time.");
+
 DEFINE_RUNTIME_bool(use_create_table_leader_hint, true,
     "Whether the Master should hint which replica for each tablet should "
     "be leader initially on tablet creation.");
@@ -85,9 +105,9 @@ DEFINE_RUNTIME_bool(use_create_table_leader_hint, true,
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
                  "Number of milliseconds to sleep during the processing of a tablet batch.");
 
-DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
-    "If the leader lease in master's view has expired for this amount of seconds, "
-    "treat the lease as expired for too long time.");
+DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
+    "On the heartbeat processing path, simulate a scenario where tablet metadata is missing due to "
+    "a corruption. ");
 
 DECLARE_bool(enable_register_ts_from_raft);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
@@ -109,6 +129,8 @@ using tablet::RaftGroupStatePB;
 using tablet::TABLET_DATA_DELETED;
 using tablet::TABLET_DATA_TOMBSTONED;
 
+using google::protobuf::RepeatedPtrField;
+
 class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartbeatIf {
  public:
   explicit MasterHeartbeatServiceImpl(Master* master)
@@ -127,6 +149,14 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
   Master* master_;
   CatalogManager* catalog_manager_;
 
+  struct ReportedTablet {
+    TabletId tablet_id;
+    TabletInfoPtr info;
+    const ReportedTabletPB* report;
+    std::map<TableId, scoped_refptr<TableInfo>> tables;
+  };
+  using ReportedTablets = std::vector<ReportedTablet>;
+
   Status ProcessTabletReport(
       TSDescriptor* ts_desc,
       const NodeInstancePB& ts_instance,
@@ -139,11 +169,17 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       TSDescriptor* ts_desc,
       const NodeInstancePB& ts_instance,
       const TabletReportPB& report,
-      CatalogManager::ReportedTablets::iterator begin,
-      CatalogManager::ReportedTablets::iterator end,
+      ReportedTablets::iterator begin,
+      ReportedTablets::iterator end,
       const LeaderEpoch& epoch,
       TabletReportUpdatesPB* full_report_update,
       std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
+
+  void DeleteOrphanedTabletReplica(
+      const TabletId& tablet_id, const LeaderEpoch& epoch, TSDescriptor* ts_desc);
+
+  std::pair<MasterHeartbeatServiceImpl::ReportedTablets, std::vector<TabletId>>
+      GetReportedAndOrphanedTablets(const RepeatedPtrField<ReportedTabletPB>& updated_tablets);
 
   bool ProcessCommittedConsensusState(
       TSDescriptor* ts_desc,
@@ -489,6 +525,87 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   rpc.RespondSuccess();
 }
 
+std::pair<MasterHeartbeatServiceImpl::ReportedTablets, std::vector<TabletId>>
+    MasterHeartbeatServiceImpl::GetReportedAndOrphanedTablets(
+    const RepeatedPtrField<ReportedTabletPB>& updated_tablets) {
+  MasterHeartbeatServiceImpl::ReportedTablets reported_tablets;
+  std::vector<TabletId> orphaned_tablets;
+
+  // Get tablet objects for all updated tablets.
+  std::vector<TabletId> updated_tablet_ids;
+  std::transform(
+      updated_tablets.begin(), updated_tablets.end(),
+      std::back_inserter(updated_tablet_ids), [](const auto& pb) { return pb.tablet_id();});
+  auto updated_tablet_infos = catalog_manager_->GetTabletInfos(updated_tablet_ids);
+
+  // Get table objects for all updated colocated tables.
+  std::vector<TableId> updated_table_ids;
+  for (int i = 0; i < updated_tablets.size(); ++i) {
+    if (!updated_tablet_infos[i]) {
+      continue;
+    }
+    // For colocated tablets, add ids for all the tables that need processing.
+    for (const auto& [table_id, _] : updated_tablets[i].table_to_version()) {
+      updated_table_ids.push_back(table_id);
+    }
+  }
+  std::unordered_map<TableId, TableInfoPtr> updated_tables =
+      catalog_manager_->GetTableInfos(updated_table_ids);
+
+  for (int i = 0; i < updated_tablets.size(); ++i) {
+    const auto& tablet = updated_tablet_infos[i];
+    const auto& report = updated_tablets[i];
+
+    if (!tablet || FLAGS_TEST_simulate_sys_catalog_data_loss) {
+      orphaned_tablets.push_back(report.tablet_id());
+      continue;
+    }
+
+    // 1b. Found the tablet, create information for updating local state.
+    ReportedTablet reported_tablet {
+      .tablet_id = report.tablet_id(),
+      .info = tablet,
+      .report = &report,
+      .tables = {}
+    };
+    for (const auto& [table_id, version] : report.table_to_version()) {
+      auto table = updated_tables.find(table_id);
+      if (table->second == nullptr) {
+        // TODO(Sanket): Do we need to suitably handle these orphaned tables?
+        continue;
+      }
+      reported_tablet.tables[table_id] = table->second;
+    }
+    reported_tablets.push_back(std::move(reported_tablet));
+  }
+  return { reported_tablets, orphaned_tablets };
+}
+
+void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
+    const TabletId& tablet_id, const LeaderEpoch& epoch, TSDescriptor* ts_desc) {
+  if (GetAtomicFlag(&FLAGS_master_enable_deletion_check_for_orphaned_tablets) &&
+      !catalog_manager_->IsDeletedTabletLoadedFromSysCatalog(tablet_id)) {
+    // See the comment in deleted_tablets_loaded_from_sys_catalog_ declaration for an
+    // explanation of this logic.
+    LOG(ERROR) << Format(
+        "Skipping deletion of orphaned tablet $0, since master has never registered this "
+        "tablet.", tablet_id);
+    return;
+  }
+
+  // If a TS reported an unknown tablet, send a delete tablet rpc to the TS.
+  LOG(INFO) << "Null tablet reported, possibly the TS was not around when the "
+               "table was being deleted. Sending DeleteTablet RPC to this TS.";
+  catalog_manager_->SendDeleteTabletRequest(
+    tablet_id,
+    tablet::TABLET_DATA_DELETED /* delete_type */,
+    boost::none /* cas_config_opid_index_less_or_equal */,
+    nullptr /* table */,
+    ts_desc,
+    "Report from an orphaned tablet" /* reason */,
+    epoch);
+}
+
 Status MasterHeartbeatServiceImpl::ProcessTabletReport(
     TSDescriptor* ts_desc,
     const NodeInstancePB& ts_instance,
@@ -515,30 +632,19 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReport(
   // TODO: on a full tablet report, we may want to iterate over the tablets we think
   // the server should have, compare vs the ones being reported, and somehow mark
   // any that have been "lost" (eg somehow the tablet metadata got corrupted or something).
+  auto [reported_tablets, orphaned_tablets] =
+      GetReportedAndOrphanedTablets(full_report.updated_tablets());
 
-  CatalogManager::ReportedTablets reported_tablets;
-
-  // Tablet Deletes to process after the catalog lock below.
-  std::set<TabletId> orphaned_tablets;
-
-  catalog_manager_->GetReportedAndOrphanedTabletsFromReport(
-      num_tablets, full_report, full_report_update, &reported_tablets, &orphaned_tablets);
+  // Process any delete requests from orphaned tablets, identified above.
+  for (const auto& tablet_id : orphaned_tablets) {
+    // Every tablet in the report that is processed gets a heartbeat response entry.
+    full_report_update->add_tablets()->set_tablet_id(tablet_id);
+    DeleteOrphanedTabletReplica(tablet_id, epoch, ts_desc);
+  }
 
   std::sort(reported_tablets.begin(), reported_tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs.tablet_id < rhs.tablet_id;
   });
-
-  // Process any delete requests from orphaned tablets, identified above.
-  for (const auto& tablet_id : orphaned_tablets) {
-    catalog_manager_->SendDeleteTabletRequest(
-      tablet_id,
-      tablet::TABLET_DATA_DELETED /* delete_type */,
-      boost::none /* cas_config_opid_index_less_or_equal */,
-      nullptr /* table */,
-      ts_desc,
-      "Report from an orphaned tablet" /* reason */,
-      epoch);
-  }
 
   // Calculate the deadline for this expensive loop coming up.
   const auto safe_deadline = rpc->GetClientDeadline() -
@@ -628,8 +734,8 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     TSDescriptor* ts_desc,
     const NodeInstancePB& ts_instance,
     const TabletReportPB& full_report,
-    CatalogManager::ReportedTablets::iterator begin,
-    CatalogManager::ReportedTablets::iterator end,
+    ReportedTablets::iterator begin,
+    ReportedTablets::iterator end,
     const LeaderEpoch& epoch,
     TabletReportUpdatesPB* full_report_update,
     std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs) {

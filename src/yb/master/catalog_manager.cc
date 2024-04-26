@@ -599,18 +599,6 @@ DEFINE_RUNTIME_bool(master_join_existing_universe, false,
     "other factors. To create a new universe with a new group of masters, unset this flag. Set "
     "this flag on all new and existing master processes once the universe creation completes.");
 
-DEFINE_RUNTIME_bool(master_enable_deletion_check_for_orphaned_tablets, true,
-    "When set, this flag adds stricter protection around the deletion of orphaned tablets. When "
-    "master leader is processing a tablet report and doesn't know about a tablet, explicitly "
-    "check that the tablet has been deleted in the past. If it has, then issue a DeleteTablet "
-    "to the tservers. Otherwise, it means that tserver has heartbeated to the wrong cluster, "
-    "or there has been sys catalog corruption. In this case, log an error but don't actually "
-    "delete any data.");
-
-DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
-    "On the heartbeat processing path, simulate a scenario where tablet metadata is missing due to "
-    "a corruption. ");
-
 DEFINE_test_flag(bool, disable_set_catalog_version_table_in_perdb_mode, false,
                  "Whether to disable setting the catalog version table in perdb mode.");
 DEFINE_RUNTIME_uint32(initial_tserver_registration_duration_secs,
@@ -1531,6 +1519,11 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(clone_state_manager_->ClearAndRunLoaders());
 
   return Status::OK();
+}
+
+bool CatalogManager::IsDeletedTabletLoadedFromSysCatalog(const TabletId& tablet_id) const {
+  SharedLock lock(mutex_);
+  return deleted_tablets_loaded_from_sys_catalog_.contains(tablet_id);
 }
 
 Status CatalogManager::CheckResource(
@@ -3152,6 +3145,16 @@ Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfoUnlocked(const Ta
   SCHECK(tablet_info != nullptr, NotFound, Format("Tablet $0 not found", tablet_id));
 
   return tablet_info;
+}
+
+TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
+  TabletInfos result;
+  result.reserve(ids.size());
+  SharedLock lock(mutex_);
+  for (const auto& id : ids) {
+    result.push_back(FindPtrOrNull(*tablet_map_, id));
+  }
+  return result;
 }
 
 void CatalogManager::SplitTabletWithKey(
@@ -7829,9 +7832,23 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   return Status::OK();
 }
 
+scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
+  return tables_->FindTableOrNull(table_id);
+}
+
 scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
   SharedLock lock(mutex_);
-  return tables_->FindTableOrNull(table_id);
+  return GetTableInfoUnlocked(table_id);
+}
+
+std::unordered_map<TableId, TableInfoPtr> CatalogManager::GetTableInfos(
+    const std::vector<TableId>& table_ids) {
+  SharedLock lock(mutex_);
+  std::unordered_map<TableId, TableInfoPtr> id_to_table;
+  for (const auto& id : table_ids) {
+    id_to_table[id] = GetTableInfoUnlocked(id);
+  }
+  return id_to_table;
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableName(
@@ -7879,10 +7896,6 @@ Result<std::vector<scoped_refptr<TableInfo>>> CatalogManager::GetTableInfosForNa
   }
 
   return table_infos;
-}
-
-scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
-  return tables_->FindTableOrNull(table_id);
 }
 
 std::vector<TableInfoPtr> CatalogManager::GetTables(
@@ -8045,75 +8058,6 @@ void CatalogManager::NotifyTabletDeleteFinished(
   }
   if (task_state == server::MonitoredTaskState::kComplete) {
     CheckTableDeleted(table, epoch);
-  }
-}
-
-void CatalogManager::GetReportedAndOrphanedTabletsFromReport(
-    int num_tablets,
-    const TabletReportPB& full_report,
-    TabletReportUpdatesPB* full_report_update,
-    ReportedTablets* reported_tablets,
-    set<TabletId>* orphaned_tablets) {
-  // Lock the catalog to iterate over tablet_ids_map_ & table_ids_map_.
-  SharedLock lock(mutex_);
-
-  // Fill the above variables before processing
-  full_report_update->mutable_tablets()->Reserve(num_tablets);
-  for (const ReportedTabletPB& report : full_report.updated_tablets()) {
-    const string& tablet_id = report.tablet_id();
-
-    // 1a. Find the tablet, deleting/skipping it if it can't be found.
-    scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, tablet_id);
-    if (!tablet || FLAGS_TEST_simulate_sys_catalog_data_loss) {
-      // Every tablet in the report that is processed gets a heartbeat response entry.
-      ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
-      update->set_tablet_id(tablet_id);
-
-      if (GetAtomicFlag(&FLAGS_master_enable_deletion_check_for_orphaned_tablets) &&
-          !deleted_tablets_loaded_from_sys_catalog_.contains(tablet_id)) {
-        // See the comment in deleted_tablets_loaded_from_sys_catalog_ declaration for an
-        // explanation of this logic.
-        LOG_WITH_PREFIX(ERROR) << Format(
-            "Skipping deletion of orphaned tablet $0, since master has never registered this "
-            "tablet.", tablet_id);
-        continue;
-      }
-
-      // If a TS reported an unknown tablet, send a delete tablet rpc to the TS.
-      LOG(INFO) << "Null tablet reported, possibly the TS was not around when the"
-                    " table was being deleted. Sending Delete tablet RPC to this TS.";
-      orphaned_tablets->insert(tablet_id);
-      continue;
-    }
-    if (!tablet->table() || tables_->FindTableOrNull(tablet->table()->id()) == nullptr) {
-      auto table_id = tablet->table() == nullptr ? "(null)" : tablet->table()->id();
-      LOG(INFO) << "Got report from an orphaned tablet " << tablet_id << " on table " << table_id;
-      orphaned_tablets->insert(tablet_id);
-      // Every tablet in the report that is processed gets a heartbeat response entry.
-      ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
-      update->set_tablet_id(tablet_id);
-      continue;
-    }
-
-    // 1b. Found the tablet, update local state.
-    reported_tablets->push_back(ReportedTablet {
-      .tablet_id = tablet_id,
-      .info = tablet,
-      .report = &report,
-      .tables = {}
-    });
-    // For colocated tablet, update all the tables that need processing.
-    for (const auto& id_to_version : report.table_to_version()) {
-      auto table_info = tables_->FindTableOrNull(id_to_version.first);
-      if(!table_info) {
-        // TODO(Sanket): Do we need to suitably handle these orphaned tables?
-        continue;
-      }
-      VLOG_WITH_PREFIX(1) << "Tablet " << report.tablet_id() << " reported table "
-                          << id_to_version.first << " in its colocated list";
-      (*reported_tablets)[reported_tablets->size() - 1].tables.emplace(
-          id_to_version.first, table_info);
-    }
   }
 }
 
