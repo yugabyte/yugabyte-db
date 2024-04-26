@@ -166,6 +166,14 @@ class AutoFieldsetScope {
 
   std::stringstream& output_;
 };
+
+std::optional<uint64_t> ToUnsignedOrNullopt(int64_t val) {
+  if (val == std::numeric_limits<int64_t>::max()) {
+    return std::nullopt;
+  } else {
+    return val;
+  }
+}
 }  // namespace
 
 using consensus::RaftPeerPB;
@@ -191,6 +199,7 @@ void MasterPathHandlers::TabletCounts::operator+=(const TabletCounts& other) {
   user_tablet_followers += other.user_tablet_followers;
   system_tablet_leaders += other.system_tablet_leaders;
   system_tablet_followers += other.system_tablet_followers;
+  hidden_tablet_peers += other.hidden_tablet_peers;
 }
 
 MasterPathHandlers::ZoneTabletCounts::ZoneTabletCounts(
@@ -400,6 +409,40 @@ bool TabletServerComparator(
 
 }  // anonymous namespace
 
+MasterPathHandlers::UniverseTabletCounts MasterPathHandlers::CalculateUniverseTabletCounts(
+    const TabletCountMap& tablet_count_map, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
+    const BlacklistSet& blacklist_set,
+    int hide_dead_node_threshold_mins) {
+  UniverseTabletCounts counts;
+  for (const auto& desc : descs) {
+    if (ShouldHideTserverNodeFromDisplay(desc.get(), hide_dead_node_threshold_mins)) {
+      continue;
+    }
+    const auto& placement_uuid = desc->placement_uuid();
+    PlacementClusterTabletCounts& placement_cluster_counts =
+        counts.per_placement_cluster_counts[placement_uuid];
+    if (auto* tablet_count = FindOrNull(tablet_count_map, desc->permanent_uuid())) {
+      placement_cluster_counts.counts += *tablet_count;
+    }
+    if (desc->IsBlacklisted(blacklist_set)) {
+      placement_cluster_counts.blacklisted_node_count++;
+    } else if (desc->IsLive()) {
+      placement_cluster_counts.live_node_count++;
+    } else {
+      placement_cluster_counts.dead_node_count++;
+    }
+    placement_cluster_counts.active_tablet_peer_count += desc->num_live_replicas();
+  }
+
+  auto limits = tserver::GetTabletReplicaPerResourceLimits();
+  for (auto& [placement_uuid, cluster_counts] : counts.per_placement_cluster_counts) {
+    auto cluster_info = ComputeAggregatedClusterInfo(descs, placement_uuid);
+    cluster_counts.tablet_replica_limit =
+        ToUnsignedOrNullopt(ComputeTabletReplicaLimit(cluster_info, limits));
+  }
+  return counts;
+}
+
 void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
                                         TabletCountMap* tablet_map,
@@ -425,7 +468,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
   // Comparator orders by cloud, region, zone and uuid fields.
   std::sort(local_descs.begin(), local_descs.end(), &TabletServerComparator);
 
-  for (auto desc : local_descs) {
+  for (const auto& desc : local_descs) {
     if (desc->placement_uuid() == current_uuid) {
       if (ShouldHideTserverNodeFromDisplay(desc.get(), hide_dead_node_threshold_mins)) {
         continue;
@@ -518,6 +561,57 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
 
       *output << "  </tr>\n";
     }
+  }
+  *output << "</table>\n";
+}
+
+void MasterPathHandlers::DisplayUniverseSummary(
+    const TabletCountMap& tablet_map, const std::vector<std::shared_ptr<TSDescriptor>>& all_descs,
+    const std::string& live_id,
+    int hide_dead_node_threshold_mins,
+    std::stringstream* output) {
+  auto blacklist_result = master_->catalog_manager()->BlacklistSetFromPB();
+  BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
+  auto universe_counts = CalculateUniverseTabletCounts(
+      tablet_map, all_descs, blacklist, hide_dead_node_threshold_mins);
+
+  // auto include_placement_uuids = universe_counts.per_placement_cluster_counts.size() > 1;
+  // auto placement_uuid_header = include_placement_uuids ? "<th>Cluster UUID</th>\n" : "";
+  *output << "<h2>Universe Summary</h2>\n"
+          << "<table class='table table-striped'>\n"
+          << "  <tr>\n"
+          << "    <th>Cluster UUID</th>\n"
+          << "    <th>Total Live TServers</th>\n"
+          << "    <th>Total Blacklisted TServers</th>\n"
+          << "    <th>Total Dead TServers</th>\n"
+          << "    <th>User Tablet-Peers</th>\n"
+          << "    <th>System Tablet-Peers</th>\n"
+          << "    <th>Hidden Tablet-Peers</th>\n"
+          << "    <th>Active Tablet-Peers</th>\n"
+          << "    <th>Tablet Peer Limit</th>\n"
+          << "  </tr>\n";
+  for (const auto& [placement_uuid, cluster_counts] :
+       universe_counts.per_placement_cluster_counts) {
+    auto placement_uuid_entry = Format(
+        "$0 $1", placement_uuid == live_id ? "Primary Cluster" : "Read Replica", placement_uuid);
+    auto limit_entry = cluster_counts.tablet_replica_limit.has_value()
+                           ? Format("$0", *cluster_counts.tablet_replica_limit)
+                           : "N/A";
+    auto user_total =
+        cluster_counts.counts.user_tablet_followers + cluster_counts.counts.user_tablet_leaders;
+    auto system_total =
+        cluster_counts.counts.system_tablet_followers + cluster_counts.counts.system_tablet_leaders;
+    *output << "<tr>\n"
+            // << placement_uuid_entry
+            << "  <td>" << placement_uuid_entry << "</td>\n"
+            << "  <td>" << cluster_counts.live_node_count << "</td>\n"
+            << "  <td>" << cluster_counts.blacklisted_node_count << "</td>\n"
+            << "  <td>" << cluster_counts.dead_node_count << "</td>\n"
+            << "  <td>" << user_total << "</td>\n"
+            << "  <td>" << system_total << "</td>\n"
+            << "  <td>" << cluster_counts.counts.hidden_tablet_peers << "</td>\n"
+            << "  <td>" << cluster_counts.active_tablet_peer_count << "</td>\n"
+            << "  <td>" << limit_entry << "</td>\n";
   }
   *output << "</table>\n";
 }
@@ -680,6 +774,9 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   }
 
   *output << std::setprecision(output_precision_);
+  if (viewType == TServersViewType::kTServersDefaultView) {
+    DisplayUniverseSummary(tablet_map, descs, live_id, hide_dead_node_threshold_override, output);
+  }
   *output << "<h2>Tablet Servers</h2>\n";
 
   if (!live_id.empty()) {
@@ -3372,22 +3469,24 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
 
     TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
-
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();
-
       for (const auto& replica : *replication_locations) {
+        auto& counts = (*tablet_map)[replica.first];
+        if (tablet->LockForRead()->is_hidden()) {
+          counts.hidden_tablet_peers++;
+        }
         if (is_user_table || table->IsColocationParentTable()) {
           if (replica.second.role == PeerRole::LEADER) {
-            (*tablet_map)[replica.first].user_tablet_leaders++;
+            counts.user_tablet_leaders++;
           } else {
-            (*tablet_map)[replica.first].user_tablet_followers++;
+            counts.user_tablet_followers++;
           }
         } else {
           if (replica.second.role == PeerRole::LEADER) {
-            (*tablet_map)[replica.first].system_tablet_leaders++;
+            counts.system_tablet_leaders++;
           } else {
-            (*tablet_map)[replica.first].system_tablet_followers++;
+            counts.system_tablet_followers++;
           }
         }
       }

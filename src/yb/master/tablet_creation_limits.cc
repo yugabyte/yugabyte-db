@@ -74,6 +74,11 @@ AggregatedClusterInfo ComputeAggregatedClusterInfo(
   };
 }
 
+// TODO(zdrudi): This function is passed a filtered version of TSDescriptorVector - blacklisted and
+// non-live tservers are removed.  But tablet replicas hosted on blacklisted tservers aren't going
+// to be deleted so they should be counted towards the total number of live tablet replicas.  Alter
+// this function to take the complete, unfiltered TSDescriptorVector and put logic directly into
+// ComputeAggregatedClusterInfo to do the right thing with blacklisted and non-live tservers.
 Status CanCreateTabletReplicas(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs) {
