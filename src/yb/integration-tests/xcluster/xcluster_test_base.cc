@@ -29,7 +29,7 @@
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -601,6 +601,9 @@ Status XClusterTestBase::DeleteUniverseReplication(
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   RETURN_NOT_OK(master_proxy->DeleteUniverseReplication(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
   LOG(INFO) << "Delete universe succeeded";
 
   return Status::OK();
@@ -1048,4 +1051,11 @@ Result<TableId> XClusterTestBase::GetColocatedDatabaseParentTableId() {
 Result<master::MasterReplicationProxy> XClusterTestBase::GetProducerMasterProxy() {
   return GetMasterProxy(producer_cluster_);
 }
+
+Status XClusterTestBase::ClearFailedUniverse(Cluster& cluster) {
+  auto& catalog_manager =
+      VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+  return catalog_manager.ClearFailedUniverse();
+}
+
 } // namespace yb

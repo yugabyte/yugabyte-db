@@ -229,25 +229,17 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
     const XClusterCreateOutboundReplicationGroupRequestPB* req,
     XClusterCreateOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  SCHECK(FLAGS_enable_xcluster_api_v2, IllegalState, "xCluster API v2 is not enabled.");
-
   LOG_FUNC_AND_RPC;
+  SCHECK(FLAGS_enable_xcluster_api_v2, IllegalState, "xCluster API v2 is not enabled.");
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id);
+  SCHECK(!req->namespace_ids().empty(), InvalidArgument, "Missing Namespace Ids");
 
-  SCHECK(
-      !req->replication_group_id().empty(), InvalidArgument,
-      "Replication group id cannot be empty");
-  SCHECK(req->namespace_names_size() > 0, InvalidArgument, "Namespace names must be specified");
-
-  std::vector<NamespaceName> namespace_names;
-  for (const auto& namespace_name : req->namespace_names()) {
-    namespace_names.emplace_back(namespace_name);
+  std::vector<NamespaceId> namespace_ids;
+  for (const auto& namespace_id : req->namespace_ids()) {
+    namespace_ids.emplace_back(namespace_id);
   }
-
-  auto namespace_ids = VERIFY_RESULT(CreateOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_names, epoch));
-  for (const auto& namespace_id : namespace_ids) {
-    *resp->add_namespace_ids() = namespace_id;
-  }
+  RETURN_NOT_OK(CreateOutboundReplicationGroup(
+      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_ids, epoch));
 
   return Status::OK();
 }
@@ -257,12 +249,11 @@ Status XClusterManager::XClusterAddNamespaceToOutboundReplicationGroup(
     XClusterAddNamespaceToOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
-  SCHECK(req->has_namespace_name(), InvalidArgument, "Namespace name must be specified");
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id, namespace_id);
 
-  auto namespace_id = VERIFY_RESULT(AddNamespaceToOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_name(), epoch));
+  RETURN_NOT_OK(AddNamespaceToOutboundReplicationGroup(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), epoch));
 
-  resp->set_namespace_id(namespace_id);
   return Status::OK();
 }
 
@@ -271,10 +262,16 @@ Status XClusterManager::XClusterRemoveNamespaceFromOutboundReplicationGroup(
     XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
-  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id, namespace_id);
+
+  std::vector<HostPort> target_master_addresses;
+  if (!req->target_master_addresses().empty()) {
+    HostPortsFromPBs(req->target_master_addresses(), &target_master_addresses);
+  }
 
   return RemoveNamespaceFromOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), epoch);
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(),
+      target_master_addresses, epoch);
 }
 
 Status XClusterManager::XClusterDeleteOutboundReplicationGroup(
@@ -282,17 +279,22 @@ Status XClusterManager::XClusterDeleteOutboundReplicationGroup(
     XClusterDeleteOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id);
+
+  std::vector<HostPort> target_master_addresses;
+  if (!req->target_master_addresses().empty()) {
+    HostPortsFromPBs(req->target_master_addresses(), &target_master_addresses);
+  }
 
   return DeleteOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), epoch);
+      xcluster::ReplicationGroupId(req->replication_group_id()), target_master_addresses, epoch);
 }
 
 Status XClusterManager::IsXClusterBootstrapRequired(
     const IsXClusterBootstrapRequiredRequestPB* req, IsXClusterBootstrapRequiredResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
-  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id, namespace_id);
-
   LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id, namespace_id);
 
   auto bootstrap_required = VERIFY_RESULT(IsBootstrapRequired(
       xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id()));
@@ -310,9 +312,8 @@ Status XClusterManager::IsXClusterBootstrapRequired(
 Status XClusterManager::GetXClusterStreams(
     const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
-  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
-
   LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id, namespace_id);
 
   std::vector<std::pair<TableName, PgSchemaName>> table_names;
   for (const auto& table_name : req->table_infos()) {
@@ -343,6 +344,9 @@ Status XClusterManager::CreateXClusterReplication(
     const CreateXClusterReplicationRequestPB* req, CreateXClusterReplicationResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id);
+  SCHECK(
+      !req->target_master_addresses().empty(), InvalidArgument, "Missing Target Master addresses");
 
   std::vector<HostPort> target_master_addresses;
   HostPortsFromPBs(req->target_master_addresses(), &target_master_addresses);
@@ -356,11 +360,53 @@ Status XClusterManager::IsCreateXClusterReplicationDone(
     IsCreateXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id);
+  SCHECK(
+      !req->target_master_addresses().empty(), InvalidArgument, "Missing Target Master addresses");
 
   std::vector<HostPort> target_master_addresses;
   HostPortsFromPBs(req->target_master_addresses(), &target_master_addresses);
 
   auto create_result = VERIFY_RESULT(XClusterSourceManager::IsCreateXClusterReplicationDone(
+      xcluster::ReplicationGroupId(req->replication_group_id()), target_master_addresses, epoch));
+
+  resp->set_done(create_result.done());
+  if (create_result.done()) {
+    StatusToPB(create_result.status(), resp->mutable_replication_error());
+  }
+  return Status::OK();
+}
+
+Status XClusterManager::AddNamespaceToXClusterReplication(
+    const AddNamespaceToXClusterReplicationRequestPB* req,
+    AddNamespaceToXClusterReplicationResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id, namespace_id);
+  SCHECK(
+      !req->target_master_addresses().empty(), InvalidArgument, "Missing Target Master addresses");
+
+  std::vector<HostPort> target_master_addresses;
+  HostPortsFromPBs(req->target_master_addresses(), &target_master_addresses);
+
+  return XClusterSourceManager::AddNamespaceToTarget(
+      xcluster::ReplicationGroupId(req->replication_group_id()), target_master_addresses,
+      req->namespace_id(), epoch);
+}
+
+Status XClusterManager::IsAlterXClusterReplicationDone(
+    const IsAlterXClusterReplicationDoneRequestPB* req,
+    IsAlterXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id);
+  SCHECK(
+      !req->target_master_addresses().empty(), InvalidArgument, "Missing Target Master addresses");
+
+  std::vector<HostPort> target_master_addresses;
+  HostPortsFromPBs(req->target_master_addresses(), &target_master_addresses);
+
+  auto create_result = VERIFY_RESULT(XClusterSourceManager::IsAlterXClusterReplicationDone(
       xcluster::ReplicationGroupId(req->replication_group_id()), target_master_addresses, epoch));
 
   resp->set_done(create_result.done());

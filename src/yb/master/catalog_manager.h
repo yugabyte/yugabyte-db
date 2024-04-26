@@ -747,7 +747,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableName& table_name, const PgSchemaName pg_schema_name = {}) override;
 
   Result<std::vector<scoped_refptr<TableInfo>>> GetTableInfosForNamespace(
-      const NamespaceId& namespace_id);
+      const NamespaceId& namespace_id) const;
 
   // Return TableInfos according to specified mode.
   virtual std::vector<TableInfoPtr> GetTables(
@@ -1614,6 +1614,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::unordered_map<TableId, XClusterConsumerTableStreamIds> GetXClusterConsumerTableStreams()
       const EXCLUDES(mutex_);
+
+  std::optional<UniverseUuid> GetUniverseUuidIfExists() const;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2966,6 +2968,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void AddCDCStreamToUniverseAndInitConsumer(
       const xcluster::ReplicationGroupId& replication_group_id, const TableId& table,
       const Result<xrepl::StreamId>& stream_id, std::function<void()> on_success_cb = nullptr);
+
+  Status AddCDCStreamToUniverseAndInitConsumerInternal(
+      scoped_refptr<UniverseReplicationInfo> universe, const TableId& table,
+      const xrepl::StreamId& stream_id, std::function<void()> on_success_cb);
 
   void MergeUniverseReplication(
       scoped_refptr<UniverseReplicationInfo> info, xcluster::ReplicationGroupId original_id);

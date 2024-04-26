@@ -176,6 +176,23 @@ using client::internal::RemoteTabletServer;
 namespace master {
 using TableMetaPB = ImportSnapshotMetaResponsePB::TableMetaPB;
 
+namespace {
+
+template <typename RequestType>
+Status ValidateUniverseUUID(const RequestType& req, CatalogManager& catalog_manager) {
+  if (req->has_universe_uuid() && !req->universe_uuid().empty()) {
+    auto universe_uuid = catalog_manager.GetUniverseUuidIfExists();
+    SCHECK(
+        universe_uuid && universe_uuid->ToString() == req->universe_uuid(), InvalidArgument,
+        "Invalid Universe UUID $0. Expected $1", req->universe_uuid(),
+        (universe_uuid ? universe_uuid->ToString() : "empty"));
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
 ////////////////////////////////////////////////////////////
 // CDC Stream Loader
 ////////////////////////////////////////////////////////////
@@ -3241,28 +3258,32 @@ Status CatalogManager::SetupUniverseReplication(
     }
   }
 
-  SCHECK_EQ(
-      req->namespace_names_size(), req->producer_namespace_ids_size(), InvalidArgument,
-      "Incorrect number of namespace names and producer namespace ids");
   SCHECK(
-      req->namespace_names_size() == 0 || req->transactional(), InvalidArgument,
+      req->producer_namespaces().empty() || req->transactional(), InvalidArgument,
       "Transactional flag must be set for Db scoped replication groups");
 
   std::vector<NamespaceId> producer_namespace_ids, consumer_namespace_ids;
-  for (int i = 0; i < req->namespace_names_size(); ++i) {
-    NamespaceIdentifierPB ns_id;
-    ns_id.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-    ns_id.set_name(req->namespace_names(i));
-    auto ns_info = VERIFY_RESULT(FindNamespace(ns_id));
+  for (const auto& producer_ns_id : req->producer_namespaces()) {
+    SCHECK(!producer_ns_id.id().empty(), InvalidArgument, "Invalid Namespace Id");
+    SCHECK(!producer_ns_id.name().empty(), InvalidArgument, "Invalid Namespace name");
+    SCHECK_EQ(
+        producer_ns_id.database_type(), YQLDatabase::YQL_DATABASE_PGSQL, InvalidArgument,
+        "Invalid Namespace database_type");
+
+    producer_namespace_ids.push_back(producer_ns_id.id());
+
+    NamespaceIdentifierPB consumer_ns_id;
+    consumer_ns_id.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    consumer_ns_id.set_name(producer_ns_id.name());
+    auto ns_info = VERIFY_RESULT(FindNamespace(consumer_ns_id));
     consumer_namespace_ids.push_back(ns_info->id());
-    producer_namespace_ids.push_back(req->producer_namespace_ids(i));
   }
 
   // We should set the universe uuid even if we fail with AlreadyPresent error.
   {
-    auto l = ClusterConfig()->LockForRead();
-    if (l->pb.has_universe_uuid()) {
-      resp->set_universe_uuid(l->pb.universe_uuid());
+    auto universe_uuid = GetUniverseUuidIfExists();
+    if (universe_uuid) {
+      resp->set_universe_uuid(universe_uuid->ToString());
     }
   }
 
@@ -4009,12 +4030,22 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
     }
   }
 
+  Status s;
   if (!stream_id.ok()) {
-    LOG(ERROR) << "Error setting up CDC stream for table " << table_id;
-    MarkUniverseReplicationFailed(universe, ResultToStatus(stream_id));
-    return;
+    s = std::move(stream_id).status();
+  } else {
+    s = AddCDCStreamToUniverseAndInitConsumerInternal(
+        universe, table_id, *stream_id, std::move(on_success_cb));
   }
 
+  if (!s.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+  }
+}
+
+Status CatalogManager::AddCDCStreamToUniverseAndInitConsumerInternal(
+    scoped_refptr<UniverseReplicationInfo> universe, const TableId& table_id,
+    const xrepl::StreamId& stream_id, std::function<void()> on_success_cb) {
   bool merge_alter = false;
   bool validated_all_tables = false;
   std::vector<XClusterConsumerStreamInfo> consumer_info;
@@ -4022,7 +4053,7 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
     auto l = universe->LockForWrite();
     if (l->is_deleted_or_failed()) {
       // Nothing to do if universe is being deleted.
-      return;
+      return Status::OK();
     }
 
     auto map = l.mutable_data()->pb.mutable_table_streams();
@@ -4034,56 +4065,40 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
       validated_all_tables = true;
       LOG(INFO) << "Registering CDC consumers for universe " << universe->id();
 
-      auto& validated_tables = l->pb.validated_tables();
-
       consumer_info.reserve(l->pb.tables_size());
-      bool failed = false;
-      for (const auto& [producer_table_id, consumer_table_id] : validated_tables) {
-        auto stream_id_result = xrepl::StreamId::FromString((*map)[producer_table_id]);
-        if (!stream_id_result) {
-          LOG(WARNING) << "Invalid StreamId for producer tablet: " << producer_table_id
-                       << " consumer tablet: " << consumer_table_id << ": "
-                       << stream_id_result.status();
-          l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
-          failed = true;
-          break;
-        }
+      std::set<TableId> consumer_table_ids;
+      for (const auto& [producer_table_id, consumer_table_id] : l->pb.validated_tables()) {
+        consumer_table_ids.insert(consumer_table_id);
 
         XClusterConsumerStreamInfo info;
         info.producer_table_id = producer_table_id;
         info.consumer_table_id = consumer_table_id;
-        info.stream_id = *stream_id_result;
+        info.stream_id = VERIFY_RESULT(xrepl::StreamId::FromString((*map)[producer_table_id]));
         consumer_info.push_back(info);
       }
 
-      if (!failed) {
-        std::vector<HostPort> hp;
-        HostPortsFromPBs(l->pb.producer_master_addresses(), &hp);
-
-        auto xcluster_rpc_tasks_result =
-            universe->GetOrCreateXClusterRpcTasks(l->pb.producer_master_addresses());
-        if (!xcluster_rpc_tasks_result.ok()) {
-          LOG(WARNING) << "CDC streams won't be created: " << xcluster_rpc_tasks_result;
-          l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
-        } else {
-          auto xcluster_rpc_tasks = *xcluster_rpc_tasks_result;
-          Status s = InitXClusterConsumer(
-              consumer_info, HostPort::ToCommaSeparatedString(hp), *universe.get(),
-              xcluster_rpc_tasks);
-          if (!s.ok()) {
-            LOG(ERROR) << "Universe replication " << replication_group_id
-                       << " failed. Error registering subscriber: " << s;
-            l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
-            universe->SetSetupUniverseReplicationErrorStatus(s);
-          } else {
-            if (xcluster::IsAlterReplicationGroupId(universe->ReplicationGroupId())) {
-              // Don't enable ALTER universes, merge them into the main universe instead.
-              merge_alter = true;
-            } else {
-              l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
-            }
-          }
+      if (l->IsDbScoped()) {
+        std::vector<NamespaceId> consumer_namespace_ids;
+        for (const auto& ns_info : l->pb.db_scoped_info().namespace_infos()) {
+          consumer_namespace_ids.push_back(ns_info.consumer_namespace_id());
         }
+        RETURN_NOT_OK(ValidateTableListForDbScopedReplication(
+            *universe, consumer_namespace_ids, consumer_table_ids, *this));
+      }
+
+      std::vector<HostPort> hp;
+      HostPortsFromPBs(l->pb.producer_master_addresses(), &hp);
+      auto xcluster_rpc_tasks =
+          VERIFY_RESULT(universe->GetOrCreateXClusterRpcTasks(l->pb.producer_master_addresses()));
+      RETURN_NOT_OK(InitXClusterConsumer(
+          consumer_info, HostPort::ToCommaSeparatedString(hp), *universe.get(),
+          xcluster_rpc_tasks));
+
+      if (xcluster::IsAlterReplicationGroupId(universe->ReplicationGroupId())) {
+        // Don't enable ALTER universes, merge them into the main universe instead.
+        merge_alter = true;
+      } else {
+        l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
       }
     }
 
@@ -4108,11 +4123,13 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
     // Update the in-memory cache of consumer tables.
     LockGuard lock(mutex_);
     for (const auto& info : consumer_info) {
-      auto c_table_id = info.consumer_table_id;
-      auto c_stream_id = info.stream_id;
+      const auto& c_table_id = info.consumer_table_id;
+      const auto& c_stream_id = info.stream_id;
       xcluster_consumer_table_stream_ids_map_[c_table_id].emplace(final_id, c_stream_id);
     }
   }
+
+  return Status::OK();
 }
 
 /*
@@ -4265,7 +4282,7 @@ Status CatalogManager::InitXClusterConsumer(
   auto* consumer_registry = l.mutable_data()->pb.mutable_consumer_registry();
   auto transactional = universe_l->pb.transactional();
   if (!xcluster::IsAlterReplicationGroupId(replication_info.ReplicationGroupId())) {
-    if (universe_l->pb.has_db_scoped_info()) {
+    if (universe_l->IsDbScoped()) {
       DCHECK(transactional);
     }
   }
@@ -4391,16 +4408,28 @@ void CatalogManager::MergeUniverseReplication(
 
     // Merge Master Config on Consumer. (no need for Producer changes, since it uses stream_id)
     // Merge Table->StreamID mapping.
-    auto at = alter_lock.mutable_data()->pb.mutable_tables();
-    original_lock.mutable_data()->pb.mutable_tables()->MergeFrom(*at);
-    at->Clear();
-    auto as = alter_lock.mutable_data()->pb.mutable_table_streams();
-    original_lock.mutable_data()->pb.mutable_table_streams()->insert(as->begin(), as->end());
-    as->clear();
-    auto av = alter_lock.mutable_data()->pb.mutable_validated_tables();
-    original_lock.mutable_data()->pb.mutable_validated_tables()->insert(av->begin(), av->end());
-    av->clear();
-    alter_lock.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
+    auto& alter_pb = alter_lock.mutable_data()->pb;
+    auto& original_pb = original_lock.mutable_data()->pb;
+
+    auto* alter_tables = alter_pb.mutable_tables();
+    original_pb.mutable_tables()->MergeFrom(*alter_tables);
+    alter_tables->Clear();
+    auto* alter_table_streams = alter_pb.mutable_table_streams();
+    original_pb.mutable_table_streams()->insert(
+        alter_table_streams->begin(), alter_table_streams->end());
+    alter_table_streams->clear();
+    auto* alter_validated_tables = alter_pb.mutable_validated_tables();
+    original_pb.mutable_validated_tables()->insert(
+        alter_validated_tables->begin(), alter_validated_tables->end());
+    alter_validated_tables->clear();
+    if (alter_lock.mutable_data()->IsDbScoped()) {
+      auto* alter_namespace_info = alter_pb.mutable_db_scoped_info()->mutable_namespace_infos();
+      original_pb.mutable_db_scoped_info()->mutable_namespace_infos()->MergeFrom(
+          *alter_namespace_info);
+      alter_namespace_info->Clear();
+    }
+
+    alter_pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
     if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_merging)) {
       // Exit for texting services
@@ -4464,6 +4493,12 @@ Status CatalogManager::DeleteUniverseReplication(
 
   auto l = ri->LockForWrite();
   l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
+
+  // We can skip the deletion of individual streams for DB Scoped replication since deletion of the
+  // outbound replication group will clean it up.
+  if (l->IsDbScoped()) {
+    skip_producer_stream_deletion = true;
+  }
 
   // Delete subscribers on the Consumer Registry (removes from TServers).
   LOG(INFO) << "Deleting subscribers for producer " << replication_group_id;
@@ -4563,6 +4598,8 @@ Status CatalogManager::DeleteUniverseReplication(
         InvalidArgument, "Producer universe ID required", req->ShortDebugString(),
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
+
+  RETURN_NOT_OK(ValidateUniverseUUID(req, *this));
 
   RETURN_NOT_OK(DeleteUniverseReplication(
       xcluster::ReplicationGroupId(req->replication_group_id()), req->ignore_errors(),
@@ -4783,6 +4820,8 @@ Status CatalogManager::AlterUniverseReplication(
 
   SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id);
 
+  RETURN_NOT_OK(ValidateUniverseUUID(req, *this));
+
   auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
   auto original_ri = GetUniverseReplication(replication_group_id);
   SCHECK_EC_FORMAT(
@@ -4793,13 +4832,19 @@ Status CatalogManager::AlterUniverseReplication(
   int config_count = (req->producer_master_addresses_size() > 0 ? 1 : 0) +
                      (req->producer_table_ids_to_remove_size() > 0 ? 1 : 0) +
                      (req->producer_table_ids_to_add_size() > 0 ? 1 : 0) +
-                     (req->has_new_replication_group_id() ? 1 : 0);
+                     (req->has_new_replication_group_id() ? 1 : 0) +
+                     (!req->producer_namespace_id_to_remove().empty() ? 1 : 0);
   SCHECK_EC_FORMAT(
       config_count == 1, InvalidArgument, MasterError(MasterErrorPB::INVALID_REQUEST),
       "Only 1 Alter operation per request currently supported: $0", req->ShortDebugString());
 
   if (req->producer_master_addresses_size() > 0) {
     return UpdateProducerAddress(original_ri, req);
+  }
+
+  if (req->has_producer_namespace_id_to_remove()) {
+    return RemoveNamespaceFromReplicationGroup(
+        original_ri, req->producer_namespace_id_to_remove(), *this, epoch);
   }
 
   if (req->producer_table_ids_to_remove_size() > 0) {
@@ -4876,18 +4921,40 @@ Status CatalogManager::UpdateProducerAddress(
 Status CatalogManager::AddTablesToReplication(
     scoped_refptr<UniverseReplicationInfo> universe, const AlterUniverseReplicationRequestPB* req,
     AlterUniverseReplicationResponsePB* resp, rpc::RpcContext* rpc) {
-  CHECK_GT(req->producer_table_ids_to_add_size() , 0);
+  SCHECK_GT(req->producer_table_ids_to_add_size(), 0, InvalidArgument, "No tables specified");
+
+  if (universe->IsDbScoped()) {
+    // We either add the entire namespace at once, or one table at a time as they get created.
+    if (req->has_producer_namespace_to_add()) {
+      SCHECK(
+          !req->producer_namespace_to_add().id().empty(), InvalidArgument, "Invalid Namespace Id");
+      SCHECK(
+          !req->producer_namespace_to_add().name().empty(), InvalidArgument,
+          "Invalid Namespace name");
+      SCHECK_EQ(
+          req->producer_namespace_to_add().database_type(), YQLDatabase::YQL_DATABASE_PGSQL,
+          InvalidArgument, "Invalid Namespace database_type");
+    } else {
+      SCHECK_EQ(
+          req->producer_table_ids_to_add_size(), 1, InvalidArgument,
+          "When adding more than table to a DB scoped replication the namespace info must also be "
+          "provided");
+    }
+  } else {
+    SCHECK(
+        !req->has_producer_namespace_to_add(), InvalidArgument,
+        "Cannot add namespaces to non DB scoped replication");
+  }
 
   xcluster::ReplicationGroupId alter_replication_group_id(xcluster::GetAlterReplicationGroupId(
       xcluster::ReplicationGroupId(req->replication_group_id())));
 
   // If user passed in bootstrap ids, check that there is a bootstrap id for every table.
-  if (req->producer_bootstrap_ids_to_add().size() > 0 &&
-      req->producer_table_ids_to_add().size() != req->producer_bootstrap_ids_to_add().size()) {
-    return STATUS(
-        InvalidArgument, "Number of bootstrap ids must be equal to number of tables",
-        req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-  }
+  SCHECK(
+      req->producer_bootstrap_ids_to_add_size() == 0 ||
+          req->producer_table_ids_to_add_size() == req->producer_bootstrap_ids_to_add().size(),
+      InvalidArgument, "Number of bootstrap ids must be equal to number of tables",
+      req->ShortDebugString());
 
   // Verify no 'alter' command running.
   scoped_refptr<UniverseReplicationInfo> alter_ri;
@@ -4944,11 +5011,11 @@ Status CatalogManager::AddTablesToReplication(
   // Only add new tables.  Ignore tables that are currently being replicated.
   auto tid_iter = req->producer_table_ids_to_add();
   std::unordered_set<string> new_tables(tid_iter.begin(), tid_iter.end());
-  {
-    auto l = universe->LockForRead();
-    for (const auto& table_id : l->pb.tables()) {
-      new_tables.erase(table_id);
-    }
+  auto original_universe_l = universe->LockForRead();
+  auto& original_universe_pb = original_universe_l->pb;
+
+  for (const auto& table_id : original_universe_pb.tables()) {
+    new_tables.erase(table_id);
   }
   if (new_tables.empty()) {
     return STATUS(
@@ -4961,7 +5028,13 @@ Status CatalogManager::AddTablesToReplication(
   master::SetupUniverseReplicationResponsePB setup_resp;
   setup_req.set_replication_group_id(alter_replication_group_id.ToString());
   setup_req.mutable_producer_master_addresses()->CopyFrom(
-      universe->LockForRead()->pb.producer_master_addresses());
+      original_universe_pb.producer_master_addresses());
+  setup_req.set_transactional(original_universe_pb.transactional());
+
+  if (req->has_producer_namespace_to_add()) {
+    *setup_req.add_producer_namespaces() = req->producer_namespace_to_add();
+  }
+
   for (const auto& table_id : new_tables) {
     setup_req.add_producer_table_ids(table_id);
 
