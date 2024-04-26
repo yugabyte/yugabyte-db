@@ -4577,6 +4577,19 @@ Status ClusterAdminClient::DeleteXClusterOutboundReplicationGroup(
   return XClusterClient().XClusterDeleteOutboundReplicationGroup(replication_group_id);
 }
 
+Status ClusterAdminClient::RepairOutboundXClusterReplicationGroupAddTable(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+    const xrepl::StreamId& stream_id) {
+  return XClusterClient().RepairOutboundXClusterReplicationGroupAddTable(
+      replication_group_id, table_id, stream_id);
+}
+
+Status ClusterAdminClient::RepairOutboundXClusterReplicationGroupRemoveTable(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id) {
+  return XClusterClient().RepairOutboundXClusterReplicationGroupRemoveTable(
+      replication_group_id, table_id);
+}
+
 client::XClusterClient ClusterAdminClient::XClusterClient() {
   return client::XClusterClient(*yb_client_);
 }

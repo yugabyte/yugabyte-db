@@ -200,6 +200,14 @@ AddTableToXClusterTargetTask::GetXClusterSafeTimeWithoutDdlQueue() {
     return std::nullopt;
   }
 
+  if (!safe_time_res->is_valid()) {
+    // If this is the first table in the namespace then the safe time will be invalid. Which means
+    // it is not yet valid to scan any data in the namespace. Since we only care about progression
+    // of the safe time and dont read any data we can safely use Min HT.
+    // This case will not occur if we have DDL replication, since we never drop the DDL_QUEUE table.
+    return HybridTime::kMin;
+  }
+
   SCHECK(
       !safe_time_res->is_special(), IllegalState, "Invalid safe time $0 for namespace $1",
       *safe_time_res, namespace_id);

@@ -322,6 +322,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, CreateXClusterReplication);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsCreateXClusterReplicationDone);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterCreateOutboundReplicationGroup);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterDeleteOutboundReplicationGroup);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupAddTable);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupRemoveTable);
 
 #define YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH(i, data, set) YB_CLIENT_SPECIALIZE_SIMPLE_EX set
 
@@ -1426,6 +1428,9 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
       resp.partition_schema(), internal::GetSchema(&info->schema), &info->partition_schema));
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
+  if (!resp.schema().pgschema_name().empty()) {
+    info->table_name.set_pgschema_name(resp.schema().pgschema_name());
+  }
   info->table_id = resp.identifier().table_id();
   info->table_type = VERIFY_RESULT(PBToClientTableType(resp.table_type()));
   info->index_map.FromPB(resp.indexes());

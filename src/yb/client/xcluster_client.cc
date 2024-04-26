@@ -148,6 +148,43 @@ Status XClusterClient::GetXClusterStreams(
       std::move(callback));
 }
 
+Status XClusterClient::RepairOutboundXClusterReplicationGroupAddTable(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+    const xrepl::StreamId& stream_id) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
+  SCHECK(!table_id.empty(), InvalidArgument, "Table id is empty");
+  SCHECK(!stream_id.IsNil(), InvalidArgument, "Stream id is empty");
+
+  master::RepairOutboundXClusterReplicationGroupAddTableRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_table_id(table_id);
+  req.set_stream_id(stream_id.ToString());
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(RepairOutboundXClusterReplicationGroupAddTable, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status XClusterClient::RepairOutboundXClusterReplicationGroupRemoveTable(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
+  SCHECK(!table_id.empty(), InvalidArgument, "Table id is empty");
+
+  master::RepairOutboundXClusterReplicationGroupRemoveTableRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_table_id(table_id);
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(RepairOutboundXClusterReplicationGroupRemoveTable, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 XClusterRemoteClient::XClusterRemoteClient(const std::string& certs_for_cdc_dir, MonoDelta timeout)
     : certs_for_cdc_dir_(certs_for_cdc_dir), timeout_(timeout) {}
 

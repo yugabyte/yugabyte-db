@@ -2374,6 +2374,48 @@ Status drop_xcluster_replication_action(
   return Status::OK();
 }
 
+const auto repair_xcluster_outbound_replication_add_table_args =
+    "<replication_group_id> <table_id> <stream_id>";
+Status repair_xcluster_outbound_replication_add_table_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 3) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+  const auto& table_id = args[1];
+  const auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(args[2]));
+
+  RETURN_NOT_OK(client->RepairOutboundXClusterReplicationGroupAddTable(
+      replication_group_id, table_id, stream_id));
+
+  std::cout << "Table " << table_id << " successfully added to outbound xCluster Replication group "
+            << replication_group_id << endl;
+
+  return Status::OK();
+}
+
+const auto repair_xcluster_outbound_replication_remove_table_args =
+    "<replication_group_id> <table_id>";
+Status repair_xcluster_outbound_replication_remove_table_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+  const auto& table_id = args[1];
+
+  RETURN_NOT_OK(
+      client->RepairOutboundXClusterReplicationGroupRemoveTable(replication_group_id, table_id));
+
+  std::cout << "Table " << table_id
+            << " successfully removed from outbound xCluster Replication group "
+            << replication_group_id << endl;
+
+  return Status::OK();
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -2494,6 +2536,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(is_xcluster_bootstrap_required);
   REGISTER_COMMAND(setup_xcluster_replication);
   REGISTER_COMMAND(drop_xcluster_replication);
+  REGISTER_COMMAND(repair_xcluster_outbound_replication_add_table);
+  REGISTER_COMMAND(repair_xcluster_outbound_replication_remove_table);
 }
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(
