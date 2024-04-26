@@ -29,6 +29,7 @@
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
+#include "yb/util/status_format.h"
 
 DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
@@ -84,11 +85,13 @@ DEFINE_RUNTIME_bool(use_create_table_leader_hint, true,
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
                  "Number of milliseconds to sleep during the processing of a tablet batch.");
 
+DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
+    "If the leader lease in master's view has expired for this amount of seconds, "
+    "treat the lease as expired for too long time.");
+
 DECLARE_bool(enable_register_ts_from_raft);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
-
-using namespace std::literals;
 
 namespace yb {
 namespace master {
@@ -172,6 +175,14 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
   bool ReplicaMapDiffersFromConsensusState(
       const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate);
+
+  void ProcessTabletMetadata(
+      const std::string& ts_uuid,
+      const TabletDriveStorageMetadataPB& storage_metadata,
+      const std::optional<TabletLeaderMetricsPB>& leader_metrics);
+
+  void ProcessTabletReplicaFullCompactionStatus(
+      const TabletServerId& ts_uuid, const FullCompactionStatusPB& full_compaction_status);
 };
 
 Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
@@ -208,7 +219,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
   // If CatalogManager is not initialized don't even know whether or not we will
   // be a leader (so we can't tell whether or not we can accept tablet reports).
-  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+  SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
 
   if (req->common().ts_instance().permanent_uuid().empty()) {
     // In FSManager, we have already added empty UUID protection so that TServer will
@@ -221,7 +232,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   }
 
   consensus::ConsensusStatePB cpb;
-  Status s = server_->catalog_manager_impl()->GetCurrentConfig(&cpb);
+  Status s = catalog_manager_->GetCurrentConfig(&cpb);
   if (!s.ok()) {
     // For now, we skip setting the config on errors (hopefully next heartbeat will work).
     // We could enhance to fail rpc, if there are too many error, on a case by case error basis.
@@ -245,7 +256,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   // At the time of this check, we need to know that we're the master leader to access the
   // cluster config.
   SysClusterConfigEntryPB cluster_config;
-  s = server_->catalog_manager_impl()->GetClusterConfig(&cluster_config);
+  s = catalog_manager_->GetClusterConfig(&cluster_config);
   if (!s.ok()) {
     LOG(WARNING) << "Unable to get cluster configuration: " << s.ToString();
     rpc.RespondFailure(s);
@@ -311,7 +322,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     resp->set_cluster_uuid(cluster_config.cluster_uuid());
   }
 
-  s = server_->catalog_manager_impl()->FillHeartbeatResponse(req, resp);
+  s = catalog_manager_->FillHeartbeatResponse(req, resp);
   if (!s.ok()) {
     LOG(WARNING) << "Unable to fill heartbeat response: " << s.ToString();
     rpc.RespondFailure(s);
@@ -371,13 +382,12 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
         if (iter != id_to_leader_metrics.end()) {
           leader_metrics = iter->second;
         }
-        server_->catalog_manager_impl()->ProcessTabletMetadata(ts_desc.get()->permanent_uuid(),
-                                                                metadata, leader_metrics);
+        ProcessTabletMetadata(ts_desc.get()->permanent_uuid(), metadata, leader_metrics);
       }
     }
 
     for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
-      server_->catalog_manager_impl()->StoreXClusterConsumerReplicationStatus(
+      catalog_manager_->StoreXClusterConsumerReplicationStatus(
           consumer_replication_state);
     }
 
@@ -386,8 +396,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
     if (rpc.GetClientDeadline() > safe_time_left) {
       for (const auto& full_compaction_status : req->full_compaction_statuses()) {
-        server_->catalog_manager_impl()->ProcessTabletReplicaFullCompactionStatus(
-            ts_desc->permanent_uuid(), full_compaction_status);
+        ProcessTabletReplicaFullCompactionStatus(ts_desc->permanent_uuid(), full_compaction_status);
       }
     }
 
@@ -408,7 +417,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
     DbOidToCatalogVersionMap versions;
     uint64_t fingerprint; // can only be used when versions is not empty.
-    s = server_->catalog_manager_impl()->GetYsqlAllDBCatalogVersions(
+    s = catalog_manager_->GetYsqlAllDBCatalogVersions(
         FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */,
         &versions, &fingerprint);
     if (s.ok() && !versions.empty()) {
@@ -443,7 +452,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   } else {
     uint64_t last_breaking_version = 0;
     uint64_t catalog_version = 0;
-    s = server_->catalog_manager_impl()->GetYsqlCatalogVersion(
+    s = catalog_manager_->GetYsqlCatalogVersion(
         &catalog_version, &last_breaking_version);
     if (s.ok()) {
       resp->set_ysql_catalog_version(catalog_version);
@@ -459,7 +468,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
   }
 
-  uint64_t transaction_tables_version = server_->catalog_manager()->GetTransactionTablesVersion();
+  uint64_t transaction_tables_version = catalog_manager_->GetTransactionTablesVersion();
   resp->set_transaction_tables_version(transaction_tables_version);
 
   if (req->has_auto_flags_config_version() &&
@@ -1221,6 +1230,101 @@ bool MasterHeartbeatServiceImpl::ReplicaMapDiffersFromConsensusState(
     }
   }
   return false;
+}
+
+// Return true if the received ht_lease_exp from the leader peer has been expired for too
+// long time when the ts metrics heartbeat reaches the master.
+bool IsHtLeaseExpiredForTooLong(MicrosTime now, MicrosTime ht_lease_exp) {
+  const auto now_usec = boost::posix_time::microseconds(now);
+  const auto ht_lease_exp_usec = boost::posix_time::microseconds(ht_lease_exp);
+  return (now_usec - ht_lease_exp_usec).total_seconds() >
+      GetAtomicFlag(&FLAGS_maximum_tablet_leader_lease_expired_secs);
+}
+
+void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
+    const std::string& ts_uuid,
+    const TabletDriveStorageMetadataPB& storage_metadata,
+    const std::optional<TabletLeaderMetricsPB>& leader_metrics) {
+  const string& tablet_id = storage_metadata.tablet_id();
+  auto tablet_result = catalog_manager_->GetTabletInfo(tablet_id);
+  if (!tablet_result) {
+    VLOG(1) << Format("Tablet $0 not found", tablet_id);
+    return;
+  }
+  auto& tablet = *tablet_result;
+  MicrosTime ht_lease_exp = 0;
+  uint64 new_heartbeats_without_leader_lease = 0;
+  consensus::LeaderLeaseStatus leader_lease_status =
+      consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  bool leader_lease_info_initialized = false;
+  if (leader_metrics.has_value()) {
+    auto existing_leader_lease_info = tablet->GetLeaderLeaseInfoIfLeader(ts_uuid);
+    // If the peer is the current leader, update the counter to track heartbeats that
+    // the tablet doesn't have a valid lease.
+    if (existing_leader_lease_info) {
+      const auto& leader_info = *leader_metrics;
+      leader_lease_status = leader_info.leader_lease_status();
+      leader_lease_info_initialized = true;
+      if (leader_info.leader_lease_status() == consensus::LeaderLeaseStatus::HAS_LEASE) {
+        ht_lease_exp = leader_info.ht_lease_expiration();
+        // If the reported ht lease from the leader is expired for more than
+        // FLAGS_maximum_tablet_leader_lease_expired_secs, the leader shouldn't be treated
+        // as a valid leader.
+        if (ht_lease_exp >= existing_leader_lease_info->ht_lease_expiration &&
+            !IsHtLeaseExpiredForTooLong(
+                master_->clock()->Now().GetPhysicalValueMicros(), ht_lease_exp)) {
+          tablet->UpdateLastTimeWithValidLeader();
+        }
+      } else {
+        new_heartbeats_without_leader_lease =
+            existing_leader_lease_info->heartbeats_without_leader_lease + 1;
+      }
+    }
+  }
+  TabletLeaderLeaseInfo leader_lease_info{
+        leader_lease_info_initialized,
+        leader_lease_status,
+        ht_lease_exp,
+        new_heartbeats_without_leader_lease};
+  TabletReplicaDriveInfo drive_info{
+        storage_metadata.sst_file_size(),
+        storage_metadata.wal_file_size(),
+        storage_metadata.uncompressed_sst_file_size(),
+        storage_metadata.may_have_orphaned_post_split_data()};
+  tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
+}
+
+void MasterHeartbeatServiceImpl::ProcessTabletReplicaFullCompactionStatus(
+    const TabletServerId& ts_uuid, const FullCompactionStatusPB& full_compaction_status) {
+  if (!full_compaction_status.has_tablet_id()) {
+    VLOG(1) << "Tablet id not found";
+    return;
+  }
+
+  const TabletId& tablet_id = full_compaction_status.tablet_id();
+
+  if (!full_compaction_status.has_full_compaction_state()) {
+    LOG(WARNING) << Format(
+        "Full compaction status not reported for tablet $0 on tserver $1", tablet_id, ts_uuid);
+    return;
+  }
+
+  if (!full_compaction_status.has_last_full_compaction_time()) {
+    LOG(WARNING) << Format(
+        "Last full compaction time not reported for tablet $0 on tserver $1", tablet_id, ts_uuid);
+    return;
+  }
+
+  const auto result = catalog_manager_->GetTabletInfo(tablet_id);
+  if (!result.ok()) {
+    LOG_WITH_FUNC(WARNING) << result;
+    return;
+  }
+
+  (*result)->UpdateReplicaFullCompactionStatus(
+      ts_uuid, FullCompactionStatus{
+                   full_compaction_status.full_compaction_state(),
+                   HybridTime(full_compaction_status.last_full_compaction_time())});
 }
 
 } // namespace

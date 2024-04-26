@@ -611,10 +611,6 @@ DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
     "On the heartbeat processing path, simulate a scenario where tablet metadata is missing due to "
     "a corruption. ");
 
-DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
-    "If the leader lease in master's view has expired for this amount of seconds, "
-    "treat the lease as expired for too long time.");
-
 DEFINE_test_flag(bool, disable_set_catalog_version_table_in_perdb_mode, false,
                  "Whether to disable setting the catalog version table in perdb mode.");
 DEFINE_RUNTIME_uint32(initial_tserver_registration_duration_secs,
@@ -12491,108 +12487,6 @@ Result<BlacklistSet> CatalogManager::BlacklistSetFromPB(bool leader_blacklist) c
   auto l = cluster_config->LockForRead();
 
   return ToBlacklistSet(GetBlacklist(l->pb, leader_blacklist));
-}
-
-namespace {
-
-// Return true if the received ht_lease_exp from the leader peer has been expired for too
-// long time when the ts metrics heartbeat reaches the master.
-bool IsHtLeaseExpiredForTooLong(MicrosTime now, MicrosTime ht_lease_exp) {
-  const auto now_usec = boost::posix_time::microseconds(now);
-  const auto ht_lease_exp_usec = boost::posix_time::microseconds(ht_lease_exp);
-  return (now_usec - ht_lease_exp_usec).total_seconds() >
-      GetAtomicFlag(&FLAGS_maximum_tablet_leader_lease_expired_secs);
-}
-
-} // namespace
-
-void CatalogManager::ProcessTabletMetadata(
-    const std::string& ts_uuid,
-    const TabletDriveStorageMetadataPB& storage_metadata,
-    const std::optional<TabletLeaderMetricsPB>& leader_metrics) {
-  const string& tablet_id = storage_metadata.tablet_id();
-  scoped_refptr<TabletInfo> tablet;
-  {
-    SharedLock lock(mutex_);
-    tablet = FindPtrOrNull(*tablet_map_, tablet_id);
-  }
-  if (!tablet) {
-    VLOG(1) << Format("Tablet $0 not found on ts $1", tablet_id, ts_uuid);
-    return;
-  }
-  MicrosTime ht_lease_exp = 0;
-  uint64 new_heartbeats_without_leader_lease = 0;
-  consensus::LeaderLeaseStatus leader_lease_status =
-      consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
-  bool leader_lease_info_initialized = false;
-  if (leader_metrics.has_value()) {
-    auto existing_leader_lease_info = tablet->GetLeaderLeaseInfoIfLeader(ts_uuid);
-    // If the peer is the current leader, update the counter to track heartbeats that
-    // the tablet doesn't have a valid lease.
-    if (existing_leader_lease_info) {
-      const auto& leader_info = *leader_metrics;
-      leader_lease_status = leader_info.leader_lease_status();
-      leader_lease_info_initialized = true;
-      if (leader_info.leader_lease_status() == consensus::LeaderLeaseStatus::HAS_LEASE) {
-        ht_lease_exp = leader_info.ht_lease_expiration();
-        // If the reported ht lease from the leader is expired for more than
-        // FLAGS_maximum_tablet_leader_lease_expired_secs, the leader shouldn't be treated
-        // as a valid leader.
-        if (ht_lease_exp >= existing_leader_lease_info->ht_lease_expiration &&
-            !IsHtLeaseExpiredForTooLong(
-                master_->clock()->Now().GetPhysicalValueMicros(), ht_lease_exp)) {
-          tablet->UpdateLastTimeWithValidLeader();
-        }
-      } else {
-        new_heartbeats_without_leader_lease =
-            existing_leader_lease_info->heartbeats_without_leader_lease + 1;
-      }
-    }
-  }
-  TabletLeaderLeaseInfo leader_lease_info{
-        leader_lease_info_initialized,
-        leader_lease_status,
-        ht_lease_exp,
-        new_heartbeats_without_leader_lease};
-  TabletReplicaDriveInfo drive_info{
-        storage_metadata.sst_file_size(),
-        storage_metadata.wal_file_size(),
-        storage_metadata.uncompressed_sst_file_size(),
-        storage_metadata.may_have_orphaned_post_split_data()};
-  tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
-}
-
-void CatalogManager::ProcessTabletReplicaFullCompactionStatus(
-    const TabletServerId& ts_uuid, const FullCompactionStatusPB& full_compaction_status) {
-  if (!full_compaction_status.has_tablet_id()) {
-    VLOG(1) << "Tablet id not found";
-    return;
-  }
-
-  const TabletId& tablet_id = full_compaction_status.tablet_id();
-
-  if (!full_compaction_status.has_full_compaction_state()) {
-    LOG(WARNING) << Format(
-        "Full compaction status not reported for tablet $0 on tserver $1", tablet_id, ts_uuid);
-    return;
-  }
-
-  if (!full_compaction_status.has_last_full_compaction_time()) {
-    LOG(WARNING) << Format(
-        "Last full compaction time not reported for tablet $0 on tserver $1", tablet_id, ts_uuid);
-    return;
-  }
-
-  const auto result = GetTabletInfo(tablet_id);
-  if (!result.ok()) {
-    LOG_WITH_FUNC(WARNING) << result;
-    return;
-  }
-
-  (*result)->UpdateReplicaFullCompactionStatus(
-      ts_uuid, FullCompactionStatus{
-                   full_compaction_status.full_compaction_state(),
-                   HybridTime(full_compaction_status.last_full_compaction_time())});
 }
 
 void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) {
