@@ -1,0 +1,8 @@
+steps:
+- checkout: self  # self represents the repo where the initial Pipelines YAML file was found
+  clean: boolean  # whether to fetch clean each time
+  fetchDepth: number  # the depth of commits to ask Git to fetch
+  lfs: boolean  # whether to download Git-LFS files
+  submodules: true | recursive  # set to 'true' for a single level of submodules or 'recursive' to get submodules of submodules
+  path: string  # path to check out source code, relative to the agent's build directory (e.g. \_work\1)
+  persistCredentials: boolean  # set to 'true' to leave the OAuth token in the Git config after the initial fetch
