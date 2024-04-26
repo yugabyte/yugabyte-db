@@ -69,8 +69,10 @@ DECLARE_int32(follower_unavailable_considered_failed_sec);
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(leaderless_tablet_alert_delay_secs);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
 
 namespace yb {
 namespace master {
@@ -321,6 +323,53 @@ TEST_F_EX(MasterPathHandlersItest, Forward, MultiMasterPathHandlersItest) {
     content.clear();
     ASSERT_OK(curl.FetchURL(url, &content));
   }
+}
+
+class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
+    MasterPathHandlersItest::SetUp();
+  }
+
+  void InsertRows(const client::TableHandle& table, int num_rows_to_insert) {
+    auto session = client_->NewSession();
+    session->SetTimeout(60s);
+    for (int i = 0; i < num_rows_to_insert; i++) {
+      auto insert = table.NewInsertOp();
+      auto req = insert->mutable_request();
+      QLAddInt32HashValue(req, i);
+      ASSERT_OK(session->TEST_ApplyAndFlush(insert));
+    }
+  }
+};
+
+// Undeleted split parent tablets shouldn't be shown as leaderless.
+TEST_F_EX(
+    MasterPathHandlersItest, TestUndeletedParentTablet, TabletSplitMasterPathHandlersItest) {
+  const auto kLeaderlessTabletAlertDelaySecs = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
+      kLeaderlessTabletAlertDelaySecs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+
+  CreateTestTable(1 /* num_tablets */);
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  InsertRows(table, /* num_rows_to_insert = */ 500);
+
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablet = catalog_manager.GetTableInfo(table->id())->GetTablets()[0];
+
+  ASSERT_OK(yb_admin_client_->FlushTables(
+      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
+
+  SleepFor(kLeaderlessTabletAlertDelaySecs * 1s);
+  string result = GetLeaderlessTabletsString();
+  ASSERT_EQ(result.find(tablet->id()), string::npos);
 }
 
 class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<ExternalMiniCluster> {
