@@ -301,6 +301,10 @@ static void ThrowDifferentIndexNameWithDifferentOptionsError(const IndexSpec *
 															 existingIndexSpec,
 															 const IndexSpec *
 															 requestedIndexSpec);
+static void ThrowSingleTextIndexAllowedError(const IndexSpec *
+											 existingIndexSpec,
+											 const IndexSpec *
+											 requestedIndexSpec);
 static bool SetIndexesAsBuildInProgress(List *indexIdList, int *firstNotMarkedIndex);
 static void UnsetIndexesAsBuildInProgress(List *indexIdList);
 static LOCKTAG LockTagForInProgressIndexBuild(int indexId);
@@ -3835,6 +3839,12 @@ CheckIndexSpecConflictWithExistingIndexes(uint64 collectionId, const IndexSpec *
 														&optionsMatchedIndexDetails->
 														indexSpec);
 
+			if (equivalency == IndexOptionsEquivalency_TextEquivalent)
+			{
+				ThrowSingleTextIndexAllowedError(
+					&optionsMatchedIndexDetails->indexSpec, indexSpec);
+			}
+
 			if (equivalency == IndexOptionsEquivalency_Equivalent)
 			{
 				ThrowDifferentIndexNameWithDifferentOptionsError(
@@ -3954,6 +3964,23 @@ ThrowDifferentIndexNameWithDifferentOptionsError(const IndexSpec *existingIndexS
 	ereport(ERROR, (errcode(MongoIndexOptionsConflict),
 					errmsg("An equivalent index already exists with a "
 						   "different name and options. Requested index: %s, "
+						   "existing index: %s",
+						   requestedIndexBsonStr, existingIndexBsonStr)));
+}
+
+
+static void
+ThrowSingleTextIndexAllowedError(const IndexSpec *existingIndexSpec,
+								 const IndexSpec *requestedIndexSpec)
+{
+	const char *requestedIndexBsonStr =
+		PgbsonToJsonForLogging(IndexSpecAsBson(requestedIndexSpec));
+
+	const char *existingIndexBsonStr =
+		PgbsonToJsonForLogging(IndexSpecAsBson(existingIndexSpec));
+
+	ereport(ERROR, (errcode(MongoExactlyOneTextIndex),
+					errmsg("Expected exactly one text index. Requested index: %s, "
 						   "existing index: %s",
 						   requestedIndexBsonStr, existingIndexBsonStr)));
 }

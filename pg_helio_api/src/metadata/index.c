@@ -325,7 +325,8 @@ IndexSpecOptionsAreEquivalent(const IndexSpec *leftIndexSpec,
 	IndexOptionsEquivalency equivalency = IndexKeyDocumentEquivalent(
 		leftIndexSpec->indexKeyDocument,
 		rightIndexSpec->indexKeyDocument);
-	if (equivalency == IndexOptionsEquivalency_NotEquivalent)
+	if (equivalency == IndexOptionsEquivalency_NotEquivalent || equivalency ==
+		IndexOptionsEquivalency_TextEquivalent)
 	{
 		return equivalency;
 	}
@@ -1900,7 +1901,7 @@ IndexKeyDocumentEquivalent(pgbson *leftKey, pgbson *rightKey)
 		 * If two indexes have 'text' - no matter if there's other
 		 * indexes, they're considered equivalent
 		 */
-		return IndexOptionsEquivalency_Equivalent;
+		return IndexOptionsEquivalency_TextEquivalent;
 	}
 
 	return IndexOptionsEquivalency_NotEquivalent;

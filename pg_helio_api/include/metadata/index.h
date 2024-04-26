@@ -222,6 +222,13 @@ typedef enum IndexOptionsEquivalency
 	IndexOptionsEquivalency_Equivalent,
 
 	/*
+	 *  We allow only one text index per collection.
+	 *  So, all subsequent text indexes are equivalent,
+	 *  but we would need to throw a different error message.
+	 */
+	IndexOptionsEquivalency_TextEquivalent,
+
+	/*
 	 * The index specs are actually the same.
 	 */
 	IndexOptionsEquivalency_Equal,
