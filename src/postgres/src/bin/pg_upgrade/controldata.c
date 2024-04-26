@@ -72,7 +72,9 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 	uint32		tli = 0;
 	uint32		logid = 0;
 	uint32		segno = 0;
+#ifdef YB_TODO
 	char	   *resetwal_bin;
+#endif
 
 
 	/*
@@ -180,17 +182,19 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 		}
 	}
 
+#ifdef YB_TODO
 	/* pg_resetxlog has been renamed to pg_resetwal in version 10 */
 	if (GET_MAJOR_VERSION(cluster->bin_version) <= 906)
 		resetwal_bin = "pg_resetxlog\" -n";
 	else
 		resetwal_bin = "pg_resetwal\" -n";
+#endif
 	snprintf(cmd, sizeof(cmd), "\"%s/%s \"%s\"",
 			 cluster->bindir,
-			 #ifdef YB_TODO
+#ifdef YB_TODO
 			 /* Investigate how to use pg_resetwal when not doing a live check */
 			 live_check ? "pg_controldata\"" : resetwal_bin,
-			 #endif
+#endif
 			 "pg_controldata\"",
 			 cluster->pgdata);
 	fflush(stdout);
