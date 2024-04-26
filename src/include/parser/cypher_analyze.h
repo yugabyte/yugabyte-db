@@ -20,7 +20,17 @@
 #ifndef AG_CYPHER_ANALYZE_H
 #define AG_CYPHER_ANALYZE_H
 
+#include "parser/cypher_clause.h"
+
+typedef bool (*cypher_expression_condition)( Node *expr);
+
 void post_parse_analyze_init(void);
 void post_parse_analyze_fini(void);
+
+cypher_clause *build_subquery_node(cypher_clause *next);
+
+/*expr tree walker */
+bool expr_contains_node(cypher_expression_condition is_expr, Node *expr);
+bool expr_has_subquery(Node * expr);
 
 #endif

@@ -116,6 +116,7 @@ void out_cypher_with(StringInfo str, const ExtensibleNode *node)
     DEFINE_AG_NODE(cypher_with);
 
     WRITE_BOOL_FIELD(distinct);
+    WRITE_BOOL_FIELD(subquery_intermediate);
     WRITE_NODE_FIELD(items);
     WRITE_NODE_FIELD(order_by);
     WRITE_NODE_FIELD(skip);

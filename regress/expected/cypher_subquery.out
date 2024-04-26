@@ -1,355 +1,759 @@
 LOAD 'age';
 SET search_path TO ag_catalog;
-SELECT * FROM create_graph('exists_subquery');
-NOTICE:  graph "exists_subquery" has been created
+SELECT * FROM create_graph('subquery');
+NOTICE:  graph "subquery" has been created
  create_graph 
 --------------
  
 (1 row)
 
-SELECT * FROM cypher('exists_subquery', $$ 
-										CREATE (:person {name: "Briggite", age: 32})-[:knows]->(:person {name: "Takeshi", age: 28}),
-											   (:person {name: "Faye", age: 25})-[:knows]->(:person {name: "Tony", age: 34})-[:loved]->(:person {name : "Valerie", age: 33}),
-											   (:person {name: "Calvin", age: 6})-[:knows]->(:pet {name: "Hobbes"}),
-											   (:person {name: "Charlie", age: 8})-[:knows]->(:pet {name : "Snoopy"})
-										$$) AS (result agtype);
+SELECT * FROM cypher('subquery', $$
+								   CREATE (:person {name: "Briggite", age: 32})-[:knows]->(:person {name: "Takeshi", age: 28}),
+										  (:person {name: "Chan", age: 45})<-[:knows]-(:person {name: "Faye", age: 25})-[:knows]->
+										  (:person {name: "Tony", age: 34})-[:loved]->(:person {name : "Valerie", age: 33}),
+										  (:person {name: "Calvin", age: 6})-[:knows]->(:pet {name: "Hobbes"}),
+										  (:person {name: "Charlie", age: 8})-[:knows]->(:pet {name : "Snoopy"}),
+										  (:pet {name: "Odie"})<-[:knows]-(:person {name: "Jon", age: 29})-[:knows]->(:pet {name: "Garfield"})
+								 $$) AS (result agtype);
  result 
 --------
 (0 rows)
 
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a) RETURN (a) $$) AS (result agtype);
+SELECT * FROM cypher('subquery', $$ MATCH (a) RETURN (a) $$) AS (result agtype);
                                               result                                               
 ---------------------------------------------------------------------------------------------------
  {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
  {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+ {"id": 844424930131971, "label": "person", "properties": {"age": 45, "name": "Chan"}}::vertex
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
+ {"id": 844424930131973, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
+ {"id": 844424930131974, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
  {"id": 1688849860263937, "label": "pet", "properties": {"name": "Hobbes"}}::vertex
  {"id": 1688849860263938, "label": "pet", "properties": {"name": "Snoopy"}}::vertex
-(9 rows)
+ {"id": 1688849860263939, "label": "pet", "properties": {"name": "Odie"}}::vertex
+ {"id": 1688849860263940, "label": "pet", "properties": {"name": "Garfield"}}::vertex
+(13 rows)
 
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person) 
-										   WHERE EXISTS {(a:person)-[]->(:pet)}
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {(a:person)-[]->(:pet)}
+									RETURN (a) $$) AS (result agtype);
+                                             result                                              
+-------------------------------------------------------------------------------------------------
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(3 rows)
+
+--trying to use b when not defined, should create pattern
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+										   WHERE EXISTS {(a:person)-[]->(b:pet)}
 										   RETURN (a) $$) AS (result agtype);
                                              result                                              
 -------------------------------------------------------------------------------------------------
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(2 rows)
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(3 rows)
 
---trying to use b when not defined, should fail
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person) 
-										   WHERE EXISTS {(a:person)-[]->(b:pet)}
-										   RETURN (a) $$) AS (result agtype);
-ERROR:  variable `b` does not exist
-LINE 2:              WHERE EXISTS {(a:person)-[]->(b:pet)}
-                                                   ^
 --query inside
---EXISTS subquery is currently implemented naively, without constraints in the
---subquery. the results of this regression test may change upon implementation
---TODO: implement inner subquery constraints
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {MATCH (a:person)-[]->(b:pet) RETURN b}
-										   RETURN (a) $$) AS (result agtype);
-                                              result                                               
----------------------------------------------------------------------------------------------------
- {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
- {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(7 rows)
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {MATCH (a:person)-[]->(b:pet) RETURN b}
+									RETURN (a) $$) AS (result agtype);
+                                             result                                              
+-------------------------------------------------------------------------------------------------
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(3 rows)
 
 --repeat variable in match
---EXISTS subquery is currently implemented naively, without constraints in the
---subquery. the results of this regression test may change upon implementation
---TODO: implement inner subquery constraints
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {
-						   				 			     MATCH (a:person)
-						   				 			     WHERE a.name = 'Takeshi'
-						   				 			     RETURN a
-										   				 }
-										   RETURN (a) $$) AS (result agtype);
-                                              result                                               
----------------------------------------------------------------------------------------------------
- {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {
+												  MATCH (a:person)
+												  WHERE a.name = 'Takeshi'
+												  RETURN a
+												 }
+									RETURN (a) $$) AS (result agtype);
+                                              result                                              
+--------------------------------------------------------------------------------------------------
  {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(7 rows)
+(1 row)
 
 --query inside, with WHERE
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {MATCH (a:person)-[]->(b:pet)
-										   				 WHERE b.name = 'Briggite'
-										   				 RETURN b}
-										   RETURN (a) $$) AS (result agtype);
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {MATCH (a:person)-[]->(b:pet)
+												  WHERE b.name = 'Briggite'
+												  RETURN b}
+									RETURN (a) $$) AS (result agtype);
  result 
 --------
 (0 rows)
 
 --no return
---EXISTS subquery is currently implemented naively, without constraints in the
---subquery. the results of this regression test may change upon implementation
---TODO: implement inner subquery constraints
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {MATCH (a:person)-[]->(b:pet)
-										   				 WHERE a.name = 'Calvin'}
-										   RETURN (a) $$) AS (result agtype);
-                                              result                                               
----------------------------------------------------------------------------------------------------
- {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
- {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(7 rows)
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {MATCH (a:person)-[]->(b:pet)
+												  WHERE a.name = 'Calvin'}
+									RETURN (a) $$) AS (result agtype);
+                                             result                                             
+------------------------------------------------------------------------------------------------
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+(1 row)
 
 --union
---EXISTS subquery is currently implemented naively, without constraints in the
---subquery. the results of this regression test may change upon implementation
---TODO: implement inner subquery constraints
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {
-										   				 MATCH (a:person)-[]->(b:pet)
-										   				 WHERE b.name = 'Hobbes'
-										   				 RETURN b
-										   				 UNION
-										   				 MATCH (c:person)-[]->(d:person)
-										   				 RETURN c
-										   				}
-										   RETURN (a) $$) AS (result agtype);
-                                              result                                               
----------------------------------------------------------------------------------------------------
- {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
- {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(7 rows)
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {
+												  MATCH (a:person)-[]->(b:pet)
+												  WHERE b.name = 'Hobbes'
+												  RETURN b
+												  UNION
+												  MATCH (a:person)-[]->(c:person)
+												  WHERE a.name = 'Faye'
+												  RETURN c
+												 }
+									RETURN (a) $$) AS (result agtype);
+                                             result                                             
+------------------------------------------------------------------------------------------------
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+(2 rows)
 
 -- union, mismatched var, should fail
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {
-										   				 MATCH (a:person)-[]->(b:pet)
-										   				 WHERE b.name = 'Snoopy'
-										   				 RETURN c
-										   				 UNION
-										   				 MATCH (c:person)-[]->(d:person)
-										   				 RETURN c
-										   				 }
-										   RETURN (a) $$) AS (result agtype);
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {
+												  MATCH (a:person)-[]->(b:pet)
+												  WHERE b.name = 'Snoopy'
+												  RETURN c
+												  UNION
+												  MATCH (c:person)-[]->(d:person)
+												  RETURN c
+												 }
+									RETURN (a) $$) AS (result agtype);
 ERROR:  could not find rte for c
-LINE 5:                   RETURN c
-                                 ^
---union, no returns
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {
-										   				 MATCH (a:person)-[]->(b:pet)
-										   				 WHERE a.name = 'Charlie'
-										   				 UNION
-										   				 MATCH (c:person)-[]->(d:person)
-										   				}
-										   RETURN (a) $$) AS (result agtype);
-                                              result                                               
----------------------------------------------------------------------------------------------------
- {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
- {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(7 rows)
-
---union, mismatched returns, should fail
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {
-										   				 MATCH (a:person)-[]->(b:pet)
-										   				 WHERE a.name = 'Faye'
-										   				 RETURN a
-										   				 UNION
-										   				 MATCH (c:person)-[]->(d:person)
-										   				}
-										   RETURN (a) $$) AS (result agtype);
+LINE 5:               RETURN c
+                             ^
+--union, no returns, not yet implemented, should error out
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {
+												  MATCH (a:person)-[]->(b:pet)
+												  WHERE a.name = 'Charlie'
+												  UNION
+												  MATCH (c:person)-[]->(d:person)
+												 }
+									RETURN (a) $$) AS (result agtype);
+ERROR:  Subquery UNION without returns not yet implemented
+LINE 5:               UNION
+                      ^
+--union, only one has return, should fail
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {
+												  MATCH (a:person)-[]->(b:pet)
+												  WHERE a.name = 'Faye'
+												  RETURN a
+												  UNION
+												  MATCH (c:person)-[]->(d:person)
+												 }
+									RETURN (a) $$) AS (result agtype);
 ERROR:  syntax error at or near "}"
-LINE 8:                  }
-                         ^
---nesting
---EXISTS subquery is currently implemented naively, without constraints in the
---subquery. the results of this regression test may change upon implementation
---TODO: implement inner subquery constraints
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {
-										   				 MATCH (b:person)
-										   				 WHERE EXISTS {
-										   				 			   MATCH (c:person)
-										   				 			   WHERE c.name = 'Takeshi'
-										   				 			   RETURN c
-										   				 			  }
-										   				 }
-										   RETURN (a) $$) AS (result agtype);
+LINE 8:              }
+                     ^
+--nesting (should return everything since a isn't sent all the way down)
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {
+												  MATCH (b:person)
+												  WHERE EXISTS {
+																MATCH (c:person)
+																WHERE c.name = 'Takeshi'
+																RETURN c
+															   }
+												  RETURN b
+												 }
+									RETURN (a) $$) AS (result agtype);
                                               result                                               
 ---------------------------------------------------------------------------------------------------
  {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
  {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(7 rows)
+ {"id": 844424930131971, "label": "person", "properties": {"age": 45, "name": "Chan"}}::vertex
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
+ {"id": 844424930131973, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
+ {"id": 844424930131974, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(9 rows)
+
+--nesting same var multiple layers
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {
+												  MATCH (a:person)
+												  WHERE EXISTS {
+																MATCH (a:person)
+																WHERE a.name = 'Takeshi'
+															   }
+												 }
+									RETURN (a) $$) AS (result agtype);
+                                              result                                              
+--------------------------------------------------------------------------------------------------
+ {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
+(1 row)
 
 --nesting, accessing var in outer scope
---EXISTS subquery is currently implemented naively, without constraints in the
---subquery. the results of this regression test may change upon implementation
---TODO: implement inner subquery constraints
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {
-										   				 MATCH (b:person)
-										   				 WHERE EXISTS {
-										   				 			   MATCH (c:person)
-										   				 			   WHERE b = c
-										   				 			   RETURN c
-										   				 			  }
-										   				 }
-										   RETURN (a) $$) AS (result agtype);
+SELECT * FROM cypher('subquery', $$ MATCH (a)
+									WHERE EXISTS {
+												  MATCH (b)
+												  WHERE EXISTS {
+																MATCH (c:person)
+																WHERE b = c
+															   }
+												 }
+									RETURN (a) $$) AS (result agtype);
                                               result                                               
 ---------------------------------------------------------------------------------------------------
  {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
  {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(7 rows)
+ {"id": 844424930131971, "label": "person", "properties": {"age": 45, "name": "Chan"}}::vertex
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
+ {"id": 844424930131973, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
+ {"id": 844424930131974, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+ {"id": 1688849860263937, "label": "pet", "properties": {"name": "Hobbes"}}::vertex
+ {"id": 1688849860263938, "label": "pet", "properties": {"name": "Snoopy"}}::vertex
+ {"id": 1688849860263939, "label": "pet", "properties": {"name": "Odie"}}::vertex
+ {"id": 1688849860263940, "label": "pet", "properties": {"name": "Garfield"}}::vertex
+(13 rows)
 
 --nesting, accessing indirection in outer scope
---EXISTS subquery is currently implemented naively, without constraints in the
---subquery. the results of this regression test may change upon implementation
---TODO: implement inner subquery constraints
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
 										   WHERE EXISTS {
-										   				 MATCH (b:person)
-										   				 WHERE EXISTS {
-										   				 			   MATCH (c:person)
-										   				 			   WHERE b.name = 'Takeshi'
-										   				 			   RETURN c
-										   				 			  }
-										   				 }
+														 MATCH (b:person)
+														 WHERE EXISTS {
+																	   MATCH (c:person)
+																	   WHERE b.name = 'Takeshi'
+																	   RETURN c
+																	  }
+														}
 										   RETURN (a) $$) AS (result agtype);
                                               result                                               
 ---------------------------------------------------------------------------------------------------
  {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
  {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(7 rows)
+ {"id": 844424930131971, "label": "person", "properties": {"age": 45, "name": "Chan"}}::vertex
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
+ {"id": 844424930131973, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
+ {"id": 844424930131974, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(9 rows)
 
 --nesting, accessing var 2+ levels up
---EXISTS subquery is currently implemented naively, without constraints in the
---subquery. the results of this regression test may change upon implementation
---TODO: implement inner subquery constraints
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
 										   WHERE EXISTS {
-										   				 MATCH (b:person)
-										   				 WHERE EXISTS {
-										   				 			   MATCH (c:person)
-										   				 			   WHERE a.name = 'Takeshi'
-										   				 			   RETURN c
-										   				 			  }
-										   				 }
+														 MATCH (b:person)
+														 WHERE EXISTS {
+																	   MATCH (a:person)
+																	   WHERE a.name = 'Takeshi'
+																	   RETURN a
+																	  }
+														}
 										   RETURN (a) $$) AS (result agtype);
-                                              result                                               
----------------------------------------------------------------------------------------------------
- {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
+                                              result                                              
+--------------------------------------------------------------------------------------------------
  {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(7 rows)
+(1 row)
 
 --nesting, accessing indirection 2+ levels up
---EXISTS subquery is currently implemented naively, without constraints in the
---subquery. the results of this regression test may change upon implementation
---TODO: implement inner subquery constraints
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person)
-										   WHERE EXISTS {
-										   				 MATCH (b:person)
-										   				 WHERE EXISTS {
-										   				 			   MATCH (c:person)
-										   				 			   WHERE a = b
-										   				 			   RETURN c
-										   				 			  }
-										   				 }
-										   RETURN (a) $$) AS (result agtype);
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {
+												  MATCH (b:person)
+												  WHERE EXISTS {
+																MATCH (a:person)
+																WHERE a = b
+																RETURN a
+															  }
+												}
+									RETURN (a) $$) AS (result agtype);
                                               result                                               
 ---------------------------------------------------------------------------------------------------
  {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
  {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
-(7 rows)
+ {"id": 844424930131971, "label": "person", "properties": {"age": 45, "name": "Chan"}}::vertex
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
+ {"id": 844424930131973, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
+ {"id": 844424930131974, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(9 rows)
 
 --EXISTS outside of WHERE
-SELECT * FROM cypher('exists_subquery', $$ MATCH (a:person) 
-										   RETURN a, EXISTS {(a:person)-[]->(:pet)}
-										   $$) AS (a agtype, exists agtype);
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN a, EXISTS {(a:person)-[]->(:pet)}
+									$$) AS (a agtype, exists agtype);
                                                  a                                                 | exists 
 ---------------------------------------------------------------------------------------------------+--------
  {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex | false
  {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex  | false
- {"id": 844424930131971, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex     | false
- {"id": 844424930131972, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex     | false
- {"id": 844424930131973, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex  | false
- {"id": 844424930131974, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex    | true
- {"id": 844424930131975, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex   | true
-(7 rows)
+ {"id": 844424930131971, "label": "person", "properties": {"age": 45, "name": "Chan"}}::vertex     | false
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex     | false
+ {"id": 844424930131973, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex     | false
+ {"id": 844424930131974, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex  | false
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex    | true
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex   | true
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex      | true
+(9 rows)
 
 --Var doesnt exist in outside scope, should fail
-SELECT * FROM cypher('exists_subquery', $$ RETURN 1, 
-										   		  EXISTS {
-									   					  MATCH (b:person)-[]->(:pet)
-									   					  RETURN a
-									   					 }
-										   $$) AS (a agtype, exists agtype);
+SELECT * FROM cypher('subquery', $$ RETURN 1,
+										   EXISTS {
+												   MATCH (b:person)-[]->(:pet)
+												   RETURN a
+												  }
+									$$) AS (a agtype, exists agtype);
 ERROR:  could not find rte for a
-LINE 4:                    RETURN a
-                                  ^
+LINE 4:                RETURN a
+                              ^
+--- COUNT
+--count pattern subquery in where
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE COUNT {(a:person)} > 1
+									RETURN (a) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+--count pattern in return
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN COUNT{(a)-[]->(:pet)} $$) AS (result agtype);
+ result 
+--------
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 1
+ 1
+ 2
+(9 rows)
+
+--count pattern with WHERE
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN COUNT{(a)-[]->(b:pet)
+												 WHERE b.name = 'Hobbes'}
+									$$) AS (result agtype);
+ result 
+--------
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 1
+ 0
+ 0
+(9 rows)
+
+--solo match in where
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE COUNT{MATCH (a:person)-[]-()} > 1
+									RETURN a $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
+ {"id": 844424930131973, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(3 rows)
+
+--match where person has more than one pet
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE COUNT{MATCH (a:person)-[]-(:pet)} > 1
+									RETURN a $$) AS (result agtype);
+                                            result                                            
+----------------------------------------------------------------------------------------------
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(1 row)
+
+--match on labels
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE COUNT{MATCH (a:person)-[:knows]-()} > 1
+									RETURN a $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE COUNT{MATCH (a:person)-[:knows]-(:pet)} > 1
+									RETURN a $$) AS (result agtype);
+                                            result                                            
+----------------------------------------------------------------------------------------------
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE COUNT{MATCH (a:person)-[:knows]-(:person)} > 1
+									RETURN a $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
+(1 row)
+
+--solo match in return
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN COUNT{MATCH (a)} $$) AS (result agtype);
+ result 
+--------
+ 1
+ 1
+ 1
+ 1
+ 1
+ 1
+ 1
+ 1
+ 1
+(9 rows)
+
+--match return in where
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE COUNT{MATCH (a) RETURN a} > 1 RETURN a $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+--match return in return with return
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN COUNT{MATCH (a) RETURN a} $$) AS (result agtype);
+ result 
+--------
+ 1
+ 1
+ 1
+ 1
+ 1
+ 1
+ 1
+ 1
+ 1
+(9 rows)
+
+--match where return
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN a.name, a.age, COUNT{MATCH (a)
+														  WHERE a.age > 25
+														  RETURN a.name} $$)
+									AS (person agtype, age agtype, count agtype);
+   person   | age | count 
+------------+-----+-------
+ "Briggite" | 32  | 1
+ "Takeshi"  | 28  | 1
+ "Chan"     | 45  | 1
+ "Faye"     | 25  | 0
+ "Tony"     | 34  | 1
+ "Valerie"  | 33  | 1
+ "Calvin"   | 6   | 0
+ "Charlie"  | 8   | 0
+ "Jon"      | 29  | 1
+(9 rows)
+
+--counting number of relationships per node
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN a.name, COUNT{(a)-[]-()} $$) AS (name agtype, count agtype);
+    name    | count 
+------------+-------
+ "Briggite" | 1
+ "Takeshi"  | 1
+ "Chan"     | 1
+ "Faye"     | 2
+ "Tony"     | 2
+ "Valerie"  | 1
+ "Calvin"   | 1
+ "Charlie"  | 1
+ "Jon"      | 2
+(9 rows)
+
+--nested counts
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN a.name, COUNT{MATCH (a) 
+														 WHERE COUNT {MATCH (a)
+														 			  WHERE a.age < 23
+														 			  RETURN a } > 0 } $$)
+									AS (name agtype, count agtype);
+    name    | count 
+------------+-------
+ "Briggite" | 0
+ "Takeshi"  | 0
+ "Chan"     | 0
+ "Faye"     | 0
+ "Tony"     | 0
+ "Valerie"  | 0
+ "Calvin"   | 1
+ "Charlie"  | 1
+ "Jon"      | 0
+(9 rows)
+
+--incorrect variable reference
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN a.name, COUNT{MATCH (a) RETURN b} $$)
+									AS (name agtype, count agtype);
+ERROR:  could not find rte for b
+LINE 2:          RETURN a.name, COUNT{MATCH (a) RETURN b} $$)
+                                                       ^
+--incorrect nested variable reference
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN a.name, COUNT{MATCH (a)
+														 WHERE COUNT {MATCH (b) RETURN b } > 1
+														 RETURN b} $$)
+									AS (name agtype, count agtype);
+ERROR:  could not find rte for b
+LINE 4:                RETURN b} $$)
+                              ^
+--count nested with exists
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									RETURN a.name,
+									COUNT{MATCH (a) WHERE EXISTS {MATCH (a)-[]-(:pet)
+																  RETURN a }} $$)
+									AS (name agtype, count agtype);
+    name    | count 
+------------+-------
+ "Briggite" | 0
+ "Takeshi"  | 0
+ "Chan"     | 0
+ "Faye"     | 0
+ "Tony"     | 0
+ "Valerie"  | 0
+ "Calvin"   | 1
+ "Charlie"  | 1
+ "Jon"      | 1
+(9 rows)
+
+--
+-- expression tree walker additional tests. want to test the nesting capabilties of the expr tree walker
+--
+--BoolExpr
+-- with comparison
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {(a:person)-[]->(:pet)}
+									AND a.name = 'Odie'
+									RETURN (a) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+-- BoolExpr two subqueries
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {(a:person)-[]->(:pet)}
+									OR EXISTS {(a:person)-[]->(:person)}
+									RETURN (a) $$) AS (result agtype);
+                                              result                                               
+---------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex
+ {"id": 844424930131973, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(6 rows)
+
+-- Nested BoolExpr
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)
+									WHERE EXISTS {(a:person)-[]->(:pet)
+									WHERE a.name = 'Charlie'}
+									AND EXISTS {(a:person)-[]->(:person)}
+									RETURN (a) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+-- CaseExpr
+-- subqueries in WHEN statement in RETURN
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)-[]->(b)
+									RETURN
+									  a.name,
+									  b.name,
+									  CASE
+									    WHEN EXISTS { MATCH (a)-[:loved]->(b) } THEN "There is LOVE!!!!!!"
+									    WHEN EXISTS { MATCH (a)-[:knows]->(b) } THEN "There is a relationship"
+									    ELSE "No relation"
+									  END $$) AS (a agtype, b agtype, c agtype);
+     a      |     b      |             c             
+------------+------------+---------------------------
+ "Briggite" | "Takeshi"  | "There is a relationship"
+ "Faye"     | "Chan"     | "There is a relationship"
+ "Faye"     | "Tony"     | "There is a relationship"
+ "Tony"     | "Valerie"  | "There is LOVE!!!!!!"
+ "Calvin"   | "Hobbes"   | "There is a relationship"
+ "Charlie"  | "Snoopy"   | "There is a relationship"
+ "Jon"      | "Odie"     | "There is a relationship"
+ "Jon"      | "Garfield" | "There is a relationship"
+(8 rows)
+
+-- subqueries in THEN, WHERE
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)-[]->(b)
+									WHERE
+									  CASE a.name
+									    WHEN "Jon" THEN EXISTS { MATCH (a)-[:knows]->(b) }
+									    WHEN  "Tony" THEN EXISTS { MATCH (a)-[:loved]->(b) }
+									    ELSE False
+									  END = true RETURN a $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131973, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex
+(3 rows)
+
+-- nested in another exists
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)-[]->(b)
+									WHERE
+									  EXISTS { MATCH (a) WHERE CASE a.name
+									    WHEN "Jon" THEN EXISTS { MATCH (a)-[:knows]->(b) }
+									    WHEN  "Tony" THEN EXISTS { MATCH (a)-[:loved]->(b) }
+									    ELSE False}
+									  END = true RETURN a $$) AS (result agtype);
+ERROR:  syntax error at or near "}"
+LINE 6:              ELSE False}
+                               ^
+-- CoalesceExpr
+--coalesce, nested in where
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)-[]->(b)
+									WHERE COALESCE( EXISTS {MATCH (a)-[:knows]->(b)
+														    WHERE COALESCE( EXISTS {MATCH (a)
+																				    WHERE a.name = "Calvin"
+																				    OR a.name = "Charlie"})})
+									RETURN a $$) AS (result agtype);
+                                             result                                              
+-------------------------------------------------------------------------------------------------
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex
+(2 rows)
+
+--coalesce, nested in return
+SELECT * FROM cypher('subquery', $$ MATCH (a:person)-[]->(b)
+									RETURN COALESCE( EXISTS {MATCH (a)-[:knows]->(b)
+														    WHERE COALESCE( EXISTS {MATCH (a)
+																				    WHERE a.name = "Calvin"
+																				    OR a.name = "Charlie"})}) AS coalescefunc
+									$$) AS (name agtype, result agtype);
+ERROR:  return row and column definition list do not match
+LINE 1: SELECT * FROM cypher('subquery', $$ MATCH (a:person)-[]->(b)
+                      ^
+-- maps
+--nested exists maps
+SELECT * FROM cypher('subquery', $$MATCH (a)
+								   WHERE {cond : true} = { cond : EXISTS {(a)
+																  WHERE {age: a.age } = {age: a.age > 22}}}
+								   RETURN a $$ ) AS (a agtype);
+                                          a                                           
+--------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "pet", "properties": {"name": "Hobbes"}}::vertex
+ {"id": 1688849860263938, "label": "pet", "properties": {"name": "Snoopy"}}::vertex
+ {"id": 1688849860263939, "label": "pet", "properties": {"name": "Odie"}}::vertex
+ {"id": 1688849860263940, "label": "pet", "properties": {"name": "Garfield"}}::vertex
+(4 rows)
+
+--nested exists in return
+SELECT * FROM cypher('subquery', $$MATCH (a)
+								   RETURN a, {cond : true} = { cond : EXISTS {(a)
+																      WHERE {age: a.age } = {age: a.age > 22}}}
+								   $$ ) AS (a agtype, cond agtype);
+                                                 a                                                 | cond  
+---------------------------------------------------------------------------------------------------+-------
+ {"id": 844424930131969, "label": "person", "properties": {"age": 32, "name": "Briggite"}}::vertex | false
+ {"id": 844424930131970, "label": "person", "properties": {"age": 28, "name": "Takeshi"}}::vertex  | false
+ {"id": 844424930131971, "label": "person", "properties": {"age": 45, "name": "Chan"}}::vertex     | false
+ {"id": 844424930131972, "label": "person", "properties": {"age": 25, "name": "Faye"}}::vertex     | false
+ {"id": 844424930131973, "label": "person", "properties": {"age": 34, "name": "Tony"}}::vertex     | false
+ {"id": 844424930131974, "label": "person", "properties": {"age": 33, "name": "Valerie"}}::vertex  | false
+ {"id": 844424930131975, "label": "person", "properties": {"age": 6, "name": "Calvin"}}::vertex    | false
+ {"id": 844424930131976, "label": "person", "properties": {"age": 8, "name": "Charlie"}}::vertex   | false
+ {"id": 844424930131977, "label": "person", "properties": {"age": 29, "name": "Jon"}}::vertex      | false
+ {"id": 1688849860263937, "label": "pet", "properties": {"name": "Hobbes"}}::vertex                | true
+ {"id": 1688849860263938, "label": "pet", "properties": {"name": "Snoopy"}}::vertex                | true
+ {"id": 1688849860263939, "label": "pet", "properties": {"name": "Odie"}}::vertex                  | true
+ {"id": 1688849860263940, "label": "pet", "properties": {"name": "Garfield"}}::vertex              | true
+(13 rows)
+
+-- map projection
+--where
+SELECT * FROM cypher('subquery', $$MATCH (a)
+								   WITH { a : EXISTS {(a) WHERE a.name = 'Chan'}} as matchmap, a
+								   WHERE true = matchmap.a
+								   RETURN a $$ ) AS (a agtype);
+                                               a                                               
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131971, "label": "person", "properties": {"age": 45, "name": "Chan"}}::vertex
+(1 row)
+
+--return
+SELECT * FROM cypher('subquery', $$MATCH (a)
+								   RETURN a.name,
+								   { a : EXISTS {(a) WHERE a.name = 'Chan'}} $$ ) AS (a agtype, cond agtype);
+     a      |     cond     
+------------+--------------
+ "Briggite" | {"a": false}
+ "Takeshi"  | {"a": false}
+ "Chan"     | {"a": true}
+ "Faye"     | {"a": false}
+ "Tony"     | {"a": false}
+ "Valerie"  | {"a": false}
+ "Calvin"   | {"a": false}
+ "Charlie"  | {"a": false}
+ "Jon"      | {"a": false}
+ "Hobbes"   | {"a": false}
+ "Snoopy"   | {"a": false}
+ "Odie"     | {"a": false}
+ "Garfield" | {"a": false}
+(13 rows)
+
+--lists
+--list
+SELECT * FROM cypher('subquery', $$ MATCH (a:pet) WHERE true IN [EXISTS {
+MATCH (a) WHERE a.name = 'Hobbes' RETURN a}] RETURN a $$) AS (result agtype);
+                                       result                                       
+------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "pet", "properties": {"name": "Hobbes"}}::vertex
+(1 row)
+
+--nested in list
+SELECT * FROM cypher('subquery', $$ MATCH (a:pet) WHERE [true] IN [[EXISTS {
+MATCH (a) WHERE a.name = 'Hobbes' RETURN a}]] RETURN a $$) AS (result agtype);
+                                       result                                       
+------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "pet", "properties": {"name": "Hobbes"}}::vertex
+(1 row)
+
+--exist nested in list nested in list
+SELECT * FROM cypher('subquery', $$ MATCH (a:pet) WHERE [true] IN [[EXISTS {
+MATCH (a) WHERE EXISTS {MATCH (a)-[]-()} RETURN a}]] RETURN a $$) AS (result agtype);
+                                        result                                        
+--------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "pet", "properties": {"name": "Hobbes"}}::vertex
+ {"id": 1688849860263938, "label": "pet", "properties": {"name": "Snoopy"}}::vertex
+ {"id": 1688849860263939, "label": "pet", "properties": {"name": "Odie"}}::vertex
+ {"id": 1688849860263940, "label": "pet", "properties": {"name": "Garfield"}}::vertex
+(4 rows)
+
 --
 -- Cleanup
 --
-SELECT * FROM drop_graph('exists_subquery', true);
+SELECT * FROM drop_graph('subquery', true);
 NOTICE:  drop cascades to 6 other objects
-DETAIL:  drop cascades to table exists_subquery._ag_label_vertex
-drop cascades to table exists_subquery._ag_label_edge
-drop cascades to table exists_subquery.person
-drop cascades to table exists_subquery.knows
-drop cascades to table exists_subquery.loved
-drop cascades to table exists_subquery.pet
-NOTICE:  graph "exists_subquery" has been dropped
+DETAIL:  drop cascades to table subquery._ag_label_vertex
+drop cascades to table subquery._ag_label_edge
+drop cascades to table subquery.person
+drop cascades to table subquery.knows
+drop cascades to table subquery.loved
+drop cascades to table subquery.pet
+NOTICE:  graph "subquery" has been dropped
  drop_graph 
 ------------
  

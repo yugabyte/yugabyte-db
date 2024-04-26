@@ -74,7 +74,7 @@
 /* keywords in alphabetical order */
 %token <keyword> ALL ANALYZE AND AS ASC ASCENDING
                  BY
-                 CALL CASE COALESCE CONTAINS CREATE
+                 CALL CASE COALESCE CONTAINS COUNT CREATE
                  DELETE DESC DESCENDING DETACH DISTINCT
                  ELSE END_P ENDS EXISTS EXPLAIN
                  FALSE_P
@@ -100,6 +100,7 @@
 
 %type <list> subquery_stmt subquery_stmt_with_return subquery_stmt_no_return
              single_subquery single_subquery_no_return subquery_part_init
+%type <node> subquery_pattern
 
 /* RETURN and WITH clause */
 %type <node> return return_item sort_item skip_opt limit_opt with
@@ -646,7 +647,9 @@ subquery_stmt_no_return:
         }
     | subquery_stmt_no_return UNION all_or_distinct subquery_stmt_no_return
         {
-            $$ = list_make1(make_set_op(SETOP_UNION, $3, $1, $4));
+            ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                errmsg("Subquery UNION without returns not yet implemented"),
+                ag_scanner_errposition(@2, scanner)));
         }
     ;
 
@@ -687,6 +690,31 @@ single_subquery_no_return:
 
             $$ = list_concat($1, lappend($2, n));
 
+        }
+        | subquery_pattern
+        {
+            ColumnRef *cr;
+            ResTarget *rt;
+            cypher_return *n;
+
+            cr = makeNode(ColumnRef);
+            cr->fields = list_make1(makeNode(A_Star));
+            cr->location = @1;
+
+            rt = makeNode(ResTarget);
+            rt->name = NULL;
+            rt->indirection = NIL;
+            rt->val = (Node *)cr;
+            rt->location = @1;
+
+            n = make_ag_node(cypher_return);
+            n->distinct = false;
+            n->items = list_make1((Node *)rt);
+            n->order_by = NULL;
+            n->skip = NULL;
+            n->limit = NULL;
+
+            $$ = lappend(list_make1($1), n);
         }
     ;
 
@@ -945,7 +973,7 @@ with:
             cypher_with *n;
 
             // check expressions are aliased
-            foreach (li, $3)
+            foreach(li, $3)
             {
                 ResTarget *item = lfirst(li);
 
@@ -1898,35 +1926,30 @@ expr_func_subexpr:
             $$ = (Node *)node_to_agtype((Node *)n, "boolean", @2);
 
         }
+    | COUNT '(' ')'
+		{
+            $$ = make_function_expr(list_make1(makeString("count")), NIL, @1);
+		}
+    | COUNT '(' expr_list ')'
+		{
+            $$ = make_function_expr(list_make1(makeString("count")), $3, @2);
+		}
+    | COUNT '(' DISTINCT expr_list ')'
+		{
+            FuncCall *n = (FuncCall *)make_distinct_function_expr(
+									  list_make1(makeString("count")), $4, @1);
+            $$ = (Node *)n;
+        }
+    | COUNT '(' '*' ')'
+		{
+            FuncCall *n = (FuncCall *)make_star_function_expr(
+									  list_make1(makeString("count")), NIL, @1);
+            $$ = (Node *)n;
+		}
     ;
 
 expr_subquery:
-    EXISTS '{' anonymous_path '}'
-        {
-            /*
-             * EXISTS subquery with an anonymous path is almost
-             * the same as a EXISTS sub pattern, so we reuse that
-             * logic here to simplify more complex subquery transformations.
-             * TODO: Add WHERE clause support for anonymous paths in functions.
-             */
-
-            cypher_sub_pattern *sub;
-            SubLink    *n;
-
-            sub = make_ag_node(cypher_sub_pattern);
-            sub->kind = CSP_EXISTS;
-            sub->pattern = list_make1($3);
-
-            n = makeNode(SubLink);
-            n->subLinkType = EXISTS_SUBLINK;
-            n->subLinkId = 0;
-            n->testexpr = NULL;
-            n->operName = NIL;
-            n->subselect = (Node *) sub;
-            n->location = @1;
-            $$ = (Node *)node_to_agtype((Node *)n, "boolean", @1);
-        }
-    | EXISTS '{' subquery_stmt '}'
+    EXISTS '{' subquery_stmt '}'
         {
             cypher_sub_query *sub;
             SubLink    *n;
@@ -1944,6 +1967,52 @@ expr_subquery:
             n->subselect = (Node *) sub;
             n->location = @1;
             $$ = (Node *)node_to_agtype((Node *)n, "boolean", @1);
+        }
+    | COUNT '{' subquery_stmt '}'
+        {
+            SubLink    *n;
+            cypher_sub_query *sub;
+            cypher_return *r;
+            ResTarget *rt;
+            FuncCall *func;
+
+            func = (FuncCall *)make_star_function_expr(
+								list_make1(makeString("count")), NIL, @1);
+
+            rt = makeNode(ResTarget);
+            rt->name = NULL;
+            rt->indirection = NIL;
+            rt->val = (Node *)func;
+            rt->location = @1;
+
+            r = make_ag_node(cypher_return);
+            r->items = list_make1((Node *)rt);
+
+            sub = make_ag_node(cypher_sub_query);
+            sub->query = lappend($3, r);
+
+            n = makeNode(SubLink);
+            n->subLinkType = EXPR_SUBLINK;
+            n->subLinkId = 0;
+            n->testexpr = NULL;
+            n->operName = NIL;
+            n->subselect = (Node *)sub;
+            n->location = @1;
+
+            $$ = (Node *) n;
+        }
+    ;
+
+subquery_pattern:
+    anonymous_path where_opt
+        {
+            cypher_match *n;
+
+            n = make_ag_node(cypher_match);
+            n->pattern = list_make1($1);
+            n->where = $2;
+
+            $$ = (Node *)n;
         }
     ;
 
@@ -2336,6 +2405,7 @@ safe_keywords:
     | CASE       { $$ = pnstrdup($1, 4); }
     | COALESCE   { $$ = pnstrdup($1, 8); }
     | CONTAINS   { $$ = pnstrdup($1, 8); }
+    | COUNT      { $$ = pnstrdup($1 ,5); }
     | CREATE     { $$ = pnstrdup($1, 6); }
     | DELETE     { $$ = pnstrdup($1, 6); }
     | DESC       { $$ = pnstrdup($1, 4); }
