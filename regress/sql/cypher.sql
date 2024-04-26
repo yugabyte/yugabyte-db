@@ -68,4 +68,45 @@ SELECT (SELECT * FROM cypher('cypher', $$RETURN 0$$) AS r(c agtype));
 SELECT * FROM cypher('cypher', $$RETURN true$$) AS (c bool);
 SELECT * FROM cypher('cypher', $$RETURN 0$$) AS (c oid);
 
+--
+-- Issue 1767: create table as select * from cypher()... throw an error
+--             This is due to the convert_cypher_walker not recognizing
+--             utility commands.
+
+-- create our graph
+SELECT * FROM create_graph('issue_1767');
+-- add in 5 relationships
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+-- show the 5 relationships
+SELECT * FROM cypher('issue_1767', $$ MATCH ()-[e]->() RETURN e $$) as (e agtype);
+
+-- create table my_vertices from the vertices. should be 10 rows.
+CREATE TABLE my_vertices AS
+    (SELECT * FROM cypher('issue_1767', $$ MATCH (u) RETURN u $$) as (u agtype));
+-- create table my_edges from the edges. should be 5 rows
+CREATE TABLE my_edges AS
+    (SELECT * FROM cypher('issue_1767', $$ MATCH ()-[e]->() RETURN e $$) as (e agtype));
+-- create a table of 4 columns, u, e, v, p. should be 5 rows
+CREATE TABLE my_detailed_paths AS
+    (SELECT * FROM cypher('issue_1767', $$ MATCH p=(u)-[e]->(v) RETURN u,e,v,p $$) as (u agtype, e agtype, v agtype, p agtype));
+
+-- dump out the tables
+SELECT * FROM my_vertices;
+SELECT * FROM my_edges;
+SELECT * FROM my_detailed_paths;
+
+-- cleanup
+DROP TABLE my_vertices;
+DROP TABLE my_edges;
+DROP TABLE my_detailed_paths;
+
+SELECT drop_graph('issue_1767', true);
 SELECT drop_graph('cypher', true);
+
+--
+-- End
+--

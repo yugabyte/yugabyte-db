@@ -212,6 +212,27 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
         Query *query = (Query *)node;
 
         /*
+         * If this is a utility command, we need to unwrap the internal query
+         * and pass it as the query.
+         *
+         * NOTE: This code only "knows" about the following utility commands -
+         *
+         * CREATE TABLE AS
+         *
+         * Others need to be added on a case by case basis.
+         */
+        if (query->utilityStmt != NULL &&
+            IsA(query->utilityStmt, CreateTableAsStmt))
+        {
+            CreateTableAsStmt *ctas = (CreateTableAsStmt *)query->utilityStmt;
+
+            if (IsA(ctas->query, Query))
+            {
+                query = (Query *)ctas->query;
+            }
+        }
+
+        /*
          * QTW_EXAMINE_RTES
          *     We convert RTE_FUNCTION (cypher()) to RTE_SUBQUERY (SELECT)
          *     in-place.

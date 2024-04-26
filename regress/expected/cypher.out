@@ -111,6 +111,115 @@ SELECT * FROM cypher('cypher', $$RETURN 0$$) AS (c oid);
 ERROR:  cannot cast type agtype to oid for column "c"
 LINE 1: SELECT * FROM cypher('cypher', $$RETURN 0$$) AS (c oid);
                       ^
+--
+-- Issue 1767: create table as select * from cypher()... throw an error
+--             This is due to the convert_cypher_walker not recognizing
+--             utility commands.
+-- create our graph
+SELECT * FROM create_graph('issue_1767');
+NOTICE:  graph "issue_1767" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- add in 5 relationships
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+-- show the 5 relationships
+SELECT * FROM cypher('issue_1767', $$ MATCH ()-[e]->() RETURN e $$) as (e agtype);
+                                                             e                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge
+ {"id": 844424930131970, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge
+ {"id": 844424930131971, "label": "knows", "end_id": 281474976710662, "start_id": 281474976710661, "properties": {}}::edge
+ {"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge
+ {"id": 844424930131973, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {}}::edge
+(5 rows)
+
+-- create table my_vertices from the vertices. should be 10 rows.
+CREATE TABLE my_vertices AS
+    (SELECT * FROM cypher('issue_1767', $$ MATCH (u) RETURN u $$) as (u agtype));
+-- create table my_edges from the edges. should be 5 rows
+CREATE TABLE my_edges AS
+    (SELECT * FROM cypher('issue_1767', $$ MATCH ()-[e]->() RETURN e $$) as (e agtype));
+-- create a table of 4 columns, u, e, v, p. should be 5 rows
+CREATE TABLE my_detailed_paths AS
+    (SELECT * FROM cypher('issue_1767', $$ MATCH p=(u)-[e]->(v) RETURN u,e,v,p $$) as (u agtype, e agtype, v agtype, p agtype));
+-- dump out the tables
+SELECT * FROM my_vertices;
+                               u                                
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {}}::vertex
+ {"id": 281474976710662, "label": "", "properties": {}}::vertex
+ {"id": 281474976710663, "label": "", "properties": {}}::vertex
+ {"id": 281474976710664, "label": "", "properties": {}}::vertex
+ {"id": 281474976710665, "label": "", "properties": {}}::vertex
+ {"id": 281474976710666, "label": "", "properties": {}}::vertex
+(10 rows)
+
+SELECT * FROM my_edges;
+                                                             e                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge
+ {"id": 844424930131970, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge
+ {"id": 844424930131971, "label": "knows", "end_id": 281474976710662, "start_id": 281474976710661, "properties": {}}::edge
+ {"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge
+ {"id": 844424930131973, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {}}::edge
+(5 rows)
+
+SELECT * FROM my_detailed_paths;
+                               u                                |                                                             e                                                             |                               v                                |                                                                                                                                 p                                                                                                                                 
+----------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex | {"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge | {"id": 281474976710658, "label": "", "properties": {}}::vertex | [{"id": 281474976710657, "label": "", "properties": {}}::vertex, {"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge, {"id": 281474976710658, "label": "", "properties": {}}::vertex]::path
+ {"id": 281474976710659, "label": "", "properties": {}}::vertex | {"id": 844424930131970, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge | {"id": 281474976710660, "label": "", "properties": {}}::vertex | [{"id": 281474976710659, "label": "", "properties": {}}::vertex, {"id": 844424930131970, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge, {"id": 281474976710660, "label": "", "properties": {}}::vertex]::path
+ {"id": 281474976710661, "label": "", "properties": {}}::vertex | {"id": 844424930131971, "label": "knows", "end_id": 281474976710662, "start_id": 281474976710661, "properties": {}}::edge | {"id": 281474976710662, "label": "", "properties": {}}::vertex | [{"id": 281474976710661, "label": "", "properties": {}}::vertex, {"id": 844424930131971, "label": "knows", "end_id": 281474976710662, "start_id": 281474976710661, "properties": {}}::edge, {"id": 281474976710662, "label": "", "properties": {}}::vertex]::path
+ {"id": 281474976710663, "label": "", "properties": {}}::vertex | {"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge | {"id": 281474976710664, "label": "", "properties": {}}::vertex | [{"id": 281474976710663, "label": "", "properties": {}}::vertex, {"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge, {"id": 281474976710664, "label": "", "properties": {}}::vertex]::path
+ {"id": 281474976710665, "label": "", "properties": {}}::vertex | {"id": 844424930131973, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {}}::edge | {"id": 281474976710666, "label": "", "properties": {}}::vertex | [{"id": 281474976710665, "label": "", "properties": {}}::vertex, {"id": 844424930131973, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {}}::edge, {"id": 281474976710666, "label": "", "properties": {}}::vertex]::path
+(5 rows)
+
+-- cleanup
+DROP TABLE my_vertices;
+DROP TABLE my_edges;
+DROP TABLE my_detailed_paths;
+SELECT drop_graph('issue_1767', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table issue_1767._ag_label_vertex
+drop cascades to table issue_1767._ag_label_edge
+drop cascades to table issue_1767.knows
+NOTICE:  graph "issue_1767" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT drop_graph('cypher', true);
 NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to table cypher._ag_label_vertex
@@ -121,3 +230,6 @@ NOTICE:  graph "cypher" has been dropped
  
 (1 row)
 
+--
+-- End
+--
