@@ -1188,7 +1188,7 @@ public class PlacementInfoUtil {
    * @return HashMap of UUID to total number of nodes
    */
   public static Map<UUID, Integer> getAzUuidToNumNodes(Collection<NodeDetails> nodeDetailsSet) {
-    return getAzUuidToNumNodes(nodeDetailsSet, false /* onlyActive */);
+    return getAzUuidToNumNodes(nodeDetailsSet, false /* skipToBeRemoved */);
   }
 
   public static void dedicateNodes(Collection<NodeDetails> nodes) {
@@ -1197,11 +1197,12 @@ public class PlacementInfoUtil {
   }
 
   public static Map<UUID, Integer> getAzUuidToNumNodes(
-      Collection<NodeDetails> nodeDetailsSet, boolean onlyActive) {
+      Collection<NodeDetails> nodeDetailsSet, boolean skipToBeRemoved) {
     // Get node count per azUuid in the current universe.
     Map<UUID, Integer> azUuidToNumNodes = new HashMap<>();
     for (NodeDetails node : nodeDetailsSet) {
-      if ((onlyActive && !node.isActive()) || (node.isMaster && !node.isTserver)) {
+      if ((skipToBeRemoved && node.state == NodeState.ToBeRemoved)
+          || (node.isMaster && !node.isTserver)) {
         continue;
       }
 
