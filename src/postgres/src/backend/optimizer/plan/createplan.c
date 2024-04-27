@@ -962,19 +962,20 @@ yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 		RowExpr *leftop = makeNode(RowExpr);
 		RowExpr *rightop = makeNode(RowExpr);
 
-		Oid opresulttype = -1;
-		bool opretset = false;
-		Oid opcolloid = -1;
-		Oid inputcollid = -1;
+		List *inputcollids = NIL;
+		List *opnos = NIL;
+		List *opfamilies = NIL;
 
 		for (int i = 0; i < len; i++)
 		{
 			Expr *b_expr = (Expr *) exprcols[i];
 			OpExpr *opexpr = (OpExpr *) b_expr;
-			opresulttype = opexpr->opresulttype;
-			opretset = opexpr->opretset;
-			opcolloid = opexpr->opcollid;
-			inputcollid = opexpr->inputcollid;
+			inputcollids =
+				lappend_oid(inputcollids, opexpr->inputcollid);
+			opnos = lappend_oid(opnos, opexpr->opno);
+			OpBtreeInterpretation *btreeinterp =
+				linitial(get_op_btree_interpretation(opexpr->opno));
+			opfamilies = lappend_oid(opfamilies, btreeinterp->opfamily_id);
 
 			Expr *left_expr = (Expr *) get_leftop(b_expr);
 			leftop->args = lappend(leftop->args, left_expr);
@@ -996,9 +997,13 @@ yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 
 		YbBatchedExpr *right_batched_expr = makeNode(YbBatchedExpr);
 		right_batched_expr->orig_expr = (Expr*) rightop;
-		Expr *zipped = (Expr*) make_opclause(RECORD_EQ_OP, opresulttype, opretset,
-									(Expr*) leftop, (Expr*) right_batched_expr,
-									opcolloid, inputcollid);
+		RowCompareExpr *zipped = makeNode(RowCompareExpr);
+		zipped->largs = leftop->args;
+		zipped->rargs = (Node *) right_batched_expr;
+		zipped->rctype = ROWCOMPARE_EQ;
+		zipped->opfamilies = opfamilies;
+		zipped->opnos = opnos;
+		zipped->inputcollids = inputcollids;
 		zipped_exprs = lappend(zipped_exprs, zipped);
 	}
 
@@ -6278,6 +6283,38 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		/* Replace the PlaceHolderVar with a nestloop Param */
 		return (Node *) replace_nestloop_param_placeholdervar(root, phv);
 	}
+
+	/*
+	 * YB: If the expression is a RowCompareExpr that is in the form of
+	 * ROW(...) = YBBatchedExpr(ROW(...)), we need to convert it to
+	 * ROW(...) = ARRAY(ROW(...), ROW(...), ...) where the = operator
+	 * also represents a RowCompareExpr.
+	 */
+	if (IsA(node, RowCompareExpr))
+	{
+		RowCompareExpr *rcexpr = (RowCompareExpr *) node;
+		if(rcexpr->rctype == ROWCOMPARE_EQ)
+		{
+			RowCompareExpr *rcexpr_new = copyObject(rcexpr);
+			ArrayExpr *arrexpr = makeNode(ArrayExpr);
+
+			arrexpr->array_typeid = InvalidOid;
+			arrexpr->element_typeid = RECORDOID;
+			arrexpr->multidims = false;
+			arrexpr->array_collid = InvalidOid;
+			arrexpr->location = -1;
+			arrexpr->elements =
+				(List*) replace_nestloop_params(root, rcexpr->rargs);
+			rcexpr_new->rargs = (Node *) arrexpr;
+			return (Node*) rcexpr_new;
+		}
+	}
+
+	/*
+	 * YB: If the expression is an OpExpr that is in the form of
+	 * col = YBBatchedExpr(outer_val), we need to convert it to
+	 * col IN ARRAY(outer_val1, outer_val2, ...).
+	 */
 	if (IsA(node, OpExpr))
 	{
 		OpExpr *opexpr = (OpExpr*) node;
@@ -6301,16 +6338,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			Expr *outer_expr = (Expr *) lsecond(opexpr->args);
 			outer_expr = ((YbBatchedExpr *) outer_expr)->orig_expr;
 
-			if(IsA(outer_expr, RowExpr))
-			{
-				RowExpr *rowexpr = (RowExpr *) outer_expr;
-				scalar_type = rowexpr->row_typeid;
-			}
-			else
-			{
-				scalar_type = exprType((Node*) outer_expr);
-				collid = exprCollation((Node*) outer_expr);
-			}
+			scalar_type = exprType((Node*) outer_expr);
+			collid = exprCollation((Node*) outer_expr);
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
 			Oid array_type;

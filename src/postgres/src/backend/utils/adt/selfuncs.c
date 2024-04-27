@@ -2192,7 +2192,8 @@ rowcomparesel(PlannerInfo *root,
 	bool		is_join_clause;
 
 	/* Build equivalent arg list for single operator */
-	opargs = list_make2(linitial(clause->largs), linitial(clause->rargs));
+	opargs = list_make2(linitial(clause->largs),
+		linitial(castNode(List, clause->rargs)));
 
 	/*
 	 * Decide if it's a join clause.  This should match clausesel.c's

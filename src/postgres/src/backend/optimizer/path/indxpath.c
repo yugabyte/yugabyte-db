@@ -3281,7 +3281,7 @@ match_rowcompare_to_indexcol(PlannerInfo *root,
 	 * operators are matchable to the index.
 	 */
 	leftop = (Node *) linitial(clause->largs);
-	rightop = (Node *) linitial(clause->rargs);
+	rightop = (Node *) linitial(castNode(List, clause->rargs));
 	expr_op = linitial_oid(clause->opnos);
 	expr_coll = linitial_oid(clause->inputcollids);
 
@@ -3381,11 +3381,11 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 	if (var_on_left)
 	{
 		var_args = clause->largs;
-		non_var_args = clause->rargs;
+		non_var_args = castNode(List, clause->rargs);
 	}
 	else
 	{
-		var_args = clause->rargs;
+		var_args = castNode(List, clause->rargs);
 		non_var_args = clause->largs;
 	}
 
@@ -3533,7 +3533,7 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 											 matching_cols);
 			rc->largs = list_truncate(copyObject(var_args),
 									  matching_cols);
-			rc->rargs = list_truncate(copyObject(non_var_args),
+			rc->rargs = (Node *) list_truncate(copyObject(non_var_args),
 									  matching_cols);
 			iclause->indexquals = list_make1(make_simple_restrictinfo(root,
 																	  (Expr *) rc));

@@ -9334,11 +9334,30 @@ get_rule_expr(Node *node, deparse_context *context,
 				 * since the construct was parsed, but there seems no way to
 				 * be perfect.
 				 */
-				appendStringInfo(buf, ") %s ROW(",
+				Oid rhs_type;
+				if (IsA(rcexpr->rargs, List))
+					rhs_type = exprType(linitial(castNode(List, rcexpr->rargs)));
+				else
+				{
+					List *elems = castNode(ArrayExpr, rcexpr->rargs)->elements;
+					RowExpr *row = (RowExpr *) linitial(elems);
+					rhs_type = exprType(linitial(row->args));
+				}
+
+				appendStringInfo(buf, ") %s ",
 								 generate_operator_name(linitial_oid(rcexpr->opnos),
 														exprType(linitial(rcexpr->largs)),
-														exprType(linitial(rcexpr->rargs))));
-				get_rule_list_toplevel(rcexpr->rargs, context, true);
+														rhs_type));
+				if (IsA(rcexpr->rargs, List))
+				{
+					appendStringInfo(buf, "ROW(");
+					get_rule_list_toplevel(castNode(List, rcexpr->rargs), context, true);
+				}
+				else
+				{
+					appendStringInfo(buf, "ANY (");
+					get_rule_expr(rcexpr->rargs, context, true);
+				}
 				appendStringInfoString(buf, "))");
 			}
 			break;
@@ -10869,7 +10888,8 @@ get_sublink_expr(SubLink *sublink, deparse_context *context)
 			get_rule_expr((Node *) rcexpr->largs, context, true);
 			opname = generate_operator_name(linitial_oid(rcexpr->opnos),
 											exprType(linitial(rcexpr->largs)),
-											exprType(linitial(rcexpr->rargs)));
+											exprType(linitial(
+													castNode(List, rcexpr->rargs))));
 			appendStringInfoChar(buf, ')');
 		}
 		else
