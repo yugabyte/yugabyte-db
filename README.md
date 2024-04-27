@@ -68,6 +68,12 @@ You can check the available hypothetical indexes in your own backend:
     ------------+-------------------------------+-------------+------------+---------
           50573 | <50573>btree_hypo_id          | public      | hypo       | btree
 
+If the `CREATE INDEX` command you want to use also needs quoting, using the
+[dollar quoting
+syntax](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-DOLLAR-QUOTING)
+is recommended.  For instance:
+
+    rjuju=# SELECT * FROM hypopg_create_index($$CREATE INDEX ON hypo (id) WHERE val = 'line 1'$$);
 
 If you need more technical information on the hypothetical indexes, the
 `hypopg()` function will return the hypothetical indexes in a similar way as
