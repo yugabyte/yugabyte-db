@@ -1,6 +1,20 @@
 Changelog
 =========
 
+2024-04-28 version 1.4.1:
+-------------------------
+
+  **Bug fixes**:
+
+  - Fix hypothetical index names when its Oid is more than 1 billion (Julien
+    Rouhaud, thanks to github user sylph520 for the report)
+  - Fix hypothetical index deparsing when attributes need quoting (Julien
+    Rouhaud, thanks to Daniel Lang for the report)
+
+  **Miscellaneous**:
+
+  - Add support for PostgreSQL 17 (Georgy Shelkovy, Julien Rouhaud)
+
 2023-05-27 version 1.4.0:
 -------------------------
 
