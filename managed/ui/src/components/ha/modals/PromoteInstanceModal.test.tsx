@@ -16,7 +16,7 @@ const fakeBackupsList = [
   'backup_21-03-24-21-29.tgz',
   'backup_21-03-24-21-27.tgz'
 ];
-
+const PROMOTE_CONFIRMATION_STRING = 'PROMOTE';
 const setup = () => {
   const onClose = jest.fn();
   const component = render(
@@ -58,6 +58,10 @@ describe('HA promote instance modal', () => {
   it('should show validation error when no backup selected', async () => {
     (api.getHABackups as jest.Mock).mockResolvedValue([]);
     const { component } = setup();
+    userEvent.type(
+      component.getByTestId('PromoteInstanceModal-ConfirmTextInputField'),
+      PROMOTE_CONFIRMATION_STRING
+    );
     userEvent.click(component.getByRole('button', { name: /continue/i }));
     expect(await component.findByText(/backup file is required/i)).toBeInTheDocument();
   });
@@ -74,13 +78,16 @@ describe('HA promote instance modal', () => {
     const { component, onClose } = setup();
     await waitFor(() => api.getHABackups);
 
-    // click continue button without clicking confirmation checkbox
+    // click continue button without entering confirmation text
     userEvent.click(component.getByRole('button', { name: /continue/i }));
     await waitFor(() => expect(api.promoteHAInstance).not.toBeCalled());
     expect(browserHistoryPush).not.toBeCalled();
 
-    // click confirmation checkbox and then click continue button
-    userEvent.click(component.getByTestId('confirmedCheckbox'));
+    // enter confirmation text and then click continue button
+    userEvent.type(
+      component.getByTestId('PromoteInstanceModal-ConfirmTextInputField'),
+      PROMOTE_CONFIRMATION_STRING
+    );
     userEvent.click(component.getByRole('button', { name: /continue/i }));
 
     // make sure modal can't be closed while API response is pending
@@ -113,7 +120,10 @@ describe('HA promote instance modal', () => {
     const { component } = setup();
     await waitFor(() => api.getHABackups);
 
-    userEvent.click(component.getByTestId('confirmedCheckbox'));
+    userEvent.type(
+      component.getByTestId('PromoteInstanceModal-ConfirmTextInputField'),
+      PROMOTE_CONFIRMATION_STRING
+    );
     userEvent.click(component.getByRole('button', { name: /continue/i }));
 
     await waitFor(() => {
