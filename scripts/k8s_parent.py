@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import time
 import errno
 import logging
 import os
@@ -8,7 +9,10 @@ import signal
 import subprocess
 import sys
 import glob
-
+import traceback
+import threading
+# Stop event to signal the background thread to stop.:
+bg_thread_stop_event = threading.Event()
 child_process = None
 
 # Set of signals which are propagated to the child process from this
@@ -111,6 +115,23 @@ def delete_pg_lock_files():
         logging.info(f"Deleted: {file_path}")
 
 
+def background_copy_cores_wrapper(dst, sleep_time_seconds):
+    logging.info("Starting Collection")
+    global bg_thread_stop_event
+    copy_count = None
+    while not bg_thread_stop_event.is_set():
+        logging.info("Invoking copy_cores")
+        try:
+            copy_count = copy_cores(dst)
+        except Exception as e:
+            logging.error(
+                "Error while copying cores: {}, traceback: {}".format(
+                    e, traceback.format_exc()))
+        logging.info("Copied {} core files".format(copy_count))
+        logging.info("Sleeping for {} seconds".format(sleep_time_seconds))
+        time.sleep(sleep_time_seconds)
+
+
 def copy_cores(dst):
     # os.makedirs(dst, exist_ok=True)
     try:
@@ -192,7 +213,7 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(filename)s: %(message)s",
         level=logging.INFO,
     )
-
+    core_collection_interval = 30  # Seconds
     command = sys.argv[1:]
     if len(command) < 1:
         logging.critical("No command to run")
@@ -207,6 +228,11 @@ if __name__ == "__main__":
     # Make sure the directory from core_pattern is present, otherwise
     # core dumps are not collected.
     create_core_dump_dir()
+    # Copy cores once in 30s
+    copy_cores_thread = threading.Thread(
+        target=background_copy_cores_wrapper, args=(cores_dir, core_collection_interval))
+    copy_cores_thread.daemon = True
+    copy_cores_thread.start()
     # Delete PG Unix Socket Lock files that can be left after a previous
     # ungraceful exit of the container.
     if not is_master(command):
@@ -231,7 +257,11 @@ if __name__ == "__main__":
 
     # invoking the Post hook
     invoke_hook(hook_stage="post")
-
+    bg_thread_stop_event.set()
+    # Give some time for the thread to finish its job,
+    # we do a 2x core collection interval.
+    copy_cores_thread.join(2*core_collection_interval)
+    # There may be left over cores when we crash, so copy them now.
     # Do the core copy, and exit with child return code.
     files_copied = copy_cores(cores_dir)
     logging.info("Copied {} core files to '{}'".format(files_copied, cores_dir))
