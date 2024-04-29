@@ -264,8 +264,8 @@ public class ImageBundleUtil {
       if (ybaDefaultBundle.getMetadata() == null
           || (ybaDefaultBundle.getMetadata() != null
               && ybaDefaultBundle.getMetadata().getVersion() != null
-              && ybaDefaultBundle.getMetadata().getVersion()
-                  != CloudImageBundleSetup.CLOUD_OS_MAP.get(providerCode).getVersion())) {
+              && !(ybaDefaultBundle.getMetadata().getVersion())
+                  .equals(CloudImageBundleSetup.CLOUD_OS_MAP.get(providerCode).getVersion()))) {
         return true;
       }
     } else if (getYbaDefaultImageBundles.size() == 0) {
