@@ -9,6 +9,7 @@ import { MigrationAssessmentDetails } from "./AssessmentDetails";
 import { MigrationAssessmentResults } from "./AssessmentResults";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { MigrationAssessmentSummary } from "./AssessmentSummary";
+import { MigrationSourceEnv } from "./AssessmentSourceEnv";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -224,10 +225,22 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   ];
 
   const newMigration = {
-    complexity: "Easy",
-    estimatedMigrationTime: "2 hr 39 mins",
-    completed: "Completed 04/02/2024, 08:26 PDT",
-  };
+    completedTime: "Completed 04/02/2024, 08:26 PDT",
+    summary: {
+      complexity: "Easy",
+      estimatedMigrationTime: "2 hr 39 mins",
+    },
+    sourceEnv: {
+      vcpu: "240",
+      memory: "480 GB",
+      disk: "960 GB",
+      connectionCount: "16",
+      tableSize: "240 GB",
+      indexSize: "30 GB",
+      totalSize: "270 GB",
+      rowCount: "120,392,668",
+    },
+  } as const;
 
   return (
     <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
@@ -235,17 +248,16 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
         <Typography variant="h4" className={classes.heading}>
           {t("clusterDetail.voyager.planAndAssess.heading")}
         </Typography>
-        {newMigration.completed && (
+        {newMigration.completedTime && (
           <Typography variant="body1" className={classes.label}>
-            {newMigration.completed}
+            {newMigration.completedTime}
           </Typography>
         )}
       </Box>
 
-      <MigrationAssessmentSummary
-        complexity={newMigration.complexity}
-        estimatedMigrationTime={newMigration.estimatedMigrationTime}
-      />
+      <MigrationAssessmentSummary {...newMigration.summary} />
+
+      <MigrationSourceEnv {...newMigration.sourceEnv} />
 
       <YBAccordion
         titleContent={

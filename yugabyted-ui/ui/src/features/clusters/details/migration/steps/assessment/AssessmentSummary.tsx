@@ -1,11 +1,11 @@
 import React, { FC } from "react";
-import { Badge, Box, Paper, Typography, makeStyles } from "@material-ui/core";
+import { Box, Paper, Typography, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
-    marginBottom: theme.spacing(2),
+    marginBottom: theme.spacing(3),
   },
   label: {
     color: theme.palette.grey[500],
@@ -28,7 +28,7 @@ const ComplexityComponent = (complexity: string) => {
       ? BadgeVariant.Success
       : undefined;
 
-  return <YBBadge variant={badgeVariant} text={complexity || "N/A"} icon={false} />
+  return <YBBadge variant={badgeVariant} text={complexity || "N/A"} icon={false} />;
 };
 
 interface MigrationAssessmentSummaryProps {
@@ -46,8 +46,13 @@ export const MigrationAssessmentSummary: FC<MigrationAssessmentSummaryProps> = (
   return (
     <Paper>
       <Box px={2} py={3}>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Typography variant="h3" className={classes.heading}>
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+          className={classes.heading}
+        >
+          <Typography variant="h4">
             {t("clusterDetail.voyager.planAndAssess.summary.heading")}
           </Typography>
         </Box>

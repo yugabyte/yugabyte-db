@@ -897,6 +897,20 @@
             "estimatedMigrationTime": "Estimated Migration Time",
             "description": "Less than 500 database objects, can be fully automated. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras id ligula at turpis consectetur imperdiet et quis metus. Donec ac fringilla ligula. Morbi et augue a lacus semper tempus ut ullamcorper ex."
           },
+          "sourceEnv": {
+            "heading": "Source Environment",
+            "tooltip": "Database Objects, features in use, and workload details",
+            "totalVcpu": "Total vCPU",
+            "totalMemory": "Total Memory",
+            "totalDisk": "Total Disk Size",
+            "noOfConns": "Number of Connections",
+            "sourceDB": "Source Database",
+            "tableSize": "Table Size",
+            "indexSize": "Total Index Size",
+            "totalSize": "Total Size",
+            "rowCount": "Table Row Count",
+            "viewSourceObjects": "View Source Objects"
+          },
           "details": {
             "tableIndex": "Table / Index",
             "objectType": "Object type",
