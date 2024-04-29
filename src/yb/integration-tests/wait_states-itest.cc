@@ -478,6 +478,10 @@ class AshTestPg : public WaitStateTestCheckMethodCounts {
   }
 
  protected:
+  void SetUp() override {
+    WaitStateTestCheckMethodCounts::SetUp();
+  }
+
   void VerifyCountsUnlocked() override REQUIRES(mutex_) {
     WaitStateTestCheckMethodCounts::VerifyCountsUnlocked();
 
