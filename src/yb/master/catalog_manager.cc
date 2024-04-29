@@ -6718,8 +6718,9 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
                           << "Table Information is null. Skipping updating its state to DELETED.";
     return false;
   }
-  if (table->HasTasks()) {
-    VLOG_WITH_PREFIX_AND_FUNC(2) << table->ToString() << " has tasks";
+  // Wait for all the replica delete tasks that were sent to all peers to complete.
+  if (table->HasTasks(server::MonitoredTaskType::kDeleteReplica)) {
+    VLOG_WITH_PREFIX_AND_FUNC(2) << table->ToString() << " has more replica delete tasks";
     return false;
   }
   bool hide_only;
