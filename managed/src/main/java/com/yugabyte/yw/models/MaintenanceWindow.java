@@ -17,6 +17,8 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.ExpressionList;
@@ -34,11 +36,16 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Transient;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
 @Entity
@@ -80,6 +87,29 @@ public class MaintenanceWindow extends Model {
     FINISHED,
     ACTIVE,
     PENDING
+  }
+
+  @Builder
+  @NoArgsConstructor
+  @AllArgsConstructor
+  @Data
+  public static class SuppressHealthCheckNotificationsConfig {
+    @ApiModelProperty(
+        value =
+            "Suppress health check notifications on all the universes (including future universes)")
+    @Builder.Default
+    private boolean suppressAllUniverses = false;
+
+    @ApiModelProperty(value = "Set of universe uuids to suppress health check notifications on")
+    @Builder.Default
+    private Set<UUID> universeUUIDSet = new HashSet<>();
+
+    public SuppressHealthCheckNotificationsConfig clone() {
+      return SuppressHealthCheckNotificationsConfig.builder()
+          .suppressAllUniverses(this.suppressAllUniverses)
+          .universeUUIDSet(new HashSet<>(this.universeUUIDSet))
+          .build();
+    }
   }
 
   @Id
@@ -156,6 +186,16 @@ public class MaintenanceWindow extends Model {
   @Column(nullable = false)
   @JsonIgnore
   private boolean appliedToAlertConfigurations = false;
+
+  @Column(nullable = true)
+  @DbJson
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Whether to suppress health check"
+              + " notifications for universes",
+      accessMode = READ_WRITE)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  private SuppressHealthCheckNotificationsConfig suppressHealthCheckNotificationsConfig;
 
   private static final Finder<UUID, MaintenanceWindow> find =
       new Finder<UUID, MaintenanceWindow>(MaintenanceWindow.class) {};
