@@ -1604,11 +1604,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static void setReplicationStatus(
       XClusterUniverseService xClusterUniverseService, XClusterConfig xClusterConfig) {
+    Optional<Universe> targetUniverseOptional =
+        Objects.isNull(xClusterConfig.getTargetUniverseUUID())
+            ? Optional.empty()
+            : Universe.maybeGet(xClusterConfig.getTargetUniverseUUID());
+    if (targetUniverseOptional.isEmpty()) {
+      log.warn(
+          "The target universe for the xCluster config {} is not found; ignoring gathering"
+              + " replication stream statuses",
+          xClusterConfig);
+      return;
+    }
     // It does not update the xCluster config object in the DB intentionally because the
     // replication status is a temporary status and can be fetched each time that the xCluster
     // object is fetched.
-    if (supportsGetReplicationStatus(
-        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID()))) {
+    if (supportsGetReplicationStatus(targetUniverseOptional.get())) {
       try {
         Map<String, ReplicationStatusPB> streamIdReplicationStatusMap =
             xClusterUniverseService.getReplicationStatus(xClusterConfig).stream()
