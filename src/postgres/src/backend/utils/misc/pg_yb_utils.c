@@ -1441,7 +1441,12 @@ YBResetEnableNonBreakingDDLMode()
 	/*
 	 * Reset yb_make_next_ddl_statement_nonbreaking to avoid its further side
 	 * effect that may not be intended.
+	 * 
+	 * Also, reset Connection Manager cache if the value was cached to begin
+	 * with.
 	 */
+	if (YbIsClientYsqlConnMgr() && yb_make_next_ddl_statement_nonbreaking)
+		YbSendParameterStatusForConnectionManager("yb_make_next_ddl_statement_nonbreaking", "false");
 	yb_make_next_ddl_statement_nonbreaking = false;
 }
 
@@ -1544,6 +1549,8 @@ YBDecrementDdlNestingLevel()
 	if (yb_test_fail_next_ddl)
 	{
 		yb_test_fail_next_ddl = false;
+		if (YbIsClientYsqlConnMgr())
+			YbSendParameterStatusForConnectionManager("yb_test_fail_next_ddl", "false");
 		elog(ERROR, "Failed DDL operation as requested");
 	}
 	if (ddl_transaction_state.nesting_level == 0)
