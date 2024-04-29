@@ -3848,7 +3848,7 @@ CheckIndexSpecConflictWithExistingIndexes(uint64 collectionId, const IndexSpec *
 			if (equivalency == IndexOptionsEquivalency_Equivalent)
 			{
 				ThrowDifferentIndexNameWithDifferentOptionsError(
-					indexSpec, &optionsMatchedIndexDetails->indexSpec);
+					&optionsMatchedIndexDetails->indexSpec, indexSpec);
 			}
 
 			ThrowIndexOptionsConflictError(
