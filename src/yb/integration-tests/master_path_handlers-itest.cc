@@ -72,6 +72,7 @@ DECLARE_int32(follower_unavailable_considered_failed_sec);
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_uint32(leaderless_tablet_alert_delay_secs);
@@ -627,6 +628,7 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
     MasterPathHandlersItest::SetUp();
   }
 
