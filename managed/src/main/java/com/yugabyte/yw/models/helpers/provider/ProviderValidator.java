@@ -9,6 +9,7 @@ import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -32,6 +33,7 @@ public class ProviderValidator extends BaseBeanValidator {
       BeanValidator beanValidator,
       AWSCloudImpl awsCloudImpl,
       GCPCloudImpl gcpCloudImpl,
+      KubernetesManagerFactory kubernetesManagerFactory,
       RuntimeConfGetter runtimeConfGetter) {
     super(beanValidator);
     this.providerValidatorMap.put(
@@ -41,7 +43,8 @@ public class ProviderValidator extends BaseBeanValidator {
         CloudType.onprem.toString(), new OnPremValidator(beanValidator, runtimeConfGetter));
     this.providerValidatorMap.put(
         CloudType.kubernetes.toString(),
-        new KubernetesProviderValidator(beanValidator, runtimeConfGetter));
+        new KubernetesProviderValidator(
+            beanValidator, runtimeConfGetter, kubernetesManagerFactory));
     this.providerValidatorMap.put(
         CloudType.azu.toString(), new AzureProviderValidator(runtimeConfGetter, beanValidator));
     this.providerValidatorMap.put(
