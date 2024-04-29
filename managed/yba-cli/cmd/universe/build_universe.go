@@ -304,6 +304,12 @@ func buildClusters(
 	if err != nil {
 		return nil, err
 	}
+
+	assignStaticPublicIP, err := cmd.Flags().GetBool("assign-static-public-ip")
+	if err != nil {
+		return nil, err
+	}
+
 	enableYSQL, err := cmd.Flags().GetBool("enable-ysql")
 	if err != nil {
 		return nil, err
@@ -503,14 +509,15 @@ func buildClusters(
 				MasterInstanceType: util.GetStringPointer(masterInstanceType),
 				MasterDeviceInfo:   masterDeviceInfo,
 
-				AssignPublicIP: util.GetBoolPointer(assignPublicIP),
-				EnableYSQL:     util.GetBoolPointer(enableYSQL),
-				YsqlPassword:   util.GetStringPointer(ysqlPassword),
-				EnableYSQLAuth: util.GetBoolPointer(enableYSQLAuth),
-				EnableYCQL:     util.GetBoolPointer(enableYCQL),
-				YcqlPassword:   util.GetStringPointer(ycqlPassword),
-				EnableYCQLAuth: util.GetBoolPointer(enableYCQLAuth),
-				EnableYEDIS:    util.GetBoolPointer(enableYEDIS),
+				AssignPublicIP:       util.GetBoolPointer(assignPublicIP),
+				AssignStaticPublicIP: util.GetBoolPointer(assignStaticPublicIP),
+				EnableYSQL:           util.GetBoolPointer(enableYSQL),
+				YsqlPassword:         util.GetStringPointer(ysqlPassword),
+				EnableYSQLAuth:       util.GetBoolPointer(enableYSQLAuth),
+				EnableYCQL:           util.GetBoolPointer(enableYCQL),
+				YcqlPassword:         util.GetStringPointer(ycqlPassword),
+				EnableYCQLAuth:       util.GetBoolPointer(enableYCQLAuth),
+				EnableYEDIS:          util.GetBoolPointer(enableYEDIS),
 
 				EnableClientToNodeEncrypt: util.GetBoolPointer(enableCtoN),
 				EnableNodeToNodeEncrypt:   util.GetBoolPointer(enableNtoN),
