@@ -32,60 +32,34 @@ To get the details of the names and type information of columns in a table, you 
 \d+ <table-name>
 ```
 
-{{<note title="information_schema">}}
+## Information schema
+
 In most cases, developers and applications interact with _information_schema_ for querying database metadata in a portable manner, while pg_catalog is primarily used for advanced PostgreSQL administration and troubleshooting tasks.
 
-_information_schema_ provides a standardized, SQL-compliant view of database metadata that is portable across different database systems, while pg_catalog offers detailed, PostgreSQL-specific system catalogs for internal database operations and management.
-{{</note>}}
+_information_schema_ provides a standardized, SQL-compliant view of database metadata that is portable across different database systems and is defined in the [SQL standard](https://www.iso.org/standard/76586.html), while pg_catalog offers detailed, PostgreSQL-specific system catalogs for internal database operations and management.
 
-Let us look at some of the most important system catalog tables and views in detail followed by a summary of other members.
+Let's look at some of the important information that can be fetched using the system catalog tables and views, followed by a summary of other members.
 
-## pg_attribute
+## Schema
 
-The _pg_attribute_ table stores metadata about the columns (attributes) of all relations (tables, views, indexes, and so on) in the database. It is extensively used by the query optimizer to generate efficient execution plans, by the database engine to enforce data integrity rules, and by administrators for tasks such as database documentation, maintenance, and troubleshooting.
+The schema details of the various database objects are stored in multiple tables as follows.
 
-## pg_class
+- _pg_database_ : stores the list of all the databases in the system
+- _pg_namespace_ : stores metadata about schemas, including schema names, owner information, and associated privileges.
+- _pg_class_ : stores metadata about all relations (tables, views, indexes, sequences, and other relation types) in the database.
+- _pg_attribute_ : stores information about the columns (attributes) of all relations (tables, views, indexes, and so on) in the database.
+- _pg_index_ : stores detailed metadata about indexes, including details such as the indexed columns, index types, and index properties like uniqueness and inclusion of nullable values.
+- _pg_constraint_ : stores information about constraints on tables. These can include unique constraints, check constraints, primary key constraints, and foreign key constraints.
 
-The _pg_class_ table serves as a comprehensive repository for storing metadata about all relations (tables, views, indexes, sequences, and other relation types) in the database. It is used to generate efficient execution plans, by storage managers to handle data files and disk usage, and by administrators for tasks such as monitoring, tuning, and maintaining the database.
+This information is typically fetched using convenient views, such as the following:
 
-## pg_constraint
+- _pg_views_ : provides details on views and their definitions.
+- _pg_tables_ : provides details on tables, their ownership, and basic properties (for example, if the table has any indexes).
+- `information_schema.tables` : provides table information as per SQL standard.
+- `information_schema.columns` : provides column information as per SQL standard.
+- `information_schema.columns` : provides view information as per SQL standard.
 
-The _pg_constraint_ table stores information about constraints on tables. Constraints are rules that specify certain conditions that the data in a table must fulfill. These can include unique constraints, check constraints, primary key constraints, and foreign key constraints.
-
-## pg_database
-
-The _pg_database_ table serves as a centralized repository for database metadata, including database names, encoding, and other properties. It facilitates tasks such as database configuration, user access control, and cross-database operations.
-
-## pg_index
-
-The _pg_index_ table provides crucial insights into indexing strategies and query optimization. It stores metadata about indexes, including details such as the indexed columns, index types, and index properties like uniqueness and inclusion of nullable values.
-This data can be used to make informed decisions about index maintenance, creation, or modification based on workload characteristics and query requirements.
-
-## pg_locks
-
-The _pg_locks_ view provides detailed information about current locks held by active transactions, including lock types (for example, shared, exclusive), lock modes, and the associated database objects being locked. This view can be used to monitor lock escalation, detect long-running transactions holding locks, and optimize transaction isolation levels to minimize lock contention and improve database concurrency.
-
-{{<note>}}
-The pg_locks view doesn't have a documented view definition that you can directly inspect in the database. This is because the view definition relies on internal data structures used by the lock manager, and these structures aren't intended for direct user access.
-{{</note>}}
-
-{{<tip>}}
-[pg_locks](#pg-locks) view can be joined to [pg_stat_activity](#pg-stat-activity) view on the _pid_ column to get more information on the session holding or awaiting each lock. To learn more about how the pg_locks can be used to get insights on transaction locks, see [Lock insights](../../explore/observability/pg-locks).
-{{</tip>}}
-
-## pg_namespace
-
-The _pg_namespace_ catalog stores metadata about schemas, including schema names, owner information, and associated privileges. By querying _pg_namespace_, users can retrieve information about existing schemas, verify ownership, and grant or revoke privileges at the schema level.
-
-## pg_proc
-
-The _pg_proc_ catalog stores metadata about database procedures, including their names, argument types, return types, source code, and associated permissions. It enables developers and administrators can inspect function definitions, review function dependencies, and monitor usage statistics to optimize query performance and database operations.
-
-## pg_roles
-
-The _pg_roles_ catalog stores metadata about database roles, including role names, privileges, membership, and login capabilities. This catalog table enables administrators to query and manage user roles, set role-specific permissions, and control database access.
-
-## pg_settings
+## Settings
 
 The _pg_settings_ view provides a centralized location for retrieving information about current configuration settings, including database-related parameters and their respective values. It is essentially an alternative interface to the SHOW and SET commands. These parameters can be changed at server start, reload, session, or transaction level. _pg_settings_ allows administrators and developers to inspect runtime settings, such as memory allocation, logging options, connection limits, and performance-related parameters.
 
@@ -93,7 +67,7 @@ The _pg_settings_ view provides a centralized location for retrieving informatio
 The pg_settings view isn't based on underlying tables. Instead, it retrieves information from a combination of sources including the server configuration file, command-line arguments, environment variables, and internal data structures.
 {{</note>}}
 
-## pg_stat_activity
+## Session activity
 
 The _pg_stat_activity_ view shows detailed information about active sessions, including process IDs, application names, client addresses, and the SQL statements being executed. This is used to monitor database performance, identify long-running or blocked queries, and diagnose concurrency issues.
 
@@ -105,17 +79,30 @@ The pg_stat_activity view is not based on any specific tables. Instead, it provi
 To learn more about how the pg_stat_activity can be used to monitor live queries, see [View live queries](../../explore/observability/pg-stat-activity).
 {{</tip>}}
 
-## pg_stat_all_tables
+## Table activity
 
-The _pg_stat_all_tables_ view provides insights into various metrics, including the number of rows inserted, updated, deleted, and accessed via sequential or index scans. It enables administrators to assess table-level activity, identify high-traffic tables, and optimize database performance based on usage patterns.
+The _pg_stat_all_tables_ and _pg_stat_user_tables_ views provide insights into various table-level metrics, including the number of rows inserted, updated, deleted, and accessed via sequential or index scans. It enables administrators to assess table-level activity, identify high-traffic tables, and optimize database performance based on usage patterns.
 
-## pg_stat_database
+## Locks
 
-The _pg_stat_database_  view offers insights into various aspects of database utilization, including the number of commits, rollbacks, block reads, and block writes for each database. This data can be used to monitor transaction rates, buffer usage, and I/O activity across databases, facilitating proactive performance tuning and capacity planning.
+The _pg_locks_ view provides detailed information about current locks held by active transactions, including lock types (for example, shared, exclusive), lock modes, and the associated database objects being locked. This view can be used to monitor lock escalation, detect long-running transactions holding locks, and optimize transactions to minimize lock contention and improve database concurrency.
 
-This view will return one row for each database in the system, plus one row for shared system catalogs (the database [OID](../key-concepts/#oid) is 0 for this row), and one row for each unconnected database.
+{{<note>}}
+The pg_locks view doesn't have a documented view definition that you can directly inspect in the database. This is because the view definition relies on internal data structures used by the lock manager, and these structures aren't intended for direct user access.
+{{</note>}}
 
-## pg_stat_statements
+{{<tip>}}
+[pg_locks](#pg-locks) view can be joined to [pg_stat_activity](#pg-stat-activity) view on the _pid_ column to get more information on the session holding or awaiting each lock. To learn more about how pg_locks can be used to get insights on transaction locks, see [Lock insights](../../explore/observability/pg-locks).
+{{</tip>}}
+
+## Stored procedures
+
+The _pg_proc_ catalog stores metadata about database procedures, including their names, argument types, return types, source code, and associated permissions. It enables developers and administrators to inspect function definitions, review function dependencies, and monitor usage statistics to optimize query performance and database operations.
+
+- _pg_stat_user_functions_ : provides statistics on execution details on stored procedures (for example, number of calls, execution time spent).
+- `information_schema.routines` view provides great detail about stored procedures from multiple tables.
+
+## Query performance
 
 The _pg_stat_statements_ view provides detailed statistical insights into SQL query performance by tracking query execution statistics over time. It records metrics such as query execution counts, total runtime, average runtime, and resource consumption (for example, CPU time, I/O) for individual SQL statements. Using _pg_stat_statements_, you can prioritize optimization efforts based on query frequency and resource consumption, improving overall database efficiency and response times.
 
@@ -124,16 +111,19 @@ By default, only _min_, _max_, _mean_, and _stddev_ of the execution times are a
 {{</note>}}
 
 {{<tip>}}
-To understand how to improve query performance using these stats, see [Query tuning](../../explore/query-1-performance/pg-stat-statements/)
+To understand how to improve query performance using these stats, see [Query tuning](../../explore/query-1-performance/pg-stat-statements/).
 {{</tip>}}
 
-## pg_tables
+## Data statistics
 
-The _pg_tables_ view provides essential information about table names, schema names, owner details, and other table attributes. This view is valuable for database administrators and developers to inspect and manage tables, including checking table ownership, and permissions, verifying table ownership, and understanding the overall table structure.
+The statistics about the table data are stored in the _pg_statistics_ table. For efficiency, this data is not updated on the fly so it may not be up to date. This data can be updated by running the `ANALYZE` command. This table stores column-level information about the number of distinct values, most common values, their frequencies, and so on. This data is very useful for query tuning. The _pg_stats_ view provides user-friendly information by joining other tables with the _pg_statistic_ table.
 
-## pg_views
+## Users and roles
 
-The _pg_views_ view provides information about view names, associated schemas, view definitions, and view owners. It is based on the [pg_class](#pg-class) and [pg_namespace](#pg-namespace) tables. This can be used to understand the structure and properties of existing views, verify view definitions, and ownership details, and analyze view dependencies.
+The `pg_authid` table stores details of users, roles, groups, and the corresponding privileges, such as whether the user is a superuser, the user can create a database, and so on. The membership of users to groups and roles is stored in the `pg_auth_members` table. This information is usually queried using the following views:
+
+- _pg_roles_: stores metadata about database roles, including role names, privileges, membership, and login capabilities.
+- _pg_user_: Information specific to database users, including user name, password, and privileges.
 
 ## Other tables
 
