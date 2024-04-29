@@ -316,6 +316,9 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 	if (yb_test_fail_next_inc_catalog_version)
 	{
 		yb_test_fail_next_inc_catalog_version = false;
+		if (YbIsClientYsqlConnMgr())
+			YbSendParameterStatusForConnectionManager("yb_test_fail_next_inc_catalog_version",
+				"false");
 		elog(ERROR, "Failed increment catalog version as requested");
 	}
 

@@ -862,3 +862,27 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 	shmdt(shmp);
 	return true;
 }
+
+/* 
+ * Create a provision to send a ParameterStatus packet back to Connection Manager to
+ * change the cached value of a certain GUC variable, outside of the usual
+ * ReportGucOption function. This can be useful for some implicit changes to
+ * GUC variable values that do not normally send a ParameterStatus packet
+ * back to Connection Manager.
+ */
+void
+YbSendParameterStatusForConnectionManager(const char *name, const char *value)
+{
+	Assert(YbIsClientYsqlConnMgr());
+
+	CHECK_FOR_INTERRUPTS();
+	StringInfoData msgbuf;
+
+	pq_beginmessage(&msgbuf, 'S');
+	pq_sendstring(&msgbuf, name);
+	pq_sendstring(&msgbuf, value);
+	pq_endmessage(&msgbuf);
+
+	pq_flush();
+	CHECK_FOR_INTERRUPTS();
+}
