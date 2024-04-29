@@ -32,39 +32,35 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
   }, [migration.landing_step]);
 
   return (
-    <Box mt={1}>
-      <Paper>
-        <Box p={4}>
-          <Typography variant="h4" className={classes.heading}>
-            {migration.database_name}
-          </Typography>
-          <Box display="flex" gridGap={theme.spacing(5)}>
-            <Box width={300} flexShrink={0}>
-              <MigrationTiles
-                steps={steps}
-                currentStep={selectedStep}
-                onStepChange={setSelectedStep}
-                phase={migration.migration_phase}
-                migration={migration}
-                isFetching={isFetching}
-              />
-            </Box>
-            <Box>
-              <Divider orientation="vertical" />
-            </Box>
-            <Box flex={1} minWidth={0}>
-              <MigrationStep
-                steps={steps}
-                migration={migration}
-                step={selectedStep}
-                onRefetch={onRefetch}
-                onStepChange={setSelectedStep}
-                isFetching={isFetching}
-              />
-            </Box>
-          </Box>
+    <Box p={1} pt={2}>
+      <Typography variant="h4" className={classes.heading}>
+        {migration.database_name}
+      </Typography>
+      <Box display="flex" gridGap={theme.spacing(5)}>
+        <Box width={300} flexShrink={0}>
+          <MigrationTiles
+            steps={steps}
+            currentStep={selectedStep}
+            onStepChange={setSelectedStep}
+            phase={migration.migration_phase}
+            migration={migration}
+            isFetching={isFetching}
+          />
         </Box>
-      </Paper>
+        <Box>
+          <Divider orientation="vertical" />
+        </Box>
+        <Box flex={1} minWidth={0}>
+          <MigrationStep
+            steps={steps}
+            migration={migration}
+            step={selectedStep}
+            onRefetch={onRefetch}
+            onStepChange={setSelectedStep}
+            isFetching={isFetching}
+          />
+        </Box>
+      </Box>
     </Box>
   );
 };

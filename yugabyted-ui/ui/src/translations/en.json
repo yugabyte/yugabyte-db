@@ -875,6 +875,7 @@
         "getStarted": "Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Managed, YugabyteDB Anywhere, and the core open source database, YugabyteDB.",
         "learnMore": "Learn more",
         "planAndAssess": {
+          "heading": "Migration Assessment Report",
           "sqlObjectName": "SQL Object Name",
           "sqlObjectType": "SQL Object Type",
           "reason": "Reason",
@@ -891,12 +892,10 @@
           "tabAssessmentResults": "Assessment Results",
           "tabComplexityOverview": "Complexity Overview",
           "summary": {
-            "iteration": "Iteration",
-            "complexity": "Complexity",
-            "timeTaken": "Time taken",
-            "colocatedTables": "Colocated tables",
-            "nonColocatedTables": "Non-colocated tables",
-            "recommendedClusterSizing": "Recommended cluster"
+            "heading": "Summary",
+            "migrationComplexity": "Migration Complexity",
+            "estimatedMigrationTime": "Estimated Migration Time",
+            "description": "Less than 500 database objects, can be fully automated. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras id ligula at turpis consectetur imperdiet et quis metus. Donec ac fringilla ligula. Morbi et augue a lacus semper tempus ut ullamcorper ex."
           },
           "details": {
             "tableIndex": "Table / Index",

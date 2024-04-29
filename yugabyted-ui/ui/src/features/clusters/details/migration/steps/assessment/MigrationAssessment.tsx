@@ -1,5 +1,5 @@
 import React, { FC } from "react";
-import { Box, makeStyles, Tab, Tabs, Typography, useTheme } from "@material-ui/core";
+import { Box, makeStyles, Paper, Tab, Tabs, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { Migration } from "../../MigrationOverview";
 import { YBAccordion, YBTable } from "@app/components";
@@ -8,6 +8,7 @@ import { useGetVoyagerMigrationAssesmentDetailsQuery } from "@app/api/src";
 import { MigrationAssessmentDetails } from "./AssessmentDetails";
 import { MigrationAssessmentResults } from "./AssessmentResults";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
+import { MigrationAssessmentSummary } from "./AssessmentSummary";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -31,6 +32,12 @@ const useStyles = makeStyles((theme) => ({
   },
   easyComp: {
     color: theme.palette.success.main,
+  },
+  label: {
+    color: theme.palette.grey[500],
+    fontWeight: theme.typography.fontWeightMedium as number,
+    marginBottom: theme.spacing(0.75),
+    textAlign: "left",
   },
 }));
 
@@ -216,29 +223,29 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
     },
   ];
 
+  const newMigration = {
+    complexity: "Easy",
+    estimatedMigrationTime: "2 hr 39 mins",
+    completed: "Completed 04/02/2024, 08:26 PDT",
+  };
+
   return (
     <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
-      <Typography variant="h4" className={classes.heading}>
-        {heading}
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center">
+        <Typography variant="h4" className={classes.heading}>
+          {t("clusterDetail.voyager.planAndAssess.heading")}
+        </Typography>
+        {newMigration.completed && (
+          <Typography variant="body1" className={classes.label}>
+            {newMigration.completed}
+          </Typography>
+        )}
+      </Box>
 
-      <YBAccordion
-        titleContent={
-          <MigrationAccordionTitle title={t("clusterDetail.voyager.planAndAssess.summaryTab")} />
-        }
-        defaultExpanded
-      >
-        <Box flex={1} px={2} minWidth={0}>
-          <YBTable
-            data={overviewData}
-            columns={overviewColumns}
-            options={{
-              pagination: true,
-            }}
-            withBorder={false}
-          />
-        </Box>
-      </YBAccordion>
+      <MigrationAssessmentSummary
+        complexity={newMigration.complexity}
+        estimatedMigrationTime={newMigration.estimatedMigrationTime}
+      />
 
       <YBAccordion
         titleContent={

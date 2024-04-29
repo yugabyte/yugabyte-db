@@ -23,7 +23,7 @@ export interface BadgeProps {
 
 const useStyles = makeStyles((theme) => ({
   root: ({ icon }: BadgeProps) => ({
-    padding: icon ? 
+    padding: icon ?
       `${theme.spacing(0.6)}px ${theme.spacing(1)}px` : `${theme.spacing(0.2)}px ${theme.spacing(0.8)}px`,
     borderRadius: icon ? theme.shape.borderRadius : theme.shape.borderRadius / 2,
     display: 'flex',
@@ -32,7 +32,8 @@ const useStyles = makeStyles((theme) => ({
     width: 'fit-content',
     '& span:first-letter': {
       textTransform: 'uppercase',
-    }
+    },
+    minHeight: '24px'
   }),
   icon: {
     height: "14px",
