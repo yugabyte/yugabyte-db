@@ -876,6 +876,7 @@ public class Util {
     } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())) {
       archType = Architecture.aarch64.name();
     } else {
+      LOG.warn("Could not parse {} to x86_64 or aarch64", ybServerPackage);
       throw new RuntimeException(
           "Cannot install ybc on machines of arch types other than x86_64, aarch64");
     }

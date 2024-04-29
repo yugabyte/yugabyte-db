@@ -350,8 +350,8 @@ public class ReleaseArtifact extends Model {
     if (sha256 == null) {
       return sha256;
     }
-    if (sha256.startsWith("sha256:")) {
-      sha256 = sha256.replaceFirst("sha256:", "");
+    if (sha256.toLowerCase().startsWith("sha256:")) {
+      sha256 = sha256.substring(7);
     }
     return sha256;
   }
