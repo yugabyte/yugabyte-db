@@ -7014,6 +7014,29 @@ ReportGUCOption(struct config_generic *record)
 		pq_sendstring(&msgbuf, val);
 		pq_endmessage(&msgbuf);
 
+		/* 
+		 * Send the equivalent of a ParameterStatus packet corresponding to role_oid
+		 * back to YSQL Connection Manager.
+		 */
+		if ((strcmp(record->name, "role") == 0) && YbIsClientYsqlConnMgr())
+		{
+			StringInfoData rolebuf;
+
+			pq_beginmessage(&rolebuf, 'r');
+			pq_sendstring(&rolebuf, "role_oid");
+			if (val != NULL && strcmp(val, "none") != 0)
+			{
+				char oid[16];
+				snprintf(oid, 16, "%u", get_role_oid(val, false));
+
+				pq_sendstring(&rolebuf, oid);
+
+			}
+			else
+				pq_sendstring(&rolebuf, "-1");
+			pq_endmessage(&rolebuf);
+		}
+
 		pfree(val);
 	}
 }
@@ -7608,6 +7631,22 @@ set_config_option(const char *name, const char *value,
 
 	if (source == YSQL_CONN_MGR)
 		Assert(YbIsClientYsqlConnMgr());
+
+	/* 
+	 * role_oid is a provision made for YSQL Connection Manager to handle
+	 * scenarios around "ALTER ROLE RENAME" queries as it only caches the
+	 * previously used role by that client.
+	 */
+	if (strcmp(name, "role_oid") == 0)
+	{
+		Assert(YbIsClientYsqlConnMgr());
+		/* Handle RESET ROLE queries */
+		if (!value || strcmp(value, "0") == 0)
+			return set_config_option("role", NULL, context, source,
+								action, changeVal, elevel, is_reload);
+		return set_config_option("role", GetUserNameFromId(atoi(value), false), context, source,
+								action, changeVal, elevel, is_reload);
+	}
 
 	if (elevel == 0)
 	{
