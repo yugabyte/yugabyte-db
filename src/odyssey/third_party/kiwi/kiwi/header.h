@@ -66,6 +66,7 @@ typedef enum {
 	KIWI_BE_COMPRESSION = 'z',
 	YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION = 'F',
 	YB_OID_DETAILS = 'O',
+	YB_ROLE_OID_PARAMETER_STATUS = 'r',
 } kiwi_be_type_t;
 
 struct kiwi_header {
@@ -168,6 +169,8 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "FatalForLogicalConnection";
 	case YB_OID_DETAILS:
 		return "OidDetails";
+	case YB_ROLE_OID_PARAMETER_STATUS:
+		return "RoleOidParameterStatus";
 	}
 	return "Unknown";
 }

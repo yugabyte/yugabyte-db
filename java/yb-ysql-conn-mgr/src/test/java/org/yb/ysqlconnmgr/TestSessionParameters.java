@@ -123,7 +123,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     new SessionParameter("transaction_isolation", "read committed",
       "read committed", "serializable",
       new ExceptionType[] { ExceptionType.YB_CACHE_MAPPING, ExceptionType.TRANSACTION_SKIP,
-        ExceptionType.SET_UNIQUE }),
+        ExceptionType.SET_UNIQUE, ExceptionType.INVALID_STARTUP }),
     new SessionParameter("geqo", "on", "off",
       new ExceptionType[] {}),
     new SessionParameter("statement_timeout", "0", "999",
@@ -465,6 +465,8 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       String parameterName = sp.parameterName;
       String expectedValue = sp.expectedValue;
 
+      // (GH#22248) (rbarigidad) Startup parameters with spaces are not parsed
+      // correctly, they are ignored for now as well.
       if (sp.exceptionSet.contains(ExceptionType.INVALID_STARTUP))
         continue;
 
