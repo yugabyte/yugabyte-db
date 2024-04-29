@@ -80,7 +80,19 @@ public class ReleaseContainer {
     if (isLegacy()) {
       return this.metadata.getFilePath(arch);
     } else {
-      ReleaseArtifact artifact = this.release.getArtifactForArchitecture(arch);
+      ReleaseArtifact artifact = null;
+      // If we do not get an artifact, assume non-k8s instead of trying to get the k8s platform.
+      // This is similar to the ReleaseManager.ReleaseMetadata.getFilePath implementation, which
+      // returns a default value if arch is null.
+      if (arch == null) {
+        artifact =
+            this.release.getArtifacts().stream()
+                .filter(ra -> ra.getPlatform() == ReleaseArtifact.Platform.LINUX)
+                .findFirst()
+                .orElse(null);
+      } else {
+        artifact = this.release.getArtifactForArchitecture(arch);
+      }
       if (artifact == null) {
         throw new RuntimeException("no artifact found for architecture " + arch.name());
       }
