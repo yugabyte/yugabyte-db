@@ -416,7 +416,6 @@ class K8sInfoComponent implements SupportBundleComponent {
                   kubernetesManager.getStorageClass(
                       kubernetesCluster.config,
                       storageClassName,
-                      null,
                       SupportBundleUtil.kubectlOutputFormat);
               supportBundleUtil.writeStringToFile(resourceOutput, localFilePath);
             } catch (Exception e) {

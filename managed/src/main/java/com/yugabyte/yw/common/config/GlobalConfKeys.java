@@ -1238,17 +1238,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable user creation on SSO login",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO(bhavin192): this could be removed or moved to customer keys
-  // later.
+  // TODO(bhavin192): this could be moved to customer keys later, and
+  // become public.
   public static final ConfKeyInfo<Boolean> enableK8sProviderValidation =
       new ConfKeyInfo<>(
           "yb.provider.kubernetes_provider_validation",
           ScopeType.GLOBAL,
           "Kubernetes provider validation",
-          "Hidden as the feature is work in progress"
-              + " and returns a mock response with validation errors.",
+          "Enable the Kubernetes provider quick validation",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Integer> maxYbcUpgradePollResultTries =
       new ConfKeyInfo<>(
           "ybc.upgrade.poll_result_tries",

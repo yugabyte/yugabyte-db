@@ -24,6 +24,7 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
+import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -621,6 +622,8 @@ public abstract class KubernetesManager {
     return namespaceNames.contains(namespace);
   }
 
+  public abstract boolean dbNamespaceExists(Map<String, String> config, String namespace);
+
   public abstract PodStatus getPodStatus(
       Map<String, String> config, String namespace, String podName);
 
@@ -756,7 +759,9 @@ public abstract class KubernetesManager {
       Map<String, String> config, RoleData roleData, String outputFormat);
 
   public abstract String getStorageClass(
-      Map<String, String> config, String storageClassName, String namespace, String outputFormat);
+      Map<String, String> config, String storageClassName, String outputFormat);
+
+  public abstract StorageClass getStorageClass(Map<String, String> config, String storageClassName);
 
   public abstract String getKubeconfigUser(Map<String, String> config);
 
@@ -769,4 +774,7 @@ public abstract class KubernetesManager {
       String appName,
       boolean newNamingStyle,
       int replicaCount);
+
+  public abstract boolean resourceExists(
+      Map<String, String> config, String resourceType, String resourceName, String namespace);
 }
