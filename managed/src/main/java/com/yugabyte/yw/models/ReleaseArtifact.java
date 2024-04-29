@@ -303,12 +303,25 @@ public class ReleaseArtifact extends Model {
     save();
   }
 
+  // In most cases, please use getFormattedSha256. This is only useful when needing to check the
+  // underlying sha256 value we store in the DB - mainly for testing on API update requests.
   public String getSha256() {
     return sha256;
   }
 
+  // When using a release artifact with a universe, getFormattedSha256 should be used. It will
+  // ensure the sha256 value is returned in the expected format for ansible and other libraries.
   public String getFormattedSha256() {
-    if (sha256 != null && !sha256.toLowerCase().startsWith("sha256:")) {
+    // Legacy releases may use md5 or sha1 algorithms still, so when those releases are migrated,
+    // we still need to handle that. They always come in the form md5: or sha1:
+    // Because both md5 and sha1 are not good for checking the validity of the file, we will just
+    // return null instead
+    if (sha256 == null
+        || sha256.toLowerCase().startsWith("md5:")
+        || sha256.toLowerCase().startsWith("sha1:")) {
+      return null;
+    }
+    if (!sha256.toLowerCase().startsWith("sha256:")) {
       return String.format("sha256:%s", sha256);
     }
     return sha256;
@@ -336,10 +349,6 @@ public class ReleaseArtifact extends Model {
   private static String sha256Format(String sha256) {
     if (sha256 == null) {
       return sha256;
-    }
-    // This only happens when migrating from legacy releases, where md5 was supported.
-    if (sha256.startsWith("md5")) {
-      throw new RuntimeException("cannot set md5sum as sha256 value");
     }
     if (sha256.startsWith("sha256:")) {
       sha256 = sha256.replaceFirst("sha256:", "");
