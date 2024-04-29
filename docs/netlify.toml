@@ -1370,6 +1370,7 @@
             https://www.google-analytics.com/
             https://www.yugabyte.com
             https://www.gstatic.com
+            https://www.google.com/s2/favicons
         ;
 
         child-src 'self' 'unsafe-inline'
