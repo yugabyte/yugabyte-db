@@ -14,92 +14,27 @@
 
 #include "postgres.h"
 
-#include "access/heapam.h"
-#include "access/htup_details.h"
 #include "access/xact.h"
-#include "catalog/indexing.h"
-#include "catalog/namespace.h"
-#include "catalog/pg_extension.h"
 #include "catalog/pg_type_d.h"
 #include "commands/event_trigger.h"
-#include "commands/explain.h"
 #include "executor/spi.h"
-#include "utils/builtins.h"
-#include "utils/datetime.h"
-#include "utils/fmgroids.h"
-#include "utils/jsonb.h"
-#include "utils/memutils.h"
+#include "utils/fmgrprotos.h"
 
 #include "pg_yb_utils.h"
 
+#include "extension_util.h"
+#include "json_util.h"
+
 PG_MODULE_MAGIC;
-
-#define EXTENSION_NAME		 "yb_xcluster_ddl_replication"
-#define DDL_QUEUE_TABLE_NAME "ddl_queue"
-#define REPLICATED_DDLS_TABLE_NAME "replicated_ddls"
-
-#define INIT_MEM_CONTEXT_AND_SPI_CONNECT(desc) \
-	do \
-	{ \
-		context_new = AllocSetContextCreate(GetCurrentMemoryContext(), desc, \
-											ALLOCSET_DEFAULT_SIZES); \
-		context_old = MemoryContextSwitchTo(context_new); \
-		GetUserIdAndSecContext(&save_userid, &save_sec_context); \
-		SetUserIdAndSecContext(XClusterExtensionOwner(), \
-							   SECURITY_RESTRICTED_OPERATION); \
-		if (SPI_connect() != SPI_OK_CONNECT) \
-			elog(ERROR, "SPI_connect failed"); \
-	} while (false)
-
-#define CLOSE_MEM_CONTEXT_AND_SPI \
-	do \
-	{ \
-		if (SPI_finish() != SPI_OK_FINISH) \
-			elog(ERROR, "SPI_finish() failed"); \
-		SetUserIdAndSecContext(save_userid, save_sec_context); \
-		MemoryContextSwitchTo(context_old); \
-		MemoryContextDelete(context_new); \
-	} while (false)
-
-// Handle old PG11 and newer PG15 code.
-#if (PG_VERSION_NUM < 120000)
-#define table_open(r, l) heap_open(r, l)
-#define table_close(r, l) heap_close(r, l)
-#endif
-
-typedef enum ClusterReplicationRole
-{
-	REPLICATION_ROLE_DISABLED,
-	REPLICATION_ROLE_SOURCE,
-	REPLICATION_ROLE_TARGET,
-	REPLICATION_ROLE_BIDIRECTIONAL,
-} ClusterReplicationRole;
-
-static const struct config_enum_entry replication_roles[] = {
-	{"DISABLED", REPLICATION_ROLE_DISABLED, false},
-	{"SOURCE", REPLICATION_ROLE_SOURCE, false},
-	{"TARGET", REPLICATION_ROLE_TARGET, false},
-	{"BIDIRECTIONAL", REPLICATION_ROLE_BIDIRECTIONAL, /* hidden */ true},
-	{NULL, 0, false}};
 
 /* Extension variables. */
 static int ReplicationRole = REPLICATION_ROLE_DISABLED;
 static bool EnableManualDDLReplication = false;
 char *DDLQueuePrimaryKeyStartTime = NULL;
 char *DDLQueuePrimaryKeyQueryId = NULL;
-static Oid CachedExtensionOwnerOid = 0; /* Cached for a pg connection. */
 
 /* Util functions. */
 static bool IsInIgnoreList(EventTriggerData *trig_data);
-static int64 GetInt64FromVariable(const char *var, const char *var_name);
-static Oid XClusterExtensionOwner(void);
-
-/* Json util functions. */
-static void AddNumericJsonEntry(
-	JsonbParseState *state, char *key_buf, int64 val);
-static void AddStringJsonEntry(
-	JsonbParseState *state, char *key_buf, const char *val);
-static void AddBoolJsonEntry(JsonbParseState *state, char *key_buf, bool val);
 
 /*
  * _PG_init gets called when the extension is loaded.
@@ -380,101 +315,4 @@ IsInIgnoreList(EventTriggerData *trig_data)
 		return true;
 	}
 	return false;
-}
-
-static int64
-GetInt64FromVariable(const char *var, const char *var_name)
-{
-	if (!var || strcmp(var, "") == 0)
-		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Error parsing %s: %s", var_name, var)));
-
-	char *endp = NULL;
-	int64 ret = strtoll(var, &endp, 10);
-	if (*endp != '\0')
-		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Error parsing %s: %s", var_name, var)));
-
-	return ret;
-}
-
-/*
- * XClusterExtensionOwner returns the oid of the user that owns the extension.
- */
-static Oid
-XClusterExtensionOwner(void)
-{
-	if (CachedExtensionOwnerOid > 0)
-		return CachedExtensionOwnerOid;
-
-	Relation extensionRelation = table_open(ExtensionRelationId, AccessShareLock);
-
-	ScanKeyData entry[1];
-	ScanKeyInit(&entry[0], Anum_pg_extension_extname, BTEqualStrategyNumber,
-				F_NAMEEQ, CStringGetDatum(EXTENSION_NAME));
-
-	SysScanDesc scanDescriptor = systable_beginscan(
-		extensionRelation, ExtensionNameIndexId, true, NULL, 1, entry);
-
-	HeapTuple extensionTuple = systable_getnext(scanDescriptor);
-	if (!HeapTupleIsValid(extensionTuple))
-	{
-		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-						errmsg("%s extension is not loaded", EXTENSION_NAME)));
-	}
-
-	Form_pg_extension extensionForm =
-		(Form_pg_extension) GETSTRUCT(extensionTuple);
-	Oid extensionOwner = extensionForm->extowner;
-
-	systable_endscan(scanDescriptor);
-	table_close(extensionRelation, AccessShareLock);
-
-	// Cache this value for future calls.
-	CachedExtensionOwnerOid = extensionOwner;
-	return extensionOwner;
-}
-
-static void
-AddNumericJsonEntry(JsonbParseState *state, char *key_buf, int64 val)
-{
-	JsonbPair pair;
-	pair.key.type = jbvString;
-	pair.value.type = jbvNumeric;
-	pair.key.val.string.len = strlen(key_buf);
-	pair.key.val.string.val = pstrdup(key_buf);
-	pair.value.val.numeric =
-		DatumGetNumeric(DirectFunctionCall1(int8_numeric, val));
-
-	(void) pushJsonbValue(&state, WJB_KEY, &pair.key);
-	(void) pushJsonbValue(&state, WJB_VALUE, &pair.value);
-}
-
-static void
-AddBoolJsonEntry(JsonbParseState *state, char *key_buf, bool val)
-{
-	JsonbPair pair;
-	pair.key.type = jbvString;
-	pair.value.type = jbvBool;
-	pair.key.val.string.len = strlen(key_buf);
-	pair.key.val.string.val = pstrdup(key_buf);
-	pair.value.val.boolean = val;
-
-	(void) pushJsonbValue(&state, WJB_KEY, &pair.key);
-	(void) pushJsonbValue(&state, WJB_VALUE, &pair.value);
-}
-
-static void
-AddStringJsonEntry(JsonbParseState *state, char *key_buf, const char *val)
-{
-	JsonbPair pair;
-	pair.key.type = jbvString;
-	pair.value.type = jbvString;
-	pair.key.val.string.len = strlen(key_buf);
-	pair.key.val.string.val = pstrdup(key_buf);
-	pair.value.val.string.len = strlen(val);
-	pair.value.val.string.val = pstrdup(val);
-
-	(void) pushJsonbValue(&state, WJB_KEY, &pair.key);
-	(void) pushJsonbValue(&state, WJB_VALUE, &pair.value);
 }
