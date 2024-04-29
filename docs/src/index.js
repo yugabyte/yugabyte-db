@@ -6,10 +6,7 @@ const $ = window.jQuery;
  * Create Cookie.
  */
 function setCookie(name, value, monthToLive) {
-  let cookie = `${name}=${encodeURIComponent(value)}`;
-
-  cookie += `; max-age=${(monthToLive * 30 * (24 * 60 * 60))}`;
-  cookie += '; path=/';
+  let cookie = `${name}=${encodeURIComponent(value)}; max-age=${(monthToLive * 30 * (24 * 60 * 60))}; path=/`;
   if (location.hostname !== 'localhost') {
     cookie += '; secure=true';
   }
@@ -268,6 +265,9 @@ $(document).ready(() => {
     $(document).on('click', '.docs-menu', (event) => {
       $(event.currentTarget).toggleClass('menu-open');
       $('.left-sidebar-wrap').toggleClass('open');
+      if ($('.td-sidebar').hasClass('stick-bar')) {
+        document.querySelector('.side-nav-collapse-toggle-2').click();
+      }
     });
 
     $(document).on('click', '.td-sidebar li.submenu a[role="button"], .td-sidebar li.submenu i', (event) => {
