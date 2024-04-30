@@ -1237,11 +1237,9 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnProducer)
   auto consumer_cluster =
       ASSERT_RESULT(CreateNewUniverseAndTable("consumer", "C", &consumer_cluster_table));
 
-  ASSERT_OK(tools::RunAdminToolCommand(consumer_cluster->GetMasterAddresses(),
-                                       "setup_universe_replication",
-                                       "",  // Producer cluster id (default is set to "").
-                                       cluster_->GetMasterAddresses(),
-                                       table_->id()));
+  ASSERT_OK(tools::RunAdminToolCommand(
+      consumer_cluster->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
+      cluster_->GetMasterAddresses(), table_->id()));
 
   // Try splitting this tablet, and restart the server to ensure split still fails after a restart.
   const auto split_hash_code =
@@ -1249,7 +1247,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnProducer)
 
   // Now delete replication and verify that the tablet can now be split.
   ASSERT_OK(tools::RunAdminToolCommand(
-      consumer_cluster->GetMasterAddresses(), "delete_universe_replication", ""));
+      consumer_cluster->GetMasterAddresses(), "delete_universe_replication", kProducerClusterId));
   // Deleting cdc streams is async so wait for that to complete.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return SplitTabletAndValidate(split_hash_code, kDefaultNumRows).ok();
