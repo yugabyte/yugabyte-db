@@ -1270,6 +1270,7 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
     entry.record_id_commit_time = consistent_snapshot_time;
     entry.cdc_sdk_safe_time = consistent_snapshot_time;
     entry.last_pub_refresh_time = consistent_snapshot_time;
+    entry.pub_refresh_times = "";
     entries.push_back(entry);
     VLOG(1) << "Added entry in cdc_state for the replication slot with tablet_id: "
             << kCDCSDKSlotEntryTabletId << " stream_id: " << stream_id;
