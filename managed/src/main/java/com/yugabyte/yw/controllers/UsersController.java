@@ -445,7 +445,7 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response on whether role change was successful or not.
    */
   @ApiOperation(
-      notes = "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.1.0.0.</b></p>",
+      notes = "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.4.0.</b></p>",
       value = "Change password - deprecated")
   @ApiImplicitParams({
     @ApiImplicitParam(
