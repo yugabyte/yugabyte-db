@@ -173,8 +173,8 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
     assertEquals("providerValidation", json.get("error").get("errorSource").get(0).asText());
     assertEquals(
-        "Zone name cannot contain any special characters except '-' and '_'.",
-        json.get("error").get("ZONE").get(0).asText());
+        "foo az %%^&S 2, cannot contain any special characters except '-' and '_'.",
+        json.get("error").get("$.name").get(0).asText());
   }
 
   @Test
