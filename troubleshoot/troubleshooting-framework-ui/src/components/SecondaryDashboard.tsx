@@ -530,23 +530,28 @@ export const SecondaryDashboard = ({
     graphType === GraphType.MAIN ? MIN_OUTLIER_BUTTONS_WIDTH : MIN_OUTLIER_BUTTONS_WIDTH_OTHER;
   if (outlierButtonsWidth! > minWidth) {
     numButtonsInDropdown = 1;
-    if (operations.length === 3) {
-      numButtonsInDropdown = 2;
-    } else if (operations.length > 3 && operations.length < 6) {
-      numButtonsInDropdown = 3;
-    } else if (operations.length >= 6 && operations.length < 12) {
-      numButtonsInDropdown = 4;
-    } else if (operations.length >= 12) {
-      numButtonsInDropdown = 6;
+    // if (operations.length === 3) {
+    //   numButtonsInDropdown = 2;
+    // } else if (operations.length > 3 && operations.length < 6) {
+    //   numButtonsInDropdown = 3;
+    // } else if (operations.length >= 6 && operations.length < 12) {
+    //   numButtonsInDropdown = 4;
+    // } else if (operations.length >= 12) {
+    //   numButtonsInDropdown = 6;
+
+    if (operations.length >= 2) {
+      numButtonsInDropdown = isNonEmptyArray(groupByOperations) ? 1 : 2;
     }
+    // }
+
     showDropdown = true;
     if (isNonEmptyArray(operations)) {
       metricOperationsDropdown =
-        operations.length === 1 ? [] : operations?.slice(operations.length - numButtonsInDropdown);
+        operations.length === 1 ? [] : operations?.slice(numButtonsInDropdown);
       metricOperationsDisplayed =
         operations.length === 1
           ? operations?.slice(0, 1)
-          : operations?.slice(0, operations.length - numButtonsInDropdown);
+          : operations?.slice(0, numButtonsInDropdown);
     }
   }
   const inFocusButton = focusedButton ? focusedButton : operations?.[0];
