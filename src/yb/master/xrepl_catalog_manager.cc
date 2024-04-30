@@ -4818,7 +4818,7 @@ Status CatalogManager::AlterUniverseReplication(
   LOG(INFO) << "Servicing AlterUniverseReplication request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
 
-  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id);
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
 
   RETURN_NOT_OK(ValidateUniverseUUID(req, *this));
 
@@ -5161,7 +5161,7 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
   LOG(INFO) << "IsSetupUniverseReplicationDone from " << RequestorString(rpc) << ": "
             << req->DebugString();
 
-  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id);
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
 
   auto is_operation_done = VERIFY_RESULT(master::IsSetupUniverseReplicationDone(
       xcluster::ReplicationGroupId(req->replication_group_id()), *this));
