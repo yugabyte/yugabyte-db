@@ -12,11 +12,13 @@
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
   vars:
+    server_home: "{{ yb_home_dir | default('/home/yugabyte') }}/{{ process }}"
     script_to_run: "{{ yb_home_dir | default('/home/yugabyte') }}/bin/yb-server-ctl.sh"
     systemd_option: "{{ systemd_services | default(false) }}"
     is_clean_command: "{{ command == 'clean' or command == 'clean-logs' or command =='clean-instance' }}"
     is_destroy_command: "{{ is_clean_command or  command == 'stop-destroy' }}"
     cron_command:  "{{ 'stop' if command == 'stop-destroy' else command}}"
+    remove_conf_file: "{{ deconfigure | default(false) }}"
   tasks:
     - block:
       - name: Check ctl script exists
@@ -87,6 +89,14 @@
           when:
             - command == "stop-destroy"
       when: systemd_option and process != "thirdparty" and process != "platform-services"
+
+    - name: Remove server conf file of {{ process }}
+      file:
+        path: "{{ server_home }}/conf/server.conf"
+        state: absent
+      when:
+        - remove_conf_file and process != "thirdparty" and process != "platform-services"
+        - command == 'stop' or command == 'stop-destroy'
 
 - name: Removing thirdparty services
   hosts: "{{ instance_search_pattern }}"

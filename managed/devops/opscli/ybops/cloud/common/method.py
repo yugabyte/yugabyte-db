@@ -282,9 +282,9 @@ class AbstractInstancesMethod(AbstractMethod):
         if args.instance_tags:
             updated_args["instance_tags"] = json.loads(args.instance_tags)
         updated_args["offload_ansible"] = args.offload_ansible
+        updated_args["imdsv2required"] = args.imdsv2required
 
         self.extra_vars.update(updated_args)
-        self.extra_vars["imdsv2required"] = args.imdsv2required
 
     def update_ansible_vars_with_host_info(self, host_info, custom_ssh_port):
         """Hook for subclasses to update Ansible extra-vars with host specifics before calling out.
@@ -1623,6 +1623,12 @@ class ControlInstanceMethod(AbstractInstancesMethod):
         # Force control instances to use the "yugabyte" user.
         return "yugabyte"
 
+    def add_extra_args(self):
+        super(ControlInstanceMethod, self).add_extra_args()
+        self.parser.add_argument("--deconfigure", required=False,
+                                 action="store_true", default=False,
+                                 help="Deconfigure the server")
+
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         if not host_info:
@@ -1646,6 +1652,8 @@ class ControlInstanceMethod(AbstractInstancesMethod):
 
         self.update_ansible_vars_with_args(args)
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
+        if args.deconfigure:
+            self.extra_vars.update({"deconfigure": True})
         self.cloud.run_control_script(
             self.base_command.name, self.name, args, self.extra_vars, host_info)
 

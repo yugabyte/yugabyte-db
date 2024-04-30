@@ -2274,6 +2274,9 @@ public class NodeManager extends DevopsBase {
                   String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
             }
           }
+          if ("stop".equalsIgnoreCase(taskParam.command) && taskParam.deconfigure) {
+            commandArgs.add("--deconfigure");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }

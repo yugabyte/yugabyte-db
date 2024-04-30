@@ -673,7 +673,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createChangeConfigTasks(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       if (isStoppable) {
         createStopServerTasks(
-                Collections.singleton(stoppingNode), ServerType.MASTER, ignoreStopError)
+                Collections.singleton(stoppingNode),
+                ServerType.MASTER,
+                params -> {
+                  params.isIgnoreError = ignoreStopError;
+                  params.deconfigure = true;
+                })
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         // TODO this may not be needed as change master config is already done.
         createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -753,7 +758,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Stop the master process on this node after this current master is removed.
       if (isStoppable) {
         createStopServerTasks(
-                Collections.singleton(currentNode), ServerType.MASTER, ignoreStopError)
+                Collections.singleton(currentNode),
+                ServerType.MASTER,
+                params -> {
+                  params.isIgnoreError = ignoreStopError;
+                  params.deconfigure = true;
+                })
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         // TODO this may not be needed as change master config is already done.
         createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);

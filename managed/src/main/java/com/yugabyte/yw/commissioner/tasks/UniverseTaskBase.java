@@ -2473,7 +2473,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       ServerType processType,
       String command,
       int sleepAfterCmdMillis,
-      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
+      @Nullable Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
     UserIntent userIntent = getUserIntent();
     // Add the node name.
@@ -2499,7 +2499,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.instanceType = node.cloudInfo.instance_type;
     params.checkVolumesAttached = processType == ServerType.TSERVER && command.equals("start");
     params.useSystemd = userIntent.useSystemd;
-    paramsCustomizer.accept(params);
+    if (paramsCustomizer != null) {
+      paramsCustomizer.accept(params);
+    }
     // Create the Ansible task to get the server info.
     AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
     task.initialize(params);
@@ -3017,48 +3019,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /**
-   * Creates a task list to start the masters and adds it to the task queue.
-   *
-   * @param nodes : a collection of nodes that need masters to be spawned.
-   * @return The subtask group.
-   */
   public SubTaskGroup createStartMasterTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
-    for (NodeDetails node : nodes) {
-      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      UserIntent userIntent = getUserIntent();
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.setUniverseUUID(taskParams().getUniverseUUID());
-      // Add the az uuid.
-      params.azUuid = node.azUuid;
-      // The service and the command we want to run.
-      params.process = "master";
-      params.command = "start";
-      params.placementUuid = node.placementUuid;
-      // Set the InstanceType
-      params.instanceType = node.cloudInfo.instance_type;
-      // Start universe with systemd
-      params.useSystemd = userIntent.useSystemd;
-      // Create the Ansible task to get the server info.
-      AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
-      task.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addSubTask(task);
-    }
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return createStartServerTasks(nodes, ServerType.MASTER, null /* param customizer */);
+  }
+
+  public SubTaskGroup createStartTServerTasks(Collection<NodeDetails> nodes) {
+    return createStartServerTasks(nodes, ServerType.TSERVER, null /* param customizer */);
   }
 
   /**
-   * Creates a task list to start the tservers and adds it to the task queue.
+   * Creates subtasks to start the servers of the given type with the optional params customizer
+   * callback.
    *
-   * @param nodes : a collection of nodes that need tservers to be spawned.
-   * @return The subtask group.
+   * @param nodes the nodes on which the servers are to be started.
+   * @param serverType the server type.
+   * @param paramsCustomizer the callback to set custom params.
+   * @return the subtask group.
    */
-  public SubTaskGroup createStartTServerTasks(Collection<NodeDetails> nodes) {
+  // TODO See if this can be combined with createServerControlTask method which sets more params.
+  public SubTaskGroup createStartServerTasks(
+      Collection<NodeDetails> nodes,
+      ServerType serverType,
+      @Nullable Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
@@ -3070,13 +3052,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Add the az uuid.
       params.azUuid = node.azUuid;
       // The service and the command we want to run.
-      params.process = ServerType.TSERVER.name().toLowerCase();
+      params.process = serverType.name().toLowerCase();
       params.command = "start";
       params.placementUuid = node.placementUuid;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       // Start universe with systemd
       params.useSystemd = userIntent.useSystemd;
+      if (paramsCustomizer != null) {
+        paramsCustomizer.accept(params);
+      }
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
@@ -3120,13 +3105,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return createStopYbControllerTasks(nodes, false /*isIgnoreError*/);
   }
 
-  /**
-   * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
-   *
-   * @param nodes set of nodes to be stopped as master
-   */
   public SubTaskGroup createStopServerTasks(
       Collection<NodeDetails> nodes, ServerType serverType, boolean isIgnoreError) {
+    return createStopServerTasks(nodes, serverType, params -> params.isIgnoreError = isIgnoreError);
+  }
+
+  /**
+   * Creates subtasks to stop the servers of the given type with the optional params customizer
+   * callback.
+   *
+   * @param nodes the nodes on which the servers are running.
+   * @param serverType the server type.
+   * @param paramsCustomizer the callback to set custom params.
+   * @return the subtask group.
+   */
+  // TODO See if this can be combined with createServerControlTask method which sets more params.
+  public SubTaskGroup createStopServerTasks(
+      Collection<NodeDetails> nodes,
+      ServerType serverType,
+      @Nullable Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
@@ -3142,9 +3139,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.command = "stop";
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
-      params.isIgnoreError = isIgnoreError;
       // Set the systemd parameter.
       params.useSystemd = userIntent.useSystemd;
+      if (paramsCustomizer != null) {
+        paramsCustomizer.accept(params);
+      }
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
@@ -4142,20 +4141,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param node node to stop processes.
    * @param processes set of processes to stop.
-   * @param finalState indicates that process will be stopped for unknown amount of time.
    * @param removeMasterFromQuorum true if this stop is a for long time.
+   * @param deconfigure true if the server needs to be deconfigured (stopped permanently).
    * @param subTaskGroupType subtask group type.
    */
   protected void stopProcessesOnNode(
       NodeDetails node,
       Set<ServerType> processes,
-      boolean finalState,
       boolean removeMasterFromQuorum,
+      boolean deconfigure,
       SubTaskGroupType subTaskGroupType) {
     if (processes.contains(ServerType.TSERVER)) {
       addLeaderBlackListIfAvailable(Collections.singletonList(node), subTaskGroupType);
 
-      if (finalState) {
+      if (deconfigure) {
         // Remove node from load balancer.
         UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
         createManageLoadBalancerTasks(
@@ -4167,7 +4166,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
     }
     for (ServerType processType : processes) {
-      createServerControlTask(node, processType, "stop").setSubTaskGroupType(subTaskGroupType);
+      createServerControlTask(node, processType, "stop", params -> params.deconfigure = deconfigure)
+          .setSubTaskGroupType(subTaskGroupType);
       if (processType == ServerType.MASTER && removeMasterFromQuorum) {
         createWaitForMasterLeaderTask().setSubTaskGroupType(subTaskGroupType);
         createChangeConfigTasks(node, false /* isAdd */, subTaskGroupType);

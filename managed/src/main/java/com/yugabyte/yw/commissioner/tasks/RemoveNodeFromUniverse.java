@@ -45,8 +45,6 @@ import org.yb.util.TabletServerInfo;
 @Retryable
 public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
 
-  public static final String DUMP_ENTITIES_URL_SUFFIX = "/dump-entities";
-
   @Inject
   protected RemoveNodeFromUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -156,9 +154,14 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
               Arrays.asList(currCluster),
               Collections.singleton(currentNode),
               null));
-      createTServerTaskForNode(currentNode, "stop", true /*isIgnoreErrors*/)
+      createStopServerTasks(
+              Collections.singleton(currentNode),
+              ServerType.TSERVER,
+              params -> {
+                params.isIgnoreError = true;
+                params.deconfigure = true;
+              })
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-
       if (universe.isYbcEnabled()) {
         createStopYbControllerTasks(Collections.singleton(currentNode), true /*isIgnoreErrors*/)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
