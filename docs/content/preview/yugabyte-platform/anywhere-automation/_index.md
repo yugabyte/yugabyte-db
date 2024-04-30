@@ -19,6 +19,7 @@ Use the following automation tools to manage your YugabyteDB Anywhere installati
 | :--------- | :---------- |
 | [REST API](anywhere-api/) | Deploy and manage database universes using a REST API. |
 | [Terraform provider](anywhere-terraform/) | Provider for automating YugabyteDB Anywhere resources that are accessible via the API. |
+| [CLI](anywhere-cli/) | Manage YugabyteDB Anywhere resources from the command line. {{<badge/ea>}} |
 | [Yugabyte Kubernetes Operator](yb-kubernetes-operator/) | Automate the deployment and management of YugabyteDB clusters in Kubernetes environments. |
 
 ### Authentication
