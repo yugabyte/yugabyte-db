@@ -45,7 +45,7 @@ To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super A
 
 ## Use OIDC groups with YBA roles
 
-If your OIDC provider is configured with user groups, you can map the groups to YBA roles. Users who are members of these groups can then sign in to YBA without needing to be added to YBA first. Users who are members of multiple groups are assigned the most privileged role.
+If your OIDC provider is configured with user groups, you can map the groups to [YBA roles](../anywhere-rbac/). Users who are members of these groups can then sign in to YBA without needing to be added to YBA first. Users who are members of multiple groups are assigned the most privileged role.
 
 Note that, if you use group mapping, you must manage users via your OIDC server. You can't add or change user roles in YBA.
 
@@ -93,7 +93,7 @@ You configure OIDC as follows:
     - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. This field accepts a case-sensitive custom configuration. Typically, this field is left blank.
     - In the **Refresh Token URL** field, enter the URL of the refresh token.
 
-1. You can assign the default [role](./anywhere-rbac/#built-in-roles) for OIDC users to be ReadOnly or ConnectOnly.
+1. You can assign the default [role](../anywhere-rbac/#built-in-roles) for OIDC users to be ReadOnly or ConnectOnly.
 
 1. To map an OIDC group to a YBA role, click **Create Mappings**, choose the YBA role you want group members to be assigned to, and enter the name of the OIDC group.
 
