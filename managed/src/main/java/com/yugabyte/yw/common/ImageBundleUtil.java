@@ -246,6 +246,35 @@ public class ImageBundleUtil {
         enableVMOSPatching);
   }
 
+  public boolean migrateYBADefaultBundles(
+      Map<String, String> currOSVersionDBMap, Provider provider) {
+    String providerCode = provider.getCode();
+    if (currOSVersionDBMap != null
+        && currOSVersionDBMap.containsKey("version")
+        && !currOSVersionDBMap
+            .get("version")
+            .equals(CloudImageBundleSetup.CLOUD_OS_MAP.get(providerCode).getVersion())) {
+      return true;
+    }
+
+    List<ImageBundle> getYbaDefaultImageBundles =
+        ImageBundle.getYBADefaultBundles(provider.getUuid());
+    if (getYbaDefaultImageBundles.size() != 0) {
+      ImageBundle ybaDefaultBundle = getYbaDefaultImageBundles.get(0);
+      if (ybaDefaultBundle.getMetadata() == null
+          || (ybaDefaultBundle.getMetadata() != null
+              && ybaDefaultBundle.getMetadata().getVersion() != null
+              && !(ybaDefaultBundle.getMetadata().getVersion())
+                  .equals(CloudImageBundleSetup.CLOUD_OS_MAP.get(providerCode).getVersion()))) {
+        return true;
+      }
+    } else if (getYbaDefaultImageBundles.size() == 0) {
+      return true;
+    }
+
+    return false;
+  }
+
   public Map<UUID, ImageBundle> collectUniversesImageBundles() {
     Map<UUID, ImageBundle> imageBundleMap = new HashMap<>();
     for (Customer customer : Customer.getAll()) {

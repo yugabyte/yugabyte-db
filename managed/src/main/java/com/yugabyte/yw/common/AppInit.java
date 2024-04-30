@@ -196,23 +196,19 @@ public class AppInit {
               }
             }
           }
-          if (vmOsPatchingEnabled && defaultYbaOsVersion != null) {
+          if (vmOsPatchingEnabled) {
             String providerCode = provider.getCode();
-            if (defaultYbaOsVersion.containsKey(providerCode)) {
-              Map<String, String> currOSVersionDBMap =
-                  (Map<String, String>) defaultYbaOsVersion.get(providerCode);
-              if (currOSVersionDBMap != null
-                  && currOSVersionDBMap.containsKey("version")
-                  && !currOSVersionDBMap
-                      .get("version")
-                      .equals(CloudImageBundleSetup.CLOUD_OS_MAP.get(providerCode).getVersion())) {
-                // In case defaultYbaAmiVersion is not null & not equal to version specified in
-                // CloudImageBundleSetup.YBA_AMI_VERSION, we will check in the provider bundles
-                // & migrate all the YBA_DEFAULT -> YBA_DEPRECATED, & at the same time generating
-                // new bundle with the latest AMIs. This will only hold in case the provider
-                // does not have CUSTOM bundles.
-                imageBundleUtil.migrateImageBundlesForProviders(provider);
-              }
+            Map<String, String> currOSVersionDBMap = null;
+            if (defaultYbaOsVersion != null && defaultYbaOsVersion.containsKey(providerCode)) {
+              currOSVersionDBMap = (Map<String, String>) defaultYbaOsVersion.get(providerCode);
+            }
+            if (imageBundleUtil.migrateYBADefaultBundles(currOSVersionDBMap, provider)) {
+              // In case defaultYbaAmiVersion is not null & not equal to version specified in
+              // CloudImageBundleSetup.YBA_AMI_VERSION, we will check in the provider bundles
+              // & migrate all the YBA_DEFAULT -> YBA_DEPRECATED, & at the same time generating
+              // new bundle with the latest AMIs. This will only hold in case the provider
+              // does not have CUSTOM bundles.
+              imageBundleUtil.migrateImageBundlesForProviders(provider);
             }
           }
         }
