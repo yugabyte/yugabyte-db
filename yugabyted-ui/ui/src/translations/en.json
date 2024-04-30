@@ -911,6 +911,26 @@
             "rowCount": "Table Row Count",
             "viewSourceObjects": "View Source Objects"
           },
+          "recommendation": {
+            "heading": "Recommendation",
+            "tooltip": "Facts based approach to sizing that leverages metadata from the source environment",
+            "clusterSize": {
+              "heading": "Cluster size recommendation",
+              "noOfNodes": "Number of Nodes",
+              "vcpuPerNode": "vCPU / Node",
+              "memoryPerNode": "Memory / Node",
+              "optimalSelectConnPerNode": "Optimal Select Connections / Node",
+              "optimalInsertConnPerNode": "Optimal Insert Connections / Node"
+            },
+            "schema": {
+              "heading": "Schema Recommendation",
+              "viewDetailed": "View Detailed Schema Recommendation",
+              "colocatedTables": "Colocated Tables",
+              "shardedTables": "Sharded Tables",
+              "noOfTables": "Number of Tables",
+              "totalSize": "Total Size"
+            }
+          },
           "details": {
             "tableIndex": "Table / Index",
             "objectType": "Object type",

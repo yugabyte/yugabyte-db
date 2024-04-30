@@ -10,6 +10,7 @@ import { MigrationAssessmentResults } from "./AssessmentResults";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { MigrationAssessmentSummary } from "./AssessmentSummary";
 import { MigrationSourceEnv } from "./AssessmentSourceEnv";
+import { MigrationAssessmentRecommendation } from "./AssessmentRecommendation";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -240,6 +241,22 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       totalSize: "270 GB",
       rowCount: "120,392,668",
     },
+    recommendation: {
+      description: "Recommended instance with 16 vCPU and 64 GB memory could fit 7 objects with size 73 GB as colocated. Rest 3 objects of size 281 GB can be imported as sharded tables.",
+      clusterSize: {
+        nodeCount: "15",
+        vcpuPerNode: "16",
+        memoryPerNode: "64 GB",
+        optSelectConnPerNode: "40",
+        optInsertConnPerNode: "48"
+      },
+      schemaRecommendation: {
+        colocatedTables: "7",
+        colocatedSize: "73 GB",
+        shardedTables: "3",
+        shardedSize: "281 GB"
+      }
+    }
   } as const;
 
   return (
@@ -258,6 +275,8 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       <MigrationAssessmentSummary {...newMigration.summary} />
 
       <MigrationSourceEnv {...newMigration.sourceEnv} />
+
+      <MigrationAssessmentRecommendation {...newMigration.recommendation} />
 
       <YBAccordion
         titleContent={
