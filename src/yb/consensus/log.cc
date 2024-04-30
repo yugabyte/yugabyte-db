@@ -449,6 +449,7 @@ Log::Appender::Appender(Log* log, ThreadPool* append_thread_pool)
           MonoDelta::FromMilliseconds(FLAGS_taskstream_queue_max_wait_ms))),
       wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   if (wait_state_) {
+    wait_state_->set_root_request_id(yb::Uuid::Generate());
     wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogAppender));
     wait_state_->UpdateAuxInfo({.tablet_id = log_->tablet_id(), .method = "RaftWAL"});
     SET_WAIT_STATUS_TO(wait_state_, Idle);

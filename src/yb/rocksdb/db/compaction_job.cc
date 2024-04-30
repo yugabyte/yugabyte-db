@@ -265,7 +265,8 @@ CompactionJob::CompactionJob(
       measure_io_stats_(measure_io_stats) {
   if (wait_state_) {
     wait_state_->UpdateMetadata(
-        {.query_id = yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForCompaction),
+        {.root_request_id = yb::Uuid::Generate(),
+         .query_id = yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForCompaction),
          .rpc_request_id = job_id_});
     wait_state_->UpdateAuxInfo({.tablet_id = db_options_.tablet_id, .method = "Compaction"});
     SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
