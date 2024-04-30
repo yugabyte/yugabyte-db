@@ -530,9 +530,9 @@ WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2 and t3.v2 IN (3,4,5)
 ORDER BY t3.v3 DESC;
                                          QUERY PLAN
 ---------------------------------------------------------------------------------------------
- Sort  (cost=26.20..26.20 rows=1 width=64)
+ Sort  (cost=26.07..26.07 rows=1 width=64)
    Sort Key: t3.v3 DESC
-   ->  YB Batched Nested Loop Left Join  (cost=5.34..26.19 rows=1 width=64)
+   ->  YB Batched Nested Loop Left Join  (cost=5.30..26.06 rows=1 width=64)
          Join Filter: (t1.v3 = t2.v3)
          ->  Hash Join  (cost=5.30..21.94 rows=1 width=40)
                Hash Cond: (t3.v1 = t1.v1)
