@@ -70,20 +70,7 @@ YugabyteDB is up and running. If you are new to YugabyteDB, you can have Yugabyt
 
 ### Go
 
-Go 1.8, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
-
-### Go dependencies
-
-To install the required Go dependencies, run the following commands.
-
-```sh
-go get github.com/jinzhu/gorm
-go get github.com/jinzhu/gorm/dialects/postgres
-go get github.com/google/uuid
-go get github.com/gorilla/mux
-go get github.com/lib/pq
-go get github.com/lib/pq/hstore
-```
+Go 1.21, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
 
 ## Clone the "orm-examples" repository
 
@@ -92,20 +79,22 @@ Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-e
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
+## Set up the application and install dependencies
 
-Run the following `export` command to specify the `GOPATH` environment variable.
+Initialize Go within the project:
 
 ```sh
-export GOPATH=$GOPATH:$HOME/orm-examples/golang/gorm
+cd golang/gorm
+go mod init gorm-example
+```
+
+Download the included packages and dependencies:
+
+```sh
+go mod tidy
 ```
 
 ## Build and run the application
-
-Change to the `gorm` directory.
-
-```sh
-$ cd ./golang/gorm
-```
 
 Create the `ysql_gorm` database in YugabyteDB by running the following `ysqlsh` command from the YugabyteDB home directory.
 
@@ -113,7 +102,9 @@ Create the `ysql_gorm` database in YugabyteDB by running the following `ysqlsh` 
 $ ./bin/ysqlsh -c "CREATE DATABASE ysql_gorm"
 ```
 
-Build and start the REST API server by running the following shell script.
+Build and start the REST API server by running the following shell script. The application uses `yugabytedb/pgx` driver, so load balance feature is enabled.
+
+Note: To use the upstream driver replace `github.com/yugabyte/gorm-yugabytedb` with `gorm.io/driver/postgres` in the application code.
 
 ```sh
 $ ./build-and-run.sh
@@ -153,13 +144,13 @@ Create 2 orders.
 
 ```sh
 $ curl \
-  --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 } ] }' \
+  --data '{ "userId": 2, "products": [ { "productId": 1, "units": 2 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
 ```sh
 $ curl \
-  --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
+  --data '{ "userId": 2, "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
