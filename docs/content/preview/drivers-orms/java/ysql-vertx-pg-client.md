@@ -34,6 +34,13 @@ type: docs
   </li>
 
   <li >
+    <a href="../yb-r2dbc/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB R2DBC Smart Driver
+    </a>
+  </li>
+
+  <li >
     <a href="../postgres-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL JDBC Driver
