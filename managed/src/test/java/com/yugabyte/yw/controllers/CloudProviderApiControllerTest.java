@@ -1110,8 +1110,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     assertEquals(BAD_REQUEST, result.status());
-    assertBadRequestValidationResult(
-        result, "ZONE.0", "Zone name cannot contain any special characters except '-' and '_'.");
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals("providerValidation", json.get("error").get("errorSource").get(0).asText());
+    assertEquals(
+        "us-west&s2a, cannot contain any special characters except '-' and '_'.",
+        json.get("error").get("$.regions[0].zones[0].name").get(0).asText());
+    assertEquals(
+        "us-westS*D2b, cannot contain any special characters except '-' and '_'.",
+        json.get("error").get("$.regions[0].zones[1].name").get(0).asText());
   }
 
   @Test
