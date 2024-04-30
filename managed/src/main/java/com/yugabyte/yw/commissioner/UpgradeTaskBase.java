@@ -376,7 +376,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
       }
       stopProcessesOnNode(
-          node, processTypes, false, context.reconfigureMaster && activeRole, subGroupType);
+          node,
+          processTypes,
+          context.reconfigureMaster && activeRole /* remove master from quorum */,
+          false /* deconfigure */,
+          subGroupType);
 
       if (!context.runBeforeStopping) {
         rollingUpgradeLambda.run(singletonNodeList, processTypes);
