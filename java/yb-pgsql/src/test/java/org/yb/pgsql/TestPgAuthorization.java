@@ -14,6 +14,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
+import static org.junit.Assume.*;
 
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
@@ -1078,6 +1079,13 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testAlterRoleConfiguration() throws Exception {
+
+    // The test fails with Connection Manager as it is expected that a new
+    // session would latch onto a new physical connection. Instead, two logical
+    // connections use the same physical connection, leading to unexpected
+    // results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE test_role LOGIN");
 
