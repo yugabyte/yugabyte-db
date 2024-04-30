@@ -6298,8 +6298,8 @@
           "type" : "string"
         },
         "ldapUserfield" : {
-          "description" : "LDAP field to get the user information",
-          "example" : "cn",
+          "description" : "Dn/Attribute field to get the user's name from",
+          "example" : "cn, sAMAccountName",
           "type" : "string"
         },
         "targetApi" : {
