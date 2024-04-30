@@ -7948,6 +7948,8 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   ASSERT_EQ(entry_1->xmin.value(), 1);
   ASSERT_EQ(entry_1->record_id_commit_time.value(), checkpoint.snapshot_time());
   ASSERT_EQ(entry_1->cdc_sdk_safe_time.value(), checkpoint.snapshot_time());
+  ASSERT_EQ(entry_1->last_pub_refresh_time.value(), checkpoint.snapshot_time());
+  ASSERT_TRUE(entry_1->pub_refresh_times.value().empty());
 
   // On a non-consistent snapshot stream, we should not see the entry for replication slot.
   auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
