@@ -207,7 +207,6 @@ export const OIDCMappingModal = ({ open, onClose, onSubmit, values }) => {
                       fullWidth
                       name={`mapping.${index}.groupName`}
                       control={control}
-                      placeholder="Example:  cn = eng , ou = backend, dc = Yugabyte, dc = com"
                     />
                   </Box>
                   <Box display="flex" width={24} mx={1}>
