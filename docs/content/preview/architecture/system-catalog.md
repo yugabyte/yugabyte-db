@@ -57,7 +57,7 @@ This information is typically fetched using convenient views, such as the follow
 - _pg_tables_ : provides details on tables, their ownership, and basic properties (for example, if the table has any indexes).
 - `information_schema.tables` : provides table information as per SQL standard.
 - `information_schema.columns` : provides column information as per SQL standard.
-- `information_schema.columns` : provides view information as per SQL standard.
+- `information_schema.views` : provides view information as per SQL standard.
 
 ## Settings
 
