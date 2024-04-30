@@ -80,8 +80,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
     flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
     flagMap.put("ysql_log_min_messages", "DEBUG1");
-    flagMap.put("cdcsdk_publication_list_refresh_interval_micros",
-        "" + kPublicationRefreshIntervalSec * 1000_000);
+    flagMap.put(
+        "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
     return flagMap;
   }
 

@@ -1862,10 +1862,10 @@ TEST_F(
   CheckRecordCount(final_resp, total_dml_performed);
 }
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAddition) {
-  uint64_t publication_refresh_interval = 5 * 1000000; /* 5 seconds */
+  uint64_t publication_refresh_interval = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_micros) =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
       publication_refresh_interval;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1889,7 +1889,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAddition) {
   ASSERT_OK(conn.Execute("INSERT INTO test2 values (1,1)"));
   ASSERT_OK(conn.Execute("COMMIT;"));
 
-  SleepFor(MonoDelta::FromMicroseconds(2 * publication_refresh_interval));
+  SleepFor(MonoDelta::FromSeconds(2 * publication_refresh_interval));
 
   ASSERT_OK(conn.Execute("BEGIN;"));
   ASSERT_OK(conn.Execute("INSERT INTO test1 values (2,1)"));
@@ -1933,10 +1933,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAddition) {
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesRemoval) {
-  uint64_t publication_refresh_interval = 5 * 1000000; /* 5 seconds */
+  uint64_t publication_refresh_interval = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_micros) =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
       publication_refresh_interval;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1960,7 +1960,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesRemoval) {
   ASSERT_OK(conn.Execute("INSERT INTO test2 values (1,1)"));
   ASSERT_OK(conn.Execute("COMMIT;"));
 
-  SleepFor(MonoDelta::FromMicroseconds(2 * publication_refresh_interval));
+  SleepFor(MonoDelta::FromSeconds(2 * publication_refresh_interval));
 
   ASSERT_OK(conn.Execute("BEGIN;"));
   ASSERT_OK(conn.Execute("INSERT INTO test1 values (2,1)"));
@@ -2047,8 +2047,13 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
       conn.Execute("CREATE TABLE test2 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
   auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
-  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  // Create two streams. Stream 1 will be used to calculate delta and stream 2 will be used to
+  // create commit time ties.
+  xrepl::StreamId stream_1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  xrepl::StreamId stream_2 = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Get the Consistent Snapshot Time for stream 2.
+  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_2));
   auto cdcsdk_consistent_snapshot_time = slot_row.last_pub_refresh_time;
   HybridTime commit_time;
 
@@ -2064,13 +2069,13 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
 
   // Initialize VWAL and call GetConsistentChanges to find out the commit time of the second
   // transaction.
-  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_OK(InitVirtualWAL(stream_1, {table_1.table_id()}));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_1));
 
   uint64_t restart_lsn = 0;
   uint64_t last_record_lsn = 0;
 
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 6);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 7);
   for (auto record : change_resp.cdc_sdk_proto_records()) {
     last_record_lsn = record.row_message().pg_lsn();
     restart_lsn = last_record_lsn + 1;
@@ -2085,8 +2090,9 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
   auto delta = commit_time.PhysicalDiff(cdcsdk_consistent_snapshot_time);
 
   ASSERT_OK(DestroyVirtualWAL());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_micros) = delta;
-  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros) = delta;
+  ASSERT_OK(InitVirtualWAL(stream_2, {table_1.table_id()}));
 
   if (pub_refresh_record_in_separate_response) {
     // Disable populating the safepoint records so that we can get Publication refresh notification
@@ -2103,7 +2109,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_2));
         return change_resp.cdc_sdk_proto_records_size() != 0;
       },
       MonoDelta::FromSeconds(60), "Timed out waiting for records"));
@@ -2123,7 +2129,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
 
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {
-          change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+          change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_2));
           return change_resp.cdc_sdk_proto_records_size() == 1;
         },
         MonoDelta::FromSeconds(60), "Did not get commit record of Txn 2"));
@@ -2145,14 +2151,14 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
       change_resp.has_publication_refresh_time());
   ASSERT_EQ(commit_time.ToUint64(), change_resp.publication_refresh_time());
 
-  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
-  ASSERT_OK(UpdateAndPersistLSN(stream_id, last_record_lsn, restart_lsn));
+  ASSERT_OK(UpdatePublicationTableList(stream_2, {table_1.table_id(), table_2.table_id()}));
+  ASSERT_OK(UpdateAndPersistLSN(stream_2, last_record_lsn, restart_lsn));
 
   // Restart
   ASSERT_OK(DestroyVirtualWAL());
-  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+  ASSERT_OK(InitVirtualWAL(stream_2, {table_1.table_id()}));
 
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_2));
 
   // Since the txn2 was acknowledged, the pub_refresh_time corresponding to its commit record (which
   // will be equal to consistent snapshot time) will be persisted. Upon restart the first
@@ -2177,7 +2183,8 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_micros) =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros) =
       publication_refresh_interval;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -2320,8 +2327,8 @@ TEST_F(
   auto publication_refresh_interval = MonoDelta::FromSeconds(1);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_micros) =
-      publication_refresh_interval.ToMicroseconds();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
+      publication_refresh_interval.ToSeconds();
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -2541,6 +2548,292 @@ TEST_F(
   auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
   ASSERT_EQ(tablet_peer_1->get_cdc_sdk_safe_time(), slot_row.record_id_commit_time);
   ASSERT_EQ(tablet_peer_2->get_cdc_sdk_safe_time(), slot_row.record_id_commit_time);
+}
+
+// This test verifies the behaviour of VWAL when the publication refresh interval is changed when
+// consumption is in progress.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestChangingPublicationRefreshInterval) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test2"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Publication refresh intervals in seconds.
+  uint64_t pub_refresh_intervals[] = {5, 3, 2, 1};
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
+      pub_refresh_intervals[0];
+  vector<uint64_t> pub_refresh_times;
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (1,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  uint64_t confirmed_flush_lsn = 0;
+  uint64_t restart_lsn = 0;
+
+  // First GCC call. We will receive the records corresponding to the txn 1 for table 1 only. We
+  // will also receive the first publication refresh time.
+  vector<CDCSDKProtoRecordPB> records;
+  GetConsistentChangesResponsePB change_resp;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records.insert(
+              records.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+          confirmed_flush_lsn =
+              change_resp.cdc_sdk_proto_records().Get(2).row_message().pg_lsn() + 1;
+          restart_lsn = confirmed_flush_lsn;
+        }
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting to receive the records"));
+  ASSERT_EQ(records.size(), 3);
+
+  // Perform txn 2 after popping pub_refresh_record 1 from PQ.
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (2,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (2,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  // Store the publication refresh time for comparison after restart.
+  pub_refresh_times.push_back(change_resp.publication_refresh_time());
+
+  // Verify the value of pub_refresh_times in the state table.
+  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_EQ(slot_row.pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
+
+  // Update the publication's table list and change the refresh interval.
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
+      pub_refresh_intervals[1];
+
+  // Second GCC call. We will receive the records for txn 2 for both the tables. We
+  // will also receive the second publication refresh time.
+  records.clear();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        records.insert(
+            records.end(), change_resp.cdc_sdk_proto_records().begin(),
+            change_resp.cdc_sdk_proto_records().end());
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting to receive the records"));
+  ASSERT_EQ(records.size(), 4);
+
+  // Perform txn 3 after popping pub_refresh_record 2 from PQ.
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (3,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (3,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  pub_refresh_times.push_back(change_resp.publication_refresh_time());
+
+  // Verify that the second pub_refresh_time = first pub_refresh_time + changed refresh interval.
+  auto ht = HybridTime(pub_refresh_times[0]);
+  ht = ht.AddSeconds(pub_refresh_intervals[1]);
+  ASSERT_EQ(change_resp.publication_refresh_time(), ht.ToUint64());
+
+  // Verify the value of pub_refresh_times in the state table.
+  slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_EQ(slot_row.pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
+
+  // Update the publication's table list and change the refresh interval.
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id()}));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
+      pub_refresh_intervals[2];
+
+  // Third GCC call. We will receive the records for txn 3 for table 1 only. We
+  // will also receive the third publication refresh time.
+  records.clear();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        records.insert(
+            records.end(), change_resp.cdc_sdk_proto_records().begin(),
+            change_resp.cdc_sdk_proto_records().end());
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting to receive the records"));
+
+  ASSERT_EQ(records.size(), 3);
+  pub_refresh_times.push_back(change_resp.publication_refresh_time());
+
+  // Verify that the  pub_refresh_time = previous pub_refresh_time + changed refresh interval.
+  ht = HybridTime(pub_refresh_times[1]);
+  ht = ht.AddSeconds(pub_refresh_intervals[2]);
+  ASSERT_EQ(change_resp.publication_refresh_time(), ht.ToUint64());
+
+  // Verify the value of pub_refresh_times in the state table.
+  slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_EQ(slot_row.pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
+
+  // Send acknowledgemetn for txn 1. This should not trim the pub_refresh_times list. Upon restart
+  // the very first record to be popped should be a publication refresh record.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, confirmed_flush_lsn, restart_lsn));
+
+  // Restart VWAL with new refresh interval.
+  ASSERT_OK(DestroyVirtualWAL());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
+      pub_refresh_intervals[3];
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  // Since we had acknowledged txn 1, the first record to be popped will be a publication refresh
+  // record. Hence we will get an empty response with a signal to refresh publication list.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  ASSERT_TRUE(
+      change_resp.has_needs_publication_table_list_refresh() &&
+      change_resp.needs_publication_table_list_refresh() &&
+      change_resp.has_publication_refresh_time());
+  ASSERT_EQ(change_resp.publication_refresh_time(), pub_refresh_times[0]);
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+
+  // In this GCC call, we will receive the records of txn 2 for both the tables. Similar to second
+  // GCC call.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+  ASSERT_TRUE(
+      change_resp.has_needs_publication_table_list_refresh() &&
+      change_resp.needs_publication_table_list_refresh() &&
+      change_resp.has_publication_refresh_time());
+  ASSERT_EQ(change_resp.publication_refresh_time(), pub_refresh_times[1]);
+
+  // Send acknowledgement for txn 2. This will trim the pub_refresh_times list, as the first
+  // pub_refresh_time is no longer of use.
+  confirmed_flush_lsn = change_resp.cdc_sdk_proto_records().Get(3).row_message().pg_lsn() + 1;
+  restart_lsn = confirmed_flush_lsn;
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, confirmed_flush_lsn, restart_lsn));
+  pub_refresh_times.erase(pub_refresh_times.begin());
+
+  // Verify that the pub_refresh_times has been trimmed in state table slot entry.
+  slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_EQ(slot_row.pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
+
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id()}));
+
+  // In this GCC call we will receive the records of txn 3 for one table only. Similar to third GCC
+  // call.
+  records.clear();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records.insert(
+              records.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting to receive the records"));
+
+  ASSERT_EQ(records.size(), 3);
+  ASSERT_TRUE(
+      change_resp.has_needs_publication_table_list_refresh() &&
+      change_resp.needs_publication_table_list_refresh() &&
+      change_resp.has_publication_refresh_time());
+  ASSERT_EQ(change_resp.publication_refresh_time(), pub_refresh_times[1]);
+
+  // Verify the value of pub_refresh_times in the state table.
+  slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_EQ(slot_row.pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestLSNDeterminismWithChangingPubRefreshInterval) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) = 30;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test2"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (1,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (2,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (2,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  vector<CDCSDKProtoRecordPB> records_before_restart;
+  GetConsistentChangesResponsePB change_resp;
+  bool contains_pub_refresh = false;
+
+  // Call GCC and consume records for both the txns.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records_before_restart.insert(
+              records_before_restart.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+        contains_pub_refresh =
+            contains_pub_refresh || (change_resp.has_needs_publication_table_list_refresh() &&
+                                     change_resp.needs_publication_table_list_refresh() &&
+                                     change_resp.has_publication_refresh_time());
+        return records_before_restart.size() == 6;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting to receive the records"));
+
+  // The first pub_refresh_record will have a commit time of consistent snapshot time + 30 secs, and
+  // hence will be popped out after the two txns.
+  ASSERT_FALSE(contains_pub_refresh);
+
+  // Restart with a new smaller pub refresh interval.
+  ASSERT_OK(DestroyVirtualWAL());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) = 1;
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  vector<CDCSDKProtoRecordPB> records_after_restart;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records_after_restart.insert(
+              records_after_restart.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+        contains_pub_refresh =
+            contains_pub_refresh || (change_resp.has_needs_publication_table_list_refresh() &&
+                                     change_resp.needs_publication_table_list_refresh() &&
+                                     change_resp.has_publication_refresh_time());
+
+        // We will receive the records from both the txns as per the table list provided in
+        // Init Virtual WAL.
+        return records_after_restart.size() == 6;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting to receive the records"));
+
+  ASSERT_FALSE(contains_pub_refresh);
+  ASSERT_EQ(records_before_restart.size(), records_after_restart.size());
+  for (size_t i = 0; i < records_after_restart.size(); i++) {
+    AssertCDCSDKProtoRecords(records_before_restart[i], records_after_restart[i]);
+  }
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsumptionAfterDroppingTableNotInPublication) {
