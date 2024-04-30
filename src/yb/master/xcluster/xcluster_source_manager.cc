@@ -430,7 +430,7 @@ XClusterSourceManager::CreateStreamsForDbScoped(
   record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
 
   return CreateStreamsInternal(
-      table_ids, SysCDCStreamEntryPB::ACTIVE, options, /*transactional=*/true, epoch);
+      table_ids, SysCDCStreamEntryPB::INITIATED, options, /*transactional=*/true, epoch);
 }
 
 Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::CreateStreamsInternal(
