@@ -295,8 +295,10 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       *resp->add_tservers() = *desc->GetTSInformationPB();
     }
 
-    // Retrieve the ysql catalog schema version.
-    if (FLAGS_ysql_enable_db_catalog_version_mode) {
+    // Retrieve the ysql catalog schema version. We only check --enable_ysql
+    // when --ysql_enable_db_catalog_version_mode=true to keep the logic
+    // backward compatible.
+    if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
       DbOidToCatalogVersionMap versions;
       uint64_t fingerprint; // can only be used when versions is not empty.
       s = server_->catalog_manager_impl()->GetYsqlAllDBCatalogVersions(
