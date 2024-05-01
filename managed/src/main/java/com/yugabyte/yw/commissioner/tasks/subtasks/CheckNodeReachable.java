@@ -54,7 +54,11 @@ public class CheckNodeReachable extends NodeTaskBase {
         taskParams().nodesReachable.add(taskParams().node);
       }
     } catch (Exception e) {
-      throw new RuntimeException(e);
+      // Just log the error and move on. Do not add the node to the list of reachable nodes.
+      log.error(
+          "Failed to check if node '{}' is reachable. Got error: ",
+          taskParams().node.getNodeName(),
+          e);
     }
   }
 }
