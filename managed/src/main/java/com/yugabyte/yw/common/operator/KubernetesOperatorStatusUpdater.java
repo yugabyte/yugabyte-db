@@ -199,7 +199,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
           String.format(
               "Queued task %s on universe resource: %s, namespace: %s",
               taskName, universeName.name, universeName.namespace);
-      this.updateUniverseStatus(client, ybUniverse, universe, universeName, eventStr);
+      this.updateUniverseStatus(client, ybUniverse, universe, universeName, eventStr, false);
     } catch (Exception e) {
       log.warn("Error in creating Kubernetes Operator Universe status", e);
     }
@@ -235,7 +235,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       // TODO: Check if this is universe create and set to provisioning.
       ybuStatus.setUniverseState(state.getUniverseStateString());
       ybUniverse.setStatus(ybuStatus);
-      this.updateUniverseStatus(client, ybUniverse, universe, universeName, eventStr);
+      this.updateUniverseStatus(client, ybUniverse, universe, universeName, eventStr, false);
     } catch (Exception e) {
       log.warn("Error in creating Kubernetes Operator Universe status", e);
     }
@@ -286,7 +286,13 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
         action.setMessage(message);
       }
       // Updating Kubernetes Custom Resource (if done through operator).
-      this.updateUniverseStatus(client, ybUniverse, universe, universeName, message);
+      this.updateUniverseStatus(
+          client,
+          ybUniverse,
+          universe,
+          universeName,
+          message,
+          state.equals(UniverseState.ERROR_CREATING) ? false : true);
     } catch (Exception e) {
       log.warn("Error in creating Kubernetes Operator Universe status", e);
     }
@@ -297,28 +303,37 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       YBUniverse ybUniverse,
       Universe u,
       KubernetesResourceDetails universeName,
-      String eventMsg) {
+      String eventMsg,
+      boolean updateEndpoints) {
     try {
       // TODO: We should be able to only update these when needed.
       if (u != null) {
         List<String> cqlEndpoints = new ArrayList<>();
-        cqlEndpoints.addAll(Arrays.asList(u.getYQLServerAddresses().split(",")));
-        String cqlServiceEndpoints =
-            kubernetesManagerFactory
-                .getManager()
-                .getKubernetesServiceIPPort(ServerType.YQLSERVER, u);
-        if (StringUtils.isNotBlank(cqlServiceEndpoints)) {
-          cqlEndpoints.addAll(Arrays.asList(cqlServiceEndpoints.split(",")));
-        }
-
         List<String> sqlEndpoints = new ArrayList<>();
-        sqlEndpoints.addAll(Arrays.asList(u.getYSQLServerAddresses().split(",")));
-        String sqlServiceEndpoints =
-            kubernetesManagerFactory
-                .getManager()
-                .getKubernetesServiceIPPort(ServerType.YSQLSERVER, u);
-        if (StringUtils.isNotBlank(sqlServiceEndpoints)) {
-          sqlEndpoints.addAll(Arrays.asList(sqlServiceEndpoints.split(",")));
+        if (updateEndpoints) {
+          cqlEndpoints.addAll(Arrays.asList(u.getYQLServerAddresses().split(",")));
+          try {
+            String cqlServiceEndpoints =
+                kubernetesManagerFactory
+                    .getManager()
+                    .getKubernetesServiceIPPort(ServerType.YQLSERVER, u);
+            if (StringUtils.isNotBlank(cqlServiceEndpoints)) {
+              cqlEndpoints.addAll(Arrays.asList(cqlServiceEndpoints.split(",")));
+            }
+          } catch (Exception e) {
+          }
+
+          sqlEndpoints.addAll(Arrays.asList(u.getYSQLServerAddresses().split(",")));
+          try {
+            String sqlServiceEndpoints =
+                kubernetesManagerFactory
+                    .getManager()
+                    .getKubernetesServiceIPPort(ServerType.YSQLSERVER, u);
+            if (StringUtils.isNotBlank(sqlServiceEndpoints)) {
+              sqlEndpoints.addAll(Arrays.asList(sqlServiceEndpoints.split(",")));
+            }
+          } catch (Exception e) {
+          }
         }
 
         YBUniverseStatus ybUniverseStatus = getOrCreateUniverseStatus(ybUniverse);
