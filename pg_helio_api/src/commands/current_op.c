@@ -413,7 +413,7 @@ WorkerGetBaseActivities()
 					 ApiDataSchemaName, ApiDataSchemaName);
 
 	appendStringInfo(queryInfo,
-					 " ) e2 ON true WHERE (NOT query LIKE '%%%s.current_op%%') AND (application_name = 'MongoGateway-Data' OR application_name = 'HelioDBInternal')",
+					 " ) e2 ON true WHERE (NOT query LIKE '%%%s.current_op%%') AND (application_name = 'MongoGateway-Data' OR application_name LIKE '%%HelioDBInternal')",
 					 ApiSchemaName);
 
 	List *workerActivities = NIL;

@@ -127,4 +127,6 @@ Query * MutateListCollectionsQueryForDistribution(Query *cosmosMetadataQuery);
 const char * TryGetShardNameForUnshardedCollection(Oid relationOid, uint64 collectionId,
 												   const char *tableName);
 
+const char * GetDistributedApplicationName(void);
+
 #endif

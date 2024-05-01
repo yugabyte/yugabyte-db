@@ -23,6 +23,7 @@
 
 #include "commands/connection_management.h"
 #include "utils/query_utils.h"
+#include "api_hooks.h"
 
 extern char *LocalhostConnectionString;
 
@@ -798,12 +799,20 @@ GetLocalhostConnStr(const Oid userOid)
 		user_name = GetUserNameFromId(userOid, no_err);
 	}
 
+	const char *applicationName = GetDistributedApplicationName();
+
+	if (applicationName == NULL)
+	{
+		applicationName = "HelioDBInternal";
+	}
+
 	StringInfo localhostConnStr = makeStringInfo();
 	appendStringInfo(localhostConnStr,
-					 "%s port=%d user=%s dbname=%s application_name='HelioDBInternal'",
+					 "%s port=%d user=%s dbname=%s application_name='%s'",
 					 LocalhostConnectionString, PostPortNumber,
 					 user_name,
-					 get_database_name(MyDatabaseId));
+					 get_database_name(MyDatabaseId),
+					 applicationName);
 
 	return localhostConnStr->data;
 }

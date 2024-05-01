@@ -36,6 +36,7 @@ RewriteListCollectionsQueryForDistribution_HookType rewrite_list_collections_que
 	NULL;
 TryGetShardNameForUnshardedCollection_HookType
 	try_get_shard_name_for_unsharded_collection_hook = NULL;
+GetDistributedApplicationName_HookType get_distributed_application_name_hook = NULL;
 
 
 /*
@@ -277,4 +278,16 @@ TryGetShardNameForUnshardedCollection(Oid relationOid, uint64 collectionId, cons
 	}
 
 	return InvalidOid;
+}
+
+
+const char *
+GetDistributedApplicationName(void)
+{
+	if (get_distributed_application_name_hook != NULL)
+	{
+		return get_distributed_application_name_hook();
+	}
+
+	return NULL;
 }
