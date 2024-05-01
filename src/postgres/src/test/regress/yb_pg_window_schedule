@@ -5,6 +5,7 @@
 ####################################################################################################
 # Dependencies
 test: yb_pg_test_setup
+test: yb_dep_tenk1
 test: yb_dep_tenk2
 
 test: yb_pg_groupingsets

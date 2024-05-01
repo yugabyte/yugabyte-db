@@ -3,8 +3,12 @@
 --
 -- The queries are taken from the relevant dependency files.  Since it is
 -- faster to run this rather than each file itself (e.g. dependency chain
--- test_setup, create_index), prefer using this.
+-- test_setup, create_index), prefer using this.  Also, to make it usable with
+-- yb_pg_test_setup and yb_pg_create_index, make it idempotent.
 --
+
+-- To avoid IF NOT EXISTS NOTICE messages.
+SET client_min_messages TO WARNING;
 
 --
 -- test_setup
@@ -14,7 +18,7 @@
 
 --
 
-CREATE TABLE tenk1 (
+CREATE TABLE IF NOT EXISTS tenk1 (
 	unique1		int4,
 	unique2		int4,
 	two			int4,
@@ -33,7 +37,11 @@ CREATE TABLE tenk1 (
 	string4		name
 );
 \set filename :abs_srcdir '/data/tenk.data'
-COPY tenk1 FROM :'filename';
+CREATE TEMP TABLE tenk1tmp (LIKE tenk1);
+COPY tenk1tmp FROM :'filename';
+DO $$BEGIN IF NOT EXISTS (SELECT * FROM tenk1 LIMIT 1) THEN
+INSERT INTO tenk1 SELECT * FROM tenk1tmp;
+END IF; END$$;
 VACUUM ANALYZE tenk1;
 
 --
@@ -41,10 +49,10 @@ VACUUM ANALYZE tenk1;
 -- (With modification to make them all nonconcurrent for performance.)
 --
 
-CREATE INDEX NONCONCURRENTLY tenk1_unique1 ON tenk1 USING btree(unique1 int4_ops ASC);
+CREATE INDEX NONCONCURRENTLY IF NOT EXISTS tenk1_unique1 ON tenk1 USING btree(unique1 int4_ops ASC);
 
-CREATE INDEX NONCONCURRENTLY tenk1_unique2 ON tenk1 USING btree(unique2 int4_ops ASC);
+CREATE INDEX NONCONCURRENTLY IF NOT EXISTS tenk1_unique2 ON tenk1 USING btree(unique2 int4_ops ASC);
 
-CREATE INDEX NONCONCURRENTLY tenk1_hundred ON tenk1 USING btree(hundred int4_ops ASC);
+CREATE INDEX NONCONCURRENTLY IF NOT EXISTS tenk1_hundred ON tenk1 USING btree(hundred int4_ops ASC);
 
-CREATE INDEX NONCONCURRENTLY tenk1_thous_tenthous ON tenk1 (thousand ASC, tenthous ASC);
+CREATE INDEX NONCONCURRENTLY IF NOT EXISTS tenk1_thous_tenthous ON tenk1 (thousand ASC, tenthous ASC);

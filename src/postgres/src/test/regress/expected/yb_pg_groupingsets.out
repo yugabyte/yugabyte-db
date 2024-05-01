@@ -438,6 +438,102 @@ select x, not x as not_x, q2 from
    |       |  4567890123456789
 (5 rows)
 
+-- check qual push-down rules for a subquery with grouping sets
+explain (verbose, costs off)
+select * from (
+  select 1 as x, q1, sum(q2)
+  from int8_tbl i1
+  group by grouping sets(1, 2)
+) ss
+where x = 1 and q1 = 123;
+                 QUERY PLAN                 
+--------------------------------------------
+ Subquery Scan on ss
+   Output: ss.x, ss.q1, ss.sum
+   Filter: ((ss.x = 1) AND (ss.q1 = 123))
+   ->  GroupAggregate
+         Output: (1), i1.q1, sum(i1.q2)
+         Group Key: 1
+         Sort Key: i1.q1
+           Group Key: i1.q1
+         ->  Seq Scan on public.int8_tbl i1
+               Output: 1, i1.q1, i1.q2
+(10 rows)
+
+select * from (
+  select 1 as x, q1, sum(q2)
+  from int8_tbl i1
+  group by grouping sets(1, 2)
+) ss
+where x = 1 and q1 = 123;
+ x | q1 | sum 
+---+----+-----
+(0 rows)
+
+-- check handling of pulled-up SubPlan in GROUPING() argument (bug #17479)
+explain (verbose, costs off)
+select grouping(ss.x)
+from int8_tbl i1
+cross join lateral (select (select i1.q1) as x) ss
+group by ss.x;
+                   QUERY PLAN                   
+------------------------------------------------
+ GroupAggregate
+   Output: GROUPING((SubPlan 1)), ((SubPlan 2))
+   Group Key: ((SubPlan 2))
+   ->  Sort
+         Output: ((SubPlan 2)), i1.q1
+         Sort Key: ((SubPlan 2))
+         ->  Seq Scan on public.int8_tbl i1
+               Output: (SubPlan 2), i1.q1
+               SubPlan 2
+                 ->  Result
+                       Output: i1.q1
+(11 rows)
+
+select grouping(ss.x)
+from int8_tbl i1
+cross join lateral (select (select i1.q1) as x) ss
+group by ss.x;
+ grouping 
+----------
+        0
+        0
+(2 rows)
+
+explain (verbose, costs off)
+select (select grouping(ss.x))
+from int8_tbl i1
+cross join lateral (select (select i1.q1) as x) ss
+group by ss.x;
+                 QUERY PLAN                 
+--------------------------------------------
+ GroupAggregate
+   Output: (SubPlan 2), ((SubPlan 3))
+   Group Key: ((SubPlan 3))
+   ->  Sort
+         Output: ((SubPlan 3)), i1.q1
+         Sort Key: ((SubPlan 3))
+         ->  Seq Scan on public.int8_tbl i1
+               Output: (SubPlan 3), i1.q1
+               SubPlan 3
+                 ->  Result
+                       Output: i1.q1
+   SubPlan 2
+     ->  Result
+           Output: GROUPING((SubPlan 1))
+(14 rows)
+
+select (select grouping(ss.x))
+from int8_tbl i1
+cross join lateral (select (select i1.q1) as x) ss
+group by ss.x;
+ grouping 
+----------
+        0
+        0
+(2 rows)
+
 -- simple rescan tests
 select a, b, sum(v.x)
   from (values (1),(2)) v(x), gstest_data(v.x)
@@ -640,6 +736,19 @@ select a, b, sum(v.x)
    | 3 |   3
    |   |   9
 (12 rows)
+
+-- Test reordering of grouping sets
+explain (costs off)
+select * from gstest1 group by grouping sets((a,b,v),(v)) order by v,b,a;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ GroupAggregate
+   Group Key: "*VALUES*".column3, "*VALUES*".column2, "*VALUES*".column1
+   Group Key: "*VALUES*".column3
+   ->  Sort
+         Sort Key: "*VALUES*".column3, "*VALUES*".column2, "*VALUES*".column1
+         ->  Values Scan on "*VALUES*"
+(6 rows)
 
 -- Agg level check. This query should error out.
 select (select grouping(a,b) from gstest2) from gstest2 group by a,b;
@@ -1351,6 +1460,61 @@ explain (costs off)
                ->  Function Scan on gstest_data
 (10 rows)
 
+-- Verify that we correctly handle the child node returning a
+-- non-minimal slot, which happens if the input is pre-sorted,
+-- e.g. due to an index scan.
+BEGIN;
+SET LOCAL enable_hashagg = false;
+EXPLAIN (COSTS OFF) SELECT a, b, count(*), max(a), max(b) FROM gstest3 GROUP BY GROUPING SETS(a, b,()) ORDER BY a, b;
+              QUERY PLAN               
+---------------------------------------
+ Sort
+   Sort Key: a, b
+   ->  GroupAggregate
+         Group Key: a
+         Group Key: ()
+         Sort Key: b
+           Group Key: b
+         ->  Sort
+               Sort Key: a
+               ->  Seq Scan on gstest3
+(10 rows)
+
+SELECT a, b, count(*), max(a), max(b) FROM gstest3 GROUP BY GROUPING SETS(a, b,()) ORDER BY a, b;
+ a | b | count | max | max 
+---+---+-------+-----+-----
+ 1 |   |     1 |   1 |   1
+ 2 |   |     1 |   2 |   2
+   | 1 |     1 |   1 |   1
+   | 2 |     1 |   2 |   2
+   |   |     2 |   2 |   2
+(5 rows)
+
+SET LOCAL enable_seqscan = false;
+EXPLAIN (COSTS OFF) SELECT a, b, count(*), max(a), max(b) FROM gstest3 GROUP BY GROUPING SETS(a, b,()) ORDER BY a, b;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Sort
+   Sort Key: a, b
+   ->  GroupAggregate
+         Group Key: a
+         Group Key: ()
+         Sort Key: b
+           Group Key: b
+         ->  Index Scan using gstest3_pkey on gstest3
+(8 rows)
+
+SELECT a, b, count(*), max(a), max(b) FROM gstest3 GROUP BY GROUPING SETS(a, b,()) ORDER BY a, b;
+ a | b | count | max | max 
+---+---+-------+-----+-----
+ 1 |   |     1 |   1 |   1
+ 2 |   |     1 |   2 |   2
+   | 1 |     1 |   1 |   1
+   | 2 |     1 |   2 |   2
+   |   |     2 |   2 |   2
+(5 rows)
+
+COMMIT;
 -- More rescan tests
 select * from (values (1),(2)) v(a) left join lateral (select v.a, four, ten, count(*) from onek group by cube(four,ten)) s on true order by v.a,four,ten;
  a | a | four | ten | count
@@ -1478,6 +1642,7 @@ select array(select row(v.a,s1.*) from (select two,four, count(*) from onek grou
 
 -- test the knapsack
 set enable_indexscan = false;
+set hash_mem_multiplier = 1.0;
 set work_mem = '64kB';
 explain (costs off)
   select unique1,
@@ -1569,30 +1734,37 @@ select v||'a', case when grouping(v||'a') = 1 then 1 else 0 end, count(*)
           |    1 |     2
 (4 rows)
 
+-- Bug #16784
+create table bug_16784(i int, j int);
+analyze bug_16784;
+alter table bug_16784 set (autovacuum_enabled = 'false');
+ERROR:  ALTER TABLE SET not supported yet
+LINE 1: alter table bug_16784 set (autovacuum_enabled = 'false');
+                              ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+-- YB: TODO(cost_model): enable the rest of the test.
 -- test handling of outer GroupingFunc within subqueries
 explain (costs off)
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
         QUERY PLAN
 ---------------------------
- GroupAggregate
-   Group Key: $2
+ MixedAggregate
+   Hash Key: $2
    Group Key: ()
    InitPlan 1 (returns $1)
      ->  Result
    InitPlan 3 (returns $2)
      ->  Result
-   InitPlan 4 (returns $3)
-     ->  Result
    ->  Result
    SubPlan 2
      ->  Result
-(12 rows)
+(10 rows)
 
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
  grouping
 ----------
-        0
         1
+        0
 (2 rows)
 
 explain (costs off)
@@ -1605,12 +1777,10 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
      ->  Result
    InitPlan 3 (returns $2)
      ->  Result
-   InitPlan 4 (returns $3)
-     ->  Result
    ->  Result
    SubPlan 2
      ->  Result
-(11 rows)
+(9 rows)
 
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
  grouping
