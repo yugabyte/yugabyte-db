@@ -1,10 +1,10 @@
 ---
-title: yba CLI
+title: YugabyteDB Anywhere CLI
 headerTitle: YugabyteDB Anywhere CLI
-linkTitle: yba CLI
-description: Use YugabyteDB Anywhere CLI to create and manage universes.
-headcontent: Install yba, configure default settings, and set up autocompletion
-earlyAccess: /preview/releases/versioning/#feature-availability
+linkTitle: CLI
+description: Use YugabyteDB Anywhere CLI to create and manage resources in YBA.
+headcontent: Install the CLI, configure default settings, and set up autocompletion
+techPreview: /preview/releases/versioning/#feature-availability
 menu:
   preview_yugabyte-platform:
     parent: anywhere-automation
@@ -15,17 +15,22 @@ rightNav:
   hideH4: true
 ---
 
-The [YugabyteDB Anywhere (YBA) Command Line Interface](https://github.com/yugabyte/yugabyte-db/tree/master/managed/yba-cli) (yba) is an open source tool that enables you to interact with YBA accounts using commands in your command-line shell. With minimal configuration, you can start running commands from the command line that implement functionality equivalent to that provided by the browser-based YBA interface.
+The [YugabyteDB Anywhere (YBA) Command Line Interface](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba.md) (CLI) is an open source tool that enables you to interact with YBA using commands from your shell. With minimal configuration, you can start running commands from the command line that implement functionality equivalent to that provided by the browser-based YBA interface.
 
-## Install yba
+The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
-To install yba, download the appropriate binary from the yba-cli GitHub project [releases](https://github.com/yugabyte/yba-cli/releases).
+The CLI is in [Tech Preview](/preview/releases/versioning/#feature-availability). Commands and options may change before GA.
 
-On MacOS and Linux, you can also install yba using [Homebrew](https://brew.sh) by entering the following command:
+## Install CLI
 
-```sh
-brew install yugabyte/tap/yba
-```
+Your YugabyteDB Anywhere installation includes the CLI binary, located in `/opt/yugabyte/yugaware/yba-cli`. The following versions are available:
+
+- yba_cli-<ver>-darwin-amd64
+- yba_cli-<ver>8-darwin-arm64
+- yba_cli-<ver>-linux-amd64
+- yba_cli-<ver>-linux-arm64
+
+Copy the appropriate binary to your local machine. Note that the CLI can only be used with the same or earlier version of YBA.
 
 For help, enter the following command:
 
@@ -33,27 +38,19 @@ For help, enter the following command:
 yba help
 ```
 
-### Upgrade yba
+### Use CLI
 
-To upgrade yba using Homebrew, enter the following commands:
+Using the CLI requires providing, at minimum, an [API token](../#authentication).
 
-```sh
-brew update && brew upgrade yba
-```
-
-### Configure yba
-
-Using yba CLI requires providing, at minimum, an [API token](../#authentication).
-
-You can pass the token as a flag when running yba commands. For example:
+You can pass the token as a flag when running CLI commands. For example:
 
 ```sh
 yba universe list --apiToken "eyJ..."
 ```
 
-For convenience, you can configure yba with a default API token as follows:
+For convenience, you can configure the CLI with a default API token as follows:
 
-- Use the `auth` command to write the token to a YAML configuration file, as follows:
+- Use the `auth` command to write the token to a CLI configuration file, as follows:
 
   ```sh
   yba auth
@@ -61,7 +58,7 @@ For convenience, you can configure yba with a default API token as follows:
 
   At the prompt, paste your API token and press Enter.
 
-  By default, this writes the value to the file `.yba-cli.yaml` under your `$HOME` directory.
+  By default, this writes the value to the CLI configuration file `$HOME/.yba-cli.yaml`.
 
   You can create multiple configuration files, and switch between them using the [--config](#global-flags) flag. You can add any of the other [global flags](#global-flags) to your configuration files.
 
@@ -76,11 +73,10 @@ If a value is set in an environment variable and a configuration file, the envir
 
 ### Environment variables
 
-You can set the following yba environment variables.
+You can set the following CLI environment variables.
 
 | Variable | Description |
 | :--- | :--- |
-| YBA_APITOKEN | The API token to use to authenticate to your YugabyteDB Managed account. |
 | YBA_CI | Set to `true` to avoid outputting unnecessary log lines. |
 | YBA_AWS_SECRET_KEY | AWS secret access key. For encryption at rest of AWS clusters. |
 
@@ -102,13 +98,13 @@ yba universe list
 
 ### Online help
 
-Access command-line help for yba by running the following command:
+Access command-line help for the CLI by running the following command:
 
 ```sh
 yba help
 ```
 
-For help with specific yba resource commands, use the `--help` or `-h` flag, in the following form:
+For help with specific resource commands, use the `--help` or `-h` flag, in the following form:
 
 ```sh
 yba [ resource ] [ command ] -h
@@ -120,7 +116,7 @@ For example, to print the command-line help for the cluster `create` command, ru
 yba universe list -h
 ```
 
-Print the version of yba CLI:
+Print the version of the CLI:
 
 ```sh
 yba --version
@@ -128,7 +124,7 @@ yba --version
 
 ## Commands
 
-You can manage the following resources using yba:
+You can manage the following resources:
 
 | Resource | Description |
 | :--- | :--- |
@@ -140,7 +136,7 @@ You can manage the following resources using yba:
 | [universe](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_universe.md) | Manage universes. |
 | [yb-db-version](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_yb-db-version.md) | Manage YugabyteDB releases. |
 
-Use the following commands to configure yba:
+Use the following commands to configure the CLI:
 
 | Resource | Description |
 | :--- | :--- |
@@ -149,7 +145,7 @@ Use the following commands to configure yba:
 
 ### Global flags
 
-The following flags can be passed in with any command. These flags can also be added to your configuration file (see [Configure yba](#configure-yba)).
+The following flags can be passed in with any command. These flags can also be added to your configuration file (see [Use CLI](#use-cli)).
 
 -a, --apiToken string
 : YugabyteDB Anywhere account API Key.
@@ -181,7 +177,7 @@ yba universe delete \
     --wait
 ```
 
-If you are using yba with the `--wait` flag in your CI system, you can set the environment variable `YBA_CI` to `true` to avoid generating unnecessary log lines.
+If you are using the CLI with the `--wait` flag in your CI system, you can set the environment variable `YBA_CI` to `true` to avoid generating unnecessary log lines.
 
 ## Autocompletion
 
