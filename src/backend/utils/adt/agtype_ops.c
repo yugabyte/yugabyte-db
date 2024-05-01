@@ -27,6 +27,7 @@
 #include <limits.h>
 
 #include "utils/agtype.h"
+#include "utils/datum.h"
 #include "utils/builtins.h"
 
 static agtype *agtype_concat_impl(agtype *agt1, agtype *agt2);
@@ -1010,9 +1011,22 @@ PG_FUNCTION_INFO_V1(agtype_eq);
 
 Datum agtype_eq(PG_FUNCTION_ARGS)
 {
-    agtype *agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
-    agtype *agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
-    bool result;
+    Datum lhs = PG_GETARG_DATUM(0);
+    Datum rhs = PG_GETARG_DATUM(1);
+    agtype *agtype_lhs = NULL;
+    agtype *agtype_rhs = NULL;
+    uint32 hash_lhs = datum_image_hash(lhs, false, -1);
+    uint32 hash_rhs = datum_image_hash(rhs, false, -1);
+    bool result = false;
+
+    if (hash_lhs == hash_rhs &&
+        datum_image_eq(lhs, rhs, false, -1))
+    {
+        PG_RETURN_BOOL(true);
+    }
+
+    agtype_lhs = DATUM_GET_AGTYPE_P(lhs);
+    agtype_rhs = DATUM_GET_AGTYPE_P(rhs);
 
     result = (compare_agtype_containers_orderability(&agtype_lhs->root,
                                                      &agtype_rhs->root) == 0);
@@ -1049,9 +1063,22 @@ PG_FUNCTION_INFO_V1(agtype_ne);
 
 Datum agtype_ne(PG_FUNCTION_ARGS)
 {
-    agtype *agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
-    agtype *agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
-    bool result = true;
+    Datum lhs = PG_GETARG_DATUM(0);
+    Datum rhs = PG_GETARG_DATUM(1);
+    uint32 hash_lhs = datum_image_hash(lhs, false, -1);
+    uint32 hash_rhs = datum_image_hash(rhs, false, -1);
+    agtype *agtype_lhs = NULL;
+    agtype *agtype_rhs = NULL;
+    bool result = false;
+
+    if (hash_lhs == hash_rhs &&
+        datum_image_eq(lhs, rhs, false, -1))
+    {
+        PG_RETURN_BOOL(false);
+    }
+
+    agtype_lhs = DATUM_GET_AGTYPE_P(lhs);
+    agtype_rhs = DATUM_GET_AGTYPE_P(rhs);
 
     result = (compare_agtype_containers_orderability(&agtype_lhs->root,
                                                      &agtype_rhs->root) != 0);

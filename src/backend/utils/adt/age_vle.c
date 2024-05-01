@@ -21,10 +21,12 @@
 
 #include "common/hashfn.h"
 #include "funcapi.h"
+#include "utils/datum.h"
 #include "utils/lsyscache.h"
 
 #include "utils/age_vle.h"
 #include "catalog/ag_graph.h"
+#include "catalog/ag_label.h"
 #include "nodes/cypher_nodes.h"
 
 /* defines */
@@ -68,7 +70,10 @@ typedef struct VLE_local_context
     graphid vsid;                  /* starting vertex id */
     graphid veid;                  /* ending vertex id */
     char *edge_label_name;         /* edge label name for match */
+    Oid edge_label_name_oid;       /* edge label name oid for match */
     agtype *edge_property_constraint; /* edge property constraint as agtype */
+    Datum edge_property_constraint_datum; /* edge property constraint as Datum */
+    uint32 edge_property_constraint_hash; /* edge property constraint hash */
     int64 lidx;                    /* lower (start) bound index */
     int64 uidx;                    /* upper (end) bound index */
     bool uidx_infinite;            /* flag if the upper bound is omitted */
@@ -328,7 +333,7 @@ static bool is_an_edge_match(VLE_local_context *vlelctx, edge_entry *ee)
     agtype_container *agtc_edge_property_constraint = NULL;
     agtype_iterator *constraint_it = NULL;
     agtype_iterator *property_it = NULL;
-    char *edge_label_name = NULL;
+    Oid edge_label_name_oid = InvalidOid;
     int num_edge_property_constraints = 0;
     int num_edge_properties = 0;
 
@@ -340,13 +345,25 @@ static bool is_an_edge_match(VLE_local_context *vlelctx, edge_entry *ee)
      * We don't care about extra unmatched properties. If there aren't any edge
      * constraints, then the edge passes by default.
      */
-    if (vlelctx->edge_label_name == NULL && num_edge_property_constraints == 0)
+    if (vlelctx->edge_label_name_oid == InvalidOid &&
+        num_edge_property_constraints == 0)
     {
         return true;
     }
 
-    /* get the edge label name from the oid */
-    edge_label_name = get_rel_name(get_edge_entry_label_table_oid(ee));
+    /* get the edge label oid */
+    edge_label_name_oid = get_edge_entry_label_table_oid(ee);
+
+    /*
+     * Check for a label constraint. Remember, if the constraint label oid is
+     * InvalidOid, there isn't one. If there is one, they need to match.
+     */
+    if (vlelctx->edge_label_name_oid != InvalidOid &&
+        vlelctx->edge_label_name_oid != edge_label_name_oid)
+    {
+        return false;
+    }
+
     /* get our edge's properties */
     edge_property = DATUM_GET_AGTYPE_P(get_edge_entry_properties(ee));
     /* get the containers */
@@ -366,11 +383,26 @@ static bool is_an_edge_match(VLE_local_context *vlelctx, edge_entry *ee)
     }
 
     /*
-     * Check for a label constraint. If the label name is NULL, there isn't one.
+     * If the number of constraints are the same as the number of properties,
+     * then the datums would be the same if they match.
      */
-    if (vlelctx->edge_label_name != NULL &&
-        strcmp(vlelctx->edge_label_name, edge_label_name) != 0)
+    if (num_edge_property_constraints == num_edge_properties)
     {
+        Datum edge_props = get_edge_entry_properties(ee);
+        uint32 edge_props_hash = datum_image_hash(edge_props, false, -1);
+
+        /* check the hash first */
+        if (vlelctx->edge_property_constraint_hash == edge_props_hash)
+        {
+            /* if the hashes match, check the datum images */
+            if (datum_image_eq(vlelctx->edge_property_constraint_datum,
+                               edge_props, false, -1))
+            {
+                return true;
+            }
+        }
+
+        /* if we got here they aren't the same */
         return false;
     }
 
@@ -491,6 +523,8 @@ static VLE_local_context *build_local_vle_context(FunctionCallInfo fcinfo,
     VLE_local_context *vlelctx = NULL;
     agtype_value *agtv_temp = NULL;
     agtype_value *agtv_object = NULL;
+    agtype *agt_edge_property_constraint = NULL;
+    Datum d_edge_property_constraint = 0;
     char *graph_name = NULL;
     Oid graph_oid = InvalidOid;
     int64 vle_grammar_node_id = 0;
@@ -713,8 +747,14 @@ static VLE_local_context *build_local_vle_context(FunctionCallInfo fcinfo,
 
     /* get the edge prototype's property conditions */
     agtv_object = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_temp, "properties");
+    agt_edge_property_constraint = agtype_value_to_agtype(agtv_object);
+
     /* store the properties as an agtype */
-    vlelctx->edge_property_constraint = agtype_value_to_agtype(agtv_object);
+    vlelctx->edge_property_constraint = agt_edge_property_constraint;
+
+    d_edge_property_constraint = AGTYPE_P_GET_DATUM(agt_edge_property_constraint);
+    vlelctx->edge_property_constraint_datum = d_edge_property_constraint;
+    vlelctx->edge_property_constraint_hash = datum_image_hash(d_edge_property_constraint, false, -1);
 
     /* get the edge prototype's label name */
     agtv_temp = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_temp, "label");
@@ -723,10 +763,14 @@ static VLE_local_context *build_local_vle_context(FunctionCallInfo fcinfo,
     {
         vlelctx->edge_label_name = pnstrdup(agtv_temp->val.string.val,
                                             agtv_temp->val.string.len);
+
+        vlelctx->edge_label_name_oid = get_label_relation(vlelctx->edge_label_name,
+                                                          graph_oid);
     }
     else
     {
         vlelctx->edge_label_name = NULL;
+        vlelctx->edge_label_name_oid = InvalidOid;
     }
 
     /* get the left range index */
