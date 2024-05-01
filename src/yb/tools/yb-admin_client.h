@@ -390,8 +390,6 @@ class ClusterAdminClient {
 
   Status WriteUniverseKeyToFile(const std::string& key_id, const std::string& file_name);
 
-  Status CreateCDCStream(const TableId& table_id);
-
   Status CreateCDCSDKDBStream(
       const TypedNamespaceName& ns, const std::string& CheckPointType,
       const cdc::CDCRecordType RecordType,

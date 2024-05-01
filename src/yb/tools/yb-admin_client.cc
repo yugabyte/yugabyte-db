@@ -3852,37 +3852,6 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
-  master::CreateCDCStreamRequestPB req;
-  master::CreateCDCStreamResponsePB resp;
-  req.set_table_id(table_id);
-  req.mutable_options()->Reserve(3);
-
-  auto record_type_option = req.add_options();
-  record_type_option->set_key(cdc::kRecordType);
-  record_type_option->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
-
-  auto record_format_option = req.add_options();
-  record_format_option->set_key(cdc::kRecordFormat);
-  record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::JSON));
-
-  auto source_type_option = req.add_options();
-  source_type_option->set_key(cdc::kSourceType);
-  source_type_option->set_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_replication_proxy_->CreateCDCStream(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-        cout << "Error creating stream: " << resp.error().status().message() << endl;
-        return StatusFromPB(resp.error().status());
-  }
-
-  cout << "CDC Stream ID: " << resp.stream_id() << endl;
-  return Status::OK();
-}
-
 Status ClusterAdminClient::DeleteCDCSDKDBStream(const std::string& db_stream_id) {
   master::DeleteCDCStreamRequestPB req;
   master::DeleteCDCStreamResponsePB resp;

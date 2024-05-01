@@ -899,16 +899,6 @@ TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithBootstrap) {
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
 }
 
-TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithCreateCDCStream) {
-  // Create CDC stream
-  ASSERT_OK(RunAdminToolCommand("create_cdc_stream", table_->id()));
-
-  string stream_id = ASSERT_RESULT(GetRecentStreamId(cluster_.get()));
-
-  // Should be deleted.
-  ASSERT_OK(RunAdminToolCommand("delete_cdc_stream", stream_id));
-}
-
 TEST_F(XClusterAdminCliTest, TestFailedSetupUniverseWithDeletion) {
   client::TableHandle producer_cluster_table;
 
