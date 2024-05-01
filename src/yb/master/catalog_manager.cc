@@ -5927,6 +5927,9 @@ Status CatalogManager::BackfillIndex(
     BackfillIndexResponsePB* resp,
     rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
+  // We don't expect to be called for index backfill during a ysql major version upgrade.
+  RSTATUS_DCHECK(!FLAGS_TEST_online_pg11_to_pg15_upgrade, InternalError,
+                 "Attempting to backfill index during ysql major version upgrade");
   const TableIdentifierPB& index_table_identifier = req->index_identifier();
 
   scoped_refptr<TableInfo> index_table = VERIFY_RESULT(FindTable(index_table_identifier));

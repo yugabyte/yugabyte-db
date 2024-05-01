@@ -741,12 +741,15 @@ DefineIndex(Oid relationId,
 		 * - the index is primary
 		 * - the indexed table is temporary
 		 * - we are in bootstrap mode
+		 * - we are in binary upgrade mode (major PG version upgrade)
 		 * This logic works because
 		 * - primary key indexes are on the main table, and index backfill doesn't
 		 *   apply to them.
 		 * - temporary tables cannot have concurrency issues when building indexes.
 		 * - system table indexes created during initdb cannot have concurrency
 		 *   issues.
+		 * - index creation during a major PG version upgrade is for the index
+		 *   metadata (catalog tables) only.
 		 * Concurrent index build is currently also disabled for
 		 * - indexes in nested DDL
 		 * - system table indexes
@@ -780,6 +783,20 @@ DefineIndex(Oid relationId,
 		{
 			Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);
 			concurrent = false;
+		}
+		/*
+		 * YB: For a major PG version upgrade, we're just creating the new
+		 * version's metadata for the index, so it's not concurrent.
+		 */
+		if (concurrent && IsYugaByteEnabled() && IsBinaryUpgrade)
+		{
+			if (stmt->concurrent == YB_CONCURRENCY_EXPLICIT_ENABLED)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("CREATE INDEX CONCURRENTLY is not supported "
+								"during a binary upgrade")));
+			else
+				concurrent = false;
 		}
 		/*
 		* Use fast path create index when in nested DDL. This is desired

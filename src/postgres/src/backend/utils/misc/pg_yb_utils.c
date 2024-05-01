@@ -1818,6 +1818,20 @@ YbDdlModeOptional YbGetDdlMode(
 	NodeTag node_tag = nodeTag(parsetree);
 
 	/*
+	 * During a major PG version upgrade, the logical state of the catalog is
+	 * kept constant, and we're merely creating a new-major-version catalog
+	 * that's semantically equivalent to the old-major version catalog. During
+	 * this process we need to keep the catalog version constant, to avoid
+	 * needing to refresh the catalog. This is safe because the only DDLs
+	 * allowed are being performed by the new-major-version pg_restore process.
+	 */
+	if (IsBinaryUpgrade)
+		return (YbDdlModeOptional){
+			.has_value = true,
+			.value = YbCatalogModificationAspectsToDdlMode(YB_DDL_MODE_NO_ALTERING)
+		};
+
+	/*
 	 * Note: REFRESH MATVIEW (CONCURRENTLY) executes subcommands using SPI.
 	 * So, if the context is PROCESS_UTILITY_QUERY (command triggered using
 	 * SPI), and the current original node tag is T_RefreshMatViewStmt, do
