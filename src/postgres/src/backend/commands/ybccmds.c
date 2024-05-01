@@ -1043,6 +1043,53 @@ CreateIndexHandleSplitOptions(YBCPgStatement handle,
 	}
 }
 
+void
+YBCBindCreateIndexColumns(YBCPgStatement handle,
+						  IndexInfo *indexInfo,
+						  TupleDesc indexTupleDesc,
+						  int16 *coloptions,
+						  int numIndexKeyAttrs)
+{
+	for (int i = 0; i < indexTupleDesc->natts; i++)
+	{
+		Form_pg_attribute     att         = TupleDescAttr(indexTupleDesc, i);
+		char                  *attname    = NameStr(att->attname);
+		AttrNumber            attnum      = att->attnum;
+		const YBCPgTypeEntity *col_type   = YbDataTypeFromOidMod(attnum, att->atttypid);
+
+		const bool            is_key      = (i < numIndexKeyAttrs);
+
+		if (is_key)
+		{
+			if (!YbDataTypeIsValidForKey(att->atttypid))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("INDEX on column of type '%s' not yet supported",
+								YBPgTypeOidToStr(att->atttypid))));
+		}
+
+		/*
+		 * Non-key columns' options are always 0, and aren't explicitly stored
+		 * in pg_index.indoptions. As they aren't stored, we may not have
+		 * them in coloptions if the caller chose not to include them,
+		 * so avoid checking coloptions if the column is a key column.
+		 */
+		const int16 options        = is_key ? coloptions[i] : 0;
+		const bool  is_hash        = options & INDOPTION_HASH;
+		const bool  is_desc        = options & INDOPTION_DESC;
+		const bool  is_nulls_first = options & INDOPTION_NULLS_FIRST;
+
+		HandleYBStatus(YBCPgCreateIndexAddColumn(handle,
+												 attname,
+												 attnum,
+												 col_type,
+												 is_hash,
+												 is_key,
+												 is_desc,
+												 is_nulls_first));
+	}
+}
+
 /*
  * Similar to YBCCreateTable, pgTableId and oldRelfileNodeId are used during
  * table rewrite.
@@ -1094,43 +1141,11 @@ YBCCreateIndex(const char *indexName,
 									   oldRelfileNodeId,
 									   &handle));
 
-	for (int i = 0; i < indexTupleDesc->natts; i++)
-	{
-		Form_pg_attribute     att         = TupleDescAttr(indexTupleDesc, i);
-		char                  *attname    = NameStr(att->attname);
-		AttrNumber            attnum      = att->attnum;
-		const YBCPgTypeEntity *col_type   = YbDataTypeFromOidMod(attnum, att->atttypid);
-		const bool            is_key      = (i < indexInfo->ii_NumIndexKeyAttrs);
-
-		if (is_key)
-		{
-			if (!YbDataTypeIsValidForKey(att->atttypid))
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("INDEX on column of type '%s' not yet supported",
-								YBPgTypeOidToStr(att->atttypid))));
-		}
-
-		/*
-		 * Non-key columns' options are always 0, and aren't explicitly stored
-		 * in pg_index.indoptions. As they aren't stored, we may not have
-		 * them in coloptions if the caller chose not to include them,
-		 * so avoid checking coloptions if the column is a key column.
-		 */
-		const int16 options        = is_key ? coloptions[i] : 0;
-		const bool  is_hash        = options & INDOPTION_HASH;
-		const bool  is_desc        = options & INDOPTION_DESC;
-		const bool  is_nulls_first = options & INDOPTION_NULLS_FIRST;
-
-		HandleYBStatus(YBCPgCreateIndexAddColumn(handle,
-												 attname,
-												 attnum,
-												 col_type,
-												 is_hash,
-												 is_key,
-												 is_desc,
-												 is_nulls_first));
-	}
+	IndexAmRoutine *amroutine =
+		GetIndexAmRoutineByAmId(indexInfo->ii_Am, true);
+	Assert(amroutine != NULL && amroutine->yb_ambindschema != NULL);
+	amroutine->yb_ambindschema(
+		handle, indexInfo, indexTupleDesc, coloptions);
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
