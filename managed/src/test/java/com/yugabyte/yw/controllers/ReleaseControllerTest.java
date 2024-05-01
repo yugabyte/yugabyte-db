@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ReleaseManager.ReleaseState.DISABLED;
+import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -35,6 +36,8 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -70,6 +73,14 @@ public class ReleaseControllerTest extends FakeDBApplication {
     mockRegion = mock(Region.class);
     mockConfig = mock(Config.class);
     mockReleasesUtils = mock(ReleasesUtils.class);
+    app.injector()
+        .instanceOf(RuntimeConfService.class)
+        .setKey(
+            customer.getUuid(),
+            GLOBAL_SCOPE_UUID,
+            GlobalConfKeys.enableReleasesRedesign.getKey(),
+            "false",
+            true);
   }
 
   private Result getReleases(UUID customerUUID) {
@@ -271,7 +282,6 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateReleaseWithReleaseManagerException() {
-
     ObjectNode pathsNode =
         (ObjectNode)
             Json.newObject()
@@ -300,7 +310,6 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateReleaseInvalidParams() {
-
     ObjectNode pathsNode = (ObjectNode) Json.newObject().put("x86_64", "s3://foobar");
     ObjectNode s3 =
         (ObjectNode)

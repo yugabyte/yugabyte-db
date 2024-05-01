@@ -693,8 +693,12 @@ public class ReleaseManager {
     try {
       log.debug("checking local file {}", p.toString());
       metadata = releasesUtils.metadataFromPath(p);
-      String rawVersion = metadata.version.split("-")[0];
+      String rawVersion = p.getName(p.getNameCount() - 2).toString();
       if (metadata.platform == ReleaseArtifact.Platform.KUBERNETES) {
+        // ITEST helm charts may not have the version populated correctly. However, we should assume
+        // that the version specified via the directory name is correct (and that is validated
+        // later).
+        metadata.version = rawVersion;
         localReleaseNameValidation(rawVersion, null, p.toString());
       } else {
         localReleaseNameValidation(rawVersion, p.toString(), null);
@@ -790,7 +794,7 @@ public class ReleaseManager {
         throw new RuntimeException(
             "The version of DB that you have specified in the folder name in the "
                 + "imported local release does not match the version of DB in the "
-                + "package name in the imported local release (specifed through the "
+                + "package name in the imported local release (specified through the "
                 + "file path). Please make sure that you have named the directory and "
                 + ".tar.gz file appropriately so that the DB version in the package "
                 + "name matches the DB version in the folder name.");
@@ -819,7 +823,7 @@ public class ReleaseManager {
           throw new RuntimeException(
               "The version of DB that you have specified in the folder name in the "
                   + "imported local release does not match the version of DB in the "
-                  + "package name in the imported local release (specifed through the "
+                  + "package name in the imported local release (specified through the "
                   + "chart path). Please make sure that you have named the directory and "
                   + ".tar.gz file appropriately so that the DB version in the package "
                   + "name matches the DB version in the folder name.");

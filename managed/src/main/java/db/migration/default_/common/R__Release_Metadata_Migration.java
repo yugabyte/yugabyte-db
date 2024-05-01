@@ -23,7 +23,7 @@ public class R__Release_Metadata_Migration extends BaseJavaMigration {
 
   @Override
   public Integer getChecksum() {
-    int codeChecksum = 82918232; // Change me if you want to force migration to run
+    int codeChecksum = 82918234; // Change me if you want to force migration to run
     MurmurHash3 murmurHash3 = new MurmurHash3();
     try {
       SqlRow row =
