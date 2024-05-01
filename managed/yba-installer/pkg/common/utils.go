@@ -185,6 +185,12 @@ func ResolveSymlink(source, target string) error {
 		log.Error(fmt.Sprintf("failed to rename %s -> %s", source, target))
 		return fmt.Errorf("resolve symlink failed to rename %s->%s: %w", source, target, err)
 	}
+	// Best effor to set permissions of resolved symlink (in case Replicated was owned by root)
+	userName := viper.GetString("service_username")
+	if err := Chown(target, userName, userName, true); err != nil {
+		log.Warn(
+			fmt.Sprintf("error changing permissions of target directory %s: %s", target, err.Error()))
+	}
 	return nil
 }
 
@@ -229,6 +235,13 @@ func resolveSymlinkFallback(source, target string) error {
 		}
 	} else {
 		return fmt.Errorf("could not determine status of source directory %s: %w", source, sErr)
+	}
+
+	// Best effor to set permissions of resolved symlink (in case Replicated was owned by root)
+	userName := viper.GetString("service_username")
+	if err := Chown(target, userName, userName, true); err != nil {
+		log.Warn(
+			fmt.Sprintf("error changing permissions of target directory %s: %s", target, err.Error()))
 	}
 
 	// Remove the temp dir if it exists. This is best effort, and can be cleaned up manually later
