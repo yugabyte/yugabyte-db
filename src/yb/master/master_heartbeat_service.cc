@@ -224,7 +224,11 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       return;
     }
 
-    ts_desc->UpdateHeartbeat(req);
+    s = ts_desc->UpdateTSMetadataFromHeartbeat(*req);
+    if (!s.ok()) {
+      rpc.RespondFailure(s);
+      return;
+    }
 
     // Adjust the table report limit per heartbeat so this can be dynamically changed.
     if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit)) {
@@ -238,7 +242,8 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
     if (req->has_tablet_report()) {
       s = server_->catalog_manager_impl()->ProcessTabletReport(
-        ts_desc.get(), req->tablet_report(), resp->mutable_tablet_report(), &rpc);
+          ts_desc.get(), req->common().ts_instance(), req->tablet_report(),
+          resp->mutable_tablet_report(), &rpc);
       if (!s.ok()) {
         rpc.RespondFailure(s.CloneAndPrepend("Failed to process tablet report"));
         return;

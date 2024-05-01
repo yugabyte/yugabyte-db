@@ -100,8 +100,15 @@ class TSDescriptor {
 
   virtual ~TSDescriptor() = default;
 
-  // Set the last-heartbeat time to now.
-  void UpdateHeartbeat(const TSHeartbeatRequestPB* req);
+  // Updates TS metadata -
+  //     hybrid time on the TS
+  //     tablet leaders on the TS
+  //     heartbeat rtt
+  //     etc
+  // from the heartbeat request. This method also validates that this is the latest heartbeat
+  // request received from the tserver. If not, this method does no mutations and returns an error
+  // status.
+  Status UpdateTSMetadataFromHeartbeat(const TSHeartbeatRequestPB& req);
 
   // Return the amount of time since the last heartbeat received from this TS.
   MonoDelta TimeSinceHeartbeat() const;
@@ -115,6 +122,7 @@ class TSDescriptor {
 
   const std::string &permanent_uuid() const { return permanent_uuid_; }
   int64_t latest_seqno() const;
+  int32_t latest_report_sequence_number() const;
 
   bool has_tablet_report() const;
   void set_has_tablet_report(bool has_report);
@@ -264,6 +272,9 @@ class TSDescriptor {
     ts_metrics_.ClearMetrics();
   }
 
+  Status IsReportCurrent(const NodeInstancePB& ts_instance, const TabletReportPB* report);
+  Status IsReportCurrentUnlocked(const NodeInstancePB& ts_instance, const TabletReportPB* report);
+
   // Set of methods to keep track of pending tablet deletes for a tablet server.
   bool HasTabletDeletePending() const;
   void AddPendingTabletDelete(const std::string& tablet_id);
@@ -368,6 +379,14 @@ class TSDescriptor {
 
   // Roundtrip time of previous heartbeat.
   MonoDelta heartbeat_rtt_;
+
+  // The sequence number of the latest tablet report from this tserver.
+  // Initialized to the smallest possible value and reset to the smallest possible value on TS
+  // registration. Before beginning processing of a new tablet report, set to the sequence number of
+  // the tablet report from the tserver. While processing a batch of tablets in a tablet report, if
+  // the sequence number in the report no longer matches this saved value then report processing
+  // stops.
+  int32_t report_sequence_number_;
 
   // Set to true once this instance has reported all of its tablets.
   bool has_tablet_report_;
