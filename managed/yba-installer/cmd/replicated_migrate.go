@@ -318,7 +318,7 @@ Are you sure you want to continue?`
 			}
 		}
 		if err := replflow.Uninstall(); err != nil {
-			log.Error("unable to uninstall replicated: " + err.Error())
+			log.Warn("unable to uninstall replicated: " + err.Error())
 			log.Info("Please manually uninstall replicated")
 		}
 		state.CurrentStatus = ybactlstate.InstalledStatus
