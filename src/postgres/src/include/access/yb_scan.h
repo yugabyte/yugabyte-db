@@ -265,6 +265,15 @@ extern HeapScanDesc ybc_heap_beginscan(Relation relation,
 extern HeapTuple ybc_heap_getnext(HeapScanDesc scanDesc);
 extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 
+extern void
+YbBindDatumToColumn(YBCPgStatement stmt,
+					int attr_num,
+					Oid type_id,
+					Oid collation_id,
+					Datum datum,
+					bool is_null,
+					const YBCPgTypeEntity *null_type_entity);
+
 /* Add targets to the given statement. */
 extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
 extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,

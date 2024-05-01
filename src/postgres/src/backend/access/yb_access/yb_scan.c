@@ -328,6 +328,38 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 }
 
 /*
+ * Utility method to bind const to column.
+ */
+void
+YbBindDatumToColumn(YBCPgStatement stmt,
+					int attr_num,
+					Oid type_id,
+					Oid collation_id,
+					Datum datum,
+					bool is_null,
+					const YBCPgTypeEntity *null_type_entity)
+{
+	YBCPgExpr	expr;
+	const YBCPgTypeEntity *type_entity;
+
+	if (is_null && null_type_entity)
+		type_entity = null_type_entity;
+	else
+		type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
+
+	YBCPgCollationInfo collation_info;
+	YBGetCollationInfo(collation_id, type_entity, datum, is_null,
+					   &collation_info);
+
+	HandleYBStatus(YBCPgNewConstant(stmt, type_entity,
+									collation_info.collate_is_valid_non_c,
+									collation_info.sortkey,
+									datum, is_null, &expr));
+
+	HandleYBStatus(YBCPgDmlBindColumn(stmt, attr_num, expr));
+}
+
+/*
  * Add a system column as target to the given statement handle.
  */
 void

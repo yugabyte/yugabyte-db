@@ -85,6 +85,12 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid pgTableId,
 						   Oid oldRelfileNodeId);
 
+extern void YBCBindCreateIndexColumns(YBCPgStatement handle,
+									  IndexInfo *indexInfo,
+									  TupleDesc indexTupleDesc,
+									  int16 *coloptions,
+									  int numIndexKeyAttrs);
+
 extern void YBCDropIndex(Relation index);
 
 extern List* YBCPrepareAlterTable(List** subcmds,
