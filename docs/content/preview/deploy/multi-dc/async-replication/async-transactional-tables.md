@@ -1,9 +1,9 @@
 ---
-title: Manage tables and indexes transactional xCluster replication
-headerTitle: Manage tables and indexes
-linkTitle: Tables and indexes
-description: Manage tables and indexes using transactional (active-standby) replication between universes
-headContent: How to add and remove tables and indexes from replication
+title: Handling DDLs in transactional xCluster
+headerTitle: Handling DDLs
+linkTitle: Handling DDLs
+description: How to handle DDLs when using transactional xCluster replication between universes
+headContent: Handling DDLs in transactional xCluster
 menu:
   preview:
     parent: async-replication-transactional
@@ -12,33 +12,48 @@ menu:
 type: docs
 ---
 
-Use the following guidance when managing tables and indexes in transactional xCluster deployments.
+When DDL operations are performed to databases in transactional xCluster replication (such as creating, altering, or dropping tables or partitions), the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated.
 
-## Add a table to replication
+You should perform these actions in a specific order, depending on the type of DDL, as indicated in the table below.
 
-To ensure that data is protected at all times, set up replication on a new table _before_ starting any workload.
+| DDL | Step 1 | Step 2 |  Step 3 |
+| :--- | :--- | :--- | :--- |
+| CREATE TABLE | Execute DDL on Primary | Execute DDL on Standby | Add the table to replication |
+| CREATE TABLE foo PARTITION OF bar | Execute DDL on Primary | Execute DDL on Standby | Add the table to replication |
+| DROP TABLE   | Remove the table from replication | Execute DDL on Standby | Execute DDL on Primary |
+| CREATE INDEX | Execute DDL on Primary | Execute DDL on Standby | - |
+| DROP INDEX   | Execute DDL on Standby | Execute DDL on Primary | - |
+| ALTER TABLE or INDEX | Execute DDL on Standby | Execute DDL on Primary | - |
 
-If a table already has data before adding it to replication, then adding the table to replication can result in a backup and restore of the entire database from Primary to Standby.
+## Tables
+
+### Create table
+
+To ensure that data is protected at all times, set up replication on a new table _before_ inserting any into it.
+
+If a table already has data before adding it to replication, then adding the table to replication can result in a backup and restore of the entire database.
 
 Add tables to replication in the following sequence:
 
-1. Create the table on the Primary (if it doesn't already exist).
+1. Create the table on the Primary.
 1. Create the table on the Standby.
 1. Add the table to the replication.
 
-    For instructions on adding tables to replication in YugabyteDB Anywhere, refer to [View, manage, and monitor replication](../../../../yugabyte-platform/create-deployments/async-replication-platform/#view-manage-and-monitor-replication).
+    For instructions on adding tables to replication, refer to [Adding tables (or partitions)](../async-deployment/#adding-tables-or-partitions).
 
-## Remove a table from replication
+### Drop table
 
 Remove tables from replication in the following sequence:
 
 1. Remove the table from replication.
 
-    For instructions on removing tables from replication in YugabyteDB Anywhere, refer to [View, manage, and monitor replication](../../../../yugabyte-platform/create-deployments/async-replication-platform/#view-manage-and-monitor-replication).
+    For instructions on removing tables from replication, refer to [Removing objects](../async-deployment/#removing-objects).
 
 1. Drop the table from both Primary and Standby databases separately.
 
-## Add a new index to replication
+## Indexes
+
+### Create index
 
 Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on Primary and Standby. You do not have to stop the writes on the Primary.
 
@@ -56,11 +71,7 @@ Add indexes to replication in the following sequence:
 
     For instructions on monitoring backfill, refer to [Monitor index backfill from the command line](https://yugabytedb.tips/?p=2215).
 
-1. [Resynchronize YBA](#resynchronize-yba).
-
-    This step is only required if you are using YBA, and ensures your changes are reflected in the YugabyteDB Anywhere UI.
-
-## Remove an index from replication
+### Drop index
 
 When an index is dropped it is automatically removed from replication.
 
@@ -70,11 +81,9 @@ Remove indexes from replication in the following sequence:
 
 1. Drop the index on the Primary universe.
 
-1. [Resynchronize YBA](#resynchronize-yba).
+## Table partitions
 
-    This step is only required if you are using YBA, and ensures your changes are reflected in the YugabyteDB Anywhere UI.
-
-## Add a table partition to the replication
+### Create table partition
 
 Adding a table partition is similar to adding a table.
 
@@ -106,18 +115,18 @@ Assume the parent table and default partition are included in the replication st
 
 To add a table partition to the replication, follow the same steps for [Add a table to replication](#add-a-table-to-replication).
 
-## Remove table partitions from replication
+### Drop table partitions
 
 To remove a table partition from replication, follow the same steps as [Remove a table from replication](#remove-a-table-from-replication).
 
-## Resynchronize YBA
+## Alters
 
-To ensure changes made outside of YugabyteDB Anywhere are reflected in YBA, resynchronize the YBA UI using the YBA API [sync xCluster config command](https://api-docs.yugabyte.com/docs/yugabyte-platform/e19b528a55430-sync-xcluster-config).
+You can alter the schema of tables and indexes without having to stop writes on the Primary.
 
-Before you can use the command, you need an API token, your customer ID, and the UUID of the Standby universe; refer to [Automation](../../../../yugabyte-platform/anywhere-automation/).
+**Note**: The ALTER DDL may kill some in-flight transactions. This is a temporary error. Retry any failed transactions.
 
-To resynchronize the YBA UI, run the following on the command line on the YBA host:
+Alter the schema of tables and indexes in the following sequence:
 
-```sh
-curl -k --location --request POST 'https://<yourportal.yugabyte.com>/api/v1/customers/<Customer_ID>/xcluster_configs/sync?targetUniverseUUID=<standby_universe_uuid>' --header 'X-AUTH-YW-API-TOKEN: <API_token>' --data ''
-```
+1. Alter the index on the Standby universe.
+
+1. Alter the index on the Primary universe.
