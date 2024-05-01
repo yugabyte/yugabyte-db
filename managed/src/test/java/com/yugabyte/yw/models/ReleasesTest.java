@@ -113,6 +113,6 @@ public class ReleasesTest extends FakeDBApplication {
     assertNull(release.getReleaseTag());
     assertEquals(Release.NULL_CONSTANT, release.getRawReleaseTag());
     assertThrows(
-        PlatformServiceException.class, () -> release.setReleaseTag(Release.NULL_CONSTANT));
+        PlatformServiceException.class, () -> release.saveReleaseTag(Release.NULL_CONSTANT));
   }
 }
