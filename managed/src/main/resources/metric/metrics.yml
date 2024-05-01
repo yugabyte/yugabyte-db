@@ -2000,7 +2000,7 @@ ysql_sql_advanced_latency:
   group_by: "service_method"
   panel_group: "YSQL Ops & Latency"
   layout:
-    title: "YSQL Op Latency (Avg)"
+    title: "YSQL Advanced Op Latency (Avg)"
     xaxis:
       type: "date"
     yaxis:
