@@ -18229,7 +18229,7 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "YSQL Op Latency (Avg)",
+    "title" : "YSQL Advanced Op Latency (Avg)",
     "id" : 182,
     "targets" : [ {
       "hide" : false,
