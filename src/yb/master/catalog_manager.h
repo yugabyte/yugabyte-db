@@ -460,8 +460,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status ProcessTabletReport(TSDescriptor* ts_desc,
-                             const TabletReportPB& report,
-                             TabletReportUpdatesPB *report_update,
+                             const NodeInstancePB& ts_instance,
+                             const TabletReportPB& full_report,
+                             TabletReportUpdatesPB *full_report_update,
                              rpc::RpcContext* rpc);
 
   // Create a new Namespace with the specified attributes.
@@ -2169,6 +2170,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CanAddPartitionsToTable(
       size_t desired_partitions, const PlacementInfoPB& placement_info) override;
 
+  TSDescriptorVector GetAllLiveNotBlacklistedTServers() const override;
+
  private:
   friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;
@@ -2281,15 +2284,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Process tablets batch while processing tablet report.
   Status ProcessTabletReportBatch(
       TSDescriptor* ts_desc,
-      bool is_incremental,
+      const NodeInstancePB& ts_instance,
+      const TabletReportPB& report,
       ReportedTablets::iterator begin,
       ReportedTablets::iterator end,
       TabletReportUpdatesPB* full_report_update,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
-
-  TSDescriptorVector GetAllLiveNotBlacklistedTServers() const;
 
   // Get the ycql system.partitions vtable. Note that this has EXCLUDES(mutex_), in order to
   // maintain lock ordering.
