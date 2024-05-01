@@ -1801,19 +1801,6 @@ Status write_universe_key_to_file_action(
   return Status::OK();
 }
 
-const auto create_cdc_stream_args = "<table_id>";
-Status create_cdc_stream_action(
-    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1) {
-    return ClusterAdminCli::kInvalidArguments;
-  }
-  const string table_id = args[0];
-  RETURN_NOT_OK_PREPEND(
-      client->CreateCDCStream(table_id),
-      Format("Unable to create CDC stream for table $0", table_id));
-  return Status::OK();
-}
-
 const auto create_change_data_stream_args =
    "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>]";
 Status create_change_data_stream_action(
@@ -2622,27 +2609,29 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(rotate_universe_key_in_memory);
   REGISTER_COMMAND(disable_encryption_in_memory);
   REGISTER_COMMAND(write_universe_key_to_file);
-  // CDC commands
-  REGISTER_COMMAND(create_cdc_stream);
+  // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);
-  REGISTER_COMMAND(delete_cdc_stream);
   REGISTER_COMMAND(delete_change_data_stream);
-  REGISTER_COMMAND(list_cdc_streams);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
   REGISTER_COMMAND(ysql_backfill_change_data_stream_with_replication_slot);
-  // xCluster commands
+  // xCluster Source commands
+  REGISTER_COMMAND(bootstrap_cdc_producer);
+  REGISTER_COMMAND(list_cdc_streams);
+  REGISTER_COMMAND(delete_cdc_stream);
+  REGISTER_COMMAND(pause_producer_xcluster_streams);
+  REGISTER_COMMAND(wait_for_replication_drain);
+  // xCluster Target commands
   REGISTER_COMMAND(setup_universe_replication);
   REGISTER_COMMAND(delete_universe_replication);
   REGISTER_COMMAND(alter_universe_replication);
-  REGISTER_COMMAND(change_xcluster_role);
-  REGISTER_COMMAND(set_universe_replication_enabled);
-  REGISTER_COMMAND(pause_producer_xcluster_streams);
-  REGISTER_COMMAND(bootstrap_cdc_producer);
-  REGISTER_COMMAND(wait_for_replication_drain);
   REGISTER_COMMAND(setup_namespace_universe_replication);
+  REGISTER_COMMAND(set_universe_replication_enabled);
   REGISTER_COMMAND(get_replication_status);
   REGISTER_COMMAND(get_xcluster_safe_time);
+  // xCluster common commands
+  REGISTER_COMMAND(change_xcluster_role);
+
   // xCluster V2 commands
   REGISTER_COMMAND(create_xcluster_checkpoint);
   REGISTER_COMMAND(is_xcluster_bootstrap_required);

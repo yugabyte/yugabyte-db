@@ -2849,24 +2849,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  RpcController rpc;
-  CreateCDCStreamRequestPB create_req;
-  CreateCDCStreamResponsePB create_resp;
-  create_req.set_table_id(table_id);
-  create_req.set_source_type(XCLUSTER);
-  ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
+  auto stream_id = ASSERT_RESULT(cdc::CreateCDCStream(cdc_proxy_, table_id));
 
   // Insert some records.
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
-  rpc.Reset();
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp_1;
-  change_req.set_stream_id(create_resp.stream_id());
+  change_req.set_stream_id(stream_id.ToString());
   change_req.set_tablet_id(tablets[0].tablet_id());
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
   change_req.set_serve_as_proxy(true);
+  RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp_1, &rpc));
   ASSERT_FALSE(change_resp_1.has_error());
@@ -2896,7 +2891,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
 
   GetChangesResponsePB change_resp_2;
   rpc.Reset();
-  change_req.set_stream_id(create_resp.stream_id());
+  change_req.set_stream_id(stream_id.ToString());
   change_req.set_tablet_id(tablets[0].tablet_id());
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(
       0);
