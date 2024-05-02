@@ -8,6 +8,7 @@
  */
 
 import { useEffect } from 'react';
+import { find } from 'lodash';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -55,7 +56,10 @@ export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
       enabled: !!provider,
       onSuccess(data) {
         if (!getValues(LINUX_VERSION_FIELD) && data.length) {
-          setValue(LINUX_VERSION_FIELD, data[0]?.uuid, { shouldValidate: true });
+          const defaultImg = find(data, { useAsDefault: true });
+          if (defaultImg) {
+            setValue(LINUX_VERSION_FIELD, defaultImg?.uuid, { shouldValidate: true });
+          }
         }
       },
     }
