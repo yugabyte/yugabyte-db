@@ -164,12 +164,30 @@ if [ "${use_network_manager_dispatcher}" = true ]; then
     fi
     # Set script variables.
     interface="\${DEVICE_IP_IFACE}"
+    new_ip_address="\${IP4_ADDRESS_0%%/*}"
     new_network_number="\${IP4_ROUTE_0%%/*}"
     new_routers="\${IP4_GATEWAY}"
     new_subnet_mask="\$(echo \"\${IP4_ROUTE_0}\" | grep -Po '(?<=/)[0-9]+')"
+
+    # Check for /32 route (gateway route), if found look for second route entry
+    if [ "\${new_subnet_mask}" = 32 ]; then
+        # Check for a second route entry
+        if [ -z "\${IP4_ROUTE_1}" ]; then
+            echo "IP4_GATEWAY=\${IP4_GATEWAY}"
+            echo "IP4_ROUTE_0=\${IP4_ROUTE_0}"
+            echo "IP4_ROUTE_1=\${IP4_ROUTE_1}"
+            echo "DEVICE_IP_IFACE=\${DEVICE_IP_IFACE}"
+            echo "Found /32 route in IP4_ROUTE_0 and no second route in IP4_ROUTE_1. Exiting."
+            exit
+        fi
+        new_network_number="\${IP4_ROUTE_1%%/*}"
+        new_routers="\${IP4_ROUTE_0%%/*}"
+        new_subnet_mask="\$(echo \"\${IP4_ROUTE_1}\" | grep -Po '(?<=/)[0-9]+')"
+    fi
 else
     if [ "$cloud" = "gcp" ]; then
         # Set script variables (already set for AWS).
+        new_ip_address="\${IP4_ADDRESS_0%%/*}"
         new_network_number="\${route_targets[1]}"
         new_routers="\${route_targets[0]}"
         new_subnet_mask="\$prefix"
@@ -274,7 +292,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 use_network_manager_dispatcher=false
-[ "$cloud" = "aws" ] && { [ "$os_version" = "8" ] || [ "$os_version" = "9" ]; } && \
+[ "$cloud" = "aws" -o "$cloud" = "gcp" ] && [ "$os_version" = "8" -o "$os_version" = "9" ]  && \
   [ "$os_name" = "almalinux" ] && use_network_manager_dispatcher=true
 
 fix_ifcfg
