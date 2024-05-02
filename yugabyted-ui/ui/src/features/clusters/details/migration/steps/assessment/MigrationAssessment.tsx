@@ -11,6 +11,7 @@ import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { MigrationAssessmentSummary } from "./AssessmentSummary";
 import { MigrationSourceEnv } from "./AssessmentSourceEnv";
 import { MigrationAssessmentRecommendation } from "./AssessmentRecommendation";
+import { MigrationAssessmentRefactoring } from "./AssessmentRefactoring";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -242,21 +243,52 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       rowCount: "120,392,668",
     },
     recommendation: {
-      description: "Recommended instance with 16 vCPU and 64 GB memory could fit 7 objects with size 73 GB as colocated. Rest 3 objects of size 281 GB can be imported as sharded tables.",
+      description:
+        "Recommended instance with 16 vCPU and 64 GB memory could fit 7 objects with size 73 GB as colocated. Rest 3 objects of size 281 GB can be imported as sharded tables.",
       clusterSize: {
         nodeCount: "15",
         vcpuPerNode: "16",
         memoryPerNode: "64 GB",
         optSelectConnPerNode: "40",
-        optInsertConnPerNode: "48"
+        optInsertConnPerNode: "48",
       },
       schemaRecommendation: {
         colocatedTables: "7",
         colocatedSize: "73 GB",
         shardedTables: "3",
-        shardedSize: "281 GB"
-      }
-    }
+        shardedSize: "281 GB",
+      },
+    },
+    refactoring: {
+      schemaList: ["public", "schema-01", "schema-02"],
+      sqlObjects: [
+        {
+          objectType: "Type",
+          automaticDDLImport: 25,
+          manualRefactoring: 3,
+        },
+        {
+          objectType: "Table",
+          automaticDDLImport: 72,
+          manualRefactoring: 5,
+        },
+        {
+          objectType: "View",
+          automaticDDLImport: 27,
+          manualRefactoring: 3,
+        },
+        {
+          objectType: "Function",
+          automaticDDLImport: 22,
+          manualRefactoring: 9,
+        },
+        {
+          objectType: "Triggers",
+          automaticDDLImport: 23,
+          manualRefactoring: 5,
+        },
+      ],
+    },
   } as const;
 
   return (
@@ -277,6 +309,8 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       <MigrationSourceEnv {...newMigration.sourceEnv} />
 
       <MigrationAssessmentRecommendation {...newMigration.recommendation} />
+
+      <MigrationAssessmentRefactoring {...newMigration.refactoring} />
 
       <YBAccordion
         titleContent={

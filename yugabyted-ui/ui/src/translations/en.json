@@ -931,6 +931,10 @@
               "totalSize": "Total Size"
             }
           },
+          "refactoring": {
+            "heading": "Recommended Refactoring",
+            "schema": "Schema"
+          },
           "details": {
             "tableIndex": "Table / Index",
             "objectType": "Object type",

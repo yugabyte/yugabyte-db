@@ -25,7 +25,6 @@ const useStyles = makeStyles((theme) => ({
     textAlign: "left",
   },
   dividerVertical: {
-    height: "100%",
     marginLeft: theme.spacing(2.5),
     marginRight: theme.spacing(2.5),
   },
@@ -144,7 +143,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
             </Grid>
           </Box>
 
-          <Divider orientation="vertical" className={classes.dividerVertical} />
+          <Divider orientation="vertical" className={classes.dividerVertical} flexItem />
 
           <Box>
             <Box mb={3} display="flex" justifyContent="space-between" alignItems="center">
