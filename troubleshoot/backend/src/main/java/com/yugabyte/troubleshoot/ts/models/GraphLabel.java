@@ -22,6 +22,7 @@ public enum GraphLabel {
   mountPoint("mountpoint"),
   waitEventComponent(""),
   waitEventClass(""),
+  waitEventType(""),
   waitEvent(""),
   clientNodeIp("");
 

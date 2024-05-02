@@ -189,6 +189,10 @@
         ],
         "supportedGroupBy": [
           {
+            "label": "waitEventType",
+            "name": "Type"
+          },
+          {
             "label": "waitEvent",
             "name": "Event"
           },

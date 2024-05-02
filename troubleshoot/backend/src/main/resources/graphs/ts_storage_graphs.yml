@@ -107,9 +107,12 @@ active_session_history_tserver:
     waitEventClass:
       name: wait_event_class
       assumesGroupBy: ["waitEventComponent"]
+    waitEventType:
+      name: wait_event_type
+      defaultGroupBy: true
+      assumesGroupBy: ["waitEventComponent"]
     waitEvent:
       name: wait_event
-      defaultGroupBy: true
       assumesGroupBy: ["waitEventClass", "waitEventComponent"]
   additional_filter: "ysql_session_id != 0"
   data_columns:
@@ -123,6 +126,8 @@ active_session_history_tserver:
       type: "date"
     metadata:
       supportedGroupBy:
+        - label: waitEventType
+          name: Type
         - label: waitEvent
           name: Event
         - label: waitEventClass
@@ -158,9 +163,12 @@ active_session_history_ysql:
     waitEventClass:
       name: wait_event_class
       assumesGroupBy: ["waitEventComponent"]
+    waitEventType:
+      name: wait_event_type
+      defaultGroupBy: true
+      assumesGroupBy: ["waitEventComponent"]
     waitEvent:
       name: wait_event
-      defaultGroupBy: true
       assumesGroupBy: ["waitEventClass", "waitEventComponent"]
   additional_filter: "ysql_session_id != 0"
   data_columns:
@@ -174,6 +182,8 @@ active_session_history_ysql:
       type: "date"
     metadata:
       supportedGroupBy:
+        - label: waitEventType
+          name: Type
         - label: waitEvent
           name: Event
         - label: waitEventClass
