@@ -758,6 +758,9 @@ class PgApiImpl {
   Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
       const std::string& stream_id);
 
+  Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
+      const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
+
   // Drop Replication Slot.
   Status NewDropReplicationSlot(const char *slot_name,
                                 PgStatement **handle);

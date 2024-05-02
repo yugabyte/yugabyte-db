@@ -7528,7 +7528,8 @@ ResetAllOptions(void)
 		gconf->scontext = gconf->reset_scontext;
 		gconf->srole = gconf->reset_srole;
 
-		if (gconf->flags & GUC_REPORT)
+		if ((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
+			(YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND))
 		{
 			gconf->status |= GUC_NEEDS_REPORT;
 			report_needed = true;
@@ -7944,7 +7945,9 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			if (changed && (gconf->flags & GUC_REPORT))
+			if (changed &&
+				((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
+				(YbIsClientYsqlConnMgr()  && gconf->context > PGC_BACKEND)))
 			{
 				gconf->status |= GUC_NEEDS_REPORT;
 				report_needed = true;
@@ -8043,7 +8046,7 @@ ReportChangedGUCOptions(void)
 	{
 		struct config_generic *conf = guc_variables[i];
 
-		if ((conf->flags & GUC_REPORT) && (conf->status & GUC_NEEDS_REPORT))
+		if (((conf->flags & GUC_REPORT) || YbIsClientYsqlConnMgr()) && (conf->status & GUC_NEEDS_REPORT))
 			ReportGUCOption(conf);
 	}
 
@@ -9752,7 +9755,11 @@ set_config_option_ext(const char *name, const char *value,
 			}
 	}
 
-	if (changeVal && (record->flags & GUC_REPORT))
+	if (changeVal &&
+		((record->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
+		(YbIsClientYsqlConnMgr() &&
+		record->context > PGC_BACKEND &&
+		!(action & GUC_ACTION_LOCAL))))
 	{
 		record->status |= GUC_NEEDS_REPORT;
 		report_needed = true;

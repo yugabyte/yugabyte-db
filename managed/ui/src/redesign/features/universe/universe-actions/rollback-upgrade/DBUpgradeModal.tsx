@@ -2,11 +2,12 @@ import { FC, ChangeEvent, useState } from 'react';
 import _ from 'lodash';
 import { toast } from 'react-toastify';
 import { useDispatch, useSelector } from 'react-redux';
-import { useMutation } from 'react-query';
+import { useMutation, useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useForm, FormProvider, Controller } from 'react-hook-form';
 import { Box, Typography } from '@material-ui/core';
+import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
 import {
   YBModal,
   YBAutoComplete,
@@ -20,7 +21,6 @@ import {
   createErrorMessage,
   transitToUniverse
 } from '../../universe-form/utils/helpers';
-import { sortVersion } from '../../../../../components/releases';
 import { Universe } from '../../universe-form/utils/dto';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
 import {
@@ -31,6 +31,7 @@ import {
 import { DBUpgradeFormFields, UPGRADE_TYPE, DBUpgradePayload } from './utils/types';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 import { fetchLatestStableVersion, fetchCurrentLatestVersion } from './utils/helper';
+import { compareYBSoftwareVersions, isVersionStable } from '../../../../../utils/universeUtilsTyped';
 //Rbac
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
@@ -42,6 +43,7 @@ import BulbIcon from '../../../../assets/bulb.svg';
 import ExclamationIcon from '../../../../assets/exclamation-traingle.svg';
 import { ReactComponent as UpgradeArrow } from '../../../../assets/upgrade-arrow.svg';
 import WarningIcon from '../../../../assets/warning-triangle.svg';
+import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
 
 interface DBUpgradeModalProps {
   open: boolean;
@@ -59,27 +61,93 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const { universeDetails, universeUUID } = universeData;
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
-  const currentRelease = primaryCluster?.userIntent.ybSoftwareVersion;
+  const currentReleaseFromCluster = primaryCluster?.userIntent.ybSoftwareVersion;
+  let currentRelease: string = "";
+  if (currentReleaseFromCluster !== null && currentReleaseFromCluster !== undefined) {
+    currentRelease = currentReleaseFromCluster;
+  }
   const universeHasXcluster =
     universeData?.universeDetails?.xclusterInfo?.sourceXClusterConfigs?.length > 0 ||
     universeData?.universeDetails?.xclusterInfo?.targetXClusterConfigs?.length > 0;
 
+  const { data: globalRuntimeConfigs, isLoading } = useQuery(['globalRuntimeConfigs'], () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  );
+
+  const skipVersionChecksValue = globalRuntimeConfigs?.configEntries?.find(
+    (c: any) => c.key === 'yb.skip_version_checks'
+  )?.value;
+  // By default skipVersionChecks is false
+  // If runtime config flag is not accessible, assign false to the variable
+  const skipVersionChecks = (skipVersionChecksValue === undefined || skipVersionChecksValue === 'false') ? false : true;
+
+
   let finalOptions: Record<string, any>[] = [];
   const latestStableVersion = fetchLatestStableVersion(releases);
   const latestCurrentRelease = fetchCurrentLatestVersion(releases, currentRelease);
-  if (latestStableVersion && _.gte(latestStableVersion.version, currentRelease))
+  const isCurrentReleaseStable = isVersionStable(currentRelease);
+  // Add latest stable version when current release is stable or when skipVersionCheck is true
+  if (latestStableVersion && compareYBSoftwareVersions({
+    versionA: latestStableVersion.version,
+    versionB: currentRelease,
+    options: {
+      suppressFormatError: true
+    }
+  }) >= 0 &&
+    (isCurrentReleaseStable || skipVersionChecks))
     finalOptions = [latestStableVersion];
   if (latestCurrentRelease) finalOptions = [...finalOptions, latestCurrentRelease];
-  const sortedVersions = Object.keys(releases).sort(sortVersion);
-  const currentReleaseIndex = sortedVersions.indexOf(currentRelease ?? '');
-  const versionsAboveCurrent = sortedVersions.slice(0, currentReleaseIndex + 1);
+  let sortedVersions: string[];
+  const stableSortedVersions = Object.keys(releases).filter(
+    (release) => isVersionStable(release)).sort((versionA, versionB) =>
+      compareYBSoftwareVersions({
+        versionA: versionB,
+        versionB: versionA,
+        options: {
+          suppressFormatError: true,
+          requireOrdering: true
+        },
+      }));
+  const previewSortedVersions = Object.keys(releases).filter(
+    (release) => !isVersionStable(release)).sort((versionA, versionB) =>
+      compareYBSoftwareVersions({
+        versionA: versionB,
+        versionB: versionA,
+        options: {
+          suppressFormatError: true,
+          requireOrdering: true
+        },
+      }));
+  let currentReleaseIndex: number = 0;
+  let versionsAboveCurrent: string[] = [];
+  if (!skipVersionChecks) {
+    if (isCurrentReleaseStable) {
+      sortedVersions = stableSortedVersions;
+    } else {
+      sortedVersions = previewSortedVersions;
+    }
+    currentReleaseIndex = sortedVersions.indexOf(currentRelease ?? '');
+    versionsAboveCurrent = sortedVersions.slice(0, currentReleaseIndex + 1);
+  } else {
+    sortedVersions = Object.keys(releases).sort((versionA, versionB) =>
+      compareYBSoftwareVersions({
+        versionA: versionB,
+        versionB: versionA,
+        options: {
+          suppressFormatError: true,
+          requireOrdering: true
+        },
+      }));
+    currentReleaseIndex = sortedVersions.indexOf(currentRelease ?? '');
+    versionsAboveCurrent = sortedVersions;
+  }
   finalOptions = [
     ...finalOptions,
     ...versionsAboveCurrent.map((e: any) => ({
       version: e,
       info: releases[e],
       series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
-        e.split('.')[1] % 2 === 0 ? '(Standard Term Support)' : '(Preview)'
+        (isVersionStable(e)) ? '(Standard Term Support)' : '(Preview)'
       }`
     }))
   ];
@@ -211,6 +279,10 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     );
   };
 
+  if (isLoading) {
+    return <YBLoadingCircleIcon />;
+  }
+
   return (
     <YBModal
       open={open}
@@ -333,7 +405,13 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
             </Box>
           </Box>
           <Box width="100%" display="flex" flexDirection="column">
-            {_.gte(currentRelease, MINIMUM_SUPPORTED_VERSION) && (
+            {compareYBSoftwareVersions({
+              versionA: currentRelease,
+              versionB: MINIMUM_SUPPORTED_VERSION,
+              options: {
+                suppressFormatError: true
+              }
+            }) >= 0 && (
               <Box className={classes.greyFooter}>
                 <img src={BulbIcon} alt="--" height={'32px'} width={'32px'} />
                 <Box ml={0.5} mt={0.5}>

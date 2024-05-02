@@ -9,10 +9,11 @@ import { Trans, useTranslation } from 'react-i18next';
 import { YBCheckbox, YBInput, YBModal, YBModalProps } from '../../../../redesign/components';
 import { api, drConfigQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
+import { isActionFrozen } from '../../../../redesign/helpers/utils';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
-
 import { DrConfig } from '../dtos';
-import { Universe } from '../../../../redesign/helpers/dtos';
+import { AllowedTasks } from '../../../../redesign/helpers/dtos';
+import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
@@ -20,7 +21,7 @@ interface DeleteConfigModalProps {
   drConfig: DrConfig;
   currentUniverseName: string;
   modalProps: YBModalProps;
-
+  allowedTasks: AllowedTasks;
   redirectUrl?: string;
 }
 
@@ -36,6 +37,7 @@ export const DeleteConfigModal = ({
   drConfig,
   currentUniverseName,
   modalProps,
+  allowedTasks,
   redirectUrl
 }: DeleteConfigModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -112,7 +114,10 @@ export const DeleteConfigModal = ({
 
   const modalTitle = t('title');
   const cancelLabel = t('cancel', { keyPrefix: 'common' });
-  const isFormDisabled = isSubmitting || confirmationText !== currentUniverseName;
+  const isDeleteActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.DELETE_DR);
+  const isFormDisabled =
+    isSubmitting || confirmationText !== currentUniverseName || isDeleteActionFrozen;
+
   return (
     <YBModal
       title={modalTitle}

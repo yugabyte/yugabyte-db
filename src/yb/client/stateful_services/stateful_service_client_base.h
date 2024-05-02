@@ -27,10 +27,6 @@ namespace yb {
 
 class HostPort;
 
-namespace tserver {
-class TabletServer;
-}
-
 namespace client {
 class YBClient;
 
@@ -65,10 +61,11 @@ class StatefulServiceClientBase {
 
   virtual ~StatefulServiceClientBase();
 
-  Status Init(tserver::TabletServer* server);
+  Status Init(
+      const std::string& local_hosts, const std::vector<std::vector<HostPort>>& master_addresses,
+      const std::string& root_dir);
 
-  Status TESTInit(
-      const std::string& local_host, const std::string& master_addresses);
+  Status TEST_Init(const std::string& local_host, const std::string& master_addresses);
 
   void Shutdown();
 

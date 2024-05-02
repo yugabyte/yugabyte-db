@@ -184,13 +184,9 @@ class Master : public tserver::DbServerBase {
   uint32_t GetAutoFlagConfigVersion() const override;
   AutoFlagsConfigPB GetAutoFlagsConfig() const;
 
-  yb::client::AsyncClientInitializer& async_client_initializer() {
-    return *async_client_init_;
-  }
+  const std::shared_future<client::YBClient*>& client_future() const;
 
-  yb::client::AsyncClientInitializer& cdc_state_client_initializer() {
-    return *cdc_state_client_init_;
-  }
+  const std::shared_future<client::YBClient*>& cdc_state_client_future() const;
 
   enum MasterMetricType {
     TaskMetric,

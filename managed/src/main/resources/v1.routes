@@ -513,7 +513,7 @@ DELETE /settings/ha/config/:cUUID                                              c
 # HA Platform Instance API
 POST   /settings/ha/config/:cUUID/instance                                     com.yugabyte.yw.controllers.PlatformInstanceController.createInstance(cUUID: java.util.UUID, request: Request)
 DELETE /settings/ha/config/:cUUID/instance/:iUUID                              com.yugabyte.yw.controllers.PlatformInstanceController.deleteInstance(cUUID: java.util.UUID, iUUID: java.util.UUID, request: Request)
-POST   /settings/ha/config/:cUUID/instance/:iUUID/promote                      com.yugabyte.yw.controllers.PlatformInstanceController.promoteInstance(cUUID: java.util.UUID, iUUID: java.util.UUID, curLeader: String ?= null, request: Request)
+POST   /settings/ha/config/:cUUID/instance/:iUUID/promote                      com.yugabyte.yw.controllers.PlatformInstanceController.promoteInstance(cUUID: java.util.UUID, iUUID: java.util.UUID, curLeader: String ?= null, isForcePromote: java.lang.Boolean ?= true, request: Request)
 GET    /settings/ha/config/:cUUID/instance/local                               com.yugabyte.yw.controllers.PlatformInstanceController.getLocal(cUUID: java.util.UUID)
 
 # HA API for inter-node communication

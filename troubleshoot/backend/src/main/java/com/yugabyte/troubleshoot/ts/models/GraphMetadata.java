@@ -2,11 +2,15 @@ package com.yugabyte.troubleshoot.ts.models;
 
 import java.util.List;
 import java.util.Map;
-import lombok.Data;
+import lombok.Builder;
+import lombok.Value;
+import lombok.extern.jackson.Jacksonized;
 
-@Data
+@Value
+@Builder(toBuilder = true)
+@Jacksonized
 public class GraphMetadata {
-  private String name;
-  private Double threshold;
-  private Map<GraphFilter, List<String>> filters;
+  String name;
+  Double threshold;
+  Map<GraphFilter, List<String>> filters;
 }

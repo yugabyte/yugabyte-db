@@ -44,7 +44,7 @@ yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
 
 {{<note title="Enable pg_hint_plan for all sessions">}}
-You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-options).
+You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-server-options).
 {{</note>}}
 
 
@@ -602,6 +602,6 @@ This example inserts queries into the `hint_plan.hints` table, with placeholders
 ## Learn more
 
 - Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track planning and execution of all the SQL statements.
-- Refer to [View live queries with pg_stat_activity](../pg-stat-activity/) to analyze live queries.
-- Refer to [View COPY progress with pg_stat_progress_copy](../pg-stat-progress-copy/) to track the COPY operation status.
+- Refer to [View live queries with pg_stat_activity](../../observability/pg-stat-activity/) to analyze live queries.
+- Refer to [View COPY progress with pg_stat_progress_copy](../../observability/pg-stat-progress-copy/) to track the COPY operation status.
 - Refer to [Analyze queries with EXPLAIN](../explain-analyze/) to optimize YSQL's EXPLAIN and EXPLAIN ANALYZE queries.

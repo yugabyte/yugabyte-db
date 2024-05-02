@@ -46,7 +46,7 @@ export interface Anomaly {
   startTime: Date | string;
   endTime?: Date | string;
   mainGraphs: GraphMetadata[];
-  supportingGraphs: GraphMetadata[];
+  // supportingGraphs: GraphMetadata[];
   defaultSettings: GraphSettings;
   // commonGraphFilters: Map<string, Set<string>>;
   rcaGuidelines: RCAGuideline[];
@@ -82,7 +82,12 @@ export interface TableInfo {
 export interface RCAGuideline {
   possibleCause: string;
   possibleCauseDescription: string;
-  troubleshootingRecommendations: string[];
+  troubleshootingRecommendations: TroubleshootingRecommendations[];
+}
+
+export interface TroubleshootingRecommendations {
+  recommendation: string;
+  supportingGraphs: GraphMetadata[];
 }
 
 export interface GraphMetadata {
@@ -150,4 +155,9 @@ export enum AppName {
   YBA = 'YBA',
   YBM = 'YBM',
   YBD = 'YBD'
+}
+
+export enum GraphType {
+  MAIN = 'MAIN',
+  SUPPORTING = 'SUPPORTING'
 }

@@ -206,6 +206,9 @@ public class UniverseCRUDHandler {
     } else {
       if (hasChangedNodes
           || !cluster.areTagsSame(currentCluster)
+          || !Objects.equals(
+              PlacementInfoUtil.getDefaultRegion(universe.getUniverseDetails()),
+              PlacementInfoUtil.getDefaultRegion(taskParams))
           || PlacementInfoUtil.didAffinitizedLeadersChange(
               currentCluster.placementInfo, cluster.placementInfo)
           || isRegionListUpdate(cluster, currentCluster)

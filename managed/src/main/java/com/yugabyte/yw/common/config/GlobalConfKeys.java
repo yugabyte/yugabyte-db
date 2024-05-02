@@ -1288,4 +1288,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable the new releases design",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableTroubleshooting =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_troubleshooting",
+          ScopeType.GLOBAL,
+          "Enables Troubleshooting for the Universe",
+          "Enables Troubleshooting for the Universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableAzureProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.azure_provider_validation",
+          ScopeType.GLOBAL,
+          "Azure provider validation",
+          "Enable Azure Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -106,8 +106,7 @@ CREATE TABLE test_partitioned(a int, PRIMARY KEY (a ASC), b text) PARTITION BY R
 CREATE TABLE test_partitioned_part1 PARTITION OF test_partitioned FOR VALUES FROM (1) TO (6);
 CREATE TABLE test_partitioned_part2 PARTITION OF test_partitioned FOR VALUES FROM (6) TO (11);
 INSERT INTO test_partitioned VALUES(generate_series(1, 10), 'text');
-ALTER TABLE test_partitioned ADD COLUMN c SERIAL;
-ALTER TABLE test_partitioned ALTER COLUMN b TYPE int USING length(b);
+ALTER TABLE test_partitioned ADD COLUMN c SERIAL, ALTER COLUMN b TYPE int USING length(b);
 ALTER TABLE test_partitioned DROP CONSTRAINT test_partitioned_pkey;
 ALTER TABLE test_partitioned ADD PRIMARY KEY (a ASC);
 SELECT * FROM test_partitioned;
@@ -311,3 +310,110 @@ SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('nopk2'::regcl
 CREATE TABLE range_pk_test (id int, primary key(id asc)) SPLIT AT VALUES ((5), (10), (15), (20));
 ALTER TABLE range_pk_test DROP CONSTRAINT range_pk_test_pkey;
 SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('range_pk_test'::regclass);
+
+-- Tests for ALTER TYPE.
+-- basic tests.
+CREATE TABLE varchar_table(id SERIAL, c1 varchar(10), PRIMARY KEY (id ASC));
+CREATE TABLE int4_table(id SERIAL, c1 int4, PRIMARY KEY (id ASC));
+ALTER TABLE varchar_table ALTER c1 TYPE int; -- should fail.
+ALTER TABLE int4_table ALTER c1 TYPE int8;
+INSERT INTO int4_table(c1) VALUES (2 ^ 40);
+ALTER TABLE int4_table ALTER c1 TYPE int4; -- should fail.
+INSERT INTO varchar_table(c1) VALUES ('aa');
+ALTER TABLE varchar_table ALTER c1 TYPE varchar(1); -- should fail.
+INSERT INTO varchar_table(c1) VALUES ('a'), (2), ('aaa');
+ALTER TABLE varchar_table ALTER c1 TYPE text;
+SELECT * from varchar_table;
+INSERT INTO varchar_table(c1) VALUES ('a'), ('bb'), ('ccc');
+ALTER TABLE varchar_table ALTER c1 TYPE int USING length(c1);
+SELECT * from varchar_table;
+ALTER TABLE varchar_table ALTER c1 TYPE double precision USING sqrt(c1);
+SELECT * from varchar_table;
+ALTER TABLE int4_table ADD COLUMN c2 varchar, ADD COLUMN c3 int, ALTER c1 TYPE varchar;
+INSERT INTO int4_table(c1, c2, c3) VALUES ('a', 'a', 1), ('b', 'b', 2), ('c', 'c', 3);
+SELECT * from int4_table;
+CREATE TABLE int4_table2(c1 int) PARTITION BY RANGE(c1);
+ALTER TABLE int4_table2 ALTER c1 TYPE varchar; -- should fail.
+CREATE TABLE pk_table(c1 int primary key);
+INSERT INTO pk_table VALUES (1), (2);
+ALTER TABLE pk_table ALTER c1 TYPE varchar;
+SELECT * from pk_table ORDER BY c1 ASC;
+INSERT INTO pk_table VALUES (1); -- should fail.
+ALTER TABLE pk_table ALTER c1 TYPE int USING length(c1);  -- should fail.
+-- test ALTER TYPE on a column that is a part of a view/rule.
+CREATE TABLE test_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
+CREATE VIEW test_view AS SELECT c2 FROM test_table;
+ALTER TABLE test_table ALTER c2 TYPE int USING length(c2); -- should fail.
+ALTER TABLE test_table ALTER c3 TYPE varchar(1);
+CREATE TABLE dummy_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
+CREATE RULE "_RETURN" AS
+    ON SELECT TO dummy_table
+    DO INSTEAD
+        SELECT * FROM test_table;
+ALTER TABLE test_table ALTER c4 TYPE varchar(1); -- should fail.
+DROP TABLE test_table CASCADE;
+-- test ALTER TYPE on a foreign key column.
+CREATE TABLE fk_table (c1 varchar primary key);
+CREATE TABLE test_table (c1 varchar primary key references fk_table(c1));
+CREATE TABLE fk_table2 (c1 varchar references test_table(c1));
+INSERT INTO fk_table VALUES ('a'), ('aa'), ('aaa');
+INSERT INTO test_table VALUES ('a'), ('aa'), ('aaa');
+INSERT INTO fk_table2 VALUES ('a'), ('aa'), ('aaa');
+ALTER TABLE fk_table ALTER c1 TYPE int USING LENGTH(c1); -- should fail.
+ALTER TABLE fk_table ALTER c1 TYPE varchar(3);
+\d fk_table;
+\d test_table;
+\d fk_table2;
+INSERT INTO fk_table2 VALUES ('aaaa'); -- should fail.
+INSERT INTO test_table VALUES ('aaaa'); -- should fail.
+DROP TABLE test_table CASCADE;
+-- test ALTER TYPE where an index with a default tablespace is re-created.
+CREATE TABLESPACE test_tblspc LOCATION '/invalid';
+SET default_tablespace = test_tblspc;
+CREATE TABLE test_table (c1 int, c2 int);
+CREATE INDEX test_index ON test_table(c1);
+ALTER TABLE test_table ALTER c1 TYPE int2;
+\d test_index;
+-- test ALTER TYPE on a table with a range key.
+CREATE TABLE range_key_table(col1 int, a int, b int, col2 int, c text, d text,
+    col3 int, e int, PRIMARY KEY((a, b) HASH, c ASC, d DESC) INCLUDE (e));
+INSERT INTO range_key_table(a, b, c, d)
+    VALUES (1, 1, 'a', 'e'), (1, 1, 'aa', 'f'), (1, 1, 'aa', 'g');
+CREATE INDEX ON range_key_table(c ASC);
+ALTER TABLE range_key_table ALTER c TYPE int USING length(c);
+SELECT a, b, c, d FROM range_key_table;
+\d range_key_table;
+-- tests for split options.
+CREATE TABLE test1 (c1 varchar, c2 varchar) SPLIT INTO 5 TABLETS;
+CREATE INDEX idx1 ON test1(c1) SPLIT INTO 5 TABLETS;
+CREATE INDEX idx2 ON test1(c1 HASH, c2 ASC) SPLIT INTO 5 TABLETS;
+CREATE INDEX idx3 ON test1(c2 ASC) INCLUDE(c1)
+    SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'));
+CREATE INDEX idx4 ON test1(c1 ASC) SPLIT AT VALUES (('h'));
+ALTER TABLE test1 ALTER c1 TYPE int USING length(c1);
+-- verify hash split options on the table are preserved.
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test1'::regclass);
+-- verify hash split options on the indexes are preserved.
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx1'::regclass);
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx2'::regclass);
+-- verify range split options on the indexes are only preserved when the altered column is not a
+-- part of the index key.
+SELECT yb_get_range_split_clause('idx3'::regclass);
+SELECT yb_get_range_split_clause('idx4'::regclass);
+CREATE TABLE test2 (c1 varchar, c2 varchar, PRIMARY KEY(c1 ASC, c2 DESC))
+    SPLIT AT VALUES (('h', 20));
+ALTER TABLE test2 ALTER c1 TYPE int USING length(c1);
+CREATE TABLE test3 (c1 varchar, c2 varchar, PRIMARY KEY(c2 ASC))
+    SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'));
+ALTER TABLE test3 ALTER c1 TYPE int USING length(c1);
+-- verify range split options on the table are only preserved when the altered column is not a
+-- part of the table's key.
+SELECT yb_get_range_split_clause('test2'::regclass);
+SELECT yb_get_range_split_clause('test3'::regclass);
+-- test ALTER TYPE on temp tables.
+CREATE TEMP TABLE test_table (col1 text UNIQUE);
+INSERT INTO test_table VALUES ('1'), ('01');
+ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int;
+ALTER TABLE test_table DROP CONSTRAINT test_table_col1_key;
+ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int;
+SELECT * FROM test_table;

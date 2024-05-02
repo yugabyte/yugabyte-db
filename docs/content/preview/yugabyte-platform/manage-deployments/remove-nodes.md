@@ -1,17 +1,22 @@
 ---
 title: Use YugabyteDB Anywhere to eliminate an unresponsive node
-headerTitle: Eliminate an unresponsive node
-linkTitle: Eliminate an unresponsive node
+headerTitle: Troubleshoot and manage nodes
+linkTitle: Troubleshoot and manage nodes
 description: Use YugabyteDB Anywhere to eliminate an unresponsive node.
+headcontent: Start, stop, delete, and eliminate unresponsive nodes
 aliases:
   - /preview/manage/enterprise-edition/create-universe-multi-region
+  - /preview/yugabyte-platform/add-nodes
+  - /preview/yugabyte-platform/start-stop-processes
 menu:
   preview_yugabyte-platform:
     identifier: remove-nodes
     parent: manage-deployments
-    weight: 20
+    weight: 72
 type: docs
 ---
+
+## Eliminate an unresponsive node
 
 If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues (such as problems with its operating system, disk, and so on) it is detected and displayed in the YugabyteDB Anywhere UI as an unreachable node, as per the following illustration:
 
@@ -56,11 +61,11 @@ Comment by Liza: this bullet point was replaced by Sanketh
 -->
 
 1. If the node is running a Master process, the Master is removed from the Master quorum. The Master process is stopped if the node is still reachable. YugabyteDB Anywhere waits for a new Master leader to be elected. At this point, there is less than a replication factor (RF) number of Masters running, which affects the resilience of the Master quorum. For information on how to restore resilience, see [Start a new Master process](#start-a-new-master-process).
-2. The TServer is marked as blacklisted on the Master leader.
-3. There is a wait for tablet quorums to remove the blacklisted TServer.
-4. Data migration is performed and the TServer process stops only if it is reachable.
-5. The node is marked as having neither Master nor TServer processes.
-6. DNS entries are updated.
+1. The TServer is marked as blacklisted on the Master leader.
+1. There is a wait for tablet quorums to remove the blacklisted TServer.
+1. Data migration is performed and the TServer process stops only if it is reachable.
+1. The node is marked as having neither Master nor TServer processes.
+1. DNS entries are updated.
 
 The node removal action results in the instance still being allocated but not involved in any schemas.
 
@@ -103,7 +108,7 @@ Taking this action transfers the node to a BeingDecommissioned and then Decommis
 5. DNS entries are updated.
 6. Prometheus rules are updated and instructed to stop gathering metrics from this instance.
 
-You can recover a node whose **Status** column displays **Decommissioned** by following instructions provided in [Recover a node](../add-nodes/).
+You can recover a node whose **Status** column displays **Decommissioned** by following instructions provided in [Recover a node](#recover-a-node).
 
 ## Delete node
 
@@ -122,3 +127,35 @@ Taking this action completely eliminates the node, as follows:
 2. Updates metadata in the database only.
 
 Note that, for on-premises deployments only, if you want to reuse the node, after deleting it you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../install-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
+
+## Recover a node
+
+In some cases, depending on the node's status, YugabyteDB Anywhere allows you to recover a removed node on a new backing instance, as follows:
+
+1. Navigate to **Universes**, select your universe, and open the **Nodes** tab.
+
+1. Find a node with a Decommissioned status and click its corresponding **Actions > Add Node**, as per the following illustration:
+
+  ![Add Node Actions](/images/ee/node-actions-add-node.png)
+
+For Infrastructure as a service (IaaS) such as AWS and GCP, YugabyteDB Anywhere will spawn with the existing node instance type in the existing region and zone of that node. When the process completes, the node will have the Master and TServer processes running, along with data that is load-balanced onto this node. The node's name will be reused and the status will be shown as Live.
+
+For information on removing and eliminating nodes, see [Eliminate an unresponsive node](#eliminate-an-unresponsive-node).
+
+## Start and stop node processes
+
+### Stop a process
+
+If a node needs the intervention, you can click its associated **Actions > Stop Processes**.
+
+After the YB-TServer and (where applicable) YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
+
+Generally, when a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped. This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never underreplicated.
+
+It is recommended not to stop more than (RF - 1) / 2 processes at any given time. For example, on an RF=3 cluster with three nodes, there can only be one node with stopped processes to allow the majority of the nodes to perform Raft consensus operations.
+
+### Start a process
+
+You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Start Processes** corresponding to the node. This returns the node to the Live state.
+
+In some cases, the system might experience an unrecoverable error. To mitigate, you can use the **Release Instance** option for the stopped node. This also removes the backing instance. For details, see [Remove a node](#remove-node).

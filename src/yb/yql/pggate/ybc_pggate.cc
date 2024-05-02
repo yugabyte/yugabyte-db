@@ -2074,6 +2074,7 @@ YBCStatus YBCPgGetCDCConsistentChanges(
 
   *DCHECK_NOTNULL(record_batch) = NULL;
   const auto resp = result.get();
+  VLOG(4) << "The GetConsistentChangesForCDC response: " << resp.DebugString();
   auto row_count = resp.cdc_sdk_proto_records_size();
 
   auto resp_rows_pb = resp.cdc_sdk_proto_records();
@@ -2081,29 +2082,85 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
     auto row_message_pb = row_pb.row_message();
-    auto col_count = row_message_pb.new_tuple_size();
     auto commit_time = row_message_pb.commit_time();
 
+    static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
+
+    // column_name -> (index in old tuples, index in new tuples).
+    // OMITTED_VALUE indicates omission.
+    // For insert: all the columns will be of form (OMITTED_VALUE, <index>).
+    // For delete: all the columns will be of form (<index>, OMITTED_VALUE) or
+    // won't exist in the map depending on the record type (replica identity) of the stream.
+    // For update: both old and new tuples will be present.
+    std::unordered_map<std::string, std::pair<size_t, size_t>> col_name_idx_map;
+    int new_tuple_idx = 0;
+    for (auto &new_tuple : row_message_pb.new_tuple()) {
+      if (new_tuple.has_column_name()) {
+        col_name_idx_map.emplace(
+            new_tuple.column_name(), std::make_pair(OMITTED_VALUE, new_tuple_idx));
+      }
+      new_tuple_idx++;
+    }
+    int old_tuple_idx = 0;
+    for (auto& old_tuple : row_message_pb.old_tuple()) {
+      if (old_tuple.has_column_name()) {
+        auto itr = col_name_idx_map.find(old_tuple.column_name());
+        if (itr != col_name_idx_map.end()) {
+          itr->second.first = old_tuple_idx;
+        } else {
+          col_name_idx_map.emplace(
+              old_tuple.column_name(), std::make_pair(old_tuple_idx, OMITTED_VALUE));
+        }
+      }
+      old_tuple_idx++;
+    }
+
+    auto col_count = narrow_cast<int>(col_name_idx_map.size());
     YBCPgDatumMessage *cols = nullptr;
     if (col_count > 0) {
       cols = static_cast<YBCPgDatumMessage *>(YBCPAlloc(sizeof(YBCPgDatumMessage) * col_count));
 
-      for (int tuple_idx = 0; tuple_idx < col_count; tuple_idx++) {
-        const auto& tuple = row_message_pb.new_tuple(tuple_idx);
-
-        const auto* type_entity = pgapi->FindTypeEntity(static_cast<int>(tuple.column_type()));
+      int tuple_idx = 0;
+      for (const auto& col_idxs : col_name_idx_map) {
         YBCPgTypeAttrs type_attrs{-1 /* typmod */};
-        uint64 datum = 0;
-        bool is_null;
-        auto s = PBToDatum(type_entity, type_attrs, tuple.pg_ql_value(), &datum, &is_null);
-        if (!s.ok()) {
-          return ToYBCStatus(s);
+        const auto& column_name = col_idxs.first;
+
+        // Old value.
+        uint64 old_datum = 0;
+        bool old_is_null = true;
+        if (col_idxs.second.first != OMITTED_VALUE) {
+          const auto old_datum_pb =
+              &row_message_pb.old_tuple(static_cast<int>(col_idxs.second.first));
+          const auto *type_entity =
+              pgapi->FindTypeEntity(static_cast<int>(old_datum_pb->column_type()));
+          auto s = PBToDatum(
+              type_entity, type_attrs, old_datum_pb->pg_ql_value(), &old_datum, &old_is_null);
+          if (!s.ok()) {
+            return ToYBCStatus(s);
+          }
         }
 
-        auto col = &cols[tuple_idx];
-        col->column_name = YBCPAllocStdString(tuple.column_name());
-        col->datum = datum;
-        col->is_null = is_null;
+        // New value.
+        uint64 new_datum = 0;
+        bool new_is_null = true;
+        if (col_idxs.second.second != OMITTED_VALUE) {
+          const auto new_datum_pb =
+              &row_message_pb.new_tuple(static_cast<int>(col_idxs.second.second));
+          const auto *type_entity =
+              pgapi->FindTypeEntity(static_cast<int>(new_datum_pb->column_type()));
+          auto s = PBToDatum(
+              type_entity, type_attrs, new_datum_pb->pg_ql_value(), &new_datum, &new_is_null);
+          if (!s.ok()) {
+            return ToYBCStatus(s);
+          }
+        }
+
+        auto col = &cols[tuple_idx++];
+        col->column_name = YBCPAllocStdString(column_name);
+        col->after_op_datum = new_datum;
+        col->after_op_is_null = new_is_null;
+        col->before_op_datum = old_datum;
+        col->before_op_is_null = old_is_null;
       }
     }
 
@@ -2132,6 +2189,19 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       .rows = resp_rows,
   };
 
+  return YBCStatusOK();
+}
+
+YBCStatus YBCPgUpdateAndPersistLSN(
+    const char* stream_id, YBCPgXLogRecPtr restart_lsn_hint, YBCPgXLogRecPtr confirmed_flush,
+    YBCPgXLogRecPtr* restart_lsn) {
+  const auto result =
+      pgapi->UpdateAndPersistLSN(std::string(stream_id), restart_lsn_hint, confirmed_flush);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  *DCHECK_NOTNULL(restart_lsn) = result->restart_lsn();
   return YBCStatusOK();
 }
 

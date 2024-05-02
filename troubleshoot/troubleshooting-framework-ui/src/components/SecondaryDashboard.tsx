@@ -6,7 +6,7 @@ import { Tooltip, Box, makeStyles, MenuItem } from '@material-ui/core';
 import moment from 'moment-timezone';
 import { YBButton } from '@yugabytedb/ui-components';
 import { YBSelect } from '../common/YBSelect';
-import { Anomaly, AppName, MetricMeasure } from '../helpers/dtos';
+import { Anomaly, AppName, GraphType, MetricMeasure } from '../helpers/dtos';
 import {
   isNonEmptyArray,
   isNonEmptyObject,
@@ -15,7 +15,7 @@ import {
   divideYAxisByThousand,
   timeFormatXAxis,
   isNonEmptyString
-} from '../helpers/ObjectUtils';
+} from '../helpers/objectUtils';
 import { METRIC_FONT, MetricConsts } from '../helpers/constants';
 
 import PrometheusIcon from '../assets/prometheus-icon.svg';
@@ -23,7 +23,7 @@ import PrometheusIcon from '../assets/prometheus-icon.svg';
 const Plotly = require('plotly.js/lib/index-basic.js');
 
 interface SecondaryDashboardProps {
-  anomalyData: Anomaly | undefined;
+  anomalyData: Anomaly | null;
   metricData: any;
   appName: AppName;
   metricKey: string;
@@ -37,6 +37,7 @@ interface SecondaryDashboardProps {
   isMetricLoading: boolean;
   timezone?: string;
   className?: any;
+  graphType: GraphType;
 }
 
 const MIN_OUTLIER_BUTTONS_WIDTH = 250;
@@ -51,6 +52,12 @@ const DEFAULT_CONTAINER_WIDTH = 1600;
 
 const DEFAULT_CONTAINER_WIDTH_YBM = 1400;
 const MAX_GRAPH_WIDTH_PX_YBM = 1400;
+
+const MIN_OUTLIER_BUTTONS_WIDTH_OTHER = 290;
+const WIDTH_OFFSET_OTHER = 23;
+
+const MAX_GRAPH_WIDTH_PX_OTHER = 600;
+const DEFAULT_CONTAINER_WIDTH_OTHER = 1200;
 
 const useStyles = makeStyles((theme) => ({
   outlierButton: {
@@ -132,7 +139,8 @@ export const SecondaryDashboard = ({
   shouldAbbreviateTraceName,
   isMetricLoading,
   className,
-  timezone
+  timezone,
+  graphType
 }: SecondaryDashboardProps) => {
   const classes = useStyles();
   let showDropdown = false;
@@ -144,16 +152,32 @@ export const SecondaryDashboard = ({
   const anomalyEndTime = anomalyData?.endTime;
   const utcStartTimeStamp = moment.utc(anomalyStartTime).valueOf();
   const utcEndTimeStamp = anomalyEndTime ? moment.utc(anomalyEndTime).valueOf() : null;
+
+  // State variables
   const [outlierButtonsWidth, setOutlierButtonsWidth] = useState<number | null>(null);
   const [focusedButton, setFocusedButton] = useState<any>(null);
   const [itemInDropdown, setItemInDropdown] = useState<boolean>(false);
-  const outlierButtonsRef: any = useRef(null);
   const [active, setActive] = useState<boolean>(false);
+
+  // Ref and Previous variavles
+  const outlierButtonsRef: any = useRef(null);
   const previousMetricData = usePrevious(metricData);
 
   const getGraphWidth = (containerWidth: number) => {
-    const maxGraphWidth = appName === AppName.YBA ? MAX_GRAPH_WIDTH_PX : MAX_GRAPH_WIDTH_PX_YBM;
-    const width = containerWidth - CONTAINER_PADDING - WIDTH_OFFSET;
+    let maxGraphWidth =
+      appName === AppName.YBA
+        ? graphType === GraphType.MAIN
+          ? MAX_GRAPH_WIDTH_PX
+          : MAX_GRAPH_WIDTH_PX_OTHER
+        : MAX_GRAPH_WIDTH_PX_YBM;
+    if (appName === AppName.YBM) {
+      maxGraphWidth =
+        graphType === GraphType.MAIN ? MAX_GRAPH_WIDTH_PX_YBM : MAX_GRAPH_WIDTH_PX_OTHER;
+    }
+    const width =
+      containerWidth -
+      CONTAINER_PADDING -
+      (graphType === GraphType.MAIN ? WIDTH_OFFSET : WIDTH_OFFSET_OTHER);
     const columnCount = Math.ceil(width / maxGraphWidth);
     return Math.floor(width / columnCount) - GRAPH_GUTTER_WIDTH_PX;
   };
@@ -162,13 +186,19 @@ export const SecondaryDashboard = ({
     const metric = _.cloneDeep(metricData);
     if (isNonEmptyObject(metric)) {
       const layoutHeight = height ?? DEFAULT_HEIGHT;
-      const layoutWidth =
-        width ??
-        getGraphWidth(
-          containerWidth ?? appName === AppName.YBA
-            ? DEFAULT_CONTAINER_WIDTH
-            : DEFAULT_CONTAINER_WIDTH_YBM
-        );
+
+      let graphWidth =
+        appName === AppName.YBA ? DEFAULT_CONTAINER_WIDTH : DEFAULT_CONTAINER_WIDTH_YBM;
+      if (appName === AppName.YBA) {
+        graphWidth =
+          graphType === GraphType.MAIN ? DEFAULT_CONTAINER_WIDTH : DEFAULT_CONTAINER_WIDTH_OTHER;
+      } else if (appName === AppName.YBM) {
+        graphWidth =
+          graphType === GraphType.MAIN
+            ? DEFAULT_CONTAINER_WIDTH_YBM
+            : DEFAULT_CONTAINER_WIDTH_OTHER;
+      }
+      const layoutWidth = width ?? getGraphWidth(graphWidth);
 
       if (operations.length || metricOperation) {
         const matchingMetricOperation = metricOperation
@@ -391,6 +421,7 @@ export const SecondaryDashboard = ({
     }
   }, [metricData]);
 
+  // Get prometheus link for URL
   const getMetricsUrl = (internalUrl: string, metricsLinkUseBrowserFqdn: boolean) => {
     if (!metricsLinkUseBrowserFqdn) {
       return internalUrl;
@@ -418,7 +449,9 @@ export const SecondaryDashboard = ({
     return className;
   };
 
-  if (outlierButtonsWidth! > MIN_OUTLIER_BUTTONS_WIDTH) {
+  const minWidth =
+    graphType === GraphType.MAIN ? MIN_OUTLIER_BUTTONS_WIDTH : MIN_OUTLIER_BUTTONS_WIDTH_OTHER;
+  if (outlierButtonsWidth! > minWidth) {
     numButtonsInDropdown = 1;
     if (operations.length === 3) {
       numButtonsInDropdown = 2;
@@ -475,9 +508,10 @@ export const SecondaryDashboard = ({
                 )}
                 key={idx}
                 variant="secondary"
-                onClick={() => {
+                onClick={(event) => {
                   setActive(false);
                   loadDataByMetricOperation(operation, false);
+                  event.stopPropagation();
                 }}
               >
                 {operation}
@@ -500,9 +534,10 @@ export const SecondaryDashboard = ({
                   key={idx}
                   value={operation}
                   // active={operation === inFocusButton}
-                  onClick={() => {
+                  onClick={(event) => {
                     setActive(true);
                     loadDataByMetricOperation(operation, true);
+                    event.stopPropagation();
                   }}
                 >
                   {operation}

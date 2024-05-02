@@ -1989,6 +1989,14 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Test
+  public void testGetUpdateOptionsEditDefaultRegion() throws IOException {
+    testGetAvailableOptions(
+        x -> x.getPrimaryCluster().placementInfo.cloudList.get(0).defaultRegion = UUID.randomUUID(),
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+  }
+
+  @Test
   public void testGetUpdateOptionsEditRF() throws IOException {
     testGetAvailableOptions(
         x -> x.getPrimaryCluster().userIntent.replicationFactor++,

@@ -80,6 +80,23 @@ templates:
         Last alert query for customer '{{ $labels.source_name }}' failed
         - check YB Platform logs for details or contact YB support team
 
+  HA_STANDBY_SYNC:
+    name: HA Standby Sync
+    description: Backup sync to standby has failed
+    queryTemplate: time() - last_over_time(yba_ha_last_backup_seconds[1m]) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 900.0
+    targetType: PLATFORM
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: SECOND
+    thresholdReadOnly: false
+    annotations:
+      summary: >-
+        HA replication failed for Standby instance '{{$labels.instance_address}}'
+        - check HA config tab or YBA logs
+
   BACKUP_FAILURE:
     name: Backup Failure
     description: Last universe backup creation task failed
@@ -1576,7 +1593,7 @@ templates:
   TABLET_SERVER_AVG_READ_LATENCY:
     name: Tablet server average read latency is high
     description: Average read latency of tablet server is above threshold
-    queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m]))) 
+    queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m])))
       / (avg by (universe_uuid) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m])) * 1000)
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: false
@@ -1599,12 +1616,12 @@ templates:
         is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
 
         Affected nodes: {{ $labels.affected_node_names }}
-  
-  
+
+
   TABLET_SERVER_AVG_WRITE_LATENCY:
     name: Tablet server average write latency is high
     description: Average write latency of tablet server is above threshold
-    queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m]))) 
+    queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m])))
       / (avg by (universe_uuid) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m])) * 1000)
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: false
@@ -1632,10 +1649,10 @@ templates:
   REACTOR_DELAYS:
     name: Reactor delays are high
     description: Number of milliseconds incoming RPC requests or outbound calls spend in the worker queue before the beginning of processing
-    queryTemplate: max by (universe_uuid) (avg by (universe_uuid, saved_name)(label_replace(rate(rpc_incoming_queue_time_sum{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m]), "saved_name", "rpc_incoming_queue_time_count", "saved_name", "(.*)")) 
+    queryTemplate: max by (universe_uuid) (avg by (universe_uuid, saved_name)(label_replace(rate(rpc_incoming_queue_time_sum{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m]), "saved_name", "rpc_incoming_queue_time_count", "saved_name", "(.*)"))
       / (avg by (universe_uuid, saved_name)(rate(rpc_incoming_queue_time_count{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m])) * 1000)
       {{ query_condition }} {{ query_threshold }}
-      or (avg by (universe_uuid, saved_name)(label_replace(rate(handler_latency_outbound_call_queue_time_sum{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m]), "saved_name", "handler_latency_outbound_call_queue_time_count", "saved_name", "(.*)"))) 
+      or (avg by (universe_uuid, saved_name)(label_replace(rate(handler_latency_outbound_call_queue_time_sum{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m]), "saved_name", "handler_latency_outbound_call_queue_time_count", "saved_name", "(.*)")))
       / (avg by (universe_uuid, saved_name)(rate(handler_latency_outbound_call_queue_time_count{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m])) * 1000)
       {{ query_condition }} {{ query_threshold }})
     createForNewCustomer: false
@@ -1654,7 +1671,7 @@ templates:
         (avg by (universe_uuid, node_name) (rate(rpc_incoming_queue_time_sum{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])))
         / (avg by (universe_uuid, node_name) (rate(rpc_incoming_queue_time_count{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])) * 1000)
         {{ query_condition }} {{ query_threshold }}
-        or (avg by (universe_uuid, node_name) (rate(handler_latency_outbound_call_queue_time_sum{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m]))) 
+        or (avg by (universe_uuid, node_name) (rate(handler_latency_outbound_call_queue_time_sum{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])))
         / (avg by (universe_uuid, node_name) (rate(handler_latency_outbound_call_queue_time_count{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])) * 1000)
         {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
@@ -1687,7 +1704,7 @@ templates:
         RPC queue size is high for universe '{{ $labels.source_name }}'.
 
         Affected nodes: {{ $labels.affected_node_names }}
-  
+
   LOG_CACHE_SIZE:
     name: Log cache size is high
     description: WAL cache size is the total per-tablet size of consensus entries kept in memory.
@@ -1708,7 +1725,7 @@ templates:
       summary: >-
         WAL cache size is high for nodes '{{ $labels.affected_node_names }}' in universe '{{ $labels.source_name }}'.
         Current value is {{ $value | printf "%.0f" }} MB for one of the nodes.
-  
+
   CACHE_MISS:
     name: DocDB cache miss percentage is high
     description: It represents the percentage of block cache misses compared to hits.

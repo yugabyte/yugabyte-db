@@ -24,7 +24,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 	Short:   "Describe instance type of a YugabyteDB Anywhere on-premises provider",
 	Long:    "Describe instance types of a YugabyteDB Anywhere on-premises provider",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -46,14 +46,11 @@ var describeInstanceTypesCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		providerListRequest := authAPI.GetListOfProviders()
 
-		providerName, err := cmd.Flags().GetString("provider-name")
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -72,7 +69,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 			return
 		}
 
-		if r[0].GetCode() != "onprem" {
+		if r[0].GetCode() != util.OnpremProviderType {
 			errMessage := "Operation only supported for On-premises providers."
 			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}

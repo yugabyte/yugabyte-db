@@ -37,22 +37,26 @@ import {
 import * as Yup from 'yup';
 import { toast } from 'react-toastify';
 import { components } from 'react-select';
+import clsx from 'clsx';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { find, isFunction, omit } from 'lodash';
 import { BACKUP_API_TYPES } from '../common/IBackup';
-import { TableType } from '../../../redesign/helpers/dtos';
-import clsx from 'clsx';
+import { AllowedTasks, TableType } from '../../../redesign/helpers/dtos';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { handleCACertErrMsg } from '../../customCACerts';
+import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
+
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
   backup_details: IBackup;
   onHide: Function;
   visible: boolean;
+  allowedTasks: AllowedTasks;
   isRestoreEntireBackup?: boolean;
 }
 
@@ -91,6 +95,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
   backup_details,
   onHide,
   visible,
+  allowedTasks,
   isRestoreEntireBackup = false
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
@@ -320,10 +325,13 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
       .max(100, 'Parallel threads should be less than or equal to 100')
   });
 
+  const isRestoreBackupTaskDisabled = isActionFrozen(allowedTasks, UNIVERSE_TASKS.RESTORE_BACKUP);
+
   return (
     <YBModalForm
       size="large"
       title={STEPS[currentStep].title}
+      isButtonDisabled={currentStep === 1 && isRestoreBackupTaskDisabled}
       className="backup-modal"
       visible={visible}
       validationSchema={validationSchema}

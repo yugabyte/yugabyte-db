@@ -186,7 +186,7 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
         </Col>
       </Row>
       <Row>
-        <Col lg={2}>
+        <Col lg={3}>
           <YBLabel label="Start time">
             <DateTimePicker
               placeholder="Pick a time"
@@ -199,7 +199,7 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
             />
           </YBLabel>
         </Col>
-        <Col lg={2}>
+        <Col lg={3}>
           <YBLabel label="End time">
             <DateTimePicker
               placeholder="Pick a time"

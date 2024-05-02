@@ -45,6 +45,7 @@
 
 /* YB includes. */
 #include "pg_yb_utils.h"
+#include "replication/yb_virtual_wal_client.h"
 
 /* data for errcontext callback */
 typedef struct LogicalErrorCallbackState
@@ -1746,9 +1747,15 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 {
 	Assert(lsn != InvalidXLogRecPtr);
 
+	/*
+	 * YB Note: The mechanism of updating restart lsn is different in YSQL. We
+	 * do not use candidate_xmin_lsn and candidate_restart_lsn. Hence, this
+	 * check is disabled.
+	 */
 	/* Do an unlocked check for candidate_lsn first. */
-	if (MyReplicationSlot->candidate_xmin_lsn != InvalidXLogRecPtr ||
-		MyReplicationSlot->candidate_restart_valid != InvalidXLogRecPtr)
+	if (!IsYugaByteEnabled() &&
+		(MyReplicationSlot->candidate_xmin_lsn != InvalidXLogRecPtr ||
+		 MyReplicationSlot->candidate_restart_valid != InvalidXLogRecPtr))
 	{
 		bool		updated_xmin = false;
 		bool		updated_restart = false;
@@ -1819,8 +1826,14 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 	}
 	else
 	{
+		XLogRecPtr	yb_restart_lsn = InvalidXLogRecPtr;
+		if (IsYugaByteEnabled())
+			yb_restart_lsn = YBCCalculatePersistAndGetRestartLSN(lsn);
+
 		SpinLockAcquire(&MyReplicationSlot->mutex);
 		MyReplicationSlot->data.confirmed_flush = lsn;
+		if (IsYugaByteEnabled() && yb_restart_lsn != InvalidXLogRecPtr)
+			MyReplicationSlot->data.restart_lsn = yb_restart_lsn;
 		SpinLockRelease(&MyReplicationSlot->mutex);
 	}
 }

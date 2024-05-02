@@ -41,9 +41,11 @@ StatefulServiceClientBase::StatefulServiceClientBase(StatefulServiceKind service
 
 StatefulServiceClientBase::~StatefulServiceClientBase() { Shutdown(); }
 
-Status StatefulServiceClientBase::Init(tserver::TabletServer* server) {
+Status StatefulServiceClientBase::Init(
+    const std::string& local_hosts, const std::vector<std::vector<HostPort>>& masters,
+    const std::string& root_dir) {
   std::vector<std::string> addresses;
-  for (const auto& address : *server->options().GetMasterAddresses()) {
+  for (const auto& address : masters) {
     for (const auto& host_port : address) {
       addresses.push_back(host_port.ToString());
     }
@@ -51,12 +53,11 @@ Status StatefulServiceClientBase::Init(tserver::TabletServer* server) {
   SCHECK(!addresses.empty(), InvalidArgument, "No master address found to StatefulServiceClient.");
 
   const auto master_addresses = JoinStrings(addresses, ",");
-  auto local_hosts = server->options().HostsString();
 
   std::lock_guard lock(mutex_);
   rpc::MessengerBuilder messenger_builder(service_name_ + "_Client");
-  secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(
-      local_hosts, server->fs_manager()->GetDefaultRootDir(), &messenger_builder));
+  secure_context_ =
+      VERIFY_RESULT(rpc::SetupInternalSecureContext(local_hosts, root_dir, &messenger_builder));
 
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
 
@@ -77,7 +78,7 @@ Status StatefulServiceClientBase::Init(tserver::TabletServer* server) {
   return Status::OK();
 }
 
-Status StatefulServiceClientBase::TESTInit(
+Status StatefulServiceClientBase::TEST_Init(
     const std::string& local_host, const std::string& master_addresses) {
   std::lock_guard lock(mutex_);
   rpc::MessengerBuilder messenger_builder(service_name_ + "Client");

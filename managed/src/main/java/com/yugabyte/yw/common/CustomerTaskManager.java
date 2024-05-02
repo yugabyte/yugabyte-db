@@ -471,6 +471,7 @@ public class CustomerTaskManager {
       case RebootNodeInUniverse:
       case StartNodeInUniverse:
       case StopNodeInUniverse:
+      case StartMasterOnNode:
         String nodeName = oldTaskParams.get("nodeName").textValue();
         String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
         UUID universeUUID = UUID.fromString(universeUUIDStr);

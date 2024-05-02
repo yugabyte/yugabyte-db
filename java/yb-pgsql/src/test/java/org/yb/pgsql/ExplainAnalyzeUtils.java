@@ -110,6 +110,9 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder estimatedSeeks(ValueChecker<Double> checker);
     PlanCheckerBuilder estimatedNexts(ValueChecker<Double> checker);
 
+    // Estimated Docdb Result Width
+    PlanCheckerBuilder estimatedDocdbResultWidth(ValueChecker<Long> checker);
+
     // Parallel workers in Gather and Gather Merge
     PlanCheckerBuilder workersPlanned(ValueChecker<Long> checker);
     PlanCheckerBuilder workersLaunched(ValueChecker<Long> checker);

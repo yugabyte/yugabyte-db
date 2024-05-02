@@ -748,6 +748,16 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 				*detail_nargs = status_nargs;
 				*detail_args = status_args;
 			}
+			else if(YBCIsTxnAbortedError(txn_err_code))
+			{
+				*msg_buf = "current transaction is expired or aborted";
+				*msg_nargs = 0;
+				*msg_args = NULL;
+
+				*detail_buf = status_msg;
+				*detail_nargs = status_nargs;
+				*detail_args = status_args;
+			}
 			break;
 		case ERRCODE_UNIQUE_VIOLATION:
 			*msg_buf = "duplicate key value violates unique constraint \"%s\"";

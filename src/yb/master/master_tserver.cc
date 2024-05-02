@@ -19,7 +19,6 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
-#include "yb/client/async_initializer.h"
 #include "yb/common/pg_types.h"
 
 #include "yb/master/catalog_manager_if.h"
@@ -162,7 +161,7 @@ Status MasterTabletServer::get_ysql_db_oid_to_cat_version_info_map(
 }
 
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
-  return master_->async_client_initializer().get_client_future();
+  return master_->client_future();
 }
 
 Status MasterTabletServer::GetLiveTServers(

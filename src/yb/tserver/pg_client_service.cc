@@ -24,7 +24,7 @@
 
 #include "yb/cdc/cdc_state_table.h"
 
-#include "yb/client/async_initializer.h"
+#include "yb/server/async_client_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
@@ -428,7 +428,8 @@ class PgClientServiceImpl::Impl {
         "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
         permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
     cdc_state_client_init_->Start();
-    cdc_state_table_ = std::make_shared<cdc::CDCStateTable>(cdc_state_client_init_.get());
+    cdc_state_table_ =
+        std::make_shared<cdc::CDCStateTable>(cdc_state_client_init_->get_client_future());
     if (FLAGS_pg_client_use_shared_memory) {
       WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
     }

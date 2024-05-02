@@ -221,6 +221,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     return <YBLoading />;
   }
 
+  const allowedTasks = currentUniverseQuery.data?.allowedTasks;
   const universeHasTxnXCluster = xClusterConfigQueries.some(
     (xClusterConfigQuery) => xClusterConfigQuery.data?.type === XClusterConfigType.TXN
   );
@@ -240,6 +241,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isCreateConfigModalOpen && (
           <CreateConfigModal
             sourceUniverseUuid={currentUniverseUuid}
+            allowedTasks={allowedTasks}
             modalProps={{ open: isCreateConfigModalOpen, onClose: closeCreateConfigModal }}
           />
         )}
@@ -518,18 +520,21 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isSwitchoverModalOpen && (
           <InitiateSwitchoverModal
             drConfig={drConfig}
+            allowedTasks={allowedTasks}
             modalProps={{ open: isSwitchoverModalOpen, onClose: closeSwitchoverModal }}
           />
         )}
         {isFailoverModalOpen && (
           <InitiateFailoverModal
             drConfig={drConfig}
+            allowedTasks={allowedTasks}
             modalProps={{ open: isFailoverModalOpen, onClose: closeFailoverModal }}
           />
         )}
         {isDeleteConfigModalOpen && (
           <DeleteConfigModal
             drConfig={drConfig}
+            allowedTasks={allowedTasks}
             currentUniverseName={currentUniverseQuery.data.name}
             modalProps={{ open: isDeleteConfigModalOpen, onClose: closeDeleteConfigModal }}
           />
@@ -537,6 +542,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isEditConfigModalOpen && (
           <EditConfigModal
             drConfig={drConfig}
+            allowedTasks={allowedTasks}
             modalProps={{ open: isEditConfigModalOpen, onClose: closeEditConfigModal }}
           />
         )}
@@ -564,6 +570,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isRestartConfigModalOpen && (
           <RestartConfigModal
             isDrInterface={true}
+            allowedTasks={allowedTasks}
             drConfig={drConfig}
             configTableType={TableType.PGSQL_TABLE_TYPE}
             isVisible={isRestartConfigModalOpen}
@@ -573,6 +580,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         )}
         {isDbSyncModalOpen && (
           <SyncXClusterConfigModal
+            allowedTasks={allowedTasks}
             xClusterConfig={xClusterConfig}
             isDrInterface={true}
             drConfigUuid={drConfig.uuid}

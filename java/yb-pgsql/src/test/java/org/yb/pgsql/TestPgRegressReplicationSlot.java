@@ -35,6 +35,7 @@ public class TestPgRegressReplicationSlot extends BasePgSQLTest {
         "ysql_yb_enable_replication_commands,yb_enable_cdc_consistent_snapshot_streams");
     flagMap.put("ysql_yb_enable_replication_commands", "true");
     flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
+    flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
     return flagMap;
   }
 
@@ -45,6 +46,7 @@ public class TestPgRegressReplicationSlot extends BasePgSQLTest {
         "ysql_yb_enable_replication_commands,yb_enable_cdc_consistent_snapshot_streams");
     flagMap.put("ysql_yb_enable_replication_commands", "true");
     flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
+    flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
     return flagMap;
   }
 

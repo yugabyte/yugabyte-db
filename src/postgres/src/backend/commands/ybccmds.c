@@ -1968,3 +1968,11 @@ YBCGetCDCConsistentChanges(const char *stream_id,
 {
 	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
 }
+
+void
+YBCUpdateAndPersistLSN(const char *stream_id, XLogRecPtr restart_lsn_hint,
+					   XLogRecPtr confirmed_flush, YBCPgXLogRecPtr *restart_lsn)
+{
+	HandleYBStatus(YBCPgUpdateAndPersistLSN(stream_id, restart_lsn_hint,
+											confirmed_flush, restart_lsn));
+}

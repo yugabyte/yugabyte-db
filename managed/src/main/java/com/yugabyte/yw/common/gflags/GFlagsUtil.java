@@ -487,6 +487,15 @@ public class GFlagsUtil {
     return Provider.getOrBadRequest(UUID.fromString(providerUUID)).getYbHome();
   }
 
+  private static String getMasterAddrs(
+      AnsibleConfigureServers.Params taskParam, Universe universe, boolean useSecondaryIp) {
+    String masterAddresses = taskParam.getMasterAddrsOverride();
+    if (StringUtils.isBlank(masterAddresses)) {
+      masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
+    }
+    return masterAddresses;
+  }
+
   private static Map<String, String> getTServerDefaultGflags(
       AnsibleConfigureServers.Params taskParam,
       Universe universe,
@@ -497,7 +506,7 @@ public class GFlagsUtil {
       boolean configureCGroup) {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
+    String masterAddresses = getMasterAddrs(taskParam, universe, useSecondaryIp);
     String privateIp = node.cloudInfo.private_ip;
     int tserverRpcPort =
         taskParam.overrideNodePorts
@@ -829,7 +838,7 @@ public class GFlagsUtil {
       RuntimeConfGetter confGetter) {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
+    String masterAddresses = getMasterAddrs(taskParam, universe, useSecondaryIp);
     String privateIp = node.cloudInfo.private_ip;
     int masterRpcPort =
         taskParam.overrideNodePorts

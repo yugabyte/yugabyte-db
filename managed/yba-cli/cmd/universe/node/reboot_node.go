@@ -20,7 +20,7 @@ var rebootNodeCmd = &cobra.Command{
 	Long: `
 		Reboot a node instance in YugabyteDB Anywhere universe.`,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeName, err := cmd.Flags().GetString("universe-name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}

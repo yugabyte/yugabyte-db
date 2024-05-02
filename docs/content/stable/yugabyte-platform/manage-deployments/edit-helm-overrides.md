@@ -6,8 +6,8 @@ description: Edit Kubernetes overrides for a universe.
 menu:
   stable_yugabyte-platform:
     identifier: edit-helm-overrides
-    parent: manage-deployments
-    weight: 60
+    parent: edit-universe
+    weight: 90
 type: docs
 ---
 

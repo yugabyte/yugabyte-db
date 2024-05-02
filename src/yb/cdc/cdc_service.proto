@@ -188,11 +188,15 @@ message UpdateAndPersistLSNRequestPB {
   optional uint64 session_id = 1;
   optional bytes stream_id = 2;
   optional uint64 confirmed_flush_lsn = 3;
+  // The hint given for the possible value of restart_lsn.
+  // The actual value which is persisted might differ from this value
+  // and is returned in the response of this RPC.
   optional uint64 restart_lsn = 4;
 }
 
 message UpdateAndPersistLSNResponsePB {
   optional CDCErrorPB error = 1;
+  optional uint64 restart_lsn = 2;
 }
 
 message CreateCDCStreamRequestPB {

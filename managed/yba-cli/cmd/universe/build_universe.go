@@ -113,9 +113,10 @@ func buildClusters(
 	if len(providerListResponse) < 1 {
 		return nil, fmt.Errorf("no provider found")
 	}
-	providerUUID := providerListResponse[0].GetUuid()
+	providerUsed := providerListResponse[0]
+	providerUUID := providerUsed.GetUuid()
 	if len(providerName) == 0 {
-		providerName = providerListResponse[0].GetName()
+		providerName = providerUsed.GetName()
 	}
 	logrus.Info("Using provider: ",
 		fmt.Sprintf("%s %s",
@@ -123,7 +124,7 @@ func buildClusters(
 			formatter.Colorize(providerUUID, formatter.GreenColor)), "\n")
 
 	var onpremInstanceTypeDefault ybaclient.InstanceTypeResp
-	if providerType == "onprem" {
+	if providerType == util.OnpremProviderType {
 		onpremInstanceTypes, response, err := authAPI.ListOfInstanceType(providerUUID).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe",
@@ -148,8 +149,29 @@ func buildClusters(
 	if err != nil {
 		return nil, err
 	}
-	if providerType == "kubernetes" {
+
+	var k8sTserverMemSize, k8sMasterMemSize, k8sTserverCPUCoreCount, k8sMasterCPUCoreCount []float64
+
+	if providerType == util.K8sProviderType {
 		dedicatedNodes = true
+
+		k8sTserverMemSize, err = cmd.Flags().GetFloat64Slice("k8s-tserver-mem-size")
+		if err != nil {
+			return nil, err
+		}
+		k8sTserverCPUCoreCount, err = cmd.Flags().GetFloat64Slice("k8s-tserver-cpu-core-count")
+		if err != nil {
+			return nil, err
+		}
+
+		k8sMasterMemSize, err = cmd.Flags().GetFloat64Slice("k8s-master-mem-size")
+		if err != nil {
+			return nil, err
+		}
+		k8sMasterCPUCoreCount, err = cmd.Flags().GetFloat64Slice("k8s-master-cpu-core-count")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var masterInstanceType string
@@ -214,7 +236,7 @@ func buildClusters(
 	if err != nil {
 		return nil, err
 	}
-	regionsInProvider := providerListResponse[0].GetRegions()
+	regionsInProvider := providerUsed.GetRegions()
 	if len(regionsInProvider) == 0 {
 		return nil, fmt.Errorf("no regions found for provider %s", providerName)
 	}
@@ -363,7 +385,7 @@ func buildClusters(
 	if err != nil {
 		return nil, err
 	}
-	if len(accessKeyCode) == 0 && providerType != "kubernetes" {
+	if len(accessKeyCode) == 0 && providerType != util.K8sProviderType {
 		r, response, err := authAPI.List(providerUUID).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,
@@ -375,16 +397,15 @@ func buildClusters(
 		}
 		idKey := r[0].GetIdKey()
 		accessKeyCode = idKey.GetKeyCode()
-
+		logrus.Info("Using access key: ",
+			formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
 	}
-	logrus.Info("Using access key: ",
-		formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
 
 	awsARNString, err := cmd.Flags().GetString("aws-arn-string")
 	if err != nil {
 		return nil, err
 	}
-	if providerType != "aws" && len(awsARNString) > 0 {
+	if providerType != util.AWSProviderType && len(awsARNString) > 0 {
 		logrus.Debug("aws-arn-string can only be set for AWS universes, ignoring value\n")
 		awsARNString = ""
 	}
@@ -393,9 +414,55 @@ func buildClusters(
 	if err != nil {
 		return nil, err
 	}
-	if providerType != "kubernetes" && enableIPV6 {
+	if providerType != util.K8sProviderType && enableIPV6 {
 		logrus.Debug("enable-ipv6 can only be set for Kubernetes universes, ignoring value\n")
 		enableIPV6 = false
+	}
+
+	k8sUniverseOverridesFilePath, err := cmd.Flags().GetString(
+		"kubernetes-universe-overrides-file-path")
+	if err != nil {
+		return nil, err
+	}
+	if providerType != util.K8sProviderType && len(k8sUniverseOverridesFilePath) > 0 {
+		logrus.Debug(
+			"kubernetest-universe-overrides-file-path can only be set for" +
+				" Kubernetes universes, ignoring value\n")
+		k8sUniverseOverridesFilePath = ""
+	}
+	var k8sUniverseOverrides string
+	if len(k8sUniverseOverridesFilePath) > 0 {
+		logrus.Debug("Reading Helm Universe Overrides")
+		k8sUniverseOverrides = util.YAMLtoString(k8sUniverseOverridesFilePath)
+	}
+
+	k8sAZOverridesFilePaths, err := cmd.Flags().GetStringArray(
+		"kubernetes-az-overrides-file-path")
+	if err != nil {
+		return nil, err
+	}
+	if providerType != util.K8sProviderType && len(k8sAZOverridesFilePaths) > 0 {
+		logrus.Debug(
+			"kubernetest-az-overrides-file-path can only be set for" +
+				" Kubernetes universes, ignoring value\n")
+		k8sAZOverridesFilePaths = make([]string, 0)
+	}
+
+	k8sAZOverridesMap := make(map[string]string, 0)
+	for _, k := range k8sAZOverridesFilePaths {
+		var k8sAZOverrides string
+		if len(k) > 0 {
+			logrus.Debug("Reading Helm AZ Overrides")
+			k8sAZOverrides = util.YAMLtoString(k)
+		}
+		regionIndex := strings.Index(k8sAZOverrides, "\n")
+
+		region := strings.TrimSpace(strings.ReplaceAll(k8sAZOverrides[:regionIndex], ":", ""))
+		regionOverride := k8sAZOverrides[regionIndex+1:]
+
+		if len(region) > 0 && len(regionOverride) > 0 {
+			k8sAZOverridesMap[region] = regionOverride
+		}
 	}
 
 	userTagsMap, err := cmd.Flags().GetStringToString("user-tags")
@@ -453,12 +520,13 @@ func buildClusters(
 	for i := 0; i < noOfClusters; i++ {
 		var clusterType string
 		if i == 0 {
-			clusterType = "PRIMARY"
+			clusterType = util.PrimaryClusterType
 		} else {
-			clusterType = "ASYNC"
+			clusterType = util.ReadReplicaClusterType
 		}
 		c := ybaclient.Cluster{
 			ClusterType: clusterType,
+			Index:       util.GetInt32Pointer(int32(i)),
 			UserIntent: ybaclient.UserIntent{
 				UniverseName:   util.GetStringPointer(universeName),
 				ProviderType:   util.GetStringPointer(providerType),
@@ -496,9 +564,43 @@ func buildClusters(
 				PreferredRegion:   util.GetStringPointer(preferredRegions[i]),
 				AwsArnString:      util.GetStringPointer(awsARNString),
 
-				MasterGFlags:  util.StringMap(masterGFlags),
-				TserverGFlags: util.StringMap(tserverGFlagsList[i]),
+				MasterGFlags:      util.StringMap(masterGFlags),
+				TserverGFlags:     util.StringMap(tserverGFlagsList[i]),
+				UniverseOverrides: util.GetStringPointer(k8sUniverseOverrides),
+				AzOverrides:       util.StringtoStringMap(k8sAZOverridesMap),
 			},
+		}
+		if providerType == util.K8sProviderType {
+			k8sTserverMemSizeLen := len(k8sTserverMemSize)
+			k8sMasterMemSizeLen := len(k8sMasterMemSize)
+			k8sTserverCPUCoreCountLen := len(k8sTserverCPUCoreCount)
+			k8sMasterCPUCoreCountLen := len(k8sMasterCPUCoreCount)
+			if i == k8sTserverMemSizeLen {
+				k8sTserverMemSize = append(k8sTserverMemSize, 4)
+				k8sTserverMemSizeLen = k8sTserverMemSizeLen + 1
+			}
+			if i == k8sMasterMemSizeLen {
+				k8sMasterMemSize = append(k8sMasterMemSize, 4)
+				k8sMasterMemSizeLen = k8sMasterMemSizeLen + 1
+			}
+			if i == k8sTserverCPUCoreCountLen {
+				k8sTserverCPUCoreCount = append(k8sTserverCPUCoreCount, 2)
+				k8sTserverCPUCoreCountLen = k8sTserverCPUCoreCountLen + 1
+			}
+			if i == k8sMasterCPUCoreCountLen {
+				k8sMasterCPUCoreCount = append(k8sTserverCPUCoreCount, 2)
+				k8sMasterCPUCoreCountLen = k8sMasterCPUCoreCountLen + 1
+			}
+			userIntent := c.GetUserIntent()
+			userIntent.SetTserverK8SNodeResourceSpec(ybaclient.K8SNodeResourceSpec{
+				MemoryGib:    k8sTserverMemSize[i],
+				CpuCoreCount: k8sTserverCPUCoreCount[i],
+			})
+			userIntent.SetMasterK8SNodeResourceSpec(ybaclient.K8SNodeResourceSpec{
+				MemoryGib:    k8sMasterMemSize[i],
+				CpuCoreCount: k8sMasterCPUCoreCount[i],
+			})
+			c.SetUserIntent(userIntent)
 		}
 		res = append(res, c)
 	}
@@ -564,7 +666,7 @@ func buildDeviceInfo(
 	mountPointsLen := len(mountPoints)
 
 	for i := 0; i < noOfClusters; i++ {
-		if providerType == "aws" {
+		if providerType == util.AWSProviderType {
 			if i == diskIopsLen { // avoid index not accessible error
 				diskIops = append(diskIops, 3000) // default is 3000
 				diskIopsLen = diskIopsLen + 1
@@ -587,7 +689,7 @@ func buildDeviceInfo(
 				throughput[i] = 0
 			}
 		}
-		if providerType == "onprem" {
+		if providerType == util.OnpremProviderType {
 			if i == mountPointsLen {
 				mountPoints = append(mountPoints, onpremVolumeDefault.GetMountPath())
 				mountPointsLen = mountPointsLen + 1
@@ -600,12 +702,25 @@ func buildDeviceInfo(
 				mountPoints[i] = ""
 			}
 		}
+		if providerType == util.K8sProviderType {
+			if i == storageClassLen {
+				storageClass = append(storageClass, "standard")
+				storageClassLen = storageClassLen + 1
+			}
+		} else {
+			if i == storageClassLen {
+				storageClass = append(storageClass, "")
+				storageClassLen = storageClassLen + 1
+			} else {
+				storageClass[i] = ""
+			}
+		}
 		if i == numVolumeLen {
 			numVolumes = append(numVolumes, 1)
 			numVolumeLen = numVolumeLen + 1
 		}
 		if i == volumeSizeLen {
-			if providerType != "onprem" {
+			if providerType != util.OnpremProviderType {
 				volumeSize = append(volumeSize, 100)
 			} else {
 				volumeSize = append(volumeSize, int(onpremVolumeDefault.GetVolumeSizeGB()))
@@ -616,16 +731,6 @@ func buildDeviceInfo(
 			storageTypeDefault := setDefaultStorageTypes(providerType, onpremVolumeDefault)
 			storageType = append(storageType, storageTypeDefault)
 			storageTypeLen = storageTypeLen + 1
-		}
-		if i == storageClassLen {
-			defaultStorageClass := ""
-			if providerType == "kubernetes" {
-				defaultStorageClass = "standard"
-			} else {
-				defaultStorageClass = ""
-			}
-			storageClass = append(storageClass, defaultStorageClass)
-			storageClassLen = storageClassLen + 1
 		}
 		deviceInfo := &ybaclient.DeviceInfo{
 			DiskIops:     util.GetInt32Pointer(int32(diskIops[i])),
@@ -690,11 +795,11 @@ func buildMasterDeviceInfo(
 		return nil, err
 	}
 
-	if providerType != "aws" {
+	if providerType != util.AWSProviderType {
 		diskIops = 0
 		throughput = 0
 	}
-	if providerType == "onprem" {
+	if providerType == util.OnpremProviderType {
 		if len(mountPoints) == 0 {
 			mountPoints = onpremVolumeDefault.GetMountPath()
 		}
@@ -703,7 +808,7 @@ func buildMasterDeviceInfo(
 
 	}
 
-	if providerType == "onprem" && volumeSize == 100 {
+	if providerType == util.OnpremProviderType && volumeSize == 100 {
 		volumeSize = int(onpremVolumeDefault.GetVolumeSizeGB())
 	}
 
@@ -736,15 +841,15 @@ func setDefaultInstanceTypes(
 		for i := 0; i < noOfClusters-instanceTypesLen; i++ {
 			var instanceTypeDefault string
 			switch providerType {
-			case "aws":
+			case util.AWSProviderType:
 				instanceTypeDefault = "c5.large"
-			case "azu":
+			case util.AzureProviderType:
 				instanceTypeDefault = "Standard_DS2_v2"
-			case "gcp":
+			case util.GCPProviderType:
 				instanceTypeDefault = "n1-standard-1"
-			case "onprem":
+			case util.OnpremProviderType:
 				instanceTypeDefault = onpremInstanceTypeDefault.GetInstanceTypeCode()
-			case "kubernetes":
+			case util.K8sProviderType:
 				instanceTypeDefault = ""
 			}
 			instanceTypes = append(instanceTypes, instanceTypeDefault)
@@ -760,13 +865,13 @@ func setDefaultStorageTypes(
 	storageType string,
 ) {
 	switch providerType {
-	case "aws":
+	case util.AWSProviderType:
 		storageType = "GP3"
-	case "azu":
+	case util.AzureProviderType:
 		storageType = "Premium_LRS"
-	case "gcp":
+	case util.GCPProviderType:
 		storageType = "Persistent"
-	case "onprem":
+	case util.OnpremProviderType:
 		storageType = ""
 	}
 	return storageType

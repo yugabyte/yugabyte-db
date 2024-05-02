@@ -20,7 +20,7 @@ var removeNodeCmd = &cobra.Command{
 	Long: "Remove a node instance from YugabyteDB Anywhere universe and move its data out.\n" +
 		"The same instance is not expected to be used for this cluster again.",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeName, err := cmd.Flags().GetString("universe-name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}

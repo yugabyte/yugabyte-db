@@ -67,6 +67,11 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode == null) {
+      String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
     if (currentNode.isTserver) {
       createNodePrecheckTasks(
           currentNode,

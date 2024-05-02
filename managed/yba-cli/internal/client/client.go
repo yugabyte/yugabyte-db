@@ -66,7 +66,6 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 	}
 	url, err := ParseURL(host)
 	if err != nil {
-		logrus.Error(err)
 		return nil, err
 	}
 
@@ -75,7 +74,7 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 	if len(apiToken) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize(
-				"No valid API token detected. Run `yba auth` to "+
+				"No valid API token detected. Run \"yba auth\" or \"yba login\" to "+
 					"authenticate with YugabyteDB Anywhere or run the command with -a flag.",
 				formatter.RedColor))
 	}
@@ -110,6 +109,19 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 		"",
 		ctx,
 	}, nil
+}
+
+// NewAuthAPIClientAndCustomer before every command to access YBA host
+func NewAuthAPIClientAndCustomer() *AuthAPIClient {
+	authAPI, err := NewAuthAPIClient()
+	if err != nil {
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	err = authAPI.GetCustomerUUID()
+	if err != nil {
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	return authAPI
 }
 
 // ParseURL returns a URL if string is valid, or returns error

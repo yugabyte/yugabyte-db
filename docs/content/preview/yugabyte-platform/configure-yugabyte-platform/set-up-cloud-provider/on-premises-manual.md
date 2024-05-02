@@ -218,14 +218,14 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
 Download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
-wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
 ```
 
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-1.3.1.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `ec2-user`).
+1. Copy the `node_exporter-1.7.0.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `ec2-user`).
 
 1. Run the following commands:
 
@@ -235,7 +235,7 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
     sudo mkdir -p /tmp/yugabyte/metrics
-    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar.gz  /opt/prometheus
+    sudo mv /tmp/node_exporter-1.7.0.linux-amd64.tar.gz  /opt/prometheus
     sudo adduser --shell /bin/bash prometheus # (also adds group "prometheus")
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
@@ -243,7 +243,7 @@ On each node, perform the following as a user with sudo access:
     sudo chown -R prometheus:prometheus /var/run/prometheus
     sudo chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
     sudo chmod -R 755 /tmp/yugabyte/metrics
-    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar.gz
+    sudo chmod +r /opt/prometheus/node_exporter-1.7.0.linux-amd64.tar.gz
     sudo su - prometheus (user session is now as user "prometheus")
     ```
 
@@ -251,7 +251,7 @@ On each node, perform the following as a user with sudo access:
 
     ```sh
     cd /opt/prometheus
-    tar zxf node_exporter-1.3.1.linux-amd64.tar.gz
+    tar zxf node_exporter-1.7.0.linux-amd64.tar.gz
     exit   # (exit from prometheus user back to previous user)
     ```
 
@@ -278,7 +278,7 @@ On each node, perform the following as a user with sudo access:
     User=prometheus
     Group=prometheus
 
-    ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
+    ExecStart=/opt/prometheus/node_exporter-1.7.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
     ```
 
 1. Exit from vi, and continue, as follows:
@@ -699,17 +699,25 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 ## Install node agent
 
-The node agent is used to manage communication between YugabyteDB Anywhere and the node. YugabyteDB Anywhere uses node agents to communicate with the nodes, and once installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+The node agent is used to manage communication between YugabyteDB Anywhere and the node. YugabyteDB Anywhere uses node agents to communicate with the nodes. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
 
-Node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.
+For automated and assisted manual provisioning, node agents are installed onto instances automatically when adding instances, or when running the pre-provisioning script using the `--install_node_agent` flag.
 
-You can install the YugabyteDB node agent manually. As the `yugabyte` user, do the following:
+Use the following procedure to install node agent for fully manual provisioning.
+
+{{< note title="Re-provisioning a node" >}}
+
+If you are re-provisioning a node (that is, node agent has previously been installed on the node), you need to unregister the node agent before installing node agent again. Refer to [Unregister node agent](#unregister-node-agent).
+
+{{< /note >}}
+
+To install the YugabyteDB node agent manually, as the `yugabyte` user, do the following:
 
 1. Download the installer from YugabyteDB Anywhere using the [API token](../../../anywhere-automation/#authentication) of the Super Admin, as follows:
 
-   ```sh
-   curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
-   ```
+    ```sh
+    curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
+    ```
 
     To create an API token, navigate to your **User Profile** and click **Generate Key**.
 
@@ -838,49 +846,7 @@ If you are running v2.18.5 or earlier, the node must be unregistered first. Use 
 
 1. If the node instance has been added to a provider, remove the node instance from the provider.
 
-1. Run the following command:
-
-    ```sh
-    node-agent node unregister
-    ```
-
-    After running this command, YBA no longer recognizes the node agent. However, if the node agent configuration is corrupted, the command may fail. In this case, unregister the node agent using the API as follows:
-
-    - Obtain the node agent ID:
-
-        ```sh
-        curl -k --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents?nodeIp=<node_agent_ip>
-        ```
-
-        You should see output similar to the following:
-
-        ```output.json
-        [{
-            "uuid":"ec7654b1-cf5c-4a3b-aee3-b5e240313ed2",
-            "name":"node1",
-            "ip":"10.9.82.61",
-            "port":9070,
-            "customerUuid":"f33e3c9b-75ab-4c30-80ad-cba85646ea39",
-            "version":"2.18.6.0-PRE_RELEASE",
-            "state":"READY",
-            "updatedAt":"2023-12-19T23:56:43Z",
-            "config":{
-                "certPath":"/opt/yugaware/node-agent/certs/f33e3c9b-75ab-4c30-80ad-cba85646ea39/ec7654b1-cf5c-4a3b-aee3-b5e240313ed2/0",
-                "offloadable":false
-                },
-            "osType":"LINUX",
-            "archType":"AMD64",
-            "home":"/home/yugabyte/node-agent",
-            "versionMatched":true,
-            "reachable":false
-        }]
-        ```
-
-    - Use the value of the field `uuid` as `<node_agent_id>` in the following command:
-
-        ```sh
-        curl -k -X DELETE --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents/<node_agent_id>
-        ```
+1. [Unregister node agent](#unregister-node-agent).
 
 1. Stop the systemd service as a sudo user.
 
@@ -910,6 +876,56 @@ If you are running v2.18.5 or earlier, the node must be unregistered first. Use 
 
     ```sh
     node-agent node preflight-check --add_node
+    ```
+
+### Unregister node agent
+
+When performing some tasks, you may need to unregister the node agent from a node.
+
+To unregister node agent, run the following command:
+
+```sh
+node-agent node unregister
+```
+
+After running this command, YBA no longer recognizes the node agent.
+
+If the node agent configuration is corrupted, the command may fail. In this case, unregister the node agent using the API as follows:
+
+- Obtain the node agent ID:
+
+    ```sh
+    curl -k --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents?nodeIp=<node_agent_ip>
+    ```
+
+    You should see output similar to the following:
+
+    ```output.json
+    [{
+        "uuid":"ec7654b1-cf5c-4a3b-aee3-b5e240313ed2",
+        "name":"node1",
+        "ip":"10.9.82.61",
+        "port":9070,
+        "customerUuid":"f33e3c9b-75ab-4c30-80ad-cba85646ea39",
+        "version":"2.18.6.0-PRE_RELEASE",
+        "state":"READY",
+        "updatedAt":"2023-12-19T23:56:43Z",
+        "config":{
+            "certPath":"/opt/yugaware/node-agent/certs/f33e3c9b-75ab-4c30-80ad-cba85646ea39/ec7654b1-cf5c-4a3b-aee3-b5e240313ed2/0",
+            "offloadable":false
+            },
+        "osType":"LINUX",
+        "archType":"AMD64",
+        "home":"/home/yugabyte/node-agent",
+        "versionMatched":true,
+        "reachable":false
+    }]
+    ```
+
+- Use the value of the field `uuid` as `<node_agent_id>` in the following command:
+
+    ```sh
+    curl -k -X DELETE --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents/<node_agent_id>
     ```
 
 For more information, refer to [Node agent](../../../../faq/yugabyte-platform/#node-agent) FAQ.

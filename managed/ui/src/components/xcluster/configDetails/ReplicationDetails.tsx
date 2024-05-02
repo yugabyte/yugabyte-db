@@ -217,6 +217,7 @@ export function ReplicationDetails({
     return <YBErrorIndicator customErrorMessage={customErrorMessage} />;
   }
 
+  const allowedTasks = sourceUniverseQuery.data?.allowedTasks;
   const hideModal = () => dispatch(closeDialog());
   const isDeleteConfigModalVisible = showModal && visibleModal === XClusterModalName.DELETE_CONFIG;
   const xClusterConfig = xClusterConfigQuery.data;
@@ -243,6 +244,7 @@ export function ReplicationDetails({
         />
         {isDeleteConfigModalVisible && (
           <DeleteConfigModal
+            allowedTasks={allowedTasks!}
             sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
             targetUniverseUUID={xClusterConfig.targetUniverseUUID}
             xClusterConfigUUID={xClusterConfig.uuid}
@@ -331,6 +333,7 @@ export function ReplicationDetails({
           />
           {isDeleteConfigModalVisible && (
             <DeleteConfigModal
+              allowedTasks={allowedTasks!}
               sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
               targetUniverseUUID={xClusterConfig.targetUniverseUUID}
               xClusterConfigUUID={xClusterConfig.uuid}
@@ -755,6 +758,7 @@ export function ReplicationDetails({
         </div>
         {isEditConfigModalVisible && (
           <EditConfigModal
+            allowedTasks={allowedTasks!}
             xClusterConfig={xClusterConfig}
             visible={isEditConfigModalVisible}
             onHide={hideModal}
@@ -769,6 +773,7 @@ export function ReplicationDetails({
         )}
         {isDeleteConfigModalVisible && (
           <DeleteConfigModal
+            allowedTasks={allowedTasks!}
             sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
             targetUniverseUUID={xClusterConfig.targetUniverseUUID}
             xClusterConfigUUID={xClusterConfig.uuid}
@@ -781,6 +786,7 @@ export function ReplicationDetails({
         {isRestartConfigModalVisible && (
           <RestartConfigModal
             isDrInterface={false}
+            allowedTasks={allowedTasks!}
             configTableType={configTableType}
             isVisible={isRestartConfigModalVisible}
             onHide={hideModal}
@@ -789,6 +795,7 @@ export function ReplicationDetails({
         )}
         {isSyncConfigModalVisible && (
           <SyncXClusterConfigModal
+            allowedTasks={allowedTasks!}
             xClusterConfig={xClusterConfig}
             isDrInterface={false}
             modalProps={{ open: isSyncConfigModalVisible, onClose: hideModal }}

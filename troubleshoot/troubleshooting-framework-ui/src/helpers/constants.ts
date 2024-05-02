@@ -32,6 +32,8 @@ export const TIME_FILTER = {
   SIX_HOURS: 'Last 6 hrs',
   TWELVE_HOURS: 'Last 12 hrs',
   TWENTYFOUR_HOURS: 'Last 24 hrs',
+  ONE_DAY: 'Last 1 day',
+  TWO_DAYS: 'Last 2 days',
   SEVEN_DAYS: 'Last 7 days',
   CUSTOM: 'Custom'
 } as const;
@@ -41,6 +43,13 @@ export const filterDurations = [
   { label: TIME_FILTER.SIX_HOURS, value: '6' },
   { label: TIME_FILTER.TWELVE_HOURS, value: '12' },
   { label: TIME_FILTER.TWENTYFOUR_HOURS, value: '24' },
+  { label: TIME_FILTER.SEVEN_DAYS, value: '7d' },
+  { label: TIME_FILTER.CUSTOM, value: 'custom' }
+] as const;
+
+export const anomalyFilterDurations = [
+  { label: TIME_FILTER.ONE_DAY, value: '1' },
+  { label: TIME_FILTER.TWO_DAYS, value: '2' },
   { label: TIME_FILTER.SEVEN_DAYS, value: '7d' },
   { label: TIME_FILTER.CUSTOM, value: 'custom' }
 ] as const;

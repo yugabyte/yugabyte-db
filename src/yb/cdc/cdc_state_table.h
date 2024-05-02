@@ -113,7 +113,7 @@ class CDCStateTableRange;
 // uses the YBClient and YBSession to access the table.
 class CDCStateTable {
  public:
-  explicit CDCStateTable(client::AsyncClientInitializer* async_client_init);
+  explicit CDCStateTable(std::shared_future<client::YBClient*> client_future);
   explicit CDCStateTable(client::YBClient* client);
 
   static const std::string& GetNamespaceName();
@@ -162,7 +162,7 @@ class CDCStateTable {
       const std::vector<std::string>& keys_to_delete = {}) EXCLUDES(mutex_);
 
   std::shared_mutex mutex_;
-  client::AsyncClientInitializer* async_client_init_ = nullptr;
+  std::shared_future<client::YBClient*> client_future_;
   client::YBClient* client_ = nullptr;
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);

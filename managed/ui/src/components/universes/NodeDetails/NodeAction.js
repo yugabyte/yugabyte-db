@@ -239,7 +239,7 @@ export default class NodeAction extends Component {
                   eventKey="live_queries_action_btn"
                   disabled={disabled}
                   onClick={this.handleLiveQueryClick}
-                  data-testid={'NodeAction-LIVE_QUERIES'}
+                  dataTestId={'NodeAction-LIVE_QUERIES'}
                 >
                   {this.getLabel('LIVE_QUERIES', currentRow.dedicatedTo)}
                 </YBMenuItem>
@@ -257,7 +257,7 @@ export default class NodeAction extends Component {
                   eventKey="slow_queries_action_btn"
                   disabled={disabled}
                   onClick={this.handleSlowQueryClick}
-                  data-testid={'NodeAction-SLOW_QUERIES'}
+                  dataTestId={'NodeAction-SLOW_QUERIES'}
                 >
                   {this.getLabel('SLOW_QUERIES', currentRow.dedicatedTo)}
                 </YBMenuItem>
@@ -280,7 +280,7 @@ export default class NodeAction extends Component {
             eventKey={btnId}
             disabled={isDisabled}
             onClick={() => isDisabled || this.openModal(actionType)}
-            data-testid={`NodeAction-${actionType}`}
+            dataTestId={`NodeAction-${actionType}`}
           >
             {this.getLabel(actionType, currentRow.dedicatedTo)}
           </YBMenuItem>
@@ -308,7 +308,7 @@ export default class NodeAction extends Component {
             eventKey={btnId}
             disabled={isDisabled}
             onClick={() => isDisabled || this.openModal(advancedActionType)}
-            data-testid={`NodeAction-${advancedActionType}`}
+            dataTestId={`NodeAction-${advancedActionType}`}
           >
             {this.getLabel(advancedActionType, currentRow.dedicatedTo)}
           </YBMenuItem>
@@ -332,7 +332,7 @@ export default class NodeAction extends Component {
           eventKey={btnId}
           disabled={false}
           onClick={() => downloadLogs(universeUUID, currentRow.name)}
-          data-testid={'NodeAction-DOWNLOAD_LOGS'}
+          dataTestId={'NodeAction-DOWNLOAD_LOGS'}
         >
           {this.getLabel('DOWNLOAD_LOGS', currentRow.dedicatedTo)}
         </YBMenuItem>
@@ -355,7 +355,7 @@ export default class NodeAction extends Component {
             eventKey={nodeOverridesID}
             disabled={false}
             onClick={() => this.openOverridesModal(currentRow)}
-            data-testid={'NodeAction-HELM_OVERRIDES'}
+            dataTestId={'NodeAction-HELM_OVERRIDES'}
           >
             {this.getLabel('HELM_OVERRIDES', currentRow.dedicatedTo)}
           </YBMenuItem>
@@ -406,7 +406,7 @@ export default class NodeAction extends Component {
                   <YBMenuItem
                     key={'node_action_btn_advanced'}
                     onClick={() => showSubmenu('advanced')}
-                    data-testid={`NodeAction-advanced`}
+                    dataTestId={`NodeAction-ADVANCED`}
                   >
                     <YBLabelWithIcon icon="fa fa-cog">Advanced</YBLabelWithIcon>
 

@@ -93,7 +93,8 @@ ybcGetForeignRelSize(PlannerInfo *root,
 		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
 
 	/* Set the estimate for the total number of rows (tuples) in this table. */
-	if (yb_enable_optimizer_statistics)
+	if (yb_enable_base_scans_cost_model ||
+		yb_enable_optimizer_statistics)
 	{
 		set_baserel_size_estimates(root, baserel);
 	}
