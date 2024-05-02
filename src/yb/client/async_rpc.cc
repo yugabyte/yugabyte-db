@@ -216,13 +216,13 @@ void AsyncRpc::SendRpc() {
 
 std::string AsyncRpc::ToString() const {
   const auto& transaction = batcher_->in_flight_ops().metadata.transaction;
-  const auto subtransaction_opt = batcher_->in_flight_ops().metadata.subtransaction;
+  const auto subtransaction_pb_opt = batcher_->in_flight_ops().metadata.subtransaction_pb;
   return Format("$0(tablet: $1, num_ops: $2, num_attempts: $3, txn: $4, subtxn: $5)",
                 ops_.front().yb_op->read_only() ? "Read" : "Write",
                 tablet().tablet_id(), ops_.size(), num_attempts(),
                 transaction.transaction_id,
-                subtransaction_opt
-                    ? Format("$0", subtransaction_opt->subtransaction_id)
+                subtransaction_pb_opt
+                    ? Format("$0", subtransaction_pb_opt->subtransaction_id())
                     : "[none]");
 }
 
@@ -355,8 +355,8 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
   transaction->set_pg_txn_start_us(metadata.transaction.pg_txn_start_us);
   dest->set_deprecated_may_have_metadata(true);
 
-  if (metadata.subtransaction && !metadata.subtransaction->IsDefaultState()) {
-    metadata.subtransaction->ToPB(dest->mutable_subtransaction());
+  if (metadata.subtransaction_pb) {
+    *dest->mutable_subtransaction() = *metadata.subtransaction_pb;
   }
 }
 
