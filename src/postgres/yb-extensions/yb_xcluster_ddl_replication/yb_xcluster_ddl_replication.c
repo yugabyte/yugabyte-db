@@ -150,6 +150,41 @@ InsertIntoDDLQueue(Jsonb *yb_data)
 	InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, random(), yb_data);
 }
 
+/*
+ * Reports an error if the query string has multiple commands in it, or a
+ * command tag that doesn't match up with the one captured from the event
+ * trigger.
+ *
+ * Some clients can send multiple commands together as one single query string.
+ * This can cause issues for this extension:
+ * - If the query has a mix of DDL and DML commands, then we'd end up
+ *   replicating those rows twice.
+ * - Even if the query has multiple DDLs in it, it is simpler to handle these
+ *   individually. Eg. we may need to add additional modifications for each
+ *   individual DDL (eg setting oids).
+ */
+void
+DisallowMultiStatementQueries(const char *command_tag)
+{
+	List *parse_tree = pg_parse_query(debug_query_string);
+	ListCell *lc;
+	int count = 0;
+	foreach (lc, parse_tree)
+	{
+		++count;
+		RawStmt *stmt = (RawStmt *) lfirst(lc);
+		const char *stmt_command_tag = CreateCommandTag(stmt->stmt);
+
+		if (count > 1 || command_tag != stmt_command_tag)
+			elog(ERROR,
+				 "Database is replicating DDLs for xCluster. In this mode only "
+				 "a single DDL command is allowed in the query string.\n"
+				 "Please run the commands one at a time.\n"
+				 " Full query string: %s",
+				 debug_query_string);
+	}
+}
+
 void
 HandleSourceDDLEnd(EventTriggerData *trig_data)
 {
@@ -188,6 +223,7 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	}
 	else
 	{
+		DisallowMultiStatementQueries(trig_data->tag);
 		bool should_replicate_ddl = ProcessSourceEventTriggerDDLCommands(state);
 		if (!should_replicate_ddl)
 			goto exit;
