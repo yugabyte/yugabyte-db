@@ -375,7 +375,7 @@ ORDER BY t3.v3 DESC;
                ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
                      Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
          ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..16.00 rows=100 width=20)
-               Index Cond: ((t1.v1 = v1) AND (v1 = t1.v1))
+               Index Cond: ((v1 = t1.v1) AND (v1 = t1.v1))
 (11 rows)
 
 SELECT *
@@ -407,7 +407,7 @@ ORDER BY t3.v3 DESC;
                ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
                      Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
          ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..16.00 rows=100 width=20)
-               Index Cond: ((t1.v1 = v1) AND (v1 = t1.v1))
+               Index Cond: ((v1 = t1.v1) AND (v1 = t1.v1))
 (11 rows)
 
 SELECT *
@@ -441,7 +441,7 @@ ORDER BY t3.v3 DESC;
                      Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
                      Storage Filter: (r = ANY ('{3,4,5}'::integer[]))
          ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..16.00 rows=100 width=20)
-               Index Cond: ((t1.v1 = v1) AND (v1 = t1.v1))
+               Index Cond: ((v1 = t1.v1) AND (v1 = t1.v1))
 (12 rows)
 
 SELECT *
@@ -474,7 +474,7 @@ ORDER BY t3.v3 DESC;
                      Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
                      Storage Filter: (r = ANY ('{3,4,5}'::integer[]))
          ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..16.00 rows=100 width=20)
-               Index Cond: ((t1.v1 = v1) AND (v1 = t1.v1))
+               Index Cond: ((v1 = t1.v1) AND (v1 = t1.v1))
 (12 rows)
 
 SELECT *
