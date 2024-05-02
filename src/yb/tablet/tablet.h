@@ -1126,8 +1126,6 @@ class Tablet : public AbstractTablet,
   // Optional key bounds (see docdb::KeyBounds) served by this tablet.
   docdb::KeyBounds key_bounds_;
 
-  std::unique_ptr<docdb::YQLStorageIf> ql_storage_;
-
   // This is for docdb fine-grained locking.
   docdb::SharedLockManager shared_lock_manager_;
 
