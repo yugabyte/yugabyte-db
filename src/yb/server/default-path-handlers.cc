@@ -254,7 +254,8 @@ void ConvertFlagsToJson(const vector<FlagInfo>& flag_infos, std::stringstream* o
   jw.EndObject();
 }
 
-vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req, Webserver* webserver) {
+vector<FlagInfo> GetFlagInfos(
+    const Webserver::WebRequest& req, Webserver* webserver, bool skip_default_test_flags) {
   const std::set<string> node_info_flags{
       "log_filename",    "rpc_bind_addresses", "webserver_interface", "webserver_port",
       "placement_cloud", "placement_region",   "placement_zone"};
@@ -286,6 +287,12 @@ vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req, Webserver* webse
       flag_info.type = FlagType::kAuto;
     }
 
+    if (skip_default_test_flags && flag_info.type == FlagType::kDefault &&
+        flag_tags.contains(FlagTag::kHidden) && flag_info.name.starts_with("TEST_")) {
+      // Skip Default TEST flags.
+      continue;
+    }
+
     flag_infos.push_back(std::move(flag_info));
   }
 
@@ -304,7 +311,7 @@ vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req, Webserver* webse
 // JSON format.
 static void GetFlagsJsonHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
-  const auto flag_infos = GetFlagInfos(req, webserver);
+  const auto flag_infos = GetFlagInfos(req, webserver, /*skip_default_test_flags=*/false);
   ConvertFlagsToJson(std::move(flag_infos), &resp->output);
 }
 
@@ -313,7 +320,7 @@ static void GetFlagsJsonHandler(
 static void FlagsHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
   std::stringstream& output = resp->output;
-  auto flag_infos = GetFlagInfos(req, webserver);
+  auto flag_infos = GetFlagInfos(req, webserver, /*skip_default_test_flags=*/true);
   if (req.parsed_args.find("raw") != req.parsed_args.end()) {
     for (const auto& flag_info : flag_infos) {
       output << "--" << flag_info.name << "=" << flag_info.value << endl;
