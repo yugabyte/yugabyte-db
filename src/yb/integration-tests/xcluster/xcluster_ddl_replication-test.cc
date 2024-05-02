@@ -19,6 +19,7 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/backoff_waiter.h"
 
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
@@ -211,6 +212,45 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
       &producer_cluster_, producer_table_name.namespace_name(), producer_table_name.pgschema_name(),
       producer_table_name_new_user_str));
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_user);
+}
+
+TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(EnableDDLReplicationExtension());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Have to do this through ysqlsh -c since that sends the whole
+  // query string as a single command.
+  auto call_multistatement_query = [&](const std::string& query) {
+    std::vector<std::string> args;
+    args.push_back(GetPgToolPath("ysqlsh"));
+    args.push_back("--host");
+    args.push_back(producer_cluster_.pg_host_port_.host());
+    args.push_back("--port");
+    args.push_back(AsString(producer_cluster_.pg_host_port_.port()));
+    args.push_back("-c");
+    args.push_back(query);
+
+    auto s = CallAdminVec(args);
+    LOG(INFO) << "Command output: " << s;
+    ASSERT_NOK(s);
+    ASSERT_TRUE(
+        s.status().message().Contains("only a single DDL command is allowed in the query string"));
+  };
+
+  call_multistatement_query(
+      "CREATE TABLE multistatement(i int PRIMARY KEY);"
+      "INSERT INTO multistatement VALUES (1);");
+  call_multistatement_query(
+      "SELECT 1;"
+      "CREATE TABLE multistatement(i int PRIMARY KEY);");
+  call_multistatement_query(
+      "CREATE TABLE multistatement1(i int PRIMARY KEY);"
+      "CREATE TABLE multistatement2(i int PRIMARY KEY);");
+  call_multistatement_query(
+      "CREATE TABLE multistatement(i int);"
+      "CREATE UNIQUE INDEX ON multistatement(i);");
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateIndex) {
