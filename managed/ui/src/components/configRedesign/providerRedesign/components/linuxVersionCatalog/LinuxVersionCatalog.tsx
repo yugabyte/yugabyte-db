@@ -268,7 +268,10 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             ...img,
             metadata: {
               type: ImageBundleType.CUSTOM
-            } as any
+            } as any,
+            useAsDefault: imageBundles.filter(
+              (i) => i.details.arch === img.details.arch && i.useAsDefault === true
+            ).length === 0
           });
           toggleShowLinuxVersionModal(false);
         }}
