@@ -1330,7 +1330,6 @@ Status SysCatalogTable::ReadPgClassInfo(
       continue;
     }
 
-    bool is_colocated_table = false;
     if (is_colocated_database) {
       // A table in a colocated database is colocated unless it opted out
       // of colocation.
@@ -1342,15 +1341,6 @@ Status SysCatalogTable::ReadPgClassInfo(
         // their own entry in YugaByte's catalog manager. So, we skip them here.
         continue;
       }
-
-      is_colocated_table = table_info->IsColocatedUserTable();
-    }
-
-    if (is_colocated_table) {
-      // This is a colocated table. This cannot have a tablespace associated with it.
-      VLOG(5) << "Table { oid: " << oid << ", name: " << table_name << " }"
-              << " skipped as it is colocated";
-      continue;
     }
 
     // Process the tablespace oid for this table/index.

@@ -7226,14 +7226,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Check if there has been any changes to the placement policies for this table.
   if (req->has_replication_info()) {
-    // If this is a colocated table, it does not make sense to set placement
-    // policy for this table, as the tablet associated with it is shared by
-    // multiple tables.
-    if (table->colocated()) {
-      const Status s = STATUS(InvalidArgument,
-          "Placement policy cannot be altered for a colocated table");
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
-    }
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
       const Status s = STATUS(InvalidArgument,
             "Placement policy cannot be altered for YSQL tables, use Tablespaces");

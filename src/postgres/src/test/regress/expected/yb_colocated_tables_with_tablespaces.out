@@ -1,76 +1,10 @@
 -- Colocated Tests with Tablespaces
-CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas" : 1, "placement_blocks" : [{"cloud" : "cloud1" , "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1}]}');
 CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
-CREATE TABLESPACE tsp1 WITH (replica_placement = '{
-"num_replicas": 3,
-"placement_blocks": [
-  {
-    "cloud" :  "cloud1",
-    "region":  "region1",
-    "zone"  :  "zone1",
-    "min_num_replicas" : 1
-  },
-  {
-    "cloud" :  "cloud1",
-    "region":  "region1",
-    "zone"  :  "zone2",
-    "min_num_replicas" : 1
-  },
-  {
-    "cloud" :  "cloud1",
-    "region":  "region1",
-    "zone"  :  "zone3",
-    "min_num_replicas" : 1
-  }
-]
-}');
-CREATE TABLESPACE tsp2 WITH (replica_placement = '{
-"num_replicas": 3,
-"placement_blocks": [
-  {
-    "cloud" :  "cloud1",
-    "region":  "region2",
-    "zone"  :  "zone1",
-    "min_num_replicas" : 1
-  },
-  {
-    "cloud" :  "cloud1",
-    "region":  "region2",
-    "zone"  :  "zone2",
-    "min_num_replicas" : 1
-  },
-  {
-    "cloud" :  "cloud1",
-    "region":  "region2",
-    "zone"  :  "zone3",
-    "min_num_replicas" : 1
-  }
-]
-}');
-CREATE TABLESPACE tsp3 WITH (replica_placement = '{
-"num_replicas": 3,
-"placement_blocks": [
-  {
-    "cloud" :  "cloud1",
-    "region":  "region3",
-    "zone"  :  "zone1",
-    "min_num_replicas" : 1
-  },
-  {
-    "cloud" :  "cloud1",
-    "region":  "region3",
-    "zone"  :  "zone2",
-    "min_num_replicas" : 1
-  },
-  {
-    "cloud" :  "cloud1",
-    "region":  "region3",
-    "zone"  :  "zone3",
-    "min_num_replicas" : 1
-  }
-]
-}');
+CREATE TABLESPACE tsp1 WITH (replica_placement = '{"num_replicas": 3, "placement_blocks" : [{"cloud" : "cloud1", "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1}, {"cloud" :  "cloud1", "region": "region1", "zone" : "zone2", "min_num_replicas" : 1}, {"cloud" : "cloud1", "region": "region1", "zone" : "zone3", "min_num_replicas" : 1}]}');
+CREATE TABLESPACE tsp2 WITH (replica_placement = '{"num_replicas": 3, "placement_blocks" : [{"cloud" : "cloud1", "region" : "region2", "zone" : "zone1", "min_num_replicas" : 1}, {"cloud" :  "cloud1", "region": "region2", "zone" : "zone2", "min_num_replicas" : 1}, {"cloud" : "cloud1", "region": "region2", "zone" : "zone3", "min_num_replicas" : 1}]}');
+CREATE TABLESPACE tsp3 WITH (replica_placement = '{"num_replicas": 3, "placement_blocks" : [{"cloud" : "cloud1", "region" : "region3", "zone" : "zone1", "min_num_replicas" : 1}, {"cloud" :  "cloud1", "region": "region3", "zone" : "zone2", "min_num_replicas" : 1}, {"cloud" : "cloud1", "region": "region3", "zone" : "zone3", "min_num_replicas" : 1}]}');
 -- Should succeed in creating colocated partitioned tables with tablespace
 CREATE TABLE partitioned_table (name varchar, region varchar, PRIMARY KEY(name, region)) PARTITION BY LIST(region);
 CREATE TABLE partition_in_dc1 PARTITION OF partitioned_table FOR VALUES IN ('region1') TABLESPACE tsp1;
@@ -248,18 +182,13 @@ EXPLAIN (COSTS OFF) SELECT * FROM table_1 WHERE c = 4;
 (2 rows)
 
 -- Test if pg_depend entries of the indexes and the table are being updated.
-WITH table_groups AS (
-  SELECT oid, grpname FROM pg_yb_tablegroup
-),
-rel_to_grp AS (
-  SELECT x.relname, y.grpname
-  FROM pg_class x
-  JOIN pg_depend z ON x.oid = z.objid
-  JOIN table_groups y ON z.refobjid = y.oid
-  WHERE x.relname IN ('table_1', 'coloc_index1', 'coloc_index2','coloc_index3')
-)
-SELECT string_agg(relname, ', ' ORDER BY relname ASC) AS relation_names
-FROM rel_to_grp GROUP BY grpname ORDER BY relation_names ASC;
+SELECT string_agg(c.relname, ', ' ORDER BY c.relname) AS relation_names
+FROM pg_class c
+JOIN pg_depend d ON c.oid = d.objid
+JOIN pg_yb_tablegroup tg ON d.refobjid = tg.oid
+WHERE c.relname IN ('table_1', 'coloc_index1', 'coloc_index2', 'coloc_index3')
+GROUP BY tg.grpname
+ORDER BY relation_names;
     relation_names
 -----------------------
  coloc_index1
@@ -310,6 +239,321 @@ SELECT COUNT(*) FROM pg_yb_tablegroup;
      0
 (1 row)
 
+-- Test ALTER TABLE/INDEX/MATERIALIZED VIEW ALL IN TABLESPACE ... SET TABLESPACE ... CASCADE
+-- Since all three variations behave similarly we expect similar output
+CREATE TABLE table1(a INT PRIMARY KEY, b INT, c INT) TABLESPACE tsp1;
+CREATE TABLE table2(a INT PRIMARY KEY, b INT, c INT) WITH (colocation=false) TABLESPACE tsp1;
+CREATE INDEX index1 on table1(b) TABLESPACE tsp1;
+CREATE MATERIALIZED VIEW col_mv TABLESPACE tsp1 AS SELECT table1.a,table2.c FROM table1,table2  WHERE table1.c = table2.c;
+CREATE INDEX index2 on table1(c) TABLESPACE tsp2;
+CREATE MATERIALIZED VIEW m TABLESPACE tsp2 AS SELECT * FROM table1;
+CREATE TABLE table3(a int PRIMARY KEY, b int, c int) TABLESPACE tsp2;
+-- Since we are moving colocated relations, this ALTER should fail
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp3;
+ERROR:  cannot move colocated relations present in tablespace tsp1
+HINT:  Use ALTER ... CASCADE to move colcated relations.
+-- Since there are existing relations present in tsp2, this ALTER should fail
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2 CASCADE;
+ERROR:  cannot move colocated relations to tablespace tsp2, as it contains existing colocated relation
+-- View all relations present in pg_class in tablespace tsp1, tsp2 and tsp3
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+   relname   | spcname
+-------------+---------
+ col_mv      | tsp1
+ index1      | tsp1
+ index2      | tsp2
+ m           | tsp2
+ table1      | tsp1
+ table1_pkey | tsp1
+ table2      | tsp1
+ table2_pkey | tsp1
+ table3      | tsp2
+ table3_pkey | tsp2
+(10 rows)
+
+-- There are no relations present in tsp3, this would succeed and move all relations to tsp3.
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp3 CASCADE;
+NOTICE:  Data movement for table table1 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table table2 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table index1 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table col_mv is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+--Verify if the tablespaces for the queries have been updated.
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+   relname   | spcname
+-------------+---------
+ col_mv      | tsp3
+ index1      | tsp3
+ index2      | tsp2
+ m           | tsp2
+ table1      | tsp3
+ table1_pkey | tsp3
+ table2      | tsp3
+ table2_pkey | tsp3
+ table3      | tsp2
+ table3_pkey | tsp2
+(10 rows)
+
+ALTER INDEX ALL IN TABLESPACE tsp2 SET TABLESPACE tsp1 CASCADE;
+NOTICE:  Data movement for table index2 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table m is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table table3 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+   relname   | spcname
+-------------+---------
+ col_mv      | tsp3
+ index1      | tsp3
+ index2      | tsp1
+ m           | tsp1
+ table1      | tsp3
+ table1_pkey | tsp3
+ table2      | tsp3
+ table2_pkey | tsp3
+ table3      | tsp1
+ table3_pkey | tsp1
+(10 rows)
+
+ALTER MATERIALIZED VIEW ALL IN TABLESPACE tsp3 SET TABLESPACE tsp2 CASCADE;
+NOTICE:  Data movement for table table1 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table table2 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table index1 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table col_mv is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+   relname   | spcname
+-------------+---------
+ col_mv      | tsp2
+ index1      | tsp2
+ index2      | tsp1
+ m           | tsp1
+ table1      | tsp2
+ table1_pkey | tsp2
+ table2      | tsp2
+ table2_pkey | tsp2
+ table3      | tsp1
+ table3_pkey | tsp1
+(10 rows)
+
+-- Verify that dependency entries from tablegroup->tablespace, table->tablegroup are getting updated properly, only entries for colocated relations are added in pg_shdepend
+SELECT u.relname, s.spcname FROM pg_class AS u, pg_depend AS v, pg_shdepend AS x, pg_tablespace AS s WHERE
+v.objid = u.oid AND
+v.refclassid = 'pg_yb_tablegroup'::regclass::oid AND
+x.objid = v.refobjid AND
+x.refclassid = 'pg_tablespace'::regclass::oid AND
+s.oid = x.refobjid
+ORDER BY u.relname;
+   relname   | spcname
+-------------+---------
+ col_mv      | tsp2
+ index1      | tsp2
+ index2      | tsp1
+ m           | tsp1
+ table1      | tsp2
+ table1_pkey | tsp2
+ table3      | tsp1
+ table3_pkey | tsp1
+(8 rows)
+
+DROP MATERIALIZED VIEW m;
+DROP MATERIALIZED VIEW col_mv;
+DROP INDEX index1;
+DROP INDEX index2;
+DROP TABLE table1;
+DROP TABLE table2;
+DROP TABLE table3;
+-- Test ALTER TABLE ALL IN TABLESPACE ... COLLOCATED WITH ... SET TABLESPACE ... CASCADE
+CREATE TABLE table1(a INT PRIMARY KEY, b INT, c INT) TABLESPACE tsp1;
+CREATE TABLE table2(a INT PRIMARY KEY, b INT, c INT) WITH (colocation=false) TABLESPACE tsp1;
+CREATE INDEX index1 on table1(b) TABLESPACE tsp1;
+CREATE INDEX index2 on table1(c) TABLESPACE tsp1;
+CREATE MATERIALIZED VIEW col_mv TABLESPACE tsp1 AS SELECT table1.a,table2.c FROM table1,table2  WHERE table1.c = table2.c;
+CREATE MATERIALIZED VIEW m TABLESPACE tsp2 AS SELECT * FROM table1;
+CREATE TABLE table3(a int PRIMARY KEY, b int, c int) TABLESPACE tsp2;
+-- Since there are existing relations present in tsp2, this ALTER should fail
+ALTER TABLE ALL IN TABLESPACE tsp1 COLOCATED WITH table1 SET TABLESPACE tsp2 CASCADE;
+ERROR:  cannot move colocated relations to tablespace tsp2, as it contains existing colocated relation
+-- View all relations present in pg_class in tablespace tsp1, tsp2 and tsp3
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+   relname   | spcname
+-------------+---------
+ col_mv      | tsp1
+ index1      | tsp1
+ index2      | tsp1
+ m           | tsp2
+ table1      | tsp1
+ table1_pkey | tsp1
+ table2      | tsp1
+ table2_pkey | tsp1
+ table3      | tsp2
+ table3_pkey | tsp2
+(10 rows)
+
+-- There are no relations present in tsp3, this would succeed and move relations colocated with t1 to tsp3.
+ALTER TABLE ALL IN TABLESPACE tsp1 COLOCATED WITH table1 SET TABLESPACE tsp3 CASCADE;
+NOTICE:  Data movement for table table1 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table index1 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table index2 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table col_mv is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+--Verify if the tablespaces for the queries have been updated.
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+   relname   | spcname
+-------------+---------
+ col_mv      | tsp3
+ index1      | tsp3
+ index2      | tsp3
+ m           | tsp2
+ table1      | tsp3
+ table1_pkey | tsp3
+ table2      | tsp1
+ table2_pkey | tsp1
+ table3      | tsp2
+ table3_pkey | tsp2
+(10 rows)
+
+-- Verify that dependency entries are updated accordingly in pg_shdepend
+SELECT u.relname, s.spcname FROM pg_class AS u, pg_depend AS v, pg_shdepend AS x, pg_tablespace AS s WHERE
+v.objid = u.oid AND
+v.refclassid = 'pg_yb_tablegroup'::regclass::oid AND
+x.objid = v.refobjid AND
+x.refclassid = 'pg_tablespace'::regclass::oid AND
+s.oid = x.refobjid
+ORDER BY u.relname;
+   relname   | spcname
+-------------+---------
+ col_mv      | tsp3
+ index1      | tsp3
+ index2      | tsp3
+ m           | tsp2
+ table1      | tsp3
+ table1_pkey | tsp3
+ table3      | tsp2
+ table3_pkey | tsp2
+(8 rows)
+
+DROP MATERIALIZED VIEW m;
+DROP MATERIALIZED VIEW col_mv;
+DROP INDEX index1;
+DROP INDEX index2;
+DROP TABLE table1;
+DROP TABLE table2;
+DROP TABLE table3;
+-- Test non-colocated Tables in a colocated database
+CREATE TABLE table1(a INT PRIMARY KEY, b INT, c INT) WITH (colocation=false) TABLESPACE tsp1;
+CREATE TABLE table2(a INT PRIMARY KEY, b INT, c INT) WITH (colocation=false) TABLESPACE tsp2;
+CREATE TABLE table3(a INT PRIMARY KEY, b INT, c INT) TABLESPACE tsp3;
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2;
+NOTICE:  Data movement for table table1 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+--Verify if the tablespaces for the queries have been updated.
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+   relname   | spcname
+-------------+---------
+ table1      | tsp2
+ table1_pkey | tsp2
+ table2      | tsp2
+ table2_pkey | tsp2
+ table3      | tsp3
+ table3_pkey | tsp3
+(6 rows)
+
+ALTER TABLE ALL in TABLESPACE tsp2 SET TABLESPACE tsp3;
+NOTICE:  Data movement for table table1 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table table2 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+--Verify if the tablespaces for the queries have been updated.
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+   relname   | spcname
+-------------+---------
+ table1      | tsp3
+ table1_pkey | tsp3
+ table2      | tsp3
+ table2_pkey | tsp3
+ table3      | tsp3
+ table3_pkey | tsp3
+(6 rows)
+
+-- Verify that dependency entries are updated accordingly in pg_shdepend, non-colocated relations are not added in the pg_shdepend table
+SELECT u.relname, s.spcname FROM pg_class AS u, pg_depend AS v, pg_shdepend AS x, pg_tablespace AS s WHERE
+v.objid = u.oid AND
+v.refclassid = 'pg_yb_tablegroup'::regclass::oid AND
+x.objid = v.refobjid AND
+x.refclassid = 'pg_tablespace'::regclass::oid AND
+s.oid = x.refobjid
+ORDER BY u.relname;
+   relname   | spcname
+-------------+---------
+ table3      | tsp3
+ table3_pkey | tsp3
+(2 rows)
+
+-- This command should fail
+ALTER TABLE ALL IN TABLESPACE tsp2 COLOCATED WITH table1 SET TABLESPACE tsp3 CASCADE;
+ERROR:  the specified relation is non-colocated which can't be moved using this command
+DROP TABLE table1;
+DROP TABLE table2;
+DROP TABLE table3;
 -- A tablespace should not be dropped if any colocated tables are dependent on it
 CREATE TABLE t1 (a int) TABLESPACE tsp1;
 CREATE TABLE t2 (a int) TABLESPACE tsp1;
@@ -329,35 +573,35 @@ CREATE TABLESPACE tsp1 WITH (replica_placement = '{
 "num_replicas": 1,
 "placement_blocks": [
   {
-    "cloud" :  "cloud1",
-    "region":  "region1",
-    "zone": "zone1",
+    "cloud" : "cloud1",
+    "region" : "region1",
+    "zone" : "zone1",
     "min_num_replicas" : 1
   }]}');
 CREATE TABLESPACE tsp2 WITH (replica_placement = '{
 "num_replicas": 1,
 "placement_blocks": [
   {
-    "cloud" :  "cloud1",
-    "region":  "region1",
-    "zone": "zone1",
+    "cloud" : "cloud1",
+    "region" : "region1",
+    "zone" : "zone1",
     "min_num_replicas" : 1
   }]}');
 CREATE TABLE t1 (a int) TABLESPACE tsp1;
 CREATE TABLE t2 (a int) TABLESPACE tsp2;
--- Check that dependency entries from tablegroup->tablespace, table->tabelgroup are getting created properly
+-- Check that dependency entries from tablegroup->tablespace, table->tablegroup are getting created properly
 -- Here we perform joins on pg_class, pg_depends, pg_shdepend and pg_tablespace to find
 --  1. Corresponding tablegroup of a colocated table
 --  2. Corresponding tablespace of the tablegroup
 SELECT s.spcname FROM pg_class AS u, pg_depend AS v, pg_shdepend AS x, pg_tablespace AS s WHERE
 -- Relation name is t1
 u.relname = 't1' AND
--- Find table -> tablegroup entry in pg_depends by matching table oid and refclassid of tablegroup (8036)
+-- Find table -> tablegroup entry in pg_depends by matching table oid and refclassid of tablegroup
 v.objid = u.oid AND
-v.refclassid = 8036 AND
--- Find tablegroup -> tablespace entry in shdepends by matching tablegroup oid from pg_depend and refclassid of tablespace (1213)
+v.refclassid = 'pg_yb_tablegroup'::regclass::oid AND
+-- Find tablegroup -> tablespace entry in shdepends by matching tablegroup oid from pg_depend and refclassid of tablespace
 x.objid = v.refobjid AND
-x.refclassid = 1213 AND
+x.refclassid = 'pg_tablespace'::regclass::oid AND
 -- Find the tablespace name by matching tablespace oid (found using pg_shdepend) with pg_tablespace.
 s.oid = x.refobjid;
  spcname
@@ -368,12 +612,12 @@ s.oid = x.refobjid;
 SELECT s.spcname FROM pg_class AS u, pg_depend AS v, pg_shdepend AS x, pg_tablespace AS s WHERE
 -- Relation name is t2
 u.relname = 't2' AND
--- Find table -> tablegroup entry in pg_depends by matching table oid and refclassid of tablegroup (8036)
+-- Find table -> tablegroup entry in pg_depends by matching table oid and refclassid of tablegroup
 v.objid = u.oid AND
-v.refclassid = 8036 AND
--- Find tablegroup -> tablespace entry in shdepends by matching tablegroup oid from pg_depend and refclassid of tablespace (1213)
+v.refclassid = 'pg_yb_tablegroup'::regclass::oid AND
+-- Find tablegroup -> tablespace entry in shdepends by matching tablegroup oid from pg_depend and refclassid of tablespace
 x.objid = v.refobjid AND
-x.refclassid = 1213 AND
+x.refclassid = 'pg_tablespace'::regclass::oid AND
 -- Find the tablespace name by matching tablespace oid (found using pg_shdepend) with pg_tablespace.
 s.oid = x.refobjid;
  spcname
