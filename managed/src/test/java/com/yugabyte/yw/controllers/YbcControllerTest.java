@@ -95,7 +95,7 @@ public class YbcControllerTest extends FakeDBApplication {
         "Cannot disable ybc on universe "
             + defaultYbcUniverse.getUniverseUUID()
             + " as it has nodes in one of "
-            + "[Removed, Stopped, Decommissioned, Resizing, SystemdUpgrade, Terminated] states.");
+            + "[Removed, Stopped, Decommissioned, Resizing, Terminated] states.");
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
@@ -120,7 +120,7 @@ public class YbcControllerTest extends FakeDBApplication {
         "Cannot perform a ybc upgrade on universe "
             + defaultYbcUniverse.getUniverseUUID()
             + " as it has nodes in one of "
-            + "[Removed, Stopped, Decommissioned, Resizing, SystemdUpgrade, Terminated] states.");
+            + "[Removed, Stopped, Decommissioned, Resizing, Terminated] states.");
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
@@ -195,7 +195,7 @@ public class YbcControllerTest extends FakeDBApplication {
         "Cannot perform a ybc installation on universe "
             + defaultYbcUniverse.getUniverseUUID()
             + " as it has nodes in one of "
-            + "[Removed, Stopped, Decommissioned, Resizing, SystemdUpgrade, Terminated] states.");
+            + "[Removed, Stopped, Decommissioned, Resizing, Terminated] states.");
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
