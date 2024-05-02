@@ -70,6 +70,7 @@ The following commands are available:
 
 - [start](#start)
 - [configure](#configure)
+- [configure_read_replica](#configure-read-replica)
 - [cert](#cert)
 - [stop](#stop)
 - [destroy](#destroy)
@@ -78,6 +79,9 @@ The following commands are available:
 - [collect_logs](#collect-logs)
 - [connect](#connect)
 - [demo](#demo)
+- [backup](#backup)
+- [restore](#restore)
+- [finalize_upgrade](#finalize-upgrade)
 
 -----
 
@@ -160,6 +164,15 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started,`yugabyted` outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 : For examples creating secure local multi-node, multi-zone, and multi-region clusters, refer to [Examples](#examples).
 
+--read_replica *read_replica_node*
+: Use this flag to start a read replica node.
+
+--backup_daemon *backup-daemon-process*
+: Enable or disable the backup daemon with yugabyted start. Default : `false`
+
+--enable_pg_parity_tech_preview *PostgreSQL-compatibilty*
+: Enable PostgreSQL compatibility features. Default: `false`
+
 #### Advanced flags
 
 Advanced flags can be set by using the configuration file in the `--config` flag. The advanced flags support for the `start` command is as follows:
@@ -237,6 +250,8 @@ The following subcommands are available for `yugabyted configure` command:
 
 - [data_placement](#data-placement)
 - [encrypt_at_rest](#encrypt-at-rest)
+- [point_in_time_recovery](#point-in-time-recovery)
+- [admin_operation](#admin-operation)
 
 #### data_placement
 
@@ -314,6 +329,152 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 
 --log_dir *log-directory*
 : : The log directory for the yugabyted server.
+
+
+#### point_in_time_recovery
+
+Use the `yugabyted configure point_in_time_recovery` subcommand to configure a snapshot schedule for a specific database.
+
+Examples:
+
+- Enable point-in-time recovery for a database:
+
+```sh
+./bin/yugabyted configure point_in_time_recovery --enable --retention <retention_period> --database <database_name>
+```
+
+- Disable point-in-time recovery for a database:
+
+```sh
+./bin/yugabyted configure point_in_time_recovery --disable --database <database_name> 
+```
+
+- Display point-in-time schedules configured on the cluster:
+
+```sh
+./bin/yugabyted configure point_in_time_recovery --status 
+```
+
+#### admin_operation
+
+Use the `yugabyted admin_operation` command to run a yb-admin command on the YugabyteDB cluster.
+
+For example, get the YugabyteDB universe configuration:
+
+```sh
+./bin/yugabyted configure admin_operation --command 'get_universe_config'
+```
+
+#### Flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--data_dir *data-directory*
+: The data directory for the yugabyted server.
+
+--command *yb-admin-command*
+: Specify the yb-admin command to be executed on the YugabyteDB cluster.
+
+--master_addresses *master-addresses*
+: Comma-separated list of current masters of the YugabyteDB cluster.
+
+-----
+
+### configure_read_replica
+
+Use the `yugabyted configure_read_replica` command to configure, modify, or delete a read replica cluster.
+
+#### Syntax
+
+```text
+Usage: yugabyted configure_read_replica [command] [flags]
+```
+
+#### Commands
+
+The following subcommands are available for the `yugabyted configure_read_replica` command:
+
+- [new](#new)
+- [modify](#modify)
+- [delete](#delete)
+
+#### new
+
+Use the subcommand `yugabyted configure_read_replica new` to configure a new read replica cluster.
+
+For example, to create a new read replica cluster, execute the following command:
+
+```sh
+./bin/yugabyted configure_read_replica new --rf=1 --data_placement_constraint=cloud1.region1.zone1
+
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--rf *read-replica-replication-factor*
+: Replication factor for the read replica cluster.
+
+--data_placement_constraint *read-replica-constraint-value*
+: Data placement constraint value for the read replica cluster. This is an optional flag. The flag takes comma-separated values in the format cloud.region.zone.
+
+#### modify
+
+Use the subcommand `yugabyted configure_read_replica modify` to modify an exisitng read replica cluster.
+
+For example, modify a read replica cluster using the following commands.
+
+- Modify the replication factor of the existing read replica cluster:
+
+```sh
+./bin/yugabyted configure_read_replica modify --rf=2
+
+```
+
+- Modify the replication factor and also specify the replication constraint:
+
+```sh
+./bin/yugabyted configure_read_replica modify --rf=2 --data_placement_constraint=cloud1.region1.zone1,cloud2.region2.zone2
+
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--rf *read-replica-replication-factor*
+: Replication factor for the read replica cluster.
+
+--data_placement_constraint *read-replica-constraint-value*
+: Data placement constraint value for the read replica cluster. This is an optional flag. The flag takes comma-separated values in the format cloud.region.zone.
+
+#### delete
+
+Use the subcommand `yugabyted configure_read_replica delete` to delete an existing read replica cluster.
+
+For example, delete a read replica cluster using the following command:
+
+```sh
+./bin/yugabyted configure_read_replica delete
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
 
 -----
 
@@ -598,6 +759,149 @@ Use the `yuagbyted demo destroy` subcommand to shut down the yugabyted single-no
 
 --log_dir *log-directory*
 : The log directory for the yugabyted server to connect to or destroy.
+
+### backup
+
+Use the `yugabyted backup` command to take a backup of a YugabyteDB database into a network file storage directory or public cloud object storage.
+
+Note that the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
+
+#### Syntax
+
+```text
+Usage: yugabyted backup [flags]
+```
+
+Examples:
+
+- Take a backup into AWS S3 bucket:
+
+```sh
+./bin/yugabyted backup --database=yb-demo-northwind --cloud_storage_uri=s3://[bucket_name]
+```
+
+- Take a backup into Network file storage:
+
+```sh
+./bin/yugabyted backup --database=yb-demo-northwind --cloud_storage_uri=/nfs-dir
+```
+
+- Determine the status of a backup task:
+
+```sh
+./bin/yugabyted backup --database=yb-demo-northwind --cloud_storage_uri=s3://[bucket_name] --status
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--cloud_storage_uri *cloud_storage_location*
+: Cloud location to store the backup data files.
+
+--database *database*
+: YSQL Database to be backed up to cloud storage.
+
+--keyspace *keyspace*
+: YCQL Keyspace to be backed up to cloud storage.
+
+--status
+: Check the status of the backup task.
+
+### restore
+
+Use the `yugabyted restore` command to restore a database in the YugabyteDB cluster from a network file storage directory or from public cloud object storage.
+
+Note that the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
+
+#### Syntax
+
+```text
+Usage: yugabyted restore [flags]
+```
+
+Examples:
+
+- Restore a database from AWS S3 bucket:
+
+```sh
+./bin/yugabyted restore --database=yb-demo-northwind --cloud_storage_uri=s3://[bucket_name]
+```
+
+- Restore a database from a network file storage directory:
+
+```sh
+./bin/yugabyted restore --database=yb-demo-northwind --cloud_storage_uri=/nfs-dir
+```
+
+- Restore the database to a point in time in history:
+
+```sh
+./bin/yugabyted restore --database yugabyte --recover_to_point_in_time '2024-01-29 9:30:00 PM'
+```
+Note: To be able to restore to a point in time, PITR scheduling has to be enabled on the database using `yugabyted configure point_in_time_recovery`.
+
+- Determine the status of a restore task:
+
+```sh
+./bin/yugabyted restore --database=yb-demo-northwind --cloud_storage_uri=s3://[bucket_name] --status
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--cloud_storage_uri *cloud_storage_location*
+: Cloud location to store the backup data files.
+
+--database *database*
+: YSQL Database to be backed up to cloud storage.
+
+--keyspace *keyspace*
+: YCQL Keyspace to be backed up to cloud storage.
+
+--recover_to_point_in_time *pitr*
+: Restore to the specified point-in-time with timestamp enclosed in single quotes.
+
+--status
+: Check the status of the backup task.
+
+### finalize_upgrade
+
+Use the `yugabyted finalize_upgrade` command to finalize and upgrade the YSQL catalog to the new version and complete the upgrade process.
+
+#### Syntax
+
+```text
+Usage: yugabyted finalize_upgrade [flags]
+```
+
+Examples:
+
+- Finalize the upgrade process after upgrading all the nodes of the YugabyteDB cluster to the new version:
+
+```sh
+yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--upgrade_ysql_timeout *upgrade_timeout_in_ms*
+: Custom timeout for the YSQL upgrade in milliseconds. Default timeout is 60 seconds.
 
 -----
 
