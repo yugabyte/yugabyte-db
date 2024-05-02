@@ -684,14 +684,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "How frequently do we check for completed tasks in database",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static ConfKeyInfo<Boolean> editProviderNewEnabled =
-      new ConfKeyInfo<>(
-          "yb.edit_provider.new.enabled",
-          ScopeType.GLOBAL,
-          "Enable New Edit Provider",
-          "Enable new edit provider workflow",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<List> tagList =
       new ConfKeyInfo<>(
           "yb.runtime_conf_ui.tag_filter",
@@ -810,14 +802,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "installation",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> allowUsedProviderEdit =
-      new ConfKeyInfo<>(
-          "yb.provider.allow_used_provider_edit",
-          ScopeType.GLOBAL,
-          "Allow editing of used providers",
-          "Provider associated with universes can be edited",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<String> ybdbReleasePathRegex =
       new ConfKeyInfo<>(
           "yb.regex.release_pattern.ybdb",

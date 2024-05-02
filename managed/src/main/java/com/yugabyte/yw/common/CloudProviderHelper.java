@@ -984,7 +984,7 @@ public class CloudProviderHelper {
     // Validate the provider request so as to ensure we only allow editing of fields
     // that does not impact the existing running universes.
     long universeCount = provider.getUniverseCount();
-    if (confGetter.getGlobalConf(GlobalConfKeys.allowUsedProviderEdit) && universeCount > 0) {
+    if (universeCount > 0) {
       validateProviderEditPayload(provider, editProviderReq);
     }
     boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
