@@ -533,7 +533,7 @@ TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
 
 void PgTxnManager::IncTxnSerialNo() {
   ++txn_serial_no_;
-  active_sub_transaction_id_ = 0;
+  active_sub_transaction_id_ = kMinSubTransactionId;
   ++read_time_serial_no_;
 }
 

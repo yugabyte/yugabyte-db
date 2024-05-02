@@ -842,7 +842,10 @@ Status PgClientSession::RollbackToSubTransaction(
     const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
-  DCHECK_GE(req.sub_transaction_id(), 0);
+  RSTATUS_DCHECK_GE(
+      req.sub_transaction_id(), kMinSubTransactionId,
+      InvalidArgument,
+      Format("Expected sub_transaction_id to be >= $0", kMinSubTransactionId));
 
   /*
    * Currently we do not support a transaction block that has both DDL and DML statements (we
@@ -906,7 +909,10 @@ Status PgClientSession::RollbackToSubTransaction(
   //  YBCRollbackToSubTransaction() is called for sub-txn id 11.
 
   if (req.has_options()) {
-    DCHECK_GE(req.options().active_sub_transaction_id(), 0);
+    RSTATUS_DCHECK_GE(
+        req.options().active_sub_transaction_id(), kMinSubTransactionId,
+        InvalidArgument,
+        Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
     transaction->SetActiveSubTransaction(req.options().active_sub_transaction_id());
   }
 
@@ -941,7 +947,7 @@ Status PgClientSession::SetActiveSubTransaction(
          Format("Set active sub transaction $0, when no transaction is running",
                 req.sub_transaction_id()));
 
-  DCHECK_GE(req.sub_transaction_id(), 0);
+  DCHECK_GE(req.sub_transaction_id(), kMinSubTransactionId);
   transaction->SetActiveSubTransaction(req.sub_transaction_id());
   return Status::OK();
 }
@@ -1310,7 +1316,10 @@ PgClientSession::SetupSession(
   session.SetDeadline(deadline);
 
   if (transaction) {
-    DCHECK_GE(options.active_sub_transaction_id(), 0);
+    RSTATUS_DCHECK_GE(
+        options.active_sub_transaction_id(), kMinSubTransactionId,
+        InvalidArgument,
+        Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
     RETURN_NOT_OK(transaction->SetPgTxnStart(options.pg_txn_start_us()));
   }
