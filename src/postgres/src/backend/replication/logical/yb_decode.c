@@ -276,6 +276,10 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	before_op_tuple_buf->tuple = *before_op_tuple;
 	before_op_tuple_buf->yb_is_omitted = before_op_is_omitted;
 
+	elog(DEBUG2, "The before_op heap tuple: %s and after_op heap tuple: %s",
+		 YbHeapTupleToString(before_op_tuple, tupdesc),
+		 YbHeapTupleToString(after_op_tuple, tupdesc));
+
 	change->data.tp.newtuple = after_op_tuple_buf;
 	change->data.tp.oldtuple = before_op_tuple_buf;
 	change->data.tp.yb_table_oid = yb_record->table_oid;
@@ -416,6 +420,9 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 	}
 
 	tuple = heap_form_tuple(tupdesc, datums, is_nulls);
+	elog(DEBUG2, "The heap tuple: %s for operation: %s",
+		 YbHeapTupleToString(tuple, tupdesc),
+		 (change_type == REORDER_BUFFER_CHANGE_INSERT) ? "INSERT" : "DELETE");
 
 	RelationClose(relation);
 	return tuple;
@@ -536,14 +543,14 @@ static void
 YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
 						  TupleDesc tupdesc)
 {
-	/* Log tuple descriptor for DEBUG1 onwards. */
-	if (log_min_messages <= DEBUG1)
+	/* Log tuple descriptor for DEBUG2 onwards. */
+	if (log_min_messages <= DEBUG2)
 	{
-		elog(DEBUG1, "Printing tuple descriptor for relation %d\n",
+		elog(DEBUG2, "Printing tuple descriptor for relation %d\n",
 			 yb_record->table_oid);
 		for (int attr_idx = 0; attr_idx < tupdesc->natts; attr_idx++)
 		{
-			elog(DEBUG1, "Col %d: name = %s, dropped = %d, type = %d\n",
+			elog(DEBUG2, "Col %d: name = %s, dropped = %d, type = %d\n",
 						 attr_idx, tupdesc->attrs[attr_idx].attname.data,
 						 tupdesc->attrs[attr_idx].attisdropped,
 						 tupdesc->attrs[attr_idx].atttypid);
