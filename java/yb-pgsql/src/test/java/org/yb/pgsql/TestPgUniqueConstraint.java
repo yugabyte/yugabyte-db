@@ -401,10 +401,6 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
       assertTrue(miniCluster.getClient().setFlag(hp,
           "enable_transactional_ddl_gc", "false"));
     }
-    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
-      assertTrue(miniCluster.getClient().setFlag(hp,
-          "allowed_preview_flags_csv", "ysql_yb_ddl_rollback_enabled=true"));
-    }
     try (Statement stmt = connection.createStatement()) {
       runInvalidQuery(
           stmt,
