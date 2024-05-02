@@ -76,6 +76,7 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_uint32(leaderless_tablet_alert_delay_secs);
+DECLARE_bool(TEST_assert_local_op);
 
 namespace yb {
 namespace master {
@@ -1421,6 +1422,35 @@ TEST_F(MasterPathHandlersItest, TestVarzAutoFlag) {
 
   ASSERT_NE(it_unexpected_json_flag, flags.End());
   ASSERT_EQ((*it_unexpected_json_flag)["type"], "Default");
+}
+
+TEST_F(MasterPathHandlersItest, TestTestFlag) {
+  static const auto kTestFlagName = "TEST_assert_local_op";
+
+  // Human readable varz end point should not show default test flags.
+  faststring varz_result;
+  TestUrl("/varz", &varz_result);
+  auto varz_result_str = varz_result.ToString();
+  ASSERT_EQ(varz_result_str.find(kTestFlagName), std::string::npos);
+
+  // API varz end point should show default test flags.
+  faststring api_result;
+  TestUrl("/api/v1/varz", &api_result);
+  auto api_result_str = api_result.ToString();
+  ASSERT_NE(api_result_str.find(kTestFlagName), std::string::npos);
+
+  // Set the TEST flag to custom value.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_assert_local_op) = true;
+
+  // Human readable varz end point should show non-default test flags.
+  TestUrl("/varz", &varz_result);
+  varz_result_str = varz_result.ToString();
+  ASSERT_NE(varz_result_str.find(kTestFlagName), std::string::npos);
+
+  // API varz end point should show non-default test flags.
+  TestUrl("/api/v1/varz", &api_result);
+  api_result_str = api_result.ToString();
+  ASSERT_NE(api_result_str.find(kTestFlagName), std::string::npos);
 }
 
 void VerifyMetaCacheObjectIsValid(
