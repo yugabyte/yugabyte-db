@@ -341,6 +341,9 @@ public class TsStorageGraphService implements GraphSourceIF {
                 graphData.setWaitEventClass(
                     key.getLabels().remove(GraphLabel.waitEventClass.name()));
               }
+              if (key.getLabels().containsKey(GraphLabel.waitEventType.name())) {
+                graphData.setWaitEventType(key.getLabels().remove(GraphLabel.waitEventType.name()));
+              }
               if (key.getLabels().containsKey(GraphLabel.waitEvent.name())) {
                 graphData.setWaitEvent(key.getLabels().remove(GraphLabel.waitEvent.name()));
               }

@@ -3,10 +3,9 @@
     "data": [
       {
         "labels": {},
-        "name": "WAL_Sync",
-        "waitEvent": "WAL_Sync",
-        "waitEventClass": "Consensus",
+        "name": "Network",
         "waitEventComponent": "TServer",
+        "waitEventType": "Network",
         "x": [
           1706272200000,
           1706272560000,
@@ -96,9 +95,13 @@
     "layout": {
       "metadata": {
         "currentGroupBy": [
-          "waitEvent"
+          "waitEventType"
         ],
         "supportedGroupBy": [
+          {
+            "label": "waitEventType",
+            "name": "Type"
+          },
           {
             "label": "waitEvent",
             "name": "Event"
