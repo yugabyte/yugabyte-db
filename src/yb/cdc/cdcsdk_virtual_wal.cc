@@ -476,19 +476,19 @@ Status CDCSDKVirtualWAL::AddEntryForBeginRecord(const RecordInfo& record_info) {
   return Status::OK();
 }
 
-Status CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
+Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
     const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
-    const uint64_t restart_lsn) {
-  if (restart_lsn < last_received_restart_lsn) {
+    const uint64_t restart_lsn_hint) {
+  if (restart_lsn_hint < last_received_restart_lsn) {
     return STATUS_FORMAT(
         IllegalState, Format(
                           "Received restart LSN $0 is less than the last received restart LSN $1",
-                          restart_lsn, last_received_restart_lsn));
+                          restart_lsn_hint, last_received_restart_lsn));
   }
 
   CommitRecordMetadata record_metadata = last_shipped_commit;
-  if (restart_lsn < last_shipped_commit.commit_lsn) {
-    RETURN_NOT_OK(TruncateMetaMap(restart_lsn));
+  if (restart_lsn_hint < last_shipped_commit.commit_lsn) {
+    RETURN_NOT_OK(TruncateMetaMap(restart_lsn_hint));
     record_metadata = commit_meta_and_last_req_map_.begin()->second.record_metadata;
   } else {
     // Special case: restart_lsn >= last_shipped_commit.commit_lsn
@@ -500,9 +500,9 @@ Status CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
   }
 
   RETURN_NOT_OK(UpdateSlotEntryInCDCState(stream_id, confirmed_flush_lsn, record_metadata));
-  last_received_restart_lsn = restart_lsn;
+  last_received_restart_lsn = restart_lsn_hint;
 
-  return Status::OK();
+  return record_metadata.commit_lsn;
 }
 
 Status CDCSDKVirtualWAL::TruncateMetaMap(const uint64_t restart_lsn) {
@@ -539,6 +539,8 @@ Status CDCSDKVirtualWAL::UpdateSlotEntryInCDCState(
     const CommitRecordMetadata& record_metadata) {
   CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
   entry.confirmed_flush_lsn = confirmed_flush_lsn;
+  // Also update the return value sent from UpdateAndPersistLSNInternal if the restart_lsn value is
+  // changed here.
   entry.restart_lsn = record_metadata.commit_lsn;
   entry.xmin = record_metadata.commit_txn_id;
   entry.record_id_commit_time = record_metadata.commit_record_unique_id->GetCommitTime();

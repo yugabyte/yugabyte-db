@@ -372,7 +372,6 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 --------+---------+------+------------
  id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
-Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
     Index "testschema.test_index2"
@@ -398,7 +397,6 @@ ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
 --------+---------+------+------------
  id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
-Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
     Index "testschema.test_index2"
@@ -419,7 +417,6 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 --------+--------+------+------------
  id     | bigint | yes  | id
 lsm, for table "testschema.test_default_tab"
-Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
    Index "testschema.test_index2"
@@ -558,7 +555,9 @@ SET SESSION ROLE regress_tablespace_user2;
 CREATE TABLE tablespace_table (i int) TABLESPACE regress_tblspace; -- fail
 ERROR:  permission denied for tablespace regress_tblspace
 ALTER TABLE testschema.tablespace_acl ALTER c TYPE bigint;
-ERROR:  permission denied for schema testschema
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 RESET ROLE;
 ALTER TABLESPACE regress_tblspace RENAME TO regress_tblspace_renamed;
 ERROR:  ALTER TABLESPACE not supported yet

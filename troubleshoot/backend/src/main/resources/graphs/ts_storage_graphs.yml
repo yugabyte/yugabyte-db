@@ -5,6 +5,8 @@ query_latency:
     universeUuid:
       name: universe_id
       type: type_uuid
+    dbId:
+      name: db_id
     queryId:
       name: query_id
       type: type_int
@@ -35,6 +37,8 @@ query_rps:
     universeUuid:
       name: universe_id
       type: type_uuid
+    dbId:
+      name: db_id
     queryId:
       name: query_id
       type: type_int
@@ -55,6 +59,8 @@ query_rows_avg:
     universeUuid:
       name: universe_id
       type: type_uuid
+    dbId:
+      name: db_id
     queryId:
       name: query_id
       type: type_int

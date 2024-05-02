@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -55,6 +56,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   private Provider provider;
   private Region region;
   private Region mockRegion;
+  private Config mockConfig;
 
   @Before
   public void setUp() {
@@ -63,6 +65,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "us-west-2", "us-west-2", "yb-image");
     mockRegion = mock(Region.class);
+    mockConfig = mock(Config.class);
   }
 
   private Result getReleases(UUID customerUUID) {
@@ -220,7 +223,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.17.1.0-foo", Json.newObject().set("s3", s3));
     Result result = createRelease(customer.getUuid(), body);
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
-    verify(mockGFlagsValidation, times(1)).addDBMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(1)).addDBMetadataFiles(any());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertTrue(json.get("success").asBoolean());
@@ -243,7 +246,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.17.1.0-foo", Json.newObject().set("gcs", gcs));
     Result result = createRelease(customer.getUuid(), body);
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
-    verify(mockGFlagsValidation, times(1)).addDBMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(1)).addDBMetadataFiles(any());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertTrue(json.get("success").asBoolean());
@@ -286,7 +289,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         .addReleaseWithMetadata(any(), any());
     Result result = assertPlatformException(() -> createRelease(customer.getUuid(), body));
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
-    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.getUuid());
   }
@@ -309,7 +312,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
     Result result = assertPlatformException(() -> createRelease(customer.getUuid(), body));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
-    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any());
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.getUuid());
 
@@ -320,7 +323,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
     result = assertPlatformException(() -> createRelease(customer.getUuid(), body2));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
-    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any());
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.getUuid());
 
@@ -328,7 +331,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("http", http));
     result = assertPlatformException(() -> createRelease(customer.getUuid(), body3));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
-    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.getUuid());
 
@@ -338,7 +341,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("http", http));
     result = assertPlatformException(() -> createRelease(customer.getUuid(), body4));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
-    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.getUuid());
   }
@@ -509,7 +512,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testUpdateRelease() {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
-    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory);
+    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig);
     when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
     ObjectNode body = Json.newObject();
     body.put("version", "0.0.1");
@@ -557,7 +560,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testUpdateReleaseWithMissingStateParam() {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
-    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory);
+    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig);
     when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
     ObjectNode body = Json.newObject();
     Result result = assertPlatformException(() -> updateRelease(customer.getUuid(), "0.0.1", body));
@@ -604,7 +607,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteReleaseSuccess() {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.2");
-    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory);
+    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig);
     when(mockReleaseManager.getReleaseByVersion("0.0.2")).thenReturn(release);
     Result result = deleteRelease(customer.getUuid(), "0.0.2");
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
@@ -615,7 +618,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteReleaseWithException() {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.3");
-    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory);
+    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory, mockConfig);
     when(mockReleaseManager.getReleaseByVersion("0.0.3")).thenReturn(release);
     doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).removeRelease("0.0.3");
     Result result = assertPlatformException(() -> deleteRelease(customer.getUuid(), "0.0.3"));

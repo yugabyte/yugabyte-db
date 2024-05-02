@@ -19,6 +19,7 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
@@ -144,6 +145,10 @@ public class Release extends Model {
     return ReleaseArtifact.getForReleaseArchitecture(releaseUUID, arch);
   }
 
+  public ReleaseArtifact getKubernetesArtifact() {
+    return ReleaseArtifact.getForReleaseKubernetesArtifact(releaseUUID);
+  }
+
   public void setReleaseTag(String tag) {
     this.releaseTag = tag;
     save();
@@ -168,6 +173,12 @@ public class Release extends Model {
   public boolean delete() {
     try (Transaction transaction = DB.beginTransaction()) {
       for (ReleaseArtifact artifact : getArtifacts()) {
+        if (artifact.getPackageFileID() != null) {
+          ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
+          if (!rlf.delete()) {
+            return false;
+          }
+        }
         log.debug("cascading delete to artifact {}", artifact.getArtifactUUID());
         if (!artifact.delete()) {
           return false;
@@ -179,5 +190,10 @@ public class Release extends Model {
       transaction.commit();
     }
     return true;
+  }
+
+  public Set<Universe> getUniverses() {
+    String formattedVersion = this.version;
+    return Universe.universeDetailsIfReleaseExists(formattedVersion);
   }
 }

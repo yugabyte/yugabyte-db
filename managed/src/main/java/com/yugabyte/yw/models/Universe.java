@@ -867,14 +867,17 @@ public class Universe extends Model {
     return port;
   }
 
-  private String getHostPortsString(
-      List<NodeDetails> serverNodes, ServerType type, PortType portType) {
+  public String getHostPortsString(
+      Collection<NodeDetails> serverNodes, ServerType type, PortType portType) {
     return getHostPortsString(serverNodes, type, portType, false);
   }
 
   // Helper API to create the based on the server type.
   private String getHostPortsString(
-      List<NodeDetails> serverNodes, ServerType type, PortType portType, boolean getSecondary) {
+      Collection<NodeDetails> serverNodes,
+      ServerType type,
+      PortType portType,
+      boolean getSecondary) {
     StringBuilder servers = new StringBuilder();
     for (NodeDetails node : serverNodes) {
       // Only get secondary if dual net legacy is false.

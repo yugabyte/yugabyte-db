@@ -66,6 +66,7 @@
 #include "yb/rpc/yb_rpc.h"
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/server/async_client_initializer.h"
 #include "yb/server/rpc_server.h"
 #include "yb/rpc/secure.h"
 #include "yb/server/webserver.h"

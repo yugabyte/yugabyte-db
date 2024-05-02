@@ -35,8 +35,12 @@ class PgSharedMemTest : public PgMiniTestBase {
   void SetUp() override {
     FLAGS_pg_client_use_shared_memory = true;
     FLAGS_pg_client_extra_timeout_ms = 0;
-    FLAGS_ysql_client_read_write_timeout_ms = 2000 * kTimeMultiplier;
+    FLAGS_ysql_client_read_write_timeout_ms = GetReadWriteTimeout();
     PgMiniTestBase::SetUp();
+  }
+
+  virtual int GetReadWriteTimeout() const {
+    return 2000 * kTimeMultiplier;
   }
 };
 
@@ -127,6 +131,27 @@ TEST_F(PgSharedMemTest, Batches) {
 
   auto value = AsString(ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT * FROM t ORDER BY key")));
   ASSERT_EQ(value, "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]");
+}
+
+class PgSharedMemBigTimeoutTest : public PgSharedMemTest {
+ protected:
+  int GetReadWriteTimeout() const override {
+    return 120000;
+  }
+};
+
+TEST_F_EX(PgSharedMemTest, LongRead, PgSharedMemBigTimeoutTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+
+  FLAGS_TEST_transactional_read_delay_ms = 65000;
+  auto result = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM t"));
+  ASSERT_EQ(result, 1);
+  ASSERT_OK(conn.CommitTransaction());
 }
 
 } // namespace yb::pgwrapper

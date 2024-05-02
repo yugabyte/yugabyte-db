@@ -40,6 +40,13 @@ func (a *AuthAPIClient) UpgradeSoftware(uUUID string) (
 	return a.APIClient.UniverseUpgradesManagementApi.UpgradeSoftware(a.ctx, a.CustomerUUID, uUUID)
 }
 
+// RestartUniverse for restart operation
+func (a *AuthAPIClient) RestartUniverse(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiRestartUniverseRequest,
+) {
+	return a.APIClient.UniverseUpgradesManagementApi.RestartUniverse(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // UniverseYBAVersionCheck checks if the new API request body can be used for the Create
 // Provider API
 func (a *AuthAPIClient) UniverseYBAVersionCheck() (bool, string, error) {

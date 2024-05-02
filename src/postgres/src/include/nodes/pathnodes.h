@@ -916,6 +916,9 @@ struct IndexOptInfo
 	bool		amcanmarkpos;	/* does AM support mark/restore? */
 	/* Rather than include amapi.h here, we declare amcostestimate like this */
 	void		(*amcostestimate) ();	/* AM's cost estimator */
+
+	/* Used for YB base scans cost model */
+	int32_t 	yb_cached_ybctid_size;
 };
 
 /*
@@ -1269,6 +1272,7 @@ typedef struct Path
 	YbPathInfo	yb_path_info;	/* fields used for YugabyteDB */
 	double		yb_estimated_num_nexts;
 	double		yb_estimated_num_seeks;
+	int			yb_estimated_docdb_result_width;
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */
@@ -1337,6 +1341,7 @@ typedef struct IndexPath
 	Selectivity indexselectivity;
 	double		yb_estimated_num_nexts;
 	double		yb_estimated_num_seeks;
+	int			yb_estimated_docdb_result_width;
 	YbIndexPathInfo yb_index_path_info;	/* fields used for YugabyteDB */
 } IndexPath;
 

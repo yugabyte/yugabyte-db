@@ -312,6 +312,7 @@ create_backup() {
   ybdb="${15}"
   ysql_dump_path="${16}"
   include_releases_flag="**/releases/**"
+  include_uploaded_releases_flag="**/upload/release_artifacts/**"
 
   mkdir -p "${output_path}"
 
@@ -377,6 +378,7 @@ create_backup() {
 
   if [[ "$exclude_releases" = true ]]; then
     include_releases_flag=""
+    include_uploaded_releases_flag=""
   fi
 
   modify_service yb-platform stop
@@ -405,7 +407,7 @@ create_backup() {
               "**/prometheus/targets/**" "**/data/yb-platform/node-agent/certs/**" \
               "**/data/node-agent/certs/**" "**/provision/**/provision_instance.py" \
               "**/${PLATFORM_DUMP_FNAME}" "**/${VERSION_METADATA_BACKUP}" \
-              "${include_releases_flag}") )
+              "${include_releases_flag}" "${include_uploaded_releases_flag}") )
 
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
@@ -592,7 +594,8 @@ restore_backup() {
     # Node-agent/ybc foldes can be copied entirely into
     # Copy releases, ybc, certs, keys, over
     # xcerts/keys/licenses can all go directly into data directory
-    BACKUP_DIRS=('*ybc' '*data/certs' '*data/keys' '*data/licenses' '*node-agent')
+    BACKUP_DIRS=('*ybc' '*data/certs' '*data/keys' '*data/licenses' '*node-agent' \
+      '*upload/release_artifacts')
     for d in "${BACKUP_DIRS[@]}"
     do
       set +e

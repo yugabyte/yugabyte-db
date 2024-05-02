@@ -210,19 +210,19 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p
 (11 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
-                  QUERY PLAN
------------------------------------------------
- Hash Left Join
-   Hash Cond: (t1.a = t3.a)
-   ->  Hash Join
-         Hash Cond: (t1.a = t2.b)
-         ->  Seq Scan on p1 t1
-               Storage Filter: (b <= 10)
-         ->  Hash
-               ->  Seq Scan on p2 t2
-                     Storage Filter: (b <= 15)
+                     QUERY PLAN
+-----------------------------------------------------
+ Hash Right Join
+   Hash Cond: (t3.a = t1.a)
+   ->  Seq Scan on p3 t3
    ->  Hash
-         ->  Seq Scan on p3 t3
+         ->  Hash Join
+               Hash Cond: (t1.a = t2.b)
+               ->  Seq Scan on p1 t1
+                     Storage Filter: (b <= 10)
+               ->  Hash
+                     ->  Seq Scan on p2 t2
+                           Storage Filter: (b <= 15)
 (11 rows)
 
 /*+YbBatchedNL(t1 t2) Leading(((t1 t2) t3))*/ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;

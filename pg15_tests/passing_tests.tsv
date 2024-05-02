@@ -7,13 +7,6 @@ JAVA	org.yb.pgsql.TestIndexBackfill#insertsWhileCreatingIndex
 JAVA	org.yb.pgsql.TestJWTAuth
 JAVA	org.yb.pgsql.TestPg15Regress
 JAVA	org.yb.pgsql.TestPgAlterTable#testAddColumnWithNotNullConstraint
-JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testAlterPartitionColumnTypeFailure
-JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testMultipleRewrites
-JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testNotNullConstraints
-JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testSplitOptions
-JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTableWithRangeKey
-JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTempTables
-JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testUniqueConstraints
 JAVA	org.yb.pgsql.TestPgAuthorization
 JAVA	org.yb.pgsql.TestPgAutoExplain
 JAVA	org.yb.pgsql.TestPgBackendMemoryContext

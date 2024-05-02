@@ -2747,16 +2747,55 @@ class ControlScript(object):
                 "--default_memory_limit_to_ram_ratio=0.35",
                 "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
             ]
+
+        master_flags = self.configs.saved_data.get("master_flags","")
+
         # if a join ip is specified, bring up a shell mode master
         if not join_ip:
             yb_master_cmd.append("--master_addresses={}".format(master_addresses))
             yb_master_cmd.append("--cluster_uuid={}".format(
                 self.configs.saved_data.get("universe_uuid")))
 
-        if self.configs.saved_data.get("master_flags"):
+        # If allowed_preview_flags_csv is present
+        # Extract the value of allowed_preview_flags_csv
+        # Remove the flag present in the master_flags string
+        if master_flags.find("allowed_preview_flags_csv") != -1:
+            allowed_preview_flags_csv_start_index = master_flags.find('allowed_preview_flags_csv')
+            allowed_preview_flags_csv_end_index = master_flags.find('}',
+                                                    allowed_preview_flags_csv_start_index) + 1
+            allowed_preview_flags_csv_flag = master_flags[allowed_preview_flags_csv_start_index:\
+                        allowed_preview_flags_csv_end_index]
+            allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[
+                                                    allowed_preview_flags_csv_flag.find("{")+1:-1]
+
+            # Check and handle if the allowed_preview_flags_csv_flag is
+            # empty after removing the curly braces
+            if allowed_preview_flags_csv_flag:
+                # If the value was given through the config file
+                # remove the starting and ending quotes.
+                if allowed_preview_flags_csv_flag[0] == "'" and \
+                            allowed_preview_flags_csv_flag[-1] == "'":
+                    allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[1:-1]
+                elif allowed_preview_flags_csv_flag[0] == '"' and \
+                            allowed_preview_flags_csv_flag[-1] == '"':
+                    allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[1:-1]
+
+                yb_master_cmd.extend(["--allowed_preview_flags_csv={}".format(
+                                                            allowed_preview_flags_csv_flag)])
+            else:
+                # If the flag is empty, reset the configuration by not adding it
+                pass
+            # Remove the flag present in master_flags
+            if allowed_preview_flags_csv_start_index == 0:
+                master_flags = master_flags[allowed_preview_flags_csv_end_index+1:]
+            else:
+                master_flags = master_flags[:allowed_preview_flags_csv_start_index-1] + \
+                    master_flags[allowed_preview_flags_csv_end_index:]
+
+        if master_flags:
             yb_master_cmd.extend(
                 ["--{}".format(flag) for flag in \
-                    self.configs.saved_data.get("master_flags").split(",")])
+                    master_flags.split(",")])
 
         return yb_master_cmd
 

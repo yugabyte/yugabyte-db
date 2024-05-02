@@ -448,12 +448,12 @@ class YBClient::Data {
       YBClient* client, CoarseTimePoint deadline,
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
       const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
-      GetXClusterStreamsCallback user_cb);
+      std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb);
 
   Status IsXClusterBootstrapRequired(
       YBClient* client, CoarseTimePoint deadline,
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      IsXClusterBootstrapRequiredCallback user_cb);
+      std::function<void(Result<bool>)> user_cb);
 
   template <class ProxyClass, class ReqClass, class RespClass>
   using SyncLeaderMasterFunc = void (ProxyClass::*)(

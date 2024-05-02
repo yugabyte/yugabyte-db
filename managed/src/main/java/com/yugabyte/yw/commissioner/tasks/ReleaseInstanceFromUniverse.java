@@ -44,10 +44,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
     return (NodeTaskParams) taskParams;
   }
 
-  @Override
-  public void validateParams(boolean isFirstTry) {
-    super.validateParams(isFirstTry);
-    Universe universe = getUniverse();
+  private void runBasicChecks(Universe universe) {
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
     if (currentNode == null) {
       String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
@@ -61,8 +58,15 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
   }
 
   @Override
-  protected void createPrecheckTasks(Universe universe) {
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    runBasicChecks(getUniverse());
+  }
 
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    // Check again after locking.
+    runBasicChecks(universe);
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
     Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
     createCheckNodeSafeToDeleteTasks(universe, currentNodeDetails);

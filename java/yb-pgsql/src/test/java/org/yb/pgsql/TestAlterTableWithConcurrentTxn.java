@@ -54,7 +54,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       ATTACH_PARTITION, DETACH_PARTITION,
       ADD_FOREIGN_KEY, DROP_FOREIGN_KEY,
       ADD_PRIMARY_KEY, DROP_PRIMARY_KEY,
-      ADD_COLUMN_WITH_VOLATILE_DEFAULT}
+      ADD_COLUMN_WITH_VOLATILE_DEFAULT, ALTER_TYPE}
 
   private void prepareAndPopulateTable(AlterCommand alterCommand, String tableName)
       throws Exception {
@@ -98,6 +98,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
         createTableQuery += ", c INT NOT NULL";
       } else if (alterCommand == AlterCommand.DROP_IDENTITY) {
         createTableQuery += ", c INT GENERATED ALWAYS AS IDENTITY";
+      }
+      if (alterCommand == AlterCommand.ALTER_TYPE) {
+        createTableQuery += ", d TEXT";
       }
       createTableQuery += ")";
       if (alterCommand == AlterCommand.ATTACH_PARTITION ||
@@ -180,6 +183,10 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
           statement.execute("INSERT INTO " + tableName + "_f VALUES (1)");
           break;
         }
+        case ALTER_TYPE: {
+          statement.execute("INSERT INTO " + tableName + " VALUES (1, 'foo', 'bar')");
+          break;
+        }
         default: {
           throw new Exception("Alter command type " + alterCommand + " not supported");
         }
@@ -260,6 +267,10 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       case ADD_COLUMN_WITH_VOLATILE_DEFAULT: {
         return rewriteTestFlag + "ALTER TABLE " + tableName
           + " ADD COLUMN d float DEFAULT random()";
+      }
+      case ALTER_TYPE: {
+        return rewriteTestFlag + "ALTER TABLE " + tableName
+          + " ALTER COLUMN d TYPE int USING length(d)";
       }
       default: {
         throw new Exception("Alter command type " + alterCommand + " not supported");
@@ -345,6 +356,13 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
               return "INSERT INTO " + tableName + " VALUES (2, 'bar', 2.0)";
             }
           }
+          case ALTER_TYPE: {
+            if (useOriginalSchema) {
+              return "INSERT INTO " + tableName + " VALUES (2, 'bar', 'foobar')";
+            } else {
+              return "INSERT INTO " + tableName + " VALUES (2, 'bar', 6)";
+            }
+          }
           default: {
             throw new Exception("Alter command type " + alterCommand + " not supported");
           }
@@ -372,6 +390,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
           case ADD_PRIMARY_KEY:
           case DROP_PRIMARY_KEY:
           case ADD_COLUMN_WITH_VOLATILE_DEFAULT:
+          case ALTER_TYPE:
           case ATTACH_PARTITION:
             return "SELECT a FROM " + tableName + " WHERE a = 1";
           case DETACH_PARTITION:

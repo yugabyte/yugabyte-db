@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/sirupsen/logrus"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"gopkg.in/yaml.v2"
 )
 
 // StringSlice accepts array of interface and returns a pointer to slice of string
@@ -140,11 +143,12 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entityName,
 	errorBlock := YbaStructuredError{}
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("%w: %s", errorTag, "Error reading HTTP Response body")
+		logrus.Debug("There was an error reading the response from the API\n")
+		return errorTag
 	}
 	if err = json.Unmarshal(body, &errorBlock); err != nil {
-		return fmt.Errorf("%w: %s %s", errorTag,
-			"Failed unmarshalling HTTP Response body", err.Error())
+		logrus.Debugf("There was an error unmarshalling the response from the API\n")
+		return errorTag
 	}
 	errorString := ErrorFromResponseBody(errorBlock)
 	return fmt.Errorf("%w: %s", errorTag, errorString)
@@ -296,4 +300,33 @@ func IsYBVersion(v string) (bool, error) {
 		return false, errors.New("unable to parse YB version strings")
 	}
 	return true, nil
+}
+
+// YAMLtoString reads yaml file and converts the data into a string
+func YAMLtoString(filePath string) string {
+	logrus.Debug("YAML File Path: ", filePath)
+	yamlContent, err := os.ReadFile(filePath)
+	if err != nil {
+		logrus.Fatalf(
+			formatter.Colorize("Error reading YAML file: "+err.Error()+"\n",
+				formatter.RedColor))
+	}
+	var data map[string]interface{}
+
+	// Unmarshal the YAML content into the map
+	err = yaml.Unmarshal(yamlContent, &data)
+	if err != nil {
+		logrus.Fatalf(
+			formatter.Colorize("Error unmarshalling YAML file: "+err.Error()+"\n",
+				formatter.RedColor))
+	}
+
+	contentBytes, err := yaml.Marshal(data)
+	if err != nil {
+		logrus.Fatalf(
+			formatter.Colorize("Error marshalling YAML file: "+err.Error()+"\n",
+				formatter.RedColor))
+	}
+	return string(contentBytes)
+
 }

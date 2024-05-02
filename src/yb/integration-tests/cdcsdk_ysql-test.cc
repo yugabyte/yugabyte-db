@@ -7570,7 +7570,7 @@ TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
   res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot change a column type of a table that is a part of CDC or XCluster replication.");
+      "cannot rewrite a table that is a part of CDC or XCluster replication");
   res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(
@@ -7666,6 +7666,7 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cdc_active_replication_slot_window_ms) =
       10000 * yb::kTimeMultiplier;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table =
@@ -7931,6 +7932,258 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   auto entry_2 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {kCDCSDKSlotEntryTabletId, stream_id_2}, CDCStateTableEntrySelector().IncludeAll()));
   ASSERT_FALSE(entry_2.has_value());
+}
+
+TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0.$1 ADD COLUMN $2 VARCHAR", "public", kTableName, kValue2ColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0.$1 ADD COLUMN $2 VARCHAR", "public", kTableName, kValue3ColumnName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count[] = {2, 1, 1, 0, 0, 0, 1, 1};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  string pattern = "pattern";
+  string text = "";
+  while (text.length() <= 1_KB) text += pattern;
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3, $5) VALUES (1, 2, '$4', '$6')", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName, text, kValue3ColumnName, text));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = '$2' WHERE $3 = 1", kTableName, kValue2ColumnName, text + text,
+      kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+
+  GetChangesResponsePB get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+
+  uint32_t record_size = get_changes_resp.cdc_sdk_proto_records_size();
+  for (uint32 i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = get_changes_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 1);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 2);
+      ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
+      ASSERT_EQ(record.row_message().new_tuple(3).datum_string(), text);
+    } else if (record.row_message().op() == RowMessage::UPDATE) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 1);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_string(), text + text);
+    }
+  }
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count_2[] = {0, 2, 0, 0, 0, 0, 1, 1};
+  int count_2[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  // Inserting large column value and updating all columns.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3, $5) VALUES (2, 3, '$4', '$6')", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName, text, kValue3ColumnName, text));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = '$2', $4 = 22, $5 = '$6' WHERE $3 = 2", kTableName, kValue2ColumnName,
+      text + text, kKeyColumnName, kValueColumnName, kValue3ColumnName, text));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+
+  get_changes_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count_2);
+  }
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count_2[i], count_2[i]);
+  }
+
+  record_size = get_changes_resp.cdc_sdk_proto_records_size();
+  int insert_count = 0;
+  for (uint32 i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = get_changes_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (insert_count == 0) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+        ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 2);
+        ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 3);
+        ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
+        ASSERT_EQ(record.row_message().new_tuple(3).datum_string(), text);
+      } else if (insert_count == 1) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+        ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 2);
+        ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 22);
+        ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text + text);
+        ASSERT_EQ(record.row_message().new_tuple(3).datum_string(), text);
+      }
+      insert_count++;
+    }
+  }
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count_3[] = {0, 1, 0, 0, 0, 0, 1, 1};
+  int count_3[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  // Inserting user defined NULL value in packed row
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3, $4) VALUES (3, 4, NULL, '$5')", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName, kValue3ColumnName, text));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+
+  get_changes_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count_3);
+  }
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count_3[i], count_3[i]);
+  }
+  record_size = get_changes_resp.cdc_sdk_proto_records_size();
+  for (uint32 i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = get_changes_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 3);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 4);
+      ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
+      ASSERT_FALSE(record.row_message().new_tuple(3).has_datum_string());
+      ASSERT_EQ(
+          record.row_message().new_tuple(3).pg_type(),
+          record.row_message().new_tuple(3).column_type());
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0.$1 ADD COLUMN $2 VARCHAR", "public", kTableName, kValue2ColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0.$1 ADD COLUMN $2 VARCHAR", "public", kTableName, kValue3ColumnName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  string pattern = "pattern";
+  string text = "";
+  while (text.length() <= 1_KB) text += pattern;
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3, $5) VALUES (1, 2, '$4', '$6')", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName, text, kValue3ColumnName, text + text));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+
+  GetChangesResponsePB get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count[] = {2, 1, 0, 0, 0, 0, 1, 1};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+
+  uint32_t record_size = get_changes_resp.cdc_sdk_proto_records_size();
+  for (uint32 i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = get_changes_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 1);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 2);
+      ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
+      ASSERT_EQ(record.row_message().new_tuple(3).datum_string(), text + text);
+    }
+  }
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3, $4) VALUES (3, 4, NULL, '$5')", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName, kValue3ColumnName, text));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  get_changes_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count_2[] = {0, 1, 0, 0, 0, 0, 1, 1};
+  int count_2[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count_2);
+  }
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count_2[i], count_2[i]);
+  }
+
+  record_size = get_changes_resp.cdc_sdk_proto_records_size();
+  for (uint32 i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = get_changes_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 3);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 4);
+      ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
+      ASSERT_FALSE(record.row_message().new_tuple(3).has_datum_string());
+      ASSERT_EQ(
+          record.row_message().new_tuple(3).pg_type(),
+          record.row_message().new_tuple(3).column_type());
+    }
+  }
 }
 
 }  // namespace cdc

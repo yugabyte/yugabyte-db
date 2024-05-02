@@ -58,7 +58,7 @@
 
 /* Network transfer cost */
 #define YB_DEFAULT_LOCAL_LATENCY_COST 180.0
-#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 64000.0
+#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 80000.0
 
 /*
  * TODO : Since we cannot currently estimate the number of key value pairs per

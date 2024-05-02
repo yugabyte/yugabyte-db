@@ -72,8 +72,7 @@ func NewStorageConfigContext() *Context {
 		"S3SecretAccessKey":  aws.AccessKeySecretHeader,
 		"IAMInstanceProfile": iamInstanceProfileHeader,
 
-		"UseGCPIAM":      useGCPIAMHeader,
-		"GcsCredentials": gcsCredentialsHeader,
+		"UseGCPIAM": useGCPIAMHeader,
 
 		"AzSASToken": azSASTokenHeader,
 	}

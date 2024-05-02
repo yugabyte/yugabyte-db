@@ -1,5 +1,7 @@
 package com.yugabyte.troubleshoot.ts.controllers;
 
+import static org.springframework.http.HttpStatus.NOT_FOUND;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,11 +14,17 @@ import com.yugabyte.troubleshoot.ts.models.GraphResponse;
 import com.yugabyte.troubleshoot.ts.service.BeanValidator;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
 import com.yugabyte.troubleshoot.ts.service.TroubleshootingService;
+import com.yugabyte.troubleshoot.ts.service.anomaly.AnomalyMetadataProvider;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 public class TroubleshootingController {
@@ -26,11 +34,14 @@ public class TroubleshootingController {
   private final ObjectMapper objectMapper;
   private final BeanValidator beanValidator;
 
+  private final Map<UUID, Map<UUID, Anomaly>> lastAnomalies = new ConcurrentHashMap<>();
+
   public TroubleshootingController(
       TroubleshootingService troubleshootingService,
       GraphService graphService,
       ObjectMapper objectMapper,
-      BeanValidator beanValidator) {
+      BeanValidator beanValidator,
+      AnomalyMetadataProvider anomalyMetadataProvider) {
     this.troubleshootingService = troubleshootingService;
     this.graphService = graphService;
     this.objectMapper = objectMapper;
@@ -38,15 +49,8 @@ public class TroubleshootingController {
   }
 
   @GetMapping("/anomalies_metadata")
-  public List<Anomaly> getAnomaliesMetadata() {
-    ObjectReader anomaliesMetadataReader =
-        objectMapper.readerFor(new TypeReference<List<AnomalyMetadata>>() {});
-    String responseStr = CommonUtils.readResource("mocks/anomalies_metadata.json");
-    try {
-      return anomaliesMetadataReader.readValue(responseStr);
-    } catch (JsonProcessingException e) {
-      throw new RuntimeException("Failed to parse mocked response", e);
-    }
+  public List<AnomalyMetadata> getAnomaliesMetadata() {
+    return troubleshootingService.getAnomaliesMetadata();
   }
 
   @GetMapping("/anomalies")
@@ -55,26 +59,46 @@ public class TroubleshootingController {
       @RequestParam(name = "startTime", required = false) Instant startTime,
       @RequestParam(name = "endTime", required = false) Instant endTime,
       @RequestParam(name = "mocked", required = false, defaultValue = "false") boolean mocked) {
+    List<Anomaly> result;
     if (mocked) {
       ObjectReader anomaliesReader = objectMapper.readerFor(new TypeReference<List<Anomaly>>() {});
       String responseStr = CommonUtils.readResource("mocks/anomalies.json");
       try {
-        return anomaliesReader.readValue(responseStr);
+        result = anomaliesReader.readValue(responseStr);
       } catch (JsonProcessingException e) {
         throw new RuntimeException("Failed to parse mocked response", e);
       }
+    } else {
+      Instant now = Instant.now();
+      if (endTime == null) {
+        endTime = now;
+      }
+      if (startTime == null) {
+        startTime = now.minus(14, ChronoUnit.DAYS);
+      }
+      if (endTime.isBefore(startTime)) {
+        beanValidator.error().global("startTime should be before endTime");
+      }
+      result = troubleshootingService.findAnomalies(universeUuid, startTime, endTime);
     }
-    Instant now = Instant.now();
-    if (endTime == null) {
-      endTime = now;
+    Map<UUID, Anomaly> lastUniverseAnomalies =
+        result.stream().collect(Collectors.toMap(Anomaly::getUuid, Function.identity()));
+    lastAnomalies.put(universeUuid, lastUniverseAnomalies);
+    return result;
+  }
+
+  @GetMapping("/anomalies/{id}")
+  public Anomaly getAnomaly(
+      @PathVariable("id") UUID anomalyUuid, @RequestParam("universe_uuid") UUID universeUuid) {
+    Map<UUID, Anomaly> lastUniverseAnomalies = lastAnomalies.get(universeUuid);
+    if (lastUniverseAnomalies == null) {
+      throw new ResponseStatusException(NOT_FOUND, "Anomaly not found");
     }
-    if (startTime == null) {
-      startTime = now.minus(2, ChronoUnit.WEEKS);
+    Anomaly anomaly = lastUniverseAnomalies.get(anomalyUuid);
+    if (anomaly == null) {
+      throw new ResponseStatusException(NOT_FOUND, "Anomaly not found");
     }
-    if (endTime.isBefore(startTime)) {
-      beanValidator.error().global("startTime should be before endTime");
-    }
-    return troubleshootingService.findAnomalies(universeUuid, startTime, endTime);
+    return anomaly;
   }
 
   @PostMapping("/graphs")

@@ -49,16 +49,14 @@ SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
 -- with aggregates
 EXPLAIN (costs off)
 SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
-                         QUERY PLAN
-------------------------------------------------------------
- Finalize Aggregate
+                      QUERY PLAN
+------------------------------------------------------
+ Aggregate
    ->  Gather
          Workers Planned: 2
-         ->  Noop Aggregate
-               ->  Parallel Seq Scan on pctest1
-                     Storage Filter: (d ~~ 'Value_9'::text)
-                     Partial Aggregate: true
-(7 rows)
+         ->  Parallel Seq Scan on pctest1
+               Storage Filter: (d ~~ 'Value_9'::text)
+(5 rows)
 
 SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
  count
@@ -71,10 +69,10 @@ EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY b DESC;
                       QUERY PLAN
 ------------------------------------------------------
- Gather Merge
-   Workers Planned: 2
-   ->  Sort
-         Sort Key: b DESC
+ Sort
+   Sort Key: b DESC
+   ->  Gather
+         Workers Planned: 2
          ->  Parallel Seq Scan on pctest1
                Storage Filter: (d ~~ 'Value_9'::text)
 (6 rows)
@@ -96,19 +94,17 @@ SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY b DESC;
 -- with grouping
 EXPLAIN (costs off)
 SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
-                            QUERY PLAN
-------------------------------------------------------------------
- Finalize GroupAggregate
+                         QUERY PLAN
+------------------------------------------------------------
+ GroupAggregate
    Group Key: b
-   ->  Gather Merge
-         Workers Planned: 2
-         ->  Partial GroupAggregate
-               Group Key: b
-               ->  Sort
-                     Sort Key: b
-                     ->  Parallel Seq Scan on pctest1
-                           Storage Filter: (d ~~ 'Value9%'::text)
-(10 rows)
+   ->  Sort
+         Sort Key: b
+         ->  Gather
+               Workers Planned: 2
+               ->  Parallel Seq Scan on pctest1
+                     Storage Filter: (d ~~ 'Value9%'::text)
+(8 rows)
 
 SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
   b  | count
@@ -384,18 +380,19 @@ SELECT pctest1.* FROM pctest1, pctest2
 EXPLAIN (costs off)
 /*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
  Gather Merge
    Workers Planned: 2
-   ->  YB Batched Nested Loop Join
-         Join Filter: (pctest1.k = pctest2.k)
-         Sort Keys: pctest1.k
-         ->  Parallel Index Scan using pctest2_pkey on pctest2
-         ->  Index Scan using pctest1_pkey on pctest1
-               Index Cond: (k = ANY (ARRAY[pctest2.k, $1, $2, ..., $1023]))
-               Storage Filter: (c = 42)
-(9 rows)
+   ->  Sort
+         Sort Key: pctest1.k
+         ->  YB Batched Nested Loop Join
+               Join Filter: (pctest1.k = pctest2.k)
+               ->  Parallel Index Scan using pctest1_c_idx on pctest1
+                     Index Cond: (c = 42)
+               ->  Index Scan using pctest2_pkey on pctest2
+                     Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
+(10 rows)
 
 /*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
@@ -439,20 +436,19 @@ set enable_hashjoin to false;
 EXPLAIN (costs off)
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                              QUERY PLAN
-----------------------------------------------------------------------
- Merge Join
-   Merge Cond: (pctest2.k = pctest1.k)
-   ->  Gather Merge
-         Workers Planned: 2
-         ->  Parallel Index Scan using pctest2_pkey on pctest2
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Gather Merge
+   Workers Planned: 2
    ->  Sort
          Sort Key: pctest1.k
-         ->  Gather
-               Workers Planned: 2
+         ->  YB Batched Nested Loop Join
+               Join Filter: (pctest1.k = pctest2.k)
                ->  Parallel Index Scan using pctest1_c_idx on pctest1
                      Index Cond: (c = 42)
-(11 rows)
+               ->  Index Scan using pctest2_pkey on pctest2
+                     Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
+(10 rows)
 
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
@@ -609,24 +605,24 @@ EXPLAIN (costs off)
 SELECT * from pctest2
   WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
     AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9');
-                             QUERY PLAN
---------------------------------------------------------------------
- Gather
-   Workers Planned: 2
-   Params Evaluated: $1
+                          QUERY PLAN
+--------------------------------------------------------------
+ Nested Loop Semi Join
+   Join Filter: (pctest2.c = pctest1.b)
    InitPlan 1 (returns $1)
-     ->  Finalize Aggregate
+     ->  Aggregate
            ->  Gather
                  Workers Planned: 2
-                 ->  Noop Aggregate
-                       ->  Parallel Seq Scan on pctest1 pctest1_1
-                             Storage Filter: (d ~~ 'Value_9'::text)
-                             Partial Aggregate: true
-   ->  Parallel Hash Semi Join
-         Hash Cond: (pctest2.c = pctest1.b)
+                 ->  Parallel Seq Scan on pctest1 pctest1_1
+                       Storage Filter: (d ~~ 'Value_9'::text)
+   ->  Gather
+         Workers Planned: 2
+         Params Evaluated: $1
          ->  Parallel Seq Scan on pctest2
                Storage Filter: ((b)::numeric < $1)
-         ->  Parallel Hash
+   ->  Materialize
+         ->  Gather
+               Workers Planned: 2
                ->  Parallel Seq Scan on pctest1
                      Storage Filter: (d ~~ 'Value_9'::text)
 (18 rows)

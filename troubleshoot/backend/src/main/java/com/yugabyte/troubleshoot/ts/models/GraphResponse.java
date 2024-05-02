@@ -12,5 +12,6 @@ public class GraphResponse {
   private boolean successful;
   private String errorMessage;
   private GraphLayout layout;
+  private long stepSeconds;
   private List<GraphData> data = new ArrayList<>();
 }

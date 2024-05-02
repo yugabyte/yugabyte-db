@@ -543,7 +543,11 @@
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
-  to = "/preview/releases/release-notes/"
+  to = "/preview/releases/ybdb-release/"
+
+[[redirects]]
+  from = "/preview/releases/release-notes/*"
+  to = "/preview/releases/ybdb-release/:splat"
 
 [[redirects]]
   from = "/preview/secure/authentication/client-authentication/"
@@ -639,6 +643,13 @@
 [[redirects]]
   from = "/:version/reference/connectors/*"
   to = "/preview/integrations/apache-kafka/"
+
+# Redirect for troubleshoot
+
+[[redirects]]
+  from = "/:version/troubleshoot/*"
+  to = "/preview/troubleshoot/:splat"
+  force = true
 
 # A few redirects to head off issues with version_menu_pagelinks
 

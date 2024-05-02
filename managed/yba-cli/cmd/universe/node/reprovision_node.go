@@ -20,7 +20,7 @@ var reprovisionNodeCmd = &cobra.Command{
 	Long: "Reprovision a node instance in YugabyteDB Anywhere universe.\n" +
 		"Re-provision node with already stopped processes.",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeName, err := cmd.Flags().GetString("universe-name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}

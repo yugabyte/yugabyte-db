@@ -2,17 +2,21 @@ package com.yugabyte.troubleshoot.ts.models;
 
 import java.util.List;
 import java.util.UUID;
-import lombok.Data;
+import lombok.Builder;
+import lombok.Value;
+import lombok.extern.jackson.Jacksonized;
 
-@Data
+@Value
+@Builder(toBuilder = true)
+@Jacksonized
 public class AnomalyMetadata {
-  private UUID metadataUuid;
-  private AnomalyCategory category;
-  private AnomalyType type;
-  private String title;
-  private List<GraphMetadata> mainGraphs;
-  private GraphSettings defaultSettings;
-  private List<RCAGuideline> rcaGuidelines;
+  UUID metadataUuid;
+  AnomalyCategory category;
+  AnomalyType type;
+  String title;
+  List<GraphMetadata> mainGraphs;
+  GraphSettings defaultSettings;
+  List<RCAGuideline> rcaGuidelines;
 
   public enum AnomalyCategory {
     SQL,
@@ -25,34 +29,26 @@ public class AnomalyMetadata {
   public enum AnomalyType {
     SQL_QUERY_LATENCY_INCREASE,
     HOT_NODE_CPU,
-    HOT_NODE_QUERIES,
+    HOT_NODE_READS_WRITES,
+    HOT_NODE_YSQL_QUERIES,
     HOT_NODE_DATA,
     SLOW_DISKS
   }
 
-  @Data
+  @Value
+  @Builder(toBuilder = true)
+  @Jacksonized
   public static class RCAGuideline {
-    private String possibleCause;
-    private String possibleCauseDescription;
-    private List<Recommendation> troubleshootingRecommendations;
+    String possibleCause;
+    String possibleCauseDescription;
+    List<Recommendation> troubleshootingRecommendations;
   }
 
-  @Data
+  @Value
+  @Builder(toBuilder = true)
+  @Jacksonized
   public static class Recommendation {
-    private String recommendation;
-    private List<GraphMetadata> supportingGraphs;
-  }
-
-  @Data
-  public static class NodeInfo {
-    private String name;
-    private UUID uuid;
-  }
-
-  @Data
-  public static class TableInfo {
-    private String databaseName;
-    private String tableName;
-    private String tableId;
+    String recommendation;
+    List<GraphMetadata> supportingGraphs;
   }
 }

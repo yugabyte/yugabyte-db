@@ -243,6 +243,9 @@ class PgClient {
   Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
       const std::string& stream_id);
 
+  Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
+      const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
+
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
   Status EnumerateActiveTransactions(

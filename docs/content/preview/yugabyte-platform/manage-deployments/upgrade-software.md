@@ -1,77 +1,43 @@
 ---
-title: Upgrade the YugabyteDB software
+title: Upgrade universes with a new version of YugabyteDB
 headerTitle: Upgrade the YugabyteDB software
-linkTitle: Upgrade YugabyteDB
-description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software.
+linkTitle: Upgrade database
+description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software on universes.
+headcontent: Perform rolling upgrades on live universe deployments
 menu:
   preview_yugabyte-platform:
     identifier: upgrade-software
     parent: manage-deployments
-    weight: 80
+    weight: 20
 type: docs
 ---
 
 The YugabyteDB release that is powering a universe can be upgraded to get new features and fixes included in the release.
 
-Before starting the upgrade:
+When performing a database upgrade, do the following:
 
-- If you're upgrading a universe from v2.15.x or earlier to v2.16.0 or later, ensure that port 18018 is open on all YugabyteDB nodes so that YB Controller (introduced in v2.16.0) can operate.
+1. [Upgrade YugabyteDB Anywhere](../../upgrade/). You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere. To upgrade to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.
 
-- Consider importing a specific YugabyteDB release into YugabyteDB Anywhere, as follows:
+    For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [YugabyteDB Anywhere releases](../../../releases/yba-releases/).
 
-  - Click the user profile icon and select **Releases**.
+1. [Review major changes in previous YugabyteDB releases](../upgrade-software-prepare/). Depending on the upgrade you are planning, you may need to make changes to your automation.
 
-  - Click **Import** to open the **Import Releases** dialog shown in the following illustration:
+1. [View and import releases](../upgrade-software-install/#view-and-import-releases). Before you can upgrade your universe to a specific version of YugabyteDB, verify that the release is available and, if necessary, import the release into YugabyteDB Anywhere.
 
-    ![Import Releases](/images/yp/import-releases.png)
+1. [Upgrade the universe](../upgrade-software-install/#upgrade-a-universe). Perform a rolling upgrade on a live universe deployment.
 
-  - Specify the release version to import.
+{{<index/block>}}
 
-  - Select the storage or URL that contains the release. If the release is located on Amazon S3, you would need to provide the access information; if the release is located on Google Cloud Storage, you would need to copy and paste the contents of the JSON file with the access credentials; if the release is accessible via a HTTP, you would need to specify the checksum value of the download.
+  {{<index/item
+    title="Prepare to upgrade"
+    body="Review changes that may affect your automation."
+    href="../upgrade-software-prepare/"
+    icon="/images/section_icons/quick_start/install.png">}}
 
-  - Provide the path to the storage location.
+  {{<index/item
+    title="Upgrade a universe"
+    body="Perform a rolling upgrade on a live universe deployment."
+    href="../upgrade-software-install/"
+    icon="/images/section_icons/quick_start/install.png">}}
 
-  - Click **OK**.
-
-When imported, the release is added to the **Releases** list shown in the following illustration:
-
-![Releases](/images/yp/releases-list.png)<br>
-
-To delete or disable a release, click its corresponding **Actions**.
-
-You can perform a rolling upgrade on a live universe deployment as follows:
-
-1. Navigate to **Universes** and select your universe.
-
-1. Click **Actions > Upgrade Software**.
-
-1. In the **Upgrade Software** dialog, ensure that **Rolling Upgrade** is enabled, define the delay between servers or accept the default value, and then use the **Server Version** field to select the new YugabyteDB version, as per the following illustration:
-
-    ![Upgrade Universe Confirmation](/images/ee/upgrade-univ-2.png)
-
-    To trigger an upgrade that involves downtime, deselect **Rolling Upgrade**.
-
-For information on how rolling upgrades are performed in YugabyteDB, see [Upgrade a deployment](../../../manage/upgrade-deployment/).
-
-{{< note title="Note" >}}
-
-Currently, you cannot downgrade a universe to an older YugabyteDB release. For assistance with downgrades, contact Yugabyte Support.
-
-{{< /note >}}
-
-{{< note title="Manually-provisioned on-premises universe upgrades" >}}
-
-If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) universe, you must additionally manually install YB Controller after the otherwise-automated software upgrade procedure completes. YB Controller was introduced in YugabyteDB Anywhere 2.16.0, and is required for YugabyteDB Anywhere 2.16.0 and later.
-
-To install YB Controller, call the following API after the software upgrade:
-
-```sh
-curl --location --request PUT '<YBA-url>/api/v1/customers/<customerID>/universes/<UniverseID>/ybc/install' \
-     --header 'X-AUTH-YW-API-TOKEN: <YBA-api-auth-token>'
-```
-
-To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
-
-You can view your Universe ID from your YugabyteDB Anywhere universe URL (`<YB-Anywhere-IP-address>/universes/<universeID>`).
-
-{{< /note >}}
+{{</index/block>}}

@@ -5,7 +5,7 @@ set -euo pipefail
 # shellcheck source=build-support/common-test-env.sh
 . "${BASH_SOURCE%/*}/../build-support/common-test-env.sh"
 
-readonly YB_SPARK_DIR=/opt/yb-build/spark/current
+YB_SPARK_DIR=${YB_SPARK_DIR:-/opt/yb-build/spark/current}
 
 show_help() {
   cat <<-EOT
@@ -65,7 +65,7 @@ start_spark_worker() {
 
 detect_spark_master_url() {
   # shellcheck disable=SC2012
-  spark_master_log_path=$( ls -t /opt/yb-build/spark/current/logs/*.master.Master*.out | head -1 )
+  spark_master_log_path=$( ls -t "$YB_SPARK_DIR"/logs/*.master.Master*.out | head -1 )
 
   if [[ ! -f ${spark_master_log_path} ]]; then
     fatal "Spark master log file not found at ${spark_master_log_path}"
@@ -100,7 +100,8 @@ while [[ $# -gt 0 ]]; do
       exit 1
     ;;
     --spark-dir)
-      YB_SPARK_DIR=$1
+      YB_SPARK_DIR=$2
+      shift
     ;;
     --build-root)
       BUILD_ROOT=$2

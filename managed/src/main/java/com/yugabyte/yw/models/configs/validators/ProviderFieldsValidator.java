@@ -5,6 +5,7 @@ package com.yugabyte.yw.models.configs.validators;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.BeanValidator;
@@ -72,6 +73,27 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
       String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
       if (!CertificateHelper.isValidRsaKey(privateKeyContent)) {
         throw new PlatformServiceException(BAD_REQUEST, "Please provide a valid RSA key");
+      }
+    }
+  }
+
+  public void validatePrivateKeys(
+      Provider provider, JsonNode processedJson, SetMultimap<String, String> validationErrorsMap) {
+    if (provider.getAllAccessKeys() != null && provider.getAllAccessKeys().size() > 0) {
+      ArrayNode accessKeysJson = (ArrayNode) processedJson.get("allAccessKeys");
+      int keyIndex = 0;
+      for (AccessKey accessKey : provider.getAllAccessKeys()) {
+        String keyJsonPath =
+            accessKeysJson
+                .get(keyIndex++)
+                .get("keyInfo")
+                .get("sshPrivateKeyContent")
+                .get("jsonPath")
+                .asText();
+        String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
+        if (!CertificateHelper.isValidRsaKey(privateKeyContent)) {
+          validationErrorsMap.put(keyJsonPath, "Not a valid RSA key!");
+        }
       }
     }
   }

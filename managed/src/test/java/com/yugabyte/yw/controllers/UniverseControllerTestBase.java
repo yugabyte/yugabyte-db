@@ -257,7 +257,8 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     authToken = user.createAuthToken();
     runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
 
-    mockReleaseContainer = spy(new ReleaseContainer(mockReleaseMetadata, mockCloudUtilFactory));
+    mockReleaseContainer =
+        spy(new ReleaseContainer(mockReleaseMetadata, mockCloudUtilFactory, mockRuntimeConfig));
     when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(mockReleaseContainer);
     doReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz")
         .when(mockReleaseContainer)

@@ -20,14 +20,11 @@ import (
 )
 
 func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
-	authAPI, err := ybaAuthClient.NewAuthAPIClient()
-	if err != nil {
-		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-	}
-	authAPI.GetCustomerUUID()
+	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 	universeListRequest := authAPI.ListUniverses()
 
-	universeName, err := cmd.Flags().GetString("universe-name")
+	universeName, err := cmd.Flags().GetString("name")
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
@@ -61,7 +58,7 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 	}
 	primaryCluster := clusters[0]
 	userIntent := primaryCluster.GetUserIntent()
-	if userIntent.GetProviderType() == "kubernetes" {
+	if userIntent.GetProviderType() == util.K8sProviderType {
 		errMessage := "Node operations are blocked for Kubernetes universe"
 		logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 	}

@@ -42,7 +42,6 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/async_initializer.h"
 
 #include "yb/common/constants.h"
 #include "yb/common/snapshot.h"

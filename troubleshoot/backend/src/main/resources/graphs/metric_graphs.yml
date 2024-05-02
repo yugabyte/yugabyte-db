@@ -136,6 +136,43 @@ ysql_sql_latency:
       ticksuffix: "&nbsp;\u00B5s"
 
 
+ysql_connections:
+  metric: ""
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    saved_name: "yb_ysqlserver_connection_total|yb_ysqlserver_active_connection_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Connections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_ysqlserver_active_connection_total": "Active"
+        "yb_ysqlserver_connection_total": "Total"
+
+ysql_connections_per_sec:
+  metric: ""
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    saved_name: "yb_ysqlserver_new_connection_total|yb_ysqlserver_connection_over_limit_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Connections / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_ysqlserver_new_connection_total": "New"
+        "yb_ysqlserver_connection_over_limit_total": "Rejected"
+
+
 tserver_rpc_queue_size_tserver:
   metric: ""
   function: "avg_over_time|avg"
@@ -195,3 +232,28 @@ lsm_rocksdb_memory_rejections:
         "leader_memory_pressure_rejections": "Leader"
         "follower_memory_pressure_rejections": "Follower"
         "operation_memory_pressure_rejections": "Operations"
+
+disk_io_time:
+  metric: "node_disk_io_time_seconds_total"
+  function: "rate|avg"
+  operator: "* 100"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk active IO time"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
+disk_io_queue_depth:
+  metric: "node_disk_io_time_weighted_seconds_total"
+  function: "rate|avg"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Average I/O Queue Depth"
+    xaxis:
+      type: "date"

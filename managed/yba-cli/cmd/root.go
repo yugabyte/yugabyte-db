@@ -70,9 +70,9 @@ func init() {
 	rootCmd.PersistentFlags().StringP("output", "o", "table",
 		"Select the desired output format. Allowed values: table, json, pretty.")
 	rootCmd.PersistentFlags().StringP("logLevel", "l", "info",
-		"Select the desired log level format.")
+		"Select the desired log level format. Allowed values: debug, info, warn, error, fatal.")
 	rootCmd.PersistentFlags().Bool("debug", false, "Use debug mode, same as --logLevel debug.")
-	rootCmd.PersistentFlags().Bool("no-color", false, "Disable colors in output , defaults to false.")
+	rootCmd.PersistentFlags().Bool("disable-color", false, "Disable colors in output, defaults to false.")
 	rootCmd.PersistentFlags().Bool("wait", true,
 		"Wait until the task is completed, otherwise it will exit immediately.")
 	rootCmd.PersistentFlags().Duration("timeout", 7*24*time.Hour,
@@ -84,7 +84,7 @@ func init() {
 	viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
 	viper.BindPFlag("logLevel", rootCmd.PersistentFlags().Lookup("logLevel"))
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
-	viper.BindPFlag("no-color", rootCmd.PersistentFlags().Lookup("no-color"))
+	viper.BindPFlag("disable-color", rootCmd.PersistentFlags().Lookup("disable-color"))
 	viper.BindPFlag("wait", rootCmd.PersistentFlags().Lookup("wait"))
 	viper.BindPFlag("timeout", rootCmd.PersistentFlags().Lookup("timeout"))
 
@@ -112,7 +112,7 @@ func setDefaults() {
 	viper.SetDefault("output", "table")
 	viper.SetDefault("logLevel", "info")
 	viper.SetDefault("debug", false)
-	viper.SetDefault("no-color", false)
+	viper.SetDefault("disable-color", false)
 	viper.SetDefault("wait", true)
 	viper.SetDefault("timeout", time.Duration(7*24*time.Hour))
 	viper.SetDefault("lastVersionAvailable", "0.0.0")

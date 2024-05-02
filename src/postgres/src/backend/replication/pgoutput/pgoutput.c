@@ -535,6 +535,9 @@ pgoutput_send_begin(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	bool		send_replication_origin = txn->origin_id != InvalidRepOriginId;
 	PGOutputTxnData *txndata = (PGOutputTxnData *) txn->output_plugin_private;
 
+	/* Skip sending replication origin as it is not applicable for YB. */
+	send_replication_origin = send_replication_origin && !IsYugaByteEnabled();
+
 	Assert(txndata);
 	Assert(!txndata->sent_begin_txn);
 
@@ -542,10 +545,8 @@ pgoutput_send_begin(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	logicalrep_write_begin(ctx->out, txn);
 	txndata->sent_begin_txn = true;
 
-	/* Skip sending replication origin as it is not applicable for YB. */
-	if (!IsYugaByteEnabled())
-		send_repl_origin(ctx, txn->origin_id, txn->origin_lsn,
-						 send_replication_origin);
+	send_repl_origin(ctx, txn->origin_id, txn->origin_lsn,
+					 send_replication_origin);
 
 	OutputPluginWrite(ctx, true);
 }
@@ -589,6 +590,9 @@ static void
 pgoutput_begin_prepare_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 {
 	bool		send_replication_origin = txn->origin_id != InvalidRepOriginId;
+
+	/* Skip sending replication origin as it is not applicable for YB. */
+	send_replication_origin = send_replication_origin && !IsYugaByteEnabled();
 
 	OutputPluginPrepareWrite(ctx, !send_replication_origin);
 	logicalrep_write_begin_prepare(ctx->out, txn);
@@ -1776,6 +1780,9 @@ pgoutput_stream_start(struct LogicalDecodingContext *ctx,
 {
 	bool		send_replication_origin = txn->origin_id != InvalidRepOriginId;
 
+	/* Skip sending replication origin as it is not applicable for YB. */
+	send_replication_origin = send_replication_origin && !IsYugaByteEnabled();
+
 	/* we can't nest streaming of transactions */
 	Assert(!in_streaming);
 
@@ -2354,6 +2361,8 @@ send_repl_origin(LogicalDecodingContext *ctx, RepOriginId origin_id,
 	if (send_origin)
 	{
 		char	   *origin;
+
+		Assert(!IsYugaByteEnabled());
 
 		/*----------
 		 * XXX: which behaviour do we want here?

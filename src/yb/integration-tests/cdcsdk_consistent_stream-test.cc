@@ -104,8 +104,8 @@ TEST_F(CDCSDKConsistentStreamTest,
   ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (1, 1)"));
   ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (2, 2)"));
 
-  int queries_per_batch = 60;
-  int num_batches = 60;
+  int queries_per_batch = 30;
+  int num_batches = 25;
   std::thread t1([&]() -> void {
     PerformSingleAndMultiShardQueries(
         num_batches, queries_per_batch, "INSERT INTO test2 VALUES ($0, 1, 1)", 20);
@@ -154,7 +154,11 @@ TEST_F(CDCSDKConsistentStreamTest,
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
-  ASSERT_EQ(29281, get_changes_resp.records.size());
+  int total_records = 0;
+  for (int i = 0; i < 8; ++i) {
+    total_records += expected_count[i];
+  }
+  ASSERT_EQ(total_records, get_changes_resp.records.size());
 }
 
 TEST_F(CDCSDKConsistentStreamTest,

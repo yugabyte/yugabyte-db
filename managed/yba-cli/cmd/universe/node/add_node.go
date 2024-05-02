@@ -20,7 +20,7 @@ var addNodeCmd = &cobra.Command{
 	Long: "Add a node instance to YugabyteDB Anywhere universe.\n" +
 		"Add a previously removed (or not in-use) node to the cluster and balance data onto it.",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeName, err := cmd.Flags().GetString("universe-name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
