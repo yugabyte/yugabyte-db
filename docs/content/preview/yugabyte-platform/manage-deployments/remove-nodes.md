@@ -16,6 +16,39 @@ menu:
 type: docs
 ---
 
+## Replace an active or unreachable node
+
+If a node (active or unreachable) needs to be replaced, do the following:
+
+1. Navigate to **Universes**, select your universe, and open the **Nodes** tab.
+1. Click the associated node **Actions > Replace Node**.
+
+    ![Replace Node Actions](/images/ee/replace-node.png)
+
+Clicking the **Replace Node** button opens a popup window to confirm the replacement of this node. Confirming the task redirects to the task page and will take a few minutes to complete.
+
+For Infrastructure as a service (IaaS) such as AWS and GCP, YugabyteDB Anywhere returns the node back to the IaaS. For on-premises universes, the unresponsive node will most likely have failed to clean up its data directory, home directory, and more. So it will be placed in a Decommissioned state in the on-premises provider which prevents the node from being added to a new universe.
+
+### Check on-premises node state
+
+The on-premises node instances have three states: In use, Free, and Decommissioned.
+
+To check the state of an on-premises node, navigate to **Configs > On-Premises Datacenters**, then click its associated on-premises configuration, and click **Instances**.
+
+### Recommission on-premises node instance
+
+A node in "Decommissioned" state can be placed back into the "Free" node state pool after it becomes reachable and is cleaned up.
+
+Perform the following steps to recommission a node.
+
+1. For a node instance in the Decommissioned state, navigate to **Configs** > On-Premises Datacenters**, then click its associated on-premises configuration, and click **Instances**.
+
+1. On the Instances page, click **Actions > Recommission Node**.
+
+    ![Recommission Node](/images/ee/recommission-node.png)
+
+Clicking the **Recommission Node** button opens a popup window to confirm the recommission of this node. Confirming the task redirects to the task page and will take a few minutes to complete.
+
 ## Eliminate an unresponsive node
 
 If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues (such as problems with its operating system, disk, and so on) it is detected and displayed in the YugabyteDB Anywhere UI as an unreachable node, as per the following illustration:
