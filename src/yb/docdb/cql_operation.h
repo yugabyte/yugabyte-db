@@ -19,6 +19,7 @@
 #include "yb/docdb/doc_expr.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 
 #include "yb/util/operation_counter.h"
@@ -226,7 +227,8 @@ class QLReadOperation : public DocExprExecutor {
                  const DocReadContext& doc_read_context,
                  std::reference_wrapper<const ScopedRWOperation> pending_op,
                  qlexpr::QLResultSet* result_set,
-                 HybridTime* restart_read_ht);
+                 HybridTime* restart_read_ht,
+                 const docdb::DocDBStatistics* statistics);
 
   Status PopulateResultSet(const std::unique_ptr<qlexpr::QLScanSpec>& spec,
                            const qlexpr::QLTableRow& table_row,

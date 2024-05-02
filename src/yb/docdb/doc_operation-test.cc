@@ -356,7 +356,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     auto pending_op = ScopedRWOperation::TEST_Create();
     EXPECT_OK(read_op.Execute(
         ql_storage, ReadOperationData::FromSingleReadTime(read_time), doc_read_context, pending_op,
-        &resultset, &read_restart_ht));
+        &resultset, &read_restart_ht, nullptr /* statistics */));
     EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.
