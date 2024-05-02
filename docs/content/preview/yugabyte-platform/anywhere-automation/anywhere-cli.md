@@ -23,12 +23,10 @@ The CLI is in [Tech Preview](/preview/releases/versioning/#feature-availability)
 
 ## Install CLI
 
-Your YugabyteDB Anywhere installation includes the CLI binary, located in `/opt/yugabyte/yugaware/yba-cli`. The following versions are available:
+Your YugabyteDB Anywhere installation includes the CLI binary, located in `/opt/yugabyte/yugaware/yba-cli`. The CLI is available for following architectures:
 
-- yba_cli-<ver>-darwin-amd64
-- yba_cli-<ver>8-darwin-arm64
-- yba_cli-<ver>-linux-amd64
-- yba_cli-<ver>-linux-arm64
+- Linux AMD64 and ARM64
+- Darwin AMD64 and ARM64
 
 Copy the appropriate binary to your local machine. Note that the CLI can only be used with the same or earlier version of YBA.
 
@@ -78,7 +76,6 @@ You can set the following CLI environment variables.
 | Variable | Description |
 | :--- | :--- |
 | YBA_CI | Set to `true` to avoid outputting unnecessary log lines. |
-| YBA_AWS_SECRET_KEY | AWS secret access key. For encryption at rest of AWS clusters. |
 
 ## Syntax
 
@@ -128,9 +125,7 @@ You can manage the following resources:
 
 | Resource | Description |
 | :--- | :--- |
-| [login](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_login.md) | Connect to YugabyteDB Anywhere host machine using email and password. |
 | [provider](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_provider.md) | Manage provider configurations. |
-| [register](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_register.md) | Register a YugabyteDB Anywhere customer. |
 | [storage-config](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_storage-config.md) | Manage storage configurations. |
 | [task](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_task.md) | Manage tasks. |
 | [universe](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_universe.md) | Manage universes. |
@@ -142,6 +137,8 @@ Use the following commands to configure the CLI:
 | :--- | :--- |
 | [auth](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_auth.md) | Write API token to a configuration file. |
 | [completion](#autocompletion) | Configure autocompletion for Bash, Fish, PowerShell, and Zsh |
+| [login](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_login.md) | Connect to YugabyteDB Anywhere host machine using email and password. |
+| [register](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_register.md) | Register a YugabyteDB Anywhere customer. |
 
 ### Global flags
 
