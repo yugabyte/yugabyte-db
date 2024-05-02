@@ -1,7 +1,6 @@
 --
 -- Test case for CREATE DATABASE unsupported options
 --
-CREATE DATABASE test TEMPLATE = some_template;
 CREATE DATABASE test IS_TEMPLATE = TRUE;
 CREATE DATABASE test LC_COLLATE = "C";
 CREATE DATABASE test LC_CTYPE = "C";

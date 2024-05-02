@@ -450,20 +450,25 @@ class YBClient {
                          const boost::optional<uint32_t>& next_pg_oid = boost::none,
                          const TransactionMetadata* txn = nullptr,
                          const bool colocated = false,
-                         CoarseTimePoint deadline = CoarseTimePoint());
+                         CoarseTimePoint deadline = CoarseTimePoint(),
+                         const std::optional<std::string> source_namespace_name = std::nullopt,
+                         std::optional<HybridTime> clone_time = std::nullopt);
+
+  Status CloneNamespace(const std::string& target_namespace_name,
+                        const std::string& source_namespace_name,
+                        const YQLDatabase& database_type,
+                        std::optional<HybridTime> clone_time);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   Status CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                    const boost::optional<YQLDatabase>& database_type =
-                                    boost::none,
+                                    const boost::optional<YQLDatabase>& database_type = boost::none,
                                     const std::string& creator_role_name = "",
                                     const std::string& namespace_id = "",
                                     const std::string& source_namespace_id = "",
-                                    const boost::optional<uint32_t>& next_pg_oid =
-                                    boost::none,
+                                    const boost::optional<uint32_t>& next_pg_oid = boost::none,
                                     const bool colocated = false);
 
   // Set 'create_in_progress' to true if a CreateNamespace operation is in-progress.

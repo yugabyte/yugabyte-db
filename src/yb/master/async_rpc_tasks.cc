@@ -75,12 +75,6 @@ DEFINE_RUNTIME_int32(retrying_rpc_max_jitter_ms, 50,
     "Maximum random delay to add between rpc retry attempts.");
 TAG_FLAG(retrying_rpc_max_jitter_ms, advanced);
 
-DEFINE_RUNTIME_int32(
-    ysql_clone_pg_schema_rpc_timeout_ms, 10 * 60 * 1000,  // 10 min.
-    "Timeout used by the master when attempting to clone PG Schema objects using an async task to "
-    "tserver");
-TAG_FLAG(ysql_clone_pg_schema_rpc_timeout_ms, advanced);
-
 DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
                  "For testing purposes, slow down the run method to take longer.");
 

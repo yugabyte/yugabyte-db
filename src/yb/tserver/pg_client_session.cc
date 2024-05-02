@@ -625,17 +625,18 @@ Status PgClientSession::CreateTable(
 Status PgClientSession::CreateDatabase(
     const PgCreateDatabaseRequestPB& req, PgCreateDatabaseResponsePB* resp,
     rpc::RpcContext* context) {
+  std::optional<HybridTime> clone_time;
+  if (req.clone_time() != 0) {
+    clone_time = HybridTime::FromMicros(req.clone_time());
+  }
   return client().CreateNamespace(
-      req.database_name(),
-      YQL_DATABASE_PGSQL,
-      "" /* creator_role_name */,
+      req.database_name(), YQL_DATABASE_PGSQL, "" /* creator_role_name */,
       GetPgsqlNamespaceId(req.database_oid()),
-      req.source_database_oid() != kPgInvalidOid
-          ? GetPgsqlNamespaceId(req.source_database_oid()) : "",
+      req.source_database_oid() != kPgInvalidOid ? GetPgsqlNamespaceId(req.source_database_oid())
+                                                 : "",
       req.next_oid(),
       VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction(), context->GetClientDeadline())),
-      req.colocated(),
-      context->GetClientDeadline());
+      req.colocated(), context->GetClientDeadline(), req.source_database_name(), clone_time);
 }
 
 Status PgClientSession::DropDatabase(

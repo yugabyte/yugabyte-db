@@ -15,6 +15,7 @@
 
 #include <mutex>
 
+#include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/snapshot.h"
@@ -335,7 +336,7 @@ Status CloneStateManager::ClonePgSchemaObjects(
   auto ts = external_funcs_->PickTserver();
   auto ts_permanent_uuid = ts->permanent_uuid();
   auto read_lock = clone_state->LockForRead();
-  // Deadline passed to the ClonePgSchemaTask (including rpc time and callback execution deadline)
+  // Deadline passed to the ClonePGSchemaTask (including rpc time and callback execution deadline)
   auto deadline = MonoTime::Now() + FLAGS_ysql_clone_pg_schema_rpc_timeout_ms * 1ms;
   RETURN_NOT_OK(external_funcs_->ScheduleClonePgSchemaTask(
       ts_permanent_uuid, source_db_name, target_db_name, HybridTime(read_lock->pb.restore_time()),

@@ -749,14 +749,13 @@ Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
   return pg_session_->IsDatabaseColocated(database_oid, colocated, legacy_colocated_database);
 }
 
-Status PgApiImpl::NewCreateDatabase(const char *database_name,
-                                    const PgOid database_oid,
-                                    const PgOid source_database_oid,
-                                    const PgOid next_oid,
-                                    const bool colocated,
-                                    PgStatement **handle) {
-  auto stmt = std::make_unique<PgCreateDatabase>(pg_session_, database_name, database_oid,
-                                                 source_database_oid, next_oid, colocated);
+Status PgApiImpl::NewCreateDatabase(
+    const char* database_name, const PgOid database_oid, const PgOid source_database_oid,
+    const char* source_database_name, const PgOid next_oid, const bool colocated,
+    const int64_t clone_time, PgStatement** handle) {
+  auto stmt = std::make_unique<PgCreateDatabase>(
+      pg_session_, database_name, database_oid, source_database_oid, source_database_name, next_oid,
+      clone_time, colocated);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
