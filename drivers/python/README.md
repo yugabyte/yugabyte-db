@@ -86,3 +86,74 @@ SET search_path = ag_catalog, "$user", public;
 
 ### License
 Apache-2.0 License
+
+
+## Networkx
+### Netowkx Unit test
+```
+python test_networkx.py \
+-host "127.0.0.1" \
+-db "postgres" \
+-u "postgres" \
+-pass "agens" \
+-port 5432
+```
+Here the following value required
+- `-host` : host name (optional)
+- `-db` : database name
+- `-u` : user name
+- `-pass` : password
+- `-port` : port (optional)
+
+### Networkx to AGE
+Insert From networkx directed graph into an Age database.
+#### Parameters
+
+- `connection` (psycopg2.connect): Connection object to the Age database.
+
+- `G` (networkx.DiGraph): Networkx directed graph to be converted and inserted.
+
+- `graphName` (str): Name of the age graph.
+
+#### Returns
+
+None
+
+#### Example
+
+```python
+
+# Create a Networkx DiGraph
+G = nx.DiGraph()
+G.add_node(1)
+G.add_node(2)
+G.add_edge(1, 2)
+
+# Convert and insert the graph into the Age database
+graphName = "sample_graph"
+networkx_to_age(connection, G, graphName)
+```
+
+
+
+### AGE to Netowkx
+
+Converts data from a Apache AGE graph database into a Networkx directed graph.
+
+#### Parameters
+
+- `connection` (psycopg2.connect): Connection object to the PostgreSQL database.
+- `graphName` (str): Name of the graph.
+- `G` (None | nx.DiGraph): Optional Networkx directed graph. If provided, the data will be added to this graph.
+- `query` (str | None): Optional Cypher query to retrieve data from the database.
+
+#### Returns
+
+- `nx.DiGraph`: Networkx directed graph containing the converted data.
+
+#### Example
+
+```python
+# Call the function to convert data into a Networkx graph
+graph = age_to_networkx(connection, graphName="MyGraph" )
+```
