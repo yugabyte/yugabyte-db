@@ -485,7 +485,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                     const std::vector<DdlLogEntry>& ddl_log_entries,
-                                    const std::string& new_table_name);
+                                    const std::string& new_table_name,
+                                    bool success);
 
   Status YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data);
 
