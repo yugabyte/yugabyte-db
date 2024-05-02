@@ -296,23 +296,6 @@ PreProcessBeforeFetchingNextBatch()
 	long secs;
 	int microsecs;
 
-	if (last_getconsistentchanges_response_empty)
-	{
-		elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
-			 yb_walsender_poll_sleep_duration_empty_ms);
-		pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
-	}
-	else
-	{
-		elog(DEBUG4,
-			 "YBCReadRecord: Sleeping for %d ms as the last "
-			 "response was non-empty.",
-			 yb_walsender_poll_sleep_duration_nonempty_ms);
-		pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
-	}
-
-	elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
-
 	/* Log the summary of time spent in processing the previous batch. */
 	if (log_min_messages <= DEBUG1 &&
 		last_getconsistentchanges_response_receipt_time != 0)
@@ -333,10 +316,12 @@ PreProcessBeforeFetchingNextBatch()
 			 "Walsender processing time for the last batch is (%ld s, %d us)",
 			 secs, microsecs);
 		elog(DEBUG1,
-			 "Time Distribution. "
+			 "More Information: "
+			 "batch_size: %d, "
 			 "yb_decode: %" PRIu64 " us, "
 			 "reorder buffer: %" PRIu64 " us, "
 			 "socket: %" PRIu64 " us.",
+			 (cached_records) ? cached_records->row_count : 0,
 			 YbWalSndTotalTimeInYBDecodeMicros,
 			 YbWalSndTotalTimeInReorderBufferMicros,
 			 YbWalSndTotalTimeInSendingMicros);
@@ -345,6 +330,23 @@ PreProcessBeforeFetchingNextBatch()
 	/* We no longer need the earlier record batch. */
 	if (cached_records)
 		MemoryContextReset(cached_records_context);
+
+	if (last_getconsistentchanges_response_empty)
+	{
+		elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
+			 yb_walsender_poll_sleep_duration_empty_ms);
+		pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
+	}
+	else
+	{
+		elog(DEBUG4,
+			 "YBCReadRecord: Sleeping for %d ms as the last "
+			 "response was non-empty.",
+			 yb_walsender_poll_sleep_duration_nonempty_ms);
+		pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
+	}
+
+	elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
 }
 
 static void
