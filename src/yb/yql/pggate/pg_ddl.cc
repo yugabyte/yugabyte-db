@@ -73,14 +73,18 @@ PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session,
                                    const char *database_name,
                                    const PgOid database_oid,
                                    const PgOid source_database_oid,
+                                   const char* source_database_name,
                                    const PgOid next_oid,
+                                   const int64_t clone_time,
                                    const bool colocated)
     : PgDdl(std::move(pg_session)) {
   req_.set_database_name(database_name);
   req_.set_database_oid(database_oid);
   req_.set_source_database_oid(source_database_oid);
+  req_.set_source_database_name(source_database_name);
   req_.set_next_oid(next_oid);
   req_.set_colocated(colocated);
+  req_.set_clone_time(clone_time);
 }
 
 PgCreateDatabase::~PgCreateDatabase() {

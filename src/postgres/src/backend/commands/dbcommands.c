@@ -145,6 +145,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	DefElem    *dencoding = NULL;
 	DefElem    *dcollate = NULL;
 	DefElem    *dcolocated = NULL;
+	DefElem	   *dclonetime = NULL;
 	DefElem    *dctype = NULL;
 	DefElem    *distemplate = NULL;
 	DefElem    *dallowconnections = NULL;
@@ -163,6 +164,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	int			dbconnlimit = -1;
 	int			notherbackends;
 	int			npreparedxacts;
+	int64		dbclonetime = 0;
 	createdb_failure_params fparms;
 
 	/*
@@ -278,6 +280,15 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 						 parser_errposition(pstate, defel->location)));
 			dcolocated = defel;
 		}
+		else if (strcmp(defel->defname, "clone_time") == 0)
+		{
+			if (dclonetime)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+						 parser_errposition(pstate, defel->location)));
+			dclonetime = defel;
+		}
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -337,7 +348,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		dbcolocated = defGetBoolean(dcolocated);
 	else
 		dbcolocated = YBColocateDatabaseByDefault();
-
+	if (dclonetime && dclonetime->arg)
+		dbclonetime = defGetInt64(dclonetime);
 	/* obtain OID of proposed owner */
 	if (dbowner)
 		datdba = get_role_oid(dbowner, false);
@@ -386,16 +398,6 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 								 "/issues"),
 						 parser_errposition(pstate, option->location)));
 		}
-
-		if (strcmp(dbtemplate, "template0") != 0 &&
-			strcmp(dbtemplate, "template1") != 0)
-			ereport(YBUnsupportedFeatureSignalLevel(),
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Value other than default, template0 or template1 "
-							"for template option is not yet supported"),
-					 errhint("Please report the issue on "
-							 "https://github.com/YugaByte/yugabyte-db/issues"),
-					 parser_errposition(pstate, dtemplate->location)));
 
 		if (dbistemplate)
 			ereport(YBUnsupportedFeatureSignalLevel(),
@@ -590,21 +592,22 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 				(errcode(ERRCODE_DUPLICATE_DATABASE),
 				 errmsg("database \"%s\" already exists", dbname)));
 
-	/*
-	 * The source DB can't have any active backends, except this one
-	 * (exception is to allow CREATE DB while connected to template1).
-	 * Otherwise we might copy inconsistent data.
-	 *
-	 * This should be last among the basic error checks, because it involves
-	 * potential waiting; we may as well throw an error first if we're gonna
-	 * throw one.
-	 */
-	if (CountOtherDBBackends(src_dboid, &notherbackends, &npreparedxacts))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("source database \"%s\" is being accessed by other users",
-						dbtemplate),
-				 errdetail_busy_db(notherbackends, npreparedxacts)));
+	if (!IsYugaByteEnabled())
+		/*
+		* The source DB can't have any active backends, except this one
+		* (exception is to allow CREATE DB while connected to template1).
+		* Otherwise we might copy inconsistent data.
+		*
+		* This should be last among the basic error checks, because it involves
+		* potential waiting; we may as well throw an error first if we're gonna
+		* throw one.
+		*/
+		if (CountOtherDBBackends(src_dboid, &notherbackends, &npreparedxacts))
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					errmsg("source database \"%s\" is being accessed by other users",
+							dbtemplate),
+					errdetail_busy_db(notherbackends, npreparedxacts)));
 
 	/*
 	 * Select an OID for the new database, checking that it doesn't have a
@@ -632,9 +635,25 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 		retry_on_oid_collision = false;
 		if (IsYugaByteEnabled())
-			YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid, dbcolocated,
-							  &retry_on_oid_collision);
+			YBCCreateDatabase(dboid, dbname, src_dboid, dbtemplate, InvalidOid, dbcolocated,
+							  &retry_on_oid_collision, dbclonetime);
 	} while (retry_on_oid_collision);
+
+	/*
+	 * CREATE DATABASE using templates other than template0 and template1 will 
+	 * always go through the DB clone workflow.
+	 * A database created using the clone workflow already has an entry in
+	 * pg_database as it is created by executing ysql_dump script.
+	 * Thus, close pg_database relation and return the dboid in case of clone.
+	 */
+	if (strcmp(dbtemplate, "template0") != 0 &&
+		strcmp(dbtemplate, "template1") != 0)
+	{
+		heap_close(pg_database_rel, RowExclusiveLock);
+		// TODO(yamen): return the correct target dboid from the clone namespace.
+		// It is fine to return InvalidOid temporarely as it isn't used anywhere.
+		return InvalidOid;
+	}
 
 	/*
 	 * Insert a new tuple into pg_database.  This establishes our ownership of

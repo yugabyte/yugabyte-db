@@ -525,9 +525,11 @@ BootstrapModeMain(void)
 		YBCCreateDatabase(TemplateDbOid,
 		                  "template1",
 		                  InvalidOid,
+		                  "template0",  
 		                  FirstBootstrapObjectId,
 		                  false /* colocated */,
-		                  NULL /* retry_on_oid_collision */);
+		                  NULL /* retry_on_oid_collision */,
+		                  0 /* clone_time */);
 	}
 
 	/*

@@ -11071,6 +11071,10 @@ createdb_opt_item:
 				{
 					$$ = makeDefElem($1, (Node *)makeString($3), @1);
 				}
+			| createdb_opt_name opt_equal FCONST
+				{
+					$$ = makeDefElem($1, (Node *)makeFloat($3), @1);
+				}
 			| createdb_opt_name opt_equal DEFAULT
 				{
 					$$ = makeDefElem($1, NULL, @1);
@@ -11106,6 +11110,7 @@ createdb_opt_name:
 					$$ = pstrdup($1);
 				}
 			| COLOCATION				    { $$ = pstrdup($1); }
+			| AS OF							{ $$ = pstrdup("clone_time"); }
 		;
 
 /*

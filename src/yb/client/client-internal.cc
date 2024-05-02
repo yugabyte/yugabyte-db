@@ -255,6 +255,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsAlterTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateNamespaceDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(IsCloneDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsFlushTablesDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetCompactionStatus);
@@ -271,6 +272,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AreNodesSafeToTakeDown);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, WaitForYsqlBackendsCatalogVersion);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, CloneNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, CreateSnapshot);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, DeleteSnapshot);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, ListSnapshots);
@@ -1116,6 +1118,44 @@ Status YBClient::Data::WaitForDeleteNamespaceToFinish(YBClient* client,
       "Timed out waiting for Namespace Deletion",
       std::bind(&YBClient::Data::IsDeleteNamespaceInProgress, this,
           client, namespace_name, database_type, namespace_id, _1, _2));
+}
+
+Status YBClient::Data::IsCloneNamespaceInProgress(
+    YBClient* client, const std::string& source_namespace_id, int clone_seq_no,
+    CoarseTimePoint deadline, bool* create_in_progress) {
+  DCHECK_ONLY_NOTNULL(create_in_progress);
+  IsCloneDoneRequestPB req;
+  IsCloneDoneResponsePB resp;
+
+  req.set_source_namespace_id(source_namespace_id);
+  req.set_seq_no(clone_seq_no);
+  // RETURN_NOT_OK macro can't take templated function call as param,
+  // and SyncLeaderMasterRpc must be explicitly instantiated, else the
+  // compiler complains.
+  const Status s = SyncLeaderMasterRpc(
+      deadline, req, &resp, "IsCloneDone", &master::MasterBackupProxy::IsCloneDoneAsync);
+
+  RETURN_NOT_OK(s);
+  // IsCloneDone could return a terminal/done state as FAILED. This would result in an error'd
+  // Status.
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  *create_in_progress = !resp.is_done();
+
+  return Status::OK();
+}
+
+Status YBClient::Data::WaitForCloneNamespaceToFinish(
+    YBClient* client, const std::string& source_namespace_id, int clone_seq_no,
+    CoarseTimePoint deadline) {
+  return RetryFunc(
+      deadline, "Waiting on Clone Namespace to be completed",
+      "Timed out waiting for Namespace Cloning",
+      std::bind(
+          &YBClient::Data::IsCloneNamespaceInProgress, this, client, source_namespace_id,
+          clone_seq_no, _1, _2));
 }
 
 Status YBClient::Data::AlterTable(YBClient* client,

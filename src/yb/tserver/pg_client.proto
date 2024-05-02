@@ -222,6 +222,8 @@ message PgCreateDatabaseRequestPB {
   uint32 source_database_oid = 5;
   uint32 next_oid = 6;
   bool colocated = 7;
+  fixed64 clone_time = 8;
+  string source_database_name = 9;
 }
 
 message PgCreateDatabaseResponsePB {

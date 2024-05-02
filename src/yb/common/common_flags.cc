@@ -108,6 +108,12 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_pg_per_database_oid_allocator, true,
 TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, advanced);
 TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, hidden);
 
+DEFINE_RUNTIME_int32(
+    ysql_clone_pg_schema_rpc_timeout_ms, 10 * 60 * 1000,  // 10 min.
+    "Timeout used by the master when attempting to clone PG Schema objects using an async task to "
+    "tserver");
+TAG_FLAG(ysql_clone_pg_schema_rpc_timeout_ms, advanced);
+
 DEFINE_RUNTIME_PREVIEW_bool(yb_enable_cdc_consistent_snapshot_streams, false,
                             "Enable support for CDC Consistent Snapshot Streams");
 
