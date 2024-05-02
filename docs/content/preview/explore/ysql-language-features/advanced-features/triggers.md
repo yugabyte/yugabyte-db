@@ -5,8 +5,10 @@ description: Triggers in YSQL
 menu:
   preview:
     identifier: explore-ysql-language-features-triggers
-    parent: explore-ysql-language-features
+    parent: advanced-features
     weight: 310
+aliases:
+  - /preview/explore/ysql-language-features/triggers/
 type: docs
 ---
 

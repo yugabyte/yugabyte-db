@@ -109,7 +109,7 @@ In addition:
   - [Distributed transactions](../../explore/transactions/distributed-transactions-ysql/) (Serializable, Snapshot, and Read Committed Isolation)
   - [Views](../../explore/ysql-language-features/advanced-features/views/)
   - [Stored procedures](../../explore/ysql-language-features/stored-procedures/)
-  - [Triggers](../../explore/ysql-language-features/triggers/)
+  - [Triggers](../../explore/ysql-language-features/advanced-features/triggers/)
 
 ## Cassandra compatibility
 
