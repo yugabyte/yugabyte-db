@@ -38,7 +38,7 @@ Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB
 | Service       | Port  |
 | ------------- | ----- |
 | YB Controller | 18018 |
-| [Node agent](../../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent) | 9070 |
+| [Node agent](../../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#install-node-agent) | 9070 |
 
 ## Admin web server
 

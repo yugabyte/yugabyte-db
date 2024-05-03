@@ -852,6 +852,8 @@ viewports
 virtualized
 virtualizing
 Vitess
+VMs
+VMware
 VPCs
 Vue
 Vuex

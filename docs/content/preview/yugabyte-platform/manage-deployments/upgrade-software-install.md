@@ -93,7 +93,7 @@ YugabyteDB Anywhere starts the upgrade process, and you can view the progress on
 
 #### Upgrade manually-provisioned on-premises universe
 
-If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) universe from a database version prior to 2.18.0 to a version at 2.18.0 or later, you must additionally manually install YB Controller (YBC) after the otherwise-automated software upgrade procedure completes.
+If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/on-premises/) universe from a database version prior to 2.18.0 to a version at 2.18.0 or later, you must additionally manually install YB Controller (YBC) after the otherwise-automated software upgrade procedure completes.
 
 To install YBC, call the following API after the software upgrade:
 

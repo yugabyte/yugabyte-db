@@ -17,8 +17,6 @@ YugabyteDB Anywhere provides preconfigured alerts to notify you of potential pro
 
 Use the Live Queries and Slow Queries dashboards to monitor and display current running queries and analyze statistics of past queries on your YugabyteDB universes.
 
-For information on creating and customizing alerts, both for universe and YugabyteDB Anywhere metrics, refer to [Create and configure alerts](../configure-yugabyte-platform/set-up-alerts-health-check/).
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
