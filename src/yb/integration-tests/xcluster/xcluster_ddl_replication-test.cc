@@ -94,20 +94,34 @@ class XClusterDDLReplicationTest : public XClusterYsqlTestBase {
     return Status::OK();
   }
 
-  void InsertRowsIntoProducerTableAndVerifyConsumer(
+  Result<std::shared_ptr<client::YBTable>> GetProducerTable(
       const client::YBTableName& producer_table_name) {
     std::shared_ptr<client::YBTable> producer_table;
-    ASSERT_OK(producer_client()->OpenTable(producer_table_name, &producer_table));
+    RETURN_NOT_OK(producer_client()->OpenTable(producer_table_name, &producer_table));
+    return producer_table;
+  }
+
+  Result<std::shared_ptr<client::YBTable>> GetConsumerTable(
+      const client::YBTableName& producer_table_name) {
+    auto consumer_table_name = VERIFY_RESULT(GetYsqlTable(
+        &consumer_cluster_, producer_table_name.namespace_name(),
+        producer_table_name.pgschema_name(), producer_table_name.table_name()));
+    std::shared_ptr<client::YBTable> consumer_table;
+    RETURN_NOT_OK(consumer_client()->OpenTable(consumer_table_name, &consumer_table));
+    return consumer_table;
+  }
+
+  void InsertRowsIntoProducerTableAndVerifyConsumer(
+      const client::YBTableName& producer_table_name) {
+    std::shared_ptr<client::YBTable> producer_table =
+        ASSERT_RESULT(GetProducerTable(producer_table_name));
     ASSERT_OK(InsertRowsInProducer(0, 50, producer_table));
 
     // Once the safe time advances, the target should have the new table and its rows.
     ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
-    auto consumer_table_name = ASSERT_RESULT(GetYsqlTable(
-        &consumer_cluster_, producer_table_name.namespace_name(),
-        producer_table_name.pgschema_name(), producer_table_name.table_name()));
-    std::shared_ptr<client::YBTable> consumer_table;
-    ASSERT_OK(consumer_client()->OpenTable(consumer_table_name, &consumer_table));
+    std::shared_ptr<client::YBTable> consumer_table =
+        ASSERT_RESULT(GetConsumerTable(producer_table_name));
 
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
@@ -197,6 +211,66 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
       &producer_cluster_, producer_table_name.namespace_name(), producer_table_name.pgschema_name(),
       producer_table_name_new_user_str));
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_user);
+}
+
+TEST_F(XClusterDDLReplicationTest, CreateIndex) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(EnableDDLReplicationExtension());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const std::string kBaseTableName = "base_table";
+  const std::string kColumn2Name = "a";
+  const std::string kColumn3Name = "b";
+  auto p_conn = ASSERT_RESULT(producer_cluster_.Connect());
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.Connect());
+
+  // Create a base table.
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE TABLE $0($1 int PRIMARY KEY, $2 int, $3 text)", kBaseTableName, kKeyColumnName,
+      kColumn2Name, kColumn3Name));
+  const auto producer_base_table_name = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kBaseTableName));
+
+  // Insert some rows.
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2, i::text FROM generate_series(1, 100) as i;", kBaseTableName));
+  {
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    auto producer_table = ASSERT_RESULT(GetProducerTable(producer_base_table_name));
+    auto consumer_table = ASSERT_RESULT(GetConsumerTable(producer_base_table_name));
+    ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+  }
+
+  // Create index on column 2.
+  ASSERT_OK(p_conn.ExecuteFormat("CREATE INDEX ON $0($1 ASC)", kBaseTableName, kColumn2Name));
+  const auto kCol2CountStmt =
+      Format("SELECT COUNT(*) FROM $0 WHERE $1 >= 0", kBaseTableName, kColumn2Name);
+  ASSERT_TRUE(ASSERT_RESULT(p_conn.HasIndexScan(kCol2CountStmt)));
+
+  // Verify index is replicated on consumer.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  {
+    master::GetUniverseReplicationResponsePB resp;
+    ASSERT_OK(VerifyUniverseReplication(&resp));
+    ASSERT_EQ(resp.entry().tables_size(), 3);  // ddl_queue + base_table + index
+  }
+  ASSERT_TRUE(ASSERT_RESULT(c_conn.HasIndexScan(kCol2CountStmt)));
+
+  // Create unique index on column 3.
+  ASSERT_OK(p_conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0($1)", kBaseTableName, kColumn3Name));
+  // Test inserting duplicate value.
+  ASSERT_NOK(p_conn.ExecuteFormat("INSERT INTO $0 VALUES(101, 101, '1');", kBaseTableName));
+  ASSERT_OK(p_conn.ExecuteFormat("INSERT INTO $0 VALUES(0, 0, '0');", kBaseTableName));
+
+  // Verify uniqueness constraint on consumer.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // Bypass writes being blocked on target clusters.
+  ASSERT_OK(c_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = true"));
+  ASSERT_NOK(c_conn.ExecuteFormat("INSERT INTO $0 VALUES(1, 1, '0');", kBaseTableName));
+  ASSERT_NOK(c_conn.ExecuteFormat("INSERT INTO $0 VALUES(101, 101, '1');", kBaseTableName));
+  ASSERT_OK(c_conn.ExecuteFormat("INSERT INTO $0 VALUES(101, 101, '101');", kBaseTableName));
+  ASSERT_OK(c_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
 }
 
 TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
