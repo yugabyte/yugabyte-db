@@ -1,3 +1,5 @@
+set yb_enable_bitmapscan = true;
+
 create table ab (a int not null, b int not null) partition by list (a);
 create table ab_a2 partition of ab for values in(2) partition by list (b);
 create table ab_a2_b1 partition of ab_a2 for values in (1);
@@ -40,5 +42,6 @@ explain (analyze, costs off, summary off, timing off)
 /*+ bitmapscan(ab) */ select * from ab where (ab.a = 1 OR ab.b = 1);
 
 reset enable_bitmapscan;
+reset yb_enable_bitmapscan;
 
 drop table ab;
