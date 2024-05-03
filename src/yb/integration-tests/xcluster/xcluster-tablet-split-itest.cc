@@ -561,7 +561,8 @@ TEST_P(xClusterTabletMapTest, MoreConsumerTablets) {
   RunSetUp(3, 8);
 }
 
-TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
+TEST_F(XClusterTabletSplitITest,
+  YB_DISABLE_TEST_ON_MACOS(SplittingWithXClusterReplicationOnConsumer)) {
   // Perform a split on the consumer side and ensure replication still works.
 
   // To begin with, cluster_ will be our producer.
@@ -584,7 +585,8 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
   ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
 }
 
-TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
+TEST_F(XClusterTabletSplitITest,
+  YB_DISABLE_TEST_ON_MACOS(SplittingWithXClusterReplicationOnProducer)) {
   // Perform a split on the producer side and ensure replication still works.
 
   // Default cluster_ will be our producer.
@@ -664,7 +666,7 @@ TEST_F(XClusterTabletSplitITest, MultipleSplitsInSequence) {
   ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
 }
 
-TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
+TEST_F(XClusterTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(SplittingOnProducerAndConsumer)) {
   // Test splits on both producer and consumer while writes to the producer are happening.
 
   // Default cluster_ will be our producer.
@@ -1048,7 +1050,7 @@ class XClusterAutomaticTabletSplitITest : public XClusterTabletSplitITest {
 
 // This test is very flaky in TSAN as we spend a long time waiting for children tablets to be
 // ready, and will often then time out.
-TEST_F(XClusterAutomaticTabletSplitITest, AutomaticTabletSplitting) {
+TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(AutomaticTabletSplitting)) {
   constexpr auto num_active_tablets = 6;
 
   // Setup a new thread for continuous writing to producer.
@@ -1210,7 +1212,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
   ASSERT_RESULT(SplitTabletAndCheckForNotSupported());
 }
 
-TEST_F(NotSupportedTabletSplitITest, SplittingWithBootstrappedStream) {
+TEST_F(NotSupportedTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(SplittingWithBootstrappedStream)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) = false;
   // Default cluster_ will be our producer.

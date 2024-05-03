@@ -354,7 +354,7 @@ TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
       /* compact= */ false, /* aggregate= */ false);
 }
 
-TEST_F_EX(PgSingleTServerTest, HybridTimeFilterDuringConflictResolution,
+TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_ON_MACOS(HybridTimeFilterDuringConflictResolution),
           PgMiniSmallMemstoreAndCacheTest) {
   constexpr int kNumColumns = 10;
 

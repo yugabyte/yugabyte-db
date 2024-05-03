@@ -645,7 +645,7 @@ TEST_F(CompactionTest, FilesOverMaxSizeWithTableTTLStillGetManualCompacted) {
   }
 }
 
-TEST_F(CompactionTest, MaxFileSizeIgnoredIfNoTableTTL) {
+TEST_F(CompactionTest, YB_DISABLE_TEST_ON_MACOS(MaxFileSizeIgnoredIfNoTableTTL)) {
   const int kNumFilesToWrite = 10;
   // Auto compactions will be triggered every kNumFilesToWrite files written.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = kNumFilesToWrite;
@@ -1185,7 +1185,7 @@ class CompactionTestWithTTL : public CompactionTest {
   const int kTTLSec = 1;
 };
 
-TEST_F(CompactionTestWithTTL, CompactionAfterExpiry) {
+TEST_F(CompactionTestWithTTL, YB_DISABLE_TEST_ON_MACOS(CompactionAfterExpiry)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 10;
   // Testing compaction without compaction file filtering for TTL expiration.

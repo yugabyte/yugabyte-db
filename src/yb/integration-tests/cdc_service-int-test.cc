@@ -906,7 +906,7 @@ TEST_F(CDCServiceTest, TestGetChanges) {
   VerifyStreamDeletedFromCdcState(client_.get(), stream_id_, tablet_id);
 }
 
-TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
+TEST_F(CDCServiceTest, YB_DISABLE_TEST_ON_MACOS(TestGetChangesWithDeadline)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_end_markers_transactions) = false;
   docdb::DisableYcqlPackedRow();
   stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));

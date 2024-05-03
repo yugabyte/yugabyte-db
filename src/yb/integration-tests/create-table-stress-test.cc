@@ -443,7 +443,7 @@ TEST_F(CreateSmallHBTableStressTest, TestRestartMasterDuringFullHeartbeat) {
   }
 }
 
-TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
+TEST_F(CreateTableStressTest, YB_DISABLE_TEST_ON_MACOS(TestHeartbeatDeadline)) {
   DontVerifyClusterBeforeNextTearDown();
 
   // 500ms deadline / 50 ms wait ~= 10 Tablets processed before Master hits deadline

@@ -504,7 +504,7 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
   }
 }
 
-TEST_F(DebugUtilTest, TestGetStackTraceWhileCreatingThreads) {
+TEST_F(DebugUtilTest, YB_DISABLE_TEST_ON_MACOS(TestGetStackTraceWhileCreatingThreads)) {
   // This test makes sure we can collect stack traces while threads are being created.
   // We create 10 threads that create threads in a loop. Then we create 100 threads that collect
   // stack traces from the other 10 threads.

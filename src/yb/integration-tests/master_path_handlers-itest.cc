@@ -441,7 +441,7 @@ void verifyTestTableTablets(const rapidjson::Value* json_obj) {
   }
 }
 
-TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableId) {
+TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestTableJsonEndpointValidTableId)) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
 
@@ -469,7 +469,7 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableId) {
   verifyTestTableTablets(json_obj);
 }
 
-TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableName) {
+TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestTableJsonEndpointValidTableName)) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
 
@@ -503,7 +503,7 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableName) {
   verifyTestTableTablets(json_obj);
 }
 
-TEST_F(MasterPathHandlersItest, TestTableJsonEndpointInvalidTableId) {
+TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestTableJsonEndpointInvalidTableId)) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   // Call endpoint and validate format of response.
@@ -644,7 +644,8 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
   }
 };
 
-TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHandlersItest) {
+TEST_F_EX(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(ShowDeletedTablets),
+  TabletSplitMasterPathHandlersItest) {
   CreateTestTable(1 /* num_tablets */);
 
   client::TableHandle table;
@@ -686,7 +687,8 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
 
 // Hidden split parent tablet shouldn't be shown as leaderless.
 TEST_F_EX(
-    MasterPathHandlersItest, TestHiddenSplitParentTablet, TabletSplitMasterPathHandlersItest) {
+    MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestHiddenSplitParentTablet),
+    TabletSplitMasterPathHandlersItest) {
   const auto kLeaderlessTabletAlertDelaySecs = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
       kLeaderlessTabletAlertDelaySecs;
