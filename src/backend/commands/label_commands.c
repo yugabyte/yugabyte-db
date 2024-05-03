@@ -279,12 +279,6 @@ void create_label(char *graph_name, char *label_name, char label_type,
                         errmsg("label name is invalid")));
     }
 
-    if (!is_valid_label(label_name, label_type))
-    {
-        ereport(ERROR, (errcode(ERRCODE_UNDEFINED_SCHEMA),
-                        errmsg("label name is invalid")));
-    }
-
     cache_data = search_graph_name_cache(graph_name);
     if (!cache_data)
     {
