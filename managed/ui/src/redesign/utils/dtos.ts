@@ -30,6 +30,10 @@ export enum NodeType {
   TServer = 'TServer'
 }
 
+export enum InstanceRole {
+  LEADER = 'LEADER'
+}
+
 export interface PerfRecommendationMetaData {
   suggestion?: string;
   maxNodeName: string;
