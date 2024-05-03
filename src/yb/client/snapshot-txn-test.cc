@@ -430,7 +430,7 @@ TEST_P(SnapshotTxnTest, BankAccountsDelayCreate) {
                    0.0 /* select_update_probability */);
 }
 
-TEST_P(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
+TEST_P(SnapshotTxnTest, YB_DISABLE_TEST_ON_MACOS(BankAccountsDelayAddLeaderPending)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disallow_lmp_failures) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms) = 20;

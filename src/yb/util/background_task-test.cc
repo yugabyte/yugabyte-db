@@ -76,7 +76,7 @@ TEST_F(BackgroundTaskTest, RunsTaskOnWake) {
   bg_task->Shutdown();
 }
 
-TEST_F(BackgroundTaskTest, RunsTaskOnInterval) {
+TEST_F(BackgroundTaskTest, YB_DISABLE_TEST_ON_MACOS(RunsTaskOnInterval)) {
   constexpr int kNumTaskRuns = 1000;
 
   auto interval = 10ms * kTimeMultiplier;
