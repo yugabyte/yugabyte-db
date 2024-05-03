@@ -53,8 +53,12 @@
       "failedToFetchTargetUniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
       "failedToFetchDrPrimaryUniverse": "Unable to fetch universe details for DR primary universe UUID: {{universeUuid}}",
       "failedToFetchDrReplicaUniverse": "Unable to fetch universe details for DR replica universe UUID: {{universeUuid}}",
-      "failedToFetchTargetUniverseNamespaces": "Unable to fetch namespaces for target universe UUID: {{}}",
-      "failedToFetchDrReplicaNamespaces": "Unable to fetch namespaces for DR replica universe UUID: {{}}",
+      "failedToFetchSourceUniverseNamespaces": "Unable to fetch namespaces for source universe UUID: {{universeUuid}}",
+      "failedToFetchDrPrimaryNamespaces": "Unable to fetch namespaces for DR primary universe UUID: {{universeUuid}}",
+      "failedToFetchTargetUniverseNamespaces": "Unable to fetch namespaces for target universe UUID: {{universeUuid}}",
+      "failedToFetchDrReplicaNamespaces": "Unable to fetch namespaces for DR replica universe UUID: {{universeUuid}}",
+      "failedToFetchSourceUniverseTables": "Unable to fetch tables for source universe UUID: {{universeUuid}}",
+      "failedToFetchDrPrimaryTables": "Unable to fetch tables for DR primary universe UUID: {{universeUuid}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
       "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
       "failedToFetchAlertConfigs": "Failed to fetch alert configurations.",
@@ -947,7 +951,6 @@
               "requestFailureLabel": "Edit tables request failed",
               "taskFailure": "Edit tables task failed.",
               "fetchSourceUniverseDetailsFailure": "Failed to fetch source universe details.",
-              "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
               "undefinedSourceUniverseUuid": "The xCluster config does not have an associated source universe.",
               "undefinedTargetUniverseUuid": "The xCluster config does not have an assoicated target universe."
             },
@@ -1029,7 +1032,7 @@
           "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
         },
         "error": {
-          "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
+          "undefinedXClusterTableType": "Unable to determine the table type of the current xCluster configuration. Please ensure the source universe is reachable and contains at least one table among those configured for xCluster replication.",
           "undefinedSourceUniverseUuid": "The xCluster config does not have an associated source universe.",
           "undefinedTargetUniverseUuid": "The xCluster config does not have an assoicated target universe.",
           "failedToFindSourceUniverse": "Unable to find a universe with the source universe UUID: {{universeUuid}}",
