@@ -16,9 +16,9 @@ menu:
 type: docs
 ---
 
-## Replace an active or unreachable node
+## Replace a live or unreachable node
 
-If a node (active or unreachable) needs to be replaced, do the following:
+If a node (live or unreachable) needs to be replaced, do the following:
 
 1. Navigate to **Universes**, select your universe, and open the **Nodes** tab.
 1. Click the associated node **Actions > Replace Node**.
@@ -31,8 +31,9 @@ For Infrastructure as a service (IaaS) such as AWS and GCP, YugabyteDB Anywhere 
 
 ### Check on-premises node state
 
-The on-premises node instances have three states: In use, Free, and Decommissioned.
+The on-premises node instances have three states: In use, Free, and Decommissioned and the following illustration describes the workflow of the states.
 
+![Decommissioned node workflow](/images/ee/decommissioned-node.png)
 To check the state of an on-premises node, navigate to **Configs > On-Premises Datacenters**, then click its associated on-premises configuration, and click **Instances**.
 
 ### Recommission on-premises node instance
