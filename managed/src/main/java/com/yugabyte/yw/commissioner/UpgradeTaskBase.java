@@ -74,6 +74,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  protected void addBasicPrecheckTasks() {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
   protected UpgradeTaskParams taskParams() {
     return (UpgradeTaskParams) taskParams;
   }

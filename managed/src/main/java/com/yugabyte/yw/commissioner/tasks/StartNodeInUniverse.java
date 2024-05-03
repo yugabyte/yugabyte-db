@@ -72,7 +72,16 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    addBasicPrecheckTasks();
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
+  protected void addBasicPrecheckTasks() {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
   }
 
   public void run() {
