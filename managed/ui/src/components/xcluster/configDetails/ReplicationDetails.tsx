@@ -13,8 +13,7 @@ import { closeDialog, openDialog } from '../../../actions/modal';
 import {
   fetchXClusterConfig,
   fetchTaskUntilItCompletes,
-  editXClusterState,
-  fetchTablesInUniverse
+  editXClusterState
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -28,7 +27,6 @@ import {
   XClusterTableStatus,
   XCLUSTER_CONFIG_REFETCH_INTERVAL_MS,
   XCLUSTER_METRIC_REFETCH_INTERVAL_MS,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS,
   MetricName,
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue
@@ -37,7 +35,6 @@ import {
   MaxAcceptableLag,
   CurrentReplicationLag,
   getEnabledConfigActions,
-  getXClusterConfigTableType,
   getStrictestReplicationLagAlertThreshold
 } from '../ReplicationUtils';
 import { LagGraph } from './LagGraph';
@@ -65,7 +62,7 @@ import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPerm
 import { EditTablesModal } from '../disasterRecovery/editTables/EditTablesModal';
 
 import { XClusterConfig } from '../dtos';
-import { MetricsQueryParams, TableType, YBTable } from '../../../redesign/helpers/dtos';
+import { MetricsQueryParams } from '../../../redesign/helpers/dtos';
 import { NodeAggregation, SplitType } from '../../metrics/dtos';
 import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
@@ -104,19 +101,6 @@ export function ReplicationDetails({
     universeQueryKey.detail(xClusterConfigQuery.data?.targetUniverseUUID),
     () => api.fetchUniverse(xClusterConfigQuery.data?.targetUniverseUUID),
     { enabled: xClusterConfigQuery.data?.targetUniverseUUID !== undefined }
-  );
-
-  const sourceUniverseTableQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(
-      xClusterConfigQuery.data?.sourceUniverseUUID,
-      XCLUSTER_UNIVERSE_TABLE_FILTERS
-    ),
-    () =>
-      fetchTablesInUniverse(
-        xClusterConfigQuery.data?.sourceUniverseUUID,
-        XCLUSTER_UNIVERSE_TABLE_FILTERS
-      ).then((response) => response.data),
-    { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
   );
 
   const replicationLagMetricSettings = {
@@ -262,9 +246,7 @@ export function ReplicationDetails({
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
     targetUniverseQuery.isLoading ||
-    targetUniverseQuery.isIdle ||
-    sourceUniverseTableQuery.isLoading ||
-    sourceUniverseTableQuery.isIdle
+    targetUniverseQuery.isIdle
   ) {
     return <YBLoading />;
   }
@@ -282,83 +264,6 @@ export function ReplicationDetails({
     sourceUniverse,
     targetUniverse
   );
-  const configTableType = getXClusterConfigTableType(xClusterConfig);
-  if (configTableType === undefined || sourceUniverseTableQuery.isError) {
-    const redirectUrl = `/universes/${xClusterConfig.sourceUniverseUUID}/replication`;
-    const errorMessage = sourceUniverseTableQuery.isError
-      ? 'Encounter an error fetching information for tables from the source universe.'
-      : 'Unexpected state. All tables in the xCluster config were dropped in the source universe.';
-    return (
-      <div className="xCluster-details-error-container">
-        <YBErrorIndicator customErrorMessage={errorMessage} />
-        <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
-          <Typography variant="h4">{`Replication Name: ${xClusterConfig.name}`}</Typography>
-          <Typography variant="h4">
-            {'Replication Status: '}
-            <XClusterConfigStatusLabel xClusterConfig={xClusterConfig} />
-          </Typography>
-        </Box>
-        <Box display="flex" marginTop={3} gridGap={theme.spacing(1)}>
-          {!xClusterConfig.paused && (
-            <RbacValidator
-              customValidateFunction={() => {
-                return (
-                  hasNecessaryPerm({
-                    ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
-                    onResource: xClusterConfig.sourceUniverseUUID
-                  }) &&
-                  hasNecessaryPerm({
-                    ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
-                    onResource: xClusterConfig.targetUniverseUUID
-                  })
-                );
-              }}
-              isControl
-            >
-              <YBButton
-                btnText="Pause Replication"
-                btnClass="btn btn-orange"
-                disabled={!_.includes(enabledConfigActions, XClusterConfigAction.PAUSE)}
-                onClick={() => {
-                  toast.success('Pausing Replication...');
-                  toggleConfigPausedState.mutateAsync(xClusterConfig);
-                }}
-              />
-            </RbacValidator>
-          )}
-          <YBButton
-            btnText="Delete Replication"
-            btnClass="btn btn-orange"
-            onClick={() => dispatch(openDialog(XClusterModalName.DELETE_CONFIG))}
-          />
-          {isDeleteConfigModalVisible && (
-            <DeleteConfigModal
-              allowedTasks={allowedTasks!}
-              sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
-              targetUniverseUUID={xClusterConfig.targetUniverseUUID}
-              xClusterConfigUUID={xClusterConfig.uuid}
-              xClusterConfigName={xClusterConfig.name}
-              onHide={hideModal}
-              visible={showModal && visibleModal === XClusterModalName.DELETE_CONFIG}
-              redirectUrl={redirectUrl}
-            />
-          )}
-        </Box>
-      </div>
-    );
-  }
-
-  if (
-    configTableType !== TableType.PGSQL_TABLE_TYPE &&
-    configTableType !== TableType.YQL_TABLE_TYPE
-  ) {
-    // Unexpected state. Illegal xCluster table type.
-    return (
-      <YBErrorIndicator
-        customErrorMessage={`Unexpected state. Illegal xCluster table type: ${configTableType}`}
-      />
-    );
-  }
 
   let numTablesAboveLagThreshold = 0;
   if (replicationLagAlertConfigQuery.isSuccess && tableReplicationLagQuery.isSuccess) {
@@ -748,7 +653,6 @@ export function ReplicationDetails({
           <RestartConfigModal
             isDrInterface={false}
             allowedTasks={allowedTasks!}
-            configTableType={configTableType}
             isVisible={isRestartConfigModalVisible}
             onHide={hideModal}
             xClusterConfig={xClusterConfig}
