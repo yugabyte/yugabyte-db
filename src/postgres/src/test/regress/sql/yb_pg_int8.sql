@@ -14,115 +14,110 @@ INSERT INTO INT8_TBL(q1) VALUES ('- 123');
 INSERT INTO INT8_TBL(q1) VALUES ('  345     5');
 INSERT INTO INT8_TBL(q1) VALUES ('');
 
-SELECT * FROM INT8_TBL ORDER BY q1, q2;
+SELECT q1, q2 FROM INT8_TBL; -- YB: avoid ybsort column
 
 -- int8/int8 cmp
-SELECT * FROM INT8_TBL WHERE q2 = 4567890123456789 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 <> 4567890123456789 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 < 4567890123456789 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 > 4567890123456789 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 <= 4567890123456789 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 >= 4567890123456789 ORDER BY q1, q2;
+SELECT q1, q2 FROM INT8_TBL WHERE q2 = 4567890123456789; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 <> 4567890123456789; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 < 4567890123456789; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 > 4567890123456789; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 <= 4567890123456789; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 >= 4567890123456789; -- YB: avoid ybsort column
 
 -- int8/int4 cmp
-SELECT * FROM INT8_TBL WHERE q2 = 456 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 <> 456 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 < 456 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 > 456 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 <= 456 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 >= 456 ORDER BY q1, q2;
+SELECT q1, q2 FROM INT8_TBL WHERE q2 = 456; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 <> 456; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 < 456; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 > 456; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 <= 456; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 >= 456; -- YB: avoid ybsort column
 
 -- int4/int8 cmp
-SELECT * FROM INT8_TBL WHERE 123 = q1 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE 123 <> q1 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE 123 < q1 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE 123 > q1 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE 123 <= q1 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE 123 >= q1 ORDER BY q1, q2;
+SELECT q1, q2 FROM INT8_TBL WHERE 123 = q1; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE 123 <> q1; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE 123 < q1; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE 123 > q1; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE 123 <= q1; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE 123 >= q1; -- YB: avoid ybsort column
 
 -- int8/int2 cmp
-SELECT * FROM INT8_TBL WHERE q2 = '456'::int2 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 <> '456'::int2 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 < '456'::int2 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 > '456'::int2 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 <= '456'::int2 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE q2 >= '456'::int2 ORDER BY q1, q2;
+SELECT q1, q2 FROM INT8_TBL WHERE q2 = '456'::int2; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 <> '456'::int2; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 < '456'::int2; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 > '456'::int2; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 <= '456'::int2; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE q2 >= '456'::int2; -- YB: avoid ybsort column
 
 -- int2/int8 cmp
-SELECT * FROM INT8_TBL WHERE '123'::int2 = q1 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE '123'::int2 <> q1 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE '123'::int2 < q1 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE '123'::int2 > q1 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE '123'::int2 <= q1 ORDER BY q1, q2;
-SELECT * FROM INT8_TBL WHERE '123'::int2 >= q1 ORDER BY q1, q2;
+SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 = q1; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 <> q1; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 < q1; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 > q1; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 <= q1; -- YB: avoid ybsort column
+SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 >= q1; -- YB: avoid ybsort column
 
 
-SELECT '' AS five, q1 AS plus, -q1 AS minus FROM INT8_TBL ORDER BY q1, q2;
+SELECT q1 AS plus, -q1 AS minus FROM INT8_TBL;
 
-SELECT '' AS five, q1, q2, q1 + q2 AS plus FROM INT8_TBL ORDER BY q1, q2;
-SELECT '' AS five, q1, q2, q1 - q2 AS minus FROM INT8_TBL ORDER BY q1, q2;
-SELECT '' AS three, q1, q2, q1 * q2 AS multiply FROM INT8_TBL ORDER BY q1, q2;
-SELECT '' AS three, q1, q2, q1 * q2 AS multiply FROM INT8_TBL
- WHERE q1 < 1000 or (q2 > 0 and q2 < 1000) ORDER BY q1, q2;
-SELECT '' AS five, q1, q2, q1 / q2 AS divide, q1 % q2 AS mod FROM INT8_TBL ORDER BY q1, q2;
+SELECT q1, q2, q1 + q2 AS plus FROM INT8_TBL;
+SELECT q1, q2, q1 - q2 AS minus FROM INT8_TBL;
+SELECT q1, q2, q1 * q2 AS multiply FROM INT8_TBL;
+SELECT q1, q2, q1 * q2 AS multiply FROM INT8_TBL
+ WHERE q1 < 1000 or (q2 > 0 and q2 < 1000);
+SELECT q1, q2, q1 / q2 AS divide, q1 % q2 AS mod FROM INT8_TBL;
 
-SELECT '' AS five, q1, float8(q1) FROM INT8_TBL ORDER BY q1, q2;
-SELECT '' AS five, q2, float8(q2) FROM INT8_TBL ORDER BY q1, q2;
+SELECT q1, float8(q1) FROM INT8_TBL;
+SELECT q2, float8(q2) FROM INT8_TBL;
 
-SELECT 37 + q1 AS plus4 FROM INT8_TBL ORDER BY q1, q2;
-SELECT 37 - q1 AS minus4 FROM INT8_TBL ORDER BY q1, q2;
-SELECT '' AS five, 2 * q1 AS "twice int4" FROM INT8_TBL ORDER BY q1, q2;
-SELECT '' AS five, q1 * 2 AS "twice int4" FROM INT8_TBL ORDER BY q1, q2;
+SELECT 37 + q1 AS plus4 FROM INT8_TBL;
+SELECT 37 - q1 AS minus4 FROM INT8_TBL;
+SELECT 2 * q1 AS "twice int4" FROM INT8_TBL;
+SELECT q1 * 2 AS "twice int4" FROM INT8_TBL;
 
 -- int8 op int4
-SELECT q1 + 42::int4 AS "8plus4", q1 - 42::int4 AS "8minus4", q1 * 42::int4 AS "8mul4",
-    q1 / 42::int4 AS "8div4" FROM INT8_TBL ORDER BY q1, q2;
+SELECT q1 + 42::int4 AS "8plus4", q1 - 42::int4 AS "8minus4", q1 * 42::int4 AS "8mul4", q1 / 42::int4 AS "8div4" FROM INT8_TBL;
 -- int4 op int8
-SELECT 246::int4 + q1 AS "4plus8", 246::int4 - q1 AS "4minus8",
-    246::int4 * q1 AS "4mul8", 246::int4 / q1 AS "4div8" FROM INT8_TBL ORDER BY q1, q2;
+SELECT 246::int4 + q1 AS "4plus8", 246::int4 - q1 AS "4minus8", 246::int4 * q1 AS "4mul8", 246::int4 / q1 AS "4div8" FROM INT8_TBL;
 
 -- int8 op int2
-SELECT q1 + 42::int2 AS "8plus2", q1 - 42::int2 AS "8minus2", q1 * 42::int2 AS "8mul2",
-    q1 / 42::int2 AS "8div2" FROM INT8_TBL ORDER BY q1, q2;
-
+SELECT q1 + 42::int2 AS "8plus2", q1 - 42::int2 AS "8minus2", q1 * 42::int2 AS "8mul2", q1 / 42::int2 AS "8div2" FROM INT8_TBL;
 -- int2 op int8
-SELECT 246::int2 + q1 AS "2plus8", 246::int2 - q1 AS "2minus8", 246::int2 * q1 AS "2mul8",
-    246::int2 / q1 AS "2div8" FROM INT8_TBL ORDER BY q1, q2;
+SELECT 246::int2 + q1 AS "2plus8", 246::int2 - q1 AS "2minus8", 246::int2 * q1 AS "2mul8", 246::int2 / q1 AS "2div8" FROM INT8_TBL;
 
-SELECT q2, abs(q2) FROM INT8_TBL ORDER BY q1, q2;
+SELECT q2, abs(q2) FROM INT8_TBL;
 SELECT min(q1), min(q2) FROM INT8_TBL;
 SELECT max(q1), max(q2) FROM INT8_TBL;
 
 
 -- TO_CHAR()
 --
-SELECT '' AS to_char_1, to_char(q1, '9G999G999G999G999G999'), to_char(q2, '9,999,999,999,999,999')
-	FROM INT8_TBL ORDER BY q1, q2;
+SELECT to_char(q1, '9G999G999G999G999G999'), to_char(q2, '9,999,999,999,999,999')
+	FROM INT8_TBL;
 
-SELECT '' AS to_char_2, to_char(q1, '9G999G999G999G999G999D999G999'), to_char(q2, '9,999,999,999,999,999.999,999')
-	FROM INT8_TBL ORDER BY q1, q2;
+SELECT to_char(q1, '9G999G999G999G999G999D999G999'), to_char(q2, '9,999,999,999,999,999.999,999')
+	FROM INT8_TBL;
 
-SELECT '' AS to_char_3, to_char( (q1 * -1), '9999999999999999PR'), to_char( (q2 * -1), '9999999999999999.999PR')
-	FROM INT8_TBL ORDER BY q1, q2;
+SELECT to_char( (q1 * -1), '9999999999999999PR'), to_char( (q2 * -1), '9999999999999999.999PR')
+	FROM INT8_TBL;
 
-SELECT '' AS to_char_4, to_char( (q1 * -1), '9999999999999999S'), to_char( (q2 * -1), 'S9999999999999999')
-	FROM INT8_TBL ORDER BY q1, q2;
+SELECT to_char( (q1 * -1), '9999999999999999S'), to_char( (q2 * -1), 'S9999999999999999')
+	FROM INT8_TBL;
 
-SELECT '' AS to_char_5,  to_char(q2, 'MI9999999999999999')     FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_6,  to_char(q2, 'FMS9999999999999999')    FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_7,  to_char(q2, 'FM9999999999999999THPR') FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_8,  to_char(q2, 'SG9999999999999999th')   FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_9,  to_char(q2, '0999999999999999')       FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_10, to_char(q2, 'S0999999999999999')      FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_11, to_char(q2, 'FM0999999999999999')     FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_12, to_char(q2, 'FM9999999999999999.000') FROM INT8_TBL ORDER BY q2, q1;
--- TODO: Disabled the test below as it relies on the current locale which is
+SELECT to_char(q2, 'MI9999999999999999')     FROM INT8_TBL;
+SELECT to_char(q2, 'FMS9999999999999999')    FROM INT8_TBL;
+SELECT to_char(q2, 'FM9999999999999999THPR') FROM INT8_TBL;
+SELECT to_char(q2, 'SG9999999999999999th')   FROM INT8_TBL;
+SELECT to_char(q2, '0999999999999999')       FROM INT8_TBL;
+SELECT to_char(q2, 'S0999999999999999')      FROM INT8_TBL;
+SELECT to_char(q2, 'FM0999999999999999')     FROM INT8_TBL;
+SELECT to_char(q2, 'FM9999999999999999.000') FROM INT8_TBL;
+-- YB: TODO: Disabled the test below as it relies on the current locale which is
 --  configured in pg_regress using ALTER which we do not support yet.
--- SELECT '' AS to_char_13, to_char(q2, 'L9999999999999999.000')  FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_14, to_char(q2, 'FM9999999999999999.999') FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_15, to_char(q2, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9') FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_16, to_char(q2, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_17, to_char(q2, '999999SG9999999999')     FROM INT8_TBL ORDER BY q2, q1;
+-- SELECT to_char(q2, 'L9999999999999999.000')  FROM INT8_TBL;
+SELECT to_char(q2, 'FM9999999999999999.999') FROM INT8_TBL;
+SELECT to_char(q2, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9') FROM INT8_TBL;
+SELECT to_char(q2, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM INT8_TBL;
+SELECT to_char(q2, '999999SG9999999999')     FROM INT8_TBL;
 
 -- check min/max values and overflow behavior
 
@@ -165,26 +160,26 @@ select '-100'::int2 - '9223372036854775800'::int8;
 select '100'::int2 * '9223372036854775800'::int8;
 select '100'::int2 / '0'::int8;
 
-SELECT CAST(q1 AS int4) FROM int8_tbl WHERE q2 = 456 ORDER BY q1, q2;
-SELECT CAST(q1 AS int4) FROM int8_tbl WHERE q2 <> 456 ORDER BY q1, q2;
+SELECT CAST(q1 AS int4) FROM int8_tbl WHERE q2 = 456;
+SELECT CAST(q1 AS int4) FROM int8_tbl WHERE q2 <> 456;
 
-SELECT CAST(q1 AS int2) FROM int8_tbl WHERE q2 = 456 ORDER BY q1, q2;
-SELECT CAST(q1 AS int2) FROM int8_tbl WHERE q2 <> 456 ORDER BY q1, q2;
+SELECT CAST(q1 AS int2) FROM int8_tbl WHERE q2 = 456;
+SELECT CAST(q1 AS int2) FROM int8_tbl WHERE q2 <> 456;
 
 SELECT CAST('42'::int2 AS int8), CAST('-37'::int2 AS int8);
 
-SELECT CAST(q1 AS float4), CAST(q2 AS float8) FROM INT8_TBL ORDER BY q1, q2;
+SELECT CAST(q1 AS float4), CAST(q2 AS float8) FROM INT8_TBL;
 SELECT CAST('36854775807.0'::float4 AS int8);
 SELECT CAST('922337203685477580700.0'::float8 AS int8);
 
-SELECT CAST(q1 AS oid) FROM INT8_TBL ORDER BY q1;
+SELECT CAST(q1 AS oid) FROM INT8_TBL;
 SELECT oid::int8 FROM pg_class WHERE relname = 'pg_class';
 
 
 -- bit operations
 
-SELECT q1, q2, q1 & q2 AS "and", q1 | q2 AS "or", q1 # q2 AS "xor", ~q1 AS "not" FROM INT8_TBL ORDER BY q1, q2;
-SELECT q1, q1 << 2 AS "shl", q1 >> 3 AS "shr" FROM INT8_TBL ORDER BY q1;
+SELECT q1, q2, q1 & q2 AS "and", q1 | q2 AS "or", q1 # q2 AS "xor", ~q1 AS "not" FROM INT8_TBL;
+SELECT q1, q1 << 2 AS "shl", q1 >> 3 AS "shr" FROM INT8_TBL;
 
 
 -- generate_series

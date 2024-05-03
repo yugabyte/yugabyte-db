@@ -1278,7 +1278,7 @@ SELECT q1 FROM
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT q1 FROM
 (
-  WITH t_cte AS MATERIALIZED (SELECT * FROM int8_tbl t)
+  WITH t_cte AS MATERIALIZED (SELECT q1, q2 FROM int8_tbl t) -- YB: avoid ybsort column
   SELECT q1, (SELECT q2 FROM t_cte WHERE t_cte.q1 = i8.q1) AS t_sub
   FROM int8_tbl i8
 ) ss;

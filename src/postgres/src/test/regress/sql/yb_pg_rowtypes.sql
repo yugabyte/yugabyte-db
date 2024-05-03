@@ -138,18 +138,14 @@ select a,b from test_table where (a,b) > ('a','a') order by a,b;
 reset enable_sort;
 
 -- Check row comparisons with IN
-select * from int8_tbl i8 where i8 in (row(123,456));  -- fail, type mismatch
+select * from int8_tbl i8 where i8 in (row(123,456,789));  -- fail, type mismatch -- YB: adjust for ybsort column
 
--- See issue #16993
-/*+Set(yb_bnl_batch_size 1024)*/select * from int8_tbl i8 where i8 in (row(123,456));  -- fail, type mismatch
+explain (costs off)
+select q1, q2 from int8_tbl i8 -- YB: avoid ybsort column
+where i8 in (row(123,456,1)::int8_tbl, '(4567890123456789,123,3)'); -- YB: adjust for ybsort column
 
--- TODO(jason): uncomment when issue #2076 is closed or closing.
--- explain (costs off)
--- select * from int8_tbl i8
--- where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
-
-select * from int8_tbl i8
-where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
+select q1, q2 from int8_tbl i8 -- YB: avoid ybsort column
+where i8 in (row(123,456,1)::int8_tbl, '(4567890123456789,123,3)'); -- YB: adjust for ybsort column
 
 -- Check some corner cases involving empty rowtypes
 select ROW();
@@ -378,31 +374,23 @@ select longname(f) from fullname f;
 -- (bug #11210 and other reports)
 --
 
-select row_to_json(i) from int8_tbl i ORDER BY i.q1, i.q2;
-select row_to_json(i) from int8_tbl i(x,y) ORDER BY i.x, i.y;
+select replace((row_to_json(i)::jsonb - 'ybsort')::text, ' ', '')::json as row_to_json from int8_tbl i; -- YB: avoid ybsort column
+-- since "i" is of type "int8_tbl", attaching aliases doesn't change anything:
+select replace((row_to_json(i)::jsonb - 'ybsort')::text, ' ', '')::json as row_to_json from int8_tbl i(x,y); -- YB: avoid ybsort column
 
-create temp view vv1 as select * from int8_tbl;
-select row_to_json(i) from vv1 i ORDER BY i.q1, i.q2;
-select row_to_json(i) from vv1 i(x,y) ORDER BY i.x, i.y;
-
+-- in these examples, we'll report the exposed column names of the subselect:
 select row_to_json(ss) from
-  (select q1, q2 from int8_tbl) as ss
-  ORDER BY ss.q1, ss.q2;
+  (select q1, q2 from int8_tbl) as ss;
 select row_to_json(ss) from
-  (select q1, q2 from int8_tbl offset 0) as ss
-  ORDER BY ss.q1, ss.q2;
+  (select q1, q2 from int8_tbl offset 0) as ss;
 select row_to_json(ss) from
-  (select q1 as a, q2 as b from int8_tbl) as ss
-  ORDER BY ss.a, ss.b;
+  (select q1 as a, q2 as b from int8_tbl) as ss;
 select row_to_json(ss) from
-  (select q1 as a, q2 as b from int8_tbl offset 0) as ss
-  ORDER BY ss.a, ss.b;
+  (select q1 as a, q2 as b from int8_tbl offset 0) as ss;
 select row_to_json(ss) from
-  (select q1 as a, q2 as b from int8_tbl) as ss(x,y)
-  ORDER BY ss.x, ss.y;
+  (select q1 as a, q2 as b from int8_tbl) as ss(x,y);
 select row_to_json(ss) from
-  (select q1 as a, q2 as b from int8_tbl offset 0) as ss(x,y)
-  ORDER BY ss.x, ss.y;
+  (select q1 as a, q2 as b from int8_tbl offset 0) as ss(x,y);
 
 explain (costs off)
 select row_to_json(q) from
