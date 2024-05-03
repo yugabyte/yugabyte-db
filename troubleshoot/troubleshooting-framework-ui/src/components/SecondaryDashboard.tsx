@@ -23,6 +23,7 @@ import PrometheusIcon from '../assets/prometheus-icon.svg';
 export const ASH_GROUPBY_VALUES = {
   WAIT_EVENT_COMPONENT: 'waitEventComponent',
   WAIT_EVENT_CLASS: 'waitEventClass',
+  WAIT_EVENT_TYPE: 'waitEventType',
   WAIT_EVENT: 'waitEvent',
   CLIENT_NODE_IP: 'clientNodeIp',
   QUERY: 'queryId'

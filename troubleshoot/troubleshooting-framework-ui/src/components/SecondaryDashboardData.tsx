@@ -190,6 +190,8 @@ export const SecondaryDashboardData = ({
     let groupBy = ASH_GROUPBY_VALUES.WAIT_EVENT_COMPONENT;
     if (groupByLabel === 'Class') {
       groupBy = ASH_GROUPBY_VALUES.WAIT_EVENT_CLASS;
+    } else if (groupByLabel === 'Type') {
+      groupBy = ASH_GROUPBY_VALUES.WAIT_EVENT_TYPE;
     } else if (groupByLabel === 'Event') {
       groupBy = ASH_GROUPBY_VALUES.WAIT_EVENT;
     } else if (groupByLabel === 'Query') {

@@ -108,6 +108,7 @@ export interface GraphQuery {
 
 export enum GraphLabel {
   WAIT_EVENT_COMPONENT = 'waitEventComponent',
+  WAIT_EVENT_TYPE = 'waitEventType',
   WAIT_EVENT_CLASS = 'waitEventClass',
   WAIT_EVENT = 'waitEvent',
   CLIENT_NODE_IP = 'clientNodeIp',
