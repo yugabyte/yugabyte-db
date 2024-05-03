@@ -52,20 +52,8 @@
 #define table_close(r, l) heap_close(r, l)
 #endif
 
-typedef enum ClusterReplicationRole
-{
-	REPLICATION_ROLE_DISABLED,
-	REPLICATION_ROLE_SOURCE,
-	REPLICATION_ROLE_TARGET,
-	REPLICATION_ROLE_BIDIRECTIONAL,
-} ClusterReplicationRole;
-
-static const struct config_enum_entry replication_roles[] = {
-	{"DISABLED", REPLICATION_ROLE_DISABLED, false},
-	{"SOURCE", REPLICATION_ROLE_SOURCE, false},
-	{"TARGET", REPLICATION_ROLE_TARGET, false},
-	{"BIDIRECTIONAL", REPLICATION_ROLE_BIDIRECTIONAL, /* hidden */ true},
-	{NULL, 0, false}};
+// Global variables.
+extern const char *kManualReplicationErrorMsg;
 
 // Get int64 value from string extension variable.
 int64 GetInt64FromVariable(const char *var, const char *var_name);

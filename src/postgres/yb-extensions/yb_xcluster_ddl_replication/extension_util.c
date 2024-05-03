@@ -22,6 +22,10 @@
 #include "utils/fmgroids.h"
 #include "utils/relcache.h"
 
+const char *kManualReplicationErrorMsg =
+    "To manually replicate, run DDL with "
+    "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true";
+
 int64
 GetInt64FromVariable(const char *var, const char *var_name)
 {

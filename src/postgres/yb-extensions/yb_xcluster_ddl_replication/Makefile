@@ -6,7 +6,11 @@ EXTENSION = yb_xcluster_ddl_replication
 DATA = yb_xcluster_ddl_replication--1.0.sql
 
 MODULE_big = yb_xcluster_ddl_replication
-OBJS = yb_xcluster_ddl_replication.o extension_util.o json_util.o
+OBJS = \
+	yb_xcluster_ddl_replication.o \
+	extension_util.o \
+	json_util.o \
+	source_ddl_end_handler.o
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
