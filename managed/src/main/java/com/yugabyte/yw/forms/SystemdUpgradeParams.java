@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -15,7 +16,12 @@ public class SystemdUpgradeParams extends UpgradeTaskParams {
 
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
-    super.verifyParams(universe, isFirstTry);
+    verifyParams(universe, null, isFirstTry);
+  }
+
+  @Override
+  public void verifyParams(Universe universe, NodeState nodeState, boolean isFirstTry) {
+    super.verifyParams(universe, nodeState, isFirstTry);
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
       throw new PlatformServiceException(
