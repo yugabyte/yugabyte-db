@@ -1,6 +1,5 @@
 [Unit]
 Description=Yugabyte clean cores
-Wants=yb-clean_cores.timer
 
 [Service]
 {% if ansible_os_family == 'RedHat' and (ansible_distribution_major_version == '7' or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')) %}
