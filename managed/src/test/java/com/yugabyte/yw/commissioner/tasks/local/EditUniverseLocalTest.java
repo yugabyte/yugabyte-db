@@ -9,6 +9,7 @@ import static org.junit.Assert.assertEquals;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -417,6 +418,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     String error = getAllErrorsStr(taskInfo);
     assertThat(error, containsString("There are leaderless tablets"));
+    assertThat(error, containsString(UniverseConfKeys.leaderlessTabletsCheckEnabled.getKey()));
   }
 
   @Test
