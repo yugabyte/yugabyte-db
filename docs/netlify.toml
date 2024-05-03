@@ -1403,6 +1403,10 @@
             https://deploy-preview-12849--infallible-bardeen-164bc9.netlify.app/
             https://yugabyte.thinkific.com/
         ;
+
+        media-src default-src 'self' 'unsafe-inline'
+        https://js.driftt.com/conductor/assets/
+        ;
 '''
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin"
