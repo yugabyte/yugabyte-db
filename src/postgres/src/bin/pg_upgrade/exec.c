@@ -260,10 +260,15 @@ verify_directories(void)
 #endif
 		pg_fatal("You must have read and write access in the current directory.\n");
 
-	check_bin_dir(&old_cluster, false);
-	check_data_dir(&old_cluster);
+	if (!is_yugabyte_enabled())
+		check_bin_dir(&old_cluster, false);
+	if (!is_yugabyte_enabled() || user_opts.check)
+		/* YB: No "old cluster" data dir needed for actual upgrade. */
+		check_data_dir(&old_cluster);
 	check_bin_dir(&new_cluster, true);
-	check_data_dir(&new_cluster);
+	if (!(is_yugabyte_enabled() && user_opts.check))
+		/* YB: No new cluster for preflight checks. */
+		check_data_dir(&new_cluster);
 }
 
 

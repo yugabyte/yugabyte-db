@@ -6,7 +6,7 @@ run_and_pushd_pg11
 popd
 
 # Run preflight checks. The check should pass by default.
-run_pg_upgrade --check
+run_preflight_checks
 
 # Disallow connections on the 'postgres' database
 ysqlsh <<EOT
@@ -15,7 +15,7 @@ EOT
 
 # Check failure
 grep -q "All non-template0 databases must allow connections" \
-    <(run_pg_upgrade --check 2>&1)
+  <(run_preflight_checks 2>&1)
 
 # Re-enable connections on the 'postgres' database
 ysqlsh <<EOT
@@ -30,7 +30,7 @@ EOT
 
 # Check failure
 grep -q "Your installation contains system-defined composite type(s) in user tables." \
-    <(run_pg_upgrade --check 2>&1)
+  <(run_preflight_checks 2>&1)
 
 # Drop table using pg_authid
 ysqlsh <<EOT
@@ -46,7 +46,7 @@ EOT
 
 # Check failure
 grep -q "Your installation contains one of the reg\*" \
-    <(run_pg_upgrade --check 2>&1)
+  <(run_preflight_checks 2>&1)
 
 # Drop table with regproc
 ysqlsh <<EOT
@@ -71,7 +71,7 @@ EOT
 
 # Check failure
 grep -q "Your installation contains user-defined postfix operators" \
-    <(run_pg_upgrade --check 2>&1)
+  <(run_preflight_checks 2>&1)
 
 # Drop the postfix operator
 ysqlsh <<EOT
@@ -100,7 +100,7 @@ EOT
 
 # Check failure
 grep -qz "Your installation contains user-defined objects that refer to internal\npolymorphic functions" \
-    <(run_pg_upgrade --check 2>&1)
+  <(run_preflight_checks 2>&1)
 
 # Drop polymorph_table
 ysqlsh <<EOT
@@ -116,7 +116,7 @@ EOT
 
 # Check failure
 grep -q "Your installation contains the \"sql_identifier\"" \
-    <(run_pg_upgrade --check 2>&1)
+  <(run_preflight_checks 2>&1)
 
 # Drop table using sql_identifier
 ysqlsh <<EOT
@@ -130,7 +130,7 @@ EOT
 
 # Check failure
 grep -q "The source cluster does not have the database: \"postgres\"" \
-    <(run_pg_upgrade --check 2>&1)
+  <(run_preflight_checks 2>&1)
 
 # Create postgres database
 ysqlsh <<EOT
@@ -138,4 +138,4 @@ CREATE DATABASE postgres;
 EOT
 
 # Run preflight checks again. The final check should pass.
-run_pg_upgrade --check
+run_preflight_checks

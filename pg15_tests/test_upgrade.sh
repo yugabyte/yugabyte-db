@@ -21,7 +21,7 @@ EOT
 popd
 
 # Run preflight checks before upgrading yb-masters.
-run_pg_upgrade --check
+run_preflight_checks
 upgrade_masters_run_initdb
 
 # Ensure that the PG15 initdb didn't create or modify namespace entries on the YB master.

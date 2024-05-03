@@ -94,24 +94,44 @@ main(int argc, char **argv)
 
 	get_restricted_token();
 
-	adjust_data_dir(&old_cluster);
-	adjust_data_dir(&new_cluster);
+	if (!is_yugabyte_enabled() || user_opts.check)
+		adjust_data_dir(&old_cluster);
 
-	/*
-	 * Set mask based on PGDATA permissions, needed for the creation of the
-	 * output directories with correct permissions.
-	 */
-	if (!GetDataDirectoryCreatePerm(new_cluster.pgdata))
-		pg_fatal("could not read permissions of directory \"%s\": %s\n",
-				 new_cluster.pgdata, strerror(errno));
+	if (!(is_yugabyte_enabled() && user_opts.check))
+	{
+		adjust_data_dir(&new_cluster);
 
-	umask(pg_mode_mask);
+		/*
+		 * Set mask based on PGDATA permissions, needed for the creation of the
+		 * output directories with correct permissions.
+		 */
+		if (!GetDataDirectoryCreatePerm(new_cluster.pgdata))
+			pg_fatal("could not read permissions of directory \"%s\": %s\n",
+					 new_cluster.pgdata, strerror(errno));
 
-	/*
-	 * This needs to happen after adjusting the data directory of the new
-	 * cluster in adjust_data_dir().
-	 */
-	make_outputdirs(new_cluster.pgdata);
+		umask(pg_mode_mask);
+
+		/*
+		 * This needs to happen after adjusting the data directory of the new
+		 * cluster in adjust_data_dir().
+		 */
+		make_outputdirs(new_cluster.pgdata);
+	}
+	else
+	{
+		/*
+		 * Set mask based on PGDATA permissions, needed for the creation of the
+		 * output directories with correct permissions.
+		 */
+		if (!GetDataDirectoryCreatePerm(old_cluster.pgdata))
+			pg_fatal("could not read permissions of directory \"%s\": %s\n",
+					 old_cluster.pgdata, strerror(errno));
+
+		umask(pg_mode_mask);
+
+		/* YB: Make sure we have a place for log files. */
+		make_outputdirs(old_cluster.pgdata);
+	}
 
 	setup(argv[0], &live_check);
 

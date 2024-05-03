@@ -66,10 +66,16 @@ ysql_upgrade_using_node_2() {
 # Run pg_upgrade which calls ysql_dumpall, ysql_dump and pg_restore.
 # ysql_dump and pg_restore together migrate the metadata for the databases.
 # Currently, pg_upgrade migrates only the 'yugabyte' database.
-# Use --check flag if you only want to run the preflight checks.
 run_pg_upgrade() {
-  # YB_TODO: Make the target cluster optional when running pg_upgrade in check mode.
-  build/latest/postgres/bin/pg_upgrade -b "$prefix/yugabyte-$ybversion_pg11/postgres/bin" \
-    -d "$data_dir/node-1/disk-1/pg_data" -D "$data_dir/node-2/disk-1/pg_data" -h "$PGHOST" -p 5433 \
-    -H "$pghost2" -P 5433 --username "yugabyte" "$@"
+  if [[ "$@" =~ "--check" ]]; then
+    echo "$FUNCNAME: Use run_preflight_checks"
+    exit 1
+  fi
+  build/latest/postgres/bin/pg_upgrade -D "$data_dir/node-2/disk-1/pg_data" \
+    -h "$PGHOST" -p 5433 -H "$pghost2" -P 5433 --username "yugabyte"
+}
+
+run_preflight_checks() {
+  build/latest/postgres/bin/pg_upgrade -d "$data_dir/node-1/disk-1/pg_data" \
+    -h "$PGHOST" -p 5433 --username "yugabyte" --check
 }
