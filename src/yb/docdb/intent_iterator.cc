@@ -14,6 +14,7 @@
 #include "yb/docdb/intent_iterator.h"
 
 #include "yb/docdb/conflict_resolution.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/iter_util.h"
@@ -74,18 +75,8 @@ IntentIterator::IntentIterator(
   VLOG(4) << "IntentIterator, read_time: " << read_time << ", txn_op_context: " << txn_op_context_;
 
   if (txn_op_context) {
-    if (txn_op_context.txn_status_manager->MinRunningHybridTime() != HybridTime::kMax) {
-      intent_iter_ = docdb::CreateRocksDBIterator(
-          intents_db,
-          docdb_key_bounds,
-          docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-          boost::none,
-          rocksdb::kDefaultQueryId,
-          nullptr /* file_filter */,
-          &upperbound_);
-    } else {
-      VLOG(4) << "No transactions running";
-    }
+    intent_iter_ = docdb::CreateIntentsIteratorWithHybridTimeFilter(
+        intents_db, txn_op_context.txn_status_manager, docdb_key_bounds, &upperbound_);
   }
   VTRACE(2, "Created intent iterator - initialized? - $0", intent_iter_.Initialized());
 }
