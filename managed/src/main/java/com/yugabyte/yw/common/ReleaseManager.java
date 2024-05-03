@@ -421,12 +421,25 @@ public class ReleaseManager {
   }
 
   public List<String> getLocalReleaseVersions() {
+    return getLocalReleaseVersions(true);
+  }
+
+  public List<String> getLocalReleaseVersions(boolean includeKubernetes) {
     if (!confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       return new ArrayList<String>(getLocalReleases().keySet());
     } else {
       // Get the version of every release that has at least 1 "ReleaseLocalFile" artifact
       return Release.getAll().stream()
-          .filter(r -> ReleaseArtifact.getForReleaseLocalFile(r.getReleaseUUID()).size() != 0)
+          .filter(
+              r -> {
+                List<ReleaseArtifact> artifacts =
+                    ReleaseArtifact.getForReleaseLocalFile(r.getReleaseUUID());
+                if (includeKubernetes) {
+                  return artifacts.size() != 0;
+                } else {
+                  return artifacts.stream().filter(a -> !a.isKubernetes()).count() > 0;
+                }
+              })
           .map(r -> r.getVersion())
           .collect(Collectors.toList());
     }

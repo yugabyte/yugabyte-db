@@ -253,7 +253,7 @@ public class AppInit {
         releaseManager.importLocalReleases();
         releaseManager.updateCurrentReleases();
         releaseManager
-            .getLocalReleaseVersions()
+            .getLocalReleaseVersions(false /* includeKubernetes */)
             .forEach(
                 version -> {
                   try {
