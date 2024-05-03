@@ -21,21 +21,6 @@ Note that YugabyteDB is based on PostgreSQL 11<!-- and uses pgaudit v1.3.2-->.
 
 Exporting logs may incur additional costs for network transfer in a cloud region, between cloud regions, and across the Internet. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
-{{< tip title="Session logging" >}}
-
-You can use all the PostgreSQL <!--and pgaudit--> logging options in a [ysqlsh](../../cloud-connect/connect-client-shell/) or [Cloud Shell](../../cloud-connect/connect-cloud-shell/) session [using the SET command](../../../api/ysql/the-sql-language/statements/cmd_set/).
-
-<!--For example, to view DDL statements using pgaudit in a shell session, you would do the following:
-
-```sh
-CREATE EXTENSION IF NOT EXISTS pgaudit;
-SET pgaudit.log='DDL';
-SET pgaudit.log_client=ON;
-SET pgaudit.log_level=notice;
-```
--->
-{{< /tip >}}
-
 ## Prerequisites
 
 Create an integration. An integration defines the settings and login information for the tool that you want to export your logs to. Refer to [Integrations](../managed-integrations).
