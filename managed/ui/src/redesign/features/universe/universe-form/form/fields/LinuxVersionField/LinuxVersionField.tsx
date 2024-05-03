@@ -7,6 +7,8 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+import { useEffect } from 'react';
+import { find } from 'lodash';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -38,8 +40,7 @@ export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
   const {
     control,
     setValue,
-    getValues,
-    formState: { errors }
+    getValues
   } = useFormContext<UniverseFormData>();
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
   const classes = useFormFieldStyles();
@@ -52,9 +53,23 @@ export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
     [QUERY_KEY.getLinuxVersions, provider?.uuid, cpuArch],
     () => api.getLinuxVersions(provider?.uuid, cpuArch),
     {
-      enabled: !!provider
+      enabled: !!provider,
+      onSuccess(data) {
+        if (!getValues(LINUX_VERSION_FIELD) && data.length) {
+          const defaultImg = find(data, { useAsDefault: true });
+          if (defaultImg) {
+            setValue(LINUX_VERSION_FIELD, defaultImg?.uuid, { shouldValidate: true });
+          }
+        }
+      },
     }
   );
+
+  useEffect(() => {
+    if (!disabled) {
+      setValue(LINUX_VERSION_FIELD, null);
+    }
+  }, [cpuArch, provider?.uuid]);
 
   return (
     <Controller
