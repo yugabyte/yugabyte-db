@@ -85,7 +85,6 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
     setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
-    setLeaderlessTabletsMock();
   }
 
   private TaskInfo submitTask(ThirdpartySoftwareUpgradeParams requestParams, int version) {
@@ -181,7 +180,6 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
 
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLeaderlessTablets);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // Assert that the first task is the pre-upgrade hooks
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
