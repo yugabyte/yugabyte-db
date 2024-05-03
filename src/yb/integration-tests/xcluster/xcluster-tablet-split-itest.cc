@@ -419,9 +419,8 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
   }
 
   auto GetConsumerMap() {
-    master::SysClusterConfigEntryPB cluster_info;
     auto& cm = EXPECT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    EXPECT_OK(cm.GetClusterConfig(&cluster_info));
+    auto cluster_info = EXPECT_RESULT(cm.GetClusterConfig());
     auto producer_map = cluster_info.mutable_consumer_registry()->mutable_producer_map();
     auto it = producer_map->find(kProducerClusterId);
     EXPECT_NE(it, producer_map->end());

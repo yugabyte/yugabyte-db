@@ -959,10 +959,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // respective version number), modify the values it wants of said config and issuing a write
   // afterwards, without changing the version number. In case the version number does not match
   // on the server, the change will fail and the client will have to retry the get, as someone
-  // must havGetTableInfoe updated the config in the meantime.
-  Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) override;
-  Status GetClusterConfig(SysClusterConfigEntryPB* config) override;
+  // must have updated the config in the meantime.
+  Result<SysClusterConfigEntryPB> GetClusterConfig() override;
   Result<int32_t> GetClusterConfigVersion();
+
+  // Helper for the GetMasterClusterConfig RPC.
+  Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp);
 
   Status SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req,

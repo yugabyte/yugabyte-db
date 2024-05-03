@@ -659,8 +659,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
 
 void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch) {
   epoch_ = epoch;
-  SysClusterConfigEntryPB config;
-  CHECK_OK(catalog_manager_->GetClusterConfig(&config));
+  SysClusterConfigEntryPB config = CHECK_RESULT(catalog_manager_->GetClusterConfig());
 
   std::unique_ptr<Options> options_unique_ptr =
       std::make_unique<Options>();

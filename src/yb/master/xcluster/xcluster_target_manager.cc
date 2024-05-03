@@ -332,8 +332,8 @@ Status XClusterTargetManager::PopulateXClusterStatus(XClusterStatus& xcluster_st
     auto s = table_stream_status.ShortDebugString();
   }
 
-  SysClusterConfigEntryPB cluster_config;
-  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config));
+  SysClusterConfigEntryPB cluster_config =
+      VERIFY_RESULT(catalog_manager_.GetClusterConfig());
   const auto& consumer_registry = cluster_config.consumer_registry();
 
   const auto replication_infos = catalog_manager_.GetAllXClusterUniverseReplicationInfos();
@@ -422,8 +422,8 @@ Status XClusterTargetManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
   GetReplicationStatusRequestPB req;
   RETURN_NOT_OK(catalog_manager_.GetReplicationStatus(&req, &replication_status, /*rpc=*/nullptr));
 
-  SysClusterConfigEntryPB cluster_config;
-  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config));
+  SysClusterConfigEntryPB cluster_config =
+      VERIFY_RESULT(catalog_manager_.GetClusterConfig());
 
   jw.String("replication_status");
   jw.Protobuf(replication_status);

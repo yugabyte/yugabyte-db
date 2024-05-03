@@ -11797,25 +11797,22 @@ Status CatalogManager::GoIntoShellMode() {
   return Status::OK();
 }
 
-Status CatalogManager::GetClusterConfig(GetMasterClusterConfigResponsePB* resp) {
-  return GetClusterConfig(resp->mutable_cluster_config());
-}
-
-Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {
+Result<SysClusterConfigEntryPB> CatalogManager::GetClusterConfig() {
   auto cluster_config = ClusterConfig();
-  DCHECK(cluster_config) << "Missing cluster config for master!";
-  auto l = cluster_config->LockForRead();
-  *config = l->pb;
-  return Status::OK();
+  SCHECK_NOTNULL(cluster_config);
+  return cluster_config->LockForRead()->pb;
 }
 
 Result<int32_t> CatalogManager::GetClusterConfigVersion() {
   auto cluster_config = ClusterConfig();
-  if (!cluster_config) {
-    return STATUS(IllegalState, "Cluster config is not initialized");
-  }
+  SCHECK_NOTNULL(cluster_config);
   auto l = cluster_config->LockForRead();
   return l->pb.version();
+}
+
+Status CatalogManager::GetClusterConfig(GetMasterClusterConfigResponsePB* resp) {
+  *resp->mutable_cluster_config() = VERIFY_RESULT(GetClusterConfig());
+  return Status::OK();
 }
 
 Status CatalogManager::SetClusterConfig(
@@ -12470,8 +12467,7 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
 }
 
 Status CatalogManager::GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) {
-  SysClusterConfigEntryPB config;
-  RETURN_NOT_OK(GetClusterConfig(&config));
+  SysClusterConfigEntryPB config = VERIFY_RESULT(GetClusterConfig());
   auto& replication_info = config.replication_info();
 
   CatalogManagerUtil::GetAllAffinitizedZones(replication_info, affinitized_zones);
