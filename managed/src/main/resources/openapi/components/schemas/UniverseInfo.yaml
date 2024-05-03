@@ -46,6 +46,8 @@ properties:
     type: string
     example: yb-dev-universe-name
     readOnly: true
+  encryption_at_rest_info:
+    $ref: ./EncryptionAtRestInfo.yaml
   update_in_progress:
     description: Whether a create/edit/destroy intent on the universe is currently running.
     type: boolean

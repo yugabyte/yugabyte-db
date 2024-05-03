@@ -4,6 +4,7 @@ package api.v2.mappers;
 import api.v2.models.UniverseResp;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.ZoneOffset;
 import org.mapstruct.DecoratedWith;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -25,7 +26,10 @@ public interface UniverseRespMapper {
   UniverseResp toV2UniverseResp(com.yugabyte.yw.forms.UniverseResp v1UniverseResp);
 
   // below methods are used implicitly to generate above mapping
-  default java.util.Date parseToOffsetDateTime(String datetime) throws ParseException {
-    return new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy").parse(datetime);
+  default java.time.OffsetDateTime parseToOffsetDateTime(String datetime) throws ParseException {
+    return new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy")
+        .parse(datetime)
+        .toInstant()
+        .atOffset(ZoneOffset.UTC);
   }
 }

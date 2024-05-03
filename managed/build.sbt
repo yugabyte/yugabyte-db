@@ -832,9 +832,6 @@ lazy val javaGenV2Server = project.in(file("target/openapi"))
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/").absolutePath,
     openApiValidateSpec := SettingDisabled,
     openApiGenerate := (openApiGenerate dependsOn openApiCopyIgnoreFile).value,
-    openApiTypeMappings := Map[String, String](
-      "OffsetDateTime" -> "java.util.Date"
-    ),
     // style plugin configurations
     openApiStyleSpec := baseDirectory.value / resDir / "openapi.yaml",
     openApiStyleConfig := Some(baseDirectory.value / resDir / "openapi_style_validator.conf"),

@@ -10,7 +10,7 @@ properties:
     type: integer
     format: int32
   mount_points:
-    description: Comma-separated list of mount points for the volumes in each instance
+    description: Comma-separated list of mount points for the volumes in each instance. Required for an onprem cluster.
     type: string
   storage_class:
     description: 'Name of the storage class, if this is a kubernetes cluster'
@@ -29,10 +29,10 @@ properties:
       - UltraSSD_LRS
       - Local
   disk_iops:
-    description: Desired IOPS for the volumes mounted on this instance
+    description: 'Desired IOPS for the volumes mounted on this aws, gcp or azu instance'
     type: integer
     format: int32
   throughput:
-    description: Desired throughput for the volumes mounted on this instance
+    description: 'Desired throughput for the volumes mounted on this aws, gcp or azu instance'
     type: integer
     format: int32
