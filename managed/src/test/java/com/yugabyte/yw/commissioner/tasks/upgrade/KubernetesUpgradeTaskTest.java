@@ -159,7 +159,6 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
     } catch (Exception ignored) {
     }
-    setLeaderlessTabletsMock();
   }
 
   protected void setupUniverseSingleAZ(boolean setMasters, boolean mockGetLeaderMaster) {
