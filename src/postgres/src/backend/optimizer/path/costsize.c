@@ -178,7 +178,8 @@ int			max_parallel_workers_per_gather = 2;
 bool		enable_seqscan = true;
 bool		enable_indexscan = true;
 bool		enable_indexonlyscan = true;
-bool		enable_bitmapscan = false;
+bool		enable_bitmapscan = true;
+bool		yb_enable_bitmapscan = false;
 bool		enable_tidscan = true;
 bool		enable_sort = true;
 bool		enable_hashagg = true;
@@ -1126,6 +1127,7 @@ cost_yb_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 					  Path *bitmapqual, double loop_count)
 {
 	Assert(baserel->is_yb_relation);
+	Assert(yb_enable_bitmapscan);
 	return cost_bitmap_heap_scan(path, root, baserel, param_info, bitmapqual,
 								 loop_count);
 }
@@ -6341,7 +6343,7 @@ yb_get_index_tuple_width(IndexOptInfo *index, Oid baserel_oid,
 		/* Aggregate the width of the columns in the secondary index */
 		for (int i = 0; i < index->ncolumns; i++)
 		{
-			index_tuple_width += 
+			index_tuple_width +=
 				index->rel->attr_widths[index->indexkeys[i] - index->rel->min_attr];
 		}
 		index_tuple_width += HIDDEN_COLUMNS_SIZE;

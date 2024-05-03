@@ -921,7 +921,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_bitmapscan,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 	{
@@ -1109,6 +1109,16 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_enable_parallel_append,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_enable_bitmapscan", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of YB bitmap-scan plans."),
+			gettext_noop("To use YB Bitmap Scans, both yb_enable_bitmapscan "
+						 "and enable_bitmapscan must be true.")
+		},
+		&yb_enable_bitmapscan,
 		false,
 		NULL, NULL, NULL
 	},
