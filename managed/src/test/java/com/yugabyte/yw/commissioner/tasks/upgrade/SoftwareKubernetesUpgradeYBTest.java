@@ -58,7 +58,6 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckUpgrade,
-          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.UpdateUniverseState,
           TaskType.KubernetesCommandExecutor,
@@ -116,7 +115,6 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

@@ -78,6 +78,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     return (UpgradeTaskParams) taskParams;
   }
 
+  @Override
+  protected void addBasicPrecheckTasks() {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
   @Deprecated
   // TODO This cannot serve all the stages in the upgrade because this gives only one fixed type.
   public abstract SubTaskGroupType getTaskSubGroupType();
