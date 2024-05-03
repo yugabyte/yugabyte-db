@@ -6,6 +6,7 @@ module.exports = {
   entry: {
     site: './index.js',
     search: './algolia-search.js',
+    trackUtm: './track-utm.js',
     searchBanner: './search-banner.js',
     sidebarTree: './sidebar-tree.js',
   },
