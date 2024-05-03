@@ -4297,9 +4297,10 @@ TryOptimizeNotInnerExpr(Expr *innerExpr, BsonQueryOperatorContext *context)
 		return NULL;
 	}
 
-	if (!IsClusterVersionAtleastThis(1, 16, 0))
+	if (!IsClusterVersionEqualToAndAtLeastPatch(1, 14, 6) &&
+		!IsClusterVersionAtleastThis(1, 15, 1))
 	{
-		/* These operators are only added with 1.16 */
+		/* These operators are only added with 1.14-6 and 1.15-1 */
 		return NULL;
 	}
 
