@@ -5,12 +5,11 @@ import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 import { useTranslation } from 'react-i18next';
 import { Typography } from '@material-ui/core';
-
 import { YBModalForm } from '../../common/forms';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
-import { TableType, Universe, UniverseNamespace } from '../../../redesign/helpers/dtos';
+import { ConfigTableSelect } from '../sharedComponents/tableSelect/ConfigTableSelect';
 import {
   api,
   drConfigQueryKey,
@@ -18,16 +17,16 @@ import {
   xClusterQueryKey
 } from '../../../redesign/helpers/api';
 import {
+  fetchTablesInUniverse,
   fetchTaskUntilItCompletes,
   restartXClusterConfig
 } from '../../../actions/xClusterReplication';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
-import { ConfigTableSelect } from '../sharedComponents/tableSelect/ConfigTableSelect';
-import { XClusterConfigStatus } from '../constants';
-
-import { XClusterTableType } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
+import { TableType, Universe, UniverseNamespace, YBTable } from '../../../redesign/helpers/dtos';
 import { DrConfig } from '../disasterRecovery/dtos';
+import { XClusterConfigStatus, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../constants';
+import { getXClusterConfigTableType } from '../ReplicationUtils';
 
 import styles from './RestartConfigModal.module.scss';
 
@@ -50,7 +49,6 @@ export interface RestartXClusterConfigFormWarnings {
 }
 
 interface CommonRestartConfigModalProps {
-  configTableType: XClusterTableType;
   isVisible: boolean;
   onHide: () => void;
   xClusterConfig: XClusterConfig;
@@ -73,9 +71,11 @@ const INITIAL_VALUES: Partial<RestartXClusterConfigFormValues> = {
 };
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.restartReplicationModal';
+const TRANSLATION_KEY_PREFIX_QUERY_ERROR = 'queryError';
+const TRANSLATION_KEY_PREFIX_XCLUSTER = 'clusterDetail.xCluster';
 
 export const RestartConfigModal = (props: RestartConfigModalProps) => {
-  const { configTableType, isVisible, onHide, xClusterConfig } = props;
+  const { isVisible, onHide, xClusterConfig } = props;
   // If xCluster config is in failed or initialized state, then we should restart the whole xCluster config.
   // Allowing partial restarts when the xCluster config is in intialized status is not expected behaviour.
   // Thus, we skip table selection for the xCluster config setup failed scenario.
@@ -101,6 +101,15 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   const sourceUniverseNamespaceQuery = useQuery<UniverseNamespace[]>(
     universeQueryKey.namespaces(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverseNamespaces(xClusterConfig.sourceUniverseUUID)
+  );
+
+  const sourceUniverseTableQuery = useQuery<YBTable[]>(
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
+    () =>
+      fetchTablesInUniverse(
+        xClusterConfig.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data)
   );
 
   const namespaceToNamespaceUuid = Object.fromEntries(
@@ -200,36 +209,79 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     }
   };
   const submitLabel = getFormSubmitLabel(currentStep);
-  if (sourceUniverseQuery.isLoading || sourceUniverseQuery.isIdle) {
+  const modalTitle = t(`title.${props.isDrInterface ? 'dr' : 'xCluster'}`);
+  if (
+    sourceUniverseQuery.isLoading ||
+    sourceUniverseQuery.isIdle ||
+    sourceUniverseTableQuery.isLoading ||
+    sourceUniverseTableQuery.isIdle ||
+    sourceUniverseNamespaceQuery.isLoading ||
+    sourceUniverseNamespaceQuery.isIdle
+  ) {
     return (
       <YBModal
         size="large"
-        title={t('title')}
+        title={modalTitle}
         visible={isVisible}
         onHide={() => {
           closeModal();
         }}
-        submitLabel={submitLabel}
       >
         <YBLoading />
       </YBModal>
     );
   }
-  if (sourceUniverseQuery.isError || sourceUniverseNamespaceQuery.isError) {
+
+  const configTableType = getXClusterConfigTableType(xClusterConfig, sourceUniverseTableQuery.data);
+  if (
+    sourceUniverseQuery.isError ||
+    sourceUniverseTableQuery.isError ||
+    sourceUniverseNamespaceQuery.isError ||
+    configTableType === null
+  ) {
+    const errorMessage = sourceUniverseQuery.isError
+      ? props.isDrInterface
+        ? t('failedToFetchDrPrimaryUniverse', {
+            keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
+            universeUuid: xClusterConfig.sourceUniverseUUID
+          })
+        : t('failedToFetchSourceUniverse', {
+            keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
+            universeUuid: xClusterConfig.sourceUniverseUUID
+          })
+      : sourceUniverseNamespaceQuery.isError
+      ? props.isDrInterface
+        ? t('failedToFetchDrPrimaryNamespaces', {
+            keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
+            universeUuid: xClusterConfig.sourceUniverseUUID
+          })
+        : t('failedToFetchSourceUniverseNamespaces', {
+            keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
+            universeUuid: xClusterConfig.sourceUniverseUUID
+          })
+      : sourceUniverseNamespaceQuery.isError
+      ? props.isDrInterface
+        ? t('failedToFetchDrPrimaryTables', {
+            keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
+            universeUuid: xClusterConfig.sourceUniverseUUID
+          })
+        : t('failedToFetchSourceUniverseTables', {
+            keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
+            universeUuid: xClusterConfig.sourceUniverseUUID
+          })
+      : t('error.undefinedXClusterTableType', {
+          keyPrefix: TRANSLATION_KEY_PREFIX_XCLUSTER
+        });
     return (
       <YBModal
         size="large"
-        title={t('title')}
+        title={modalTitle}
         visible={isVisible}
         onHide={() => {
           closeModal();
         }}
       >
-        <YBErrorIndicator
-          customErrorMessage={t('failedToFetchSourceUniverse', {
-            keyPrefix: 'clusterDetail.xCluster.error'
-          })}
-        />
+        <YBErrorIndicator customErrorMessage={errorMessage} />
       </YBModal>
     );
   }

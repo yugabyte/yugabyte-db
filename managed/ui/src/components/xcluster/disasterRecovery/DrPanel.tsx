@@ -567,7 +567,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
           <RestartConfigModal
             isDrInterface={true}
             drConfig={drConfig}
-            configTableType={TableType.PGSQL_TABLE_TYPE}
             isVisible={isRestartConfigModalOpen}
             onHide={closeRestartConfigModal}
             xClusterConfig={xClusterConfig}
