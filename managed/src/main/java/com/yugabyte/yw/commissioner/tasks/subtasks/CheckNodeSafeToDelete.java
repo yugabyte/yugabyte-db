@@ -5,10 +5,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Set;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -52,10 +52,12 @@ public class CheckNodeSafeToDelete extends UniverseTaskBase {
     if (tabletsOnServer.size() != 0) {
       throw new RuntimeException(
           String.format(
-              "Expected 0 tablets on node %s. Got %d tablets. Example tablets %s ...",
+              "Could not verify that tserver %s has 0 tablets as expected (found %s)."
+                  + " Removal of a tserver with non-zero tablets can cause data loss. "
+                  + " To adjust this check, use the runtime config %s.",
               currentNode.getNodeName(),
               tabletsOnServer.size(),
-              tabletsOnServer.stream().limit(20).collect(Collectors.toSet())));
+              UniverseConfKeys.clusterMembershipCheckEnabled.getKey()));
     }
 
     // Validate that current node's ip is not part of the master quorum.
@@ -67,9 +69,12 @@ public class CheckNodeSafeToDelete extends UniverseTaskBase {
     if (isNodeInMasterConfig) {
       throw new RuntimeException(
           String.format(
-              "Expected node %s to not be part of the master quorum. %s ip is in the list masters"
-                  + " quorum",
-              currentNode.getNodeName(), currentNode.cloudInfo.private_ip));
+              "Could not verify that node %s (IP %s) is not part of the master quorum. Removal of"
+                  + " a node that is still part of the master quorum can cause data loss."
+                  + " To adjust this check, use the runtime config %s.",
+              currentNode.getNodeName(),
+              currentNode.cloudInfo.private_ip,
+              UniverseConfKeys.clusterMembershipCheckEnabled.getKey()));
     }
 
     log.debug("{} subtask completed successfully", getName());
