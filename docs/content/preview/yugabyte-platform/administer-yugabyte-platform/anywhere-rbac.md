@@ -53,7 +53,7 @@ The following built-in roles are available:
   - Manage all resources, including universes, nodes, backup, restore, and cloud providers.
   - Manage the user access control by creating and managing users.
 
-  For more information, see [Create admin user](../../configure-yugabyte-platform/create-admin-user/).
+  For more information, see [Create admin user](../../install-yugabyte-platform/create-admin-user/).
 
 - **Admin** has privileges that are similar to the Super Admin, except that Admin cannot manage global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
 

@@ -62,7 +62,7 @@ Configure YugabyteDB Anywhere to display the **Enable dedicated nodes** option a
 
 ## Create a universe with dedicated YB-Master nodes
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/aws/), and [enabled the configuration option](#enable-the-enable-dedicated-nodes-configuration-option).
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure cloud provider](../../configure-yugabyte-platform/aws/), and [enabled the configuration option](#enable-the-enable-dedicated-nodes-configuration-option).
 
 To create a universe with dedicated YB-Master nodes, do the following:
 

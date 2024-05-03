@@ -831,6 +831,15 @@
     showSection = true
     hideLink = true
 
+[[preview_yugabyte-platform]]
+  name = "Servers for nodes"
+  parent = "prepare"
+  weight = 40
+  identifier = "server-nodes"
+  [preview_yugabyte-platform.params]
+    showSection = true
+    hideLink = true
+
 ########## Menus (in preview) for YB Managed section
 
 [[preview_yugabyte-cloud]]

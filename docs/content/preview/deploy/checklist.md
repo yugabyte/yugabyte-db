@@ -109,7 +109,7 @@ YugabyteDB stores data compressed by default. The effectiveness of compression d
 
 It is recommended to plan for about 20% headroom on each node to allow space for miscellaneous overheads such as temporary additional space needed for compactions, metadata overheads, and so on.
 
-### Network
+## Network
 
 The following is a list of default ports along with the network access required for using YugabyteDB:
 
@@ -129,7 +129,7 @@ The following is a list of default ports along with the network access required 
 
 This deployment uses YugabyteDB [default ports](../../reference/configuration/default-ports/).
 
-Note that for YugabyteDB Anywhere, the SSH port is changed for added security.
+YugabyteDB Anywhere has its own port requirements. Refer to [Networking](../../yugabyte-platform/prepare/networking/).
 
 ## Clock synchronization
 

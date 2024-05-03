@@ -602,8 +602,28 @@
   to = "/preview/yugabyte-cloud/"
 
 [[redirects]]
-  from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/"
-  to = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/"
+  from = "preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/preview/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
+  to = "/preview/yugabyte-platform/configure-yugabyte-platform/:splat"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/configure-yugabyte-platform/configure/*"
+  to = "/preview/yugabyte-platform/configure-yugabyte-platform/"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
+  to = "/preview/yugabyte-platform/prepare/cloud-permissions/"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/install-yugabyte-platform/install/*"
+  to = "/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
+
+[[redirects]]
+   from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
+   to = "/preview/yugabyte-platform/prepare/server-yba/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/overview/"
@@ -1259,10 +1279,6 @@
 [[redirects]]
    from = "/preview/explore/observability/prometheus-integration/*"
    to = "/preview/explore/observability/prometheus-integration/macos/"
-
-[[redirects]]
-   from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/"
-   to = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/default/"
 
 ##########################################################
 # Catch-all for old links to /latest (now called /preview)

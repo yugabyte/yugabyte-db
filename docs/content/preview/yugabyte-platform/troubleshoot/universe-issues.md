@@ -126,7 +126,7 @@ If the YugabyteDB pods of your universe are crashing, you can debug them with th
 
 ### Collect core dumps in Kubernetes environments
 
-When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash in the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prepare-environment/kubernetes/#specify-ulimit-and-remember-the-location-of-core-dumps).
+When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash in the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../prepare/server-nodes-software/software-kubernetes/#specify-ulimit-and-remember-the-location-of-core-dumps).
 
 The process of collecting core dumps depends on the value of the sysctl `kernel.core_pattern`, which you can inspect in a Kubernetes pod or node by executing the following command:
 
