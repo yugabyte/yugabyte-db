@@ -356,7 +356,7 @@ bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
   }
   if (req.get_wait_state()) {
     if (wait_state()) {
-      wait_state()->ToPB(resp->mutable_wait_state());
+      wait_state()->ToPB(resp->mutable_wait_state(), req.export_wait_state_code_as_string());
     }
   }
   resp->set_elapsed_millis(

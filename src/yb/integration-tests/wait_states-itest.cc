@@ -335,7 +335,7 @@ void WaitStateTestCheckMethodCounts::UpdateCounts(
       VLOG(2) << "Entry " << ++idx << " : " << yb::ToString(entry);
       const auto& method =
           (entry.has_aux_info() && entry.aux_info().has_method() ? entry.aux_info().method() : "");
-      const auto& wait_state_code = entry.wait_status_code_as_string();
+      const auto& wait_state_code = entry.wait_state_code_as_string();
       ++method_counts_[method];
       ++wait_state_code_counts_[wait_state_code];
       ++wait_state_code_counts_by_method_[method][wait_state_code];
@@ -343,10 +343,10 @@ void WaitStateTestCheckMethodCounts::UpdateCounts(
       if (method.empty()) {
         LOG(ERROR) << "Found entry without AuxInfo/method." << entry.DebugString();
         // If an RPC does not have the aux/method information, it shouldn't have progressed much.
-        if (entry.has_wait_status_code_as_string()) {
+        if (entry.has_wait_state_code_as_string()) {
           EXPECT_TRUE(
-              entry.wait_status_code_as_string() == "kOnCpu_Passive" ||
-              entry.wait_status_code_as_string() == "kOnCpu_Active");
+              entry.wait_state_code_as_string() == "kOnCpu_Passive" ||
+              entry.wait_state_code_as_string() == "kOnCpu_Active");
         }
       }
     }

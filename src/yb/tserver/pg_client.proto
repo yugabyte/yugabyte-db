@@ -859,6 +859,7 @@ message PgActiveSessionHistoryRequestPB {
   bool fetch_cql_states = 3;
   bool ignore_ash_and_perform_calls = 4;
   bool fetch_raft_log_appender_states = 5;
+  bool export_wait_state_code_as_string = 6;
 }
 
 message WaitStatesPB {
