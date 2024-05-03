@@ -533,6 +533,8 @@ message SysCDCStreamEntryPB {
   // This map stores the replica identity for each table in the stream at the time of stream
   // creation. The key for this map is table_id and the value is replica identity for that table.
   map<string, PgReplicaIdentity> replica_identity_map = 9;
+
+  optional string cdcsdk_ysql_replication_slot_plugin_name = 10;
 }
 
 

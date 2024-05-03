@@ -118,6 +118,7 @@ extern void YBCValidatePlacement(const char *placement_info);
 /*  Replication Slot Functions ------------------------------------------------------------------ */
 
 extern void YBCCreateReplicationSlot(const char *slot_name,
+									 const char *plugin_name,
 									 CRSSnapshotAction snapshot_action,
 									 uint64_t *consistent_snapshot_time);
 

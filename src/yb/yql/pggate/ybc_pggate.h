@@ -837,6 +837,7 @@ YBCStatus YBCGetTableKeyRanges(
 // Replication Slots.
 
 YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
+                                        const char *plugin_name,
                                         YBCPgOid database_oid,
                                         YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle);

@@ -622,6 +622,16 @@ LoadOutputPlugin(OutputPluginCallbacks *callbacks, char *plugin)
 		elog(ERROR, "output plugins have to register a commit callback");
 }
 
+void
+YBValidateOutputPlugin(char *plugin)
+{
+	OutputPluginCallbacks *callbacks;
+
+	callbacks = palloc(sizeof(OutputPluginCallbacks));
+	LoadOutputPlugin(callbacks, plugin);
+	pfree(callbacks);
+}
+
 static void
 output_plugin_error_callback(void *arg)
 {

@@ -1000,6 +1000,11 @@ Status CatalogManager::CreateNewCdcsdkStream(
     metadata->set_cdcsdk_ysql_replication_slot_name(req.cdcsdk_ysql_replication_slot_name());
   }
 
+  if (req.has_cdcsdk_ysql_replication_slot_plugin_name()) {
+    metadata->set_cdcsdk_ysql_replication_slot_plugin_name(
+        req.cdcsdk_ysql_replication_slot_plugin_name());
+  }
+
   {
     // Add the stream to the in-memory map.
     TRACE("Acquired catalog manager lock");
@@ -1772,6 +1777,10 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
         "Creation of CDCSDK stream with a replication slot name is disallowed");
   }
 
+  // TODO: Validate that the replication slot output plugin name is provided if
+  // ysql_TEST_enable_replication_slot_consumption is true. This can only be done after we have
+  // fully deprecated the yb-admin commands for CDC stream creation.
+
   // No need to validate the record_type if replica identity support is enabled.
   if (FLAGS_ysql_yb_enable_replica_identity) {
     return Status::OK();
@@ -2375,6 +2384,11 @@ Status CatalogManager::GetCDCStream(
         stream_lock->pb.cdcsdk_ysql_replication_slot_name());
   }
 
+  if (stream_lock->pb.has_cdcsdk_ysql_replication_slot_plugin_name()) {
+    stream_info->set_cdcsdk_ysql_replication_slot_plugin_name(
+        stream_lock->pb.cdcsdk_ysql_replication_slot_plugin_name());
+  }
+
   if (stream_lock->pb.has_cdcsdk_stream_metadata()) {
     auto cdcsdk_stream_metadata = stream_lock->pb.cdcsdk_stream_metadata();
     if (cdcsdk_stream_metadata.has_snapshot_time()) {
@@ -2501,6 +2515,11 @@ Status CatalogManager::ListCDCStreams(
     if (ltm->pb.has_cdcsdk_ysql_replication_slot_name()) {
       stream->set_cdcsdk_ysql_replication_slot_name(
         ltm->pb.cdcsdk_ysql_replication_slot_name());
+    }
+
+    if (ltm->pb.has_cdcsdk_ysql_replication_slot_plugin_name()) {
+      stream->set_cdcsdk_ysql_replication_slot_plugin_name(
+          ltm->pb.cdcsdk_ysql_replication_slot_plugin_name());
     }
 
     if (ltm->pb.has_cdcsdk_stream_metadata()) {
@@ -5969,6 +5988,8 @@ Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
     for(auto table_id : pb.table_id()) {
        pb.mutable_replica_identity_map()->insert({table_id, replica_identity});
     }
+
+    // TODO(#22249): Set the plugin name for streams upgraded from older clusters.
 
     stream_lock.Commit();
   }
