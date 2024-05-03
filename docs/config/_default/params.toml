@@ -5,6 +5,7 @@ privacy_policy = "https://www.yugabyte.com/privacy-policy/"
 algolia_docsearch = true
 algolia_sequence_expressions = true
 kapa_ai = true
+drift_snippet = true
 search_banner = true
 version_menu = "Releases"
 

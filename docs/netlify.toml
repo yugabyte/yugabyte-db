@@ -1336,6 +1336,7 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com
+            https://js.driftt.com/
             https://cdn.segment.com/
         ;
 
@@ -1378,6 +1379,7 @@
             https://app.supademo.com/
             https://www.google.com/
             https://www.youtube.com/
+            https://js.driftt.com/
         ;
 
         frame-ancestors 'self'
