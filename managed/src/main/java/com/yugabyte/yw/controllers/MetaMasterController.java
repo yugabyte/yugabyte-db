@@ -5,17 +5,14 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.MasterNodesInfo;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
-import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -31,9 +28,6 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.ListMastersResponse;
-import org.yb.client.YBClient;
-import org.yb.util.ServerInfo;
 import play.mvc.Controller;
 import play.mvc.Result;
 
@@ -65,54 +59,6 @@ public class MetaMasterController extends Controller {
     MastersList masters = new MastersList();
     for (NodeDetails node : universe.getMasters()) {
       masters.add(MasterNode.fromUniverseNode(node));
-    }
-    return PlatformResults.withData(masters);
-  }
-
-  @ApiOperation(
-      notes = "Available since YBA version 2.21.1.0.",
-      value = "Lists all master nodes details",
-      response = MasterNodesInfo.class,
-      responseContainer = "List")
-  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.21.1.0")
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
-        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
-  })
-  public Result getMasterNodesInfo(UUID customerUUID, UUID universeUUID) {
-    // Validate customer UUID.
-    Customer.getOrBadRequest(customerUUID);
-    // Validate universe UUID.
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-    List<MasterNodesInfo> masters = new ArrayList<>();
-    YBClient client = null;
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-
-    if (masterAddresses == null || masterAddresses.isEmpty()) {
-      throw new IllegalStateException("No master host/ports ");
-    }
-
-    try {
-      client = ybService.getClient(masterAddresses, certificate);
-      ListMastersResponse listMastersResp = client.listMasters();
-      if (listMastersResp != null) {
-        for (ServerInfo master : listMastersResp.getMasters()) {
-          MasterNodesInfo masterInfo = new MasterNodesInfo(master);
-          // masterInfo.masterUUID = master.getUuid();
-          // masterInfo.port = master.getPort();
-          // masterInfo.isLeader = master.isLeader();
-          // masterInfo.host = master.getHost();
-          masters.add(masterInfo);
-        }
-      }
-    } catch (Exception e) {
-      LOG.warn("Failed to get list of masters in universe {} - {} ", universeUUID, e.getMessage());
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybService.closeClient(client, masterAddresses);
     }
     return PlatformResults.withData(masters);
   }

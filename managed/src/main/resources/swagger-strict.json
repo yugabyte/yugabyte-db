@@ -6777,9 +6777,16 @@
     "MasterInfo" : {
       "description" : "Information about master",
       "properties" : {
+        "instanceUUID" : {
+          "type" : "string"
+        },
         "peerRole" : {
           "enum" : [ "FOLLOWER", "LEADER", "LEARNER", "NON_PARTICIPANT", "READ_REPLICA", "UNKNOWN_ROLE" ],
           "type" : "string"
+        },
+        "port" : {
+          "format" : "int32",
+          "type" : "integer"
         },
         "privateIp" : {
           "type" : "string"
@@ -6789,7 +6796,7 @@
           "type" : "integer"
         }
       },
-      "required" : [ "peerRole", "privateIp", "uptimeSeconds" ],
+      "required" : [ "instanceUUID", "peerRole", "port", "privateIp", "uptimeSeconds" ],
       "type" : "object"
     },
     "MasterNode" : {
@@ -6803,25 +6810,6 @@
         }
       },
       "required" : [ "cloudInfo", "masterRpcPort" ],
-      "type" : "object"
-    },
-    "MasterNodesInfo" : {
-      "properties" : {
-        "host" : {
-          "type" : "string"
-        },
-        "isLeader" : {
-          "type" : "boolean"
-        },
-        "masterUUID" : {
-          "type" : "string"
-        },
-        "port" : {
-          "format" : "int32",
-          "type" : "integer"
-        }
-      },
-      "required" : [ "host", "isLeader", "masterUUID", "port" ],
       "type" : "object"
     },
     "MastersList" : {
@@ -24206,52 +24194,6 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List a master node's addresses",
-        "tags" : [ "Universe node metadata (metamaster)" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/masters/info" : {
-      "get" : {
-        "description" : "Available since YBA version 2.21.1.0.",
-        "operationId" : "getMasterNodesInfo",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/MasterNodesInfo"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/MasterNodesInfo"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Lists all master nodes details",
         "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
