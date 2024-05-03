@@ -10,6 +10,8 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
@@ -45,6 +47,7 @@ public class ReleasesUtils {
 
   @Inject private Config appConfig;
   @Inject private ConfigHelper configHelper;
+  @Inject private RuntimeConfGetter confGetter;
 
   public final String RELEASE_PATH_CONFKEY = "yb.releases.artifacts.upload_path";
 
@@ -417,6 +420,9 @@ public class ReleasesUtils {
   }
 
   public void validateVersionAgainstCurrentYBA(String version) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)) {
+      return;
+    }
     String currVersion = ybaCurrentVersion();
     if (Util.compareYbVersions(version, currVersion) > 0) {
       log.error("invalid version {} is newer then the yba version {}", version, currVersion);

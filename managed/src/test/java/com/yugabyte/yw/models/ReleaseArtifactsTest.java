@@ -74,7 +74,7 @@ public class ReleaseArtifactsTest extends FakeDBApplication {
     ReleaseLocalFile.create(rlfUUID, "path", false);
     ReleaseArtifact artifact =
         ReleaseArtifact.create("", ReleaseArtifact.Platform.KUBERNETES, null, rlfUUID);
-    artifact.setReleaseUUID(releaseUUID);
+    artifact.saveReleaseUUID(releaseUUID);
     ReleaseArtifact foundArtifact = ReleaseArtifact.getForReleaseKubernetesArtifact(releaseUUID);
     assertNotNull(foundArtifact);
     assertEquals(artifact.getArtifactUUID(), foundArtifact.getArtifactUUID());
@@ -86,7 +86,7 @@ public class ReleaseArtifactsTest extends FakeDBApplication {
     Release.create(releaseUUID, "version", "lts");
     ReleaseArtifact artifact =
         ReleaseArtifact.create("", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url");
-    artifact.setReleaseUUID(releaseUUID);
+    artifact.saveReleaseUUID(releaseUUID);
     ReleaseArtifact foundArtifact =
         ReleaseArtifact.getForReleaseArchitecture(releaseUUID, Architecture.x86_64);
     assertNotNull(foundArtifact);
@@ -99,7 +99,7 @@ public class ReleaseArtifactsTest extends FakeDBApplication {
     Release.create(releaseUUID, "version", "lts");
     ReleaseArtifact artifact =
         ReleaseArtifact.create("", ReleaseArtifact.Platform.KUBERNETES, null, "url");
-    artifact.setReleaseUUID(releaseUUID);
+    artifact.saveReleaseUUID(releaseUUID);
     ReleaseArtifact foundArtifact = ReleaseArtifact.getForReleaseArchitecture(releaseUUID, null);
     assertNotNull(foundArtifact);
     assertEquals(artifact.getArtifactUUID(), foundArtifact.getArtifactUUID());

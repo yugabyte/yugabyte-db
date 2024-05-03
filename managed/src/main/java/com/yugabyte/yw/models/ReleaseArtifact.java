@@ -16,19 +16,21 @@ import jakarta.persistence.Id;
 import java.util.List;
 import java.util.UUID;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Slf4j
+@Getter
+@Setter
 @Entity
 public class ReleaseArtifact extends Model {
-  @Getter @Id private UUID artifactUUID = UUID.randomUUID();
+  @Id private UUID artifactUUID = UUID.randomUUID();
 
   @Column(name = "release")
-  @Getter
   private UUID releaseUUID;
 
-  @Column @Getter private String sha256;
+  @Column private String sha256;
 
   public enum Platform {
     @EnumValue("linux")
@@ -37,25 +39,24 @@ public class ReleaseArtifact extends Model {
     KUBERNETES;
   }
 
-  @Column @Getter private Platform platform;
+  @Column private Platform platform;
 
   @Column
   @Enumerated(EnumType.STRING)
-  @Getter
   private PublicCloudConstants.Architecture architecture;
 
-  @Column @Getter private String signature;
+  @Column private String signature;
 
-  @Column @Getter private UUID packageFileID;
+  @Column private UUID packageFileID;
 
-  public void setPackageFileID(UUID fileID) {
+  public void savePackageFileID(UUID fileID) {
     this.packageFileID = fileID;
     save();
   }
 
-  @Column @Getter private String packageURL;
+  @Column private String packageURL;
 
-  public void setPackageURL(String url) {
+  public void savePackageURL(String url) {
     this.packageURL = url;
     save();
   }
@@ -65,13 +66,12 @@ public class ReleaseArtifact extends Model {
     public String credentialsJson;
   }
 
-  @Getter private GCSFile gcsFile;
+  private GCSFile gcsFile;
 
   @Column(name = "gcs_file")
-  @Getter
   private String gcsFileJson;
 
-  public void setGCSFile(GCSFile gcsFile) {
+  public void saveGCSFile(GCSFile gcsFile) {
     this.gcsFileJson = Json.stringify(Json.toJson(gcsFile));
     this.gcsFile = gcsFile;
     save();
@@ -83,13 +83,12 @@ public class ReleaseArtifact extends Model {
     public String secretAccessKey;
   }
 
-  @Getter private S3File s3File;
+  private S3File s3File;
 
   @Column(name = "s3_file")
-  @Getter
   private String s3FileJson;
 
-  public void setS3File(S3File s3File) {
+  public void saveS3File(S3File s3File) {
     this.s3FileJson = Json.stringify(Json.toJson(s3File));
     this.s3File = s3File;
     save();
@@ -282,7 +281,7 @@ public class ReleaseArtifact extends Model {
     return artifacts;
   }
 
-  public void setReleaseUUID(UUID releaseUuid) {
+  public void saveReleaseUUID(UUID releaseUuid) {
     this.releaseUUID = releaseUuid;
     save();
   }
@@ -300,6 +299,10 @@ public class ReleaseArtifact extends Model {
       log.error("invalid sha256", e);
       return;
     }
+  }
+
+  public void saveSha256(String sha256) {
+    setSha256(sha256);
     save();
   }
 

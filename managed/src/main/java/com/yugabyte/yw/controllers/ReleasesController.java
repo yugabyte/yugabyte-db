@@ -262,14 +262,14 @@ public class ReleasesController extends AuthenticatedController {
       if (reqRelease.release_tag != null
           && !reqRelease.release_tag.equals(release.getReleaseTag())) {
         log.debug("updating release tag to {}", reqRelease.release_tag);
-        release.setReleaseTag(reqRelease.release_tag);
+        release.saveReleaseTag(reqRelease.release_tag);
       }
       if (reqRelease.release_date != null) {
         try {
           Date releaseDate = Date.from(Instant.ofEpochSecond(reqRelease.release_date));
           if (!releaseDate.equals(release.getReleaseDate())) {
             log.debug("updating release date to {}", reqRelease.release_date);
-            release.setReleaseDate(releaseDate);
+            release.saveReleaseDate(releaseDate);
           }
         } catch (IllegalArgumentException | DateTimeException e) {
           log.warn("unable to parse date format", e);
@@ -278,7 +278,7 @@ public class ReleasesController extends AuthenticatedController {
       if (reqRelease.release_notes != null
           && !reqRelease.release_notes.equals(release.getReleaseNotes())) {
         log.debug("updating release notes to {}", reqRelease.release_notes);
-        release.setReleaseNotes(reqRelease.release_notes);
+        release.saveReleaseNotes(reqRelease.release_notes);
       }
       if (reqRelease.state != null
           && !release.getState().equals(Release.ReleaseState.valueOf(reqRelease.state))) {
@@ -287,7 +287,7 @@ public class ReleasesController extends AuthenticatedController {
               BAD_REQUEST, "cannot change state of in-use release " + releaseUUID);
         }
         log.info("updating release state to {}", reqRelease.state);
-        release.setState(Release.ReleaseState.valueOf(reqRelease.state));
+        release.saveState(Release.ReleaseState.valueOf(reqRelease.state));
       }
 
       // Now, check if any artifacts have changed, and update them as needed
@@ -325,7 +325,7 @@ public class ReleasesController extends AuthenticatedController {
                     "updating artifact {} sha to {}",
                     artifact.getArtifactUUID(),
                     reqArtifact.sha256);
-                artifact.setSha256(reqArtifact.sha256);
+                artifact.saveSha256(reqArtifact.sha256);
               }
               break;
             }
