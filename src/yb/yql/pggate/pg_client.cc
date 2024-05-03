@@ -63,6 +63,7 @@ DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
 DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
+DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 extern int yb_locks_min_txn_age;
@@ -1129,6 +1130,7 @@ class PgClient::Impl : public BigDataFetcher {
         FLAGS_TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
     req.set_fetch_cql_states(true);
     req.set_ignore_ash_and_perform_calls(true);
+    req.set_export_wait_state_code_as_string(FLAGS_TEST_export_wait_state_names);
     tserver::PgActiveSessionHistoryResponsePB resp;
 
     RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));

@@ -1385,12 +1385,24 @@ class PgClientServiceImpl::Impl {
     return (
         !call.has_wait_state() ||
         // Ignore log-appenders which are just Idle
-        call.wait_state().wait_status_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
+        call.wait_state().wait_state_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
         // Ignore ActiveSessionHistory/Perform calls, if desired.
         (req.ignore_ash_and_perform_calls() && call.wait_state().has_aux_info() &&
          call.wait_state().aux_info().has_method() &&
          (call.wait_state().aux_info().method() == "ActiveSessionHistory" ||
           call.wait_state().aux_info().method() == "Perform")));
+  }
+
+  void PopulateWaitStates(
+      const PgActiveSessionHistoryRequestPB& req, const yb::rpc::RpcConnectionPB& conn,
+      tserver::WaitStatesPB* resp) {
+    for (const auto& call : conn.calls_in_flight()) {
+      if (ShouldIgnoreCall(req, call)) {
+        VLOG(3) << "Ignoring " << call.wait_state().DebugString();
+      }
+      auto* wait_state = resp->add_wait_states();
+      wait_state->CopyFrom(call.wait_state());
+    }
   }
 
   void GetRpcsWaitStates(
@@ -1410,62 +1422,36 @@ class PgClientServiceImpl::Impl {
     dump_req.set_get_wait_state(true);
     dump_req.set_dump_timed_out(false);
     dump_req.set_get_local_calls(true);
+    dump_req.set_export_wait_state_code_as_string(req.export_wait_state_code_as_string());
 
     WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
 
-    size_t ignored_calls = 0;
-    size_t ignored_calls_no_wait_state = 0;
-    size_t cntr = 0;
-    for (const auto& conns : dump_resp.inbound_connections()) {
-      for (const auto& call : conns.calls_in_flight()) {
-        if (ShouldIgnoreCall(req, call)) {
-          ignored_calls++;
-          if (!call.has_wait_state()) {
-            ignored_calls_no_wait_state++;
-          }
-          continue;
-        }
-        resp->add_wait_states()->CopyFrom(call.wait_state());
-        VLOG(2) << cntr++ << " Inbound call sending " << call.wait_state().DebugString();
-      }
+    for (const auto& conn : dump_resp.inbound_connections()) {
+      PopulateWaitStates(req, conn, resp);
     }
+
     if (dump_resp.has_local_calls()) {
-      cntr = 0;
-      for (const auto& call : dump_resp.local_calls().calls_in_flight()) {
-        if (ShouldIgnoreCall(req, call)) {
-          ignored_calls++;
-          if (!call.has_wait_state()) {
-            ignored_calls_no_wait_state++;
-          }
-          continue;
-        }
-        resp->add_wait_states()->CopyFrom(call.wait_state());
-        VLOG(2) << cntr++ << " Local call sending " << call.wait_state().DebugString();
-      }
+      PopulateWaitStates(req, dump_resp.local_calls(), resp);
     }
-    LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls_no_wait_state > 0)
-        << "Ignored " << ignored_calls << " calls. " << ignored_calls_no_wait_state
-        << " without wait state";
-    VLOG(3) << __PRETTY_FUNCTION__
-            << " wait-states: " << yb::ToString(resp->wait_states());
+
+    VLOG(3) << __PRETTY_FUNCTION__ << " wait-states: " << yb::ToString(resp->wait_states());
   }
 
-  void AddWaitStatesToResponse(const ash::WaitStateTracker& tracker, tserver::WaitStatesPB* resp) {
+  void AddWaitStatesToResponse(
+      const ash::WaitStateTracker& tracker, bool export_wait_state_names,
+      tserver::WaitStatesPB* resp) {
     Result<Uuid> local_uuid = Uuid::FromHexStringBigEndian(instance_id_);
     DCHECK_OK(local_uuid);
     resp->set_component(yb::to_underlying(ash::Component::kTServer));
-    size_t cntr = 0;
     for (auto& wait_state_ptr : tracker.GetWaitStates()) {
-      yb::WaitStateInfoPB pb;
       if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
         if (local_uuid) {
           wait_state_ptr->set_yql_endpoint_tserver_uuid(*local_uuid);
         }
-        wait_state_ptr->ToPB(&pb);
-        resp->add_wait_states()->CopyFrom(pb);
-        VLOG(2) << cntr++ << " Tracker call sending " << pb.DebugString();
+        wait_state_ptr->ToPB(resp->add_wait_states(), export_wait_state_names);
       }
     }
+    VLOG(2) << "Tracker call sending " << resp->DebugString();
   }
 
   Status ActiveSessionHistory(
@@ -1474,16 +1460,18 @@ class PgClientServiceImpl::Impl {
     if (req.fetch_tserver_states()) {
       GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
       AddWaitStatesToResponse(
-          ash::SharedMemoryPgPerformTracker(), resp->mutable_tserver_wait_states());
+          ash::SharedMemoryPgPerformTracker(), req.export_wait_state_code_as_string(),
+          resp->mutable_tserver_wait_states());
     }
     if (req.fetch_flush_and_compaction_states()) {
       AddWaitStatesToResponse(
-          ash::FlushAndCompactionWaitStatesTracker(),
+          ash::FlushAndCompactionWaitStatesTracker(), req.export_wait_state_code_as_string(),
           resp->mutable_flush_and_compaction_wait_states());
     }
     if (req.fetch_raft_log_appender_states()) {
       AddWaitStatesToResponse(
-          ash::RaftLogAppenderWaitStatesTracker(), resp->mutable_raft_log_appender_wait_states());
+          ash::RaftLogAppenderWaitStatesTracker(), req.export_wait_state_code_as_string(),
+          resp->mutable_raft_log_appender_wait_states());
     }
     if (req.fetch_cql_states()) {
       GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states());
