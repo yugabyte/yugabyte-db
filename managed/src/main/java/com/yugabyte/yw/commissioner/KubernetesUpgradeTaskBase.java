@@ -46,6 +46,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     return getOrCreateExecutionContext().isBlacklistLeaders();
   }
 
+  @Override
+  protected void addBasicPrecheckTasks() {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
   public abstract SubTaskGroupType getTaskSubGroupType();
 
   // Wrapper that takes care of common pre and post upgrade tasks and user has

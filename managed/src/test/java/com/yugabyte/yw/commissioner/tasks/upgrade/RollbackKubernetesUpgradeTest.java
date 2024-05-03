@@ -212,6 +212,8 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.RollbackUpgrade,

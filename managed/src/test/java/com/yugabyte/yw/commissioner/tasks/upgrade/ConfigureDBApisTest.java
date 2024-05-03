@@ -34,7 +34,6 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
     setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
-    setLeaderlessTabletsMock();
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
