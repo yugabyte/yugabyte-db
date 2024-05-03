@@ -933,7 +933,13 @@
           },
           "refactoring": {
             "heading": "Recommended Refactoring",
-            "schema": "Schema"
+            "schema": "Schema",
+            "search": "Search",
+            "searchPlaceholder": "Search reason or file name",
+            "objectType": "Object Type",
+            "acknowledged": "Acknowledged",
+            "acknowledge": "Acknowledge",
+            "fileDirectory": "File directory"
           },
           "details": {
             "tableIndex": "Table / Index",
