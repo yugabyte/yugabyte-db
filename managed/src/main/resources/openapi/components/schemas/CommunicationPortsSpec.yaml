@@ -7,68 +7,82 @@ properties:
     type: integer
     format: int32
     example: 7000
+    default: 7000
   master_rpc_port:
     description: Master table RCP port
     type: integer
     format: int32
     example: 7100
+    default: 7100
   node_exporter_port:
     description: Node exporter port
     type: integer
     format: int32
     example: 9300
+    default: 9300
   otel_collector_metrics_port:
     description: Otel Collector metrics port
     type: integer
     format: int32
     example: 8889
+    default: 8889
   redis_server_http_port:
     description: Redis HTTP port
     type: integer
     format: int32
     example: 11000
+    default: 11000
   redis_server_rpc_port:
     description: Redis RPC port
     type: integer
     format: int32
     example: 6379
+    default: 6379
   tserver_http_port:
     description: Tablet server HTTP port
     type: integer
     format: int32
     example: 9000
+    default: 9000
   tserver_rpc_port:
     description: Tablet server RPC port
     type: integer
     format: int32
     example: 9100
+    default: 9100
   yb_controller_http_port:
     description: Yb controller HTTP port
     type: integer
     format: int32
     example: 14000
+    default: 14000
   yb_controller_rpc_port:
     description: Yb controller RPC port
     type: integer
     format: int32
     example: 18018
+    default: 18018
   yql_server_http_port:
     description: YQL HTTP port
     type: integer
     format: int32
     example: 12000
+    default: 12000
   yql_server_rpc_port:
     description: YQL RPC port
     type: integer
     format: int32
     example: 9042
+    default: 9042
   ysql_server_http_port:
     description: YSQL HTTP port
     type: integer
     format: int32
     example: 13000
+    default: 13000
   ysql_server_rpc_port:
     description: YSQL RPC port
     type: integer
     format: int32
     example: 5433
+    default: 5433

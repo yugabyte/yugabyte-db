@@ -2,7 +2,7 @@ title: User provided Universe Spec
 type: object
 required:
   - name
-  - communication_ports
+  - yb_software_version
   - clusters
 properties:
   name:
@@ -10,8 +10,10 @@ properties:
     type: string
     example: my-yb-universe
     readOnly: false
-  communication_ports:
-    $ref: ./CommunicationPortsSpec.yaml
+  yb_software_version:
+    description: 'The YugabyteDB software version to install. This can be upgraded using API /customers/:cUUID/universes/:uniUUID/upgrade/software'
+    type: string
+    example: 2024.2.0.0-b600
   encryption_at_rest_spec:
     $ref: ./EncryptionAtRestSpec.yaml
   encryption_in_transit_spec:
@@ -20,6 +22,15 @@ properties:
     $ref: ./YsqlSpec.yaml
   ycql:
     $ref: ./YcqlSpec.yaml
+  use_time_sync:
+    description: Whether to use time sync services like chrony on DB nodes of this cluster
+    type: boolean
+    example: false
+  use_systemd:
+    description: 'Whether to enable systemd on nodes of cluster. Defaults to false. Can be changed using API /customers/:cUUID/universes/:uniUUID/upgrade/systemd.'
+    type: boolean
+    example: false
+    default: true
   remote_package_path:
     description: Path to download thirdparty packages for itest. Only for AWS/onprem.
     type: string
@@ -28,6 +39,8 @@ properties:
     description: Override the default DB present in pre-built Ami. YBM usage.
     type: boolean
     x-yba-api-visibility: internal
+  networking_spec:
+    $ref: ./UniverseNetworkingSpec.yaml
   clusters:
     type: array
     items:

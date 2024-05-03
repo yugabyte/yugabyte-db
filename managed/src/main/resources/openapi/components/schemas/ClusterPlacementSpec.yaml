@@ -1,4 +1,4 @@
-title: YBA Universe Placement Info
+title: Data Placement Specification for the cluster
 type: object
 required:
   - cloud_list

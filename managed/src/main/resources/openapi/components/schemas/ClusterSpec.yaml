@@ -4,7 +4,6 @@ required:
   - cluster_type
   - num_nodes
   - instance_type
-  - yb_software_version
   - provider_spec
 properties:
   uuid:
@@ -38,30 +37,19 @@ properties:
     description: Instance type for tserver nodes of cluster
     type: string
     example: c5.xlarge
-  yb_software_version:
-    description: 'The YugabyteDB software version to install. This can be upgraded using API /customers/:cUUID/universes/:uniUUID/upgrade/software'
-    type: string
-    example: 2024.2.0.0-b600
   storage_spec:
     $ref: ./ClusterStorageSpec.yaml
   networking_spec:
     $ref: ./ClusterNetworkingSpec.yaml
   provider_spec:
     $ref: ./ClusterProviderSpec.yaml
-  use_time_sync:
-    description: Whether to use time sync services like chrony on DB nodes of this cluster
-    type: boolean
-    example: false
+  placement_spec:
+    $ref: ./ClusterPlacementSpec.yaml
   use_spot_instance:
     description: Whether to use spot instances for nodes in aws/gcp. Used in dev/test environments.
     type: boolean
     example: false
     x-yba-api-visibility: internal
-  use_systemd:
-    description: 'Whether to enable systemd on nodes of cluster. Defaults to false. Can be changed using API /customers/:cUUID/universes/:uniUUID/upgrade/systemd.'
-    type: boolean
-    example: false
-    default: true
   instance_tags:
     description: 'A map of strings representing a set of Tags and Values to apply on nodes in the aws/gcp/azu cloud. See https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/instance-tags/.'
     type: object
