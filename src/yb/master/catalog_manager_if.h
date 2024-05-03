@@ -130,9 +130,7 @@ class CatalogManagerIf {
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
 
-  virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
-  virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;
-
+  virtual Result<SysClusterConfigEntryPB> GetClusterConfig() = 0;
 
   virtual Status SetClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) = 0;

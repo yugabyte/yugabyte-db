@@ -281,18 +281,36 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
     RETURN_NOT_OK(VerifyUniverseReplication(&resp));
-    CHECK_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-    CHECK_EQ(resp.entry().tables_size(), producer_tables_.size());
+    SCHECK_EQ(
+        resp.entry().replication_group_id(), kReplicationGroupId, InternalError,
+        Format(
+            "Unexpected replication group id: actual $0, expected $1",
+            resp.entry().replication_group_id(), kReplicationGroupId));
+    SCHECK_EQ(
+        resp.entry().tables_size(), producer_tables_.size(), InternalError,
+        Format(
+            "Unexpected tables size: actual $0, expected $1", resp.entry().tables_size(),
+            producer_tables_.size()));
     for (uint32_t i = 0; i < producer_tables_.size(); i++) {
-      CHECK_EQ(resp.entry().tables(i), producer_tables_[i]->id());
+      SCHECK_EQ(
+          resp.entry().tables(i), producer_tables_[i]->id(), InternalError,
+          Format(
+              "Unexpected table entry: actual $0, expected $1", resp.entry().tables(i),
+              producer_tables_[i]->id()));
     }
 
     // Verify that CDC streams were created on producer for all tables.
     for (size_t i = 0; i < producer_tables_.size(); i++) {
       master::ListCDCStreamsResponsePB stream_resp;
       RETURN_NOT_OK(GetCDCStreamForTable(producer_tables_[i]->id(), &stream_resp));
-      CHECK_EQ(stream_resp.streams_size(), 1);
-      CHECK_EQ(stream_resp.streams(0).table_id().Get(0), producer_tables_[i]->id());
+      SCHECK_EQ(
+          stream_resp.streams_size(), 1, InternalError,
+          Format("Unexpected streams size: actual $0, expected $1", stream_resp.streams_size(), 1));
+      SCHECK_EQ(
+          stream_resp.streams(0).table_id().Get(0), producer_tables_[i]->id(), InternalError,
+          Format(
+              "Unexpected table_id: actual $0, expected $1",
+              stream_resp.streams(0).table_id().Get(0), producer_tables_[i]->id()));
     }
 
     for (size_t i = 0; i < producer_tables_.size(); i++) {
@@ -688,9 +706,8 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
 
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
-    master::SysClusterConfigEntryPB cluster_info;
     auto& cm = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-    CHECK_OK(cm.GetClusterConfig(&cluster_info));
+    auto cluster_info = ASSERT_RESULT(cm.GetClusterConfig());
     setup_universe_req.set_replication_group_id(cluster_info.cluster_uuid());
 
     string master_addr = producer_cluster()->GetMasterAddresses();
@@ -814,9 +831,8 @@ TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrapRequestFailures) {
     master::SetupNamespaceReplicationWithBootstrapRequestPB req;
     master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
 
-    master::SysClusterConfigEntryPB cluster_info;
     auto& cm = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-    CHECK_OK(cm.GetClusterConfig(&cluster_info));
+    auto cluster_info = ASSERT_RESULT(cm.GetClusterConfig());
     req.set_replication_id(cluster_info.cluster_uuid());
     req.mutable_producer_namespace()->CopyFrom(producer_namespace);
     string master_addr = producer_cluster()->GetMasterAddresses();

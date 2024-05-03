@@ -257,13 +257,14 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
   // At the time of this check, we need to know that we're the master leader to access the
   // cluster config.
-  SysClusterConfigEntryPB cluster_config;
-  s = catalog_manager_->GetClusterConfig(&cluster_config);
-  if (!s.ok()) {
+  auto cluster_config_result = catalog_manager_->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
+    auto& s = cluster_config_result.status();
     LOG(WARNING) << "Unable to get cluster configuration: " << s.ToString();
     rpc.RespondFailure(s);
     return;
   }
+  const auto& cluster_config = *cluster_config_result;
 
   auto tserver_universe_uuid_res = UniverseUuid::FromString(req->universe_uuid());
   if (!tserver_universe_uuid_res) {
