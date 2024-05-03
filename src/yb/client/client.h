@@ -121,6 +121,7 @@ struct CDCSDKStreamInfo {
     std::string stream_id;
     uint32_t database_oid;
     ReplicationSlotName cdcsdk_ysql_replication_slot_name;
+    std::string cdcsdk_ysql_replication_slot_plugin_name;
     std::unordered_map<std::string, std::string> options;
 
     template <class PB>
@@ -129,6 +130,9 @@ struct CDCSDKStreamInfo {
       pb->set_database_oid(database_oid);
       if (!cdcsdk_ysql_replication_slot_name.empty()) {
         pb->set_slot_name(cdcsdk_ysql_replication_slot_name.ToString());
+      }
+      if (!cdcsdk_ysql_replication_slot_plugin_name.empty()) {
+        pb->set_output_plugin_name(cdcsdk_ysql_replication_slot_plugin_name);
       }
     }
 
@@ -146,6 +150,7 @@ struct CDCSDKStreamInfo {
           .database_oid = database_oid,
           .cdcsdk_ysql_replication_slot_name =
               ReplicationSlotName(pb.cdcsdk_ysql_replication_slot_name()),
+          .cdcsdk_ysql_replication_slot_plugin_name = pb.cdcsdk_ysql_replication_slot_plugin_name(),
           .options = std::move(options)};
 
       return stream_info;
@@ -609,6 +614,7 @@ class YBClient {
       const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
       bool populate_namespace_id_as_table_id = false,
       const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""),
+      const std::optional<std::string>& replication_slot_plugin_name = std::nullopt,
       const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
       CoarseTimePoint deadline = CoarseTimePoint(),
       uint64_t *consistent_snapshot_time = nullptr);

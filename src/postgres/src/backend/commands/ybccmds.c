@@ -1889,6 +1889,7 @@ YBCValidatePlacement(const char *placement_info)
 
 void
 YBCCreateReplicationSlot(const char *slot_name,
+						 const char *plugin_name,
 						 CRSSnapshotAction snapshot_action,
 						 uint64_t *consistent_snapshot_time)
 {
@@ -1909,6 +1910,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 	}
 
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
+												 plugin_name,
 												 MyDatabaseId,
 												 repl_slot_snapshot_action,
 												 &handle));
