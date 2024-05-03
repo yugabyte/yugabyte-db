@@ -38,7 +38,8 @@ public class GFlagsValidationHandler {
 
   public static final Logger LOG = LoggerFactory.getLogger(GFlagsValidationHandler.class);
 
-  public static final Set<String> GFLAGS_FILTER_TAGS = ImmutableSet.of("experimental", "hidden");
+  public static final Set<String> GFLAGS_FILTER_TAGS =
+      ImmutableSet.of("experimental", "hidden", "auto");
 
   public static final Set<Pattern> GFLAGS_FILTER_PATTERN =
       ImmutableSet.of(
