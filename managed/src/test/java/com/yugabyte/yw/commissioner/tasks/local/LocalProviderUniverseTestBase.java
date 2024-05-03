@@ -134,6 +134,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
   private static final boolean KEEP_FAILED_UNIVERSE = true;
+  private static final boolean KEEP_UNIVERSE_ALWAYS = false;
   private static List<String> toCleanDirectories = ImmutableList.of("yugabyte_backup");
 
   public static Map<String, String> GFLAGS = new HashMap<>();
@@ -416,7 +417,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     File curDir = new File(baseDirFile, subDir);
     if (!baseDirFile.exists() || !curDir.exists()) {
       curDir.mkdirs();
-      if (!KEEP_FAILED_UNIVERSE) {
+      if (!KEEP_FAILED_UNIVERSE && !KEEP_UNIVERSE_ALWAYS) {
         curDir.deleteOnExit();
       }
     }
@@ -527,7 +528,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     if (simpleSqlPayload != null) {
       simpleSqlPayload.stop();
     }
-    if (!failed || !KEEP_FAILED_UNIVERSE) {
+    if (!KEEP_UNIVERSE_ALWAYS && !(failed && KEEP_FAILED_UNIVERSE)) {
       localNodeManager.shutdown();
       try {
         for (String dirName : toCleanDirectories) {
