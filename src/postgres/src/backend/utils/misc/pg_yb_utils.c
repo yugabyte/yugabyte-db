@@ -894,7 +894,7 @@ YBInitPostgresBackend(
 		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
 		YBCInstallTxnDdlHook();
 		if (yb_ash_enable_infra)
-			YbAshInstallHooks();
+			YbAshInit();
 
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
