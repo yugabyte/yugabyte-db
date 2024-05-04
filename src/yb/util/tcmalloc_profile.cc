@@ -10,34 +10,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/server/pprof-path-handlers_util.h"
-
-#include <cstdint>
-#include <iomanip>
-#include <string>
-#include <utility>
-#include <unordered_map>
+#include "yb/util/tcmalloc_profile.h"
 
 #if YB_ABSL_ENABLED
 #include "absl/debugging/symbolize.h"
 #endif
 
-#include "yb/util/logging.h"
-
-#include "yb/gutil/strings/numbers.h"
-#include "yb/util/format.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/symbolize.h"
-#include "yb/util/tcmalloc_util.h"
-#include "yb/util/url-coding.h"
 
-using std::vector;
+DEFINE_RUNTIME_int32(dump_heap_snapshot_min_interval_sec, 600,
+    "The minimum time to wait between dumping heap snapshots. A value of <= 0 means the logging is "
+    "disabled.");
+DEFINE_RUNTIME_int32(dump_heap_snapshot_max_call_stacks, 10,
+    "The maximum number of call stacks to log from TCMalloc's heap snapshot when TryDumpSnapshot "
+    " is called.");
 
 namespace yb {
 
 #if YB_TCMALLOC_ENABLED
 namespace {
-void SortSamplesByOrder(vector<Sample>* samples, SampleOrder order) {
+void SortSamplesByOrder(std::vector<Sample>* samples, SampleOrder order) {
   std::sort(
       samples->begin(),
       samples->end(),
@@ -67,6 +62,38 @@ bool Symbolize(void *pc, char *out, int out_size) {
 }  // namespace
 #endif
 
+Result<std::vector<Sample>> GetAggregateAndSortHeapSnapshot(
+    SampleOrder order, HeapSnapshotType snapshot_type, SampleFilter filter) {
+#if YB_GPERFTOOLS_TCMALLOC
+  switch (order) {
+    case SampleOrder::kSampledBytes:
+    case SampleOrder::kSampledCount:
+      break;
+    case SampleOrder::kEstimatedBytes:
+      return STATUS(
+          NotSupported, Format("Invalid sample order $0 used with gperftools tcmalloc", order));
+  }
+  switch (snapshot_type) {
+    case HeapSnapshotType::kPeakHeap:
+      return STATUS(NotSupported, "peak_heap is not supported with gperftools tcmalloc");
+    case HeapSnapshotType::kCurrentHeap:
+      break;
+  }
+  switch (filter) {
+    case SampleFilter::kGrowthOnly:
+      return STATUS(NotSupported, "growth-only snapshot is not supported with gperftools tcmalloc");
+    case SampleFilter::kAllSamples:
+      break;
+  }
+  return GetAggregateAndSortHeapSnapshotGperftools(order);
+#elif YB_GOOGLE_TCMALLOC
+  auto current_profile = GetHeapSnapshot(snapshot_type);
+  return AggregateAndSortProfile(current_profile, filter, order);
+#else
+  return STATUS(NotSupported, "Heap snapshot is only available if tcmalloc is enabled.");
+#endif
+}
+
 #if YB_GOOGLE_TCMALLOC
 Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes) {
   static std::atomic<bool> heap_profile_running{false};
@@ -89,15 +116,19 @@ Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes)
 }
 
 tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type) {
-  if (snapshot_type == HeapSnapshotType::kPeakHeap) {
-    return tcmalloc::MallocExtension::SnapshotCurrent(tcmalloc::ProfileType::kPeakHeap);
-  } else {
-    return tcmalloc::MallocExtension::SnapshotCurrent(tcmalloc::ProfileType::kHeap);
+  switch (snapshot_type) {
+    case HeapSnapshotType::kPeakHeap:
+      return tcmalloc::MallocExtension::SnapshotCurrent(tcmalloc::ProfileType::kPeakHeap);
+    case HeapSnapshotType::kCurrentHeap:
+      return tcmalloc::MallocExtension::SnapshotCurrent(tcmalloc::ProfileType::kHeap);
+    default:
+      LOG_WITH_FUNC(DFATAL) << "Invalid snapshot type " << snapshot_type;
+      return tcmalloc::Profile();
   }
 }
 
-vector<Sample> AggregateAndSortProfile(
-    const tcmalloc::Profile& profile, bool only_growth, SampleOrder order) {
+std::vector<Sample> AggregateAndSortProfile(
+    const tcmalloc::Profile& profile, SampleFilter filter, SampleOrder order) {
   LOG(INFO) << "Analyzing TCMalloc sampling profile";
   int failed_symbolizations = 0;
   std::unordered_map<std::string, SampleInfo> samples_map;
@@ -113,7 +144,7 @@ vector<Sample> AggregateAndSortProfile(
     // If we only want growth, exclude samples for which we saw a deallocation event.
     // "Censored" means we observed an allocation but not a deallocation. (Deallocation-only events
     // are not reported).
-    if (only_growth && !sample.is_censored) {
+    if (filter == SampleFilter::kGrowthOnly && !sample.is_censored) {
       return;
     }
 
@@ -179,12 +210,9 @@ void* GetSampleProgramCounter(void** entry, uintptr_t i) {
 }
 } // namespace
 
-std::vector<Sample> GetAggregateAndSortHeapSnapshot(SampleOrder order) {
-  if (order != SampleOrder::kSampledBytes && order != SampleOrder::kSampledCount) {
-    LOG(WARNING) << Format("Invalid sample order $0 used with gperftools tcmalloc", order);
-    return {};
-  }
-
+// Do not call this directly, instead use GetAggregateAndSortHeapSnapshot.
+// Assumes that the supplied sample order is valid for gperftools tcmalloc.
+std::vector<Sample> GetAggregateAndSortHeapSnapshotGperftools(SampleOrder order) {
   int sample_period;
   void** samples = MallocExtension::instance()->ReadStackTraces(&sample_period);
 
@@ -231,76 +259,5 @@ std::vector<Sample> GetAggregateAndSortHeapSnapshot(SampleOrder order) {
 }
 
 #endif // YB_GPERFTOOLS_TCMALLOC
-
-namespace {
-  std::string FormatNumericTableRow(const std::string& value) {
-    return Format("<td align=\"right\">$0</td>", value);
-  }
-
-  std::string FormatNumericTableRow(int64_t value) {
-    return FormatNumericTableRow(SimpleItoaWithCommas(value));
-  }
-
-  std::string FormatNumericTableRow(std::optional<int64_t> value) {
-    if (value) {
-      return FormatNumericTableRow(*value);
-    }
-    return FormatNumericTableRow("N/A");
-  }
-} // namespace
-
-void GenerateTable(std::stringstream* output, const std::vector<Sample>& samples,
-    const std::string& title, size_t max_call_stacks, SampleOrder order) {
-  // Generate the output table.
-  (*output) << std::fixed;
-  (*output) << std::setprecision(2);
-  (*output) << Format("<b>Top $0 call stacks for:</b> $1<br>\n", max_call_stacks, title);
-  if (samples.size() > max_call_stacks) {
-    (*output) << Format("$0 call stacks omitted<br>\n", samples.size() - max_call_stacks);
-  }
-  (*output) << Format("<b>Ordering call stacks by:</b> $0<br>\n", order);
-  (*output) << Format(
-      "<b>Current sampling frequency:</b> $0 bytes (on average)<br>\n",
-      GetTCMallocSamplingFrequency());
-  (*output) << Format("Values shown below are for allocations still in use "
-      "(i.e., objects that have been deallocated are not included)<br>\n");
-  (*output) << "<p>\n";
-  (*output) << "<table style=\"border-collapse: collapse\" border=1>\n";
-  (*output) << "<style>td, th { padding: 5px; }</style>";
-  (*output) << "<tr>\n";
-  (*output) << "<th>Estimated Bytes</th>\n";
-  (*output) << "<th>Estimated Count</th>\n";
-  (*output) << "<th>Avg Bytes Per Allocation</th>\n";
-  (*output) << "<th>Sampled Bytes</th>\n";
-  (*output) << "<th>Sampled Count</th>\n";
-  (*output) << "<th>Call Stack</th>\n";
-  (*output) << "</tr>\n";
-
-  for (size_t i = 0; i < std::min(max_call_stacks, samples.size()); ++i) {
-    const auto& entry = samples.at(i);
-    (*output) << "<tr>";
-
-    (*output) << FormatNumericTableRow(entry.second.estimated_bytes);
-
-    (*output) << FormatNumericTableRow(entry.second.estimated_count);
-
-    std::optional<int64_t> avg_bytes;
-    if (entry.second.sampled_count > 0) {
-      avg_bytes = std::round(
-          static_cast<double>(entry.second.sampled_allocated_bytes) / entry.second.sampled_count);
-    }
-    (*output) << FormatNumericTableRow(avg_bytes);
-
-    (*output) << FormatNumericTableRow(entry.second.sampled_allocated_bytes);
-
-    (*output) << FormatNumericTableRow(entry.second.sampled_count);
-
-    // Call stack.
-    (*output) << Format("<td><pre>$0</pre></td>", EscapeForHtmlToString(entry.first));
-
-    (*output) << "</tr>";
-  }
-  (*output) << "</table>";
-}
 
 } // namespace yb
