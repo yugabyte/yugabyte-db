@@ -12,20 +12,15 @@
 
 #pragma once
 
-#if YB_GOOGLE_TCMALLOC
-#include <tcmalloc/malloc_extension.h>
-#elif YB_GPERFTOOLS_TCMALLOC
-#include <gperftools/malloc_extension.h>
-#endif
-
 #include <cstdint>
+#include <optional>
 #include <string>
-#include <utility>
 
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/tcmalloc_impl_util.h"
 
 namespace yb {
 
@@ -49,6 +44,12 @@ typedef std::pair<SampleStack, SampleInfo> Sample;
 
 YB_DEFINE_ENUM(SampleOrder, (kSampledCount)(kSampledBytes)(kEstimatedBytes));
 YB_DEFINE_ENUM(HeapSnapshotType, (kCurrentHeap)(kPeakHeap));
+YB_DEFINE_ENUM(SampleFilter, (kAllSamples)(kGrowthOnly));
+
+Result<std::vector<Sample>> GetAggregateAndSortHeapSnapshot(
+    SampleOrder order = SampleOrder::kSampledCount,
+    HeapSnapshotType snapshot_type = HeapSnapshotType::kCurrentHeap,
+    SampleFilter filter = SampleFilter::kAllSamples);
 
 #if YB_GOOGLE_TCMALLOC
 
@@ -58,17 +59,14 @@ Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes)
 tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type);
 
 std::vector<Sample> AggregateAndSortProfile(
-    const tcmalloc::Profile& profile, bool only_growth, SampleOrder order);
+    const tcmalloc::Profile& profile, SampleFilter filter, SampleOrder order);
 
 #endif // YB_GOOGLE_TCMALLOC
 
 #if YB_GPERFTOOLS_TCMALLOC
 
-std::vector<Sample> GetAggregateAndSortHeapSnapshot(SampleOrder order);
+std::vector<Sample> GetAggregateAndSortHeapSnapshotGperftools(SampleOrder order);
 
 #endif // YB_GPERFTOOLS_TCMALLOC
-
-void GenerateTable(std::stringstream* output, const std::vector<Sample>& samples,
-    const std::string& title, size_t max_call_stacks, SampleOrder order);
 
 } // namespace yb
