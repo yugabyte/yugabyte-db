@@ -56,7 +56,7 @@ This feature is [Early Access](/preview/releases/versioning/#feature-availabilit
 To use OIDC groups, ensure the following on your IdP:
 
 - Create user groups and add users to this group. This is possible on most IdPs.
-- Configure the IdP so that groups are present in the ID Token. As groups is not one of the Standard Claims, you will need to add the groups claim in the ID token by configuring your IdP provider settings. Refer to your IdP documentation.
+- Configure the IdP so that groups are present in the ID token. As groups is not one of the [Standard Claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims), you will need to add the groups claim in the ID token by configuring your IdP provider settings. Refer to your IdP documentation.
 - For Azure AD/Microsoft Entra ID, Azure doesn't allow obtaining group names in ID tokens. You need to use the [Azure API](https://learn.microsoft.com/en-gb/graph/api/user-list-memberof?view=graph-rest-1.0&tabs=http) to get a list of the user's group memberships. Note that to fetch the group membership via Azure API, the IdP administrator will need to assign the GroupMember.Read.All API permission to the registered application on Azure.
 
 During EA, by default OIDC group mapping is not enabled. To enable the feature, you need to set the `yb.security.oidc_enable_auto_create_users` configuration flag to true as follows:
@@ -97,6 +97,8 @@ You configure OIDC as follows:
 
 1. To map an OIDC group to a YBA role, click **Create Mappings**, choose the YBA role you want group members to be assigned to, and enter the name of the OIDC group.
 
-    To add mappings, click **Add rows**. Click **Confirm** when you are done.
+    You can't assign the SuperAdmin role to a group.
+
+    To add more mappings, click **Add rows**. Click **Confirm** when you are done.
 
 1. Click **Save**.
