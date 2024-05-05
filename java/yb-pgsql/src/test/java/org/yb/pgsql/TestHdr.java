@@ -241,15 +241,16 @@ public class TestHdr extends BasePgSQLTest {
 
   private static void runCheckSleepQuery(Statement statement, int bucketFactor)
       throws SQLException {
-    ResultSet rs = statement.executeQuery("SELECT query, min_time, max_time, yb_latency_histogram "
+    ResultSet rs = statement.executeQuery("SELECT query, min_exec_time,"
+        + "max_exec_time, yb_latency_histogram "
         + "FROM pg_stat_statements WHERE query like '%select pg_sleep%'");
 
     assertTrue(rs.next());
-    double minTime = rs.getDouble(2);
-    double maxTime = rs.getDouble(3);
+    double minExecTime = rs.getDouble(2);
+    double maxExecTime = rs.getDouble(3);
     String latencyHistogram = rs.getString(4);
-    BucketInterval minInterval = getExpInterval(minTime, bucketFactor, false);
-    BucketInterval maxInterval = getExpInterval(maxTime, bucketFactor, false);
+    BucketInterval minInterval = getExpInterval(minExecTime, bucketFactor, false);
+    BucketInterval maxInterval = getExpInterval(maxExecTime, bucketFactor, false);
 
     JSONArray jsonArray = new JSONArray(latencyHistogram);
     JsonElement jsonPrint = JsonParser.parseString(latencyHistogram);
@@ -257,18 +258,19 @@ public class TestHdr extends BasePgSQLTest {
 
     if (minInterval.equals(maxInterval)) {
       assertEquals(1, jsonArray.length());
-      checkJSONObject(jsonArray.getJSONObject(0), 2, minTime, minInterval);
-      checkJSONObject(jsonArray.getJSONObject(0), 2, maxTime, maxInterval);
+      checkJSONObject(jsonArray.getJSONObject(0), 2, minExecTime, minInterval);
+      checkJSONObject(jsonArray.getJSONObject(0), 2, maxExecTime, maxInterval);
     } else {
       assertEquals(2, jsonArray.length());
-      checkJSONObject(jsonArray.getJSONObject(0), 1, minTime, minInterval);
-      checkJSONObject(jsonArray.getJSONObject(jsonArray.length() - 1), 1, maxTime, maxInterval);
+      checkJSONObject(jsonArray.getJSONObject(0), 1, minExecTime, minInterval);
+      checkJSONObject(jsonArray.getJSONObject(jsonArray.length() - 1), 1, maxExecTime, maxInterval);
     }
   }
 
   private static void runCheckHdrArray(Statement statement, int iterations, int bucketFactor)
       throws SQLException {
-    ResultSet rs = statement.executeQuery("SELECT query, min_time, max_time, yb_latency_histogram "
+    ResultSet rs = statement.executeQuery("SELECT query, min_exec_time,"
+        + "max_exec_time, yb_latency_histogram "
         + "FROM pg_stat_statements WHERE query like '%select pg_sleep%'");
 
     assertTrue(rs.next());

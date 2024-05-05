@@ -458,7 +458,8 @@ where x = 1 and q1 = 123;
            Group Key: i1.q1
          ->  Seq Scan on public.int8_tbl i1
                Output: 1, i1.q1, i1.q2
-(10 rows)
+ Query Identifier: -3832084511359872048
+(11 rows)
 
 select * from (
   select 1 as x, q1, sum(q2)
@@ -489,7 +490,8 @@ group by ss.x;
                SubPlan 2
                  ->  Result
                        Output: i1.q1
-(11 rows)
+ Query Identifier: 2497219576704118395
+(12 rows)
 
 select grouping(ss.x)
 from int8_tbl i1
@@ -522,7 +524,8 @@ group by ss.x;
    SubPlan 2
      ->  Result
            Output: GROUPING((SubPlan 1))
-(14 rows)
+ Query Identifier: 1629952217116657167
+(15 rows)
 
 select (select grouping(ss.x))
 from int8_tbl i1

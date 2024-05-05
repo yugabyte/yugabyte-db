@@ -227,6 +227,7 @@ SELECT explain_filter('EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM agg_csv');
  Foreign Scan on public.agg_csv
    Output: a, b
    Foreign File: .../agg.csv
+ Query Identifier: 8400922401364708838
 
 \t off
 PREPARE st(int) AS SELECT * FROM agg_csv WHERE a = $1;
@@ -278,6 +279,7 @@ SELECT explain_filter('EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM agg_csv WHER
    Output: a, b
    Filter: (agg_csv.a < 0)
    Foreign File: .../agg.csv
+ Query Identifier: -9096758894101738522
 
 \t off
 SELECT * FROM agg_csv WHERE a < 0;
@@ -291,6 +293,7 @@ SELECT explain_filter('EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM agg_csv WHER
  Result
    Output: a, b
    One-Time Filter: false
+ Query Identifier: -9096758894101738522
 
 \t off
 SELECT * FROM agg_csv WHERE a < 0;
@@ -447,6 +450,7 @@ SELECT explain_filter('EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM agg_text WHE
    Output: a, b
    Filter: (agg_text.a > 0)
    Foreign File: .../agg.data
+ Query Identifier: 1913160717761662246
 
 \t off
 -- file FDW allows foreign tables to be accessed without user mapping

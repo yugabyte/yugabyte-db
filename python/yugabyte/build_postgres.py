@@ -802,6 +802,7 @@ class PostgresBuilder(YbBuildToolBase):
             os.path.join(self.pg_build_root, 'contrib/intarray'),
             os.path.join(self.pg_build_root, 'contrib/isn'),
             os.path.join(self.pg_build_root, 'contrib/yb_pg_metrics'),
+            os.path.join(self.pg_build_root, 'contrib/pg_stat_statements'),
             # YB_TODO: end
             third_party_extensions_dir,
         ]

@@ -393,7 +393,8 @@ order by 1, 2;
                ->  Function Scan on pg_catalog.generate_series s2
                      Output: s2.s2
                      Function Call: generate_series(1, 3)
-(14 rows)
+ Query Identifier: -5527728888825237135
+(15 rows)
 
 select s1, s2, sm
 from generate_series(1, 3) s1,
@@ -432,7 +433,8 @@ select array(select sum(x+y) s
                  ->  Function Scan on pg_catalog.generate_series y
                        Output: y.y
                        Function Call: generate_series(1, 3)
-(13 rows)
+ Query Identifier: 1964664155151772478
+(14 rows)
 
 select array(select sum(x+y) s
             from generate_series(1,3) y group by y order by s)
