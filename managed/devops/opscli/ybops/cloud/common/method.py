@@ -1261,6 +1261,17 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                  required=False,
                                  help="The maximum number of checking the clock skew before "
                                       "failing.")
+        self.parser.add_argument("--install_otel_collector", action="store_true")
+        self.parser.add_argument('--otel_col_config_file', default=None,
+                                 help="Path to OpenTelemetry Collector config file.")
+        self.parser.add_argument('--otel_col_aws_access_key', default=None,
+                                 help="AWS Access Key used for logs export")
+        self.parser.add_argument('--otel_col_aws_secret_key', default=None,
+                                 help="AWS Secret Key used for logs export.")
+        self.parser.add_argument('--otel_col_gcp_creds_file', default=None,
+                                 help="Path to GCP credentials file used for logs export.")
+        self.parser.add_argument('--ycql_audit_log_level', default=None,
+                                 help="YCQL audit log level.")
 
     def get_ssh_user(self):
         # Force the yugabyte user for configuring instances. The configure step performs YB specific
@@ -1468,12 +1479,13 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
                         ybc_package_path, args.search_pattern, time.time() - start_time))
 
+        if args.local_package_path:
+            self.extra_vars.update({"local_package_path": args.local_package_path})
+        else:
+            logging.warn("Local Directory Tarball Path not specified skipping")
+            return
+
         if args.install_third_party_packages:
-            if args.local_package_path:
-                self.extra_vars.update({"local_package_path": args.local_package_path})
-            else:
-                logging.warn("Local Directory Tarball Path not specified skipping")
-                return
             self.cloud.setup_ansible(args).run(
                 "install-third-party.yml", self.extra_vars, host_info)
             return
@@ -1569,6 +1581,19 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             logging.info("Copying over encryption-at-rest certificate from {} to {}".format(
                 args.encryption_key_source_file, args.encryption_key_target_dir))
             self.cloud.create_encryption_at_rest_file(self.extra_vars, self.extra_vars)
+
+        if args.install_otel_collector:
+            self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
+        if args.otel_col_config_file:
+            self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
+        if args.otel_col_aws_access_key:
+            self.extra_vars.update({"otel_col_aws_access_key": args.otel_col_aws_access_key})
+        if args.otel_col_aws_secret_key:
+            self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
+        if args.otel_col_gcp_creds_file:
+            self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
+        if args.ycql_audit_log_level:
+            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
 
         if args.reset_master_state and args.extra_gflags is not None:
             delete_paths = []
@@ -2117,6 +2142,7 @@ class ManageOtelCollector(AbstractInstancesMethod):
         self.parser.add_argument("--local_package_path",
                                  required=False,
                                  help="Path to local directory with third party software tarballs.")
+        self.parser.add_argument("--use_sudo", action='store_true', default=False)
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -2146,6 +2172,8 @@ class ManageOtelCollector(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
         if args.ycql_audit_log_level:
             self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        if args.use_sudo:
+            self.extra_vars.update({"use_sudo": args.use_sudo})
 
         if wait_for_server(self.extra_vars):
             self.cloud.setup_ansible(args).run("yb-otel-collector.yml",

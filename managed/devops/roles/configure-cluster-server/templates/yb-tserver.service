@@ -1,22 +1,23 @@
 [Unit]
-Description=Yugabyte master service
+Description=Yugabyte tserver service
 Requires=network-online.target
 After=network.target network-online.target multi-user.target
 StartLimitInterval=100
 StartLimitBurst=10
+Wants=yb-ysql-cgroup.service
 
 [Path]
-PathExists={{yb_home_dir}}/master/bin/yb-master
-PathExists={{yb_home_dir}}/master/conf/server.conf
+PathExists={{yb_home_dir}}/tserver/bin/yb-tserver
+PathExists={{yb_home_dir}}/tserver/conf/server.conf
 
 [Service]
+# Start
 {% if ansible_os_family == 'RedHat' and (ansible_distribution_major_version == '7' or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')) %}
 User={{ user_name }}
 Group={{ user_name }}
 {% endif %}
-# Start
 ExecStartPre={{yb_home_dir}}/bin/clock-sync.sh
-ExecStart={{yb_home_dir}}/master/bin/yb-master --flagfile {{yb_home_dir}}/master/conf/server.conf
+ExecStart={{yb_home_dir}}/tserver/bin/yb-tserver --flagfile {{yb_home_dir}}/tserver/conf/server.conf
 Restart=always
 RestartSec=5
 # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
@@ -32,6 +33,8 @@ StandardError=syslog
 LimitCORE=infinity
 LimitNOFILE=1048576
 LimitNPROC=12000
+# Allow tserver to move postgres into its own cgroup
+Delegate=true
 
 [Install]
 WantedBy=default.target
