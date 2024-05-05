@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The default behavior when creating a universe is to locate [YB-Master](../../../architecture/concepts/yb-master/) and [YB-TServer](../../../architecture/concepts/yb-tserver/) processes on the same node. However, in some situations it's desirable to isolate the two processes on separate nodes, and dedicate additional resources to the YB-Master processes.
+The default behavior when creating a universe is to locate [YB-Master](../../../architecture/yb-master/) and [YB-TServer](../../../architecture/yb-tserver/) processes on the same node. However, in some situations it's desirable to isolate the two processes on separate nodes, and dedicate additional resources to the YB-Master processes.
 
 To place YB-Masters on dedicated nodes, you use the [Place Masters on dedicated nodes](#shared-and-dedicated-node-placement) option when creating a universe.
 
