@@ -520,19 +520,20 @@ WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2 and t3.v2 IN (3,4,5)
 ORDER BY t3.v3 DESC;
                                          QUERY PLAN
 ---------------------------------------------------------------------------------------------
- Sort  (cost=26.62..26.63 rows=1 width=64)
+ Sort  (cost=26.20..26.20 rows=1 width=64)
    Sort Key: t3.v3 DESC
-   ->  Nested Loop Left Join  (cost=5.30..26.61 rows=1 width=64)
-         ->  Hash Join  (cost=5.30..22.49 rows=1 width=40)
-               Hash Cond: (t3.v1 = t1.v1)
+   ->  Nested Loop Left Join  (cost=5.34..26.19 rows=1 width=64)
+         ->  Merge Join  (cost=5.34..22.07 rows=1 width=40)
+               Merge Cond: (t3.v1 = t1.v1)
                ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..16.38 rows=100 width=20)
                      Index Cond: (v2 = ANY ('{3,4,5}'::integer[]))
-               ->  Hash  (cost=5.17..5.17 rows=10 width=20)
+               ->  Sort  (cost=5.34..5.37 rows=10 width=20)
+                     Sort Key: t1.v1
                      ->  Index Scan using t1_pkey on t1  (cost=0.00..5.17 rows=10 width=20)
                            Index Cond: ((yb_hash_code(h) = 4624) AND (r = 2))
          ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
                Index Cond: (t1.v3 = v3)
-(12 rows)
+(13 rows)
 
 SELECT *
 FROM t1
