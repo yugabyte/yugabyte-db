@@ -1326,6 +1326,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // sshPortOverride, in case the passed imageBundle has a different port
       // configured for the region.
       params.sshPortOverride = node.sshPortOverride;
+      // Whether to install OpenTelemetry Collector on nodes or not.
+      params.otelCollectorEnabled = taskParams().otelCollectorEnabled;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;

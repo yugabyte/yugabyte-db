@@ -29,6 +29,7 @@
         state: present
         mode: 0440
         validate: 'visudo -cf %s'
+      when: systemd_dir == "/etc/systemd/system"
 
     # Adding systemd service file for otel-collector
     - name: OpenTelemetry Collector Service | Add otel-collector.service
