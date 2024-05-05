@@ -58,7 +58,7 @@ The `WeakSIWrite` lock type is used for the row (the parent of the column being 
 TxnId -> StatusTabletId, IsolationLevel, Priority
 ```
 
-- `StatusTabletId` is the ID of the tablet that keeps track of this transaction's status. Unlike the case of tables and tablets holding user data, where a [hash-based mapping](../../concepts/sharding/) is used from keys to tablets, there is no deterministic way to compute the transaction status tablet ID by transaction ID, so this information must be explicitly passed to all components handling a particular transaction.
+- `StatusTabletId` is the ID of the tablet that keeps track of this transaction's status. Unlike the case of tables and tablets holding user data, where a [hash-based mapping](../../docdb-sharding/sharding/) is used from keys to tablets, there is no deterministic way to compute the transaction status tablet ID by transaction ID, so this information must be explicitly passed to all components handling a particular transaction.
 - `Isolation Level` [snapshot isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) or [serializable isolation](https://en.wikipedia.org/wiki/Serializability).
 - `Priority` This priority is assigned randomly during transaction creation, when the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy is used.
 

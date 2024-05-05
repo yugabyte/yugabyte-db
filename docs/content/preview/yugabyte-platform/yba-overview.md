@@ -86,11 +86,11 @@ YBA supports three major types of provider configurations:
 | Advantages | Maximum flexibility | Maximum automation | It's&nbsp;Kubernetes |
 | Platforms | Private cloud, bare metal,<br>AWS, Azure, GCP | AWS, Azure, GCP | Kubernetes |
 | Permissions for YBA | Minimal sudo access during provisioning | Cloud and OS permissions | As required for Kubernetes |
-| Node&nbsp;provisioning | Manually created and provisioned | Automatically created and provisioned | Via Helm |
+| Node&nbsp;provisioning | Manually created, with fully manual to automatic provisioning | Automatically created and provisioned | Via Helm |
 
 ### Public cloud
 
-If you are deploying a universe to a public cloud (AWS, Azure, or GCP) and want maximum automation when managing clusters (creating them, scaling them, patching the OS, and so on), use a public cloud provider. This approach does require that you provide YBA with cloud and OS privileges.
+If you are deploying a universe to a public cloud (AWS, Azure, or GCP) and want maximum automation when managing clusters (creating them, scaling them, patching the OS, and so on), use a public cloud provider configuration. This approach does require that you provide YBA with cloud and OS privileges.
 
 For example:
 

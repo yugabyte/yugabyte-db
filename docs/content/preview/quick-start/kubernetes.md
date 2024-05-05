@@ -171,7 +171,7 @@ replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-dem
 
 ### Check cluster status with kubectl
 
-Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (`yb-master-0`) and one YB-Tserver pod (`yb-tserver-0`). For details on the roles of these pods in a YugabyteDB cluster (also known as universe), see [Universe](../../architecture/concepts/universe/).
+Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (`yb-master-0`) and one YB-Tserver pod (`yb-tserver-0`). For details on the roles of these pods in a YugabyteDB cluster (also known as universe), see [Architecture](../../architecture/).
 
 ```sh
 kubectl --namespace yb-demo get pods
@@ -207,7 +207,7 @@ yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/T
 
 ### Check cluster status with Admin UI
 
-The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) that keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) that is responsible for the actual end-user requests for data updates and queries.
+The cluster you have created consists of two processes: [YB-Master](../../architecture/yb-master/) that keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/yb-tserver/) that is responsible for the actual end-user requests for data updates and queries.
 
 Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process and perform certain administrative operations.
 
