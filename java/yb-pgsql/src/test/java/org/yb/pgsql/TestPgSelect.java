@@ -513,7 +513,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertTrue("Expect pushdown for t1 pkey",
                  explainOutput.contains("Index Cond: (a = 3)"));
       assertTrue("Expect pushdown for t2 pkey",
-                 explainOutput.contains("Index Cond: (t2.b = a)"));
+                 explainOutput.contains("Index Cond: (a = t2.b)"));
       assertFalse("Expect DocDB to filter fully",
                   explainOutput.contains("Rows Removed by"));
 
@@ -644,7 +644,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertTrue("Expect pushdown for t1 pkey",
                  explainOutput.contains("Index Cond: (a = 3)"));
       assertTrue("Expect pushdown for t2 pkey",
-                 explainOutput.contains("Index Cond: (t2.b = b)"));
+                 explainOutput.contains("Index Cond: (b = t2.b)"));
       assertFalse("Expect not to filter any rows by Index Recheck",
                  explainOutput.contains("Rows Removed by Index Recheck"));
 
