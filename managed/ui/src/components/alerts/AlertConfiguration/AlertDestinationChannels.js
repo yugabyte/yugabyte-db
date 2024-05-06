@@ -65,6 +65,7 @@ const prepareInitialValues = (values) => {
       break;
     case 'WebHook':
       initialValues['webhookURL'] = values.params.webhookUrl;
+      initialValues['sendResolved'] = values.params.sendResolved;
       if (!values.params.httpAuth?.type) {
         break;
       }
@@ -317,7 +318,7 @@ export const AlertDestinationChannels = (props) => {
                   defaultSmtp={initialValues.defaultSmtp}
                   type={type}
                   editAlertChannel={editAlertChannel}
-                  editValues={type === 'edit' ? initialValues : {}}
+                  editValues={type === 'edit' ? initialValues : {sendResolved: true}}
                   updateDestinationChannel={getAlertChannelsList}
                   enableNotificationTemplates={enableNotificationTemplates}
                   {...props}

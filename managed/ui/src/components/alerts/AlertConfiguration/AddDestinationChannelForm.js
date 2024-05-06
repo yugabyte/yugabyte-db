@@ -95,6 +95,7 @@ export const AddDestinationChannelForm = (props) => {
         payload['name'] = values['webHook_name'];
         payload['params']['channelType'] = 'WebHook';
         payload['params']['webhookUrl'] = values.webhookURL;
+        payload['params']['sendResolved'] = values.sendResolved;
 
         const httpAuth = {
           type: webhookAuthType.toUpperCase()
@@ -383,6 +384,25 @@ export const AddDestinationChannelForm = (props) => {
                   component={YBFormInput}
                   disabled={isReadOnly}
                 />
+              </Col>
+            </Row>
+            <Row className="component-flex">
+              <Col lg={1} className="noLeftPadding">
+                <Field name="sendResolved">
+                  {({ field }) => (
+                    <YBToggle
+                      name="sendResolved"
+                      isReadOnly={isReadOnly}
+                      input={{
+                        value: field.value,
+                        onChange: field.onChange
+                      }}
+                    />
+                  )}
+                </Field>
+              </Col>
+              <Col lg={11} className="component-label">
+                <strong>Send resolved alert notification</strong>
               </Col>
             </Row>
             <Row>
