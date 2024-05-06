@@ -365,6 +365,11 @@ YsqlUpgradeHelper::MakeDatabaseEntry(std::string database_name) {
   return entry;
 }
 
+Result<bool> YsqlUpgradeHelper::HasYbCatalogVersion(DatabaseEntry* db_entry) {
+  auto conn = VERIFY_RESULT(db_entry->GetConnection());
+  return FunctionExists(conn.get(), "yb_catalog_version");
+}
+
 Status YsqlUpgradeHelper::Upgrade() {
   RETURN_NOT_OK(AnalyzeMigrationFiles());
   LOG(INFO) << "Latest version defined in migrations is " << latest_version_;
@@ -434,8 +439,7 @@ Status YsqlUpgradeHelper::Upgrade() {
   // yb_catalog_version does not exist. However we have skipped V1 because
   // SystemTableHasRows(pgconn, "pg_yb_catalog_version") returns true.
   for (auto& entry : databases) {
-    auto conn = VERIFY_RESULT(entry->GetConnection());
-    if (!VERIFY_RESULT(FunctionExists(conn.get(), "yb_catalog_version"))) {
+    if (!VERIFY_RESULT(HasYbCatalogVersion(entry.get()))) {
       LOG(WARNING) << "Function yb_catalog_version is missing in " << entry->database_name_;
       // Run V1 migration script to introduce function "yb_catalog_version".
       const Version version = {0, 0};
