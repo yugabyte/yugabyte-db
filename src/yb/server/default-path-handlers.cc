@@ -83,6 +83,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stack_trace_tracker.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
@@ -99,6 +100,7 @@ DEFINE_RUNTIME_uint32(max_prometheus_metric_entries, UINT32_MAX,
     "adding a metric with all its entities would exceed the limit, then we will drop them all."
     "Thus, the actual number of metric entries returned might be smaller than the limit.");
 
+DECLARE_bool(track_stack_traces);
 DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
@@ -662,6 +664,87 @@ static void HandleGetVersionInfo(
   jw.EndObject();
 }
 
+static void IOStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+
+  if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
+    (*output) << "track_stack_traces must be turned on to use this page.";
+    return;
+  }
+
+  Tags tags(false /* as_text */);
+
+  auto traces = GetTrackedStackTraces();
+  std::sort(traces.begin(), traces.end(),
+            [](const auto& left, const auto& right) { return left.weight > right.weight; });
+
+  (*output) << tags.header << "I/O stack traces" << tags.end_header;
+
+  (*output) << tags.table << tags.row
+            << tags.table_header << "Type" << tags.end_table_header
+            << tags.table_header << "Count" << tags.end_table_header
+            << tags.table_header << "Bytes" << tags.end_table_header
+            << tags.table_header << "Stack Trace" << tags.end_table_header
+            << tags.end_row;
+  for (const auto& entry : traces) {
+    if (entry.count == 0 ||
+        (entry.group != StackTraceTrackingGroup::kReadIO &&
+         entry.group != StackTraceTrackingGroup::kWriteIO)) {
+      continue;
+    }
+    (*output) << tags.row
+              << tags.cell
+              << (entry.group == StackTraceTrackingGroup::kReadIO ? "Read" : "Write")
+              << tags.end_cell
+              << tags.cell << entry.count << tags.end_cell
+              << tags.cell << HumanReadableNumBytes::ToString(entry.weight) << tags.end_cell
+              << tags.cell << tags.pre_tag << EscapeForHtmlToString(entry.symbolized_trace)
+              << tags.end_pre_tag << tags.end_cell
+              << tags.end_row;
+  }
+
+  (*output) << tags.end_table;
+}
+
+static void DebugStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+
+  if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
+    (*output) << "track_stack_traces must be turned on to use this page.";
+    return;
+  }
+
+  Tags tags(false /* as_text */);
+
+  auto traces = GetTrackedStackTraces();
+  std::sort(traces.begin(), traces.end(),
+            [](const auto& left, const auto& right) { return left.count > right.count; });
+
+  (*output) << tags.header << "Tracked stack traces" << tags.end_header;
+
+  (*output) << tags.table << tags.row
+            << tags.table_header << "Count" << tags.end_table_header
+            << tags.table_header << "Stack Trace" << tags.end_table_header
+            << tags.end_row;
+  for (const auto& entry : traces) {
+    if (entry.count == 0 || entry.group != StackTraceTrackingGroup::kDebugging) {
+      continue;
+    }
+    (*output) << tags.row
+              << tags.cell << entry.count << tags.end_cell
+              << tags.cell << tags.pre_tag << EscapeForHtmlToString(entry.symbolized_trace)
+              << tags.end_pre_tag << tags.end_cell
+              << tags.end_row;
+  }
+
+  (*output) << tags.end_table;
+}
+
+static void ResetStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  ResetTrackedStackTraces();
+  resp->output << "Tracked stack traces reset.";
+}
+
 } // anonymous namespace
 
 // Registered to handle "/memz", and prints out memory allocation statistics.
@@ -700,6 +783,12 @@ void AddDefaultPathHandlers(Webserver* webserver) {
       "/api/v1/varz", "Flags", std::bind(&GetFlagsJsonHandler, _1, _2, webserver), false, false);
   webserver->RegisterPathHandler("/api/v1/version-info", "Build Version Info",
                                  HandleGetVersionInfo, false, false);
+  webserver->RegisterPathHandler("/io-stack-traces", "I/O Stack Traces",
+                                 IOStackTraceHandler, true, false);
+  webserver->RegisterPathHandler("/debug-stack-traces", "Debugging Stack Traces",
+                                 DebugStackTraceHandler, true, false);
+  webserver->RegisterPathHandler("/reset-stack-traces", "Reset Stack Traces",
+                                 ResetStackTraceHandler, true, false);
 
   AddPprofPathHandlers(webserver);
 }

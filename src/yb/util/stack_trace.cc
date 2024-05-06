@@ -21,6 +21,7 @@
 #include <sys/syscall.h>
 #endif
 
+#include <algorithm>
 #include <mutex>
 
 #include "yb/gutil/casts.h"
@@ -378,6 +379,18 @@ uint64_t StackTrace::HashCode() const {
   return util_hash::CityHash64(reinterpret_cast<const char*>(frames_),
                                sizeof(frames_[0]) * num_frames_);
 }
+
+Result<StackTrace> StackTrace::MakeStackTrace(std::string_view frames) {
+  SCHECK_EQ(frames.size() % sizeof(void *), 0,
+            InvalidArgument, "frames should contain an array of pointers");
+  SCHECK(frames.size() / sizeof(void *) <= kMaxFrames, InvalidArgument, "too many frames");
+
+  StackTrace s;
+  s.num_frames_ = narrow_cast<int>(frames.size() / sizeof(void *));
+  std::memcpy(s.frames_, frames.data(), s.num_frames_ * sizeof(void *));
+  return s;
+}
+
 
 // ------------------------------------------------------------------------------------------------
 

@@ -221,6 +221,7 @@ set(UTIL_SRCS
   spinlock_profiling.cc
   split.cc
   stack_trace.cc
+  stack_trace_tracker.cc
   stats/iostats_context_imp.cc
   stats/perf_level_imp.cc
   status.cc
