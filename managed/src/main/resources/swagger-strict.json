@@ -583,6 +583,10 @@
             "$ref" : "#/definitions/HTTP Auth information",
             "description" : "Authentication Details"
           },
+          "sendResolved" : {
+            "description" : "WARNING: This is a preview API that could change. Send resolved alert notification",
+            "type" : "boolean"
+          },
           "webhookUrl" : {
             "description" : "Webhook URL",
             "type" : "string"
