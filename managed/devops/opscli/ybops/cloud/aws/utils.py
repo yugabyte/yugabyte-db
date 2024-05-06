@@ -1196,7 +1196,7 @@ def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
 def update_disk(args, instance_id):
     ec2_client = boto3.client('ec2', region_name=args.region)
     instance = get_client(args.region).Instance(instance_id)
-    ami_descr = describe_ami(args.region, instance.image_id)
+    ami_descr = describe_ami(args.region, args.machine_image if args.machine_image else instance.image_id)
     device_names = set(get_device_names(args.instance_type, args.num_volumes, args.region,
                                         get_predefined_devices(ami_descr)))
     vol_ids = list()

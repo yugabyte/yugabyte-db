@@ -321,9 +321,7 @@ public class NodeManager extends DevopsBase {
       String sshUser = null;
       // Currently we only need this for provision node operation.
       // All others use yugabyte user.
-      if (type == NodeCommandType.Provision
-          || type == NodeCommandType.Create
-          || type == NodeCommandType.Wait_For_Connection) {
+      if (useSudoUser(type) || type == NodeCommandType.Wait_For_Connection) {
         // in case of sshUserOverride in ImageBundle.
         if (StringUtils.isNotBlank(params.sshUserOverride)) {
           sshUser = params.sshUserOverride;
@@ -430,15 +428,7 @@ public class NodeManager extends DevopsBase {
     subCommand.add(sshPort.toString());
     // TODO make this global and remove this conditional check
     // to avoid bugs.
-    if ((type == NodeCommandType.Provision
-            || type == NodeCommandType.Destroy
-            || type == NodeCommandType.Create
-            || type == NodeCommandType.Disk_Update
-            || type == NodeCommandType.Update_Mounted_Disks
-            || type == NodeCommandType.Reboot
-            || type == NodeCommandType.Change_Instance_Type
-            || type == NodeCommandType.Create_Root_Volumes
-            || type == NodeCommandType.RunHooks)
+    if (useSudoUser(type)
         && (StringUtils.isNotBlank(providerDetails.sshUser) || StringUtils.isNotBlank(sshUser))) {
       subCommand.add("--ssh_user");
       if (StringUtils.isNotBlank(sshUser)) {
@@ -1777,15 +1767,19 @@ public class NodeManager extends DevopsBase {
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
-    if (nodeTaskParam.sshPortOverride == null) {
-      UUID imageBundleUUID =
-          Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
-      if (imageBundleUUID != null) {
-        Region region = nodeTaskParam.getRegion();
-        ImageBundle.NodeProperties toOverwriteNodeProperties =
-            imageBundleUtil.getNodePropertiesOrFail(
-                imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+    ImageBundle.NodeProperties toOverwriteNodeProperties = null;
+    UUID imageBundleUUID =
+        Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
+    if (imageBundleUUID != null) {
+      Region region = nodeTaskParam.getRegion();
+      toOverwriteNodeProperties =
+          imageBundleUtil.getNodePropertiesOrFail(
+              imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+      if (nodeTaskParam.sshPortOverride == null) {
         nodeTaskParam.sshPortOverride = toOverwriteNodeProperties.getSshPort();
+      }
+      if (nodeTaskParam.sshUserOverride == null) {
+        nodeTaskParam.sshUserOverride = toOverwriteNodeProperties.getSshUser();
       }
     }
     Path bootScriptFile = null;
@@ -1935,14 +1929,8 @@ public class NodeManager extends DevopsBase {
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
             String imageBundleDefaultImage = "";
-            UUID imageBundleUUID =
-                Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
-            if (imageBundleUUID != null && StringUtils.isBlank(taskParam.getMachineImage())) {
-              Region region = taskParam.getRegion();
-              ImageBundle.NodeProperties toOverwriteNodeProperties =
-                  imageBundleUtil.getNodePropertiesOrFail(
-                      imageBundleUUID, region.getCode(), userIntent.providerType.toString());
-              taskParam.sshUserOverride = toOverwriteNodeProperties.getSshUser();
+            if (toOverwriteNodeProperties != null
+                && StringUtils.isBlank(taskParam.getMachineImage())) {
               imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
             } else {
               // Backward compatiblity.
@@ -2032,14 +2020,7 @@ public class NodeManager extends DevopsBase {
               userIntent);
 
           String imageBundleDefaultImage = "";
-          UUID imageBundleUUID =
-              Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
-          if (imageBundleUUID != null && StringUtils.isBlank(taskParam.machineImage)) {
-            Region region = taskParam.getRegion();
-            ImageBundle.NodeProperties toOverwriteNodeProperties =
-                imageBundleUtil.getNodePropertiesOrFail(
-                    imageBundleUUID, region.getCode(), userIntent.providerType.toString());
-            taskParam.sshUserOverride = toOverwriteNodeProperties.getSshUser();
+          if (toOverwriteNodeProperties != null && StringUtils.isBlank(taskParam.machineImage)) {
             imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
           } else {
             imageBundleDefaultImage = taskParam.getRegion().getYbImage();
@@ -2305,6 +2286,13 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
+          if (toOverwriteNodeProperties != null) {
+            String ybImage = toOverwriteNodeProperties.getMachineImage();
+            if (StringUtils.isNotBlank(ybImage)) {
+              commandArgs.add("--machine_image");
+              commandArgs.add(ybImage);
+            }
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           if (taskParam.deviceInfo != null) {
@@ -2321,6 +2309,13 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
           }
           UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
+          if (toOverwriteNodeProperties != null) {
+            String ybImage = toOverwriteNodeProperties.getMachineImage();
+            if (StringUtils.isNotBlank(ybImage)) {
+              commandArgs.add("--machine_image");
+              commandArgs.add(ybImage);
+            }
+          }
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.add("--volume_type");
@@ -2914,5 +2909,17 @@ public class NodeManager extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     return nodeDetails.otelCollectorMetricsPort;
+  }
+
+  private boolean useSudoUser(NodeCommandType type) {
+    return type == NodeCommandType.Provision
+        || type == NodeCommandType.Destroy
+        || type == NodeCommandType.Create
+        || type == NodeCommandType.Disk_Update
+        || type == NodeCommandType.Update_Mounted_Disks
+        || type == NodeCommandType.Reboot
+        || type == NodeCommandType.Change_Instance_Type
+        || type == NodeCommandType.Create_Root_Volumes
+        || type == NodeCommandType.RunHooks;
   }
 }
