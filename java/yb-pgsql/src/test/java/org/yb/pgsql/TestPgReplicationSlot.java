@@ -16,6 +16,7 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
+import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -111,11 +112,11 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   void createStreamAndWaitForSnapshotTimeToPass(
-      PGReplicationConnection replConnection, String slotName) throws Exception {
+      PGReplicationConnection replConnection, String slotName, String pluginName) throws Exception {
     replConnection.createReplicationSlot()
         .logical()
         .withSlotName(slotName)
-        .withOutputPlugin("pgoutput")
+        .withOutputPlugin(pluginName)
         .make();
 
     waitForSnapshotTimeToPass();
@@ -220,6 +221,26 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     return result;
   }
 
+  private static String toString(ByteBuffer buffer) {
+    int offset = buffer.arrayOffset();
+    byte[] source = buffer.array();
+    int length = source.length - offset;
+
+    return new String(source, offset, length);
+  }
+
+  private List<String> receiveTestDecodingMessages(PGReplicationStream stream, int count)
+      throws Exception {
+    List<String> result = new ArrayList<String>(count);
+    for (int index = 0; index < count; index++) {
+      String message = toString(stream.read());
+      result.add(message);
+      LOG.info("Row = {}", message);
+    }
+
+    return result;
+  }
+
   // TODO(#20726): Add more test cases covering:
   // 1. INSERTs in a BEGIN/COMMIT block
   // 2. Single shard transactions
@@ -248,7 +269,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       // Do more than 2 DMLs, since replicationConnectionConsumptionMultipleBatches tests the
       // case when #records > cdcsdk_max_consistent_records.
@@ -515,7 +536,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
@@ -617,7 +638,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
@@ -779,7 +800,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Connection conn =
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, "test_slot_repl_conn_all_data_types");
+    createStreamAndWaitForSnapshotTimeToPass(
+        replConnection, "test_slot_repl_conn_all_data_types", "pgoutput");
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO test_table VALUES ("
@@ -928,7 +950,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withDatabase("col_db").withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn2.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = conn2.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES(1, 'abc')");
       stmt.execute("INSERT INTO t2 VALUES(2, 'def')");
@@ -1064,7 +1086,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
     createStreamAndWaitForSnapshotTimeToPass(
-        replConnection, "test_slot_repl_conn_attribute_dropped");
+        replConnection, "test_slot_repl_conn_attribute_dropped", "pgoutput");
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES(1, 1)");
@@ -1114,7 +1136,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
     String slotName = "test_inner_lsn_values";
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
     }
@@ -1181,7 +1203,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
@@ -1289,7 +1311,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
@@ -1412,7 +1434,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
@@ -1630,7 +1652,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
     String slotName = "test_repl_slot_graceful_shutdown";
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO test VALUES(1, 'xyz')");
@@ -1666,7 +1688,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
@@ -1844,7 +1866,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       for (int i = 0; i < numInserts; i++) {
@@ -1905,7 +1927,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES(999999, '999999')");
 
@@ -2032,7 +2054,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       // After the stream creation, we are changing the replica identity of each table.
       stmt.execute("ALTER TABLE t1 REPLICA IDENTITY NOTHING");
@@ -2077,6 +2099,116 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("defg")))));
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
+
+  @Test
+  public void testWithTestDecodingPlugin() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("DROP TABLE IF EXISTS t2");
+      stmt.execute("DROP TABLE IF EXISTS t3");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text, c bool)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text, c bool)");
+      stmt.execute("CREATE TABLE t3 (a int primary key, b text, c bool)");
+
+      // CHANGE is the default but we do it explicitly so that the tests do not need changing if we
+      // change the default.
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY CHANGE");
+      stmt.execute("ALTER TABLE t2 REPLICA IDENTITY FULL");
+      stmt.execute("ALTER TABLE t3 REPLICA IDENTITY DEFAULT");
+    }
+
+    String slotName = "test_with_test_decoding";
+    Connection conn =
+        getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "test_decoding");
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES(1, 'abcd', true)");
+      stmt.execute("INSERT INTO t1 VALUES(2, 'defg', true)");
+      stmt.execute("INSERT INTO t1 VALUES(3, 'hijk', false)");
+      stmt.execute("UPDATE t1 SET b = 'updated_abcd' WHERE a = 1");
+      stmt.execute("UPDATE t1 SET b = NULL, c = false WHERE a = 2");
+      stmt.execute("DELETE FROM t1 WHERE a = 2");
+
+      stmt.execute("INSERT INTO t2 VALUES(1, 'abcd', true)");
+      stmt.execute("UPDATE t2 SET b = 'updated_abcd' WHERE a = 1");
+      stmt.execute("DELETE FROM t2 WHERE a = 1");
+
+      stmt.execute("INSERT INTO t3 VALUES(1, 'abcd', true)");
+      stmt.execute("UPDATE t3 SET b = 'updated_abcd' WHERE a = 1");
+      stmt.execute("DELETE FROM t3 WHERE a = 1");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", true)
+                                     .start();
+
+    List<String> result = new ArrayList<String>();
+    result.addAll(receiveTestDecodingMessages(stream, 36));
+
+    List<String> expectedResult = new ArrayList<String>() {
+      {
+        add("BEGIN 2");
+        add("table public.t1: INSERT: a[integer]:1 b[text]:'abcd' c[boolean]:true");
+        add("COMMIT 2");
+
+        add("BEGIN 3");
+        add("table public.t1: INSERT: a[integer]:2 b[text]:'defg' c[boolean]:true");
+        add("COMMIT 3");
+
+        add("BEGIN 4");
+        add("table public.t1: INSERT: a[integer]:3 b[text]:'hijk' c[boolean]:false");
+        add("COMMIT 4");
+
+        add("BEGIN 5");
+        add("table public.t1: UPDATE: old-key: new-tuple: a[integer]:1 b[text]:'updated_abcd'" +
+                " c[boolean]:unchanged-toast-datum");
+        add("COMMIT 5");
+
+        add("BEGIN 6");
+        add("table public.t1: UPDATE: old-key: new-tuple: a[integer]:2 b[text]:null " +
+                "c[boolean]:false");
+        add("COMMIT 6");
+
+        add("BEGIN 7");
+        add("table public.t1: DELETE: a[integer]:2");
+        add("COMMIT 7");
+
+        add("BEGIN 8");
+        add("table public.t2: INSERT: a[integer]:1 b[text]:'abcd' c[boolean]:true");
+        add("COMMIT 8");
+
+        add("BEGIN 9");
+        add("table public.t2: UPDATE: old-key: a[integer]:1 b[text]:'abcd' c[boolean]:true " +
+                "new-tuple: a[integer]:1 b[text]:'updated_abcd' c[boolean]:true");
+        add("COMMIT 9");
+
+        add("BEGIN 10");
+        add("table public.t2: DELETE: a[integer]:1 b[text]:'updated_abcd' c[boolean]:true");
+        add("COMMIT 10");
+
+        add("BEGIN 11");
+        add("table public.t3: INSERT: a[integer]:1 b[text]:'abcd' c[boolean]:true");
+        add("COMMIT 11");
+
+        add("BEGIN 12");
+        add("table public.t3: UPDATE: old-key: new-tuple: a[integer]:1 b[text]:'updated_abcd' " +
+                "c[boolean]:true");
+        add("COMMIT 12");
+
+        add("BEGIN 13");
+        add("table public.t3: DELETE: a[integer]:1");
+        add("COMMIT 13");
       }
     };
     assertEquals(expectedResult, result);
