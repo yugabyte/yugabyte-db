@@ -14,18 +14,18 @@
 # under the License.
 
 from age import *
-import psycopg2
+import psycopg
 import networkx as nx
 from .lib import *
 
 
-def networkx_to_age(connection: psycopg2.connect,
+def networkx_to_age(connection: psycopg.connect,
                     G: nx.DiGraph,
                     graphName: str):
     """
     @params
     -----------
-    connection - (psycopg2.connect) Connection object
+    connection - (psycopg.connect) Connection object
 
     G - (networkx.DiGraph) Networkx directed Graph
 

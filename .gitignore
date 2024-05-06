@@ -9,3 +9,7 @@ build.sh
 *.dylib
 age--*.*.*.sql
 !age--*--*sql
+__pycache__
+**/__pycache__
+
+drivers/python/build

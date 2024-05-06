@@ -13,7 +13,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from psycopg2.errors import *
+from psycopg.errors import *
 
 class AgeNotSet(Exception):
     def __init__(self, name):

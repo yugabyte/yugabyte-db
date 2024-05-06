@@ -18,8 +18,8 @@ from .gen.AgtypeParser import AgtypeParser
 from .gen.AgtypeVisitor import AgtypeVisitor
 from .models import *
 from .exceptions import *
-from antlr4 import *
-from antlr4.tree.Tree import *
+from antlr4 import InputStream, CommonTokenStream, ParserRuleContext
+from antlr4.tree.Tree import TerminalNode
 from decimal import Decimal
 
 resultHandler = None
@@ -42,7 +42,7 @@ def parseAgeValue(value, cursor=None):
     try:
         return resultHandler.parse(value)
     except Exception as ex:
-        raise AGTypeError(value)
+        raise AGTypeError(value, ex)
 
 
 class Antlr4ResultHandler(ResultHandler):

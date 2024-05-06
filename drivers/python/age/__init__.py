@@ -13,6 +13,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import psycopg.conninfo as conninfo
 from . import age
 from .age import *
 from .models import *
@@ -23,10 +24,13 @@ def version():
     return VERSION.VERSION
 
 
-def connect(dsn=None, graph=None, connection_factory=None, cursor_factory=None, **kwargs):
-        ag = Age()
-        ag.connect(dsn=dsn, graph=graph, connection_factory=connection_factory, cursor_factory=cursor_factory, **kwargs)
-        return ag
+def connect(dsn=None, graph=None, connection_factory=None, cursor_factory=ClientCursor, **kwargs):
+
+    dsn = conninfo.make_conninfo('' if dsn is None else dsn, **kwargs)
+
+    ag = Age()
+    ag.connect(dsn=dsn, graph=graph, connection_factory=connection_factory, cursor_factory=cursor_factory, **kwargs)
+    return ag
 
 # Dummy ResultHandler
 rawPrinter = DummyResultHandler()

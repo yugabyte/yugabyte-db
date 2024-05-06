@@ -14,15 +14,15 @@
 # under the License.
 
 from age import *
-import psycopg2
+import json
+import psycopg
 import networkx as nx
-from psycopg2 import sql
-from psycopg2.extras import execute_values
+from psycopg import sql
 from typing import Dict, Any, List, Set
 from age.models import Vertex, Edge, Path
 
 
-def checkIfGraphNameExistInAGE(connection: psycopg2.connect,
+def checkIfGraphNameExistInAGE(connection: psycopg.connect,
                                graphName: str):
     """Check if the age graph exists"""
     with connection.cursor() as cursor:
@@ -35,7 +35,7 @@ def checkIfGraphNameExistInAGE(connection: psycopg2.connect,
             raise GraphNotFound(graphName)
 
 
-def getOidOfGraph(connection: psycopg2.connect,
+def getOidOfGraph(connection: psycopg.connect,
                   graphName: str) -> int:
     """Returns oid of a graph"""
     try:
@@ -49,7 +49,7 @@ def getOidOfGraph(connection: psycopg2.connect,
         print(e)
 
 
-def get_vlabel(connection: psycopg2.connect,
+def get_vlabel(connection: psycopg.connect,
                graphName: str):
     node_label_list = []
     oid = getOidOfGraph(connection, graphName)
@@ -65,7 +65,7 @@ def get_vlabel(connection: psycopg2.connect,
     return node_label_list
 
 
-def create_vlabel(connection: psycopg2.connect,
+def create_vlabel(connection: psycopg.connect,
                   graphName: str,
                   node_label_list: List):
     """create_vlabels from list if not exist"""
@@ -85,7 +85,7 @@ def create_vlabel(connection: psycopg2.connect,
         raise Exception(e)
 
 
-def get_elabel(connection: psycopg2.connect,
+def get_elabel(connection: psycopg.connect,
                graphName: str):
     edge_label_list = []
     oid = getOidOfGraph(connection, graphName)
@@ -100,7 +100,7 @@ def get_elabel(connection: psycopg2.connect,
     return edge_label_list
 
 
-def create_elabel(connection: psycopg2.connect,
+def create_elabel(connection: psycopg.connect,
                   graphName: str,
                   edge_label_list: List):
     """create_vlabels from list if not exist"""
@@ -169,7 +169,7 @@ def getEdgeLabelListAfterPreprocessing(G: nx.DiGraph):
     return edge_label_list
 
 
-def addAllNodesIntoAGE(connection: psycopg2.connect, graphName: str, G: nx.DiGraph, node_label_list: Set):
+def addAllNodesIntoAGE(connection: psycopg.connect, graphName: str, G: nx.DiGraph, node_label_list: Set):
     """Add all node to AGE"""
     try:
         queue_data = {label: [] for label in node_label_list}
@@ -181,23 +181,29 @@ def addAllNodesIntoAGE(connection: psycopg2.connect, graphName: str, G: nx.DiGra
 
         for label, rows in queue_data.items():
             table_name = """%s."%s" """ % (graphName, label)
-            insert_query = f"INSERT INTO {table_name} (properties) VALUES %s RETURNING id"
+            insert_query = f"INSERT INTO {table_name} (properties) VALUES (%s) RETURNING id"
             cursor = connection.cursor()
-            id_data[label] = execute_values(
-                cursor, insert_query, rows, fetch=True)
+            cursor.executemany(insert_query, rows, returning=True)
+            ids = []
+            while True:
+                ids.append(cursor.fetchone()[0])
+                if not cursor.nextset():
+                    break
+
+            id_data[label] = ids
             connection.commit()
             cursor.close()
             id_data[label].reverse()
 
         for node, data in G.nodes(data=True):
-            data['properties']['__gid__'] = id_data[data['label']][-1][0]
+            data['properties']['__gid__'] = id_data[data['label']][-1]
             id_data[data['label']].pop()
 
     except Exception as e:
         raise Exception(e)
 
 
-def addAllEdgesIntoAGE(connection: psycopg2.connect, graphName: str, G: nx.DiGraph, edge_label_list: Set):
+def addAllEdgesIntoAGE(connection: psycopg.connect, graphName: str, G: nx.DiGraph, edge_label_list: Set):
     """Add all edge to AGE"""
     try:
         queue_data = {label: [] for label in edge_label_list}
@@ -208,16 +214,16 @@ def addAllEdgesIntoAGE(connection: psycopg2.connect, graphName: str, G: nx.DiGra
 
         for label, rows in queue_data.items():
             table_name = """%s."%s" """ % (graphName, label)
-            insert_query = f"INSERT INTO {table_name} (start_id,end_id,properties) VALUES %s"
+            insert_query = f"INSERT INTO {table_name} (start_id,end_id,properties) VALUES (%s, %s, %s)"
             cursor = connection.cursor()
-            execute_values(cursor, insert_query, rows)
+            cursor.executemany(insert_query, rows)
             connection.commit()
             cursor.close()
     except Exception as e:
         raise Exception(e)
 
 
-def addAllNodesIntoNetworkx(connection: psycopg2.connect, graphName: str, G: nx.DiGraph):
+def addAllNodesIntoNetworkx(connection: psycopg.connect, graphName: str, G: nx.DiGraph):
     """Add all nodes to Networkx"""
     node_label_list = get_vlabel(connection, graphName)
     try:
@@ -235,7 +241,7 @@ def addAllNodesIntoNetworkx(connection: psycopg2.connect, graphName: str, G: nx.
         print(e)
 
 
-def addAllEdgesIntoNetworkx(connection: psycopg2.connect, graphName: str, G: nx.DiGraph):
+def addAllEdgesIntoNetworkx(connection: psycopg.connect, graphName: str, G: nx.DiGraph):
     """Add All edges to Networkx"""
     try:
         edge_label_list = get_elabel(connection, graphName)

@@ -26,22 +26,38 @@ TEST_GRAPH_NAME = "test_graph"
 ORIGINAL_GRAPH = "original_graph"
 EXPECTED_GRAPH = "expected_graph"
 
+TEST_HOST = "localhost"
+TEST_PORT = 5432
+TEST_DB = "postgres"
+TEST_USER = "postgres"
+TEST_PASSWORD = "agens"
+
 
 class TestAgeToNetworkx(unittest.TestCase):
     ag = None
+    args: argparse.Namespace = argparse.Namespace(
+        host=TEST_HOST,
+        port=TEST_PORT,
+        database=TEST_DB,
+        user=TEST_USER,
+        password=TEST_PASSWORD,
+        graphName=TEST_GRAPH_NAME
+    )
 
     def setUp(self):
+        args = dict(
+            host=self.args.host,
+            port=self.args.port,
+            dbname=self.args.database,
+            user=self.args.user,
+            password=self.args.password
+        )
 
-        TEST_DB = self.args.database
-        TEST_USER = self.args.user
-        TEST_PASSWORD = self.args.password
-        TEST_PORT = self.args.port
-        TEST_HOST = self.args.host
-        self.ag = age.connect(graph=TEST_GRAPH_NAME, host=TEST_HOST, port=TEST_PORT,
-                              dbname=TEST_DB, user=TEST_USER, password=TEST_PASSWORD)
+        dsn = "host={host} port={port} dbname={dbname} user={user} password={password}".format(**args)
+        self.ag = age.connect(dsn, graph=TEST_GRAPH_NAME, **args)
 
     def tearDown(self):
-        age.deleteGraph(self.ag.connection, self.ag.graphName)
+        age.deleteGraph(self.ag.connection, TEST_GRAPH_NAME)
         self.ag.close()
 
     def compare_networkX(self, G, H):
@@ -215,19 +231,28 @@ class TestNetworkxToAGE(unittest.TestCase):
     ag = None
     ag1 = None
     ag2 = None
+    args: argparse.Namespace = argparse.Namespace(
+        host=TEST_HOST,
+        port=TEST_PORT,
+        database=TEST_DB,
+        user=TEST_USER,
+        password=TEST_PASSWORD,
+        graphName=TEST_GRAPH_NAME
+    )
 
     def setUp(self):
-        TEST_DB = self.args.database
-        TEST_USER = self.args.user
-        TEST_PASSWORD = self.args.password
-        TEST_PORT = self.args.port
-        TEST_HOST = self.args.host
-        self.ag = age.connect(graph=TEST_GRAPH_NAME, host=TEST_HOST, port=TEST_PORT,
-                              dbname=TEST_DB, user=TEST_USER, password=TEST_PASSWORD)
-        self.ag1 = age.connect(graph=ORIGINAL_GRAPH, host=TEST_HOST, port=TEST_PORT,
-                               dbname=TEST_DB, user=TEST_USER, password=TEST_PASSWORD)
-        self.ag2 = age.connect(graph=EXPECTED_GRAPH, host=TEST_HOST, port=TEST_PORT,
-                               dbname=TEST_DB, user=TEST_USER, password=TEST_PASSWORD)
+        args = dict(
+            host=self.args.host,
+            port=self.args.port,
+            dbname=self.args.database,
+            user=self.args.user,
+            password=self.args.password
+        )
+
+        dsn = "host={host} port={port} dbname={dbname} user={user} password={password}".format(**args)
+        self.ag = age.connect(dsn, graph=TEST_GRAPH_NAME, **args)
+        self.ag1 = age.connect(dsn, graph=ORIGINAL_GRAPH, **args)
+        self.ag2 = age.connect(dsn, graph=EXPECTED_GRAPH, **args)
         self.graph = nx.DiGraph()
 
     def tearDown(self):
@@ -441,23 +466,23 @@ if __name__ == "__main__":
     parser.add_argument('-host',
                         '--host',
                         help='Optional Host Name. Default Host is "127.0.0.1" ',
-                        default="127.0.0.1")
+                        default=TEST_HOST)
     parser.add_argument('-port',
                         '--port',
                         help='Optional Port Number. Default port no is 5432',
-                        default=5432)
+                        default=TEST_PORT)
     parser.add_argument('-db',
                         '--database',
                         help='Required Database Name',
-                        required=True)
+                        default=TEST_DB)
     parser.add_argument('-u',
                         '--user',
                         help='Required Username Name',
-                        required=True)
+                        default=TEST_USER)
     parser.add_argument('-pass',
                         '--password',
                         help='Required Password for authentication',
-                        required=True)
+                        default=TEST_PASSWORD)
 
     args = parser.parse_args()
     suite = unittest.TestSuite()

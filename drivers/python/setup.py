@@ -30,7 +30,7 @@ setup(
     url              = 'https://github.com/apache/age/tree/master/drivers/python',
     download_url     = 'https://github.com/apache/age/releases' ,
     license          = 'Apache2.0',
-    install_requires = [ 'psycopg2', 'antlr4-python3-runtime==4.11.1'],
+    install_requires = [ 'psycopg', 'antlr4-python3-runtime==4.11.1'],
     packages         = ['age', 'age.gen','age.networkx'],
     keywords         = ['Graph Database', 'Apache AGE', 'PostgreSQL'],
     python_requires  = '>=3.9',

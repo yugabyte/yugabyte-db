@@ -14,13 +14,13 @@
 # under the License.
 
 from age import *
-import psycopg2
+import psycopg
 import networkx as nx
 from age.models import Vertex, Edge, Path
 from .lib import *
 
 
-def age_to_networkx(connection: psycopg2.connect,
+def age_to_networkx(connection: psycopg.connect,
                     graphName: str,
                     G: None | nx.DiGraph = None,
                     query: str | None = None
@@ -28,7 +28,7 @@ def age_to_networkx(connection: psycopg2.connect,
     """
     @params
     ---------------------
-    connection - (psycopg2.connect) Connection object
+    connection - (psycopg.connect) Connection object
     graphName - (str) Name of the graph
     G - (networkx.DiGraph) Networkx directed Graph [optional]
     query - (str) Cypher query [optional]

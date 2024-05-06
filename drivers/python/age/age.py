@@ -13,13 +13,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import re 
-import psycopg2 
-from psycopg2 import errors
-from psycopg2 import extensions as ext
-from psycopg2 import sql
+import re
+import psycopg
+from psycopg.types import TypeInfo
+from psycopg.adapt import Loader
+from psycopg import sql
+from psycopg.client_cursor import ClientCursor
 from .exceptions import *
-from .builder import ResultHandler , parseAgeValue, newResultHandler
+from .builder import parseAgeValue
 
 
 _EXCEPTION_NoConnection = NoConnection()
@@ -27,26 +28,36 @@ _EXCEPTION_GraphNotSet = GraphNotSet()
 
 WHITESPACE = re.compile('\s')
 
-def setUpAge(conn:ext.connection, graphName:str):
+
+class AgeDumper(psycopg.adapt.Dumper):
+    def dump(self, obj: Any) -> bytes | bytearray | memoryview:
+        pass    
+    
+    
+class AgeLoader(psycopg.adapt.Loader):    
+    def load(self, data: bytes | bytearray | memoryview) -> Any | None:    
+        return parseAgeValue(data.decode('utf-8'))
+
+
+def setUpAge(conn:psycopg.connection, graphName:str):
     with conn.cursor() as cursor:
         cursor.execute("LOAD 'age';")
         cursor.execute("SET search_path = ag_catalog, '$user', public;")
 
-        cursor.execute("SELECT typelem FROM pg_type WHERE typname='_agtype'")
-        oid = cursor.fetchone()[0]
-        if oid == None :
-            raise AgeNotSet()
+        ag_info = TypeInfo.fetch(conn, 'agtype')
 
-        AGETYPE = ext.new_type((oid,), 'AGETYPE', parseAgeValue)
-        ext.register_type(AGETYPE)
-        # ext.register_adapter(Path, marshalAgtValue)
+        if not ag_info:
+            raise AgeNotSet()
+    
+        conn.adapters.register_loader(ag_info.oid, AgeLoader)
+        conn.adapters.register_loader(ag_info.array_oid, AgeLoader)
 
         # Check graph exists
         if graphName != None:
             checkGraphCreated(conn, graphName)
 
 # Create the graph, if it does not exist
-def checkGraphCreated(conn:ext.connection, graphName:str):
+def checkGraphCreated(conn:psycopg.connection, graphName:str):
     with conn.cursor() as cursor:
         cursor.execute(sql.SQL("SELECT count(*) FROM ag_graph WHERE name={graphName}").format(graphName=sql.Literal(graphName)))
         if cursor.fetchone()[0] == 0:
@@ -54,7 +65,7 @@ def checkGraphCreated(conn:ext.connection, graphName:str):
             conn.commit()
 
 
-def deleteGraph(conn:ext.connection, graphName:str):
+def deleteGraph(conn:psycopg.connection, graphName:str):
     with conn.cursor() as cursor:
         cursor.execute(sql.SQL("SELECT drop_graph({graphName}, true);").format(graphName=sql.Literal(graphName)))
         conn.commit()
@@ -82,7 +93,7 @@ def buildCypher(graphName:str, cypherStmt:str, columns:list) ->str:
     stmtArr.append(");")
     return "".join(stmtArr)
 
-def execSql(conn:ext.connection, stmt:str, commit:bool=False, params:tuple=None) -> ext.cursor :
+def execSql(conn:psycopg.connection, stmt:str, commit:bool=False, params:tuple=None) -> psycopg.cursor :
     if conn == None or conn.closed:
         raise _EXCEPTION_NoConnection
     
@@ -101,14 +112,14 @@ def execSql(conn:ext.connection, stmt:str, commit:bool=False, params:tuple=None)
         raise SqlExecutionError("Execution ERR[" + str(cause) +"](" + stmt +")", cause)
 
 
-def querySql(conn:ext.connection, stmt:str, params:tuple=None) -> ext.cursor :
+def querySql(conn:psycopg.connection, stmt:str, params:tuple=None) -> psycopg.cursor :
     return execSql(conn, stmt, False, params)
 
 # Execute cypher statement and return cursor.
 # If cypher statement changes data (create, set, remove),
 # You must commit session(ag.commit())
 # (Otherwise the execution cannot make any effect.)
-def execCypher(conn:ext.connection, graphName:str, cypherStmt:str, cols:list=None, params:tuple=None) -> ext.cursor :
+def execCypher(conn:psycopg.connection, graphName:str, cypherStmt:str, cols:list=None, params:tuple=None) -> psycopg.cursor :
     if conn == None or conn.closed:
         raise _EXCEPTION_NoConnection
 
@@ -117,7 +128,7 @@ def execCypher(conn:ext.connection, graphName:str, cypherStmt:str, cols:list=Non
     cypherStmt = cypherStmt.replace("\n", "")
     cypherStmt = cypherStmt.replace("\t", "")
     cypher = str(cursor.mogrify(cypherStmt, params))
-    cypher = cypher[2:len(cypher)-1]
+    cypher = cypher.strip()
 
     preparedStmt = "SELECT * FROM age_prepare_cypher({graphName},{cypherStmt})"
 
@@ -145,12 +156,12 @@ def execCypher(conn:ext.connection, graphName:str, cypherStmt:str, cols:list=Non
         raise SqlExecutionError("Execution ERR[" + str(cause) +"](" + stmt +")", cause)
 
 
-def cypher(cursor:ext.cursor, graphName:str, cypherStmt:str, cols:list=None, params:tuple=None) -> ext.cursor :
+def cypher(cursor:psycopg.cursor, graphName:str, cypherStmt:str, cols:list=None, params:tuple=None) -> psycopg.cursor :
     #clean up the string for mogrification
     cypherStmt = cypherStmt.replace("\n", "")
     cypherStmt = cypherStmt.replace("\t", "")
     cypher = str(cursor.mogrify(cypherStmt, params))
-    cypher = cypher[2:len(cypher)-1]
+    cypher = cypher.strip()
 
     preparedStmt = "SELECT * FROM age_prepare_cypher({graphName},{cypherStmt})"
     cursor.execute(sql.SQL(preparedStmt).format(graphName=sql.Literal(graphName),cypherStmt=sql.Literal(cypher)))
@@ -159,22 +170,22 @@ def cypher(cursor:ext.cursor, graphName:str, cypherStmt:str, cols:list=None, par
     cursor.execute(stmt)
 
 
-# def execCypherWithReturn(conn:ext.connection, graphName:str, cypherStmt:str, columns:list=None , params:tuple=None) -> ext.cursor :
+# def execCypherWithReturn(conn:psycopg.connection, graphName:str, cypherStmt:str, columns:list=None , params:tuple=None) -> psycopg.cursor :
 #     stmt = buildCypher(graphName, cypherStmt, columns)
 #     return execSql(conn, stmt, False, params)
 
-# def queryCypher(conn:ext.connection, graphName:str, cypherStmt:str, columns:list=None , params:tuple=None) -> ext.cursor :
+# def queryCypher(conn:psycopg.connection, graphName:str, cypherStmt:str, columns:list=None , params:tuple=None) -> psycopg.cursor :
 #     return execCypherWithReturn(conn, graphName, cypherStmt, columns, params)
 
 
 class Age:
     def __init__(self):
-        self.connection = None    # psycopg2 connection]
+        self.connection = None    # psycopg connection]
         self.graphName = None
 
     # Connect to PostgreSQL Server and establish session and type extension environment.
-    def connect(self, graph:str=None, dsn:str=None, connection_factory=None, cursor_factory=None, **kwargs):
-        conn = psycopg2.connect(dsn, connection_factory, cursor_factory, **kwargs)
+    def connect(self, graph:str=None, dsn:str=None, connection_factory=None, cursor_factory=ClientCursor, **kwargs):
+        conn = psycopg.connect(dsn, cursor_factory=cursor_factory, **kwargs)
         setUpAge(conn, graph)
         self.connection = conn
         self.graphName = graph
@@ -194,21 +205,21 @@ class Age:
     def rollback(self):
         self.connection.rollback()
 
-    def execCypher(self, cypherStmt:str, cols:list=None, params:tuple=None) -> ext.cursor :
+    def execCypher(self, cypherStmt:str, cols:list=None, params:tuple=None) -> psycopg.cursor :
         return execCypher(self.connection, self.graphName, cypherStmt, cols=cols, params=params)
 
-    def cypher(self, cursor:ext.cursor, cypherStmt:str, cols:list=None, params:tuple=None) -> ext.cursor :
+    def cypher(self, cursor:psycopg.cursor, cypherStmt:str, cols:list=None, params:tuple=None) -> psycopg.cursor :
         return cypher(cursor, self.graphName, cypherStmt, cols=cols, params=params)
 
-    # def execSql(self, stmt:str, commit:bool=False, params:tuple=None) -> ext.cursor :
+    # def execSql(self, stmt:str, commit:bool=False, params:tuple=None) -> psycopg.cursor :
     #     return execSql(self.connection, stmt, commit, params)
 
 
-    # def execCypher(self, cypherStmt:str, commit:bool=False, params:tuple=None) -> ext.cursor :
+    # def execCypher(self, cypherStmt:str, commit:bool=False, params:tuple=None) -> psycopg.cursor :
     #     return execCypher(self.connection, self.graphName, cypherStmt, commit, params)
 
-    # def execCypherWithReturn(self, cypherStmt:str, columns:list=None , params:tuple=None) -> ext.cursor :
+    # def execCypherWithReturn(self, cypherStmt:str, columns:list=None , params:tuple=None) -> psycopg.cursor :
     #     return execCypherWithReturn(self.connection, self.graphName, cypherStmt, columns, params)
 
-    # def queryCypher(self, cypherStmt:str, columns:list=None , params:tuple=None) -> ext.cursor :
+    # def queryCypher(self, cypherStmt:str, columns:list=None , params:tuple=None) -> psycopg.cursor :
     #     return queryCypher(self.connection, self.graphName, cypherStmt, columns, params)
