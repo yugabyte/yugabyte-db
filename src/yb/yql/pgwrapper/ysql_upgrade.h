@@ -53,6 +53,9 @@ class YsqlUpgradeHelper {
   // If historical_version isn't nullptr, use it to override db_entry->version_.
   Status MigrateOnce(DatabaseEntry* db_entry, const Version* historical_version = nullptr);
 
+  // Check whether function yb_catalog_version exists in a database.
+  Result<bool> HasYbCatalogVersion(DatabaseEntry* db_entry);
+
   const HostPort ysql_proxy_addr_;
 
   const uint64_t ysql_auth_key_;
