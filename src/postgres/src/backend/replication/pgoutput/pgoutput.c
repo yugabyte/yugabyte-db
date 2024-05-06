@@ -90,7 +90,8 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->filter_by_origin_cb = pgoutput_origin_filter;
 	cb->shutdown_cb = pgoutput_shutdown;
 
-	cb->yb_schema_change_cb = yb_pgoutput_schema_change;
+	if (IsYugaByteEnabled())
+		cb->yb_schema_change_cb = yb_pgoutput_schema_change;
 }
 
 static void

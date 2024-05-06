@@ -170,11 +170,23 @@ YBCGetTables(List *publication_names)
 
 	Assert(IsTransactionState());
 
-	yb_publications =
-		YBGetPublicationsByNames(publication_names, false /* missing_ok */);
+	if (publication_names != NIL)
+	{
+		yb_publications =
+			YBGetPublicationsByNames(publication_names, false /* missing_ok */);
 
-	tables = yb_pg_get_publications_tables(yb_publications);
-	list_free(yb_publications);
+		tables = yb_pg_get_publications_tables(yb_publications);
+		list_free(yb_publications);
+	}
+	else
+	{
+		/*
+		 * When the plugin does not provide a publication list, we assume that
+		 * it targets all the tables present in the database.
+		 */
+		tables = GetAllTablesPublicationRelations();
+	}
+
 
 	return tables;
 }
@@ -231,7 +243,7 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
 
 			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
 
-			// Get tables in publication and call UpdatePublicationTableList
+			/* Get tables in publication and call UpdatePublicationTableList. */
 			tables = YBCGetTables(publication_names);
 			table_oids = YBCGetTableOids(tables);
 			YBCUpdatePublicationTableList(MyReplicationSlot->data.yb_stream_id,
