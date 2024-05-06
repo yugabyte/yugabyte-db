@@ -89,7 +89,8 @@ SnapshotState::SnapshotState(
       id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()),
       previous_snapshot_hybrid_time_(HybridTime::FromPB(request.previous_snapshot_hybrid_time())),
       schedule_id_(TryFullyDecodeSnapshotScheduleId(request.schedule_id())), version_(1),
-      throttler_(throttle_limit) {
+      throttler_(throttle_limit),
+      imported_(request.imported()) {
   InitTabletIds(request.tablet_id(),
                 request.imported() ? SysSnapshotEntryPB::COMPLETE : SysSnapshotEntryPB::CREATING);
   request.extra_data().UnpackTo(&entries_);
@@ -106,7 +107,7 @@ SnapshotState::SnapshotState(
       id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()),
       previous_snapshot_hybrid_time_(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
       schedule_id_(TryFullyDecodeSnapshotScheduleId(entry.schedule_id())),
-      version_(entry.version()) {
+      version_(entry.version()), imported_(entry.imported()) {
   InitTablets(entry.tablet_snapshots());
   *entries_.mutable_entries() = entry.entries();
   if (entry.has_retention_duration_hours()) {
@@ -156,6 +157,7 @@ Status SnapshotState::ToEntryPB(
   }
 
   out->set_version(version_);
+  out->set_imported(imported_);
 
   return Status::OK();
 }

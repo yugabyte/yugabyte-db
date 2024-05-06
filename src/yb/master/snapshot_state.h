@@ -49,6 +49,7 @@ using TabletSnapshotOperations = std::vector<TabletSnapshotOperation>;
 
 class SnapshotState : public StateWithTablets {
  public:
+  // TODO: Should we throttle per tserver instead of per snapshot?
   SnapshotState(
       SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
       const tserver::TabletSnapshotOpRequestPB& request,
@@ -90,12 +91,19 @@ class SnapshotState : public StateWithTablets {
     return retention_duration_hours_ ? true : false;
   }
 
+  // Whether to block object (table / tablet) cleanup until the retention window specified in
+  // retention_duration_hours (if set) has passed. If true, the objects will be hidden instead
+  // of deleted until retention_duration_hours have passed.
+  bool ShouldBlockObjectCleanup() const {
+    return HasTtl() && !schedule_id() && !imported_;
+  }
+
   bool ShouldAddToCoveringMap() const {
-    return HasTtl() && !schedule_id() && AllInState(SysSnapshotEntryPB::COMPLETE);
+    return ShouldBlockObjectCleanup() && AllInState(SysSnapshotEntryPB::COMPLETE);
   }
 
   bool ShouldRemoveFromCoveringMap() const {
-    return HasTtl() && !schedule_id() && AllInState(SysSnapshotEntryPB::DELETING);
+    return ShouldBlockObjectCleanup() && AllInState(SysSnapshotEntryPB::DELETING);
   }
 
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
@@ -133,7 +141,13 @@ class SnapshotState : public StateWithTablets {
   bool delete_started_ = false;
   AsyncTaskTracker cleanup_tracker_;
   AsyncTaskThrottler throttler_;
+
+  // How long to retain this snapshot. See the comment in SysSnapshotEntryPB for a longer
+  // description.
   std::optional<int32_t> retention_duration_hours_ = std::nullopt;
+
+  // Whether this snapshot is imported. Imported snapshots do not block object cleanup.
+  bool imported_;
 };
 
 Result<dockv::KeyBytes> EncodedSnapshotKey(
