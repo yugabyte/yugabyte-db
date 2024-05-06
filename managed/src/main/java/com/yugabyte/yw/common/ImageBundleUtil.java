@@ -203,7 +203,23 @@ public class ImageBundleUtil {
     boolean aarch64YBADefaultBundleMarkedDefault = false;
     List<ImageBundle> getYbaDefaultImageBundles =
         ImageBundle.getYBADefaultBundles(provider.getUuid());
-    if (getYbaDefaultImageBundles.size() != 0) {
+    if (getYbaDefaultImageBundles.size() == 0) {
+      // These will be the bundles created before migration & does not contain the metadata.
+      List<ImageBundle> providerBundles = provider.getImageBundles();
+      x86YBADefaultBundleMarkedDefault =
+          provider.getImageBundles().stream()
+              .noneMatch(
+                  bundle ->
+                      bundle.getDetails().getArch() == Architecture.x86_64
+                          && bundle.getUseAsDefault());
+
+      aarch64YBADefaultBundleMarkedDefault =
+          provider.getImageBundles().stream()
+              .noneMatch(
+                  bundle ->
+                      bundle.getDetails().getArch() == Architecture.aarch64
+                          && bundle.getUseAsDefault());
+    } else {
       for (ImageBundle ybaDefaultBundle : getYbaDefaultImageBundles) {
         if (ybaDefaultBundle.getDetails() == null) {
           continue;
