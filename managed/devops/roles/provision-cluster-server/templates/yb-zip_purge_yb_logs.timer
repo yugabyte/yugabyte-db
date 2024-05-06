@@ -1,6 +1,5 @@
 [Unit]
 Description=Yugabyte logs
-Requires=yb-zip_purge_yb_logs.service
 
 [Timer]
 {% if ansible_os_family == 'RedHat' and (ansible_distribution_major_version == '7' or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')) %}
