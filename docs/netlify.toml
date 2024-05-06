@@ -1404,7 +1404,7 @@
             https://yugabyte.thinkific.com/
         ;
 
-        media-src default-src 'self' 'unsafe-inline'
+        media-src 'self' 'unsafe-inline'
         https://js.driftt.com/conductor/assets/
         ;
 '''
