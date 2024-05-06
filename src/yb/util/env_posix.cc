@@ -64,6 +64,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/util/stack_trace_tracker.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -502,6 +503,7 @@ class PosixWritableFile : public WritableFile {
         return STATUS_IO_ERROR(filename_, errno);
       }
 
+      TrackStackTrace(StackTraceTrackingGroup::kWriteIO, written);
       UnwrittenRemaining(&remaining_iov, written, &remaining_count);
       total_written += written;
     }
@@ -697,6 +699,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
         }
         return STATUS_IO_ERROR(filename_, errno);
       }
+      TrackStackTrace(StackTraceTrackingGroup::kWriteIO, written);
       next_write_offset_ += written;
 
       UnwrittenRemaining(&remaining_iov, written, &remaining_blocks);
@@ -791,6 +794,7 @@ class PosixRWFile final : public RWFile {
         // An error: return a non-ok status.
         return STATUS_IO_ERROR(filename_, errno);
       }
+      TrackStackTrace(StackTraceTrackingGroup::kReadIO, r);
       Slice this_result(dst, r);
       DCHECK_LE(this_result.size(), rem);
       if (this_result.size() == 0) {
@@ -814,6 +818,7 @@ class PosixRWFile final : public RWFile {
       int err = errno;
       return STATUS_IO_ERROR(filename_, err);
     }
+    TrackStackTrace(StackTraceTrackingGroup::kWriteIO, written);
 
     if (PREDICT_FALSE(written != implicit_cast<ssize_t>(data.size()))) {
       return STATUS(IOError,
