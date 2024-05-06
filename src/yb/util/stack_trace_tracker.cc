@@ -20,12 +20,12 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/debug-util.h"
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/unique_lock.h"
 
-DEFINE_RUNTIME_bool(track_stack_traces, yb::IsDebug(), "Whether to enable stack trace tracking");
+DEFINE_RUNTIME_bool(track_stack_traces, yb::kIsDebug, "Whether to enable stack trace tracking");
 
 namespace yb {
 
