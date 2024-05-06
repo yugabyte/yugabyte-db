@@ -22200,6 +22200,7 @@
     },
     "/api/v1/customers/{cUUID}/releases" : {
       "get" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "getListOfReleases",
         "parameters" : [ {
@@ -22246,10 +22247,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all releases",
+        "summary" : "Deprecated: sinceVersion: 2024.1. Use ReleasesController.list instead. List all releases",
         "tags" : [ "Release management" ]
       },
       "post" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "createRelease",
         "parameters" : [ {
@@ -22290,7 +22292,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create a release",
+        "summary" : "Deprecated: sinceVersion 2024.1. Use ReleasesController.create instead. Create a release",
         "tags" : [ "Release management" ]
       },
       "put" : {
@@ -22332,6 +22334,7 @@
     },
     "/api/v1/customers/{cUUID}/releases/{name}" : {
       "delete" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "deleteRelease",
         "parameters" : [ {
@@ -22369,10 +22372,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete a release",
+        "summary" : "Deprecated: sinceVersion: 2024.1. Use ReleasesController.delete instead. Delete a release",
         "tags" : [ "Release management" ]
       },
       "put" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "updateRelease",
         "parameters" : [ {
@@ -22418,7 +22422,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update a release",
+        "summary" : "Deprecated: sinceVersion: 2024.1. Use ReleasesController.update instead. Update a release",
         "tags" : [ "Release management" ]
       }
     },
