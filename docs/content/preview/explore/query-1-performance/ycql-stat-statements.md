@@ -20,7 +20,7 @@ Databases can be resource-intensive, consuming a lot of memory CPU, IO, and netw
 
 This view provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`, accessible via YSQL. The view can be joined with YCQL wait events in the [yb_active_session_history](../../observability/active-session-history/#yb-active-session-history) view using the query ID.
 
-This view is added in an extension of `yb_ycql_utils`, which is not enabled by default and can also be used to extract more information from the [Active Session History](../../observability/active-session-history/) (ASH) data.
+This view is added in an extension `yb_ycql_utils`, which is not enabled by default.
 
 The columns of the `ycql_stat_statements` view are described in the following table.
 
