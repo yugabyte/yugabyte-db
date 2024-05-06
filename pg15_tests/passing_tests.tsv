@@ -18,6 +18,7 @@ JAVA	org.yb.pgsql.TestPgBackendMemoryContext
 JAVA	org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
 JAVA	org.yb.pgsql.TestPgConnection
 JAVA	org.yb.pgsql.TestPgConnection#testConnectionKillsAndRestarts
+JAVA	org.yb.pgsql.TestPgDepend#testForSuperfluousEntries
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeColocated
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeMetrics
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeScans#testFetchLimitCosting
