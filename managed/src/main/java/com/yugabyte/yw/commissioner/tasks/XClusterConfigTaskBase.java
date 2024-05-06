@@ -959,7 +959,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
     if (bootstrapParams != null && bootstrapParams.tables != null) {
       // Ensure tables in bootstrapParams is a subset of requestedTableIds.
-      if (!requestedTableIds.containsAll(bootstrapParams.tables)) {
+      if (!bootstrapParams.allowBootstrap
+          && !requestedTableIds.containsAll(bootstrapParams.tables)) {
         throw new IllegalArgumentException(
             String.format(
                 "The set of tables in bootstrapParams (%s) is not a subset of "
@@ -977,13 +978,16 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                   HashMap::new,
                   (map, entry) -> map.put(entry.getKey(), entry.getValue()),
                   HashMap::putAll);
-      bootstrapParams.tables =
-          getTableIdsWithoutTablesOnTargetInReplication(
-              ybService,
-              requestedTableInfoList,
-              sourceTableIdTargetTableIdWithBootstrapMap,
-              targetUniverse,
-              currentReplicationGroupName);
+
+      if (!bootstrapParams.allowBootstrap) {
+        bootstrapParams.tables =
+            getTableIdsWithoutTablesOnTargetInReplication(
+                ybService,
+                requestedTableInfoList,
+                sourceTableIdTargetTableIdWithBootstrapMap,
+                targetUniverse,
+                currentReplicationGroupName);
+      }
 
       // If table type is YSQL and bootstrap is requested, all tables in that keyspace are selected.
       if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
@@ -1009,8 +1013,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                                             .equals(namespaceId))
                             .map(tableInfo -> tableInfo.getId().toStringUtf8())
                             .collect(Collectors.toSet());
-                    if (tableIdsInNamespace.size()
-                        != selectedTableIdsInNamespaceToBootstrap.size()) {
+                    if (!bootstrapParams.allowBootstrap
+                        && tableIdsInNamespace.size()
+                            != selectedTableIdsInNamespaceToBootstrap.size()) {
                       throw new IllegalArgumentException(
                           String.format(
                               "For YSQL tables, all the tables in a keyspace must be selected: "
@@ -1382,6 +1387,44 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     // side.
     return tableInfoList.stream()
         .filter(tableInfo -> !TableInfoUtil.isSystemTable(tableInfo))
+        .collect(Collectors.toList());
+  }
+
+  /**
+   * This method returns all the tablesInfo list present in the namespace on a universe.
+   *
+   * @param ybService The service to get a YB client from
+   * @param universe The universe to get the table schema information from
+   * @param tableType The table type to filter the tables
+   * @param namespaceName The namespace name to get the table schema information from
+   * @return A list of {@link MasterDdlOuterClass.ListTablesResponsePB.TableInfo} containing table
+   *     info of the tables in the namespace
+   */
+  public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
+      getTableInfoListByNamespaceName(
+          YBClientService ybService, Universe universe, TableType tableType, String namespaceName) {
+    return getTableInfoList(ybService, universe).stream()
+        .filter(tableInfo -> tableInfo.getNamespace().getName().equals(namespaceName))
+        .filter(tableInfo -> tableInfo.getTableType().equals(tableType))
+        .collect(Collectors.toList());
+  }
+
+  /**
+   * This method returns all the tablesInfo list present in the namespace on a universe.
+   *
+   * @param ybService The service to get a YB client from
+   * @param universe The universe to get the table schema information from
+   * @param tableType The table type to filter the tables
+   * @param namespaceId The namespace Id to get the table schema information from
+   * @return A list of {@link MasterDdlOuterClass.ListTablesResponsePB.TableInfo} containing table
+   *     info of the tables in the namespace
+   */
+  public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
+      getTableInfoListByNamespaceId(
+          YBClientService ybService, Universe universe, TableType tableType, String namespaceId) {
+    return getTableInfoList(ybService, universe).stream()
+        .filter(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8().equals(namespaceId))
+        .filter(tableInfo -> tableInfo.getTableType().equals(tableType))
         .collect(Collectors.toList());
   }
 

@@ -25,6 +25,7 @@ import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
+import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
@@ -235,13 +236,31 @@ public class EditXClusterConfig extends CreateXClusterConfig {
 
     // Add the subtasks to set up replication for tables that need bootstrapping if any.
     if (!dbToTablesInfoMapNeedBootstrap.isEmpty()) {
-      // YSQL tables replication with bootstrapping can only be set up with DB granularity. The
-      // following subtasks remove tables in replication, so the replication can be set up again
-      // for all the tables in the DB including the new tables.
       Set<String> tableIdsDeleteReplication = new HashSet<>();
       dbToTablesInfoMapNeedBootstrap.forEach(
           (namespaceName, tablesInfo) -> {
             Set<String> tableIdsNeedBootstrap = getTableIds(tablesInfo);
+            if (taskParams().getBootstrapParams().allowBootstrap && !tablesInfo.isEmpty()) {
+              if (tablesInfo.get(0).getTableType() == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
+                List<TableInfo> sourceTablesInfo =
+                    getTableInfoListByNamespaceName(
+                        ybService,
+                        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID()),
+                        CommonTypes.TableType.PGSQL_TABLE_TYPE,
+                        namespaceName);
+                tableIdsNeedBootstrap.addAll(getTableIds(sourceTablesInfo));
+                tableIdsNeedBootstrap.addAll(getTableIds(tablesInfo));
+              } else {
+                groupByNamespaceName(requestedTableInfoList).get(namespaceName).stream()
+                    .map(tableInfo -> getTableId(tableInfo))
+                    .forEach(tableIdsNeedBootstrap::add);
+              }
+            }
+            // YSQL tables replication with bootstrapping can only be set up with DB granularity.
+            // The
+            // following subtasks remove tables in replication, so the replication can be set up
+            // again
+            // for all the tables in the DB including the new tables.
             Set<String> tableIdsNeedBootstrapInReplication =
                 xClusterConfig.getTableIdsWithReplicationSetup(
                     tableIdsNeedBootstrap, true /* done */);

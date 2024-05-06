@@ -2846,6 +2846,10 @@
     "BootstrapParams" : {
       "description" : "Bootstrap parameters",
       "properties" : {
+        "allowBootstrap" : {
+          "description" : "WARNING: This is a preview API that could change. Allow backup on whole database when only set of tables require bootstrap",
+          "type" : "boolean"
+        },
         "backupRequestParams" : {
           "$ref" : "#/definitions/BootstarpBackupParams",
           "description" : "Parameters used to do Backup/restore"
