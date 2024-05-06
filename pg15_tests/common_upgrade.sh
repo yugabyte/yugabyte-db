@@ -8,8 +8,8 @@ pghost3=127.0.0.$((ip_start + 2))
 # Downloads, runs, and pushds the directory for pg11.
 run_and_pushd_pg11() {
   prefix="/tmp"
-  ybversion_pg11="2.18.4.2"
-  ybbuild="b2"
+  ybversion_pg11="2.20.3.0"
+  ybbuild="b68"
   if [[ $OSTYPE = linux* ]]; then
     arch="linux-x86_64"
   fi

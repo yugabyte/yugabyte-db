@@ -108,10 +108,11 @@ EOT
 CREATE INDEX
                 QUERY PLAN
 -------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using t_v1_idx on t
          Index Cond: (v1 = 11)
-(3 rows)
+         Partial Aggregate: true
+(4 rows)
 
  count
 -------
