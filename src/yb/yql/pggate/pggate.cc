@@ -1410,12 +1410,12 @@ Status PgApiImpl::DmlBindHashCode(
 }
 
 Status PgApiImpl::DmlBindRange(YBCPgStatement handle,
-                               Slice start_value,
-                               bool start_inclusive,
-                               Slice end_value,
-                               bool end_inclusive) {
+                               Slice lower_bound,
+                               bool lower_bound_inclusive,
+                               Slice upper_bound,
+                               bool upper_bound_inclusive) {
   return down_cast<PgDmlRead*>(handle)->BindRange(
-      start_value, start_inclusive, end_value, end_inclusive);
+      lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
 }
 
 Status PgApiImpl::DmlBindTable(PgStatement *handle) {

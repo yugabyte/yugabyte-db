@@ -4274,8 +4274,8 @@ ppk_buffer_fetch_callback(void *param, const char *key, size_t key_size)
 static void
 yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 {
-	const char *lower_bound_key;
-	size_t lower_bound_key_size;
+	const char *latest_key;
+	size_t latest_key_size;
 	uint64_t max_num_ranges;
 	FetchKeysParam fkp = {0, ppk};
 
@@ -4285,17 +4285,15 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	Assert(ppk->key_count > 0);
 	keylen_t key_len;
 	memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(keylen_t));
-	lower_bound_key_size = key_len;
-	if (lower_bound_key_size)
-		/*
-		 * It is safe to refer the key data in place, since the highest key
-		 * can not be removed until fetch is in progress.
-		 * The bound being referenced here remains the highest key until after
-		 * the request to DocDB is done.
-		 */
-		lower_bound_key = KEY_DATA(ppk, ppk->high_offset);
-	else
-		lower_bound_key = NULL;
+	latest_key_size = key_len;
+	/* Empty key indicates the end of the keys, fetch shouldn't be possible. */
+	Assert(latest_key_size);
+	/*
+	 * It is safe to refer the key data in place, since the highest key can not
+	 * be removed from the buffer until fetch is completed.
+	 */
+	latest_key = KEY_DATA(ppk, ppk->high_offset);
+
 	/*
 	 * Find average key size so far. We expect reasonable number have already
 	 * been received during initialization.
@@ -4319,10 +4317,12 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	 */
 	HandleYBStatus(YBCGetTableKeyRanges(
 		ppk->database_oid, ppk->table_relfilenode_oid,
-		lower_bound_key, lower_bound_key_size,
-		NULL /* upper_bound_key */, 0 /* upper_bound_key_size */,
+		ppk->is_forward ? latest_key : NULL /* lower_bound_key */,
+		ppk->is_forward ? latest_key_size : 0 /* lower_bound_key_size */,
+		ppk->is_forward ? NULL : latest_key /* upper_bound_key */,
+		ppk->is_forward ? 0 : latest_key_size /* upper_bound_key_size */,
 		max_num_ranges, 1024 * 1024 /* range_size_bytes */, ppk->is_forward,
-		(ppk->key_data_capacity / 3) - sizeof(keylen_t),
+		(ppk->key_data_capacity / 3) - sizeof(keylen_t) /* max_key_length */,
 		NULL /* current_tserver_ht */,
 		ppk_buffer_fetch_callback, &fkp));
 	SpinLockAcquire(&ppk->mutex);
@@ -4361,7 +4361,9 @@ ppk_buffer_initialize_callback(void *param, const char *key, size_t key_size)
 	}
 	if (key_size == 0)
 	{
-		elog(LOG, "All ranges are fetched at once.");
+		elog(LOG,
+			 "All ranges are fetched at once, received %.0f keys (%.0f bytes)",
+			 ppk->total_key_count, ppk->total_key_size);
 		ppk->fetch_status = FETCH_STATUS_DONE;
 	}
 	else if (!yb_add_key_unsynchronized(ppk, key, key_size))
@@ -4509,12 +4511,23 @@ ybParallelNextRange(YBParallelPartitionKeys ppk,
 		}
 		else
 		{
+			/*
+			 * When performing forward scan, keys in the buffer are in the
+			 * ascending order, so first one is going to be the lower bound,
+			 * and second, if exists, the higher bound.
+			 * When performing backward scan, keys in the buffer are in the
+			 * descending order, so destination bouns are opposite.
+			 */
+			const char **first_key_dest_ptr = ppk->is_forward ? low_bound : high_bound;
+			size_t *first_key_size_ptr = ppk->is_forward ? low_bound_size : high_bound_size;
+			const char **second_key_dest_ptr = ppk->is_forward ? high_bound : low_bound;
+			size_t *second_key_size_ptr = ppk->is_forward ? high_bound_size : low_bound_size;
 			/* Have multiple keys, can take one. */
 			if (ppk->key_count > 1)
 			{
-				yb_copy_key_unsynchronized(ppk, low_bound, low_bound_size);
+				yb_copy_key_unsynchronized(ppk, first_key_dest_ptr, first_key_size_ptr);
 				yb_remove_key_unsynchronized(ppk);
-				yb_copy_key_unsynchronized(ppk, high_bound, high_bound_size);
+				yb_copy_key_unsynchronized(ppk, second_key_dest_ptr, second_key_size_ptr);
 				result = NEXT_RANGE_SUCCESS;
 			}
 			/* If the fetch is completed it is OK to take the last key. */
@@ -4522,11 +4535,10 @@ ybParallelNextRange(YBParallelPartitionKeys ppk,
 			{
 				if (ppk->key_count == 1)
 				{
-					yb_copy_key_unsynchronized(ppk, low_bound, low_bound_size);
+					yb_copy_key_unsynchronized(ppk, first_key_dest_ptr, first_key_size_ptr);
 					yb_remove_key_unsynchronized(ppk);
-					/* Last range have empty high bound. */
-					*high_bound = NULL;
-					*high_bound_size = 0;
+					*second_key_dest_ptr = NULL;
+					*second_key_size_ptr = 0;
 					result = NEXT_RANGE_SUCCESS;
 				}
 				else

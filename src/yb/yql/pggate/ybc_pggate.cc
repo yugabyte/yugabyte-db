@@ -1284,10 +1284,12 @@ YBCStatus YBCPgDmlBindHashCodes(
       handle, MakeBound(start_type, start_value), MakeBound(end_type, end_value)));
 }
 
-YBCStatus YBCPgDmlBindRange(YBCPgStatement handle, const char *start_value, size_t start_value_len,
-                            const char *end_value, size_t end_value_len) {
+YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,
+                            const char *lower_bound, size_t lower_bound_len,
+                            const char *upper_bound, size_t upper_bound_len) {
   return ToYBCStatus(pgapi->DmlBindRange(
-    handle, Slice(start_value, start_value_len), true, Slice(end_value, end_value_len), false));
+    handle, Slice(lower_bound, lower_bound_len), true,
+            Slice(upper_bound, upper_bound_len), false));
 }
 
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {
