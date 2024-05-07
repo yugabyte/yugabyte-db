@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
@@ -297,6 +298,12 @@ public class NodeAgentPoller {
 
     // This handles upgrade for the given node agent.
     private void upgradeNodeAgent(NodeAgent nodeAgent) {
+      if (HighAvailabilityConfig.isFollower()) {
+        // Task may have already been submitted. This check ensures that submitted tasks are not
+        // run.
+        log.info("Skipping node agent upgrade as it is a follower instance");
+        return;
+      }
       nodeAgent.refresh();
       checkState(
           nodeAgent.getState() != State.REGISTERING, "Invalid state " + nodeAgent.getState());
