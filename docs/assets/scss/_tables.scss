@@ -39,6 +39,10 @@ main {
       }
     }
 
+    .td-content table:not(.td-initial) > tbody > tr:nth-of-type(odd) > * {
+      background-color: transparent;
+    }
+
     table {
       box-shadow: 0 0 0 1px #e9eef2;
       border-radius: 6px;
@@ -46,6 +50,11 @@ main {
       display: table;
       margin: 1em 0;
       width: 100%;
+
+      &:not(.td-initial) > :not(caption) > * > * {
+        padding: 12.75px 15px;
+        color: #4e5f6d;
+      }
 
       &.no-alter-colors {
         display: block;

@@ -90,6 +90,7 @@ main {
       background: transparent !important;
       padding: 0 !important;
       margin: 0;
+      border: 0;
       position: relative !important;
       overflow-y: auto;
       overflow-x: visible;
@@ -231,7 +232,8 @@ main {
 
     pre.can-be-copied {
       width: calc(100% + 20px);
-      padding-right: 20px !important;
+      padding-right: 15px !important;
+      border: 0;
       max-width: none;
       min-height: 85px;
 
@@ -250,6 +252,10 @@ main {
         top: 6px;
         z-index: 0;
         border-radius: 5px;
+      }
+
+      .click-to-copy{
+        display: none;
       }
 
       button.copy {

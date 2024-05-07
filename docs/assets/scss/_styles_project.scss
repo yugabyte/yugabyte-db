@@ -46,6 +46,22 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
+a {
+  color: #3176d9;
+  text-decoration: none;
+  background-color: transparent;
+}
+
+.navbar-expand > .container,
+.navbar-expand > .container-fluid,
+.navbar-expand > .container-sm,
+.navbar-expand > .container-md,
+.navbar-expand > .container-lg,
+.navbar-expand > .container-xl {
+  padding-right: 0;
+  padding-left: 0;
+}
+
 /******* Variables for Color Theme Switcher **********/
 :root {
   --theme-color: #312965;
@@ -75,9 +91,13 @@ html {
 
     .breadcrumb-item {
       font-size: 12px;
-      line-height: 28px;
+      line-height: 22px;
       display: flex;
       align-items: center;
+
+      &.active{
+        color: #4e5f6d;
+      }
 
       &:only-child {
         visibility: hidden;
