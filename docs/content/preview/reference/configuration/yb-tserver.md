@@ -1478,6 +1478,63 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 {{< /note >}}
 
+## DDL atomicity flags
+
+##### ysql_yb_ddl_rollback_enabled
+
+Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will rollback the changes made to the DocDB system catalog.
+
+Default: true
+
+{{< note title="Important" >}}
+In YSQL, a DDL statement creates a separate DDL transaction to execute the DDL statement. A DDL transaction generally needs to the Postgres metadata stored in
+catalog tables in the same way as a native Postgres DDL statement will do. In
+addition, some DDL statements also involve updating DocDB syscatalog table.
+For example alter table add/drop column is such a DDL statement. When a DDL
+transaction fails, the corresponding DDL statement is aborted. This means that
+the Postgres metadata will be rolled back atomically. Before the introduction of
+the gflag --ysql_yb_ddl_rollback_enabled, the DocDB syscatalog changes are not
+automatically rolled back by yb-master and this can lead to metadata corruption
+that need to be manually fixed. Now with gflag --ysql_yb_ddl_rollback_enabled,
+when set to true, yb-master will rollback the DocDB syscatalog changes
+automatically to prevent metadata corruption.
+{{< /note >}}
+
+##### report_ysql_ddl_txn_status_to_master
+
+If set, at the end of a DDL operation, the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
+
+Default: true
+
+{{< note title="Important" >}}
+Due to implementation restrictions, after a DDL statement commits or aborts,
+yb-master performs a relatively expensive operation by continously polling the
+transaction status tablet and comparing the DocDB schema with Postgres schema to
+determine whether the transaction was a success. This behavior is optimized with
+this gflag: at the end of the DDL transaction, YSQL sends the status of the
+transaction (commit/abort) to yb-master. Once received, yb-master can stop
+polling the transaction status tablet and also skip the relatively expensive
+schema comparison.
+{{< /note >}}
+
+##### ysql_ddl_transaction_wait_for_ddl_verification
+
+If set, DDL transactions will wait for DDL verification to complete before returning to the client.
+
+Default: true
+
+{{< note title="Important" >}}
+After a DDL statement that involve updating DocDB syscatalog completes,
+yb-master still needs to work on the DocDB syscatalog changes in the background
+asynchronously in order to ensure that they are in sync with the corresponding
+Postgres catalog changes eventually. This can take some additional time in order
+to reach eventual consistency. During this period, an immediately succeeding DML
+or DDL statement can fail due to changes made by yb-master to the DocDB
+syscatalog in the background. This may cause confusion to the user. With this
+gflag set to true, YSQL waits for any yb-master background operations to finish
+before returning control to the user.
+{{< /note >}}
+
 ## Advanced flags
 
 ##### backfill_index_client_rpc_timeout_ms
@@ -1591,7 +1648,6 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes
 
 Default: `1GB`
 
-<!-- TODO 2024.1 >
 ##### enable_bitmapscan
 
 Enables or disables the query planner's use of bitmap-scan plan types.
@@ -1603,7 +1659,6 @@ Bitmap scans follow the same work_mem behavior as PostgreSQL: each individual bi
 Bitmap scans are only supported for LSM indexes.
 
 Default: false
--->
 
 ##### yb_bnl_batch_size
 
