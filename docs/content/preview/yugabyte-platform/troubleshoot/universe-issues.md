@@ -114,6 +114,8 @@ You can create a support bundle as follows:
 
   ![Create support bundle](/images/yp/support-bundle-2.png)
 
+  For details about Core Files and YBA Metadata, see [Support bundle components](#support-bundle-components).
+
 - Click **Create Bundle**.
 
   YugabyteDB Anywhere starts collecting files from all the nodes in the cluster into an archive. Note that this process might take several minutes. When finished, the bundle's status is displayed as **Ready**, as per the following illustration:
@@ -122,32 +124,28 @@ You can create a support bundle as follows:
 
   The **Support Bundles** dialog allows you to either download the bundle or delete it if it is no longer needed. By default, bundles expire after ten days to free up space.
 
+### Support bundle components
+
 The following sections describe some of the file components of a support bundle.
 
-### Core Files
+#### Core Files
 
-Currently in the backend, if the `CoreFiles` component is selected (UI not available yet), all the cores are collected. However, there are two major issues with collecting all core files:
+The Core Files component collects all the core files and mitigates two issues that may happen when collecting files such as the following:
 
 - Files can be very large (for example, 200GB+)
 - There can be a huge number of files (for example, when a crashloop happens)
 
-**Mitigations**
+When you create a support bundle, if you select the Core Files component (by default, the component is selected), there are two optional Core files properties:
 
-- Two new UI fields are added when `CoreFiles` component is selected by default:
+- Maximum number of recent core files (default_core_file_count_limit): YugabyteDB Anywhere (YBA) collects the most recent "N" number of files. "N" is set to a default value of collecting 1 file.
 
-  - Number of recent files to collect (default_core_file_count_limit): When the `CoreFiles` component is selected, YugabyteDB Anywhere (YBA) collects the most recent "N" number of files. This UI field defines "N" and is  set to a default value of collecting 1 file.
+- Maximum core file size (default_core_file_size_limit): This field collects the recent core files only if the core file size is below the specified size limit. It is set to a default value of 25000000000 bytes (25GB).
 
-  - Max size of core files to collect (default_core_file_size_limit): This UI field collects the recent core files only if the core file size is below the specified size limit. It is set to a default value of 25000000000 bytes (25GB).
+YBA also provides a runtime flag `yb.support_bundle.allow_cores_collection`, which is used to globally disable cores collection across any new support bundles generated on the platform. This flag can only be set by the SuperAdmin and is true by default.
 
-- A runtime flag:
+#### YBA Metadata
 
-  - `yb.support_bundle.allow_cores_collection`: This flag is used to globally disable cores collection across any new support bundles generated on the platform. This flag can only be set by the SuperAdmin and is true by default.
-
-- Inflight checks are added to ensure YBA has available space before transferring the core files from YugabyteDB nodes to YBA.
-
-### YBA Metadata
-
-This component collects a fingerprint of the YBA data. The rationale is to collect metadata at a customer level, rather than at a global level (like [PG_dump](https://support.yugabyte.com/hc/en-us/articles/4412743193741-How-to-create-a-credential-free-dump-of-YugabyteDB-Anywhere-Database)) to ensure multi-tenancy is respected going forward. Following are the included metadata sub-components in this phase:
+This component collects a fingerprint of the YBA data. The metadata is collected at a customer level, rather than a global level (like [PG_dump](https://support.yugabyte.com/hc/en-us/articles/4412743193741-How-to-create-a-credential-free-dump-of-YugabyteDB-Anywhere-Database)) to ensure multi-tenancy is respected going forward. Following are the included metadata sub-components in this phase:
 
 - Customer metadata
 - Cloud providers metadata
@@ -167,8 +165,6 @@ support_bundle/
         ├── universes.json
         └── users.json
 ```
-
-YBA metadata is available as a new component to the support bundle via the backend and UI.
 
 ## Debug crashing YugabyteDB pods in Kubernetes
 
