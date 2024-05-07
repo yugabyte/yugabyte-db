@@ -226,6 +226,8 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 {
 	YbBitmapIndexScanState *indexstate;
 	bool		relistarget;
+	Relation	index;
+	Relation	relation;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -275,19 +277,22 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 		return indexstate;
 
 	/*
-	 * Open the index relation.
+	 * Open the index and main table relations. Unlike Postgres, Yugabyte needs
+	 * both to properly construct the request.
 	 *
 	 * If the parent table is one of the target relations of the query, then
 	 * InitPlan already opened and write-locked the index, so we can avoid
 	 * taking another lock here.  Otherwise we need a normal reader's lock.
 	 */
 	relistarget = ExecRelationIsTargetRelation(estate, node->scan.scanrelid);
-	indexstate->biss_RelationDesc = index_open(node->indexid,
-											   relistarget ? NoLock : AccessShareLock);
+	index = index_open(node->indexid, relistarget ? NoLock : AccessShareLock);
+	relation = ExecOpenScanRelation(estate, node->scan.scanrelid, eflags);
+	Assert(IsYBRelation(index));
 
 	/*
 	 * Initialize index-specific scan state
 	 */
+	indexstate->biss_RelationDesc = index;
 	indexstate->biss_RuntimeKeysReady = false;
 	indexstate->biss_RuntimeKeys = NULL;
 	indexstate->biss_NumRuntimeKeys = 0;
@@ -330,21 +335,18 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 	 * Initialize scan descriptor.
 	 */
 	indexstate->biss_ScanDesc =
-		index_beginscan_bitmap(indexstate->biss_RelationDesc,
+		index_beginscan_bitmap(index,
 							   estate->es_snapshot,
 							   indexstate->biss_NumScanKeys);
 
-	if (IsYBRelation(indexstate->biss_RelationDesc))
-		indexstate->ss.ss_currentRelation =
-			ExecOpenScanRelation(estate, node->scan.scanrelid, eflags);
 
-	indexstate->biss_ScanDesc->heapRelation =
-		indexstate->ss.ss_currentRelation;
+	indexstate->ss.ss_currentRelation = relation;
+	indexstate->biss_ScanDesc->heapRelation = relation;
 	indexstate->biss_ScanDesc->yb_exec_params = &estate->yb_exec_params;
 	indexstate->biss_ScanDesc->fetch_ybctids_only = true;
 
-	const bool is_colocated = YbGetTableProperties(indexstate->ss.ss_currentRelation)->is_colocated;
-	const bool is_primary = indexstate->ss.ss_currentRelation->rd_index == NULL;
+	const bool is_colocated = YbGetTableProperties(relation)->is_colocated;
+	const bool is_primary = relation->rd_pkindex == index->rd_id;
 
 	/* primary keys on colocated indexes don't have a secondary index in their request */
 	if (is_colocated && is_primary)
