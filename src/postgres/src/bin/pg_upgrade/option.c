@@ -128,11 +128,11 @@ parseCommandLine(int argc, char *argv[])
 				break;
 
 			case 'h':
-				old_cluster.hostaddr = pg_strdup(optarg);
+				old_cluster.yb_hostaddr = pg_strdup(optarg);
 				break;
 
 			case 'H':
-				new_cluster.hostaddr = pg_strdup(optarg);
+				new_cluster.yb_hostaddr = pg_strdup(optarg);
 				break;
 
 			case 'j':

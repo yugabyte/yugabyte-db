@@ -88,16 +88,13 @@ check_and_dump_old_cluster(bool live_check)
 {
 	/* -- OLD -- */
 
-	if (!is_yugabyte_enabled())
-	{
-		if (!live_check)
-			start_postmaster(&old_cluster, true);
-	}
+	if (!is_yugabyte_enabled() && !live_check)
+		start_postmaster(&old_cluster, true);
 
 	/* Extract a list of databases and tables from the old cluster */
 	get_db_and_rel_infos(&old_cluster);
 
-	#ifdef YB_TODO
+#ifdef YB_TODO
 	/* Enable these checks and other functions to initialize new node */
 	init_tablespaces();
 
@@ -113,19 +110,17 @@ check_and_dump_old_cluster(bool live_check)
 	 * 	2. New cluster does not have any users
 	 */
 	check_is_install_user(&old_cluster);
-	#endif
+#endif
 	check_proper_datallowconn(&old_cluster);
 	if (!is_yugabyte_enabled())
-	{
 		/* Yugabyte does not support prepared transactions, see #1125 */
 		check_for_prepared_transactions(&old_cluster);
-	}
 	check_for_composite_data_type_usage(&old_cluster);
 	check_for_reg_data_type_usage(&old_cluster);
-	#ifdef YB_TODO
+#ifdef YB_TODO
 	/* Enable this check when contrib directory is enabled in build_postgres.py */
 	check_for_isn_and_int8_passing_mismatch(&old_cluster);
-	#endif
+#endif
 
 	/*
 	 * PG 14 changed the function signature of encoding conversion functions.
@@ -133,16 +128,13 @@ check_and_dump_old_cluster(bool live_check)
 	 * because the user-defined functions used by the encoding conversions
 	 * need to be changed to match the new signature.
 	 */
-	if (!is_yugabyte_enabled())
-	{
+	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 1300)
 		/* 
 		 * CREATE CONVERSION is not supported by YB,
 		 * cannot have user-defined encoding conversions.
 		 */
-		if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1300)
-			check_for_user_defined_encoding_conversions(&old_cluster);
-	}
-	
+		check_for_user_defined_encoding_conversions(&old_cluster);
+
 	/*
 	 * Pre-PG 14 allowed user defined postfix operators, which are not
 	 * supported anymore.  Verify there are none, iff applicable.
@@ -161,11 +153,11 @@ check_and_dump_old_cluster(bool live_check)
 	 * Pre-PG 12 allowed tables to be declared WITH OIDS, which is not
 	 * supported anymore. Verify there are none, iff applicable.
 	 */
-	#ifdef YB_TODO
+#ifdef YB_TODO
 	/* Investigate/implement this check */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1100)
 		check_for_tables_with_oids(&old_cluster);
-	#endif
+#endif
 
 	/*
 	 * PG 12 changed the 'sql_identifier' type storage to be based on name,
@@ -179,34 +171,29 @@ check_and_dump_old_cluster(bool live_check)
 	 * Pre-PG 10 allowed tables with 'unknown' type columns and non WAL logged
 	 * hash indexes
 	 */
-	if (!is_yugabyte_enabled())
+	/* These checks are irrelevant for Yugabyte (Pre-PG11 checks) */
+	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 906)
 	{
-		/* These checks are irrelevant for Yugabyte (Pre-PG11 checks) */
-		if (GET_MAJOR_VERSION(old_cluster.major_version) <= 906)
-		{
-			old_9_6_check_for_unknown_data_type_usage(&old_cluster);
-			if (user_opts.check)
-				old_9_6_invalidate_hash_indexes(&old_cluster, true);
-		}
-	
-		/* 9.5 and below should not have roles starting with pg_ */
-		if (GET_MAJOR_VERSION(old_cluster.major_version) <= 905)
-			check_for_pg_role_prefix(&old_cluster);
-
-		if (GET_MAJOR_VERSION(old_cluster.major_version) == 904 &&
-			old_cluster.controldata.cat_ver < JSONB_FORMAT_CHANGE_CAT_VER)
-			check_for_jsonb_9_4_usage(&old_cluster);
-
-		/* Pre-PG 9.4 had a different 'line' data type internal format */
-		if (GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
-			old_9_3_check_for_line_data_type_usage(&old_cluster);
+		old_9_6_check_for_unknown_data_type_usage(&old_cluster);
+		if (user_opts.check)
+			old_9_6_invalidate_hash_indexes(&old_cluster, true);
 	}
+
+	/* 9.5 and below should not have roles starting with pg_ */
+	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 905)
+		check_for_pg_role_prefix(&old_cluster);
+
+	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) == 904 &&
+		old_cluster.controldata.cat_ver < JSONB_FORMAT_CHANGE_CAT_VER)
+		check_for_jsonb_9_4_usage(&old_cluster);
+
+	/* Pre-PG 9.4 had a different 'line' data type internal format */
+	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
+		old_9_3_check_for_line_data_type_usage(&old_cluster);
 
 	/* Yugabyte checks */
 	if (is_yugabyte_enabled())
-	{
 		yb_check_system_databases_exist(&old_cluster);
-	}
 
 	/*
 	 * While not a check option, we do this now because this is the only time
@@ -215,11 +202,8 @@ check_and_dump_old_cluster(bool live_check)
 	if (!user_opts.check)
 		generate_old_dump();
 
-	if (!is_yugabyte_enabled())
-	{
-		if (!live_check)
-			stop_postmaster(false);
-	}
+	if (!is_yugabyte_enabled() && !live_check)
+		stop_postmaster(false);
 }
 
 
@@ -245,10 +229,10 @@ check_new_cluster(void)
 			break;
 	}
 
-	#ifdef YB_TODO
+#ifdef YB_TODO
 	/* Investigate/implement this check */
 	check_is_install_user(&new_cluster);
-	#endif
+#endif
 	check_for_prepared_transactions(&new_cluster);
 
 	check_for_new_tablespace_dir(&new_cluster);
@@ -377,11 +361,10 @@ check_cluster_compatibility(bool live_check)
 {
 	/* get/check pg_control data of servers */
 	get_control_data(&old_cluster, live_check);
-	get_control_data(&new_cluster, live_check);
+	get_control_data(&new_cluster, false);
 	check_control_data(&old_cluster.controldata, &new_cluster.controldata);
 
-	/* This check is irrelevant for YB */
-	if (!is_yugabyte_enabled() && live_check && old_cluster.port == new_cluster.port)
+	if (live_check && old_cluster.port == new_cluster.port)
 		pg_fatal("When checking a live server, "
 				 "the old and new port numbers must be different.\n");
 }

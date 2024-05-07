@@ -416,13 +416,13 @@ check_bin_dir(ClusterInfo *cluster, bool check_versions)
 		check_exec(cluster->bindir, "ysql_dump", check_versions);
 		check_exec(cluster->bindir, "ysql_dumpall", check_versions);
 		check_exec(cluster->bindir, "pg_restore", check_versions);
-		#ifdef YB_TODO
+#ifdef YB_TODO
 		/* Make this version check work (ysqlsh -V returns psql, name mismatch) */
 		if (is_yugabyte_enabled())
 			check_exec(cluster->bindir, "ysqlsh", check_versions);
 		else
 			check_exec(cluster->bindir, "psql", check_versions);
-		#endif
+#endif
 		check_exec(cluster->bindir, "vacuumdb", check_versions);
 	}
 }

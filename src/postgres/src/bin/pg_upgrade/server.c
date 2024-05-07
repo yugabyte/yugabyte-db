@@ -68,10 +68,10 @@ get_db_conn(ClusterInfo *cluster, const char *db_name)
 	appendPQExpBuffer(&conn_opts, " port=%d", cluster->port);
 	if (is_yugabyte_enabled())
 	{
-		if (cluster->hostaddr)
+		if (cluster->yb_hostaddr)
 		{
 			appendPQExpBufferStr(&conn_opts, " host=");
-			appendConnStrVal(&conn_opts, cluster->hostaddr);
+			appendConnStrVal(&conn_opts, cluster->yb_hostaddr);
 		}
 	}
 	else
@@ -111,10 +111,10 @@ cluster_conn_opts(ClusterInfo *cluster)
 
 	if (is_yugabyte_enabled())
 	{
-		if (cluster->hostaddr)
+		if (cluster->yb_hostaddr)
 		{
 			appendPQExpBufferStr(buf, "--host ");
-			appendShellString(buf, cluster->hostaddr);
+			appendShellString(buf, cluster->yb_hostaddr);
 			appendPQExpBufferChar(buf, ' ');
 		}
 	}

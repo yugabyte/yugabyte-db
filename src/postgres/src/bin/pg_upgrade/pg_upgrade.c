@@ -78,10 +78,10 @@ char	   *output_files[] = {
 int
 main(int argc, char **argv)
 {
-	#ifdef YB_TODO
+#ifdef YB_TODO
 	/* Unused variable due to later YB_TODO create_script_for_old_cluster_deletion */
 	char	   *deletion_script_file_name = NULL;
-	#endif
+#endif
 	bool		live_check = false;
 
 	pg_logging_init(argv[0]);
@@ -161,10 +161,10 @@ main(int argc, char **argv)
 	if (!is_yugabyte_enabled())
 		start_postmaster(&new_cluster, true);
 
-	#ifdef YB_TODO
+#ifdef YB_TODO
 	/* Investigate relevant checks within check_new_cluster */
 	check_new_cluster();
-	#endif
+#endif
 	report_clusters_compatible();
 
 	pg_log(PG_REPORT,
@@ -182,7 +182,7 @@ main(int argc, char **argv)
 	/*
 	 * Destructive Changes to New Cluster
 	 */
-	#ifdef YB_TODO
+#ifdef YB_TODO
 	/* Investigate these functions for setting up node */
 	copy_xact_xlog_xid();
 
@@ -192,14 +192,14 @@ main(int argc, char **argv)
 	start_postmaster(&new_cluster, true);
 
 	prepare_new_globals();
-	#endif
+#endif
 
 	create_new_objects();
 
 	if (!is_yugabyte_enabled())
 		stop_postmaster(false);
 
-	#ifdef YB_TODO
+#ifdef YB_TODO
 	/* Investigate these functions being executed after pg_restore is done */
 	/*
 	 * Most failures happen in create_new_objects(), which has completed at
@@ -249,7 +249,7 @@ main(int argc, char **argv)
 	pg_free(deletion_script_file_name);
 
 	cleanup_output_dirs();
-	#endif
+#endif
 	return 0;
 }
 
@@ -350,10 +350,10 @@ setup(char *argv0, bool *live_check)
 	 * make sure the user has a clean environment, otherwise, we may confuse
 	 * libpq when we connect to one (or both) of the servers.
 	 */
-	#ifdef YB_TODO 
+#ifdef YB_TODO 
 	/* Investigate/implement this check */
 	check_pghost_envvar();
-	#endif
+#endif
 
 	/*
 	 * In case the user hasn't specified the directory for the new binaries
@@ -477,7 +477,7 @@ create_new_objects(void)
 	 * because when it's transiently dropped, connection attempts would fail.
 	 * So handle it in a separate non-parallelized pass.
 	 */
-	#ifdef YB_TODO
+#ifdef YB_TODO
 	/* 
 	 * Fix template1 restore, currently throws 
 	 *   UPDATE pg_catalog.pg_database SET datistemplate = false WHERE datname = 'template1';
@@ -519,7 +519,7 @@ create_new_objects(void)
 
 		break;					/* done once we've processed template1 */
 	}
-	#endif
+#endif
 
 	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
 	{
@@ -528,13 +528,11 @@ create_new_objects(void)
 		DbInfo	   *old_db = &old_cluster.dbarr.dbs[dbnum];
 		const char *create_opts;
 
-		#ifdef YB_TODO
 		/*
-		 * Remove this when dumping all databases, currently only dumping 
-		 * yugabyte. Do not remove the skip template1, that is from postgres 
+		 * YB_TODO: Remove this when dumping all databases, currently only
+		 * dumping yugabyte. Do not remove the skip template1, that's from
+		 * upstream postgres.
 		 */
-		#endif
-
 		if (strcmp(old_db->db_name, "yugabyte") != 0)
 			continue;
 
