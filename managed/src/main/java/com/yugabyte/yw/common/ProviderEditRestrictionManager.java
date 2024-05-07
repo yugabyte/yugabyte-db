@@ -278,7 +278,7 @@ public class ProviderEditRestrictionManager {
   }
 
   protected boolean isEnabled() {
-    return runtimeConfGetter.getGlobalConf(GlobalConfKeys.editProviderNewEnabled);
+    return true;
   }
 
   public boolean isAllowAutoTasksBeforeEdit() {
