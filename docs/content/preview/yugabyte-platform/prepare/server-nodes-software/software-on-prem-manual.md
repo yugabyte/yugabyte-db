@@ -585,7 +585,7 @@ You can install systemd-specific database service unit files, as follows:
 On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle Enterprise Linux 8.x, Amazon Linux 2), additionally, add the following line to `/etc/systemd/system.conf` and `/etc/systemd/user.conf`:
 
 ```sh
-DefaultLimitNOFILE=1048576 
+DefaultLimitNOFILE=1048576
 ```
 
 You must reboot the system for these two settings to take effect.
@@ -602,7 +602,7 @@ To install the YugabyteDB node agent manually, as the `yugabyte` user, do the fo
 
 1. If you are re-provisioning the node (for example, you are [patching the Linux operating system](../../../manage-deployments/upgrade-nodes/), where node agent has previously been installed on the node), you need to [unregister the node agent](#unregister-node-agent) before installing node agent.
 
-1. Download the installer from YugabyteDB Anywhere using the [API token](../../../anywhere-automation/#authentication) of the Super Admin, as follows:
+1. Download the installer using the YugabyteDB Anywhere [API token](../../../anywhere-automation/#authentication) of the Super Admin. Run the following command from your YugabyteDB nodes:
 
     ```sh
     curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
