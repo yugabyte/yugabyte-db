@@ -19,7 +19,6 @@ import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.SupportBundleStatus;
-import io.yugabyte.operator.v1alpha1.SupportBundleStatus.Status;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
@@ -76,6 +75,17 @@ public class SupportBundleReconciler
 
   @Override
   public void onAdd(io.yugabyte.operator.v1alpha1.SupportBundle bundle) {
+    try {
+      onAddInternal(bundle);
+    } catch (Exception e) {
+      log.error("Failed to add support bundle", e);
+      UUID uuid = new UUID(0, 0);
+      markStatus(bundle, SupportBundleStatus.Status.FAILED, uuid);
+      return;
+    }
+  }
+
+  public void onAddInternal(io.yugabyte.operator.v1alpha1.SupportBundle bundle) {
     if (bundle.getStatus() != null && bundle.getStatus().getResourceUUID() != null) {
       // TODO: If we hit this path due to a YBA restart, the bundle won't have its final status
       // update. We need a better way of plugging in the 'status update' function into the tasks.
@@ -136,7 +146,7 @@ public class SupportBundleReconciler
       return;
     }
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
-    markStatusGenerating(bundle, supportBundle.getBundleUUID());
+    markStatus(bundle, SupportBundleStatus.Status.GENERATING, supportBundle.getBundleUUID());
     SupportBundleTaskParams taskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);
     taskParams.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(bundle));
@@ -149,8 +159,6 @@ public class SupportBundleReconciler
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.CreateSupportBundle,
         universe.getName());
-
-    taskExecutor.waitForTask(taskUUID);
   }
 
   @Override
@@ -162,6 +170,16 @@ public class SupportBundleReconciler
 
   @Override
   public void onDelete(
+      io.yugabyte.operator.v1alpha1.SupportBundle bundle, boolean deletedFinalStateUnknown) {
+    try {
+      onDeleteInternal(bundle, deletedFinalStateUnknown);
+    } catch (Exception e) {
+      log.error("Failed to delete support bundle", e);
+      return;
+    }
+  }
+
+  public void onDeleteInternal(
       io.yugabyte.operator.v1alpha1.SupportBundle bundle, boolean deletedFinalStateUnknown) {
     UUID bundleUUID = UUID.fromString(bundle.getStatus().getResourceUUID());
     SupportBundle supportBundle = SupportBundle.get(bundleUUID);
@@ -176,13 +194,15 @@ public class SupportBundleReconciler
     supportBundleUtil.deleteFile(supportBundle.getPathObject());
   }
 
-  private void markStatusGenerating(io.yugabyte.operator.v1alpha1.SupportBundle bundle, UUID uuid) {
+  private void markStatus(
+      io.yugabyte.operator.v1alpha1.SupportBundle bundle,
+      SupportBundleStatus.Status statusEnum,
+      UUID uuid) {
     SupportBundleStatus bundleStatus = bundle.getStatus();
     if (bundleStatus == null) {
       bundleStatus = new SupportBundleStatus();
     }
-    bundleStatus.setStatus(Status.GENERATING);
-    bundleStatus.setResourceUUID(uuid.toString());
+    bundleStatus.setStatus(statusEnum);
     bundle.setStatus(bundleStatus);
     resourceClient.inNamespace(namespace).resource(bundle).replaceStatus();
   }
