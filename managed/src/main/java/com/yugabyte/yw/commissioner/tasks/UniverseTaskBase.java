@@ -2634,6 +2634,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.azUuid = node.azUuid;
     params.instanceType = currentInstanceType;
     params.deviceInfo = currentDeviceInfo;
+    if (StringUtils.isNotEmpty(node.machineImage)) {
+      params.machineImage = node.machineImage;
+    }
 
     UpdateMountedDisks updateMountedDisksTask = createTask(UpdateMountedDisks.class);
     updateMountedDisksTask.initialize(params);
