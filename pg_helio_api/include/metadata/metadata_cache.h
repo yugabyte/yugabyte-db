@@ -276,6 +276,7 @@ Oid BsonFirstNAggregateFunctionOid(void);
 Oid BsonFirstNOnSortedAggregateFunctionOid(void);
 Oid BsonLastNAggregateFunctionOid(void);
 Oid BsonLastNOnSortedAggregateFunctionOid(void);
+Oid BsonAddToSetAggregateFunctionOid(void);
 Oid PostgresAnyValueFunctionOid(void);
 Oid BsonLookupExtractFilterExpressionFunctionOid(void);
 Oid HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid(void);

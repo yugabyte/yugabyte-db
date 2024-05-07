@@ -1,0 +1,315 @@
+SET search_path TO helio_api,helio_core,helio_api_catalog;
+SET citus.next_shard_id TO 12200;
+SET helio_api.next_collection_id TO 12200;
+SET helio_api.next_collection_index_id TO 12200;
+SELECT helio_api.insert_one('db','sales',' { "_id" : 1, "item" : "almonds", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 2, "year": 2020 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','sales','{ "_id" : 2, "item" : "pecans", "pricing" : { "wholesale": 10, "retail": 9 }, "quantity" : 1, "year": 2021 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','sales',' { "_id" : 3, "item" : "bread", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 5 , "year": 2020}', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','sales',' { "_id" : 4, "item" : "meat", "pricing" : { "wholesale": 4, "retail": 10 }, "quantity" : 3 , "year": 2022}', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','sales','{ "_id" : 5, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','sales','{ "_id" : 6, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','sales','{ "_id" : 7, "item" : "bread", "pricing" : { "retail": 15, "wholesale": 10 }, "quantity" : 1, "year": 2020 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* running multiple $addToSet accumulators with different expressions */
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": { "item" : "$item" } } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "itemsSold" : [ { "item" : "almonds" }, { "item" : "bread" } ] }
+ { "_id" : { "$numberInt" : "2021" }, "itemsSold" : [ { "item" : "bread" }, { "item" : "pecans" } ] }
+ { "_id" : { "$numberInt" : "2022" }, "itemsSold" : [ { "item" : "meat" } ] }
+(3 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
+                                  document                                   
+-----------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "itemsSold" : [ "almonds", "bread" ] }
+ { "_id" : { "$numberInt" : "2021" }, "itemsSold" : [ "pecans", "bread" ] }
+ { "_id" : { "$numberInt" : "2022" }, "itemsSold" : [ "meat" ] }
+(3 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
+                                                                                                         document                                                                                                         
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "10" }, "retail" : { "$numberInt" : "15" } }, { "retail" : { "$numberInt" : "15" }, "wholesale" : { "$numberInt" : "10" } } ] }
+ { "_id" : { "$numberInt" : "2021" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "75" }, "retail" : { "$numberInt" : "100" } }, { "wholesale" : { "$numberInt" : "10" }, "retail" : { "$numberInt" : "9" } } ] }
+ { "_id" : { "$numberInt" : "2022" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "4" }, "retail" : { "$numberInt" : "10" } } ] }
+(3 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
+                                                   document                                                   
+--------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "retailPrices" : [ { "$numberInt" : "15" } ] }
+ { "_id" : { "$numberInt" : "2021" }, "retailPrices" : [ { "$numberInt" : "9" }, { "$numberInt" : "100" } ] }
+ { "_id" : { "$numberInt" : "2022" }, "retailPrices" : [ { "$numberInt" : "10" } ] }
+(3 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+                             document                             
+------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "retailPrices" : [ null ] }
+ { "_id" : { "$numberInt" : "2021" }, "retailPrices" : [ null ] }
+ { "_id" : { "$numberInt" : "2022" }, "retailPrices" : [ null ] }
+(3 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": { "item" : "$item" } } } } ] }');
+                                                                                                                      QUERY PLAN                                                                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'itemsSold'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : { "item" : "$item" } }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_12200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
+                                                                                                                QUERY PLAN                                                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'itemsSold'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$item" }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_12200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
+                                                                                                                   QUERY PLAN                                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'pricingDeals'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$pricing" }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_12200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
+                                                                                                                      QUERY PLAN                                                                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'retailPrices'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$pricing.retail" }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_12200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+                                                                                                                   QUERY PLAN                                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'retailPrices'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$noValue" }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_12200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+/* running $addToSet with document that exceeds 16MB */
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "c": 5 MB - ~5.5 MB & there's 25 of them
+FOR i IN 1..25 LOOP
+PERFORM helio_api.insert_one('db', 'sizes_test', FORMAT('{ "_id": %s, "groupName": "A", "c": [ %s "d" ] }', i, repeat('"' || i || repeat('a', 1000) || '", ', 5000))::helio_core.bson);
+END LOOP;
+END;
+$$;
+NOTICE:  creating collection
+/* should fail with intermediate size error */
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sizes_test", "pipeline": [ { "$group": { "_id": "$groupName", "data": { "$addToSet": "$c" } } } ] }');
+ERROR:  Size 106297194 is larger than maximum size allowed for an intermediate document 104857600
+/* shard collection */
+SELECT helio_api.shard_collection('db', 'sales', '{ "_id": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+/* run same $addToSet queries to ensure consistency */
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": { "item" : "$item" } } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "itemsSold" : [ { "item" : "almonds" }, { "item" : "bread" } ] }
+ { "_id" : { "$numberInt" : "2021" }, "itemsSold" : [ { "item" : "bread" }, { "item" : "pecans" } ] }
+ { "_id" : { "$numberInt" : "2022" }, "itemsSold" : [ { "item" : "meat" } ] }
+(3 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
+                                  document                                   
+-----------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "itemsSold" : [ "almonds", "bread" ] }
+ { "_id" : { "$numberInt" : "2021" }, "itemsSold" : [ "pecans", "bread" ] }
+ { "_id" : { "$numberInt" : "2022" }, "itemsSold" : [ "meat" ] }
+(3 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
+                                                                                                         document                                                                                                         
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "10" }, "retail" : { "$numberInt" : "15" } }, { "retail" : { "$numberInt" : "15" }, "wholesale" : { "$numberInt" : "10" } } ] }
+ { "_id" : { "$numberInt" : "2021" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "75" }, "retail" : { "$numberInt" : "100" } }, { "wholesale" : { "$numberInt" : "10" }, "retail" : { "$numberInt" : "9" } } ] }
+ { "_id" : { "$numberInt" : "2022" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "4" }, "retail" : { "$numberInt" : "10" } } ] }
+(3 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
+                                                   document                                                   
+--------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "retailPrices" : [ { "$numberInt" : "15" } ] }
+ { "_id" : { "$numberInt" : "2021" }, "retailPrices" : [ { "$numberInt" : "9" }, { "$numberInt" : "100" } ] }
+ { "_id" : { "$numberInt" : "2022" }, "retailPrices" : [ { "$numberInt" : "10" } ] }
+(3 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+                             document                             
+------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "retailPrices" : [ null ] }
+ { "_id" : { "$numberInt" : "2021" }, "retailPrices" : [ null ] }
+ { "_id" : { "$numberInt" : "2022" }, "retailPrices" : [ null ] }
+(3 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": { "item" : "$item" } } } } ] }');
+                                                                                                                      QUERY PLAN                                                                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'itemsSold'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : { "item" : "$item" } }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+               ->  Seq Scan on helio_data.documents_12200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+(10 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
+                                                                                                                QUERY PLAN                                                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'itemsSold'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$item" }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+               ->  Seq Scan on helio_data.documents_12200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+(10 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
+                                                                                                                   QUERY PLAN                                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'pricingDeals'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$pricing" }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+               ->  Seq Scan on helio_data.documents_12200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+(10 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
+                                                                                                                      QUERY PLAN                                                                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'retailPrices'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$pricing.retail" }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+               ->  Seq Scan on helio_data.documents_12200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+(10 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+                                                                                                                   QUERY PLAN                                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'retailPrices'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$noValue" }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
+               ->  Seq Scan on helio_data.documents_12200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+(10 rows)
+

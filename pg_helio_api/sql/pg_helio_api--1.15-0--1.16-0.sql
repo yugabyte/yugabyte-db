@@ -27,4 +27,7 @@ SET search_path TO helio_api;
 #include "operators/bson_dollar_negation_operators--1.16-0.sql"
 #include "schema/index_operator_classes_negation--1.16-0.sql"
 
+#include "udfs/aggregation/group_aggregates_support--1.16-0.sql"
+#include "udfs/aggregation/group_aggregates--1.16-0.sql"
+
 RESET search_path;

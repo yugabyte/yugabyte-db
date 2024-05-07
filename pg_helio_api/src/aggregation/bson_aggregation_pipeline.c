@@ -169,7 +169,7 @@ static bool CanInlineLookupStageUnwind(const bson_value_t *stageValue, const
 static bool CanInlineLookupStageTrue(const bson_value_t *stageValue, const
 									 StringView *lookupPath);
 
-extern bool EnableGroupPushSupport;
+extern bool EnableGroupAddToSetSupport;
 
 /* Stages and their definitions sorted by name.
  * Please keep this list sorted.
@@ -3651,8 +3651,23 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$addToSet"))
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
-							errmsg("Accumulator $addToSet not implemented yet")));
+			if (IsClusterVersionAtleastThis(1, 16, 0) ||
+				(EnableGroupAddToSetSupport && IsClusterVersionAtleastThis(1, 14, 7) &&
+				 !IsClusterVersionAtleastThis(1, 16, 0)))
+			{
+				repathArgs = AddSimpleGroupAccumulator(query,
+													   &accumulatorElement.bsonValue,
+													   repathArgs,
+													   accumulatorText, parseState,
+													   identifiers,
+													   origEntry->expr,
+													   BsonAddToSetAggregateFunctionOid());
+			}
+			else
+			{
+				ereport(ERROR, (errcode(MongoCommandNotSupported),
+								errmsg("Accumulator $addToSet not implemented yet")));
+			}
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$mergeObjects"))
 		{

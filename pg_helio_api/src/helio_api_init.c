@@ -227,6 +227,9 @@ int32 MaxIndexesPerCollection = DEFAULT_MAX_INDEXES_PER_COLLECTION;
 #define DEFAULT_ENABLE_PUSH_SUPPORT false
 bool EnableGroupPushSupport = DEFAULT_ENABLE_PUSH_SUPPORT;
 
+#define DEFAULT_ENABLE_ADD_TO_SET_SUPPORT false
+bool EnableGroupAddToSetSupport = DEFAULT_ENABLE_ADD_TO_SET_SUPPORT;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -599,6 +602,12 @@ InitApiConfigurations(char *prefix)
 		NULL, &EnableNewOperatorSelectivityMode,
 		DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY,
 		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableGroupAddToSetSupport",
+		gettext_noop("Feature flag for the group addToSet support"), NULL,
+		&EnableGroupAddToSetSupport, DEFAULT_ENABLE_ADD_TO_SET_SUPPORT, PGC_USERSET, 0,
+		NULL, NULL, NULL);
 }
 
 

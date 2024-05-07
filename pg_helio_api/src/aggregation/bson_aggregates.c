@@ -20,7 +20,7 @@
 #include "metadata/collection.h"
 #include "commands/insert.h"
 #include "sharding/sharding.h"
-
+#include "utils/hashset_utils.h"
 
 /* --------------------------------------------------------- */
 /* Data-types */
@@ -44,6 +44,12 @@ typedef struct BsonObjectAggState
 	pgbson_writer writer;
 	int64_t currentSizeWritten;
 } BsonObjectAggState;
+
+typedef struct BsonAddToSetState
+{
+	HTAB *set;
+	int64_t currentSizeWritten;
+} BsonAddToSetState;
 
 typedef struct BsonOutAggregateState
 {
@@ -109,6 +115,8 @@ PG_FUNCTION_INFO_V1(bson_object_agg_transition);
 PG_FUNCTION_INFO_V1(bson_object_agg_final);
 PG_FUNCTION_INFO_V1(bson_out_transition);
 PG_FUNCTION_INFO_V1(bson_out_final);
+PG_FUNCTION_INFO_V1(bson_add_to_set_transition);
+PG_FUNCTION_INFO_V1(bson_add_to_set_final);
 
 Datum
 bson_out_transition(PG_FUNCTION_ARGS)
@@ -1078,6 +1086,123 @@ bson_build_distinct_response(PG_FUNCTION_ARGS)
 	PgbsonWriterAppendDouble(&writer, "ok", 2, 1);
 
 	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+}
+
+
+/*
+ * Transition function for the BSON_ADD_TO_SET aggregate.
+ */
+Datum
+bson_add_to_set_transition(PG_FUNCTION_ARGS)
+{
+	BsonAddToSetState *currentState = { 0 };
+	bytea *bytes;
+	MemoryContext aggregateContext;
+	if (!AggCheckCallContext(fcinfo, &aggregateContext))
+	{
+		ereport(ERROR, errmsg("aggregate function called in non-aggregate context"));
+	}
+
+	/* Create the aggregate state in the aggregate context. */
+	MemoryContext oldContext = MemoryContextSwitchTo(aggregateContext);
+
+	/* If the intermediate state has never been initialized, create it */
+	if (PG_ARGISNULL(0)) /* First arg is the running aggregated state*/
+	{
+		int bson_size = sizeof(BsonAddToSetState) + VARHDRSZ;
+		bytea *combinedStateBytes = (bytea *) palloc0(bson_size);
+		SET_VARSIZE(combinedStateBytes, bson_size);
+		bytes = combinedStateBytes;
+
+		currentState = (BsonAddToSetState *) VARDATA(bytes);
+		currentState->currentSizeWritten = 0;
+		currentState->set = CreateBsonValueHashSet();
+	}
+	else
+	{
+		bytes = PG_GETARG_BYTEA_P(0);
+		currentState = (BsonAddToSetState *) VARDATA_ANY(bytes);
+	}
+
+	pgbson *currentValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
+	if (currentValue != NULL)
+	{
+		CheckAggregateIntermediateResultSize(currentState->currentSizeWritten +
+											 PgbsonGetBsonSize(currentValue));
+
+		/*
+		 * We need to copy the whole pgbson because otherwise the pointers we store
+		 * in the hash table will reference an address in the stack. These are released
+		 * after the function resolves and will point to garbage.
+		 */
+		currentValue = PgbsonCloneFromPgbson(currentValue);
+		pgbsonelement singleBsonElement;
+
+		/* If it's a bson that's { "": value } */
+		if (TryGetSinglePgbsonElementFromPgbson(currentValue, &singleBsonElement) &&
+			singleBsonElement.pathLength == 0)
+		{
+			bool found = false;
+			hash_search(currentState->set, &singleBsonElement.bsonValue,
+						HASH_ENTER, &found);
+
+			/*
+			 * If the BSON was not found in the hash table, add its size to the current
+			 * state object.
+			 */
+			if (!found)
+			{
+				currentState->currentSizeWritten += PgbsonGetBsonSize(currentValue);
+			}
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoInternalError),
+							errmsg("Bad input format for addToSet transition.")));
+		}
+	}
+
+	MemoryContextSwitchTo(oldContext);
+	PG_RETURN_POINTER(bytes);
+}
+
+
+/*
+ * Final function for the BSON_ADD_TO_SET aggregate.
+ */
+Datum
+bson_add_to_set_final(PG_FUNCTION_ARGS)
+{
+	bytea *currentState = PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0);
+	if (currentState != NULL)
+	{
+		BsonAddToSetState *state = (BsonAddToSetState *) VARDATA_ANY(
+			currentState);
+
+		HASH_SEQ_STATUS seq_status;
+		const bson_value_t *entry;
+		hash_seq_init(&seq_status, state->set);
+
+		pgbson_writer writer;
+		PgbsonWriterInit(&writer);
+
+		pgbson_array_writer arrayWriter;
+		PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
+
+		while ((entry = hash_seq_search(&seq_status)) != NULL)
+		{
+			PgbsonArrayWriterWriteValue(&arrayWriter, entry);
+		}
+
+		hash_destroy(state->set);
+		PgbsonWriterEndArray(&writer, &arrayWriter);
+
+		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+	}
+	else
+	{
+		PG_RETURN_NULL();
+	}
 }
 
 

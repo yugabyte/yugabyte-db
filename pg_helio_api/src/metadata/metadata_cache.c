@@ -609,6 +609,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the BSONLASTN aggregate function */
 	Oid ApiCatalogBsonLastNAggregateFunctionOid;
 
+	/* OID of the bson_add_to_set function. */
+	Oid ApiCatalogBsonAddToSetAggregateFunctionOid;
+
 	/* OID of the bson_repath_and_build function */
 	Oid ApiCatalogBsonRepathAndBuildFunctionOid;
 
@@ -2925,6 +2928,14 @@ BsonLastNOnSortedAggregateFunctionOid(void)
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonLastNOnSortedAggregateFunctionOid,
 		ApiCatalogSchemaName, "bsonlastnonsorted");
+}
+
+
+Oid
+BsonAddToSetAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonAddToSetAggregateFunctionOid,
+									  "helio_api_internal", "bson_add_to_set");
 }
 
 

@@ -205,3 +205,4 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_add_to_set_final(bytea)
  LANGUAGE c
  STABLE
 AS 'MODULE_PATHNAME', $function$bson_add_to_set_final$function$;
+

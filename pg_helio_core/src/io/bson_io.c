@@ -443,7 +443,7 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		if (StringViewContains(&pathView, '.'))
 		{
 			/* Paths here cannot be dotted paths */
-			ereport(ERROR, (errcode(MongoDottedFieldName),
+			ereport(ERROR, (errcode(MongoLocation40235),
 							errmsg("The field name %.*s cannot contain '.'", len, path)));
 		}
 
@@ -459,7 +459,7 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		{
 			PgbsonWriterAppendNull(&writer, path, len);
 		}
-		else if (types[i + 1] == BsonTypeId())
+		else if (types[i + 1] == BsonTypeId() || types[i + 1] == HelioCoreBsonTypeId())
 		{
 			pgbsonelement elem;
 			if (TryGetSinglePgbsonElementFromPgbson(DatumGetPgBson(args[i + 1]), &elem))
