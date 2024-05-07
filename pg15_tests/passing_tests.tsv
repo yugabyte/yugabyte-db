@@ -3,11 +3,6 @@ JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOn
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionBeforeAlterOnCurrentResource
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testMultipleDmlTransactionWithAlterOnCurrentResource
 JAVA	org.yb.pgsql.TestBatchCopyFrom
-JAVA	org.yb.pgsql.TestBatchCopyFrom#testNonTxnWriteSessionVariable
-JAVA	org.yb.pgsql.TestHdr#testHdrRange
-JAVA	org.yb.pgsql.TestHdr#testMinMaxSleeps
-JAVA	org.yb.pgsql.TestHdr#testMinMaxSleepsBF8
-JAVA	org.yb.pgsql.TestHdr#testPgRegressPercentile
 JAVA	org.yb.pgsql.TestIndexBackfill#insertsWhileCreatingIndex
 JAVA	org.yb.pgsql.TestJWTAuth
 JAVA	org.yb.pgsql.TestPg15Regress
@@ -60,7 +55,6 @@ JAVA	org.yb.pgsql.TestPgRegressMatview
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy
 JAVA	org.yb.pgsql.TestPgRegressPgMisc
-JAVA	org.yb.pgsql.TestPgRegressPgStatStatements
 JAVA	org.yb.pgsql.TestPgRegressProc
 JAVA	org.yb.pgsql.TestPgRegressPublication
 JAVA	org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown

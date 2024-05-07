@@ -416,12 +416,12 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
 
   // Gather the default extensions:
   vector<string> metricsLibs;
-  if (FLAGS_pg_stat_statements_enabled) {
-    metricsLibs.push_back("pg_stat_statements");
-  }
 #ifdef YB_TODO
   // Enabling this block throws FATAL:  could not access file "<extension name>": No such file or
   // directory error.
+  if (FLAGS_pg_stat_statements_enabled) {
+    metricsLibs.push_back("pg_stat_statements");
+  }
   metricsLibs.push_back("pgaudit");
 #endif
   metricsLibs.push_back("yb_pg_metrics");

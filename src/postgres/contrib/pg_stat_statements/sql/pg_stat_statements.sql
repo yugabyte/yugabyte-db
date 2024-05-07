@@ -1,3 +1,4 @@
+DROP EXTENSION IF EXISTS pg_stat_statements;
 CREATE EXTENSION pg_stat_statements;
 
 --
@@ -272,7 +273,6 @@ DROP FUNCTION PLUS_TWO(INTEGER);
 
 SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
 
---
 -- Track the total number of rows retrieved or affected by the utility
 -- commands of COPY, FETCH, CREATE TABLE AS, CREATE MATERIALIZED VIEW,
 -- REFRESH MATERIALIZED VIEW and SELECT INTO
@@ -465,3 +465,15 @@ SELECT (
 SELECT COUNT(*) FROM pg_stat_statements WHERE query LIKE '%SELECT GROUPING%';
 
 DROP EXTENSION pg_stat_statements;
+
+--
+-- create / alter user
+--
+SELECT pg_stat_statements_reset();
+CREATE USER foo PASSWORD 'fooooooo';
+ALTER USER foo PASSWORD 'foo2';
+CREATE ROLE fizzbuzz PASSWORD 'barrr';
+ALTER ROLE fizzbuzz PASSWORD 'barrr2';
+SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
+DROP USER foo;
+DROP ROLE fizzbuzz;
