@@ -909,7 +909,23 @@
             "indexSize": "Total Index Size",
             "totalSize": "Total Size",
             "rowCount": "Table Row Count",
-            "viewSourceObjects": "View Source Objects"
+            "viewSourceObjects": "View Source Objects",
+            "viewDetails": "View Details",
+            "sourceObjects": {
+              "heading": "Source Objects",
+              "totalObjects": "Total Objects",
+              "sequenceCount": "Sequence Count",
+              "tableCount":"Table Count",
+              "indexCount": "Index Count",
+              "functionCount": "Function Count",
+              "type": "Type",
+              "search":"Search",
+              "searchPlaceholder": "Search object name",
+              "objectName": "Object Name",
+              "size": "Size",
+              "rowCount": "Row Count",
+              "iops": "IOPS"
+            }
           },
           "recommendation": {
             "heading": "Recommendation",

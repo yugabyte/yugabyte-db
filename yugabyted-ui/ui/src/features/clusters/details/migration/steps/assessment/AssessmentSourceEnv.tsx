@@ -1,17 +1,9 @@
 import React, { FC } from "react";
-import {
-  Box,
-  Divider,
-  Grid,
-  MenuItem,
-  Paper,
-  Typography,
-  makeStyles,
-  useTheme,
-} from "@material-ui/core";
+import { Box, Divider, Grid, Paper, Typography, makeStyles, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBDropdown, YBTooltip } from "@app/components";
-import MoreIcon from "@app/assets/more-horizontal.svg";
+import { YBButton, YBTooltip } from "@app/components";
+import CaretRightIcon from "@app/assets/Drilldown.svg";
+import { MigrationSourceObjects } from "./AssessmentSourceObjects";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -63,6 +55,8 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
   const { t } = useTranslation();
   const theme = useTheme();
 
+  const [showSourceObjects, setShowSourceObjects] = React.useState<boolean>(false);
+
   return (
     <Paper>
       <Box px={2} py={3}>
@@ -81,11 +75,13 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
             </Box>
           </Box>
 
-          <YBDropdown origin={<MoreIcon />} className={classes.pointer}>
-            <MenuItem>
-              {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewSourceObjects")}
-            </MenuItem>
-          </YBDropdown>
+          <YBButton
+            variant="ghost"
+            startIcon={<CaretRightIcon />}
+            onClick={() => setShowSourceObjects(true)}
+          >
+            {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewDetails")}
+          </YBButton>
         </Box>
 
         <Grid container spacing={4}>
@@ -163,6 +159,11 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
           </Grid>
         </Grid>
       </Box>
+
+      <MigrationSourceObjects
+        open={showSourceObjects}
+        onClose={() => setShowSourceObjects(false)}
+      />
     </Paper>
   );
 };
