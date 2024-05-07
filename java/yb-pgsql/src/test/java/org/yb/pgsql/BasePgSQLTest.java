@@ -169,6 +169,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       "due to which catalog cache hits occur for the same query executed on different logical " +
       "connections";
 
+  protected static final String GUC_REPLAY_AFFECTS_CONN_STATE =
+      "Skipping this test with Connection Manager enabled. Connection Manager replays session " +
+        "variables at the beginning of transaction boundaries, causing erroneous results in " +
+        "the test, leading to failure.";
+
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
   protected boolean startRedisProxy = false;
