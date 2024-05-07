@@ -206,8 +206,11 @@ public class NodeManager extends DevopsBase {
       return false;
     }
     UUID imageBundleUUID = Util.retreiveImageBundleUUID(arch, userIntent, provider);
-    ImageBundle imageBundle = ImageBundle.get(imageBundleUUID);
-    return imageBundle.getDetails().useIMDSv2;
+    if (imageBundleUUID != null) {
+      ImageBundle imageBundle = ImageBundle.get(imageBundleUUID);
+      return imageBundle.getDetails().useIMDSv2;
+    }
+    return false;
   }
 
   private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
@@ -1642,8 +1645,10 @@ public class NodeManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     ImageBundle.NodeProperties toOverwriteNodeProperties = null;
+    Config config = this.runtimeConfigFactory.forProvider(provider);
     UUID imageBundleUUID =
-        Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
+        Util.retreiveImageBundleUUID(
+            arch, userIntent, nodeTaskParam.getProvider(), config.getBoolean("yb.cloud.enabled"));
     if (imageBundleUUID != null) {
       Region region = nodeTaskParam.getRegion();
       toOverwriteNodeProperties =
@@ -1706,7 +1711,6 @@ public class NodeManager extends DevopsBase {
           if (!(nodeTaskParam instanceof AnsibleCreateServer.Params)) {
             throw new RuntimeException("NodeTaskParams is not AnsibleCreateServer.Params");
           }
-          Config config = this.runtimeConfigFactory.forProvider(provider);
           AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
@@ -1810,11 +1814,7 @@ public class NodeManager extends DevopsBase {
               // Backward compatiblity.
               imageBundleDefaultImage = taskParam.getRegion().getYbImage();
             }
-            if (StringUtils.isNotBlank(taskParam.getMachineImage())) {
-              // YBM use case - in case machineImage is used for deploying the universe we should
-              // fallback to sshUser configured in the provider.
-              taskParam.sshUserOverride = provider.getDetails().getSshUser();
-            }
+
             String ybImage =
                 Optional.ofNullable(taskParam.getMachineImage()).orElse(imageBundleDefaultImage);
             if (ybImage != null && !ybImage.isEmpty()) {
@@ -1893,11 +1893,6 @@ public class NodeManager extends DevopsBase {
             imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
           } else {
             imageBundleDefaultImage = taskParam.getRegion().getYbImage();
-          }
-          if (StringUtils.isNotBlank(taskParam.machineImage)) {
-            // YBM use case - in case machineImage is used for deploying the universe we should
-            // fallback to sshUser configured in the provider.
-            taskParam.sshUserOverride = provider.getDetails().getSshUser();
           }
           String ybImage =
               Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);
@@ -2271,7 +2266,7 @@ public class NodeManager extends DevopsBase {
             appendCertPathsToCheck(commandArgs, nodeTaskParam.getClientRootCA(), true, false);
           }
 
-          Config config = runtimeConfigFactory.forUniverse(universe);
+          config = runtimeConfigFactory.forUniverse(universe);
 
           SkipCertValidationType skipType =
               getSkipCertValidationType(
