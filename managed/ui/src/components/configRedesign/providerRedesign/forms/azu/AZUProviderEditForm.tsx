@@ -27,6 +27,7 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
@@ -550,6 +551,7 @@ export const AZUProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.AZU}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -557,7 +559,7 @@ export const AZUProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.AZU,
                   'regions',
                   isFormDisabled,
@@ -576,9 +578,16 @@ export const AZUProviderEditForm = ({
             </FieldGroup>
             <LinuxVersionCatalog
               control={formMethods.control as any}
-              providerType={CloudType.azu}
-              viewMode="EDIT"
+              providerType={ProviderCode.AZU}
+              providerOperation={ProviderOperation.EDIT}
               providerStatus={providerConfig.usabilityState}
+              linkedUniverses={linkedUniverses}
+              isDisabled={getIsFieldDisabled(
+                ProviderCode.AZU,
+                'imageBundles',
+                isFormDisabled,
+                isProviderInUse
+              )}
             />
             <FieldGroup heading="SSH Key Pairs">
               {sshConfigureMsg}

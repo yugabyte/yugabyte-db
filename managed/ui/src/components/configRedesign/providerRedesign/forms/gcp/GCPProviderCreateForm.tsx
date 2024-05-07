@@ -28,6 +28,7 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType,
   VPCSetupTypeLabel
 } from '../../constants';
@@ -59,7 +60,11 @@ import { NTP_SERVER_REGEX } from '../constants';
 
 import { GCPRegionMutation, GCPAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
@@ -166,7 +171,10 @@ export const GCPProviderCreateForm = ({
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
   const sshConfigureMsg = ConfigureSSHDetailsMsg();
-  const { isLoading: isProviderValidationLoading, isValidationEnabled } = UseProviderValidationEnabled(CloudType.gcp);
+  const {
+    isLoading: isProviderValidationLoading,
+    isValidationEnabled
+  } = UseProviderValidationEnabled(CloudType.gcp);
 
   if (hostInfoQuery.isLoading || hostInfoQuery.isIdle || isProviderValidationLoading) {
     return <YBLoading />;
@@ -208,7 +216,7 @@ export const GCPProviderCreateForm = ({
     try {
       sshPrivateKeyContent =
         formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-          formValues.sshPrivateKeyContent
+        formValues.sshPrivateKeyContent
           ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
           : '';
     } catch (error) {
@@ -220,32 +228,32 @@ export const GCPProviderCreateForm = ({
     const vpcConfig =
       formValues.vpcSetupType === VPCSetupType.HOST_INSTANCE
         ? {
-          useHostVPC: true
-        }
+            useHostVPC: true
+          }
         : formValues.vpcSetupType === VPCSetupType.EXISTING
-          ? {
+        ? {
             useHostVPC: true,
             destVpcId: formValues.destVpcId
           }
-          : formValues.vpcSetupType === VPCSetupType.NEW
-            ? {
-              useHostVPC: false,
-              destVpcId: formValues.destVpcId
-            }
-            : assertUnreachableCase(formValues.vpcSetupType);
+        : formValues.vpcSetupType === VPCSetupType.NEW
+        ? {
+            useHostVPC: false,
+            destVpcId: formValues.destVpcId
+          }
+        : assertUnreachableCase(formValues.vpcSetupType);
 
     const gcpCredentials =
       formValues.providerCredentialType === ProviderCredentialType.HOST_INSTANCE_SERVICE_ACCOUNT
         ? {
-          useHostCredentials: true
-        }
+            useHostCredentials: true
+          }
         : formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT
-          ? {
+        ? {
             gceApplicationCredentials: googleServiceAccount,
             gceProject: googleServiceAccount?.project_id ?? '',
             useHostCredentials: false
           }
-          : assertUnreachableCase(formValues.providerCredentialType);
+        : assertUnreachableCase(formValues.providerCredentialType);
 
     const allAccessKeysPayload = constructAccessKeysCreatePayload(
       formValues.sshKeypairManagement,
@@ -295,13 +303,17 @@ export const GCPProviderCreateForm = ({
       imageBundles
     };
     try {
-      await createInfraProvider(providerPayload,
-        {
-          shouldValidate: isValidationEnabled,
-          mutateOptions: {
-            onError: err => handleFormSubmitServerError((err as any)?.response?.data, formMethods, GCPCreateFormErrFields)
-          }
-        });
+      await createInfraProvider(providerPayload, {
+        shouldValidate: isValidationEnabled,
+        mutateOptions: {
+          onError: (err) =>
+            handleFormSubmitServerError(
+              (err as any)?.response?.data,
+              formMethods,
+              GCPCreateFormErrFields
+            )
+        }
+      });
     } catch (_) {
       // Request errors are handled by the onError callback
     }
@@ -479,12 +491,13 @@ export const GCPProviderCreateForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.GCP}
+                providerOperation={ProviderOperation.CREATE}
                 regions={regions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                isDisabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
                 errors={formMethods.formState.errors.regions as any}
               />
@@ -496,8 +509,9 @@ export const GCPProviderCreateForm = ({
             </FieldGroup>
             <LinuxVersionCatalog
               control={formMethods.control as any}
-              providerType={CloudType.gcp}
-              viewMode="CREATE"
+              providerType={ProviderCode.GCP}
+              providerOperation={ProviderOperation.CREATE}
+              isDisabled={isFormDisabled}
             />
             <FieldGroup heading="SSH Key Pairs">
               {sshConfigureMsg}

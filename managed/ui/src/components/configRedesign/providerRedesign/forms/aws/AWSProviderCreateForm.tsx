@@ -34,7 +34,8 @@ import {
   ProviderCode,
   VPCSetupType,
   KeyPairManagement,
-  KEY_PAIR_MANAGEMENT_OPTIONS
+  KEY_PAIR_MANAGEMENT_OPTIONS,
+  ProviderOperation
 } from '../../constants';
 import { RegionList } from '../../components/RegionList';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
@@ -463,12 +464,13 @@ export const AWSProviderCreateForm = ({
               </FormField>
               <RegionList
                 providerCode={ProviderCode.AWS}
+                providerOperation={ProviderOperation.CREATE}
                 regions={regions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                isDisabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
               />
               {formMethods.formState.errors.regions?.message ? (
@@ -480,7 +482,8 @@ export const AWSProviderCreateForm = ({
             <LinuxVersionCatalog
               control={formMethods.control}
               providerType={ProviderCode.AWS}
-              viewMode="CREATE"
+              providerOperation={ProviderOperation.CREATE}
+              isDisabled={isFormDisabled}
             />
             <FieldGroup
               heading="SSH Key Pairs"
