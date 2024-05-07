@@ -25,30 +25,36 @@ If a node (live or unreachable) needs to be replaced, do the following:
 
     ![Replace Node Actions](/images/ee/replace-node.png)
 
-Clicking the **Replace Node** button opens a popup window to confirm the replacement of this node. Confirming the task redirects to the task page and will take a few minutes to complete.
+1. Click OK to confirm.
 
-For Infrastructure as a service (IaaS) such as AWS and GCP, YugabyteDB Anywhere returns the node back to the IaaS. For on-premises universes, the unresponsive node will most likely have failed to clean up its data directory, home directory, and more. So it will be placed in a Decommissioned state in the on-premises provider which prevents the node from being added to a new universe.
+YugabyteDB Anywhere (YBA) starts the node replacement process, and you can view the progress on the **Tasks** tab.
+
+For cloud providers (AWS, Azure, or GCP), YBA returns the node back to the provider.
+
+For on-premises universes, because the unresponsive node will likely fail to clean up its data directory, home directory, and so on, YBA sets the state to Decommissioned. This prevents the node from being added to a new universe.
 
 ### Check on-premises node state
 
-The on-premises node instances have three states: In use, Free, and Decommissioned and the following illustration describes the workflow of the states.
+On-premises nodes have three states: In use, Free, and Decommissioned as described in the following illustration.
 
-![Decommissioned node workflow](/images/ee/decommissioned-node.png)
-To check the state of an on-premises node, navigate to **Configs > On-Premises Datacenters**, then click its associated on-premises configuration, and click **Instances**.
+![Decommissioned node workflow](/images/ee/on-prem-replace-workflow.png)
+To check the state of an on-premises node, navigate to **Configs > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
-### Recommission on-premises node instance
+### Recommission a decommissioned on-premises node
 
-A node in "Decommissioned" state can be placed back into the "Free" node state pool after it becomes reachable and is cleaned up.
+You can return a Decommissioned node to the on-premises provider Free pool after it becomes reachable and is cleaned up.
 
-Perform the following steps to recommission a node.
+Perform the following steps to recommission a node:
 
-1. For a node instance in the Decommissioned state, navigate to **Configs** > On-Premises Datacenters**, then click its associated on-premises configuration, and click **Instances**.
+1. Navigate to **Configs > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
-1. On the Instances page, click **Actions > Recommission Node**.
+1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**.
 
     ![Recommission Node](/images/ee/recommission-node.png)
 
-Clicking the **Recommission Node** button opens a popup window to confirm the recommission of this node. Confirming the task redirects to the task page and will take a few minutes to complete.
+1. Click OK to confirm.
+
+YugabyteDB Anywhere (YBA) starts the node recommissioning process, and you can view the progress on the **Tasks** tab.
 
 ## Eliminate an unresponsive node
 
@@ -56,19 +62,39 @@ If a virtual machine or a physical server in a universe reaches its end of life 
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 
-When this happens, new Master leaders are elected for the underlying data shards. Because the universe enters a partially under-replicated state, it would not be able to tolerate additional failures. To remedy the situation, you can eliminate the unreachable node by taking actions in the following sequence:
+When this happens, new Master leaders are elected for the underlying data shards. Because the universe enters a partially under-replicated state, it would not be able to tolerate additional failures. To remedy the situation, it is recommended that you [replace the node](#replace-a-live-or-unreachable-node).
+
+<!-- Alternatively, you can eliminate the unreachable node (not recommended) by taking actions in the following sequence:
 
 - Step 1: [Remove node](#remove-node)
 - Step 2: [Start a new Master process](#start-a-new-master-process), if necessary
 - Step 3: [Release node instance](#release-node-instance)
 - Step 4: [Delete node](#delete-node)
-- Step 5: For on-premises deployments only, if you want to reuse the node, you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../administer-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
+- Step 5: For on-premises deployments only, if you want to reuse the node, you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../install-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes). -->
 
 {{< note title="Note" >}}
 
 A node status displayed in the UI is not always entirely indicative of the node's internal state. For example, a node whose status is shown as Unreachable can have various internal states, some of which are recoverable, and others that are not.
 
 {{< /note >}}
+
+## Start and stop node processes
+
+### Stop a process
+
+If a node needs the intervention, you can click its associated **Actions > Stop Processes**.
+
+After the YB-TServer and (where applicable) YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
+
+Generally, when a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped. This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never underreplicated.
+
+It is recommended not to stop more than (RF - 1) / 2 processes at any given time. For example, on an RF=3 cluster with three nodes, there can only be one node with stopped processes to allow the majority of the nodes to perform Raft consensus operations.
+
+### Start a process
+
+You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Start Processes** corresponding to the node. This returns the node to the Live state.
+
+In some cases, the system might experience an unrecoverable error. To mitigate, you can use the **Release Instance** option for the stopped node. This also removes the backing instance. For details, see [Remove a node](#remove-node).
 
 ## Remove node
 
@@ -175,21 +201,3 @@ In some cases, depending on the node's status, YugabyteDB Anywhere allows you to
 For Infrastructure as a service (IaaS) such as AWS and GCP, YugabyteDB Anywhere will spawn with the existing node instance type in the existing region and zone of that node. When the process completes, the node will have the Master and TServer processes running, along with data that is load-balanced onto this node. The node's name will be reused and the status will be shown as Live.
 
 For information on removing and eliminating nodes, see [Eliminate an unresponsive node](#eliminate-an-unresponsive-node).
-
-## Start and stop node processes
-
-### Stop a process
-
-If a node needs the intervention, you can click its associated **Actions > Stop Processes**.
-
-After the YB-TServer and (where applicable) YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
-
-Generally, when a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped. This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never underreplicated.
-
-It is recommended not to stop more than (RF - 1) / 2 processes at any given time. For example, on an RF=3 cluster with three nodes, there can only be one node with stopped processes to allow the majority of the nodes to perform Raft consensus operations.
-
-### Start a process
-
-You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Start Processes** corresponding to the node. This returns the node to the Live state.
-
-In some cases, the system might experience an unrecoverable error. To mitigate, you can use the **Release Instance** option for the stopped node. This also removes the backing instance. For details, see [Remove a node](#remove-node).
