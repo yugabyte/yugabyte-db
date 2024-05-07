@@ -12,6 +12,12 @@
 
 #include "yb/util/tcmalloc_profile.h"
 
+#include <algorithm>
+#include <sstream>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #if YB_ABSL_ENABLED
 #include "absl/debugging/symbolize.h"
 #endif
