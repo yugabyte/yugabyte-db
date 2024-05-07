@@ -118,8 +118,7 @@ DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
 DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
                             "Whether to use packed row V2 when row packing is enabled.");
 
-DEFINE_NON_RUNTIME_bool(
-    ysql_skip_row_lock_for_update, false,
+DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "
     "take finer column-level locks instead of locking the whole row. This may cause issues with "
     "data integrity for operations with implicit dependencies between columns.");
@@ -801,6 +800,15 @@ class PgsqlWriteOperation::RowPackContext {
 };
 
 //--------------------------------------------------------------------------------------------------
+
+PgsqlWriteOperation::PgsqlWriteOperation(
+    std::reference_wrapper<const PgsqlWriteRequestPB> request, DocReadContextPtr doc_read_context,
+    const TransactionOperationContext& txn_op_context, rpc::Sidecars* sidecars)
+    : DocOperationBase(request),
+      doc_read_context_(std::move(doc_read_context)),
+      txn_op_context_(txn_op_context),
+      sidecars_(sidecars),
+      ysql_skip_row_lock_for_update_(FLAGS_ysql_skip_row_lock_for_update) {}
 
 Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   // Initialize operation inputs.
@@ -1546,7 +1554,7 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
   const auto is_update = request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE;
   switch (mode) {
     case GetDocPathsMode::kLock: {
-      if (PREDICT_FALSE(FLAGS_ysql_skip_row_lock_for_update) && is_update &&
+      if (PREDICT_FALSE(ysql_skip_row_lock_for_update_) && is_update &&
           !NewValuesHaveExpression(request_)) {
         DocKeyColumnPathBuilderHolder holder(encoded_doc_key_.as_slice());
         paths->emplace_back(holder.builder().Build(dockv::SystemColumnIds::kLivenessColumn));
@@ -1572,7 +1580,7 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
       return Status::OK();
     }
     case GetDocPathsMode::kStrongReadIntents: {
-      if (!is_update || PREDICT_FALSE(FLAGS_ysql_skip_row_lock_for_update)) {
+      if (!is_update || PREDICT_FALSE(ysql_skip_row_lock_for_update_)) {
         return Status::OK();
       }
       break;
