@@ -17,7 +17,9 @@ public class UpdateMountedDisks extends NodeTaskBase {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends NodeTaskParams {}
+  public static class Params extends NodeTaskParams {
+    public String machineImage;
+  }
 
   @Override
   protected Params taskParams() {

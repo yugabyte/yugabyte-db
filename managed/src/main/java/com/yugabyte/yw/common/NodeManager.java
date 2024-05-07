@@ -2295,7 +2295,10 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
-          if (toOverwriteNodeProperties != null) {
+          if (StringUtils.isNotEmpty(taskParam.machineImage)) {
+            commandArgs.add("--machine_image");
+            commandArgs.add(taskParam.machineImage);
+          } else if (toOverwriteNodeProperties != null) {
             String ybImage = toOverwriteNodeProperties.getMachineImage();
             if (StringUtils.isNotBlank(ybImage)) {
               commandArgs.add("--machine_image");
@@ -2318,7 +2321,10 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
           }
           UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
-          if (toOverwriteNodeProperties != null) {
+          if (StringUtils.isNotEmpty(taskParam.machineImage)) {
+            commandArgs.add("--machine_image");
+            commandArgs.add(taskParam.machineImage);
+          } else if (toOverwriteNodeProperties != null) {
             String ybImage = toOverwriteNodeProperties.getMachineImage();
             if (StringUtils.isNotBlank(ybImage)) {
               commandArgs.add("--machine_image");
