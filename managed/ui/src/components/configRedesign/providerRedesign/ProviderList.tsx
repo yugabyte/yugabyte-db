@@ -231,6 +231,8 @@ export const ProviderList = (props: ProviderListProps) => {
       </Box>
       {filteredProviderList.length === 0 ? (
         <EmptyListPlaceholder
+          variant="primary"
+          accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER}
           actionButtonText={`Create ${providerLabel} Config`}
           descriptionText={`No ${providerLabel} config to show`}
           onActionButtonClick={handleCreateProviderAction}

@@ -34,6 +34,7 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType,
   YBImageType
 } from '../../constants';
@@ -573,6 +574,7 @@ export const AWSProviderEditForm = ({
               </FormField>
               <RegionList
                 providerCode={ProviderCode.AWS}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -580,7 +582,7 @@ export const AWSProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.AWS,
                   'regions',
                   isFormDisabled,
@@ -598,9 +600,16 @@ export const AWSProviderEditForm = ({
             </FieldGroup>
             <LinuxVersionCatalog
               control={formMethods.control as any}
-              providerType={CloudType.aws}
-              viewMode="EDIT"
+              providerType={ProviderCode.AWS}
+              providerOperation={ProviderOperation.EDIT}
               providerStatus={providerConfig.usabilityState}
+              linkedUniverses={linkedUniverses}
+              isDisabled={getIsFieldDisabled(
+                ProviderCode.AWS,
+                'imageBundles',
+                isFormDisabled,
+                isProviderInUse
+              )}
             />
             <FieldGroup
               heading="SSH Key Pairs"

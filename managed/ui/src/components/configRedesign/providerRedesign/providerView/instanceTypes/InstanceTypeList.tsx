@@ -12,6 +12,7 @@ import ellipsisIcon from '../../../../common/media/more.svg';
 import { EmptyListPlaceholder } from '../../EmptyListPlaceholder';
 import { VolumeList } from './VolumeList';
 import { YBLabelWithIcon } from '../../../../common/descriptors';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import { InstanceType, InstanceTypeDetails } from '../../../../../redesign/helpers/dtos';
 
@@ -58,6 +59,8 @@ export const InstanceTypeList = ({
 
   return instanceTypes.length === 0 && !isDisabled ? (
     <EmptyListPlaceholder
+      variant="secondary"
+      accessRequiredOn={ApiPermissionMap.CREATE_INSTANCE_TYPE}
       actionButtonText={`Add Instance Type`}
       descriptionText="Add instance types to this provider"
       onActionButtonClick={showAddInstanceTypeFormModal}
