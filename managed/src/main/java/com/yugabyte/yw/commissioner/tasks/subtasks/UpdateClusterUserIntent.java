@@ -8,6 +8,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class UpdateClusterUserIntent extends UniverseTaskBase {
@@ -56,6 +57,19 @@ public class UpdateClusterUserIntent extends UniverseTaskBase {
                       // Update the imageBundle reference for the cluster in which node
                       // is provisioned.
                       cluster.userIntent.imageBundleUUID = taskParams().imageBundleUUID;
+                      universeDetails.nodeDetailsSet.stream()
+                          .forEach(
+                              nodeDetail -> {
+                                // YBM use case where the cluster would have been deployed using the
+                                // machineImage
+                                // but patched using the imageBundle. It will be good if clear the
+                                // machineImage from
+                                // nodeDetails.
+                                if (nodeDetail.placementUuid.equals(cluster.uuid)
+                                    && StringUtils.isNotEmpty(nodeDetail.machineImage)) {
+                                  nodeDetail.machineImage = null;
+                                }
+                              });
                     }
                   });
               universe.setUniverseDetails(universeDetails);
