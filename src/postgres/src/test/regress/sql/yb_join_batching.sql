@@ -645,6 +645,12 @@ DROP TABLE x2;
 DROP TABLE x3;
 
 SET yb_bnl_batch_size = 3;
+create table ss1(a varchar(1024), b char(10));
+create table ss2(a varchar(1024));
+create index on ss2 (a asc);
+explain (costs off) select * from ss1 t1, ss2 t2 where t1.a = t2.a and t1.b = t2.a;
+drop table ss1;
+drop table ss2;
 
 --
 --
