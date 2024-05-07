@@ -1411,15 +1411,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     p.setImageBundles(ImmutableList.of());
     result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
     assertBadRequest(result, "Image Bundle ib-1 is associated with some universes. Cannot delete!");
-    ib.getDetails().setSshUser("centos");
+
+    ib.setUseAsDefault(false);
     p.setImageBundles(ImmutableList.of(ib));
     result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
     assertBadRequest(result, "Image Bundle ib-1 is associated with some universes. Cannot modify!");
 
     result = getProvider(p.getUuid());
     Provider provider = Json.fromJson(Json.parse(contentAsString(result)), Provider.class);
-    // Default for the bundle can be changed in case it is associated to the universe.
-    provider.getImageBundles().get(0).setUseAsDefault(false);
     JsonNode providerJson = Json.toJson(provider);
     JsonNode regionJson = providerJson.get("regions");
     ObjectMapper objectMapper = new ObjectMapper();

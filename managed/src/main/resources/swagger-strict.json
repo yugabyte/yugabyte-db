@@ -2998,6 +2998,13 @@
     },
     "BundleInfo" : {
       "properties" : {
+        "sshPortOverride" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
         "ybImage" : {
           "type" : "string"
         }
@@ -5777,13 +5784,6 @@
           },
           "description" : "Regions override for image bundle",
           "type" : "object"
-        },
-        "sshPort" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "sshUser" : {
-          "type" : "string"
         }
       },
       "type" : "object"

@@ -144,9 +144,9 @@ public class ImageBundleController extends AuthenticatedController {
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result edit(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
     final Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    ImageBundle bundle = parseJsonAndValidate(request, ImageBundle.class);
-    checkImageBundleUsageInUniverses(providerUUID, iBUUID, bundle);
+    checkImageBundleUsageInUniverses(providerUUID, iBUUID);
 
+    ImageBundle bundle = parseJsonAndValidate(request, ImageBundle.class);
     ImageBundle cBundle = imageBundleHandler.edit(provider, iBUUID, bundle);
     auditService()
         .createAuditEntryWithReqBody(
@@ -182,21 +182,10 @@ public class ImageBundleController extends AuthenticatedController {
   }
 
   private void checkImageBundleUsageInUniverses(UUID providerUUID, UUID imageBundleUUID) {
-    checkImageBundleUsageInUniverses(providerUUID, imageBundleUUID, null);
-  }
-
-  private void checkImageBundleUsageInUniverses(
-      UUID providerUUID, UUID imageBundleUUID, ImageBundle bundle) {
     ImageBundle iBundle = ImageBundle.getOrBadRequest(providerUUID, imageBundleUUID);
     long universeCount = iBundle.getUniverseCount();
 
-    if (universeCount > 0 && bundle == null) {
-      throw new PlatformServiceException(
-          FORBIDDEN,
-          String.format(
-              "There %s %d universe%s using this imageBundle, cannot delete",
-              universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
-    } else if (universeCount > 0 && !bundle.allowUpdateDuringUniverseAssociation(iBundle)) {
+    if (universeCount > 0) {
       throw new PlatformServiceException(
           FORBIDDEN,
           String.format(
