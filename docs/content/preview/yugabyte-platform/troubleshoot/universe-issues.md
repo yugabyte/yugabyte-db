@@ -87,7 +87,7 @@ If you are using YugabyteDB Anywhere version 2.12.*n*.*n* and disable **Use Time
 
 ## Use support bundles
 
-A support bundle is an archive generated at a universe level. It contains all the files required for diagnosing and troubleshooting a problem. The diagnostic information is provided by the following types of files:
+A support bundle is an archive generated at a universe level, and also a silent collection of data from each node, even if file collection fails on certain components of nodes. It contains all the files required for diagnosing and troubleshooting a problem. The diagnostic information is provided by the following types of files:
 
 - Application logs from YugabyteDB Anywhere.
 - Universe logs, which are the YB-Master and YB-TServer log files from each node in the universe, as well as PostgreSQL logs available under the YB-TServer logs directory.
@@ -99,6 +99,8 @@ A support bundle is an archive generated at a universe level. It contains all th
 - Tablet meta files containing the tablet metadata from the YB-Master and YB-TServer.
 
 The diagnostic information can be analyzed locally or the bundle can be forwarded to the Yugabyte Support team.
+
+The focus is to ensure that support bundle generation is successful in most cases, regardless of any individual file collection failures.
 
 You can create a support bundle as follows:
 
@@ -119,6 +121,54 @@ You can create a support bundle as follows:
   ![Create support bundle](/images/yp/support-bundle-3.png)
 
   The **Support Bundles** dialog allows you to either download the bundle or delete it if it is no longer needed. By default, bundles expire after ten days to free up space.
+
+The following sections describe some of the file components of a support bundle.
+
+### Core Files
+
+Currently in the backend, if the `CoreFiles` component is selected (UI not available yet), all the cores are collected. However, there are two major issues with collecting all core files:
+
+- Files can be very large (for example, 200GB+)
+- There can be a huge number of files (for example, when a crashloop happens)
+
+**Mitigations**
+
+- Two new UI fields are added when `CoreFiles` component is selected by default:
+
+  - Number of recent files to collect (default_core_file_count_limit): When the `CoreFiles` component is selected, YugabyteDB Anywhere (YBA) collects the most recent "N" number of files. This UI field defines "N" and is  set to a default value of collecting 1 file.
+
+  - Max size of core files to collect (default_core_file_size_limit): This UI field collects the recent core files only if the core file size is below the specified size limit. It is set to a default value of 25000000000 bytes (25GB).
+
+- A runtime flag:
+
+  - `yb.support_bundle.allow_cores_collection`: This flag is used to globally disable cores collection across any new support bundles generated on the platform. This flag can only be set by the SuperAdmin and is true by default.
+
+- Inflight checks are added to ensure YBA has available space before transferring the core files from YugabyteDB nodes to YBA.
+
+### YBA Metadata
+
+This component collects a fingerprint of the YBA data. The rationale is to collect metadata at a customer level, rather than at a global level (like [PG_dump](https://support.yugabyte.com/hc/en-us/articles/4412743193741-How-to-create-a-credential-free-dump-of-YugabyteDB-Anywhere-Database)) to ensure multi-tenancy is respected going forward. Following are the included metadata sub-components in this phase:
+
+- Customer metadata
+- Cloud providers metadata
+- Universes metadata
+- Users metadata
+- Instance_type metadata (sizing info, cores)
+- Customer_task table metadata
+
+An example of the YBA metadata directory structure is as follows:
+
+```text
+support_bundle/
+└── YBA/
+    └── metadata/
+        ├── customer.json
+        ├── providers.json
+        ├── universes.json
+        └── users.json
+```
+
+YBA metadata is available as a new component to the support bundle via the backend and UI.
 
 ## Debug crashing YugabyteDB pods in Kubernetes
 
