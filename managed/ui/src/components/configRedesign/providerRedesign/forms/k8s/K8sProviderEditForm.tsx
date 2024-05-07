@@ -20,7 +20,8 @@ import {
   KubernetesProvider,
   KubernetesProviderLabel,
   KubernetesProviderType,
-  ProviderCode
+  ProviderCode,
+  ProviderOperation
 } from '../../constants';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { FieldGroup } from '../components/FieldGroup';
@@ -508,6 +509,7 @@ export const K8sProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.KUBERNETES}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -515,7 +517,7 @@ export const K8sProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.KUBERNETES,
                   'regions',
                   isFormDisabled,

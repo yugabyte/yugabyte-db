@@ -144,6 +144,16 @@ export const getInUseAzs = (
   return (regionCode !== undefined && regionToInUseAz.get(regionCode)) || new Set<string>();
 };
 
+export const getInUseImageBundleUuids = (linkedUniverses: UniverseItem[]) => {
+  const inUseImageBundleUuids = new Set<string>();
+  linkedUniverses.forEach((linkedUniverse) =>
+    linkedUniverse.linkedClusters.forEach((linkedCluster) => {
+      inUseImageBundleUuids.add(linkedCluster.userIntent.imageBundleUUID);
+    })
+  );
+  return inUseImageBundleUuids;
+};
+
 export const getLatestAccessKey = (accessKeys: AccessKey[]) =>
   accessKeys.reduce((latestAccessKey: null | AccessKey, currentAccessKey) => {
     if (!latestAccessKey) {
@@ -211,7 +221,7 @@ export const getDeletedZones = <
 
   return existingZones
     ? existingZones
-      .filter((zone) => !persistedZoneCodes.includes(zone.code))
-      .map((zone) => deleteZone(zone))
+        .filter((zone) => !persistedZoneCodes.includes(zone.code))
+        .map((zone) => deleteZone(zone))
     : [];
 };
