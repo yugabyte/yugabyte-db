@@ -20,6 +20,7 @@ import java.util.HashSet;
 import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.*;
@@ -179,6 +180,12 @@ public class CdcStreamManager {
         CDCReplicationSlotDetails details = new CDCReplicationSlotDetails();
         details.streamID = streamInfo.getStreamId();
         details.slotName = streamInfo.getCdcsdkYsqlReplicationSlotName();
+        // Skip cdc streams which does not have name as an replication slot is supposed to have
+        // name and yb-admin streams does not have name.
+        if (StringUtils.isEmpty(details.slotName)) {
+          LOG.info("Skipping slot {} in replication slot response.", details.slotName);
+          continue;
+        }
         details.state = options.get("state");
         if (namespaceList == null) {
           namespaceList = client.getNamespacesList().getNamespacesList();
