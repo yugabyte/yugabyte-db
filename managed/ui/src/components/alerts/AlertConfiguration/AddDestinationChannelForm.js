@@ -4,6 +4,7 @@ import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
 import { YBControlledSelectWithLabel, YBFormInput, YBToggle } from '../../common/forms/fields';
 import { isNonAvailable } from '../../../utils/LayoutUtils';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import * as Yup from 'yup';
 
 import './AddDestinationChannelForm.scss';
@@ -162,7 +163,18 @@ export const AddDestinationChannelForm = (props) => {
 
   const validationSchemaEmail = Yup.object().shape({
     email_name: Yup.string().required('Name is Required'),
-    emailIds: !defaultRecipients && Yup.string().required('Email id is Required')
+    emailIds: !defaultRecipients && Yup.string().required('Email id is Required'),
+    smtpData: Yup.object().shape(
+      {
+        smtpPort: Yup.number()
+          .transform((value) => Number.isNaN(value) ? null : value)
+          .nullable()
+          .notRequired()
+          .test("smtp port", "SMTP Port must be between 1 and 65535", (value) => {
+            if (!isDefinedNotNull(value)) return true;
+            return value > 0 && value <= 65535;
+          })
+      })
   });
 
   const validationSchemaSlack = Yup.object().shape({
@@ -509,11 +521,12 @@ export const AddDestinationChannelForm = (props) => {
                     />
                     <Field
                       name="smtpData.smtpPort"
-                      type="text"
+                      type="number"
                       component={YBFormInput}
                       label="Port"
                       placeholder="SMTP server port"
                       disabled={isReadOnly}
+                      defaultValue="587"
                     />
                     <Field
                       name="smtpData.emailFrom"
