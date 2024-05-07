@@ -556,7 +556,9 @@ public class UniverseCRUDHandler {
       }
       validateRegionsAndZones(provider, c);
       // Configure the defaultimageBundle in case not specified.
-      if (c.userIntent.imageBundleUUID == null && provider.getCloudCode().imageBundleSupported()) {
+      if (c.userIntent.imageBundleUUID == null
+          && provider.getCloudCode().imageBundleSupported()
+          && !cloudEnabled) {
         if (provider.getImageBundles().size() > 0) {
           List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
           if (bundles.size() > 0) {
