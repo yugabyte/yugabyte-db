@@ -1004,6 +1004,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 .deviceInfo
                 .numVolumes;
       }
+
+      if (StringUtils.isNotEmpty(node.machineImage)) {
+        params.machineImage = node.machineImage;
+      }
       // Add the universe uuid.
       params.setUniverseUUID(taskParams().getUniverseUUID());
       // Add the az uuid.
