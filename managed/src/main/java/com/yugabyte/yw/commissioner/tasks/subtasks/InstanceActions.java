@@ -31,6 +31,7 @@ public class InstanceActions extends NodeTaskBase {
     // CSV of tag keys to be deleted.
     public String deleteTags = "";
     public boolean force = false;
+    public String machineImage;
   }
 
   @Override
