@@ -34,6 +34,7 @@ static MemoryContext virtual_wal_context = NULL;
 /* Cached records received from the CDC service. */
 static YBCPgChangeRecordBatch *cached_records = NULL;
 static size_t cached_records_last_sent_row_idx = 0;
+static bool last_getconsistentchanges_response_empty = false;
 
 typedef struct UnackedTransactionInfo {
 	TransactionId xid;
@@ -101,6 +102,7 @@ YBCInitVirtualWal(List *yb_publication_names)
 	MemoryContextSwitchTo(caller_context);
 
 	unacked_transactions = NIL;
+	last_getconsistentchanges_response_empty = false;
 }
 
 void
@@ -166,6 +168,22 @@ YBCReadRecord(XLogReaderState *state, char **errormsg)
 	if (cached_records == NULL ||
 		cached_records_last_sent_row_idx >= cached_records->row_count)
 	{
+		if (last_getconsistentchanges_response_empty)
+		{
+			elog(DEBUG4,
+				 "YBCReadRecord: Sleeping for %d ms due to empty response.",
+				 yb_walsender_poll_sleep_duration_empty_ms);
+			pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
+		}
+		else
+		{
+			elog(DEBUG4,
+				 "YBCReadRecord: Sleeping for %d ms as the last "
+				 "response was non-empty.",
+				 yb_walsender_poll_sleep_duration_nonempty_ms);
+			pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
+		}
+
 		elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
 
 		/* We no longer need the earlier record batch. */
@@ -185,14 +203,12 @@ YBCReadRecord(XLogReaderState *state, char **errormsg)
 	 */
 	if (!cached_records || cached_records->row_count == 0)
 	{
-		/*
-		 * TODO(#20726): Sleep for a configurable amount of time here to avoid
-		 * spamming the CDC service.
-		 */
+		last_getconsistentchanges_response_empty = true;
 		MemoryContextSwitchTo(caller_context);
 		return NULL;
 	}
 
+	last_getconsistentchanges_response_empty = false;
 	record = &cached_records->rows[cached_records_last_sent_row_idx++];
 	state->ReadRecPtr = record->lsn;
 	state->yb_virtual_wal_record = record;

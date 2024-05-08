@@ -35,7 +35,8 @@ import {
 import {
   adaptMetricDataForRecharts,
   formatUuidFromXCluster,
-  getMetricTimeRange
+  getMetricTimeRange,
+  getStrictestReplicationLagAlertThreshold
 } from '../../ReplicationUtils';
 import { CustomDatePicker } from '../../../metrics/CustomDatePicker/CustomDatePicker';
 import { formatDatetime, YBTimeFormats } from '../../../../redesign/helpers/DateUtils';
@@ -55,6 +56,7 @@ import {
   MetricTrace
 } from '../../../../redesign/helpers/dtos';
 import { NodeAggregation, SplitMode, SplitType } from '../../../metrics/dtos';
+import { IAlertConfiguration as AlertConfiguration } from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 interface ConfigReplicationLagGraphProps {
   xClusterConfig: XClusterConfig;
@@ -140,16 +142,11 @@ export const XClusterMetrics = ({
     name: AlertName.REPLICATION_LAG,
     targetUuid: xClusterConfig.sourceUniverseUUID
   };
-  const alertConfigQuery = useQuery<any[]>(alertConfigQueryKey.list(alertConfigFilter), () =>
-    getAlertConfigurations(alertConfigFilter)
+  const alertConfigQuery = useQuery<AlertConfiguration[]>(
+    alertConfigQueryKey.list(alertConfigFilter),
+    () => getAlertConfigurations(alertConfigFilter)
   );
-  const maxAcceptableLag = alertConfigQuery.data?.length
-    ? Math.min(
-        ...alertConfigQuery.data.map(
-          (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-        )
-      )
-    : undefined;
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(alertConfigQuery.data);
   const isCustomTimeRange = selectedTimeRangeOption.type === TimeRangeType.CUSTOM;
   const metricTimeRange = isCustomTimeRange
     ? { startMoment: customStartMoment, endMoment: customEndMoment }

@@ -127,13 +127,13 @@ public class PlatformInstanceClient {
   }
 
   /**
-   * calls {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long
-   * timestamp)} on remote platform instance
+   * calls {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long timestamp,
+   * boolean promote)} on remote platform instance
    */
-  public void demoteInstance(String localAddr, long timestamp) {
+  public void demoteInstance(String localAddr, long timestamp, boolean promote) {
     ObjectNode formData = Json.newObject().put("leader_address", localAddr);
     final JsonNode response =
-        this.makeRequest(this.controller.demoteLocalLeader(timestamp), formData);
+        this.makeRequest(this.controller.demoteLocalLeader(timestamp, promote), formData);
     maybeGenerateVersionMismatchEvent(response.get("ybaVersion"));
   }
 

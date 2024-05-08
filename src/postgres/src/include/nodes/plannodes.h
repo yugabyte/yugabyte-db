@@ -520,9 +520,9 @@ typedef struct IndexOnlyScan
  *
  * BitmapIndexScan delivers a bitmap of potential tuple locations;
  * it does not access the heap itself.  The bitmap is used by an
- * ancestor BitmapHeapScan node, possibly after passing through
- * intermediate BitmapAnd and/or BitmapOr nodes to combine it with
- * the results of other BitmapIndexScans.
+ * ancestor BitmapHeapScan or YbBitmapTableScan node, possibly after
+ * passing through intermediate BitmapAnd and/or BitmapOr nodes to
+ * combine it with the results of other BitmapIndexScans.
  *
  * The fields have the same meanings as for IndexScan, except we don't
  * store a direction flag because direction is uninteresting.
@@ -555,6 +555,21 @@ typedef struct BitmapHeapScan
 	Scan		scan;
 	List	   *bitmapqualorig; /* index quals, in standard expr form */
 } BitmapHeapScan;
+
+/* ----------------
+ *		bitmap sequential scan node
+ *
+ * This needs a copy of the qual conditions being used by the input index
+ * scans because there are various cases where we need to recheck the quals;
+ * for example, when the bitmap is lossy about the specific rows on a page
+ * that meet the index condition.
+ * ----------------
+ */
+typedef struct YbBitmapTableScan
+{
+	Scan		scan;
+	List	   *bitmapqualorig; /* index quals, in standard expr form */
+} YbBitmapTableScan;
 
 /* ----------------
  *		tid scan node

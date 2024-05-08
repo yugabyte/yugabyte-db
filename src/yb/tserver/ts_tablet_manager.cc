@@ -1494,6 +1494,14 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
           Format("remote bootstrapping tablet from peer $0", bootstrap_peer_uuid), &deleter)));
 
   bool replacing_tablet = old_tablet_peer != nullptr;
+  bool has_faulty_drive = fs_manager_->has_faulty_drive();
+  if (has_faulty_drive && !replacing_tablet) {
+    return STATUS(ServiceUnavailable,
+                  "Reject RBS because tserver cannot create new tablet if there is faulty drive. "
+                  "If the faulty drive has been fixed, the tserver needs to be restarted for "
+                  "the FSManager state to be refreshed");
+  }
+
   RaftGroupMetadataPtr meta = replacing_tablet ? old_tablet_peer->tablet_metadata() : nullptr;
 
   HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(

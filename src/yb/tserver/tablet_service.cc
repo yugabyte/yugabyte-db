@@ -2695,6 +2695,8 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
       SetupErrorAndRespond(resp->mutable_error(), s, TabletServerErrorPB::ALREADY_IN_PROGRESS,
                            &context);
       return;
+    } else if (s.IsServiceUnavailable()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 5) << "Start remote bootstrap failed: " << s;
     } else {
       LOG(WARNING) << "Start remote bootstrap failed: " << s;
     }
@@ -3190,6 +3192,13 @@ void TabletServiceImpl::GetTabletKeyRanges(
             &context.sidecars().Start()));
         return Status::OK();
       });
+}
+
+void TabletServiceImpl::ClearAllMetaCachesOnServer(
+    const ClearAllMetaCachesOnServerRequestPB* req, ClearAllMetaCachesOnServerResponsePB* resp,
+    rpc::RpcContext context) {
+  server_->ClearAllMetaCachesOnServer();
+  context.RespondSuccess();
 }
 
 void TabletServiceAdminImpl::TestRetry(

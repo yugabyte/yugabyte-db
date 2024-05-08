@@ -116,6 +116,7 @@ class CloneStateManagerTest : public YBTest {
 
   CloneStateManager::ExternalFunctions SetupExternalFunctions() {
     return CloneStateManager::ExternalFunctions {
+      .ListSnapshotSchedules = nullptr,
       .Restore = [&](const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
         return mock_funcs_.Restore(snapshot_id, restore_at);
       },
@@ -129,7 +130,7 @@ class CloneStateManagerTest : public YBTest {
         return mock_funcs_.GetTabletInfo(tablet_id);
       },
 
-      .FindNamespaceById = nullptr,
+      .FindNamespace = nullptr,
 
       .ScheduleCloneTabletCall = [&](
           const TabletInfoPtr& source_tablet, LeaderEpoch epoch, tablet::CloneTabletRequestPB req)

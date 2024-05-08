@@ -110,8 +110,8 @@ IndexNext(IndexScanState *node)
 		else if (ScanDirectionIsBackward(direction))
 			direction = ForwardScanDirection;
 	}
-	/* "Don't care about order" direction. */
-	if (IsYugaByteEnabled() &&
+	/* YB relation scans are optimized for the "Don't care about order" direction. */
+	if (IsYBRelation(node->ss.ss_currentRelation) &&
 		ScanDirectionIsNoMovement(((IndexScan *) node->ss.ps.plan)->indexorderdir))
 	{
 		direction = NoMovementScanDirection;
@@ -1982,6 +1982,7 @@ yb_init_index_scandesc(IndexScanState *node)
 			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 		scandesc->yb_aggrefs = node->yb_iss_aggrefs;
 		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
+		scandesc->fetch_ybctids_only = false;
 	}
 }
 

@@ -89,7 +89,7 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
    WHERE onek2.unique1 > 980 ORDER BY 1;
 
 RESET enable_seqscan;
-RESET enable_bitmapscan;
+SET enable_bitmapscan = on;
 RESET enable_sort;
 
 --
@@ -162,13 +162,11 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
 -- partial index implies clause, but bitmap scan must recheck predicate anyway
 SET enable_indexscan TO off;
--- TODO(#4634): bitmap scan should be used when implemented.
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
 RESET enable_indexscan;
 -- check multi-index cases too
--- TODO(#4634): bitmap scan should be used when implemented.
 -- YB edit: add "ORDER BY unique2" for consistent ordering.
 explain (costs off)
 SELECT * FROM (
@@ -179,7 +177,6 @@ SELECT * FROM (
 select unique1, unique2 from onek2
   where (unique2 = 11 or unique1 = 0) and stringu1 < 'B'
 LIMIT ALL) ybview ORDER BY unique2;
--- TODO(#4634): bitmap scan should be used when implemented.
 -- YB edit: add "ORDER BY unique2" for consistent ordering.
 explain (costs off)
 SELECT * FROM (
@@ -190,3 +187,5 @@ SELECT * FROM (
 select unique1, unique2 from onek2
   where (unique2 = 11 and stringu1 < 'B') or unique1 = 0
 LIMIT ALL) ybview ORDER BY unique2;
+
+RESET enable_bitmapscan;

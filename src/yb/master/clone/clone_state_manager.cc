@@ -21,7 +21,9 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/clone/clone_state_entity.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/util/oid_generator.h"
@@ -40,6 +42,11 @@ using namespace std::placeholders;
 std::unique_ptr<CloneStateManager> CloneStateManager::Create(
     CatalogManagerIf* catalog_manager, Master* master, SysCatalogTable* sys_catalog) {
   ExternalFunctions external_functions = {
+    .ListSnapshotSchedules = [&snapshot_coordinator = catalog_manager->snapshot_coordinator()]
+        (ListSnapshotSchedulesResponsePB* resp) {
+      auto schedule_id = SnapshotScheduleId::Nil();
+      return snapshot_coordinator.ListSnapshotSchedules(schedule_id, resp);
+    },
     .Restore = [catalog_manager, &snapshot_coordinator = catalog_manager->snapshot_coordinator()]
         (const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
       return snapshot_coordinator.Restore(snapshot_id, restore_at,
@@ -54,8 +61,8 @@ std::unique_ptr<CloneStateManager> CloneStateManager::Create(
     .GetTabletInfo = [catalog_manager](const TabletId& tablet_id) {
       return catalog_manager->GetTabletInfo(tablet_id);
     },
-    .FindNamespaceById = [catalog_manager](const NamespaceId& namespace_id) {
-      return catalog_manager->FindNamespaceById(namespace_id);
+    .FindNamespace = [catalog_manager](const NamespaceIdentifierPB& ns_identifier) {
+      return catalog_manager->FindNamespace(ns_identifier);
     },
     .ScheduleCloneTabletCall = [catalog_manager, master]
         (const TabletInfoPtr& source_tablet, LeaderEpoch epoch, tablet::CloneTabletRequestPB req) {
@@ -119,31 +126,53 @@ Status CloneStateManager::IsCloneDone(
   return Status::OK();
 }
 
-Status CloneStateManager::CloneFromSnapshotSchedule(
-    const CloneFromSnapshotScheduleRequestPB* req,
-    CloneFromSnapshotScheduleResponsePB* resp,
+Status CloneStateManager::CloneNamespace(
+    const CloneNamespaceRequestPB* req,
+    CloneNamespaceResponsePB* resp,
     rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
   SCHECK(!req->target_namespace_name().empty(), InvalidArgument, "Got empty target namespace name");
-  LOG(INFO) << "Servicing CloneFromSnapshotSchedule request: " << req->ShortDebugString();
-  auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+  LOG(INFO) << "Servicing CloneNamespace request: " << req->ShortDebugString();
   auto restore_time = HybridTime(req->restore_ht());
-  auto [source_namespace_id, seq_no] = VERIFY_RESULT(CloneFromSnapshotSchedule(
-      snapshot_schedule_id, restore_time, req->target_namespace_name(), rpc->GetClientDeadline(),
+  auto [source_namespace_id, seq_no] = VERIFY_RESULT(CloneNamespace(
+      req->source_namespace(), restore_time, req->target_namespace_name(), rpc->GetClientDeadline(),
       epoch));
   resp->set_source_namespace_id(source_namespace_id);
   resp->set_seq_no(seq_no);
   return Status::OK();
 }
 
-Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneFromSnapshotSchedule(
-    const SnapshotScheduleId& snapshot_schedule_id,
+Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
+    const NamespaceIdentifierPB& source_namespace_identifier,
     const HybridTime& restore_time,
     const std::string& target_namespace_name,
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch) {
   if (!FLAGS_enable_db_clone) {
     return STATUS_FORMAT(ConfigurationError, "FLAGS_enable_db_clone is disabled");
+  }
+
+  if (!source_namespace_identifier.has_database_type() || !source_namespace_identifier.has_name()) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Expected source namespace identifier to have database type and name. "
+        "Got: $0", source_namespace_identifier.ShortDebugString());
+  }
+  ListSnapshotSchedulesResponsePB resp;
+  RETURN_NOT_OK(external_funcs_.ListSnapshotSchedules(&resp));
+  auto snapshot_schedule_id = SnapshotScheduleId::Nil();
+  for (const auto& schedule : resp.schedules()) {
+    auto& tables = schedule.options().filter().tables().tables();
+    if (!tables.empty() &&
+        tables[0].namespace_().name() == source_namespace_identifier.name() &&
+        tables[0].namespace_().database_type() == source_namespace_identifier.database_type()) {
+      snapshot_schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
+      break;
+    }
+  }
+  if (snapshot_schedule_id.IsNil()) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Could not find snapshot schedule for namespace $0",
+        source_namespace_identifier.name());
   }
 
   // Export snapshot info.
@@ -192,7 +221,7 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneFromSnapshotSch
       FullyDecodeTxnSnapshotId(create_snapshot_resp.snapshot_id()));
 
   const auto source_namespace_id = namespace_map.begin()->first;
-  auto source_namespace = VERIFY_RESULT(external_funcs_.FindNamespaceById(source_namespace_id));
+  auto source_namespace = VERIFY_RESULT(external_funcs_.FindNamespace(source_namespace_identifier));
   auto seq_no = source_namespace->FetchAndIncrementCloneSeqNo();
 
   // Set up persisted clone state.
@@ -390,8 +419,14 @@ Status CloneStateManager::HandleRestoringState(const CloneStateInfoPtr& clone_st
 }
 
 Status CloneStateManager::Run() {
-  std::lock_guard lock(mutex_);
-  for (auto& [source_namespace_id, clone_state] : source_clone_state_map_) {
+  // Copy is required to avoid deadlocking with the catalog manager mutex in
+  // CatalogManager::RunLoaders, which calls CloneStateManager::ClearAndRunLoaders.
+  CloneStateMap source_clone_state_map;
+  {
+    std::lock_guard lock(mutex_);
+    source_clone_state_map = source_clone_state_map_;
+  }
+  for (auto& [source_namespace_id, clone_state] : source_clone_state_map) {
     Status s;
     switch (clone_state->LockForRead()->pb.aggregate_state()) {
       case SysCloneStatePB::CREATING:

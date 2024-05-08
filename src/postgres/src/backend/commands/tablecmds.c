@@ -16921,6 +16921,11 @@ ATExecReplicaIdentity(Relation rel, ReplicaIdentityStmt *stmt, LOCKMODE lockmode
 		relation_mark_replica_identity(rel, stmt->identity_type, InvalidOid, true);
 		return;
 	}
+	else if (IsYugaByteEnabled() && stmt->identity_type == YB_REPLICA_IDENTITY_CHANGE)
+	{
+		relation_mark_replica_identity(rel, stmt->identity_type, InvalidOid, true);
+		return;
+	}
 	else if (stmt->identity_type == REPLICA_IDENTITY_INDEX)
 	{
 		 /* fallthrough */ ;

@@ -253,11 +253,14 @@ void CDCSDKTabletSplitTest::TestIntentPersistencyAfterTabletSplit(
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   ASSERT_OK(WriteRowsHelper(100, 200, &test_cluster_, true));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   int64 initial_num_intents;
   PollForIntentCount(1, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
   LOG(INFO) << "Number of intents before tablet split: " << initial_num_intents;
 
-  ASSERT_OK(SplitTablet(tablets.Get(0).tablet_id(), &test_cluster_));
+  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
   LOG(INFO) << "All nodes will be restarted";
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
@@ -268,15 +271,16 @@ void CDCSDKTabletSplitTest::TestIntentPersistencyAfterTabletSplit(
   LOG(INFO) << "All nodes restarted";
 
   int64 num_intents_after_restart;
+  // Original tablet + two split tablets.
   PollForIntentCount(
-      initial_num_intents, 0, IntentCountCompareOption::EqualTo, &num_intents_after_restart);
+      initial_num_intents * 3, 0, IntentCountCompareOption::EqualTo, &num_intents_after_restart);
   LOG(INFO) << "Number of intents after tablet split: " << num_intents_after_restart;
-  ASSERT_EQ(num_intents_after_restart, initial_num_intents);
+  ASSERT_EQ(num_intents_after_restart, 3 * initial_num_intents);
 
   std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
   int64 received_records = ASSERT_RESULT(GetChangeRecordCount(
       stream_id, table, tablets, tablet_to_checkpoint,
-      checkpoint_type == CDCCheckpointType::EXPLICIT));
+      100 /* expected_total_records */, checkpoint_type == CDCCheckpointType::EXPLICIT));
   ASSERT_EQ(received_records, 100);
 }
 

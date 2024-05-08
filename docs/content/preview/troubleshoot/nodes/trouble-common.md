@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-There is a number of error messages that are common to all YugabytDB components.
+The following error messages are common to all YugabyteDB components.
 
 ## Skipping add replicas
 
@@ -118,3 +118,13 @@ SELECT * FROM system.peers_v2;
 ```
 
 The most likely reason is that you are not using one of the YugabyteDB forks of the Cassandra client drivers. The `system.peers_v2` table does not exist in YugabyteDB. To resolve this issue, you should check the [drivers page](../../../reference/drivers/ycql-client-drivers/) to find a driver for your client language.
+
+## Poll stopped: Service unavailable
+
+You may find messages similar to the following in your PostgreSQL logs:
+
+```sh
+I0208 00:01:18.247143 3895457 poller.cc:66] Poll stopped: Service unavailable (yb/rpc/scheduler.cc:80): Scheduler is shutting down (system error 108)
+```
+
+This is an informational message triggered by a process shutting down. It can be safely ignored.

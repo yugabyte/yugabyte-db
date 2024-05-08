@@ -994,6 +994,16 @@ Status PgApiImpl::AlterTableDropColumn(PgStatement *handle, const char *name) {
   return pg_stmt->DropColumn(name);
 }
 
+Status PgApiImpl::AlterTableSetReplicaIdentity(PgStatement *handle, const char identity_type) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->SetReplicaIdentity(identity_type);
+}
+
 Status PgApiImpl::AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                         const char *newname) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
@@ -1683,6 +1693,83 @@ Status PgApiImpl::SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_
   }
   down_cast<PgDmlRead*>(handle)->SetHashBounds(low_bound, high_bound);
   return Status::OK();
+}
+
+Slice PgApiImpl::GetYbctidAsSlice(uint64_t ybctid) {
+  char* value = NULL;
+  int64_t bytes = 0;
+  FindTypeEntity(kByteArrayOid)->datum_to_yb(ybctid, &value, &bytes);
+  return Slice(value, bytes);
+}
+
+Status PgApiImpl::RetrieveYbctids(PgStatement *handle, const YBCPgExecParameters *exec_params,
+                                      int natts, SliceVector *ybctids, size_t *count,
+                                      bool *exceeded_work_mem) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  auto& dml_read = *down_cast<PgDmlRead*>(handle);
+
+  auto vec = new std::vector<Slice>();
+
+  // If there's a secondary index request (secondary index scans or primary key scans on
+  // non-colocated tables) return the ybctids from the secondary index request.
+  if (dml_read.has_secondary_index_with_doc_op()) {
+    RETURN_NOT_OK(dml_read.RetrieveYbctidsFromSecondaryIndex(exec_params, vec,
+                                                             exceeded_work_mem));
+  } else {
+    // Otherwise (colocated case): fetch the results one at a time.
+    RETURN_NOT_OK(dml_read.Exec(exec_params));
+
+    uint64_t       *values = new uint64_t[natts];
+    bool           *nulls = new bool[natts];
+    YBCPgSysColumns syscols;
+    bool            has_data;
+    size_t          consumed_bytes = 0;
+
+    do {
+      RETURN_NOT_OK(dml_read.Fetch(natts, values, nulls, &syscols, &has_data));
+
+      if (has_data && syscols.ybctid != NULL) {
+        Slice s = GetYbctidAsSlice((uintptr_t) syscols.ybctid);
+        uint8_t *slice_data = new uint8_t[s.size()];
+        consumed_bytes += s.size();
+        s.relocate(slice_data);
+        vec->emplace_back(s);
+      }
+
+      if (consumed_bytes >= (size_t) exec_params->work_mem * 1024) {
+        *exceeded_work_mem = true;
+        break;
+      }
+    } while (has_data);
+
+    delete[] values;
+    delete[] nulls;
+  }
+
+  if (*exceeded_work_mem)
+    // delete these allocated ybctids, we won't use them
+    for (auto ybctid : *vec)
+      delete[] ybctid.cdata(), ybctid.size();
+
+  *count = vec->size();
+  *ybctids = vec;
+  return Status::OK();
+}
+
+Status PgApiImpl::FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
+                                        ConstSliceVector ybctids) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  auto& dml_read = *down_cast<PgDmlRead*>(handle);
+
+  RETURN_NOT_OK(dml_read.SetRequestedYbctids((const std::vector<Slice> *) ybctids));
+
+  return dml_read.Exec(exec_params);
 }
 
 Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_params) {

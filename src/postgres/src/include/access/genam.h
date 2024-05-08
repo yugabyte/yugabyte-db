@@ -17,6 +17,7 @@
 #include "access/sdir.h"
 #include "access/skey.h"
 #include "nodes/tidbitmap.h"
+#include "nodes/ybtidbitmap.h"
 #include "storage/lockdefs.h"
 #include "utils/relcache.h"
 #include "utils/snapshot.h"
@@ -182,6 +183,7 @@ extern bool index_fetch_heap(IndexScanDesc scan, struct TupleTableSlot *slot);
 extern bool index_getnext_slot(IndexScanDesc scan, ScanDirection direction,
 							   struct TupleTableSlot *slot);
 extern int64 index_getbitmap(IndexScanDesc scan, TIDBitmap *bitmap);
+extern int64 yb_index_getbitmap(IndexScanDesc scan, YbTIDBitmap *bitmap);
 
 extern IndexBulkDeleteResult *index_bulk_delete(IndexVacuumInfo *info,
 												IndexBulkDeleteResult *istat,

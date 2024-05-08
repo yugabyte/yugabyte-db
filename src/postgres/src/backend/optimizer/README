@@ -373,6 +373,7 @@ RelOptInfo      - a relation or joined relations
     T_Result    - childless Result plan node (used for FROM-less SELECT)
   IndexPath     - index scan
   BitmapHeapPath - top of a bitmapped index scan
+  YbBitmapTablePath - top of a bitmapped index scan
   TidPath       - scan by CTID
   TidRangePath  - scan a contiguous range of CTIDs
   SubqueryScanPath - scan a subquery-in-FROM

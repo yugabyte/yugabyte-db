@@ -12,7 +12,9 @@ public class HaConfigStates {
     AwaitingReplicas("Awaiting Connection to Replicas"),
     Operational("Operational"),
     Error("Error"),
-    Warning("Warning");
+    Warning("Warning"),
+    StandbyConnected("Standby Connected"),
+    StandbyDisconnected("Standby Disconnected");
 
     private final String state;
 

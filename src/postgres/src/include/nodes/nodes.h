@@ -59,6 +59,7 @@ typedef enum NodeTag
 	T_IndexOnlyScan,
 	T_BitmapIndexScan,
 	T_BitmapHeapScan,
+	T_YbBitmapTableScan,
 	T_TidScan,
 	T_TidRangeScan,
 	T_SubqueryScan,
@@ -118,6 +119,7 @@ typedef enum NodeTag
 	T_IndexOnlyScanState,
 	T_BitmapIndexScanState,
 	T_BitmapHeapScanState,
+	T_YbBitmapTableScanState,
 	T_TidScanState,
 	T_TidRangeScanState,
 	T_SubqueryScanState,
@@ -231,6 +233,7 @@ typedef enum NodeTag
 	T_Path,
 	T_IndexPath,
 	T_BitmapHeapPath,
+	T_YbBitmapTablePath,
 	T_BitmapAndPath,
 	T_BitmapOrPath,
 	T_TidPath,
@@ -553,6 +556,8 @@ typedef enum NodeTag
 	T_YbBatchedNestLoopState,
 	T_YbCreateProfileStmt,
 	T_YbDropProfileStmt,
+	T_YbTIDBitmap,
+
 } NodeTag;
 
 /*

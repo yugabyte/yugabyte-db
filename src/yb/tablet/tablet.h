@@ -32,6 +32,8 @@
 
 #pragma once
 
+#include <span>
+
 #include <boost/intrusive/list.hpp>
 
 #include "yb/common/common_fwd.h"
@@ -316,6 +318,8 @@ class Tablet : public AbstractTablet,
   Status RemoveIntents(
       const RemoveIntentsData& data, RemoveReason reason,
       const TransactionIdSet& transactions) override;
+
+  Status WritePostApplyMetadata(std::span<const PostApplyTransactionMetadata> metadatas) override;
 
   Status GetIntents(
       const TransactionId& id,
@@ -968,6 +972,7 @@ class Tablet : public AbstractTablet,
   mutable simple_spinlock cdcsdk_retention_barrier_lock_;
   MonoTime cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
 
+  void CleanupIntentFiles();
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1200,7 +1205,6 @@ class Tablet : public AbstractTablet,
   Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);
 
   // Tries to find intent .SST files that could be deleted and remove them.
-  void CleanupIntentFiles();
   void DoCleanupIntentFiles();
 
   void RegularDbFilesChanged();

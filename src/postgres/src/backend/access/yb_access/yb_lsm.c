@@ -310,6 +310,47 @@ ybcinmightrecheck(Relation heap, Relation index, bool xs_want_itup,
 	return YbPredetermineNeedsRecheck(heap, index, xs_want_itup, keys, nkeys);
 }
 
+static int64
+ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm)
+{
+	size_t		new_tuples = 0;
+	SliceVector ybctids;
+	YbScanDesc	ybscan = (YbScanDesc) scan->opaque;
+	bool 		exceeded_work_mem = false;
+
+	ybscan->exec_params = scan->yb_exec_params;
+	/* exec_params can be NULL in case of systable_getnext, for example. */
+	if (ybscan->exec_params)
+		ybscan->exec_params->work_mem = work_mem;
+
+	if (!ybscan->is_exec_done)
+		pgstat_count_index_scan(scan->indexRelation);
+
+	/* Special case: aggregate pushdown. */
+	if (scan->yb_aggrefs)
+		elog(ERROR, "TODO: Handle aggregate pushdown");
+
+	if (ybscan->quit_scan || ybtbm->work_mem_exceeded)
+		return 0;
+
+	ybtbm->recheck |= YbPredetermineNeedsRecheck(scan->heapRelation,
+												 ybscan->index,
+												 true /* xs_want_itup */,
+												 *ybscan->keys, ybscan->nkeys);
+
+	HandleYBStatus(YBCPgRetrieveYbctids(ybscan->handle, ybscan->exec_params,
+										ybscan->target_desc->natts, &ybctids, &new_tuples,
+										&exceeded_work_mem));
+	if (!exceeded_work_mem)
+		yb_tbm_add_tuples(ybtbm, ybctids);
+	else
+		yb_tbm_set_work_mem_exceeded(ybtbm);
+
+	YBCBitmapShallowDeleteVector(ybctids);
+
+	return ybtbm->work_mem_exceeded ? 0 : new_tuples;
+}
+
 static void
 ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_count,
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
@@ -384,7 +425,8 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 									 scan->yb_idx_pushdown, scan->yb_aggrefs,
 									 scan->yb_distinct_prefixlen,
 									 scan->yb_exec_params,
-									 false /* is_internal_scan */);
+									 false /* is_internal_scan */,
+									 scan->fetch_ybctids_only);
 	scan->opaque = ybScan;
 	if (scan->parallel_scan)
 	{
@@ -432,7 +474,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 
 	if (!ybscan->is_exec_done)
 		pgstat_count_index_scan(scan->indexRelation);
-    
+
 	/* Special case: aggregate pushdown. */
 	if (scan->yb_aggrefs)
 	{
@@ -589,7 +631,7 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->ambeginscan = ybcinbeginscan;
 	amroutine->amrescan = ybcinrescan;
 	amroutine->amgettuple = ybcingettuple;
-	amroutine->amgetbitmap = NULL; /* TODO: support bitmap scan */
+	amroutine->amgetbitmap = NULL; /* use yb_amgetbitmap below instead */
 	amroutine->amendscan = ybcinendscan;
 	amroutine->ammarkpos = NULL; /* TODO: support mark/restore pos with ordering */
 	amroutine->amrestrpos = NULL;
@@ -600,6 +642,7 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->yb_amdelete = ybcindelete;
 	amroutine->yb_ambackfill = ybcinbackfill;
 	amroutine->yb_ammightrecheck = ybcinmightrecheck;
+	amroutine->yb_amgetbitmap = ybcgetbitmap;
 
 	PG_RETURN_POINTER(amroutine);
 }

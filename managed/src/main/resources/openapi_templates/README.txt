@@ -67,10 +67,19 @@ generates this annotation for the method in the controller class:
       checkOnlyPermission = true)
 })
 
+Since this is a mandatory property for a path, if the API does not require Authz permissions, then
+specify this:
+
+x-yba-api-authz:
+  noAuthz: true
+
 3. x-yba-api-audit
-This can be added to a path. The corresponding ControllerImpInterface method will have an
-auditService call to register a audit entry. The parameters required for this call can be
-specified as shown below.
+It is mandatory to add this to a path. To explicitly skip audit logging for an API, add this:
+x-yba-api-audit:
+  noAudit: true
+
+When specified, the corresponding ControllerImpInterface method will have an auditService call to
+register a audit entry. The parameters required for this call can be specified as shown below.
 Example:
     x-yba-api-audit:
       auditTargetType: Universe

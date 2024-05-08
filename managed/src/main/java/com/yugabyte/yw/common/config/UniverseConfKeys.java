@@ -1054,6 +1054,23 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable YBC for universes during software upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useNodesAreSafeToTakeDown =
+      new ConfKeyInfo<>(
+          "yb.checks.nodes_safe_to_take_down.enabled",
+          ScopeType.UNIVERSE,
+          "Check if nodes are safe to take down before running upgrades",
+          "Check if nodes are safe to take down before running upgrades",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Duration> nodesAreSafeToTakeDownCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.nodes_safe_to_take_down.timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for checking if nodes are safe to take down before running upgrades",
+          "Timeout for checking if nodes are safe to take down before running upgrades",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> targetNodeDiskUsagePercentage =
       new ConfKeyInfo<>(
           "yb.checks.node_disk_size.target_usage_percentage",

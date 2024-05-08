@@ -647,6 +647,8 @@ DEFINE_RUNTIME_uint32(initial_tserver_registration_duration_secs,
     "registered.");
 TAG_FLAG(initial_tserver_registration_duration_secs, advanced);
 
+DECLARE_bool(ysql_yb_enable_replica_identity);
+
 namespace yb {
 namespace master {
 
@@ -5362,9 +5364,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT:
         return id;
-      case SysRowEntryType::CDC_STREAM:
-        if (!CDCStreamExistsUnlocked(CHECK_RESULT(xrepl::StreamId::FromString(id)))) return id;
-        break;
+      case SysRowEntryType::CDC_STREAM: FALLTHROUGH_INTENDED;
       case SysRowEntryType::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::ROLE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::REDIS_CONFIG: FALLTHROUGH_INTENDED;
@@ -7071,6 +7071,15 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       const Status s = STATUS(InvalidArgument, "No namespace used");
       return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
     }
+  }
+
+  if (!FLAGS_ysql_yb_enable_replica_identity &&
+      req->alter_properties().has_ysql_replica_identity()) {
+    const Status s = STATUS(
+        InvalidArgument,
+        "Cannot use Replica Identity with Alter Table as the flag ysql_yb_enable_replica_identity "
+        "is not set");
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
 
   if (req->ysql_ddl_rollback_enabled()) {
@@ -10386,7 +10395,8 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
     VLOG_WITH_FUNC(2) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
   }
-  if (versions->size() > 1 && !FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
+  if (!catalog_version_table_in_perdb_mode_ &&
+      versions->size() > 1 && !FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
     LOG(INFO) << "set catalog_version_table_in_perdb_mode_ to true";
     catalog_version_table_in_perdb_mode_ = true;
   }

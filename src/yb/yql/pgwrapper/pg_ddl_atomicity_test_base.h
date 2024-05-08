@@ -179,6 +179,17 @@ class PgDdlAtomicityTestBase : public LibPqTestBase {
                                     const std::vector<std::string>& expected_column_names,
                                     const std::set<std::string>& cols_marked_for_deletion);
 
+  // Verify that the 'table_name' has the 'expected_replica_identity'
+  Status VerifyReplicaIdentityMatches(client::YBClient* client,
+                                      const std::string& database_name,
+                                      const std::string& table_name,
+                                      PgReplicaIdentity expected_replica_identity);
+
+  Result<bool> CheckIfReplicaIdentityMatches(client::YBClient* client,
+                                             const std::string& database_name,
+                                             const std::string& table_name,
+                                             PgReplicaIdentity expected_replica_identity);
+
   Status VerifyRowsAfterDdlSuccess(PGConn* conn, const int expected_rows);
 
   Status VerifyRowsAfterDdlErrorInjection(PGConn* conn, const int expected_rows);

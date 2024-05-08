@@ -44,6 +44,8 @@ class DbServerBase : public server::RpcAndWebServerBase {
 
   virtual client::LocalTabletFilter CreateLocalTabletFilter() = 0;
 
+  virtual void WriteServerMetaCacheAsJson(JsonWriter* writer) = 0;
+
   const std::shared_future<client::YBClient*>& client_future() const;
 
   tserver::TServerSharedData& shared_object();
@@ -56,6 +58,8 @@ class DbServerBase : public server::RpcAndWebServerBase {
 
  protected:
   void EnsureTransactionPoolCreated();
+
+  void WriteMainMetaCacheAsJson(JsonWriter* writer);
 
   // Shared memory owned by the tablet server.
   std::unique_ptr<tserver::TServerSharedObject> shared_object_;

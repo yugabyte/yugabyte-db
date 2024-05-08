@@ -249,13 +249,17 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           ybSoftwareVersion,
-          taskParams().sleepAfterMasterRestartMillis,
-          universeOverrides, // Is this old code to update k8s universe?
+          getOrCreateExecutionContext().getWaitForServerTimeout().toMillis(),
+          universeOverrides,
           azOverrides,
           masterChanged,
           tserverChanged,
           newNamingStyle,
-          isReadOnlyCluster);
+          /*isReadOnlyCluster*/ false,
+          CommandType.HELM_UPGRADE,
+          enableYbc,
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
     }
     if (tserverChanged) {
       createLoadBalancerStateChangeTask(false /*enable*/)
@@ -278,7 +282,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           CommandType.HELM_UPGRADE,
           enableYbc,
-          ybcSoftwareVersion);
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
 
       if (enableYbc) {
         if (isReadOnlyCluster) {

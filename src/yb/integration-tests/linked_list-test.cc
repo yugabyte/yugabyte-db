@@ -419,10 +419,12 @@ class PeriodicWebUIChecker {
     master_pages.push_back("/tables");
     master_pages.push_back("/dump-entities");
     master_pages.push_back("/tablet-servers");
+    master_pages.push_back("/api/v1/meta-cache");
 
     ts_pages.push_back("/metrics");
     ts_pages.push_back("/tablets");
     ts_pages.push_back(strings::Substitute("/transactions?tablet_id=$0", tablet_id));
+    ts_pages.push_back("/api/v1/meta-cache");
 
     // Generate list of urls for each master and tablet server
     for (size_t i = 0; i < cluster.num_masters(); i++) {

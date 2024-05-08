@@ -185,6 +185,8 @@ DECLARE_INDEX(pg_class_tblspc_relfilenode_index, 3455, ClassTblspcRelfilenodeInd
  * has the same meaning as 'n'.
  */
 #define		  REPLICA_IDENTITY_INDEX	'i'
+/* only the modified columns of the updated record are logged as replica identity */
+#define		  YB_REPLICA_IDENTITY_CHANGE 'c'
 
 /*
  * Relation kinds that have physical storage. These relations normally have

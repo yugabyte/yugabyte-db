@@ -22,6 +22,7 @@
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/server/async_client_initializer.h"
@@ -1669,6 +1670,7 @@ class PgClientServiceImpl::Impl {
 
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
+    std::vector<uint64_t> expired_sessions;
     std::lock_guard lock(mutex_);
     while (!session_expiration_queue_.empty()) {
       auto& top = session_expiration_queue_.top();
@@ -1683,9 +1685,15 @@ class PgClientServiceImpl::Impl {
         if (current_expiration > now) {
           session_expiration_queue_.push({current_expiration, id});
         } else {
+          expired_sessions.push_back(id);
           sessions_.erase(it);
         }
       }
+    }
+    auto cdc_service = tablet_server_.GetCDCService();
+    // We only want to call this on tablet servers. On master, cdc_service will be null.
+    if (cdc_service) {
+      cdc_service->DestroyVirtualWALBatchForCDC(expired_sessions);
     }
     ScheduleCheckExpiredSessions(now);
   }

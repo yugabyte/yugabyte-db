@@ -96,6 +96,8 @@ struct MetricPrometheusOptions : public MetricOptions {
   // Include #TYPE and #HELP in Prometheus metrics output
   ExportHelpAndType export_help_and_type{ExportHelpAndType::kFalse};
 
+  uint32_t max_metric_entries = UINT32_MAX;
+
   std::string version = kFilterVersionOne;
 
   // For filtering table level metrics when version is equal to kFilterVersionOne.

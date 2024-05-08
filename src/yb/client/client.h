@@ -1009,6 +1009,8 @@ class YBClient {
   Result<std::shared_ptr<internal::RemoteTabletServer>> GetRemoteTabletServer(
       const std::string& permanent_uuid);
 
+  void AddMetaCacheInfo(JsonWriter* writer);
+
   void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
   void Shutdown();
@@ -1016,6 +1018,10 @@ class YBClient {
   const std::string& LogPrefix() const;
 
   server::Clock* Clock() const;
+
+  const std::string& client_name() const;
+
+  void ClearAllMetaCachesOnServer();
 
  private:
   class Data;

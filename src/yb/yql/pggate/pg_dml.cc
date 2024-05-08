@@ -336,20 +336,27 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
 
   // When INDEX has its own doc_op, execute it to fetch next batch of ybctids which is then used
   // to read data from the main table.
-  const vector<Slice> *ybctids;
-  if (!VERIFY_RESULT(secondary_index_query_->FetchYbctidBatch(&ybctids))) {
+  if (!VERIFY_RESULT(secondary_index_query_->FetchYbctidBatch(&retrieved_ybctids_))) {
     // No more rows of ybctids.
     return false;
   }
 
+  if (prepare_params_.fetch_ybctids_only)
+    return true;
+
   // Update request with the new batch of ybctids to fetch the next batch of rows.
-  auto i = ybctids->begin();
-  RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps({make_lw_function(
-      [&i, end = ybctids->end()] {
-        return i != end ? *i++ : Slice();
-      }), ybctids->size(), secondary_index_query_->KeepOrder()}));
+  RETURN_NOT_OK(UpdateRequestWithYbctids(retrieved_ybctids_,
+                                         secondary_index_query_->KeepOrder()));
+
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
+}
+
+Status PgDml::UpdateRequestWithYbctids(const std::vector<Slice> *ybctids, bool keepOrder) {
+  auto i = ybctids->begin();
+  return doc_op_->PopulateDmlByYbctidOps({make_lw_function([&i, end = ybctids->end()] {
+    return i != end ? *i++ : Slice();
+  }), ybctids->size(), keepOrder});
 }
 
 Status PgDml::Fetch(int32_t natts,
@@ -459,6 +466,10 @@ Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
 
 bool PgDml::has_aggregate_targets() const {
   return has_aggregate_targets_;
+}
+
+bool PgDml::has_secondary_index_with_doc_op() const {
+  return secondary_index_query_ && secondary_index_query_->has_doc_op();
 }
 
 Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {

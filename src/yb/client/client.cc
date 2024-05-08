@@ -483,6 +483,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
   RETURN_NOT_OK(CheckCPUFlags());
 
   std::unique_ptr<YBClient> c(new YBClient());
+  c->data_->client_name_ = data_->client_name_ + "_" + c->data_->id_.ToString();
 
   // Init messenger.
   if (messenger) {
@@ -2311,6 +2312,10 @@ Result<std::shared_ptr<internal::RemoteTabletServer>> YBClient::GetRemoteTabletS
   return tserver;
 }
 
+void YBClient::AddMetaCacheInfo(JsonWriter* writer) {
+  data_->meta_cache_->AddAllTabletInfo(writer);
+}
+
 void YBClient::RequestsFinished(const RetryableRequestIdRange& request_id_range) {
   if (request_id_range.empty()) {
     return;
@@ -2808,6 +2813,10 @@ const std::string& YBClient::LogPrefix() const {
   return data_->log_prefix_;
 }
 
+const std::string& YBClient::client_name() const {
+  return data_->client_name_;
+}
+
 server::Clock* YBClient::Clock() const {
   return data_->clock_.get();
 }
@@ -2893,6 +2902,10 @@ Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
       resp.service_info().has_permanent_uuid(), IllegalState, "No permanent uuid in response");
 
   return std::move(resp.service_info());
+}
+
+void YBClient::ClearAllMetaCachesOnServer() {
+  data_->meta_cache_->ClearAll();
 }
 
 }  // namespace client

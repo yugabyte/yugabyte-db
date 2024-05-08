@@ -1091,7 +1091,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&enable_bitmapscan,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 	{
@@ -2465,6 +2465,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_replica_identity", PGC_SUSET, REPLICATION_SENDING,
+			gettext_noop("Allow changing replica identity via ALTER TABLE command"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replica_identity,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -3010,6 +3021,34 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_locks_max_transactions,
 		16, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_walsender_poll_sleep_duration_nonempty_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which Walsender waits before"
+						 " fetching the next batch of changes from the CDC"
+						 " service in case the last received response was"
+						 " non-empty."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_walsender_poll_sleep_duration_nonempty_ms,
+		1, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_walsender_poll_sleep_duration_empty_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which Walsender waits before"
+						 " fetching the next batch of changes from the CDC"
+						 " service in case the last received response was"
+						 " empty."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_walsender_poll_sleep_duration_empty_ms,
+		1 * 1000, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -4943,6 +4982,18 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&log_xact_sample_rate,
 		0.0, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_ybgin_disable_cost_factor", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("The multiplier to disable_cost to add when costing"
+						 " ybgin index scans that may not be supported."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_ybgin_disable_cost_factor,
+		2.0, 0.0, 10.0,
 		NULL, NULL, NULL
 	},
 

@@ -378,7 +378,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         isReadOnlyCluster,
         commandType,
         false,
-        null);
+        null,
+        /* addDelayAfterStartup */ false);
   }
 
   public void upgradePodsNonRolling(
@@ -638,7 +639,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement currPlacement,
       ServerType serverType,
       String softwareVersion,
-      int waitTime,
+      long waitTime,
       String universeOverridesStr,
       Map<String, String> azsOverrides,
       boolean masterChanged,
@@ -647,7 +648,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       CommandType commandType,
       boolean enableYbc,
-      String ybcSoftwareVersion) {
+      String ybcSoftwareVersion,
+      boolean addDelayAfterStartup) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -742,6 +744,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         tserverPartition = serverType == ServerType.TSERVER ? partition : tserverPartition;
         NodeDetails node =
             getKubernetesNodeName(partition, azCode, serverType, isMultiAz, isReadOnlyCluster);
+        long startTime = System.currentTimeMillis();
         List<NodeDetails> nodeList = new ArrayList<>();
         nodeList.add(node);
         if (serverType == ServerType.TSERVER && !edit) {
@@ -794,6 +797,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         createWaitForServerReady(node, serverType, waitTime)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+        if (addDelayAfterStartup) {
+          createSleepAfterStartupTask(
+              taskParams().getUniverseUUID(),
+              Collections.singletonList(serverType),
+              KubernetesCommandExecutor.getPodCommandDateKey(podName, commandType));
+        }
 
         // If there are no universe keys on the universe, it will have no effect.
         if (serverType == ServerType.MASTER

@@ -76,6 +76,8 @@ using yb::server::ServerStatusPB;
 using yb::server::ReloadCertificatesRequestPB;
 using yb::server::ReloadCertificatesResponsePB;
 using yb::tablet::TabletStatusPB;
+using yb::tserver::ClearAllMetaCachesOnServerRequestPB;
+using yb::tserver::ClearAllMetaCachesOnServerResponsePB;
 using yb::tserver::CountIntentsRequestPB;
 using yb::tserver::CountIntentsResponsePB;
 using yb::tserver::DeleteTabletRequestPB;
@@ -113,6 +115,7 @@ const char* const kCompactAllTabletsOp = "compact_all_tablets";
 const char* const kReloadCertificatesOp = "reload_certificates";
 const char* const kRemoteBootstrapOp = "remote_bootstrap";
 const char* const kListMasterServersOp = "list_master_servers";
+const char* const kClearAllMetaCachesOnServerOp = "clear_server_metacache";
 
 DEFINE_NON_RUNTIME_string(server_address, "localhost",
               "Address of server to run against");
@@ -245,6 +248,8 @@ class TsAdminClient {
 
   // List information for all master servers.
   Status ListMasterServers();
+
+  Status ClearAllMetaCachesOnServer();
 
  private:
   std::string addr_;
@@ -679,6 +684,15 @@ Status TsAdminClient::ListMasterServers() {
   return Status::OK();
 }
 
+Status TsAdminClient::ClearAllMetaCachesOnServer() {
+  CHECK(initted_);
+  tserver::ClearAllMetaCachesOnServerRequestPB req;
+  tserver::ClearAllMetaCachesOnServerResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(ts_proxy_->ClearAllMetaCachesOnServer(req, &resp, &rpc));
+  return Status::OK();
+}
 
 namespace {
 
@@ -923,6 +937,11 @@ static int TsCliMain(int argc, char** argv) {
 
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ListMasterServers(),
                                     "Unable to list master servers on " + addr);
+  } else if (op == kClearAllMetaCachesOnServerOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.ClearAllMetaCachesOnServer(),
+        "Unable to clear the meta-cache on tablet server with address " + addr);
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);

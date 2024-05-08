@@ -1544,6 +1544,24 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			break;
 		}
 
+		case AT_ReplicaIdentity:
+		{
+			if (!yb_enable_replica_identity)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("Replica Identity is unavailable"),
+						 errdetail("yb_enable_replica_identity is false or a "
+								   "system upgrade is in progress")));
+
+			YBCPgStatement replica_identity_handle =
+				(YBCPgStatement) lfirst(list_head(handles));
+			ReplicaIdentityStmt* stmt = (ReplicaIdentityStmt *) cmd->def;
+			HandleYBStatus(YBCPgAlterTableSetReplicaIdentity(
+			  replica_identity_handle, stmt->identity_type));
+			*needsYBAlter = true;
+			break;
+		}
+
 		default:
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("This ALTER TABLE command is not yet supported.")));

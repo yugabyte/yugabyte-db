@@ -14,6 +14,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <iterator>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -48,6 +50,7 @@
 #include "yb/util/signal_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 #include "yb/util/yb_partition.h"
 
@@ -187,10 +190,7 @@ YBCStatus ProcessYbctid(const YBCPgYBTupleIdDescriptor& source, const Processor&
 }
 
 Slice YbctidAsSlice(uint64_t ybctid) {
-  char* value = NULL;
-  int64_t bytes = 0;
-  pgapi->FindTypeEntity(kByteArrayOid)->datum_to_yb(ybctid, &value, &bytes);
-  return Slice(value, bytes);
+  return pgapi->GetYbctidAsSlice(ybctid);
 }
 
 inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
@@ -568,6 +568,129 @@ YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
 }
 
 //--------------------------------------------------------------------------------------------------
+// YB Bitmap Scan Operations
+//--------------------------------------------------------------------------------------------------
+
+typedef std::unordered_set<Slice, Slice::Hash> UnorderedSliceSet;
+
+static void FreeSlice(Slice slice) {
+  delete[] slice.data(), slice.size();
+}
+
+SliceSet YBCBitmapCreateSet() {
+  UnorderedSliceSet *set = new UnorderedSliceSet();
+  return set;
+}
+
+size_t YBCBitmapUnionSet(SliceSet sa, ConstSliceSet sb) {
+  UnorderedSliceSet *a = reinterpret_cast<UnorderedSliceSet *>(sa);
+  const UnorderedSliceSet *b = reinterpret_cast<const UnorderedSliceSet *>(sb);
+  size_t new_bytes = 0;
+
+  // std::set_union would be appropriate here (and likely a more efficient implementation), but it's
+  // important that we do not leak the allocations that we do not include in the result set.
+
+  for (auto slice : *b) {
+    if (a->insert(slice).second == false)
+      FreeSlice(slice);
+    else
+      new_bytes += slice.size();
+  }
+  delete b;
+
+  return new_bytes;
+}
+
+SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb) {
+  UnorderedSliceSet *a = reinterpret_cast<UnorderedSliceSet *>(sa);
+  UnorderedSliceSet *b = reinterpret_cast<UnorderedSliceSet *>(sb);
+
+  // we want to iterate over the smaller set to save some time
+  if (b->size() < a->size()) {
+    std::swap(a, b);
+  }
+
+  // for each elem in a, if it's not also in b, delete a's copy
+  auto iterb = b->begin();
+  for (auto itera = a->begin(); itera != a->end();) {
+    if ((iterb = b->find(*itera)) == b->end()) {
+      FreeSlice(*itera);
+      itera = a->erase(itera);
+    } else {
+      ++itera;
+    }
+  }
+
+  // then delete everything from b (a copy already exists in a)
+  YBCBitmapDeepDeleteSet(sb);
+
+  return a;
+}
+
+size_t YBCBitmapInsertYbctidsIntoSet(SliceSet set, ConstSliceVector vec) {
+  const std::vector<Slice> *v = reinterpret_cast<const std::vector<Slice> *>(vec);
+
+  size_t bytes = 0;
+  UnorderedSliceSet *s = reinterpret_cast<UnorderedSliceSet *>(set);
+
+  for (auto ybctid : *v) {
+    if (s->insert(ybctid).second) // successfully inserted
+      bytes += ybctid.size();
+    else
+      FreeSlice(ybctid);
+  }
+
+  return bytes;
+}
+
+ConstSliceVector YBCBitmapCopySetToVector(ConstSliceSet set, size_t *size) {
+  const UnorderedSliceSet *s = reinterpret_cast<const UnorderedSliceSet *>(set);
+  if (size)
+    *size = s->size();
+  return new std::vector<Slice>(s->begin(), s->end());
+}
+
+ConstSliceVector YBCBitmapGetVectorRange(ConstSliceVector vec, size_t start, size_t length) {
+  const std::vector<Slice> *v = reinterpret_cast<const std::vector<Slice> *>(vec);
+
+  const size_t end_index = std::min(start + length, v->size());
+
+  if (end_index <= start)
+    return NULL;
+
+  return new std::vector<Slice>(v->begin() + start, v->begin() + end_index);
+}
+
+void YBCBitmapShallowDeleteVector(ConstSliceVector vec) {
+  delete reinterpret_cast<const std::vector<Slice> *>(vec);
+}
+
+void YBCBitmapShallowDeleteSet(ConstSliceVector set) {
+  delete reinterpret_cast<const UnorderedSliceSet *>(set);
+}
+
+void YBCBitmapDeepDeleteSet(ConstSliceSet set) {
+  const UnorderedSliceSet *s = reinterpret_cast<const UnorderedSliceSet *>(set);
+  for (auto &slice : *s)
+    FreeSlice(slice);
+  delete s;
+}
+
+size_t YBCBitmapGetSetSize(ConstSliceSet set) {
+  if (!set)
+    return 0;
+  const UnorderedSliceSet *s = reinterpret_cast<const UnorderedSliceSet *>(set);
+  return s->size();
+}
+
+size_t YBCBitmapGetVectorSize(ConstSliceVector vec) {
+  if (!vec)
+    return 0;
+  const std::vector<Slice> *v = reinterpret_cast<const std::vector<Slice> *>(vec);
+  return v->size();
+}
+
+//--------------------------------------------------------------------------------------------------
 // DDL Statements.
 //--------------------------------------------------------------------------------------------------
 // Database Operations -----------------------------------------------------------------------------
@@ -825,6 +948,10 @@ YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname
 
 YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name) {
   return ToYBCStatus(pgapi->AlterTableDropColumn(handle, name));
+}
+
+YBCStatus YBCPgAlterTableSetReplicaIdentity(YBCPgStatement handle, const char identity_type) {
+  return ToYBCStatus(pgapi->AlterTableSetReplicaIdentity(handle, identity_type));
 }
 
 YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
@@ -1305,6 +1432,18 @@ YBCStatus YBCPgSetHashBounds(YBCPgStatement handle, uint16_t low_bound, uint16_t
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params) {
   return ToYBCStatus(pgapi->ExecSelect(handle, exec_params));
+}
+
+YBCStatus YBCPgRetrieveYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
+                                   int natts, SliceVector *ybctids, size_t *count,
+                                   bool *exceeded_work_mem) {
+  return ToYBCStatus(pgapi->RetrieveYbctids(handle, exec_params, natts, ybctids, count,
+                                            exceeded_work_mem));
+}
+
+YBCStatus YBCPgFetchRequestedYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
+                                     ConstSliceVector ybctids) {
+  return ToYBCStatus(pgapi->FetchRequestedYbctids(handle, exec_params, ybctids));
 }
 
 //------------------------------------------------------------------------------------------------

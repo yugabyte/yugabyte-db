@@ -55,6 +55,12 @@ extern BitmapHeapPath *create_bitmap_heap_path(PlannerInfo *root,
 											   Relids required_outer,
 											   double loop_count,
 											   int parallel_degree);
+extern YbBitmapTablePath *create_yb_bitmap_table_path(PlannerInfo *root,
+						RelOptInfo *rel,
+						Path *bitmapqual,
+						Relids required_outer,
+						double loop_count,
+						int parallel_degree);
 extern BitmapAndPath *create_bitmap_and_path(PlannerInfo *root,
 											 RelOptInfo *rel,
 											 List *bitmapquals);

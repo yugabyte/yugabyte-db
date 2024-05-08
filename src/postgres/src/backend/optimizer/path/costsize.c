@@ -142,6 +142,12 @@
  */
 #define UUID_YBCTID_WIDTH 33
 
+/*
+ * This multiplier is a temporary way to disincentivize bitmap scans unless they
+ * are a very obvious choice.
+ */
+#define YB_BITMAP_DISCOURAGE_MODIFIER 3
+
 double		seq_page_cost = DEFAULT_SEQ_PAGE_COST;
 double		random_page_cost = DEFAULT_RANDOM_PAGE_COST;
 double		cpu_tuple_cost = DEFAULT_CPU_TUPLE_COST;
@@ -183,7 +189,7 @@ int			max_parallel_workers_per_gather = 2;
 bool		enable_seqscan = true;
 bool		enable_indexscan = true;
 bool		enable_indexonlyscan = true;
-bool		enable_bitmapscan = true;
+bool		enable_bitmapscan = false;
 bool		enable_tidscan = true;
 bool		enable_sort = true;
 bool		enable_incremental_sort = true;
@@ -648,7 +654,11 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 * We don't bother to save indexStartupCost or indexCorrelation, because a
 	 * bitmap scan doesn't care about either.
 	 */
-	path->indextotalcost = indexTotalCost;
+	if (IsYugaByteEnabled() && baserel->is_yb_relation)
+		// TODO(#20573): YB Bitmap cost
+		path->indextotalcost = indexTotalCost * YB_BITMAP_DISCOURAGE_MODIFIER;
+	else
+		path->indextotalcost = indexTotalCost;
 	path->indexselectivity = indexSelectivity;
 
 	/* all costs for touching index itself included here */
@@ -1134,6 +1144,30 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	path->startup_cost = startup_cost;
 	path->total_cost = startup_cost + run_cost;
+}
+
+/*
+ * cost_yb_bitmap_table_scan
+ *	  Determines and returns the cost of scanning a relation using a YB bitmap
+ *	  index-then-table plan.
+ *
+ * 'baserel' is the relation to be scanned
+ * 'param_info' is the ParamPathInfo if this is a parameterized path, else NULL
+ * 'bitmapqual' is a tree of IndexPaths, BitmapAndPaths, and BitmapOrPaths
+ * 'loop_count' is the number of repetitions of the indexscan to factor into
+ *		estimates of caching behavior
+ *
+ * Note: the component IndexPaths in bitmapqual should have been costed
+ * using the same loop_count.
+ */
+void
+cost_yb_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+					  ParamPathInfo *param_info,
+					  Path *bitmapqual, double loop_count)
+{
+	Assert(baserel->is_yb_relation);
+	return cost_bitmap_heap_scan(path, root, baserel, param_info, bitmapqual,
+								 loop_count);
 }
 
 /*
@@ -5030,6 +5064,17 @@ has_indexed_join_quals(NestPath *path)
 					return false;
 				break;
 			}
+		case T_YbBitmapTableScan:
+			{
+				/* Accept only a simple bitmap scan, not AND/OR cases */
+				Path	   *bmqual = ((YbBitmapTablePath *) innerpath)->bitmapqual;
+
+				if (IsA(bmqual, IndexPath))
+					indexclauses = ((IndexPath *) bmqual)->indexclauses;
+				else
+					return false;
+				break;
+			}
 		default:
 
 			/*
@@ -6853,7 +6898,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo* root, bool is_index_path,
 					TupleDescAttr(baserel->rd_att, attnum);
 				if (att->attlen < 0)
 				{
-					/* attlen is negative for variable size types. DocDB 
+					/* attlen is negative for variable size types. DocDB
 					 * prefixes the value with the 8 bytes length. */
 					result_width += 8;
 				}
@@ -7570,7 +7615,12 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	index_total_cost += index_random_pages_fetched * yb_random_block_cost;
 	index_total_cost += index_sequential_pages_fetched * yb_seq_block_cost;
 
-	path->indextotalcost = index_total_cost;
+	/*
+	 * Save amcostestimate's results for possible use in bitmap scan planning.
+	 * We don't bother to save indexStartupCost or indexCorrelation, because a
+	 * bitmap scan doesn't care about either.
+	 */
+	path->indextotalcost = index_total_cost * YB_BITMAP_DISCOURAGE_MODIFIER;
 	path->indexselectivity = index_selectivity;
 
 	/* all costs for touching index itself included here */

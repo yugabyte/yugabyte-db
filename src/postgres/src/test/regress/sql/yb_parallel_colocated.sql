@@ -25,6 +25,7 @@ set yb_enable_base_scans_cost_model to true;
 -- encourage use of parallel plans
 set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
+set enable_bitmapscan = false;
 
 -- Parallel sequential scan
 EXPLAIN (costs off)

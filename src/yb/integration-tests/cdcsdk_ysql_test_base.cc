@@ -31,6 +31,8 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/status.h"
 
+DECLARE_bool(cdc_write_post_apply_metadata);
+
 namespace yb {
 namespace cdc {
 Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
@@ -2124,39 +2126,33 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     }
 
     ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
+    ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
+    ASSERT_OK(FlushTable(table.table_id()));
+
     // Sleep for 60s for the background thread to update the consumer op_id so that garbage
     // collection can happen.
     vector<int64> intent_counts(num_tservers, -1);
     ASSERT_OK(WaitFor(
         [this, &num_tservers, &set_flag_to_a_smaller_value, &extend_expiration, &intent_counts,
          &stream_id, &tablets, &change_resp]() -> Result<bool> {
-          uint32_t i = 0;
-          while (i < num_tservers) {
+          for (uint32_t i = 0; i < num_tservers; ++i) {
             if (extend_expiration) {
               // Call GetChanges once to set the initial value in the cdc_state table.
-              auto result =
-                  GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint());
-              if (!result.ok()) {
-                return false;
-              }
-              yb::cdc::GetChangesResponsePB change_resp_2 = *result;
+              auto change_resp_2 = VERIFY_RESULT(GetChangesFromCDC(
+                  stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
               if (change_resp_2.has_error()) {
                 return false;
               }
               change_resp = change_resp_2;
             }
 
-            auto status = GetIntentCounts(i, &intent_counts[i]);
-            if (!status.ok()) {
-              continue;
-            }
+            RETURN_NOT_OK(GetIntentCounts(i, &intent_counts[i]));
 
             if (set_flag_to_a_smaller_value && !extend_expiration) {
               if (intent_counts[i] != 0) {
-                continue;
+                return false;
               }
             }
-            i++;
           }
           return true;
         },
@@ -2417,6 +2413,40 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     argv.push_back("compact_sys_catalog");
     RETURN_NOT_OK(Subprocess::Call(argv));
     return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::FlushTable(const TableId& table_id) {
+    return WaitForFlushTables(
+        {table_id}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+        /* is_compaction = */ false);
+  }
+
+  Status CDCSDKYsqlTest::WaitForPostApplyMetadataWritten(size_t expected_num_transactions) {
+    if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata)) {
+      return Status::OK();
+    }
+    size_t num_intents = 0;
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto peers = ListTabletPeers(test_cluster_.mini_cluster_.get(), ListPeersFilter::kAll);
+          for (const auto &peer : peers) {
+            auto tablet = peer->shared_tablet();
+            auto participant = tablet ? tablet->transaction_participant() : nullptr;
+            if (!participant) {
+              continue;
+            }
+            auto result = VERIFY_RESULT(participant->TEST_CountIntents());
+            LOG(INFO) << "Transactions: " << result.num_transactions
+                      << " Post-apply: " << result.num_post_apply;
+            if (result.num_transactions < expected_num_transactions ||
+                result.num_transactions != result.num_post_apply) {
+              return false;
+            }
+            num_intents += result.num_intents;
+          }
+          return true;
+        },
+        MonoDelta::FromSeconds(30), "Waiting for post apply metadata to be written");
   }
 
   void CDCSDKYsqlTest::GetTabletLeaderAndAnyFollowerIndex(

@@ -5628,10 +5628,21 @@ RelationBuildLocalRelation(const char *relname,
 		(relkind == RELKIND_RELATION ||
 		 relkind == RELKIND_MATVIEW ||
 		 relkind == RELKIND_PARTITIONED_TABLE))
-		rel->rd_rel->relreplident = REPLICA_IDENTITY_DEFAULT;
+	{
+		/*
+		 * YB NOTE: The default replica identity in case of user defined tables is
+		 * set to 'CHANGE'. In all other cases the default behaviour of PG
+		 * is used, i.e. 'DEFAULT' for relations in information_schema and
+		 * 'NOTHING' for tables in pg_catalog and for non-table objects
+		 */
+		if (IsYugaByteEnabled() && relid >= FirstNormalObjectId)
+			rel->rd_rel->relreplident = YB_REPLICA_IDENTITY_CHANGE;
+		else
+			rel->rd_rel->relreplident = REPLICA_IDENTITY_DEFAULT;
+	}
 	else
 		rel->rd_rel->relreplident = REPLICA_IDENTITY_NOTHING;
-
+	
 	/*
 	 * Insert relation physical and logical identifiers (OIDs) into the right
 	 * places.  For a mapped relation, we set relfilenode to zero and rely on
