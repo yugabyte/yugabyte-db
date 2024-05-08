@@ -186,6 +186,8 @@ Tablet-meta folder in the `/master` and `/tserver` directories of YugabyteDB nod
 
 #### Node agent logs
 
+Node agent logs generated in the YugabyteDB nodes (if node agent is enabled).
+
 #### Core Files
 
 The Core Files component collects all the core files and mitigates two issues that may happen when collecting files such as the following:
@@ -204,6 +206,31 @@ YBA also provides a runtime flag `yb.support_bundle.allow_cores_collection`, whi
 #### YB-Controller logs
 
 YBC logs generated in `/controller/logs` folder in the YugabyteDB nodes (if YB-Controller is enabled).
+
+#### Kubernetes info
+
+This component exclusively includes metadata for Kubernetes-based universes. The detailed metadata list is as follows:
+
+- Cluster-wide information:
+  - Kubectl version
+  - Service account permissions
+  - Provider storage class info
+
+- Information collected in the YBA namespace:
+  - Events.yaml
+  - Pods.yaml
+  - Configmaps.yaml
+  - Services.yaml
+
+- Information collected from each YugabyteDB namespace in the cluster:
+  - Helm overrides used
+  - Events.yaml (Collect specific columns, sorted by time)
+  - Pods.yaml
+  - Configmaps.yaml
+  - Services.yaml
+  - Secrets.txt (Includes only secret names and not the actual value)
+  - Statefulsets.yaml
+  - Persistentvolumeclaims.yaml
 
 </details>
 
