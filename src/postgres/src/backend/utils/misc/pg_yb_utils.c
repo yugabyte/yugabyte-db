@@ -2306,7 +2306,7 @@ YBTxnDdlProcessUtility(
 	{
 		if (is_ddl)
 		{
-#ifdef YB_TODO /* utils/syscache.h has YbInitPinnedCacheIfNeeded ifdef'd out */
+#ifdef YB_TODO /* utils/syscache.h has YbInitPinnedCacheIfNeeded removed. */
 			if (YBIsDBCatalogVersionMode())
 				/*
 				 * In order to support concurrent non-global-impact DDLs

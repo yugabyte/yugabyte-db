@@ -647,15 +647,14 @@ GenerateTypeDependencies(HeapTuple typeTuple,
 	ObjectAddressSet(myself, TypeRelationId, typeObjectId);
 
 	/*
-	 * For non-view system relations during YSQL upgrade, we only need to
-	 * record a pin dependency, nothing else.
+	 * For non-view system relations during YSQL upgrade, we do not need to do
+	 * anything.
 	 */
 	if (IsYsqlUpgrade && ybRelationIsSystem && relationKind != RELKIND_VIEW)
 	{
 		if (rebuild)
 			elog(ERROR, "cannot rebuild dependencies for a system relation rowtype");
 
-		YbRecordPinDependency(&myself, ybRelationIsShared);
 		return;
 	}
 

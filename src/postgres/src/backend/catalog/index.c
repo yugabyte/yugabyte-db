@@ -1144,8 +1144,7 @@ index_create(Relation heapRelation,
 	 * to make a constraint either.
 	 *
 	 * YB NOTE:
-	 * For system relations, we only need to record a pin dependency,
-	 * nothing else.
+	 * For system relations, we do not need to do anything.
 	 */
 	if (!IsBootstrapProcessingMode())
 	{
@@ -1154,11 +1153,7 @@ index_create(Relation heapRelation,
 		ObjectAddresses *addrs;
 
 		ObjectAddressSet(myself, RelationRelationId, indexRelationId);
-		if (IsYBRelation(heapRelation) && IsCatalogRelation(heapRelation))
-		{
-			YbRecordPinDependency(&myself, shared_relation);
-		}
-		else
+		if (!IsYBRelation(heapRelation) || !IsCatalogRelation(heapRelation))
 		{
 			if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0)
 			{
