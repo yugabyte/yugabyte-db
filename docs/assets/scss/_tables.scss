@@ -13,6 +13,7 @@ main {
         margin: 0 !important;
         border: none;
         box-shadow: none;
+        display: table;
     @media(max-width:900px){
       min-width:650px;
     }
@@ -39,9 +40,23 @@ main {
       }
     }
 
-    .td-content table:not(.td-initial) > tbody > tr:nth-of-type(odd) > * {
-      background-color: transparent;
+    .table > :not(caption) > * > *,
+    .td-table:not(.td-initial) > :not(caption) > * > *,
+    .td-content table:not(.td-initial) > :not(caption) > * > *,
+    .td-box table:not(.td-initial) > :not(caption) > * > *{
+      padding: 12.75px 15px;
     }
+    
+    .table-striped > tbody > tr:nth-of-type(odd) > *,
+    .td-table:not(.td-initial) > tbody > tr:nth-of-type(odd) > *,
+    .td-content table:not(.td-initial) > tbody > tr:nth-of-type(odd) > *,
+    .td-box table:not(.td-initial) > tbody > tr:nth-of-type(odd) > * {
+      --bs-table-bg-type: #fbfcfd;
+      color: #25323d;
+      background-color: transparent;
+      border-width: 0;
+    }
+    
 
     table {
       box-shadow: 0 0 0 1px #e9eef2;
@@ -50,11 +65,6 @@ main {
       display: table;
       margin: 1em 0;
       width: 100%;
-
-      &:not(.td-initial) > :not(caption) > * > * {
-        padding: 12.75px 15px;
-        color: #4e5f6d;
-      }
 
       &.no-alter-colors {
         display: block;
@@ -117,7 +127,7 @@ main {
           border-width: 0;
           font-family: 'Inter';
           font-style: normal;
-          color: #4e5f6d;
+          color: #4e5f6d!important;
           text-transform: uppercase;
           font-weight: 600;
           font-size: 12px;
@@ -133,7 +143,7 @@ main {
           font-size: 14px;
           line-height: 26px;
           color: #4e5f6d;
-          padding: 11.5px 16px;
+          padding: 11.5px 16px!important;
         }
       }
     }

@@ -52,6 +52,13 @@ a {
   background-color: transparent;
 }
 
+.dropdown-list .dropdown-menu[data-popper-placement="top-start"] {
+	margin-bottom: -2px !important;
+}
+.dropdown-list .dropdown-menu[data-popper-placement="bottom-start"] {
+	margin-top: -1px !important;
+}
+
 .navbar-expand > .container,
 .navbar-expand > .container-fluid,
 .navbar-expand > .container-sm,
