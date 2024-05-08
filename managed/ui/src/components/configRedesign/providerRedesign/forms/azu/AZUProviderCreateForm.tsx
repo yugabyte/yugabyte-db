@@ -159,6 +159,7 @@ export const AZUProviderCreateForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isValidationErrorExist, setValidationErrorExist] = useState(false);
   const { t } = useTranslation();
   const formMethods = useForm<AZUProviderCreateFormFieldValues>({
     defaultValues: DEFAULT_FORM_VALUES,
@@ -211,7 +212,11 @@ export const AZUProviderCreateForm = ({
     setIsRegionFormModalOpen(false);
   };
 
-  const onFormSubmit: SubmitHandler<AZUProviderCreateFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: AZUProviderCreateFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -221,11 +226,12 @@ export const AZUProviderCreateForm = ({
     }
 
     try {
+      setValidationErrorExist(false);
       const providerPayload = await constructProviderPayload(formValues);
       try {
         await createInfraProvider(providerPayload, {
-          shouldValidate: isValidationEnabled,
-          ignoreValidationErrors: false,
+          shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors,
           mutateOptions: {
             onError: (err) => {
               handleFormSubmitServerError(
@@ -233,6 +239,7 @@ export const AZUProviderCreateForm = ({
                 formMethods,
                 AZURE_FORM_MAPPERS
               );
+              setValidationErrorExist(true);
             }
           }
         });
@@ -242,6 +249,16 @@ export const AZUProviderCreateForm = ({
     } catch (error: any) {
       toast.error(error.message ?? error);
     }
+  };
+
+  const onFormValidateAndSubmit: SubmitHandler<AZUProviderCreateFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
+  const onFormForceSubmit: SubmitHandler<AZUProviderCreateFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, isValidationEnabled, true);
+
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const regions = formMethods.watch('regions', DEFAULT_FORM_VALUES.regions);
@@ -281,7 +298,10 @@ export const AZUProviderCreateForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name="azuProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name="azuProviderForm"
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           <Typography variant="h3">Create Azure Provider Configuration</Typography>
           <FormField providerNameField={true}>
             <FieldLabel>Provider Name</FieldLabel>
@@ -520,12 +540,25 @@ export const AZUProviderCreateForm = ({
           </Box>
           <Box marginTop="16px">
             <YBButton
-              btnText="Create Provider Configuration"
+              btnText={
+                isValidationEnabled
+                  ? 'Validate and Save Configuration'
+                  : 'Create Provider Configuration'
+              }
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
+            {isValidationEnabled && isValidationErrorExist && (
+              <YBButton
+                btnText="Ignore and save provider configuration anyway"
+                btnClass="btn btn-default float-right mr-10"
+                onClick={skipValidationAndSubmit}
+                disabled={isFormDisabled || formMethods.formState.isValidating}
+                data-testid={`${FORM_NAME}-IgnoreAndSave`}
+              />
+            )}
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"

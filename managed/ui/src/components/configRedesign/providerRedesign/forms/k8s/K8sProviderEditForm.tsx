@@ -138,6 +138,7 @@ export const K8sProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<K8sRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isValidationErrorExist, setValidationErrorExist] = useState(false);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const { t } = useTranslation();
 
@@ -186,13 +187,18 @@ export const K8sProviderEditForm = ({
     return <YBLoading />;
   }
 
-  const onFormSubmit: SubmitHandler<K8sProviderEditFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: K8sProviderEditFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     try {
+      setValidationErrorExist(false);
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
         await editProvider(providerPayload, {
-          shouldValidate: isValidationEnabled,
-          ignoreValidationErrors: false,
+          shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors,
           mutateOptions: {
             onError: (err) => {
               handleFormSubmitServerError(
@@ -200,6 +206,7 @@ export const K8sProviderEditForm = ({
                 formMethods,
                 K8S_FORM_MAPPERS
               );
+              setValidationErrorExist(true);
             }
           }
         });
@@ -209,6 +216,16 @@ export const K8sProviderEditForm = ({
     } catch (error: any) {
       toast.error(error.message ?? error);
     }
+  };
+
+  const onFormValidateAndSubmit: SubmitHandler<K8sProviderEditFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
+  const onFormForceSubmit: SubmitHandler<K8sProviderEditFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, isValidationEnabled, true);
+
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const suggestedKubernetesConfig = suggestedKubernetesConfigQuery.data;
@@ -300,7 +317,10 @@ export const K8sProviderEditForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name="K8sProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name="K8sProviderForm"
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           {currentProviderVersion < providerConfig.version && (
             <VersionWarningBanner onReset={onFormReset} />
           )}
@@ -526,13 +546,28 @@ export const K8sProviderEditForm = ({
               overrideStyle={{ float: 'right' }}
             >
               <YBButton
-                btnText="Apply Changes"
+                btnText={isValidationEnabled ? 'Validate and Apply Changes' : 'Apply Changes'}
                 btnClass="btn btn-default save-btn"
                 btnType="submit"
                 disabled={isFormDisabled || formMethods.formState.isValidating}
                 data-testid={`${FORM_NAME}-SubmitButton`}
               />
             </RbacValidator>
+            {isValidationEnabled && isValidationErrorExist && (
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER}
+                isControl
+                overrideStyle={{ float: 'right' }}
+              >
+                <YBButton
+                  btnText="Ignore and save provider configuration anyway"
+                  btnClass="btn btn-default float-right mr-10"
+                  onClick={skipValidationAndSubmit}
+                  disabled={isFormDisabled || formMethods.formState.isValidating}
+                  data-testid={`${FORM_NAME}-IgnoreAndSave`}
+                />
+              </RbacValidator>
+            )}
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"

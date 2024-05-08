@@ -149,6 +149,7 @@ export const GCPProviderCreateForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isValidationErrorExist, setValidationErrorExist] = useState(false);
   const { t } = useTranslation();
 
   const defaultValues: Partial<GCPProviderCreateFormFieldValues> = {
@@ -187,7 +188,11 @@ export const GCPProviderCreateForm = ({
     );
   }
 
-  const onFormSubmit: SubmitHandler<GCPProviderCreateFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: GCPProviderCreateFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -302,21 +307,35 @@ export const GCPProviderCreateForm = ({
       })),
       imageBundles
     };
+    setValidationErrorExist(false);
     try {
       await createInfraProvider(providerPayload, {
-        shouldValidate: isValidationEnabled,
+        shouldValidate: shouldValidate,
+        ignoreValidationErrors: ignoreValidationErrors,
         mutateOptions: {
-          onError: (err) =>
+          onError: (err) => {
             handleFormSubmitServerError(
               (err as any)?.response?.data,
               formMethods,
               GCPCreateFormErrFields
-            )
+            );
+            setValidationErrorExist(true);
+          }
         }
       });
     } catch (_) {
       // Request errors are handled by the onError callback
     }
+  };
+
+  const onFormValidateAndSubmit: SubmitHandler<GCPProviderCreateFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
+  const onFormForceSubmit: SubmitHandler<GCPProviderCreateFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, isValidationEnabled, true);
+
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const showAddRegionFormModal = () => {
@@ -391,7 +410,10 @@ export const GCPProviderCreateForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name={FORM_NAME} onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name={FORM_NAME}
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           <Typography variant="h3">Create GCP Provider Configuration</Typography>
           <FormField providerNameField={true}>
             <FieldLabel>Provider Name</FieldLabel>
@@ -606,12 +628,25 @@ export const GCPProviderCreateForm = ({
           </Box>
           <Box marginTop="16px">
             <YBButton
-              btnText="Create Provider Configuration"
+              btnText={
+                isValidationEnabled
+                  ? 'Validate and Save Configuration'
+                  : 'Create Provider Configuration'
+              }
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
+            {isValidationEnabled && isValidationErrorExist && (
+              <YBButton
+                btnText="Ignore and save provider configuration anyway"
+                btnClass="btn btn-default float-right mr-10"
+                onClick={skipValidationAndSubmit}
+                disabled={isFormDisabled || formMethods.formState.isValidating}
+                data-testid={`${FORM_NAME}-IgnoreAndSave`}
+              />
+            )}
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"
