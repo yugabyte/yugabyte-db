@@ -53,6 +53,8 @@ export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled }) => {
 
   const supportedArch = [IntelArch, ArmArch];
 
+  // TODO: When anyone changes this conditon, please ensure to change
+  // in  api.getDBVersions in DBVersionField.tsx
   if (provider?.code !== CloudType.aws) return null;
 
   const handleSelect = (option: typeof supportedArch[number]) => {
