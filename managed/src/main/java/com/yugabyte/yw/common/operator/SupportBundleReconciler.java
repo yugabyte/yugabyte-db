@@ -120,10 +120,14 @@ public class SupportBundleReconciler
       throw new RuntimeException("failed to parse dates", e);
     }
 
-    bundleData.components =
-        bundle.getSpec().getComponents().stream()
-            .map(comp -> ComponentType.valueOf(comp.getValue()))
-            .collect(Collectors.toCollection(() -> EnumSet.noneOf(ComponentType.class)));
+    if (bundle.getSpec().getComponents() == null || bundle.getSpec().getComponents().size() == 0) {
+      bundleData.components = EnumSet.allOf(ComponentType.class);
+    } else {
+      bundleData.components =
+          bundle.getSpec().getComponents().stream()
+              .map(comp -> ComponentType.valueOf(comp.getValue()))
+              .collect(Collectors.toCollection(() -> EnumSet.noneOf(ComponentType.class)));
+    }
 
     // Get the Universe
     Universe universe = null;

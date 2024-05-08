@@ -1091,6 +1091,10 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     Provider autoProvider =
         cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), providerData);
+    autoProvider.getDetails().getCloudInfo().getKubernetes().setLegacyK8sProvider(false);
+    // This is hardcoded so the UI will filter this provider to show in the "managed kubernetes
+    // service" tab
+    autoProvider.getDetails().getCloudInfo().getKubernetes().setKubernetesProvider("custom");
     // Fetch created provider from DB.
     return Provider.get(customerUUID, providerName, CloudType.kubernetes);
   }

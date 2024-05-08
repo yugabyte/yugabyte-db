@@ -543,6 +543,15 @@ public class UniverseCRUDHandler {
     }
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+      // Multiple layers of check as cloud info can be null in unit tests
+      if (provider.getDetails().getCloudInfo() != null
+          && provider.getDetails().getCloudInfo().kubernetes != null
+          && provider.getDetails().getCloudInfo().kubernetes.isKubernetesOperatorControlled
+          && !taskParams.isKubernetesOperatorControlled) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "cannot use operator controlled provider to create a universe without the operator");
+      }
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
       c.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
