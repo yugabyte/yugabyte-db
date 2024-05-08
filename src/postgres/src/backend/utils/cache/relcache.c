@@ -1427,7 +1427,14 @@ YbCleanupTupleCache(YbTupleCache *cache)
 	if (!cache->rel)
 		return;
 
+	if (cache->data)
+	{
+		hash_destroy(cache->data);
+		cache->data = NULL;
+	}
+
 	heap_close(cache->rel, AccessShareLock);
+	cache->rel = NULL;
 }
 
 typedef struct YbUpdateRelationCacheState {
