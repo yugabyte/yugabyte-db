@@ -1,6 +1,6 @@
 module github.com/yugabyte/yugabyte-db/docs
 
-go 1.20
+go 1.22
 
 require (
 	github.com/google/docsy v0.10.0 // indirect

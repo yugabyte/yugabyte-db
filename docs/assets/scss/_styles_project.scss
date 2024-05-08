@@ -52,6 +52,14 @@ a {
   background-color: transparent;
 }
 
+.tab-body {
+    color: inherit;
+}
+
+.tab-body > :last-child {
+    margin-bottom: inherit;
+}
+
 .dropdown-list .dropdown-menu[data-popper-placement="top-start"] {
 	margin-bottom: -2px !important;
 }
