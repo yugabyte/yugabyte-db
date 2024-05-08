@@ -121,6 +121,9 @@ service TabletServerService {
 
   rpc CheckTserverTabletHealth(CheckTserverTabletHealthRequestPB)
       returns (CheckTserverTabletHealthResponsePB);
+
+  rpc ClearAllMetaCachesOnServer(ClearAllMetaCachesOnServerRequestPB)
+      returns (ClearAllMetaCachesOnServerResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields

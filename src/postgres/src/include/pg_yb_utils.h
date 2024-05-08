@@ -612,6 +612,12 @@ extern bool yb_test_fail_next_ddl;
 extern bool yb_test_fail_next_inc_catalog_version;
 
 /*
+ * This number times disable_cost is added to the cost for some unsupported
+ * ybgin index scans.
+ */
+extern double yb_test_ybgin_disable_cost_factor;
+
+/*
  * Block the given index creation phase.
  * - "indisready": index state change to indisready
  *   (not supported for non-concurrent)

@@ -83,6 +83,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
 
 {{#operation}}
   {{#vendorExtensions.x-yba-api-authz}}
+  {{^noAuthz}}
   {{#-first}}
   @AuthzPath({
   {{/-first}}
@@ -98,6 +99,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
   {{#-last}}
   })
   {{/-last}}
+  {{/noAuthz}}
   {{/vendorExtensions.x-yba-api-authz}}
   {{#wrapCalls}}@ApiAction{{/wrapCalls}}
   public {{#supportAsync}}CompletionStage<{{/supportAsync}}Result{{#supportAsync}}>{{/supportAsync}} {{operationId}}(Http.Request request{{#hasPathParams}}, {{/hasPathParams}}{{#pathParams}}{{>pathParams}}{{^-last}}, {{/-last}}{{/pathParams}}) {{^handleExceptions}}{{#bodyParams}}throws IOException{{/bodyParams}}{{/handleExceptions}}{{#handleExceptions}}throws Exception{{/handleExceptions}} {

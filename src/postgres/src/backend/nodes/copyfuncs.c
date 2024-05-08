@@ -614,6 +614,27 @@ _copyBitmapHeapScan(const BitmapHeapScan *from)
 }
 
 /*
+ * _copyBitmapHeapScan
+ */
+static YbBitmapTableScan *
+_copyYbBitmapTableScan(const YbBitmapTableScan *from)
+{
+	YbBitmapTableScan *newnode = makeNode(YbBitmapTableScan);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((const Scan *) from, (Scan *) newnode);
+
+	/*
+	 * copy remainder of node
+	 */
+	COPY_NODE_FIELD(bitmapqualorig);
+
+	return newnode;
+}
+
+/*
  * _copyTidScan
  */
 static TidScan *
@@ -5346,6 +5367,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_BitmapHeapScan:
 			retval = _copyBitmapHeapScan(from);
+			break;
+		case T_YbBitmapTableScan:
+			retval = _copyYbBitmapTableScan(from);
 			break;
 		case T_TidScan:
 			retval = _copyTidScan(from);

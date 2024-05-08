@@ -2001,6 +2001,21 @@ _readBitmapHeapScan(void)
 }
 
 /*
+ * _readBitmapHeapScan
+ */
+static YbBitmapTableScan *
+_readYbBitmapTableScan(void)
+{
+	READ_LOCALS(YbBitmapTableScan);
+
+	ReadCommonScan(&local_node->scan);
+
+	READ_NODE_FIELD(bitmapqualorig);
+
+	READ_DONE();
+}
+
+/*
  * _readTidScan
  */
 static TidScan *
@@ -3054,6 +3069,8 @@ parseNodeString(void)
 		return_value = _readBitmapIndexScan();
 	else if (MATCH("BITMAPHEAPSCAN", 14))
 		return_value = _readBitmapHeapScan();
+	else if (MATCH("YBBITMAPTABLESCAN", 17))
+		return_value = _readYbBitmapTableScan();
 	else if (MATCH("TIDSCAN", 7))
 		return_value = _readTidScan();
 	else if (MATCH("TIDRANGESCAN", 12))

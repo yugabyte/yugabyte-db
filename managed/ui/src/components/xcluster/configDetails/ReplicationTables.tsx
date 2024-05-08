@@ -16,7 +16,11 @@ import {
 } from '../../../actions/xClusterReplication';
 import { formatLagMetric, formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
-import { formatBytes, augmentTablesWithXClusterDetails } from '../ReplicationUtils';
+import {
+  formatBytes,
+  augmentTablesWithXClusterDetails,
+  getStrictestReplicationLagAlertThreshold
+} from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
@@ -104,7 +108,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     name: AlertName.REPLICATION_LAG,
     targetUuid: xClusterConfig.sourceUniverseUUID
   };
-  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+  const alertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
@@ -270,8 +274,8 @@ export function ReplicationTables(props: ReplicationTablesProps) {
               if (
                 tableReplicationLagQuery.isLoading ||
                 tableReplicationLagQuery.isIdle ||
-                maxAcceptableLagQuery.isLoading ||
-                maxAcceptableLagQuery.isIdle
+                alertConfigQuery.isLoading ||
+                alertConfigQuery.isIdle
               ) {
                 return <i className="fa fa-spinner fa-spin yb-spinner" />;
               }
@@ -279,15 +283,13 @@ export function ReplicationTables(props: ReplicationTablesProps) {
               if (
                 BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfig.status) ||
                 tableReplicationLagQuery.isError ||
-                maxAcceptableLagQuery.isError
+                alertConfigQuery.isError
               ) {
                 return <span>-</span>;
               }
 
-              const maxAcceptableLag = Math.min(
-                ...maxAcceptableLagQuery.data.map(
-                  (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-                )
+              const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+                alertConfigQuery.data
               );
               const formattedLag = formatLagMetric(xClusterTable.replicationLag);
 
@@ -295,7 +297,8 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                 return <span className="replication-lag-value warning">{formattedLag}</span>;
               }
 
-              const isReplicationUnhealthy = xClusterTable.replicationLag > maxAcceptableLag;
+              const isReplicationUnhealthy =
+                maxAcceptableLag && xClusterTable.replicationLag > maxAcceptableLag;
 
               return (
                 <Box

@@ -380,6 +380,22 @@ Status PgAlterTable::DropColumn(const char *name) {
   return Status::OK();
 }
 
+Status PgAlterTable::SetReplicaIdentity(const char identity_type) {
+  auto replica_identity_pb = std::make_unique<tserver::PgReplicaIdentityPB>();
+  tserver::PgReplicaIdentityType replica_identity_type;
+  switch (identity_type) {
+    case 'd': replica_identity_type = tserver::DEFAULT; break;
+    case 'n': replica_identity_type = tserver::NOTHING; break;
+    case 'f': replica_identity_type = tserver::FULL; break;
+    case 'c': replica_identity_type = tserver::CHANGE; break;
+    default:
+      RSTATUS_DCHECK(false, InvalidArgument, "Invalid Replica Identity Type");
+  }
+  replica_identity_pb->set_replica_identity(replica_identity_type);
+  req_.set_allocated_replica_identity(replica_identity_pb.release());
+  return Status::OK();
+}
+
 Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
   auto& rename = *req_.mutable_rename_table();
   rename.set_database_name(db_name);

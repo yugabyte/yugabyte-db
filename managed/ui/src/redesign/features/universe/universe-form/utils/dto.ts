@@ -850,7 +850,7 @@ export interface ImageBundle {
     };
   };
   useAsDefault: boolean;
-  metadata: {
+  metadata?: {
     type: ImageBundleType;
     version: string;
   };

@@ -29,6 +29,7 @@ using namespace std::chrono_literals;
 using namespace std::literals;
 
 DECLARE_int32(TEST_partitioning_version);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 namespace {
 
@@ -1214,6 +1215,57 @@ TEST_F_EX(
   ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 3);
 }
 
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestReplicaIdentityAfterRestore),
+    YBBackupTestOneTablet) {
+  ASSERT_OK(
+      cluster_->SetFlagOnTServers("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_enable_replica_identity", "true"));
+
+  ASSERT_OK(
+      cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_yb_enable_replica_identity", "true"));
+
+  const string table_name = "mytbl";
+
+  // Create table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", table_name)));
+
+  ASSERT_RESULT(RunPsqlCommand("ALTER TABLE mytbl REPLICA IDENTITY FULL"));
+  ASSERT_NO_FATALS(RunPsqlCommand("SELECT relreplident FROM pg_class WHERE oid = 'mytbl'::regclass",
+  R"#(
+    relreplident
+   --------------
+    f
+   (1 row)
+  )#"));
+
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  std::string db_name = "yugabyte_new";
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", db_name), "restore"}));
+
+  // Sanity check the tablet count.
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(db_name, table_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+  SetDbName(db_name);
+
+  ASSERT_NO_FATALS(RunPsqlCommand("SELECT relreplident FROM pg_class WHERE oid = 'mytbl'::regclass",
+  R"#(
+    relreplident
+   --------------
+    f
+   (1 row)
+  )#"));
+}
+
 class YBLegacyColocatedDBBackupTest : public YBBackupTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
@@ -1484,6 +1536,62 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Values(
         std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kFalse),
         std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kTrue)));
+
+TEST_P(
+    YBBackupTestWithPackedRowsAndColocation,
+    YB_DISABLE_TEST_IN_SANITIZERS(RestoreBackupAfterOldSchemaGC)) {
+  const std::string table_name = "test1";
+  // Create a table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0(a INT)", table_name)));
+
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO $0 VALUES (1), (2), (3)", table_name), 3));
+
+  // Perform a series of Alters.
+  ASSERT_NO_FATALS(
+      RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN b INT", table_name), "ALTER TABLE"));
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO $0 VALUES (4,4), (5,5), (6,6)", table_name), 3));
+
+  ASSERT_NO_FATALS(
+      RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN c INT", table_name), "ALTER TABLE"));
+  ASSERT_NO_FATALS(
+      InsertRows(Format("INSERT INTO $0 VALUES (7,7,7), (8,8,8), (9,9,9)", table_name), 3));
+
+  ASSERT_NO_FATALS(
+      RunPsqlCommand(Format("ALTER TABLE $0 RENAME COLUMN b TO d", table_name), "ALTER TABLE"));
+  ASSERT_NO_FATALS(
+      InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));
+
+  const string backup_dir = GetTempDir("backup");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
+       "create"}));
+
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
+       "restore"}));
+
+  SetDbName(backup_db_name);
+
+  ASSERT_NO_FATALS(
+      InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));
+
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
+      tserver::FlushTabletsRequestPB::COMPACT));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
 
 class YBAddColumnDefaultBackupTest : public YBBackupTestWithPackedRowsAndColocation {};
 

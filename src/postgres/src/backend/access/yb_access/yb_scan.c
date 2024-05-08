@@ -676,6 +676,8 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
  *    - Table can be systable or usertable.
  *    - Both target and bind descriptors are specifed by the IndexTable.
  *    - For this scan, YugaByte ALWAYS return index-tuple, which is expected by Postgres layer.
+ * 5. BitmapIndexScan(Index)
+ *    - Table is null because we are only interested in getting ybctids from the index.
  */
 static void
 ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
@@ -704,16 +706,21 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	if (index)
 	{
 		ybScan->prepare_params.index_relfilenode_oid =
-			YbGetRelfileNodeId(index);
+			ybScan->prepare_params.fetch_ybctids_only && index->rd_index->indisprimary
+				? YbGetRelfileNodeId(relation)
+				: YbGetRelfileNodeId(index);
 		ybScan->prepare_params.index_only_scan = xs_want_itup;
-		ybScan->prepare_params.use_secondary_index = !index->rd_index->indisprimary;
+		ybScan->prepare_params.use_secondary_index =
+			!index->rd_index->indisprimary ||
+			(ybScan->prepare_params.fetch_ybctids_only &&
+			 !ybScan->prepare_params.querying_colocated_table);
 	}
 
 	/* Setup descriptors for target and bind. */
 	if (!index || index->rd_index->indisprimary)
 	{
 		/*
-		 * SequentialScan or PrimaryIndexScan
+		 * SequentialScan or PrimaryIndexScan or BitmapIndexScan on the primary index
 		 * - YugaByte does not have a separate table for PrimaryIndex.
 		 * - The target table descriptor, where data is read and returned, is the main table.
 		 * - The binding table descriptor, whose column is bound to values, is also the main table.
@@ -730,7 +737,16 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		 *
 		 */
 
-		if (ybScan->prepare_params.index_only_scan)
+		if (ybScan->prepare_params.fetch_ybctids_only)
+		{
+			/*
+			 * BitmapIndexScan
+			 * - A BitmapIndexScan accesses only the index, not the main table.
+			 */
+			scan_plan->target_relation = index;
+			ybScan->target_desc = RelationGetDescr(index);
+		}
+		else if (ybScan->prepare_params.index_only_scan || relation == NULL)
 		{
 			/*
 			 * IndexOnlyScan
@@ -1709,8 +1725,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 static bool
 YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 {
-	Relation relation = ((TableScanDesc)ybScan)->rs_rd;
-
+	Relation relation = scan_plan->target_relation;
 	/*
 	 * Best-effort try to determine if all non-yb_hash_code keys are bound.
 	 * - GUCs: these are AUTO_PG_FLAGs for rolling-upgrade purposes.  Until
@@ -2300,9 +2315,10 @@ YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 static void
 ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 {
-	Relation index = ybScan->index;
-	bool is_index_only_scan = ybScan->prepare_params.index_only_scan;
-	const int min_attr = YBFirstLowInvalidAttributeNumber;
+	Relation	index = ybScan->index;
+	bool		is_index_only_scan = ybScan->prepare_params.index_only_scan;
+	const int	min_attr = YBFirstLowInvalidAttributeNumber;
+	bool		all_attrs_required = !ybScan->prepare_params.fetch_ybctids_only;
 
 	/*
 	 * required_attrs struct stores list of target columns required by scan
@@ -2314,19 +2330,18 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	 * - all qual columns (not bound to the scan keys), they are required for
 	 * filtering results on the postgres side
 	 */
-	Bitmapset *required_attrs = NULL;
-	bool all_attrs_required = true;
+	Bitmapset  *required_attrs = NULL;
 
 	/*
 	 * Catalog requests do not have a pg_scan_plan and require ybctid
-	*/
+	 */
 	if (!pg_scan_plan)
 	{
 		required_attrs = bms_add_member(
 			required_attrs,
 			YBAttnumToBmsIndexWithMinAttr(min_attr, YBTupleIdAttributeNumber));
 	}
-	else
+	else if (!ybScan->prepare_params.fetch_ybctids_only)
 	{
 		Index target_relid = ybScan->prepare_params.index_only_scan ?
 								 INDEX_VAR :
@@ -2452,6 +2467,13 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 		else if (attnum < 0)
 			YbDmlAppendTargetSystem(attnum, ybScan->handle);
 	}
+
+	// If we are using a Bitmap Index scan on non-colocated primary keys
+	if (index && index->rd_index->indisprimary &&
+		ybScan->prepare_params.fetch_ybctids_only &&
+		!ybScan->prepare_params.querying_colocated_table)
+		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
+								ybScan->handle);
 
 	if (!is_index_only_scan && index && !index->rd_index->indisprimary)
 		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
@@ -2685,7 +2707,8 @@ ybcBeginScan(Relation relation,
 			 List *aggrefs,
 			 int distinct_prefixlen,
 			 YBCPgExecParameters *exec_params,
-			 bool is_internal_scan)
+			 bool is_internal_scan,
+			 bool fetch_ybctids_only)
 {
 	/* Set up Yugabyte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
@@ -2705,6 +2728,7 @@ ybcBeginScan(Relation relation,
 	ybScan->exec_params = exec_params;
 	ybScan->index = index;
 	ybScan->quit_scan = false;
+	ybScan->prepare_params.fetch_ybctids_only = fetch_ybctids_only;
 
 	/* Set up the scan plan */
 	YbScanPlanData scan_plan;
@@ -2922,9 +2946,23 @@ ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
 
 void ybc_free_ybscan(YbScanDesc ybscan)
 {
-	Assert(PointerIsValid(ybscan));
-	YBCPgDeleteStatement(ybscan->handle);
-	pfree(ybscan);
+	/*
+	 * YB Bitmap Table Scans instantiate the biss_ScanDesc of their children
+	 * Bitmap Index Scans, even if it will not be executed. Other nodes
+	 * (like Index Scan) have their ScanDesc set when ExecInitIndexScan is
+	 * called.
+	 *
+	 * If the index scan is never executed, then we never even reach this point.
+	 *
+	 * If the bitmap scan is never executed, it still has a valid biss_ScanDesc,
+	 * even though it's YbScanDesc was not set. We need to cleanup after the
+	 * biss_ScanDesc but not the YbScanDesc.
+	 */
+	if (PointerIsValid(ybscan))
+	{
+		YBCPgDeleteStatement(ybscan->handle);
+		pfree(ybscan);
+	}
 }
 
 static SysScanDesc
@@ -3050,7 +3088,8 @@ SysScanDesc ybc_systable_begin_default_scan(Relation relation,
 								NULL /* aggrefs */,
 								0 /* distinct_prefixlen */,
 								NULL /* exec_params */,
-								true /* is_internal_scan */);
+								true /* is_internal_scan */,
+								false /* fetch_ybctids_only */);
 
 	scan->base.vtable = &yb_default_scan;
 
@@ -3079,7 +3118,8 @@ TableScanDesc ybc_heap_beginscan(Relation relation,
 									 NULL /* aggrefs */,
 									 0 /* distinct_prefixlen */,
 									 NULL /* exec_params */,
-									 true /* is_internal_scan */);
+									 true /* is_internal_scan */,
+									 false /* fetch_ybctids_only */);
 
 	/* Set up Postgres sys table scan description */
 	TableScanDesc tsdesc = (TableScanDesc)ybScan;

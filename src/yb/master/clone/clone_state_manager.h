@@ -40,9 +40,9 @@ class CloneStateManager {
       const IsCloneDoneRequestPB* req,
       IsCloneDoneResponsePB* resp);
 
-  Status CloneFromSnapshotSchedule(
-      const CloneFromSnapshotScheduleRequestPB* req,
-      CloneFromSnapshotScheduleResponsePB* resp,
+  Status CloneNamespace(
+      const CloneNamespaceRequestPB* req,
+      CloneNamespaceResponsePB* resp,
       rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
@@ -60,6 +60,7 @@ class CloneStateManager {
  private:
   struct ExternalFunctions {
     // Snapshot coordinator.
+    const std::function<Status(ListSnapshotSchedulesResponsePB* resp)> ListSnapshotSchedules;
     const std::function<Result<TxnSnapshotRestorationId>(const TxnSnapshotId&, HybridTime)> Restore;
     const std::function<Status(
         const TxnSnapshotId&, ListSnapshotRestorationsResponsePB*)> ListRestorations;
@@ -67,7 +68,7 @@ class CloneStateManager {
     // Catalog manager.
     const std::function<Result<TabletInfoPtr>(const TabletId&)> GetTabletInfo;
 
-    const std::function<Result<NamespaceInfoPtr>(const NamespaceId&)> FindNamespaceById;
+    const std::function<Result<NamespaceInfoPtr>(const NamespaceIdentifierPB&)> FindNamespace;
 
     const std::function<Status(const TabletInfoPtr&, LeaderEpoch, tablet::CloneTabletRequestPB)>
         ScheduleCloneTabletCall;
@@ -95,8 +96,8 @@ class CloneStateManager {
 
   explicit CloneStateManager(ExternalFunctions external_functions);
 
-  Result<std::pair<NamespaceId, uint32_t>> CloneFromSnapshotSchedule(
-    const SnapshotScheduleId& snapshot_schedule_id,
+  Result<std::pair<NamespaceId, uint32_t>> CloneNamespace(
+    const NamespaceIdentifierPB& source_namespace,
     const HybridTime& read_time,
     const std::string& target_namespace_name,
     CoarseTimePoint deadline,
@@ -115,7 +116,8 @@ class CloneStateManager {
   std::mutex mutex_;
 
   // Map from clone source namespace id to the latest clone state for that namespace.
-  std::unordered_map<NamespaceId, CloneStateInfoPtr> source_clone_state_map_ GUARDED_BY(mutex_);
+  using CloneStateMap = std::unordered_map<NamespaceId, CloneStateInfoPtr>;
+  CloneStateMap source_clone_state_map_ GUARDED_BY(mutex_);
 
   const ExternalFunctions external_funcs_;
 };

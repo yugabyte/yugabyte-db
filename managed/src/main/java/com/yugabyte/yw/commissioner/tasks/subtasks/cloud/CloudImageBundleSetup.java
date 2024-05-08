@@ -310,16 +310,16 @@ public class CloudImageBundleSetup extends CloudTaskBase {
     }
     for (Region region : regions) {
       Map<String, BundleInfo> regionBundleInfo = details.getRegions();
-      if (regionBundleInfo.containsKey(region.getCode())) {
+      BundleInfo info = regionBundleInfo.getOrDefault(region.getCode(), new BundleInfo());
+      if (info != null && StringUtils.isNotEmpty(info.getYbImage())) {
         continue;
       }
       String defaultRegionImage =
           cloudQueryHelper.getDefaultImage(region, bundle.getDetails().getArch().toString());
-      BundleInfo addedRegionBundleInfo = new BundleInfo();
-      addedRegionBundleInfo.setYbImage(defaultRegionImage);
-      addedRegionBundleInfo.setSshUserOverride(provider.getDetails().getSshUser());
+      info.setYbImage(defaultRegionImage);
+      info.setSshUserOverride(provider.getDetails().getSshUser());
 
-      regionBundleInfo.put(region.getCode(), addedRegionBundleInfo);
+      regionBundleInfo.put(region.getCode(), info);
       details.setRegions(regionBundleInfo);
     }
     bundle.setDetails(details);

@@ -148,6 +148,27 @@ class PgClientSession {
 
   size_t SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars);
 
+  Status GetReplicaIdentityEnumValue(
+      PgReplicaIdentityType replica_identity_proto, PgReplicaIdentity *replica_identity_enum) {
+    switch (replica_identity_proto) {
+      case DEFAULT:
+        *replica_identity_enum = PgReplicaIdentity::DEFAULT;
+        break;
+      case FULL:
+        *replica_identity_enum = PgReplicaIdentity::FULL;
+        break;
+      case NOTHING:
+        *replica_identity_enum = PgReplicaIdentity::NOTHING;
+        break;
+      case CHANGE:
+        *replica_identity_enum = PgReplicaIdentity::CHANGE;
+        break;
+      default:
+        RSTATUS_DCHECK(false, InvalidArgument, "Invalid Replica Identity Type");
+    }
+    return Status::OK();
+  }
+
  private:
   std::string LogPrefix();
 

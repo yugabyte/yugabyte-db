@@ -1513,6 +1513,8 @@ bool yb_test_fail_next_ddl = false;
 
 bool yb_test_fail_next_inc_catalog_version = false;
 
+double yb_test_ybgin_disable_cost_factor = 2.0;
+
 char *yb_test_block_index_phase = "";
 
 char *yb_test_fail_index_state_change = "";

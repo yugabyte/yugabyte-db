@@ -1321,11 +1321,11 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
     }
     // TEST_CountIntent return non ok status also means shutdown has started.
     auto intents_count_result = participant->TEST_CountIntents();
-    if (intents_count_result.ok() && intents_count_result->first) {
-      result += intents_count_result->first;
+    if (intents_count_result.ok() && intents_count_result->num_intents) {
+      result += intents_count_result->num_intents;
       LOG(INFO) << Format("T $0 P $1: Intents present: $2, transactions: $3", peer->tablet_id(),
-                          peer->permanent_uuid(), intents_count_result->first,
-                          intents_count_result->second);
+                          peer->permanent_uuid(), intents_count_result->num_intents,
+                          intents_count_result->num_transactions);
     }
   }
   return result;

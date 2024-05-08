@@ -187,6 +187,7 @@ DECLARE_int64(cdc_intent_retention_ms);
 
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
+DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
 
 METRIC_DEFINE_entity(xcluster);
 
@@ -4411,6 +4412,42 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
 
   LOG(INFO) << "VirtualWAL instance successfully deleted for session_id: " << session_id;
   context.RespondSuccess();
+}
+
+void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids) {
+  // Return early without acquiring the mutex_ in case the walsender consumption feature is disabled
+  // or there are no sessions to be cleaned up.
+  if (!FLAGS_ysql_TEST_enable_replication_slot_consumption || session_ids.empty()) {
+    return;
+  }
+
+  auto it = session_ids.begin();
+  {
+    SharedLock lock(mutex_);
+    for (; it != session_ids.end(); ++it) {
+      if (session_virtual_wal_.contains(*it)) {
+        break;
+      }
+    }
+  }
+
+  if (it == session_ids.end()) {
+    return;
+  }
+
+  // Ideally, we should not depend on this mutex_ as this function gets called from the session
+  // cleanup bg thread from pg_client_service which is time sensitive.
+  // This seems fine for now only because there isn't a lot of contention on the mutex_ due to low
+  // number of walsenders (10 by default) and here we are just deleting from an in-memory map.
+  {
+    std::lock_guard l(mutex_);
+
+    for (; it != session_ids.end(); ++it) {
+      if (session_virtual_wal_.erase(*it)) {
+        LOG(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
+      }
+    }
+  }
 }
 
 void CDCServiceImpl::UpdateAndPersistLSN(

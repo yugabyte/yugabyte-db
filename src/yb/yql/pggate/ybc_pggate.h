@@ -26,6 +26,11 @@ extern "C" {
 typedef void (*YBCAshAcquireBufferLock)(bool);
 typedef YBCAshSample* (*YBCAshGetNextCircularBufferSlot)();
 
+typedef void * SliceVector;
+typedef const void * ConstSliceVector;
+typedef void * SliceSet;
+typedef const void * ConstSliceSet;
+
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
@@ -106,6 +111,43 @@ YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
 
 // Validate the JWT based on the options including the identity matching based on the identity map.
 YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options);
+
+//--------------------------------------------------------------------------------------------------
+// YB Bitmap Scan Operations
+//--------------------------------------------------------------------------------------------------
+
+// returns a void pointer to a std::set
+SliceSet YBCBitmapCreateSet();
+
+// Modifies sa to contain the union of `std::set`s sa and sb, and deletes sb. If the item already
+// exists in sa, the duplicate item is deleted. Returns the number of new bytes added to sa.
+size_t YBCBitmapUnionSet(SliceSet sa, ConstSliceSet sb);
+
+// Returns a std::set representing the union of `std::set`s sa and sb.
+// One of sa or sb are deleted, and the other is reused.
+// Any items not included in the final set are deleted
+SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb);
+
+// Insert the vector of ybctids into the set. Returns the number of new bytes allocated for the
+// ybctids.
+size_t YBCBitmapInsertYbctidsIntoSet(SliceSet set, ConstSliceVector vec);
+
+// Returns a new std::vector containing all the elements of the std::set set. It
+// is the caller's responsibility to delete the set.
+ConstSliceVector YBCBitmapCopySetToVector(ConstSliceSet set, size_t *size);
+
+// Returns a vector representing a chunk of the given vector. ybctids are
+// shallow copied - their underlying allocations are shared.
+ConstSliceVector YBCBitmapGetVectorRange(ConstSliceVector vec, size_t start, size_t length);
+
+void YBCBitmapShallowDeleteVector(ConstSliceVector vec);
+void YBCBitmapShallowDeleteSet(ConstSliceSet set);
+
+// Deletes the set allocation AND all of the ybctids contained within the set.
+void YBCBitmapDeepDeleteSet(ConstSliceSet set);
+
+size_t YBCBitmapGetSetSize(ConstSliceSet set);
+size_t YBCBitmapGetVectorSize(ConstSliceVector vec);
 
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
@@ -266,6 +308,8 @@ YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname
                                       const char *newname);
 
 YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name);
+
+YBCStatus YBCPgAlterTableSetReplicaIdentity(YBCPgStatement handle, const char identity_type);
 
 YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
                                      const char *newname);
@@ -575,6 +619,14 @@ YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefi
 YBCStatus YBCPgSetHashBounds(YBCPgStatement handle, uint16_t low_bound, uint16_t high_bound);
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
+
+// Gets the ybctids from a request. Returns a vector of all the results.
+// If the ybctids would exceed max_bytes, set `exceeded_work_mem` to true.
+YBCStatus YBCPgRetrieveYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
+                               int natts, SliceVector *ybctids, size_t *count,
+                               bool *exceeded_work_mem);
+YBCStatus YBCPgFetchRequestedYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
+                                     ConstSliceVector ybctids);
 
 // Functions----------------------------------------------------------------------------------------
 YBCStatus YBCAddFunctionParam(

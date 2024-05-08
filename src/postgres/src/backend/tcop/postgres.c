@@ -4527,14 +4527,35 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
-	// We can perform retries in READ COMMITTED isolation level even if data has been sent as part of
-	// the txn, but not as part of the current query. This is because we just have to retry the query
-	// and not the whole transaction in RC.
+	/*
+	 * In REPEATABLE READ and SERIALIZABLE isolation levels, retrying involves restarting the whole
+	 * transaction. So, we can only retry if no data has been sent to the external client as part of
+	 * the current transaction.
+	 *
+	 * In READ COMMITTED, we can perform retries even if data has been sent as part of the txn, but
+	 * not if data has been sent as part of the current query. This is because in RC, we just have
+	 * to retry the query, and not the whole transaction.
+	 */
 	if ((!IsYBReadCommitted() && YBIsDataSent()) ||
 			(IsYBReadCommitted() && YBIsDataSentForCurrQuery()))
 	{
 		elog(LOG, "Restart isn't possible, data was already sent. Txn error code=%d",
 							edata->yb_txn_errcode);
+		return false;
+	}
+
+	/*
+	 * In batch processing using the extended query protocol, YBIsDataSent() /
+	 * YBIsDataSentForCurrQuery() can be false even if earlier mutation statements have been
+	 * processed. Unless it's the first statement of the batch, we cannot retry the current
+	 * statement. If we do, we will lose the mutations from earlier statements (this is true
+	 * irrespective of whether the retry is done by restarting the whole transaaction in RR/SR
+	 * isolation, or by rolling back to the previous internal savepoint in RC).
+	 */
+	if (YbIsBatchedExecution() && (GetCurrentCommandId(false) > FirstCommandId))
+	{
+		elog(LOG, "Restart isn't possible: executing non-first statement in batch, will be unable "
+				  "to replay earlier commands. Txn error code=%d", edata->yb_txn_errcode);
 		return false;
 	}
 

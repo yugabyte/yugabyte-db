@@ -131,6 +131,9 @@ ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 CREATE INDEX wowidx ON test_tsvector USING gin (a);
 SET enable_seqscan=OFF;
+-- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
+-- index scan even if it is detected to be not supported.
+SET yb_test_ybgin_disable_cost_factor = 0.5;
 -- GIN only supports bitmapscan, so no need to test plain indexscan
 -- YB note: ybgin is the opposite: it supports indexscan, not bitmapscan
 explain (costs off) SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
@@ -183,6 +186,7 @@ SELECT count(*) FROM test_tsvector WHERE a @@ 'no_such_lexeme';
 SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
+RESET yb_test_ybgin_disable_cost_factor;
 RESET enable_seqscan;
 INSERT INTO test_tsvector VALUES ('???', 'DFG:1A,2B,6C,10 FGH');
 SELECT * FROM ts_stat('SELECT a FROM test_tsvector') ORDER BY ndoc DESC, nentry DESC, word LIMIT 10;

@@ -112,7 +112,8 @@ public class StatStatementsQuery {
   @Scheduled(
       fixedRateString = "${task.pg_stat_statements_query.period}",
       initialDelayString = "PT5S")
-  public void processAllUniverses() {
+  public Map<UUID, UniverseProgress> processAllUniverses() {
+    Map<UUID, UniverseProgress> result = new HashMap<>();
     for (UniverseMetadata universeMetadata : universeMetadataService.listAll()) {
       UniverseDetails details = universeDetailsService.get(universeMetadata.getId());
       if (details == null) {
@@ -125,6 +126,7 @@ public class StatStatementsQuery {
       }
       UniverseProgress progress = universesProcessStartTime.get(universeMetadata.getId());
       if (progress != null) {
+        result.put(universeMetadata.getId(), progress);
         long scheduledMillisAgo = System.currentTimeMillis() - progress.scheduleTimestamp;
         log.warn(
             "Universe {} is scheduled {} millis ago. Current status: {}",
@@ -136,6 +138,7 @@ public class StatStatementsQuery {
       UniverseProgress newProgress =
           new UniverseProgress().setScheduleTimestamp(System.currentTimeMillis());
       universesProcessStartTime.put(universeMetadata.getId(), newProgress);
+      result.put(universeMetadata.getId(), newProgress);
       try {
         pgStatStatementsQueryExecutor.execute(
             () -> processUniverse(universeMetadata, details, newProgress));
@@ -144,6 +147,7 @@ public class StatStatementsQuery {
         universesProcessStartTime.remove(universeMetadata.getId());
       }
     }
+    return result;
   }
 
   private void processUniverse(
@@ -385,7 +389,7 @@ public class StatStatementsQuery {
 
   @Data
   @Accessors(chain = true)
-  static class UniverseProgress {
+  public static class UniverseProgress {
     volatile long scheduleTimestamp;
     volatile long startTimestamp;
     volatile boolean inProgress = false;

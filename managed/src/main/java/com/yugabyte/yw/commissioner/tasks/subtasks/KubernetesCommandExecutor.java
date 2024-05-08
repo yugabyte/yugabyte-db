@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -249,8 +248,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return config;
   }
 
+  public static String getPodCommandDateKey(String podName, CommandType commandType) {
+    return podName + "_" + commandType + "_started";
+  }
+
   @Override
   public void run() {
+    if (getTaskUUID() != null) {
+      putDateIntoCache(getPodCommandDateKey(taskParams().podName, taskParams().commandType));
+    }
     String overridesFile;
 
     Map<String, String> config;

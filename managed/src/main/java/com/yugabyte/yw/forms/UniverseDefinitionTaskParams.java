@@ -715,7 +715,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public UUID preferredRegion;
 
     // Cloud Instance Type that the user wants for tserver nodes.
-    @Constraints.Required() @ApiModelProperty public String instanceType;
+    @Constraints.Required()
+    @ApiModelProperty(
+        value =
+            "Instance type that is used for tserver nodes "
+                + "in current cluster. Could be modified in payload for /resize_node API call")
+    public String instanceType;
 
     // Used only for k8s universes when instance type is set to custom.
     @ApiModelProperty public K8SNodeResourceSpec masterK8SNodeResourceSpec;
@@ -751,7 +756,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Constraints.Required() @ApiModelProperty public String accessKeyCode;
 
-    @ApiModelProperty public DeviceInfo deviceInfo;
+    @ApiModelProperty("Device specification that is used for tserver nodes " + "in current cluster")
+    public DeviceInfo deviceInfo;
 
     @ApiModelProperty(notes = "default: true")
     public boolean assignPublicIP = true;
@@ -848,10 +854,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public boolean dedicatedNodes = false;
 
     // Instance type used for dedicated master nodes.
-    @Nullable @ApiModelProperty public String masterInstanceType;
+    @Nullable
+    @ApiModelProperty(
+        "Instance type that is used for master nodes in current cluster "
+            + "(in dedicated masters mode). "
+            + "Could be modified in payload for /resize_node API call")
+    public String masterInstanceType;
 
     // Device info for dedicated master nodes.
-    @Nullable @ApiModelProperty public DeviceInfo masterDeviceInfo;
+    @Nullable
+    @ApiModelProperty(
+        "Device specification that is used for master nodes "
+            + "in current cluster (in dedicated masters mode)")
+    public DeviceInfo masterDeviceInfo;
 
     // New version of gflags. If present - replaces old masterGFlags/tserverGFlags thing
     @ApiModelProperty("User-defined gflags for all processes.")

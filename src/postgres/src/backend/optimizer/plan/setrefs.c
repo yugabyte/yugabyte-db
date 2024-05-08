@@ -673,6 +673,22 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 								  rtoffset, NUM_EXEC_QUAL(plan));
 			}
 			break;
+		case T_YbBitmapTableScan:
+			{
+				YbBitmapTableScan *splan = (YbBitmapTableScan *) plan;
+
+				splan->scan.scanrelid += rtoffset;
+				splan->scan.plan.targetlist =
+					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset,
+								  NUM_EXEC_TLIST(plan));
+				splan->scan.plan.qual =
+					fix_scan_list(root, splan->scan.plan.qual, rtoffset,
+								  NUM_EXEC_QUAL(plan));
+				splan->bitmapqualorig =
+					fix_scan_list(root, splan->bitmapqualorig, rtoffset,
+								  NUM_EXEC_QUAL(plan));
+			}
+			break;
 		case T_TidScan:
 			{
 				TidScan    *splan = (TidScan *) plan;
@@ -2197,10 +2213,10 @@ YbBNL_hinfo_cmp_inner_att(const void *arg_1,
 
 	if (!OidIsValid(hinfo_1->hashOp))
 		return -1;
-	
+
 	if (!OidIsValid(hinfo_2->hashOp))
 		return 1;
-	
+
 	return (hinfo_1->innerHashAttNo > hinfo_2->innerHashAttNo) -
 		   (hinfo_1->innerHashAttNo < hinfo_2->innerHashAttNo);
 }
@@ -2242,7 +2258,7 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 	/* Now do join-type-specific stuff */
 	if (IsA(join, NestLoop) || IsA(join, YbBatchedNestLoop))
 	{
-		NestLoop   *nl = IsA(join, NestLoop) 
+		NestLoop   *nl = IsA(join, NestLoop)
 						 ? (NestLoop *) join
 						 : &((YbBatchedNestLoop *) join)->nl;
 		ListCell   *lc;

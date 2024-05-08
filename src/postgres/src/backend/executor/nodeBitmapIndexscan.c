@@ -28,6 +28,9 @@
 #include "miscadmin.h"
 #include "utils/memutils.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+#include "access/relscan.h"
 
 /* ----------------------------------------------------------------
  *		ExecBitmapIndexScan
@@ -49,10 +52,11 @@ ExecBitmapIndexScan(PlanState *pstate)
 Node *
 MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 {
-	TIDBitmap  *tbm;
+	TupleBitmap	bitmap;
 	IndexScanDesc scandesc;
 	double		nTuples = 0;
 	bool		doscan;
+	bool		is_yb_bitmap_scan;
 
 	/* must provide our own instrumentation support */
 	if (node->ss.ps.instrument)
@@ -62,6 +66,9 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	 * extract necessary information from index scan node
 	 */
 	scandesc = node->biss_ScanDesc;
+
+	is_yb_bitmap_scan = IsYugaByteEnabled() &&
+						IsYBRelation(scandesc->indexRelation);
 
 	/*
 	 * If we have runtime keys and they've not already been set up, do it now.
@@ -86,15 +93,26 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	 */
 	if (node->biss_result)
 	{
-		tbm = node->biss_result;
+		if (is_yb_bitmap_scan)
+		{
+			Assert(IsA(node->biss_result, YbTIDBitmap));
+			bitmap.ybtbm = node->biss_result;
+		}
+		else
+			bitmap.tbm = node->biss_result;
+
 		node->biss_result = NULL;	/* reset for next time */
+	}
+	else if (is_yb_bitmap_scan)
+	{
+		bitmap.ybtbm = yb_tbm_create(work_mem * 1024L);
 	}
 	else
 	{
 		/* XXX should we use less than work_mem for this? */
-		tbm = tbm_create(work_mem * 1024L,
-						 ((BitmapIndexScan *) node->ss.ps.plan)->isshared ?
-						 node->ss.ps.state->es_query_dsa : NULL);
+		bitmap.tbm = tbm_create(work_mem * 1024L,
+								((BitmapIndexScan *) node->ss.ps.plan)->isshared
+									? node->ss.ps.state->es_query_dsa : NULL);
 	}
 
 	/*
@@ -102,7 +120,14 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	 */
 	while (doscan)
 	{
-		nTuples += (double) index_getbitmap(scandesc, tbm);
+		/*
+		 * For Yugabyte-based index, call the variant of index_getbitmap that
+		 * takes a YbTIDBitmap instead of a TIDBitmap
+		 */
+		if (is_yb_bitmap_scan)
+			nTuples += (double) yb_index_getbitmap(scandesc, bitmap.ybtbm);
+		else
+			nTuples += (double) index_getbitmap(scandesc, bitmap.tbm);
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -118,7 +143,7 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	if (node->ss.ps.instrument)
 		InstrStopNode(node->ss.ps.instrument, nTuples);
 
-	return (Node *) tbm;
+	return is_yb_bitmap_scan ? (Node *) bitmap.ybtbm : (Node *) bitmap.tbm;
 }
 
 /* ----------------------------------------------------------------
@@ -312,6 +337,18 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 		index_beginscan_bitmap(indexstate->biss_RelationDesc,
 							   estate->es_snapshot,
 							   indexstate->biss_NumScanKeys);
+
+	if (IsYugaByteEnabled())
+	{
+		if (IsYBRelation(indexstate->biss_RelationDesc))
+			indexstate->ss.ss_currentRelation =
+				ExecOpenScanRelation(estate, node->scan.scanrelid, eflags);
+
+		indexstate->biss_ScanDesc->heapRelation =
+			indexstate->ss.ss_currentRelation;
+		indexstate->biss_ScanDesc->yb_exec_params = &estate->yb_exec_params;
+		indexstate->biss_ScanDesc->fetch_ybctids_only = true;
+	}
 
 	/*
 	 * If no run-time keys to calculate, go ahead and pass the scankeys to the

@@ -456,6 +456,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       // TODO(dmitry): Workaround for #1721, remove after fix.
       stmt.execute("ROLLBACK");
       stmt.execute("DISCARD TEMP");
+
+      // TODO(tim): Workaround for DB-11127, remove after fix.
+      stmt.execute("RESET enable_seqscan");
+      stmt.execute("RESET enable_bitmapscan");
     }
 
     cleanUpCustomDatabases();

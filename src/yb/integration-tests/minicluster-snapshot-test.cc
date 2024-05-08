@@ -54,6 +54,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
@@ -513,11 +514,11 @@ class PgCloneTest : public PgSnapshotTest {
   }
 
   Status CloneAndWait(
-      const master::CloneFromSnapshotScheduleRequestPB& clone_req, const MasterBackupProxy& proxy) {
+      const master::CloneNamespaceRequestPB& clone_req, const MasterBackupProxy& proxy) {
     rpc::RpcController controller;
     controller.set_timeout(60s);
-    master::CloneFromSnapshotScheduleResponsePB clone_resp;
-    RETURN_NOT_OK(proxy.CloneFromSnapshotSchedule(clone_req, &clone_resp, &controller));
+    master::CloneNamespaceResponsePB clone_resp;
+    RETURN_NOT_OK(proxy.CloneNamespace(clone_req, &clone_resp, &controller));
     if (clone_resp.has_error()) {
       return StatusFromPB(clone_resp.error().status());
     }
@@ -553,7 +554,7 @@ TEST_F(PgCloneTest, Clone) {
   const auto kTimeout = MonoDelta::FromSeconds(30);
 
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kSourceNamespaceName));
-  // TODO: remove these CREATEs once ysql_dump is included in CloneFromSnapshotSchedule.
+  // TODO: remove these CREATEs once ysql_dump is included in CloneNamespace.
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kTargetNamespaceName1));
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kTargetNamespaceName2));
 
@@ -571,7 +572,7 @@ TEST_F(PgCloneTest, Clone) {
   ASSERT_OK(source_conn.ExecuteFormat("INSERT INTO t1 VALUES ($0, $1)",
             std::get<0>(kRows[0]), std::get<1>(kRows[0])));
 
-  // TODO: remove these CREATEs once ysql_dump is included in CloneFromSnapshotSchedule.
+  // TODO: remove these CREATEs once ysql_dump is included in CloneNamespace.
   auto target_conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kTargetNamespaceName1));
   ASSERT_OK(target_conn1.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
   auto target_conn2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kTargetNamespaceName2));
@@ -583,8 +584,11 @@ TEST_F(PgCloneTest, Clone) {
             std::get<0>(kRows[1]), std::get<1>(kRows[1])));
   auto ht2 = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
 
-  CloneFromSnapshotScheduleRequestPB req;
-  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  CloneNamespaceRequestPB req;
+  NamespaceIdentifierPB source_namespace;
+  source_namespace.set_name(kSourceNamespaceName);
+  source_namespace.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  *req.mutable_source_namespace() = source_namespace;
   req.set_restore_ht(ht1.ToUint64());
   req.set_target_namespace_name(kTargetNamespaceName1);
   ASSERT_OK(CloneAndWait(req, proxy));

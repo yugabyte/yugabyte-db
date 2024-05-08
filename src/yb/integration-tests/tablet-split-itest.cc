@@ -1008,7 +1008,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
             return true;
           }
           auto result = tablet->transaction_participant()->TEST_CountIntents();
-          return !result.ok() || result->first == 0;
+          return !result.ok() || result->num_intents == 0;
         }, 30s, "Did not apply write transactions from intents db in time."));
 
         if (peer->IsShutdownStarted()) {
