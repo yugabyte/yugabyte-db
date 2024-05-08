@@ -114,7 +114,7 @@ You can create a support bundle as follows:
 
   ![Create support bundle](/images/yp/support-bundle-2.png)
 
-  For details about Core Files and YBA Metadata, see [Support bundle components](#support-bundle-components).
+  For information about the components, see [Support bundle components](#support-bundle-components).
 
 - Click **Create Bundle**.
 
