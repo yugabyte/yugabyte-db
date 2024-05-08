@@ -132,9 +132,6 @@ class CatalogManagerIf {
 
   virtual Result<SysClusterConfigEntryPB> GetClusterConfig() = 0;
 
-  virtual Status SetClusterConfig(
-    const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) = 0;
-
   virtual Status ListTables(
       const ListTablesRequestPB* req, ListTablesResponsePB* resp) = 0;
 
@@ -279,9 +276,6 @@ class CatalogManagerIf {
   virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const = 0;
 
   virtual scoped_refptr<TableInfo> NewTableInfo(TableId id, bool colocated) = 0;
-
-  virtual Status AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
-                                   AreLeadersOnPreferredOnlyResponsePB* resp) = 0;
 
   // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
   virtual Status SplitTablet(

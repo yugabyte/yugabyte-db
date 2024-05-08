@@ -97,6 +97,7 @@ set(MASTER_SRCS
   tablet_health_manager.cc
   master_backup_service.cc
   master_client_service.cc
+  master_cluster_handler.cc
   master_cluster_service.cc
   master_dcl_service.cc
   master_ddl_service.cc

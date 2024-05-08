@@ -3018,8 +3018,7 @@ const std::string& FlagToString(const std::string& flag) {
 void StartSecure(
     std::unique_ptr<ExternalMiniCluster>* cluster,
     std::unique_ptr<rpc::SecureContext>* secure_context,
-    std::unique_ptr<rpc::Messenger>* messenger,
-    const std::vector<std::string>& master_flags) {
+    std::unique_ptr<rpc::Messenger>* messenger) {
   rpc::MessengerBuilder messenger_builder("test_client");
   *secure_context = ASSERT_RESULT(rpc::SetupSecureContext(
       /*root_dir=*/"", "127.0.0.100", rpc::SecureContextType::kInternal, &messenger_builder));
@@ -3035,8 +3034,6 @@ void StartSecure(
       YB_FORWARD_FLAG(use_node_to_node_encryption),
   };
   opts.extra_master_flags = opts.extra_tserver_flags;
-  opts.extra_master_flags.insert(
-      opts.extra_master_flags.end(), master_flags.begin(), master_flags.end());
   opts.num_tablet_servers = 3;
   opts.use_even_ips = true;
   *cluster = std::make_unique<ExternalMiniCluster>(opts);

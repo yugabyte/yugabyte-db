@@ -50,12 +50,13 @@
 
 #include "yb/gutil/bind.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master_backup.service.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_cluster_handler.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
@@ -160,6 +161,7 @@ Master::Master(const MasterOptions& opts)
       path_handlers_(new MasterPathHandlers(this)),
       flush_manager_(new FlushManager(this, catalog_manager())),
       tablet_health_manager_(new TabletHealthManager(this, catalog_manager())),
+      master_cluster_handler_(new MasterClusterHandler(catalog_manager_impl(), ts_manager_.get())),
       test_async_rpc_manager_(new TestAsyncRpcManager(this, catalog_manager())),
       init_future_(init_status_.get_future()),
       opts_(opts),

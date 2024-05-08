@@ -15,10 +15,13 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tools/yb-admin_client.h"
@@ -190,11 +193,15 @@ class AreLeadersOnPreferredOnlyTest : public MiniClusterTestWithClient<MiniClust
   }
 
   Status LeadersAreOnPreferredOnly() {
-    auto mini_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    auto& catalog_manager = mini_master->catalog_manager();
-    const master::AreLeadersOnPreferredOnlyRequestPB req;
+    auto proxy = VERIFY_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+    master::AreLeadersOnPreferredOnlyRequestPB req;
     master::AreLeadersOnPreferredOnlyResponsePB resp;
-    return catalog_manager.AreLeadersOnPreferredOnly(&req, &resp);
+    rpc::RpcController rpc;
+    RETURN_NOT_OK(proxy.AreLeadersOnPreferredOnly(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
   }
 
   std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
@@ -240,7 +247,7 @@ TEST_F(AreLeadersOnPreferredOnlyTest, TestTxnLeadersAreOnPreferredOnlyViolation)
 
   ASSERT_OK(WaitFor(
       [&]() { return !LeadersAreOnPreferredOnly().ok(); },
-      MonoDelta::FromMilliseconds(30000) /* timeout */,
+      MonoDelta::FromMilliseconds(10000) /* timeout */,
       "Wait for leaders violation"));
 }
 
