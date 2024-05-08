@@ -2,54 +2,73 @@ package systemd
 
 import (
 	"fmt"
-	"strings"
+	osuser "os/user"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 )
 
 // Stop the given systemctl services
 func Stop(serviceNames ...string) error {
-	return runSysctlCmd("stop", serviceNames)
+	return runSysctlServiceCmd("stop", serviceNames)
 }
 
 // Disable (don't restart on system reboot) the given systemctl services
 func Disable(serviceNames ...string) error {
-	return runSysctlCmd("disable", serviceNames)
+	return runSysctlServiceCmd("disable", serviceNames)
 }
 
 // Start the given systemctl services
 // enable == true will run with --now, ensuring the services are started on reboot.
 func Start(serviceNames ...string) error {
-	return runSysctlCmd("start", serviceNames)
+	return runSysctlServiceCmd("start", serviceNames)
+}
+
+func Restart(serviceNames ...string) error {
+	return runSysctlServiceCmd("restart", serviceNames)
 }
 
 // Enable (restart the services on system reboot) the given systemctl services.
 func Enable(now bool, serviceNames ...string) error {
 	if now {
-		return runSysctlCmd("enable", serviceNames, "--now")
+		return runSysctlServiceCmd("enable", serviceNames, "--now")
 	}
-	return runSysctlCmd("enable", serviceNames)
+	return runSysctlServiceCmd("enable", serviceNames)
+}
+
+// Link will create a link to the provided target service
+func Link(target string) error {
+	return runSysctlCmd("link", target)
 }
 
 // DaemonReload performs systemctl daemon-reload
 func DaemonReload() error {
-	if out := shell.Run("systemctl", "daemon-reload"); !out.SucceededOrLog() {
-		return fmt.Errorf("systemctl daemon-reload failed: %w", out.Error)
+	return runSysctlCmd("daemon-reload")
+}
+
+// runSysctlServiceCmd is a helper for running some basic systemctl commands
+// cmd: systemctl cmd to run
+// services: list of services to perform the command against
+// args: optional additional arguments to
+func runSysctlServiceCmd(cmd string, services []string, args ...string) error {
+	return runSysctlCmd(cmd, append(services, args...)...)
+}
+
+func runSysctlCmd(cmd string, args ...string) error {
+	cmdArgs := []string{cmd}
+	if !isRoot() {
+		cmdArgs = append([]string{"--user"}, cmdArgs...)
+	}
+	cmdArgs = append(cmdArgs, args...)
+	if out := shell.Run("systemctl", cmdArgs...); !out.SucceededOrLog() {
+		return fmt.Errorf("systemctl %s failed: %w", cmd, out.Error)
 	}
 	return nil
 }
 
-// runSysctlCmd is a helper for running some basic systemctl commands
-// cmd: systemctl cmd to run
-// services: list of services to perform the command against
-// args: optional additional arguments to
-func runSysctlCmd(cmd string, services []string, args ...string) error {
-	cmdArgs := append([]string{cmd}, services...)
-	cmdArgs = append(cmdArgs, args...)
-	out := shell.Run("systemctl", cmdArgs...)
-	if !out.SucceededOrLog() {
-		return fmt.Errorf("systemctl %s on services '%s' failed: %w", cmd,
-			strings.Join(services, ", "), out.Error)
+func isRoot() bool {
+	user, err := osuser.Current()
+	if err != nil {
+		panic(err)
 	}
-	return nil
+	return user.Uid == "0"
 }

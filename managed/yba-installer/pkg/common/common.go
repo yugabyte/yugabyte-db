@@ -22,6 +22,7 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
 
 // Install performs the installation procedures common to
@@ -68,6 +69,26 @@ func Install(version string) error {
 	}
 	if err := setJDKEnvironmentVariable(); err != nil {
 		return err
+	}
+	if !HasSudoAccess() {
+		log.Info("setup systemd --user for long running services")
+		if err := systemd.LingerEnable(); err != nil {
+			return err
+		}
+		// Create a link to network online target for user services, which otherwise cannot depend on it
+		if err := systemd.Link("/usr/lib/systemd/system/network-online.target"); err != nil {
+			return err
+		}
+		fp := fmt.Sprintf("/home/%s/.bashrc", viper.GetString("service_username"))
+		bashrc, err := os.OpenFile(fp, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+		if err != nil {
+			return fmt.Errorf("could not open /home/%s/bashrc: %w",
+				viper.GetString("service_username"), err)
+		}
+		defer bashrc.Close()
+		if _, err := bashrc.WriteString("export XDG_RUNTIME_DIR=/run/user/$(id -u)\n"); err != nil {
+			return fmt.Errorf("could not write XDG_RUNTIME_DIR to bashrc: %w", err)
+		}
 	}
 	return nil
 }
@@ -119,7 +140,7 @@ func createUpgradeDirs() error {
 				true)
 			if err != nil {
 				return fmt.Errorf("failed to change ownership of " + dir + " to " +
-				viper.GetString("service_username") + ": " + err.Error())
+					viper.GetString("service_username") + ": " + err.Error())
 			}
 		}
 	}
@@ -148,14 +169,6 @@ func copyBits(vers string) error {
 		log.Debug("skipping template file copy, already exists")
 	}
 
-	cronDest := path.Join(GetInstallerSoftwareDir(), CronDir)
-	if _, err := os.Stat(cronDest); errors.Is(err, os.ErrNotExist) {
-		if err := Copy(GetCronDir(), cronDest, true, false); err != nil {
-			return fmt.Errorf("failed to copy cron scripts: " + err.Error())
-		}
-	} else {
-		log.Debug("skipping cron directory copy, already exists")
-	}
 	return nil
 }
 
