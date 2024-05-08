@@ -48,8 +48,9 @@
 #include "yb/integration-tests/external_yb_controller.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -250,6 +251,9 @@ class MiniCluster : public MiniClusterBase {
 
   Status WaitForLoadBalancerToStabilize(MonoDelta timeout);
 
+  template <typename T>
+  Result<T> GetLeaderMasterProxy();
+
   std::string GetClusterId() { return options_.cluster_id; }
 
  private:
@@ -270,6 +274,8 @@ class MiniCluster : public MiniClusterBase {
   // mean we pick the maximum number of masters/tservers that we already know we'll need.
   void EnsurePortsAllocated(size_t new_num_masters = 0, size_t num_tservers = 0);
 
+  Status ChangeClusterConfig(std::function<void(master::SysClusterConfigEntryPB*)> config_changer);
+
   const MiniClusterOptions options_;
   const std::string fs_root_;
 
@@ -284,6 +290,8 @@ class MiniCluster : public MiniClusterBase {
   std::vector<scoped_refptr<ExternalYbController>> yb_controllers_;
 
   PortPicker port_picker_;
+  std::unique_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
@@ -439,5 +447,10 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster);
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 std::vector<std::string> DumpDocDBToStrings(
     MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
+
+template <typename T>
+Result<T> MiniCluster::GetLeaderMasterProxy() {
+  return T(proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
+}
 
 }  // namespace yb

@@ -952,19 +952,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<SysClusterConfigEntryPB> GetClusterConfig() override;
   Result<int32_t> GetClusterConfigVersion();
 
-  // Helper for the GetMasterClusterConfig RPC.
-  Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp);
-
-  Status SetClusterConfig(
-      const ChangeMasterClusterConfigRequestPB* req,
-      ChangeMasterClusterConfigResponsePB* resp) override;
-
   // Validator for placement information with respect to cluster configuration
   Status ValidateReplicationInfo(
       const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp);
-
-  Status SetPreferredZones(
-      const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp);
 
   Result<size_t> GetReplicationFactor() override;
   Result<size_t> GetNumTabletReplicas(const scoped_refptr<TabletInfo>& tablet);
@@ -979,18 +969,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                            int* num_live_replicas,
                                            int* num_read_replicas);
 
-  // Get the percentage of tablets that have been moved off of the black-listed tablet servers.
-  Status GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
-
-  // Get the percentage of leaders that have been moved off of the leader black-listed tablet
-  // servers.
-  Status GetLeaderBlacklistCompletionPercent(GetLoadMovePercentResponsePB* resp);
-
-  // Get the percentage of leaders/tablets that have been moved off of the (leader) black-listed
-  // tablet servers.
-  Status GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
-      bool blacklist_leader);
-
   // API to check if all the live tservers have similar tablet workload.
   Status IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                         IsLoadBalancedResponsePB* resp) override;
@@ -999,10 +977,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
                             IsLoadBalancerIdleResponsePB* resp);
-
-  // API to check that all tservers that shouldn't have leader load do not.
-  Status AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
-                                   AreLeadersOnPreferredOnlyResponsePB* resp) override;
 
   // Return the placement uuid of the primary cluster containing this master.
   Result<std::string> placement_uuid() const;
@@ -1663,6 +1637,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::optional<UniverseUuid> GetUniverseUuidIfExists() const;
 
+  // Calculate the total number of replicas which are being handled by servers in state.
+  int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
+
+  std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -2069,8 +2048,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void StartTablespaceBgTaskIfStopped();
 
-  std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
-
   // Report metrics.
   void ReportMetrics();
 
@@ -2114,9 +2091,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status DoSplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code,
       ManualSplit is_manual_split, const LeaderEpoch& epoch);
-
-  // Calculate the total number of replicas which are being handled by servers in state.
-  int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
 
   int64_t leader_ready_term() const override EXCLUDES(state_lock_) {
     std::lock_guard l(state_lock_);

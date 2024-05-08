@@ -61,6 +61,10 @@ CloneStateManager* MasterServiceBase::handler(CloneStateManager*) {
   return server_->clone_state_manager();
 }
 
+MasterClusterHandler* MasterServiceBase::handler(MasterClusterHandler*) {
+  return server_->master_cluster_handler();
+}
+
 Status HandleLockAndCallFunction(
     const std::function<Status()>& f,
     HoldCatalogLock hold_catalog_lock,
