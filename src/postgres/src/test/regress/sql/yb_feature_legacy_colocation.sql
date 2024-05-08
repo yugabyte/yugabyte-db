@@ -205,11 +205,11 @@ SELECT * FROM tab_range_nonkey_noco2;
 
 -- drop index on non-colocated table
 DROP INDEX idx_range2;
-EXPLAIN SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
 
 -- drop index on colocated table
 DROP INDEX idx_range5;
-EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 
 \dt
 \di
