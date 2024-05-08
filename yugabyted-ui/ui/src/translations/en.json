@@ -928,10 +928,10 @@
             }
           },
           "recommendation": {
-            "heading": "Recommendation",
+            "heading": "Recommendations",
             "tooltip": "Facts based approach to sizing that leverages metadata from the source environment",
             "clusterSize": {
-              "heading": "Cluster size recommendation",
+              "heading": "Recommended Cluster Size",
               "noOfNodes": "Number of Nodes",
               "vcpuPerNode": "vCPU / Node",
               "memoryPerNode": "Memory / Node",
@@ -944,7 +944,12 @@
               "colocatedTables": "Colocated Tables",
               "shardedTables": "Sharded Tables",
               "noOfTables": "Number of Tables",
-              "totalSize": "Total Size"
+              "totalSize": "Total Size",
+              "search": "Search",
+              "searchPlaceholder": "Search table name",
+              "tableName": "Table name",
+              "diskSize": "Disk size",
+              "schemaRecommendation": "Schema Recommendation"
             }
           },
           "refactoring": {

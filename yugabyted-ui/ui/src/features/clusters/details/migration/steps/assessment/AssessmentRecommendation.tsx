@@ -1,17 +1,9 @@
 import React, { FC } from "react";
-import {
-  Box,
-  Divider,
-  Grid,
-  MenuItem,
-  Paper,
-  Typography,
-  makeStyles,
-  useTheme,
-} from "@material-ui/core";
+import { Box, Divider, Grid, Paper, Typography, makeStyles, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBDropdown, YBTooltip } from "@app/components";
-import MoreIcon from "@app/assets/more-horizontal.svg";
+import { YBButton, YBTooltip } from "@app/components";
+import CaretRightIcon from "@app/assets/Drilldown.svg";
+import { MigrationSchemaRecommendation } from "./AssessmentSchemaRecommend";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -62,6 +54,8 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
+
+  const [showRecommendation, setShowRecommendation] = React.useState<boolean>(false);
 
   return (
     <Paper>
@@ -150,11 +144,13 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
               <Typography variant="h4">
                 {t("clusterDetail.voyager.planAndAssess.recommendation.schema.heading")}
               </Typography>
-              <YBDropdown origin={<MoreIcon />} className={classes.pointer}>
-                <MenuItem>
-                  {t("clusterDetail.voyager.planAndAssess.recommendation.schema.viewDetailed")}
-                </MenuItem>
-              </YBDropdown>
+              <YBButton
+                variant="ghost"
+                startIcon={<CaretRightIcon />}
+                onClick={() => setShowRecommendation(true)}
+              >
+                {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewDetails")}
+              </YBButton>
             </Box>
 
             <Grid container spacing={4}>
@@ -204,6 +200,11 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
           </Box>
         </Box>
       </Box>
+
+      <MigrationSchemaRecommendation
+        open={showRecommendation}
+        onClose={() => setShowRecommendation(false)}
+      />
     </Paper>
   );
 };
