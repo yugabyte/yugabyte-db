@@ -1410,6 +1410,14 @@ Controls whether to use the PostgreSQL relcache init file, which caches critical
 
 Default: `true`
 
+##### ysql_yb_toast_catcache_threshold
+
+Specifies the threshold (in bytes) beyond which catalog tuples will get compressed when they are stored in the PostgreSQL catalog cache. Setting this flag reduces memory usage for certain large objects, including functions and views, in exchange for slower catalog refreshes.
+
+To minimize performance impact when enabling this flag, set it to 2KB or higher.
+
+Default: -1 (disabled). Minimum: 128 bytes.
+
 ##### ysql_enable_db_catalog_version_mode
 
 Enable the per database catalog version mode. A DDL statement that
