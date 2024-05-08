@@ -326,6 +326,7 @@ class PgCreateReplicationSlot : public PgDdl {
  public:
   PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
                           const char *slot_name,
+                          const char *plugin_name,
                           PgOid database_oid,
                           YBCPgReplicationSlotSnapshotAction snapshot_action);
 

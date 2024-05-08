@@ -916,7 +916,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 		ReplicationSlotCreate(cmd->slotname, false,
 							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT,
-							  snapshot_action, NULL);
+							  cmd->plugin, snapshot_action, NULL);
 	}
 	else
 	{
@@ -938,7 +938,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			 */
 			ReplicationSlotCreate(cmd->slotname, true,
 								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
-								  snapshot_action, NULL);
+								  cmd->plugin, snapshot_action, NULL);
 		}
 	}
 
@@ -997,17 +997,6 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 		if (IsYugaByteEnabled())
 		{
-			/*
-			 * TODO(#20756): Support other plugins such as test_decoding once we
-			 * store replication slot metadata in yb-master.
-			 */
-			if (cmd->plugin == NULL ||
-				strcmp(cmd->plugin, PG_OUTPUT_PLUGIN) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid output plugin"),
-						 errdetail("Only 'pgoutput' plugin is supported")));
-
 			if (cmd->temporary)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1018,17 +1007,32 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 								 " its priority")));
 
 			/*
+			 * Validate output plugin requirement early so that we can avoid the
+			 * expensive call to yb-master.
+			 *
+			 * This is different from PG where the validation is done after
+			 * creating the replication slot on disk which is cleaned up in case
+			 * of errors.
+			 */
+			if (cmd->plugin == NULL)
+					elog(ERROR, "cannot initialize logical decoding without a specified plugin");
+
+			YBValidateOutputPlugin(cmd->plugin);
+
+			/*
 			 * 23 digits is an upper bound for the decimal representation of a uint64
 			 */
 			char consistent_snapshot_time_string[24];
 			uint64_t consistent_snapshot_time;
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT,
-								  snapshot_action, &consistent_snapshot_time);
+								  cmd->plugin, snapshot_action,
+								  &consistent_snapshot_time);
 
 			if (snapshot_action == CRS_USE_SNAPSHOT)
 			{
-				snprintf(consistent_snapshot_time_string, sizeof(consistent_snapshot_time_string),
-						 "%llu", (unsigned long long)consistent_snapshot_time);
+				snprintf(consistent_snapshot_time_string,
+						 sizeof(consistent_snapshot_time_string), "%llu",
+						 (unsigned long long) consistent_snapshot_time);
 				snapshot_name = pstrdup(consistent_snapshot_time_string);
 			}
 

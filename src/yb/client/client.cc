@@ -1468,6 +1468,7 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const std::unordered_map<std::string, std::string>& options,
     bool populate_namespace_id_as_table_id,
     const ReplicationSlotName& replication_slot_name,
+    const std::optional<std::string>& replication_slot_plugin_name,
     const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option,
     CoarseTimePoint deadline,
     uint64_t *consistent_snapshot_time) {
@@ -1490,6 +1491,9 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   }
   if (consistent_snapshot_option.has_value()) {
     req.set_cdcsdk_consistent_snapshot_option(*consistent_snapshot_option);
+  }
+  if (replication_slot_plugin_name.has_value()) {
+    req.set_cdcsdk_ysql_replication_slot_plugin_name(*replication_slot_plugin_name);
   }
 
   CreateCDCStreamResponsePB resp;

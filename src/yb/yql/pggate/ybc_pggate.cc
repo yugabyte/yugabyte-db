@@ -2085,10 +2085,12 @@ YBCStatus YBCGetTableKeyRanges(
 // Replication Slots.
 
 YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
+                                        const char *plugin_name,
                                         YBCPgOid database_oid,
                                         YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
+                                                     plugin_name,
                                                      database_oid,
                                                      snapshot_action,
                                                      handle));
@@ -2155,6 +2157,7 @@ YBCStatus YBCPgListReplicationSlots(
 
       new (dest) YBCReplicationSlotDescriptor{
           .slot_name = YBCPAllocStdString(info.slot_name()),
+          .output_plugin = YBCPAllocStdString(info.output_plugin_name()),
           .stream_id = YBCPAllocStdString(info.stream_id()),
           .database_oid = info.database_oid(),
           .active = info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
@@ -2202,6 +2205,7 @@ YBCStatus YBCPgGetReplicationSlot(
 
   new (*replication_slot) YBCReplicationSlotDescriptor{
       .slot_name = YBCPAllocStdString(slot_info.slot_name()),
+      .output_plugin = YBCPAllocStdString(slot_info.output_plugin_name()),
       .stream_id = YBCPAllocStdString(slot_info.stream_id()),
       .database_oid = slot_info.database_oid(),
       .active = slot_info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,

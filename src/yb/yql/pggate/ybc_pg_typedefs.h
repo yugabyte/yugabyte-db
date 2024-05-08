@@ -571,6 +571,7 @@ typedef struct PgReplicaIdentityDescriptor {
 
 typedef struct PgReplicationSlotDescriptor {
   const char *slot_name;
+  const char *output_plugin;
   const char *stream_id;
   YBCPgOid database_oid;
   bool active;
