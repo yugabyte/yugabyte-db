@@ -59,7 +59,11 @@ import { NTP_SERVER_REGEX } from '../constants';
 
 import { GCPRegionMutation, GCPAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
@@ -144,6 +148,7 @@ export const GCPProviderCreateForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isValidationErrorExist, setValidationErrorExist] = useState(false);
   const { t } = useTranslation();
 
   const defaultValues: Partial<GCPProviderCreateFormFieldValues> = {
@@ -166,7 +171,10 @@ export const GCPProviderCreateForm = ({
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
   const sshConfigureMsg = ConfigureSSHDetailsMsg();
-  const { isLoading: isProviderValidationLoading, isValidationEnabled } = UseProviderValidationEnabled(CloudType.gcp);
+  const {
+    isLoading: isProviderValidationLoading,
+    isValidationEnabled
+  } = UseProviderValidationEnabled(CloudType.gcp);
 
   if (hostInfoQuery.isLoading || hostInfoQuery.isIdle || isProviderValidationLoading) {
     return <YBLoading />;
@@ -179,7 +187,11 @@ export const GCPProviderCreateForm = ({
     );
   }
 
-  const onFormSubmit: SubmitHandler<GCPProviderCreateFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: GCPProviderCreateFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -208,7 +220,7 @@ export const GCPProviderCreateForm = ({
     try {
       sshPrivateKeyContent =
         formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-          formValues.sshPrivateKeyContent
+        formValues.sshPrivateKeyContent
           ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
           : '';
     } catch (error) {
@@ -220,32 +232,32 @@ export const GCPProviderCreateForm = ({
     const vpcConfig =
       formValues.vpcSetupType === VPCSetupType.HOST_INSTANCE
         ? {
-          useHostVPC: true
-        }
+            useHostVPC: true
+          }
         : formValues.vpcSetupType === VPCSetupType.EXISTING
-          ? {
+        ? {
             useHostVPC: true,
             destVpcId: formValues.destVpcId
           }
-          : formValues.vpcSetupType === VPCSetupType.NEW
-            ? {
-              useHostVPC: false,
-              destVpcId: formValues.destVpcId
-            }
-            : assertUnreachableCase(formValues.vpcSetupType);
+        : formValues.vpcSetupType === VPCSetupType.NEW
+        ? {
+            useHostVPC: false,
+            destVpcId: formValues.destVpcId
+          }
+        : assertUnreachableCase(formValues.vpcSetupType);
 
     const gcpCredentials =
       formValues.providerCredentialType === ProviderCredentialType.HOST_INSTANCE_SERVICE_ACCOUNT
         ? {
-          useHostCredentials: true
-        }
+            useHostCredentials: true
+          }
         : formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT
-          ? {
+        ? {
             gceApplicationCredentials: googleServiceAccount,
             gceProject: googleServiceAccount?.project_id ?? '',
             useHostCredentials: false
           }
-          : assertUnreachableCase(formValues.providerCredentialType);
+        : assertUnreachableCase(formValues.providerCredentialType);
 
     const allAccessKeysPayload = constructAccessKeysCreatePayload(
       formValues.sshKeypairManagement,
@@ -294,17 +306,35 @@ export const GCPProviderCreateForm = ({
       })),
       imageBundles
     };
+    setValidationErrorExist(false);
     try {
-      await createInfraProvider(providerPayload,
-        {
-          shouldValidate: isValidationEnabled,
-          mutateOptions: {
-            onError: err => handleFormSubmitServerError((err as any)?.response?.data, formMethods, GCPCreateFormErrFields)
+      await createInfraProvider(providerPayload, {
+        shouldValidate: shouldValidate,
+        ignoreValidationErrors: ignoreValidationErrors,
+        mutateOptions: {
+          onError: (err) => {
+            handleFormSubmitServerError(
+              (err as any)?.response?.data,
+              formMethods,
+              GCPCreateFormErrFields
+            );
+            setValidationErrorExist(true);
           }
-        });
+        }
+      });
     } catch (_) {
       // Request errors are handled by the onError callback
     }
+  };
+
+  const onFormValidateAndSubmit: SubmitHandler<GCPProviderCreateFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
+  const onFormForceSubmit: SubmitHandler<GCPProviderCreateFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, isValidationEnabled, true);
+
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const showAddRegionFormModal = () => {
@@ -379,7 +409,10 @@ export const GCPProviderCreateForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name={FORM_NAME} onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name={FORM_NAME}
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           <Typography variant="h3">Create GCP Provider Configuration</Typography>
           <FormField providerNameField={true}>
             <FieldLabel>Provider Name</FieldLabel>
@@ -592,12 +625,25 @@ export const GCPProviderCreateForm = ({
           </Box>
           <Box marginTop="16px">
             <YBButton
-              btnText="Create Provider Configuration"
+              btnText={
+                isValidationEnabled
+                  ? 'Validate and Save Configuration'
+                  : 'Create Provider Configuration'
+              }
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
+            {isValidationEnabled && isValidationErrorExist && (
+              <YBButton
+                btnText="Ignore and save provider configuration anyway"
+                btnClass="btn btn-default float-right mr-10"
+                onClick={skipValidationAndSubmit}
+                disabled={isFormDisabled || formMethods.formState.isValidating}
+                data-testid={`${FORM_NAME}-IgnoreAndSave`}
+              />
+            )}
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"

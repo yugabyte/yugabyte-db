@@ -66,8 +66,6 @@ import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
-import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
-import { QUERY_KEY } from '../../../../../redesign/features/universe/universe-form/utils/api';
 import {
   AZUAvailabilityZone,
   AZUAvailabilityZoneMutation,
@@ -194,6 +192,7 @@ export const AZUProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isValidationErrorExist, setValidationErrorExist] = useState(false);
 
   const { t } = useTranslation();
   const defaultValues = constructDefaultFormValues(providerConfig);
@@ -260,7 +259,11 @@ export const AZUProviderEditForm = ({
   const onFormReset = () => {
     formMethods.reset(defaultValues);
   };
-  const onFormSubmit: SubmitHandler<AZUProviderEditFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: AZUProviderEditFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -270,11 +273,12 @@ export const AZUProviderEditForm = ({
     }
 
     try {
+      setValidationErrorExist(false);
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
         await editProvider(providerPayload, {
-          shouldValidate: isValidationEnabled,
-          ignoreValidationErrors: false,
+          shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors,
           mutateOptions: {
             onError: (err) => {
               handleFormSubmitServerError(
@@ -282,6 +286,7 @@ export const AZUProviderEditForm = ({
                 formMethods,
                 AZURE_FORM_MAPPERS
               );
+              setValidationErrorExist(true);
             }
           }
         });
@@ -291,6 +296,16 @@ export const AZUProviderEditForm = ({
     } catch (error: any) {
       toast.error(error.message ?? error);
     }
+  };
+
+  const onFormValidateAndSubmit: SubmitHandler<AZUProviderEditFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
+  const onFormForceSubmit: SubmitHandler<AZUProviderEditFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, isValidationEnabled, true);
+
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const regions = formMethods.watch('regions', defaultValues.regions);
@@ -342,7 +357,10 @@ export const AZUProviderEditForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name="azuProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name="azuProviderForm"
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           {currentProviderVersion < providerConfig.version && (
             <VersionWarningBanner onReset={onFormReset} dataTestIdPrefix={FORM_NAME} />
           )}
@@ -736,13 +754,28 @@ export const AZUProviderEditForm = ({
               overrideStyle={{ float: 'right' }}
             >
               <YBButton
-                btnText="Apply Changes"
+                btnText={isValidationEnabled ? 'Validate and Apply Changes' : 'Apply Changes'}
                 btnClass="btn btn-default save-btn"
                 btnType="submit"
                 disabled={isFormDisabled || formMethods.formState.isValidating}
                 data-testid={`${FORM_NAME}-SubmitButton`}
               />
             </RbacValidator>
+            {isValidationEnabled && isValidationErrorExist && (
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER}
+                isControl
+                overrideStyle={{ float: 'right' }}
+              >
+                <YBButton
+                  btnText="Ignore and save provider configuration anyway"
+                  btnClass="btn btn-default float-right mr-10"
+                  onClick={skipValidationAndSubmit}
+                  disabled={isFormDisabled || formMethods.formState.isValidating}
+                  data-testid={`${FORM_NAME}-IgnoreAndSave`}
+                />
+              </RbacValidator>
+            )}
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
