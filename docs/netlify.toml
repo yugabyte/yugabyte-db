@@ -11,21 +11,21 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 # all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
-  GO_VERSION = "1.22"
+  GO_VERSION = "1.20"
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.branch-deploy.environment]
-  GO_VERSION = "1.22"
+  GO_VERSION = "1.20"
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.production.environment]
-  GO_VERSION = "1.22"
+  GO_VERSION = "1.20"
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
