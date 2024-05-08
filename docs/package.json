@@ -8,7 +8,7 @@
     "fast": "run-p webpack-watch hugo-server-fast",
     "start-production": "run-p webpack-watch hugo-server-production",
     "start-static": "run-p webpack-watch hugo-server-static",
-    "build": "rm -rf public && npm ci && run-p start-diagrams hugo-base-build",
+    "build": "rm -rf public && hugo mod clean && npm ci && run-p start-diagrams hugo-base-build",
     "hugo-base-build": "run-s webpack-build hugo-build stop-diagrams",
     "debug-build": "rm -rf public && npm ci && run-p start-diagrams hugo-base-debug-build",
     "hugo-base-debug-build": "run-s webpack-build hugo-build-with-metrics stop-diagrams",
