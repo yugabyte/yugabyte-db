@@ -469,11 +469,13 @@ Status PgDropDBSequences::Exec() {
 
 PgCreateReplicationSlot::PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
                                                  const char *slot_name,
+                                                 const char *plugin_name,
                                                  PgOid database_oid,
                                                  YBCPgReplicationSlotSnapshotAction snapshot_action)
     : PgDdl(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);
+  req_.set_output_plugin_name(plugin_name);
 
   switch (snapshot_action) {
     case YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT:

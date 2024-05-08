@@ -208,6 +208,7 @@ extern void ReplicationSlotsShmemInit(void);
 /* management of individual slots */
 extern void ReplicationSlotCreate(const char *name, bool db_specific,
 					  ReplicationSlotPersistency p,
+					  char *yb_plugin_name,
 					  CRSSnapshotAction yb_snapshot_action,
 					  uint64_t *yb_consistent_snapshot_time);
 extern void ReplicationSlotPersist(void);

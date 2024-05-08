@@ -1060,8 +1060,9 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
   }
 
   xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
-      client()->CreateCDCSDKStreamForNamespace(ns_id, options, populate_namespace_id_as_table_id,
-                                               ReplicationSlotName(""), snapshot_option, deadline),
+      client()->CreateCDCSDKStreamForNamespace(
+          ns_id, options, populate_namespace_id_as_table_id, ReplicationSlotName(""), std::nullopt,
+          snapshot_option, deadline),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
   resp->set_db_stream_id(db_stream_id.ToString());
   return Status::OK();
