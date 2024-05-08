@@ -350,8 +350,6 @@ export const AZUProviderEditForm = ({
       config.value === 'true'
   );
 
-  console.log(isValidationErrorExist, 'isValidationErrorExist');
-
   const isProviderInUse = linkedUniverses.length > 0;
   const isFormDisabled =
     (!isEditInUseProviderEnabled && isProviderInUse) ||
