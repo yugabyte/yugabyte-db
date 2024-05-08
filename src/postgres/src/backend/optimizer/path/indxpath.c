@@ -621,19 +621,6 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			RestrictInfo *tmp_batched =
 				yb_get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
 
-			/* Disabling batching the same inner attno twice for now. */
-			if (tmp_batched)
-			{
-				Bitmapset *attnos = NULL;
-				Node *innervar = get_leftop(tmp_batched->clause);
-				pull_varattnos(innervar,
-							   index->rel->relid,
-							   &attnos);
-				if (bms_overlap(batched_inner_attnos, attnos))
-					tmp_batched = NULL;
-				bms_free(attnos);
-			}
-
 			if (tmp_batched)
 			{
 				batchedrelids =
@@ -682,6 +669,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		}
 	}
 
+	Bitmapset *pclause_batched_inner_attnos = NULL;
+
 	foreach(lc, pclauses)
 	{
 		RestrictInfo *rinfo = lfirst(lc);
@@ -717,8 +706,27 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		if (!bms_is_subset(attnos, batched_inner_attnos))
 			unbatchablerelids = bms_union(unbatchablerelids,
 											rinfo->clause_relids);
+
+		/*
+		 * Disabling batching the same inner attno twice for now.
+		 * We don't do this check above this loop because it could be
+		 * the case that there are batchable clauses that are qpquals
+		 * for this index. See GHI #21954.
+		 */
+		if (bms_overlap(pclause_batched_inner_attnos, attnos))
+			unbatchablerelids = bms_union(unbatchablerelids,
+										  rinfo->clause_relids);
+
+		pclause_batched_inner_attnos =
+			bms_union(pclause_batched_inner_attnos, attnos);
+		bms_free(attnos);
 	}
 
+	Assert(!bms_is_empty(unbatchablerelids) ||
+		   bms_equal(pclause_batched_inner_attnos, batched_inner_attnos));
+
+	bms_free(batched_inner_attnos);
+	bms_free(pclause_batched_inner_attnos);
 	bms_free(batched_and_inner_relids);
 
 	unbatchablerelids = bms_del_member(unbatchablerelids,
