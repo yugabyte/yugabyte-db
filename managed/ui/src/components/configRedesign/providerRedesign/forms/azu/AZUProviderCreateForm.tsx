@@ -439,7 +439,7 @@ export const AZUProviderCreateForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                isDisabled={isFormDisabled}
+                disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
                 errors={formMethods.formState.errors.regions as any}
               />
@@ -451,8 +451,8 @@ export const AZUProviderCreateForm = ({
             </FieldGroup>
             <LinuxVersionCatalog
               control={formMethods.control as any}
-              providerType={ProviderCode.AZU}
-              isDisabled={isFormDisabled}
+              providerType={CloudType.azu}
+              viewMode="CREATE"
             />
             <FieldGroup heading="SSH Key Pairs">
               {sshConfigureMsg}
