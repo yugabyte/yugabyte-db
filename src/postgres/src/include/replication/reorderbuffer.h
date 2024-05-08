@@ -31,6 +31,7 @@ typedef struct ReorderBufferTupleBuf
 
 	/* allocated separately but in the reorder buffer memory context. */
 	bool		*yb_is_omitted;
+	int			yb_is_omitted_size;
 
 	/* actual tuple data follows */
 } ReorderBufferTupleBuf;
