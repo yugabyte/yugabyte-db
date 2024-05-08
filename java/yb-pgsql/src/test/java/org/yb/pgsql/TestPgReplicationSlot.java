@@ -1855,7 +1855,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   public void testReplicationWithSpilledTransaction() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
-      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text, c bool)");
+      // CHANGE is the default replica identity but we explicitly set it here so that don't need to
+      // update this test in case we change the default.
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY CHANGE");
       stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
     }
     String slotName = "test_with_spilled_txn";
@@ -1871,8 +1874,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       stmt.execute("BEGIN");
       for (int i = 0; i < numInserts; i++) {
         stmt.execute(
-            String.format("INSERT INTO t1 VALUES(%s, '%s')", i, String.format("text_%d", i)));
+            String.format("INSERT INTO t1 VALUES(%s, '%s', true)", i, String.format("text_%d", i)));
       }
+      stmt.execute("UPDATE t1 SET b = 'UPDATED_text_1' WHERE a = 1");
       stmt.execute("COMMIT");
     }
 
@@ -1885,28 +1889,41 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                                      .start();
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-    // 1 Relation, 1 begin, 5000 insert, 1 commit.
-    result.addAll(receiveMessage(stream, 5003));
+    // 1 Relation, 1 begin, 5000 insert, 1 update, 1 commit.
+    result.addAll(receiveMessage(stream, 5004));
 
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
-        // Note: 0x138B = 5003 in decimal which is the lsn of the commit record as expected.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138B"), 2));
+        // Note: 0x138C = 5004 in decimal which is the lsn of the commit record as expected.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138C"), 2));
         add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
             Arrays.asList(
                 PgOutputRelationMessageColumn.CreateForComparison("a", 23),
-                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25),
+                PgOutputRelationMessageColumn.CreateForComparison("c", 16))));
       }
     };
     for (int i = 0; i < numInserts; i++) {
       expectedResult.add(
-          PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                   new PgOutputMessageTupleColumnValue(String.format("%d", i)),
-                  new PgOutputMessageTupleColumnValue(String.format("text_%d", i))))));
+                  new PgOutputMessageTupleColumnValue(String.format("text_%d", i)),
+                  new PgOutputMessageTupleColumnValue("t")))));
     }
+    expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
+        new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnToasted(),
+                new PgOutputMessageTupleColumnToasted(),
+                new PgOutputMessageTupleColumnToasted())),
+        new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("UPDATED_text_1"),
+                new PgOutputMessageTupleColumnToasted()))));
     expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/138B"), LogSequenceNumber.valueOf("0/138C")));
+        LogSequenceNumber.valueOf("0/138C"), LogSequenceNumber.valueOf("0/138D")));
 
     assertEquals(expectedResult, result);
     stream.close();
@@ -1936,6 +1953,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         stmt.execute(
             String.format("INSERT INTO t1 VALUES(%s, '%s')", i, String.format("text_%d", i)));
       }
+      stmt.execute("UPDATE t1 SET b = 'UPDATED_text_1' WHERE a = 1");
       stmt.execute("COMMIT");
     }
 
@@ -1980,9 +1998,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                  .withSlotOption("publication_names", "pub")
                  .start();
 
-    // Txn2: 1 BEGIN, 1 RELATION, 5000 INSERT, 1 COMMIT
+    // Txn2: 1 BEGIN, 1 RELATION, 5000 INSERT, 1 UPDATE, 1 COMMIT
     // The whole txn2 will be streamed again since we never received it fully.
-    result.addAll(receiveMessage(stream, 5003));
+    result.addAll(receiveMessage(stream, 5004));
 
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
@@ -1998,7 +2016,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
 
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138E"), 3));
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138F"), 3));
         // Relation message gets sent again due to the restart.
         add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
             Arrays.asList(
@@ -2013,8 +2031,17 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                   new PgOutputMessageTupleColumnValue(String.format("%d", i)),
                   new PgOutputMessageTupleColumnValue(String.format("text_%d", i))))));
     }
+    expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnToasted(),
+                new PgOutputMessageTupleColumnToasted())),
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("UPDATED_text_1")))));
     expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/138E"), LogSequenceNumber.valueOf("0/138F")));
+        LogSequenceNumber.valueOf("0/138F"), LogSequenceNumber.valueOf("0/1390")));
 
     assertEquals(expectedResult, result);
     stream.close();
