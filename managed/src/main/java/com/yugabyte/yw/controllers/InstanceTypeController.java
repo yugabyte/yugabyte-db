@@ -22,6 +22,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.InstanceTypeResp;
@@ -223,6 +225,7 @@ public class InstanceTypeController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(request, InstanceType.class);
 
@@ -273,6 +276,7 @@ public class InstanceTypeController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result delete(
       UUID customerUUID, UUID providerUUID, String instanceTypeCode, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);

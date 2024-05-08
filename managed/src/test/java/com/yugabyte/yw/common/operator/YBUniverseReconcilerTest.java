@@ -28,11 +28,13 @@ import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -64,7 +66,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.stubbing.Answer;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -225,10 +229,17 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Mockito.when(cloudProviderHandler.suggestedKubernetesConfigs()).thenReturn(providerData);
     // Create a provider with the name following `YBUniverseReconciler.getProviderName` format
     Mockito.when(cloudProviderHandler.createKubernetes(defaultCustomer, providerData))
-        .thenAnswer(
-            invocation -> {
-              return ModelFactory.kubernetesProvider(
-                  defaultCustomer, "prov-" + autoProviderNameSuffix);
+        .then(
+            new Answer<Provider>() {
+              public Provider answer(InvocationOnMock invocation) throws Throwable {
+                Provider mockProvider =
+                    ModelFactory.kubernetesProvider(
+                        defaultCustomer, "prov-" + autoProviderNameSuffix);
+                CloudInfo cloudInfo = new CloudInfo();
+                cloudInfo.kubernetes = new KubernetesInfo();
+                mockProvider.getDetails().setCloudInfo(cloudInfo);
+                return mockProvider;
+              }
             });
     universe.getSpec().setProviderName("");
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);

@@ -6187,6 +6187,10 @@
     },
     "KubernetesInfo" : {
       "properties" : {
+        "isKubernetesOperatorControlled" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "kubeConfig" : {
           "readOnly" : true,
           "type" : "string"
@@ -6498,6 +6502,10 @@
         },
         "certManagerIssuer" : {
           "type" : "string"
+        },
+        "isKubernetesOperatorControlled" : {
+          "readOnly" : true,
+          "type" : "boolean"
         },
         "kubeConfig" : {
           "readOnly" : true,
