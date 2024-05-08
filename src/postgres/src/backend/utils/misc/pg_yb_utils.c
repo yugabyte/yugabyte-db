@@ -1417,7 +1417,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 
 bool
 YbUseWholeRowJunkAttribute(Relation relation, Bitmapset *updatedCols,
-						   CmdType operation)
+						   CmdType operation, List *returningList)
 {
 	if (!IsYBRelation(relation))
 		return false;
@@ -1433,7 +1433,7 @@ YbUseWholeRowJunkAttribute(Relation relation, Bitmapset *updatedCols,
 		return true;
 
 	if (operation == CMD_UPDATE)
-		return YbUseScanTupleInUpdate(relation, updatedCols);
+		return YbUseScanTupleInUpdate(relation, updatedCols, returningList);
 
 	return false;
 }
@@ -1447,7 +1447,7 @@ YbUseWholeRowJunkAttribute(Relation relation, Bitmapset *updatedCols,
  * returns true when this should be done.
  */
 bool
-YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols)
+YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols, List *returningList)
 {
 	/* Use scan tuple for non-YB relation. */
 	if (!IsYBRelation(relation))
@@ -1464,13 +1464,18 @@ YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols)
 	 *  - BR update triggers: to correctly check for "extra updated" columns.
 	 *  - PK update: works by deletion followed by re-insertion, hence the old
 	 * tuple is required.
+	 *  - Updates with RETURNING clause: to serve any non-modified columns
+	 * in the returning clause.
+	 * YB_TODO: Check if RETURNING clause can be optimized to work with
+	 * only requested columns instead of using wholerow junk attribute.
 	 *
 	 * In these cases, the non-modified columns in "new tuple" are populated
 	 * from the old scanned tuple.
 	 */
 	if (relation->rd_partkey != NULL || relation->rd_rel->relispartition ||
 		relation->rd_att->constr || YBRelHasSecondaryIndices(relation) ||
-		YbRelHasBRUpdateTrigger(relation))
+		YbRelHasBRUpdateTrigger(relation) ||
+		!YbReturningListSubsetOfUpdatedCols(relation, updatedCols, returningList))
 		return true;
 
 	Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(relation);
@@ -4438,6 +4443,23 @@ bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
 		}
 	}
 	return false;
+}
+
+bool
+YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols,
+							  List *returningList)
+{
+
+	ListCell *lc;
+	foreach (lc, returningList)
+	{
+		TargetEntry *element = (TargetEntry *) lfirst(lc);
+		if (!bms_is_member(element->resorigcol -
+							   YBGetFirstLowInvalidAttributeNumber(rel),
+						   updatedCols))
+			return false;
+	}
+	return true;
 }
 
 /*

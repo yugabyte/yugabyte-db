@@ -450,13 +450,20 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
  */
 extern bool YbUseWholeRowJunkAttribute(Relation relation,
 									   Bitmapset *updatedCols,
-									   CmdType operation);
+									   CmdType operation,
+									   List *returningList);
 
 /*
  * Return whether to use scanned "old" tuple to reconstruct the new tuple during
  * UPDATE operations for YB relations. See function definition for details.
  */
-extern bool YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols);
+extern bool YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols, List *returningList);
+
+/*
+ * Return whether the returning list for an UPDATE statement is a subset of the columns being
+ * updated by the UPDATE query.
+ */
+bool YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols, List *returningList);
 
 //------------------------------------------------------------------------------
 // YB GUC variables.

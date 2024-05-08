@@ -8843,10 +8843,10 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	 */
 	RangeTblEntry *rte = root->simple_rte_array[linitial_int(resultRelations)];
 	Relation relation = RelationIdGetRelation(rte->relid);
-	node->ybUseScanTupleInUpdate =
-		YbUseScanTupleInUpdate(relation, rte->updatedCols);
-	node->ybHasWholeRowAttribute =
-		YbUseWholeRowJunkAttribute(relation, rte->updatedCols, operation);
+	node->ybUseScanTupleInUpdate = YbUseScanTupleInUpdate(
+		relation, rte->updatedCols, root->parse->returningList);
+	node->ybHasWholeRowAttribute = YbUseWholeRowJunkAttribute(
+		relation, rte->updatedCols, operation, root->parse->returningList);
 	RelationClose(relation);
 	return node;
 }

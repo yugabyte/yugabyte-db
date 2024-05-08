@@ -537,4 +537,10 @@ copy ctrtest from stdin;
 1	foo
 \.
 select * from ctrtest;
+
+create table return_test (a int, b int, c int);
+insert into return_test values (1, 1, 1);
+update return_test set c = c returning *;
+update return_test set c = c returning c;
+update return_test set c = c returning a,b;
 -- YB_TODO: end
