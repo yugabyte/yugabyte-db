@@ -65,6 +65,15 @@ main {
     > pre,
     .highlight {
       margin: 20px 0;
+	  position: relative;
+	  display: flex;
+	  flex-direction: column;
+	  min-width: 0;
+	  word-wrap: break-word;
+      background-color: #fff;
+	  background-clip: border-box;
+	  border: 1px solid rgba(0, 0, 0, .125);
+	  border-radius: .25rem;
     }
 
     li > p + pre,
@@ -140,12 +149,12 @@ main {
       }
 
       .highlight {
-        margin-bottom: 20px !important;
-
+        margin-bottom: 20px !important;	
         > pre {
           margin-top: 1rem;
           margin-bottom: 1rem;
         }
+		
       }
 
       button.copy {
@@ -287,6 +296,7 @@ main {
     }
   }
 }
+
 
 body.is-safari {
   main {

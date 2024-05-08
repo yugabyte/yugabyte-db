@@ -59,6 +59,13 @@ a {
 .tab-body > :last-child {
     margin-bottom: inherit;
 }
+.td-content{
+	.highlight {        
+		.click-to-copy{
+			display:none;
+		}		
+	}
+}
 
 .dropdown-list .dropdown-menu[data-popper-placement="top-start"] {
 	margin-bottom: -2px !important;
