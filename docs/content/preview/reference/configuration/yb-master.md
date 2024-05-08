@@ -843,6 +843,12 @@ Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for bac
 
 Default: 60000 (1 minute)
 
+##### hide_dead_node_threshold_mins
+
+After this many minutes of no heartbeat from a node, hide it from the UI (we presume it has been removed from the cluster). If -1, this flag is ignored and the node is never hidden from the UI
+
+Default: 1440 (1 day)
+
 ## Admin UI
 
 The Admin UI for YB-Master is available at <http://localhost:7000>.
