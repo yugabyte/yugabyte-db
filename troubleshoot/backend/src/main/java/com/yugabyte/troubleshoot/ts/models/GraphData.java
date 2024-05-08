@@ -8,12 +8,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 import org.apache.commons.lang3.StringUtils;
 
 @Data
 @Accessors(chain = true)
+@Builder(toBuilder = true)
+@NoArgsConstructor
+@AllArgsConstructor
 public class GraphData {
   private static DecimalFormat DF =
       new DecimalFormat("0", DecimalFormatSymbols.getInstance(Locale.ENGLISH));
@@ -35,7 +41,17 @@ public class GraphData {
   private String waitEventType;
   private String waitEvent;
   private Map<String, String> labels;
-  @JsonIgnore private List<GraphPoint> points = new ArrayList<>();
+  @JsonIgnore @Builder.Default private List<GraphPoint> points = new ArrayList<>();
+  @JsonIgnore private double total;
+
+  public void appendToTotal(Double value) {
+    total += value;
+  }
+
+  @JsonIgnore
+  public Double getAverage() {
+    return total / points.size();
+  }
 
   @JsonProperty("x")
   public List<Long> getX() {

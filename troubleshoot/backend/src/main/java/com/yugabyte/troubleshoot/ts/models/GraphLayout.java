@@ -42,7 +42,7 @@ public class GraphLayout {
   }
 
   private String title;
-  private GraphType type = GraphType.COMMON;
+  @Builder.Default private GraphType type = GraphType.COMMON;
   private Axis xaxis;
   private Axis yaxis;
   private Metadata metadata;
