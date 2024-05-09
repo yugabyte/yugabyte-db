@@ -29,6 +29,8 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
   private static final Collection<String> GCS_URL_SCHEMES =
       Arrays.asList(new String[] {"https", "gs"});
 
+  private static final String AUTHORITY_CHARS_REGEX = "^[a-z0-9][a-z0-9._-]{1,}[a-z0-9]$";
+
   private final CloudClientsFactory factory;
   private final GCPUtil gcpUtil;
 
@@ -38,7 +40,7 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
   @Inject
   public CustomerConfigStorageGCSValidator(
       BeanValidator beanValidator, CloudClientsFactory factory, GCPUtil gcpUtil) {
-    super(beanValidator, GCS_URL_SCHEMES);
+    super(beanValidator, GCS_URL_SCHEMES, AUTHORITY_CHARS_REGEX);
     this.factory = factory;
     this.gcpUtil = gcpUtil;
   }
