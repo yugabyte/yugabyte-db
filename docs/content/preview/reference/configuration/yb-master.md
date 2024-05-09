@@ -588,14 +588,6 @@ Enables automatic tablet splitting of tables covered by Point In Time Recovery s
 
 Default: `true`
 
-##### --enable_tablet_split_of_xcluster_replicated_tables
-
-Enables automatic tablet splitting for tables that are part of an xCluster replication setup.
-
-Default: `false`
-
-To enable tablet splitting on cross cluster replicated tables, this flag should be set to `true` on both the producer and consumer clusters, as they will perform splits independently of each other. Both the producer and consumer clusters must be running v2.14.0+ to enable the feature (relevant in case of cluster upgrades).
-
 ##### --prevent_split_for_ttl_tables_for_seconds
 
 Number of seconds between checks for whether to split a tablet with a default TTL. Checks are disabled if this value is set to 0.
