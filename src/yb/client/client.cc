@@ -1477,40 +1477,6 @@ Status YBClient::DeleteUDType(const std::string& namespace_name,
   return Status::OK();
 }
 
-Result<xrepl::StreamId> YBClient::CreateCDCStream(
-    const TableId& table_id,
-    const std::unordered_map<std::string, std::string>& options,
-    bool active,
-    const xrepl::StreamId& db_stream_id) {
-  // Setting up request.
-  CreateCDCStreamRequestPB req;
-  req.set_table_id(table_id);
-  if (db_stream_id) {
-    req.set_db_stream_id(db_stream_id.ToString());
-  }
-  req.mutable_options()->Reserve(narrow_cast<int>(options.size()));
-  for (const auto& option : options) {
-    auto new_option = req.add_options();
-    new_option->set_key(option.first);
-    new_option->set_value(option.second);
-  }
-  req.set_initial_state(active ? master::SysCDCStreamEntryPB::ACTIVE
-                               : master::SysCDCStreamEntryPB::INITIATED);
-
-  CreateCDCStreamResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, CreateCDCStream);
-  return xrepl::StreamId::FromString(resp.stream_id());
-}
-
-void YBClient::CreateCDCStream(
-    const TableId& table_id,
-    const std::unordered_map<std::string, std::string>& options,
-    cdc::StreamModeTransactional transactional,
-    CreateCDCStreamCallback callback) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  data_->CreateCDCStream(this, table_id, options, transactional, deadline, callback);
-}
-
 Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const NamespaceId& namespace_id,
     const std::unordered_map<std::string, std::string>& options,

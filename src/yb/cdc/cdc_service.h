@@ -73,13 +73,6 @@ typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortH
 
 YB_STRONGLY_TYPED_BOOL(CreateMetricsEntityIfNotFound);
 
-static const char* const kRecordType = "record_type";
-static const char* const kRecordFormat = "record_format";
-static const char* const kRetentionSec = "retention_sec";
-static const char* const kSourceType = "source_type";
-static const char* const kCheckpointType = "checkpoint_type";
-static const char* const kStreamState = "state";
-static const char* const kNamespaceId = "NAMESPACEID";
 static const char* const kCDCSDKSnapshotDoneKey = "snapshot_done_key";
 
 struct TabletCheckpoint {
@@ -333,10 +326,6 @@ class CDCServiceImpl : public CDCServiceIf {
       EXCLUDES(mutex_);
 
   void RemoveStreamFromCache(const xrepl::StreamId& stream_id);
-
-  void AddStreamMetadataToCache(
-      const xrepl::StreamId& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata)
-      EXCLUDES(mutex_);
 
   Status CheckTabletValidForStream(const TabletStreamInfo& producer_info);
 

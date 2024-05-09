@@ -54,6 +54,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/value.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/dockv/partial_row.h"
@@ -1682,38 +1683,27 @@ TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
   ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
-TEST_F(ClientTest, TestCreateCDCStreamAsync) {
-  std::promise<Result<xrepl::StreamId>> promise;
-  std::unordered_map<std::string, std::string> options;
-  client_->CreateCDCStream(
-      client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse,
-      [&promise](const auto& stream) { promise.set_value(stream); });
-  auto stream = promise.get_future().get();
-  ASSERT_OK(stream);
-  ASSERT_FALSE(stream->IsNil());
+TEST_F(ClientTest, TestCreateXClusterStream) {
+  auto stream_id = ASSERT_RESULT(XClusterClient(*client_).CreateXClusterStream(
+      client_table_.table()->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
+  ASSERT_FALSE(stream_id.IsNil());
 }
 
-TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
-  std::promise<Result<xrepl::StreamId>> promise;
-  std::unordered_map<std::string, std::string> options;
-  client_->CreateCDCStream(
-      "MissingTableId", options, cdc::StreamModeTransactional::kFalse,
-      [&promise](const auto& stream) { promise.set_value(stream); });
-  auto stream = promise.get_future().get();
-  ASSERT_NOK(stream);
-  ASSERT_TRUE(TableNotFound(stream.status())) << stream.status();
+TEST_F(ClientTest, TestCreateXClusterStreamMissingTable) {
+  auto result = XClusterClient(*client_).CreateXClusterStream(
+      "MissingTableId", /*active=*/true, cdc::StreamModeTransactional::kFalse);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(TableNotFound(result.status())) << result.status();
 }
 
-TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
-  std::unordered_map<std::string, std::string> options;
-  auto result = client_->CreateCDCStream(
-      client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse);
-  ASSERT_TRUE(result.ok());
+TEST_F(ClientTest, TestDeleteXClusterStream) {
+  auto stream_id = ASSERT_RESULT(XClusterClient(*client_).CreateXClusterStream(
+      client_table_.table()->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
 
-  // Delete the created CDC stream.
-  Synchronizer sync;
-  client_->DeleteCDCStream(*result, sync.AsStatusCallback());
-  ASSERT_OK(sync.Wait());
+  ASSERT_NOK_STR_CONTAINS(
+      client_->DeleteCDCStream(stream_id, /*force_delete=*/false),
+      "Cannot delete an xCluster Stream in replication");
+  ASSERT_OK(client_->DeleteCDCStream(stream_id, /*force_delete=*/true));
 }
 
 TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {

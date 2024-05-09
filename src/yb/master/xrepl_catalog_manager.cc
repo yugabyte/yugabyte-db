@@ -20,6 +20,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 
+#include "yb/client/xcluster_client.h"
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
@@ -207,6 +208,8 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     bool checkpoint_type_present = false;
 
     // Iterate over all the options to check if checkpoint_type and source_type are present.
+    // (DEPRECATE_EOL 2024.1) This can be removed since XClusterSourceManager creates all new
+    // streams with these options from 2024.1, and older streams were backfilled.
     for (auto option : metadata.options()) {
       if (option.key() == cdc::kSourceType) {
         source_type_present = true;
@@ -810,12 +813,20 @@ Status CatalogManager::CreateCDCStream(
   if (source_type_option_value == CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER) ||
       (req->has_table_id() && id_type_option_value != cdc::kNamespaceId)) {
     // xCluster mode.
+    SCHECK_PB_FIELDS_NOT_EMPTY(*req, table_id);
+    SCHECK_NE(
+        id_type_option_value, cdc::kNamespaceId, InvalidArgument,
+        "NamespaceId option should not be set for xCluster streams");
+
+    // User specified req->options() are ignored. xCluster sets its own predefined static set of
+    // options.
+
     std::optional<SysCDCStreamEntryPB::State> initial_state = std::nullopt;
     if (req->has_initial_state()) {
       initial_state = req->initial_state();
     }
     auto stream_id = VERIFY_RESULT(xcluster_manager_->CreateNewXClusterStreamForTable(
-        req->table_id(), req->transactional(), initial_state, req->options(), epoch));
+        req->table_id(), cdc::StreamModeTransactional(req->transactional()), initial_state, epoch));
     resp->set_stream_id(stream_id.ToString());
     return Status::OK();
   }
@@ -3587,13 +3598,6 @@ Status CatalogManager::CreateCdcStreamsIfReplicationValidated(
 
   // Create CDC stream for each validated table, after persisting the replication state change.
   if (!validated_tables.empty()) {
-    std::unordered_map<std::string, std::string> options;
-    options.reserve(4);
-    options.emplace(cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
-    options.emplace(cdc::kRecordFormat, CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
-    options.emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
-    options.emplace(cdc::kCheckpointType, CDCCheckpointType_Name(cdc::CDCCheckpointType::IMPLICIT));
-
     // Keep track of the bootstrap_id, table_id, and options of streams to update after
     // the last GetCDCStreamCallback finishes. Will be updated by multiple async
     // GetCDCStreamCallback.
@@ -3613,12 +3617,14 @@ Status CatalogManager::CreateCdcStreamsIfReplicationValidated(
                 stream_options, universe->ReplicationGroupId(), table, xcluster_rpc,
                 std::placeholders::_1, stream_update_infos, update_infos_lock));
       } else {
-        xcluster_rpc->client()->CreateCDCStream(
-            table, options, transactional,
-            std::bind(
-                &CatalogManager::AddCDCStreamToUniverseAndInitConsumer, this,
-                universe->ReplicationGroupId(), table, std::placeholders::_1,
-                nullptr /* on_success_cb */));
+        // Streams are used as soon as they are created so set state to active.
+        client::XClusterClient(*xcluster_rpc->client())
+            .CreateXClusterStreamAsync(
+                table, /*active=*/true, transactional,
+                std::bind(
+                    &CatalogManager::AddCDCStreamToUniverseAndInitConsumer, this,
+                    universe->ReplicationGroupId(), table, std::placeholders::_1,
+                    nullptr /* on_success_cb */));
       }
     }
   }

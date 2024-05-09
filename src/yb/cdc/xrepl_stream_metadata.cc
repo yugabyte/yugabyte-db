@@ -36,6 +36,8 @@ namespace {
 // This function is to handle the upgrade scenario where the DB is upgraded from a version
 // without CDCSDK changes to the one with it. So in case some required options are missing,
 // the default values will be added for the same.
+// (DEPRECATE_EOL 2024.1) This can be removed since XClusterSourceManager populates these defaults
+// on new streams and CDCStreamLoader backfills them for older streams.
 void AddDefaultOptionsIfMissing(std::unordered_map<std::string, std::string>* options) {
   InsertIfNotPresent(options, kSourceType, CDCRequestSource_Name(CDCRequestSource::XCLUSTER));
   InsertIfNotPresent(options, kCheckpointType, CDCCheckpointType_Name(CDCCheckpointType::IMPLICIT));

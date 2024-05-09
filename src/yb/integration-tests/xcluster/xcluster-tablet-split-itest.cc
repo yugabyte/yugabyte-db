@@ -22,6 +22,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
@@ -248,10 +249,11 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   docdb::DisableYcqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   constexpr auto kNumRows = kDefaultNumRows;
-  // Create a cdc stream for this tablet.
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster_->mini_tablet_servers().front()->bound_rpc_addr()));
-  auto stream_id = ASSERT_RESULT(cdc::CreateCDCStream(cdc_proxy, table_->id()));
+  // Create a xCluster stream for this tablet.
+  auto stream_id = ASSERT_RESULT(client::XClusterClient(*client_).CreateXClusterStream(
+      table_->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
   // Ensure that the cdc_state table is ready before inserting rows and splitting.
   ASSERT_OK(WaitForCdcStateTableToBeReady());
 
@@ -1201,7 +1203,8 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
   // Create a cdc stream for this tablet.
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster_->mini_tablet_servers().front()->bound_rpc_addr()));
-  auto stream_id = ASSERT_RESULT(cdc::CreateCDCStream(cdc_proxy, table_->id()));
+  auto stream_id = ASSERT_RESULT(client::XClusterClient(*client_).CreateXClusterStream(
+      table_->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
   // Ensure that the cdc_state table is ready before inserting rows and splitting.
   ASSERT_OK(WaitForCdcStateTableToBeReady());
 
