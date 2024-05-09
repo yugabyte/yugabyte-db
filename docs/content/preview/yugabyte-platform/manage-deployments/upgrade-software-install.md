@@ -61,6 +61,10 @@ You upgrade a universe in the following phases:
 
 ### Perform the upgrade
 
+{{< warning title="For YugabyteDB upgrades in YBA" >}}
+You can only upgrade from a stable version to another stable version, or from a preview version to another preview version.
+{{< /warning >}}
+
 You perform a rolling upgrade on a live universe deployment as follows:
 
 1. Navigate to **Universes** and select your universe.
