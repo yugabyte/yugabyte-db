@@ -24,6 +24,4 @@ jobs:
         java-version: '17'
 
     - name: Build and Test
-      run: |
-        export TAG=PG15_latest
-        gradle build
+      run: gradle build
