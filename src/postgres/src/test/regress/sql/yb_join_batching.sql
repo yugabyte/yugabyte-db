@@ -670,6 +670,46 @@ DROP TABLE ss1;
 DROP TABLE ss2;
 DROP TABLE ss3;
 
+CREATE TABLE other(a int);
+CREATE INDEX ON other(a asc);
+CREATE TABLE ss1(a int);
+CREATE TABLE ss2(a int, b int);
+CREATE INDEX ON ss2(a asc, b asc);
+
+INSERT INTO ss1 VALUES (0), (0);
+INSERT INTO ss2 VALUES (0, 0), (0, 0);
+INSERT INTO other VALUES (1), (1);
+
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) */EXPLAIN (COSTS OFF)
+SELECT *
+FROM (
+    SELECT ss1.a as a, other.a as othera
+    FROM ss1
+    CROSS JOIN other
+) AS cross_join
+LEFT OUTER JOIN ss2 ON ss2.a = (
+    SELECT other.a
+    FROM other, ss1
+    WHERE other.a = ss1.a + cross_join.a limit 1
+);
+
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) */
+SELECT *
+FROM (
+    SELECT ss1.a as a, other.a as othera
+    FROM ss1
+    CROSS JOIN other
+) AS cross_join
+LEFT OUTER JOIN ss2 ON ss2.a = (
+    SELECT other.a
+    FROM other, ss1
+    WHERE other.a = ss1.a + cross_join.a limit 1
+);
+
+DROP TABLE other;
+DROP TABLE ss1;
+DROP TABLE ss2;
+
 --
 --
 -- Inner joins (equi-joins)
