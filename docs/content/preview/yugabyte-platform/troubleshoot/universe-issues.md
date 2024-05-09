@@ -211,6 +211,8 @@ YBC logs generated in `/controller/logs` folder in the YugabyteDB nodes (if YB-C
 
 This component exclusively includes metadata for Kubernetes-based universes. The detailed metadata list is as follows:
 
+Note that YBA will only collect files if you have sufficient permissions to request the information. Otherwise, the file collection process will be skipped.
+
 - Cluster-wide information:
   - Kubectl version
   - Service account permissions
