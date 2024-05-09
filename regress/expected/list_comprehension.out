@@ -580,6 +580,43 @@ SELECT * FROM cypher('list_comprehension', $$ RETURN [1 IN range(0, 10, 2) | 1] 
 ERROR:  Syntax error at or near IN
 LINE 1: SELECT * FROM cypher('list_comprehension', $$ RETURN [1 IN r...
                                                     ^
+-- Issue - error using list comprehension with WITH *
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH *, [i in [1,2,3]] as list RETURN list LIMIT 1 $$) AS (result agtype);
+  result   
+-----------
+ [1, 2, 3]
+(1 row)
+
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH *, [i in [1,2,3]] as list RETURN [i in list] LIMIT 1 $$) AS (result agtype);
+  result   
+-----------
+ [1, 2, 3]
+(1 row)
+
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH * WHERE u.list=[i IN range(0,12,2)] RETURN u $$) AS (result agtype);
+                                                                            result                                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"a": [], "b": [0, 1, 2, 3, 4, 5], "c": [0, 2, 4, 6, 8, 10, 12], "list": [0, 2, 4, 6, 8, 10, 12]}}::vertex
+(1 row)
+
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH * WHERE u.list=[i IN u.list] RETURN u LIMIT 1 $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 281474976710658, "label": "", "properties": {"list": [1, 3, 5, 7, 9, 11, 13]}}::vertex
+(1 row)
+
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH * WITH *, [i in [1,2,3]] as list RETURN list LIMIT 1 $$) AS (result agtype);
+  result   
+-----------
+ [1, 2, 3]
+(1 row)
+
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH *, [i in [1,2,3]] as list WITH * RETURN list LIMIT 1 $$) AS (result agtype);
+  result   
+-----------
+ [1, 2, 3]
+(1 row)
+
 SELECT * FROM drop_graph('list_comprehension', true);
 NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to table list_comprehension._ag_label_vertex

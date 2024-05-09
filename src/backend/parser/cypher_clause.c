@@ -2400,14 +2400,51 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
         {
             List *groupClause = NIL;
             ListCell *li;
+            bool has_a_star;
+
+            has_a_star = false;
             query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
             query->havingQual = where_qual;
 
             foreach (li, ((cypher_return *)self)->items)
             {
                 ResTarget *item = lfirst(li);
+                ColumnRef *cref;
+                
+                /*
+                 * We need to handle the case where the item is a A_star. In this
+                 * case we will need to build group by using targetList.
+                 */
+                if (IsA(item->val, ColumnRef))
+                {
+                    cref = (ColumnRef *)item->val;
+                    if (IsA(linitial(cref->fields), A_Star))
+                    {
+                        has_a_star = true;
+                        continue;
+                    }
+                }
 
                 groupClause = lappend(groupClause, item->val);
+            }
+
+            /*
+             * If there is A_star flag, build the group by clause
+             * using the targetList.
+             */
+            if (has_a_star)
+            {
+                ListCell *lc;
+                foreach (lc, query->targetList)
+                {
+                    TargetEntry *te = lfirst(lc);
+                    ColumnRef *cref = makeNode(ColumnRef);
+
+                    cref->fields = list_make1(makeString(te->resname));
+                    cref->location = exprLocation((Node *)te->expr);
+
+                    groupClause = lappend(groupClause, cref);
+                }
             }
             query->groupClause = transform_group_clause(cpstate, groupClause,
                                                         &query->groupingSets,

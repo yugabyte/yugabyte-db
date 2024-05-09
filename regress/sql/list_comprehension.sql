@@ -149,4 +149,12 @@ SELECT * FROM cypher('list_comprehension', $$ RETURN [i IN range(0, 10, 2) WHERE
 SELECT * FROM cypher('list_comprehension', $$ RETURN [1 IN range(0, 10, 2) WHERE 2>5] $$) AS (result agtype);
 SELECT * FROM cypher('list_comprehension', $$ RETURN [1 IN range(0, 10, 2) | 1] $$) AS (result agtype);
 
+-- Issue - error using list comprehension with WITH *
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH *, [i in [1,2,3]] as list RETURN list LIMIT 1 $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH *, [i in [1,2,3]] as list RETURN [i in list] LIMIT 1 $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH * WHERE u.list=[i IN range(0,12,2)] RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH * WHERE u.list=[i IN u.list] RETURN u LIMIT 1 $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH * WITH *, [i in [1,2,3]] as list RETURN list LIMIT 1 $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH *, [i in [1,2,3]] as list WITH * RETURN list LIMIT 1 $$) AS (result agtype);
+
 SELECT * FROM drop_graph('list_comprehension', true);
