@@ -23,6 +23,7 @@ import {
 } from '../../../../../redesign/components';
 import { YBButton } from '../../../../common/forms/fields';
 import { FieldGroup } from '../components/FieldGroup';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import {
   ConfigureRegionModal,
   CloudVendorRegionField
@@ -598,14 +599,9 @@ export const AWSProviderCreateForm = ({
               </YBBanner>
             )}
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-                {!!featureFlags.test.enableAWSProviderValidation && (
-                  <Typography variant="body2" color="primary">
-                    Validating provider configuration fields... usually take 5-30s to complete.
-                  </Typography>
-                )}
-              </Box>
+              <SubmitInProgress
+                isValidationEnabled={!!featureFlags.test.enableAWSProviderValidation}
+              />
             )}
           </Box>
           <Box marginTop="16px">
