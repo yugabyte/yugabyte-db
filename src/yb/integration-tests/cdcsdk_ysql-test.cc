@@ -2850,7 +2850,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto stream_id = ASSERT_RESULT(cdc::CreateCDCStream(cdc_proxy_, table_id));
+  auto stream_id = ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table_id));
 
   // Insert some records.
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));

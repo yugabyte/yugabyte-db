@@ -597,19 +597,6 @@ class YBClient {
 
   // CDC Stream related methods.
 
-  // Create a new CDC stream.
-  Result<xrepl::StreamId> CreateCDCStream(
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      bool active = true,
-      const xrepl::StreamId& db_stream_id = xrepl::StreamId::Nil());
-
-  void CreateCDCStream(
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      cdc::StreamModeTransactional transactional,
-      CreateCDCStreamCallback callback);
-
   Result<xrepl::StreamId> CreateCDCSDKStreamForNamespace(
       const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
       bool populate_namespace_id_as_table_id = false,

@@ -35,10 +35,7 @@ void AssertIntKey(
     const Schema& schema, const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& key,
     int32_t value);
 
-Result<xrepl::StreamId> CreateCDCStream(
-    const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
-    const TableId& table_id,
-    cdc::CDCRequestSource source_type = XCLUSTER);
+Result<xrepl::StreamId> CreateXClusterStream(client::YBClient& client, const TableId& table_id);
 
 // For any tablet that belongs to a table whose name starts with 'table_name_start', this method
 // will verify that its WAL retention time matches the provided time.

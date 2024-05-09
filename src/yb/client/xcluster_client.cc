@@ -13,6 +13,7 @@
 
 #include "yb/client/xcluster_client.h"
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/master/master_defaults.h"
@@ -34,13 +35,16 @@ DECLARE_bool(use_node_to_node_encryption);
 namespace yb::client {
 XClusterClient::XClusterClient(client::YBClient& yb_client) : yb_client_(yb_client) {}
 
+CoarseTimePoint XClusterClient::GetDeadline() const {
+  return CoarseMonoClock::Now() + yb_client_.default_admin_operation_timeout();
+}
+
 template <typename ResponsePB, typename RequestPB, typename Method>
 Result<ResponsePB> XClusterClient::SyncLeaderMasterRpc(
     const RequestPB& req, const char* method_name, const Method& method) {
   ResponsePB resp;
-  RETURN_NOT_OK(yb_client_.data_->SyncLeaderMasterRpc(
-      CoarseMonoClock::Now() + yb_client_.default_admin_operation_timeout(), req, &resp,
-      method_name, method));
+  RETURN_NOT_OK(
+      yb_client_.data_->SyncLeaderMasterRpc(GetDeadline(), req, &resp, method_name, method));
   return resp;
 }
 
@@ -334,6 +338,27 @@ Status XClusterClient::RepairOutboundXClusterReplicationGroupRemoveTable(
   return Status::OK();
 }
 
+Result<xrepl::StreamId> XClusterClient::CreateXClusterStream(
+    const TableId& table_id, bool active, cdc::StreamModeTransactional transactional) {
+  std::promise<Result<xrepl::StreamId>> promise;
+  auto future = promise.get_future();
+
+  CreateXClusterStreamAsync(
+      table_id, active, transactional,
+      [&promise](Result<xrepl::StreamId> result) { promise.set_value(std::move(result)); });
+
+  return future.get();
+}
+
+void XClusterClient::CreateXClusterStreamAsync(
+    const TableId& table_id, bool active, cdc::StreamModeTransactional transactional,
+    CreateCDCStreamCallback callback) {
+  yb_client_.data_->CreateXClusterStream(
+      &yb_client_, table_id, GetXClusterStreamOptions(),
+      (active ? master::SysCDCStreamEntryPB::ACTIVE : master::SysCDCStreamEntryPB::INITIATED),
+      transactional, GetDeadline(), std::move(callback));
+}
+
 XClusterRemoteClient::XClusterRemoteClient(const std::string& certs_for_cdc_dir, MonoDelta timeout)
     : certs_for_cdc_dir_(certs_for_cdc_dir), timeout_(timeout) {}
 
@@ -529,6 +554,28 @@ Status XClusterRemoteClient::AddNamespaceToDbScopedUniverseReplication(
   }
 
   return Status::OK();
+}
+
+google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB> GetXClusterStreamOptions() {
+  google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB> options;
+  options.Reserve(4);
+  auto source_type = options.Add();
+  source_type->set_key(cdc::kSourceType);
+  source_type->set_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
+
+  auto record_type = options.Add();
+  record_type->set_key(cdc::kRecordType);
+  record_type->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+
+  auto record_format = options.Add();
+  record_format->set_key(cdc::kRecordFormat);
+  record_format->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
+
+  auto checkpoint_type = options.Add();
+  checkpoint_type->set_key(cdc::kCheckpointType);
+  checkpoint_type->set_value(CDCCheckpointType_Name(cdc::CDCCheckpointType::IMPLICIT));
+
+  return options;
 }
 
 }  // namespace yb::client

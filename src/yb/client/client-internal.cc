@@ -1677,20 +1677,18 @@ void GetColocatedTabletSchemaRpc::ProcessResponse(const Status& status) {
   user_cb_.Run(new_status);
 }
 
-class CreateCDCStreamRpc
+class CreateXClusterStreamRpc
     : public ClientMasterRpc<CreateCDCStreamRequestPB, CreateCDCStreamResponsePB> {
  public:
-  CreateCDCStreamRpc(
-      YBClient* client,
-      CreateCDCStreamCallback user_cb,
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      cdc::StreamModeTransactional transactional,
+  CreateXClusterStreamRpc(
+      YBClient* client, CreateCDCStreamCallback user_cb, const TableId& table_id,
+      const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
+      master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
       CoarseTimePoint deadline);
 
   string ToString() const override;
 
-  virtual ~CreateCDCStreamRpc();
+  virtual ~CreateXClusterStreamRpc();
 
  private:
   void CallRemoteMethod() override;
@@ -1700,40 +1698,33 @@ class CreateCDCStreamRpc
   const std::string table_id_;
 };
 
-CreateCDCStreamRpc::CreateCDCStreamRpc(
-    YBClient* client,
-    CreateCDCStreamCallback user_cb,
-    const TableId& table_id,
-    const std::unordered_map<std::string, std::string>& options,
-    cdc::StreamModeTransactional transactional,
+CreateXClusterStreamRpc::CreateXClusterStreamRpc(
+    YBClient* client, CreateCDCStreamCallback user_cb, const TableId& table_id,
+    const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
+    master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
     CoarseTimePoint deadline)
-    : ClientMasterRpc(client, deadline),
-      user_cb_(std::move(user_cb)),
-      table_id_(table_id) {
+    : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)), table_id_(table_id) {
   req_.set_table_id(table_id_);
-  req_.mutable_options()->Reserve(narrow_cast<int>(options.size()));
+  // (DEPRECATE_EOL 2024.1) Master now sets the options explicitly, so they do not need to be sent.
+  *req_.mutable_options() = options;
   req_.set_transactional(transactional);
-  for (const auto& option : options) {
-    auto* op = req_.add_options();
-    op->set_key(option.first);
-    op->set_value(option.second);
-  }
+  req_.set_initial_state(state);
 }
 
-CreateCDCStreamRpc::~CreateCDCStreamRpc() {
-}
+CreateXClusterStreamRpc::~CreateXClusterStreamRpc() {}
 
-void CreateCDCStreamRpc::CallRemoteMethod() {
+void CreateXClusterStreamRpc::CallRemoteMethod() {
   master_replication_proxy()->CreateCDCStreamAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
-      std::bind(&CreateCDCStreamRpc::Finished, this, Status::OK()));
+      std::bind(&CreateXClusterStreamRpc::Finished, this, Status::OK()));
 }
 
-string CreateCDCStreamRpc::ToString() const {
-  return Substitute("CreateCDCStream(table_id: $0, num_attempts: $1)", table_id_, num_attempts());
+string CreateXClusterStreamRpc::ToString() const {
+  return Substitute(
+      "CreateXClusterStream(table_id: $0, num_attempts: $1)", table_id_, num_attempts());
 }
 
-void CreateCDCStreamRpc::ProcessResponse(const Status& status) {
+void CreateXClusterStreamRpc::ProcessResponse(const Status& status) {
   if (status.ok()) {
     user_cb_(xrepl::StreamId::FromString(resp_.stream_id()));
   } else {
@@ -2513,15 +2504,13 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
   return actual_index_permissions;
 }
 
-void YBClient::Data::CreateCDCStream(
-    YBClient* client,
-    const TableId& table_id,
-    const std::unordered_map<std::string, std::string>& options,
-    cdc::StreamModeTransactional transactional,
-    CoarseTimePoint deadline,
-    CreateCDCStreamCallback callback) {
-  auto rpc = StartRpc<internal::CreateCDCStreamRpc>(
-      client, callback, table_id, options, transactional, deadline);
+void YBClient::Data::CreateXClusterStream(
+    YBClient* client, const TableId& table_id,
+    const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
+    master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
+    CoarseTimePoint deadline, CreateCDCStreamCallback callback) {
+  auto rpc = StartRpc<internal::CreateXClusterStreamRpc>(
+      client, callback, table_id, options, state, transactional, deadline);
 }
 
 void YBClient::Data::DeleteCDCStream(

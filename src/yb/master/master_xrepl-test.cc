@@ -13,7 +13,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
-#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/common/schema.h"
@@ -79,10 +79,10 @@ class MasterTestXRepl  : public MasterTestBase {
       cdc::CDCRecordType record_type = cdc::CDCRecordType::CHANGE);
   Result<GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
   Result<GetCDCStreamResponsePB> GetCDCStream(const std::string& cdcsdk_ysql_replication_slot_name);
-  Status DeleteCDCStream(const xrepl::StreamId& stream_id);
+  Status DeleteCDCStream(const xrepl::StreamId& stream_id, bool force = false);
   Result<DeleteCDCStreamResponsePB> DeleteCDCStream(
       const std::vector<xrepl::StreamId>& stream_ids,
-      const std::vector<std::string>& cdcsdk_ysql_replication_slot_name);
+      const std::vector<std::string>& cdcsdk_ysql_replication_slot_name, bool force = false);
   Result<ListCDCStreamsResponsePB> ListCDCStreams();
   Result<ListCDCStreamsResponsePB> ListCDCSDKStreams();
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
@@ -213,10 +213,14 @@ Result<GetCDCStreamResponsePB> MasterTestXRepl::GetCDCStream(
   return resp;
 }
 
-Status MasterTestXRepl::DeleteCDCStream(const xrepl::StreamId& stream_id) {
+Status MasterTestXRepl::DeleteCDCStream(const xrepl::StreamId& stream_id, bool force) {
   DeleteCDCStreamRequestPB req;
   DeleteCDCStreamResponsePB resp;
   req.add_stream_id(stream_id.ToString());
+
+  if (force) {
+    req.set_force_delete(true);
+  }
 
   RETURN_NOT_OK(proxy_replication_->DeleteCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
@@ -227,7 +231,7 @@ Status MasterTestXRepl::DeleteCDCStream(const xrepl::StreamId& stream_id) {
 
 Result<DeleteCDCStreamResponsePB> MasterTestXRepl::DeleteCDCStream(
     const std::vector<xrepl::StreamId>& stream_ids,
-    const std::vector<std::string>& cdcsdk_ysql_replication_slot_names) {
+    const std::vector<std::string>& cdcsdk_ysql_replication_slot_names, bool force) {
   DeleteCDCStreamRequestPB req;
   DeleteCDCStreamResponsePB resp;
   for (const auto& stream_id : stream_ids) {
@@ -235,6 +239,10 @@ Result<DeleteCDCStreamResponsePB> MasterTestXRepl::DeleteCDCStream(
   }
   for (const auto& replication_slot_name : cdcsdk_ysql_replication_slot_names) {
     req.add_cdcsdk_ysql_replication_slot_name(replication_slot_name);
+  }
+
+  if (force) {
+    req.set_force_delete(true);
   }
 
   RETURN_NOT_OK(proxy_replication_->DeleteCDCStream(req, &resp, ResetAndGetController()));
@@ -665,7 +673,13 @@ TEST_F(MasterTestXRepl, TestDeleteCDCStream) {
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 
-  ASSERT_OK(DeleteCDCStream(stream_id));
+  ASSERT_NOK_STR_CONTAINS(
+      DeleteCDCStream(stream_id), "Cannot delete an xCluster Stream in replication");
+
+  resp = ASSERT_RESULT(GetCDCStream(stream_id));
+  ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
+
+  ASSERT_OK(DeleteCDCStream(stream_id, /*force=*/true));
 
   resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_TRUE(resp.has_error());
@@ -713,7 +727,9 @@ TEST_F(MasterTestXRepl, TestDeleteCDCStreamWithStreamIdAndReplicationSlotName) {
   // Delete streams:
   // 1. Using stream_id
   // 2. Using replication slot name
-  auto delete_resp = ASSERT_RESULT(DeleteCDCStream({stream_id_1}, {kPgReplicationSlotName}));
+  std::vector<std::string> slot_names = {kPgReplicationSlotName};
+  // xCluster stream has to be force deleted since we created it as ACTIVE.
+  auto delete_resp = ASSERT_RESULT(DeleteCDCStream({stream_id_1}, slot_names, /*force=*/true));
 
   resp = ASSERT_RESULT(GetCDCStream(stream_id_1));
   ASSERT_TRUE(resp.has_error());
@@ -756,42 +772,6 @@ TEST_F(MasterTestXRepl, TestDeleteTableWithCDCStream) {
   ASSERT_NOK(DeleteTableSync(default_namespace_name, kTableName, &id));
 
   ASSERT_OK(GetCDCStream(stream_id));
-}
-
-// Just disabled on sanitizers because it doesn't need to run often. It's just a unit test.
-TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForceDelete)) {
-  // #12255.  Added 'force_delete' flag, but only run this check if the client code specifies it.
-  TableId table_id;
-  ASSERT_OK(CreateTableWithTableId(&table_id));
-
-  auto stream_id = xrepl::StreamId::Nil();
-  // CreateCDCStream, simulating a fully-created XCluster configuration.
-  {
-    CreateCDCStreamRequestPB req;
-    CreateCDCStreamResponsePB resp;
-
-    req.set_table_id(table_id);
-    req.set_initial_state(SysCDCStreamEntryPB::ACTIVE);
-    auto source_type_option = req.add_options();
-    source_type_option->set_key(cdc::kRecordFormat);
-    source_type_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
-    ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
-    if (resp.has_error()) {
-      ASSERT_OK(StatusFromPB(resp.error().status()));
-    }
-    stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
-  }
-
-  auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
-  ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
-
-  // Should succeed because we don't use the 'force_delete' safety check in this API call.
-  ASSERT_OK(DeleteCDCStream(stream_id));
-
-  resp.Clear();
-  resp = ASSERT_RESULT(GetCDCStream(stream_id));
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
 
 TEST_F(MasterTestXRepl, TestCreateDropCDCStreamWithReplicationSlotName) {

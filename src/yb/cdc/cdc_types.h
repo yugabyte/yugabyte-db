@@ -61,5 +61,13 @@ using EnumLabelCache = std::unordered_map<NamespaceName, EnumOidLabelMap>;
 using CompositeAttsMap = std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>;
 using CompositeTypeCache = std::unordered_map<NamespaceName, CompositeAttsMap>;
 
+static const char* const kRecordType = "record_type";
+static const char* const kRecordFormat = "record_format";
+static const char* const kSourceType = "source_type";
+static const char* const kCheckpointType = "checkpoint_type";
+static const char* const kStreamState = "state";
+static const char* const kNamespaceId = "NAMESPACEID";
+// NOTE: Do not add new options here. Create them as explicit PB fields.
+
 }  // namespace cdc
 }  // namespace yb

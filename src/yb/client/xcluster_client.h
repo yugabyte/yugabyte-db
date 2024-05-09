@@ -31,6 +31,7 @@ YB_STRONGLY_TYPED_UUID_DECL(UniverseUuid);
 class IsOperationDoneResult;
 
 namespace master {
+class CDCStreamOptionsPB;
 class MasterReplicationProxy;
 class GetXClusterStreamsResponsePB;
 }  // namespace master
@@ -127,7 +128,16 @@ class XClusterClient {
   Status RepairOutboundXClusterReplicationGroupRemoveTable(
       const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id);
 
+  Result<xrepl::StreamId> CreateXClusterStream(
+      const TableId& table_id, bool active, cdc::StreamModeTransactional transactional);
+
+  void CreateXClusterStreamAsync(
+      const TableId& table_id, bool active, cdc::StreamModeTransactional transactional,
+      CreateCDCStreamCallback callback);
+
  private:
+  CoarseTimePoint GetDeadline() const;
+
   template <typename ResponsePB, typename RequestPB, typename Method>
   Result<ResponsePB> SyncLeaderMasterRpc(
       const RequestPB& req, const char* method_name, const Method& method);
@@ -185,6 +195,9 @@ class XClusterRemoteClient {
   std::unique_ptr<client::YBClient> yb_client_;
   std::unique_ptr<client::XClusterClient> xcluster_client_;
 };
+
+// TODO: Move xcluster_util to common and this into it.
+google::protobuf::RepeatedPtrField<master::CDCStreamOptionsPB> GetXClusterStreamOptions();
 
 }  // namespace client
 }  // namespace yb

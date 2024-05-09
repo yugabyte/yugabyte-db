@@ -781,16 +781,6 @@ client::YBClient* CDCServiceImpl::client() { return impl_->async_client_init_->c
 
 namespace {
 
-bool YsqlTableHasPrimaryKey(const client::YBSchema& schema) {
-  for (const auto& col : schema.columns()) {
-    if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
-      // ybrowid column is added for tables that don't have user-specified primary key.
-      return false;
-    }
-  }
-  return true;
-}
-
 std::unordered_map<std::string, std::string> GetCreateCDCStreamOptions(
     const CreateCDCStreamRequestPB* req) {
   std::unordered_map<std::string, std::string> options;
@@ -871,29 +861,6 @@ bool GetFromOpId(const GetChangesRequestPB* req, OpId* op_id, CDCSDKCheckpointPB
     return false;
   }
   return true;
-}
-
-// Check for compatibility whether CDC can be setup on the table
-// This essentially checks that the table should not be a REDIS table since we do not support it
-// and if it's a YSQL or YCQL one, it should have a primary key
-Status CheckCdcCompatibility(const std::shared_ptr<client::YBTable>& table) {
-  // return if it is a CQL table because they always have a user specified primary key
-  if (table->table_type() == client::YBTableType::YQL_TABLE_TYPE) {
-    LOG(INFO) << "Returning while checking CDC compatibility, table is a YCQL table";
-    return Status::OK();
-  }
-
-  if (table->table_type() == client::YBTableType::REDIS_TABLE_TYPE) {
-    return STATUS(InvalidArgument, "Cannot setup CDC on YEDIS_TABLE");
-  }
-
-  // Check if YSQL table has a primary key. CQL tables always have a
-  // user specified primary key.
-  if (!YsqlTableHasPrimaryKey(table->schema())) {
-    return STATUS(InvalidArgument, "Cannot setup CDC on table without primary key");
-  }
-
-  return Status::OK();
 }
 
 CoarseTimePoint GetDeadline(const RpcContext& context, client::YBClient* client) {
@@ -1076,59 +1043,30 @@ void CDCServiceImpl::CreateCDCStream(
     return;
   }
 
-  RPC_CHECK_AND_RETURN_ERROR(
-      req->has_table_id() || req->has_namespace_name(),
-      STATUS(InvalidArgument, "Table ID or Database name is required to create CDC stream"),
-      resp->mutable_error(),
-      CDCErrorPB::INVALID_REQUEST,
-      context);
-
-  bool is_xcluster = req->source_type() == XCLUSTER;
-  if (is_xcluster || req->has_table_id()) {
-    std::shared_ptr<client::YBTable> table;
-    Status s = client()->OpenTable(req->table_id(), &table);
-    RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::TABLE_NOT_FOUND, context);
-
-    // We don't allow CDC on YEDIS and tables without a primary key.
-    if (req->record_format() != CDCRecordFormat::WAL) {
-      s = CheckCdcCompatibility(table);
-      RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
-    }
-
-    std::unordered_map<std::string, std::string> options = GetCreateCDCStreamOptions(req);
-
-    auto stream_id = RPC_VERIFY_RESULT(
-        client()->CreateCDCStream(req->table_id(), options), resp->mutable_error(),
-        CDCErrorPB::INTERNAL_ERROR, context);
-
-    resp->set_stream_id(stream_id.ToString());
-
-    // Add stream to cache.
-    AddStreamMetadataToCache(
-        stream_id,
-        std::make_shared<StreamMetadata>(
-            "",
-            std::vector<TableId>{req->table_id()},
-            req->record_type(),
-            req->record_format(),
-            req->source_type(),
-            req->checkpoint_type(),
-            StreamModeTransactional(req->transactional())));
-  } else if (req->has_namespace_name()) {
-    // Return error if we see that no checkpoint type has been populated.
-    RPC_CHECK_AND_RETURN_ERROR(
-        req->has_checkpoint_type(),
-        STATUS(InvalidArgument, "Checkpoint type is required to create a CDCSDK stream"),
+  if (req->has_table_id() || req->source_type() == XCLUSTER) {
+    RPC_STATUS_RETURN_ERROR(
+        STATUS(InvalidArgument, "xCluster stream should be created on master"),
         resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+  }
 
-    auto deadline = GetDeadline(context, client());
-    Status status = CreateCDCStreamForNamespace(req, resp, deadline);
-    CDCError error(status);
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_namespace_name(),
+      STATUS(InvalidArgument, "Table ID or Database name is required to create CDCSDK stream"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
-    if (!status.ok()) {
-      SetupErrorAndRespond(resp->mutable_error(), status, error.value(), &context);
-      return;
-    }
+  // Return error if we see that no checkpoint type has been populated.
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_checkpoint_type(),
+      STATUS(InvalidArgument, "Checkpoint type is required to create a CDCSDK stream"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  auto deadline = GetDeadline(context, client());
+  Status status = CreateCDCStreamForNamespace(req, resp, deadline);
+  CDCError error(status);
+
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, error.value(), &context);
+    return;
   }
 
   context.RespondSuccess();
@@ -4149,12 +4087,6 @@ std::vector<xrepl::StreamTabletStats> CDCServiceImpl::GetAllStreamTabletStats() 
 void CDCServiceImpl::RemoveStreamFromCache(const xrepl::StreamId& stream_id) {
   std::lock_guard l(mutex_);
   stream_metadata_.erase(stream_id);
-}
-
-void CDCServiceImpl::AddStreamMetadataToCache(
-    const xrepl::StreamId& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata) {
-  std::lock_guard l(mutex_);
-  InsertOrUpdate(&stream_metadata_, stream_id, stream_metadata);
 }
 
 Status CDCServiceImpl::CheckTabletValidForStream(const TabletStreamInfo& info) {
