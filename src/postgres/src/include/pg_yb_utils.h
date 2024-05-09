@@ -117,16 +117,12 @@ extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
 extern int32_t yb_follower_read_staleness_ms;
 
+#define YbFirstBootstrapObjectId 10000
+
 /*
  * Iterate over databases and execute a given code snippet.
  * Should terminate with YB_FOR_EACH_DB_END.
  */
-/* YB_TODO: Remove these. */
-#define YB_HACK_INVALID_FLAG -1
-#define YbHeapTupleGetOid(x) -1
-
-#define YbFirstBootstrapObjectId 10000
-
 #define YB_FOR_EACH_DB(pg_db_tuple) \
 	{ \
 		/* Shared operations shouldn't be used during initdb. */ \
