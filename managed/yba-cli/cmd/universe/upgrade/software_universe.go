@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
-	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -52,9 +51,9 @@ var upgradeSoftwareCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
-			universe, err := upgradeValidations(universeName)
+			_, universe, err := UpgradeValidations(cmd, util.UpgradeOperation)
 			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				logrus.Fatalf(err.Error() + "\n")
 			}
 
 			isValidVersion, err := util.IsYBVersion(ybdbVersion)
@@ -94,38 +93,26 @@ var upgradeSoftwareCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-
-		universeName, err := cmd.Flags().GetString("name")
+		authAPI, universe, err := UpgradeValidations(cmd, util.UpgradeOperation)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
+
 		ybdbVersion, err := cmd.Flags().GetString("yb-db-version")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatalf(err.Error() + "\n")
 		}
-		universeListRequest := authAPI.ListUniverses()
-		universeListRequest = universeListRequest.Name(universeName)
-
-		r, response, err := universeListRequest.Execute()
-		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Upgrade Software - Fetch Universes")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-		}
-		if len(r) < 1 {
-			fmt.Println("No universes found")
+		universeName := universe.GetName()
+		universeUUID := universe.GetUniverseUUID()
+		universeDetails := universe.GetUniverseDetails()
+		clusters := universeDetails.GetClusters()
+		if len(clusters) < 1 {
+			fmt.Println("No clusters found in universe " + universeName + " (" + universeUUID + ")")
 			return
 		}
-		universeUUID := r[0].GetUniverseUUID()
-		universeDetails := r[0].GetUniverseDetails()
-		clusters := universeDetails.GetClusters()
 		var oldYBDBVersion string
-		if len(clusters) > 0 {
-			userIntent := clusters[0].GetUserIntent()
-			oldYBDBVersion = userIntent.GetYbSoftwareVersion()
-		}
-
+		userIntent := clusters[0].GetUserIntent()
+		oldYBDBVersion = userIntent.GetYbSoftwareVersion()
 		upgradeOption, err := cmd.Flags().GetString("upgrade-option")
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
@@ -164,8 +151,9 @@ var upgradeSoftwareCmd = &cobra.Command{
 
 		taskUUID := rUpgrade.GetTaskUUID()
 		logrus.Info(
-			fmt.Sprintf("Upgrading universe %s from version %s to %s\n",
+			fmt.Sprintf("Upgrading universe %s (%s) from version %s to %s\n",
 				formatter.Colorize(universeName, formatter.GreenColor),
+				universeUUID,
 				oldYBDBVersion, ybdbVersion))
 
 		waitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)

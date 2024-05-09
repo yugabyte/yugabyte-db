@@ -1106,4 +1106,24 @@ select * from ctrtest;
  1 | foo
 (1 row)
 
+create table return_test (a int, b int, c int);
+insert into return_test values (1, 1, 1);
+update return_test set c = c returning *;
+ a | b | c
+---+---+---
+ 1 | 1 | 1
+(1 row)
+
+update return_test set c = c returning c;
+ c
+---
+ 1
+(1 row)
+
+update return_test set c = c returning a,b;
+ a | b
+---+---
+ 1 | 1
+(1 row)
+
 -- YB_TODO: end

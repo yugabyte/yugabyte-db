@@ -693,7 +693,16 @@ Status PgClientSession::AlterTable(
         YQL_DATABASE_PGSQL, req.rename_table().database_name(), req.rename_table().table_name());
     alterer->RenameTo(new_table_name);
   }
-
+  if (req.has_replica_identity()) {
+    client::YBTablePtr yb_table;
+    RETURN_NOT_OK(GetTable(table_id, &table_cache_, &yb_table));
+    auto table_properties = yb_table->schema().table_properties();
+    PgReplicaIdentity replica_identity;
+    RETURN_NOT_OK(
+        GetReplicaIdentityEnumValue(req.replica_identity().replica_identity(), &replica_identity));
+    table_properties.SetReplicaIdentity(replica_identity);
+    alterer->SetTableProperties(table_properties);
+  }
   alterer->timeout(context->GetClientDeadline() - CoarseMonoClock::now());
   RETURN_NOT_OK(alterer->Alter());
   table_cache_.Invalidate(table_id);

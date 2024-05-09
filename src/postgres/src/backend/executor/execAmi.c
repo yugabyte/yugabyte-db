@@ -19,6 +19,7 @@
 #include "executor/nodeAppend.h"
 #include "executor/nodeBitmapAnd.h"
 #include "executor/nodeBitmapHeapscan.h"
+#include "executor/nodeYbBitmapTablescan.h"
 #include "executor/nodeBitmapIndexscan.h"
 #include "executor/nodeBitmapOr.h"
 #include "executor/nodeCtescan.h"
@@ -202,6 +203,10 @@ ExecReScan(PlanState *node)
 
 		case T_BitmapHeapScanState:
 			ExecReScanBitmapHeapScan((BitmapHeapScanState *) node);
+			break;
+
+		case T_YbBitmapTableScanState:
+			ExecReScanYbBitmapTableScan((YbBitmapTableScanState *) node);
 			break;
 
 		case T_TidScanState:

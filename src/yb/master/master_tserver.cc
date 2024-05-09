@@ -187,5 +187,9 @@ rpc::Messenger* MasterTabletServer::GetMessenger(ash::Component component) const
   return nullptr;
 }
 
+void MasterTabletServer::ClearAllMetaCachesOnServer() {
+  client()->ClearAllMetaCachesOnServer();
+}
+
 } // namespace master
 } // namespace yb

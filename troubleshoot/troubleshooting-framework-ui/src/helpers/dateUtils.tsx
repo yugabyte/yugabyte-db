@@ -8,7 +8,7 @@ export const YBTimeFormats = {
   YB_HOURS_FIRST_TIMESTAMP: 'HH:mm:ss MMM-DD-YYYY [UTC]ZZ',
   YB_ISO8601_TIMESTAMP: 'YYYY-MM-DD[T]H:mm:ssZZ',
   YB_TIME_ONLY_TIMESTAMP: 'HH:mm:ss',
-  YB_DATE_TIME_TIMESTAMP: 'YYYY-MM-DDThh:mm'
+  YB_DATE_TIME_TIMESTAMP: 'YYYY-MM-DDTHH:mm'
 } as const;
 // eslint-disable-next-line no-redeclare
 export type YBTimeFormats = typeof YBTimeFormats[keyof typeof YBTimeFormats];

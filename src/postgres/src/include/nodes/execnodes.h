@@ -1724,7 +1724,7 @@ typedef struct IndexOnlyScanState
 typedef struct BitmapIndexScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	TIDBitmap  *biss_result;
+	void	   *biss_result;	/* either TIDBitmap or YbTIDBitmap */
 	struct ScanKeyData *biss_ScanKeys;
 	int			biss_NumScanKeys;
 	IndexRuntimeKeyInfo *biss_RuntimeKeys;
@@ -1829,6 +1829,37 @@ typedef struct BitmapHeapScanState
 	TBMSharedIterator *shared_prefetch_iterator;
 	ParallelBitmapHeapState *pstate;
 } BitmapHeapScanState;
+
+/* ----------------
+ *	 YbBitmapTableScanState information
+ *
+ *		bitmapqualorig	   execution state for bitmapqualorig expressions
+ *		ybtbm			   bitmap obtained from child index scan(s)
+ *		ybtbmiterator	   iterator for scanning rows from ybctids
+ *		ybtbmres		   current chunk of data
+ *		initialized		   is node is ready to iterate
+ *		recheck_required   do we have to recheck any of the results?
+ *		work_mem_exceeded  if we've exceeded work_mem, internally switch to
+ *						   seq scan
+ *		average_ybctid_bytes	an estimate of the average ybctid size
+ *		can_skip_fetch	   can we potentially skip tuple fetches in this scan?
+ *		skipped_tuples	   how many tuples have we skipped fetching?
+ * ----------------
+ */
+typedef struct YbBitmapTableScanState
+{
+	ScanState	ss;				/* its first field is NodeTag */
+	ExprState  *bitmapqualorig;
+	YbTIDBitmap  *ybtbm;
+	YbTBMIterator *ybtbmiterator;
+	YbTBMIterateResult *ybtbmres;
+	bool		initialized;
+	bool		recheck_required;
+	bool		work_mem_exceeded;
+	size_t		average_ybctid_bytes;
+	bool		can_skip_fetch;
+	int			skipped_tuples;
+} YbBitmapTableScanState;
 
 /* ----------------
  *	 TidScanState information

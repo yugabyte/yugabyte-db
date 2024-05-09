@@ -108,7 +108,8 @@ YbSeqNext(YbSeqScanState *node)
 										 node->aggrefs,
 										 0 /* distinct_prefixlen */,
 										 &estate->yb_exec_params,
-										 false /* is_internal_scan */);
+										 false /* is_internal_scan */,
+										 false /* fetch_ybctids_only */);
 		ybScan->pscan = node->pscan;
 
 		tsdesc = (TableScanDesc) ybScan;

@@ -145,6 +145,9 @@ static Scan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
 static BitmapHeapScan *create_bitmap_scan_plan(PlannerInfo *root,
 											   BitmapHeapPath *best_path,
 											   List *tlist, List *scan_clauses);
+static YbBitmapTableScan *create_yb_bitmap_scan_plan(PlannerInfo *root,
+						YbBitmapTablePath *best_path,
+						List *tlist, List *scan_clauses);
 static Plan *create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 								   List **qual, List **indexqual, List **indexECs);
 static void bitmap_subplan_mark_shared(Plan *plan);
@@ -239,6 +242,11 @@ static BitmapHeapScan *make_bitmap_heapscan(List *qptlist,
 											Plan *lefttree,
 											List *bitmapqualorig,
 											Index scanrelid);
+static YbBitmapTableScan *make_yb_bitmap_tablescan(List *qptlist,
+					 List *qpqual,
+					 Plan *lefttree,
+					 List *bitmapqualorig,
+					 Index scanrelid);
 static TidScan *make_tidscan(List *qptlist, List *qpqual, Index scanrelid,
 							 List *tidquals);
 static TidRangeScan *make_tidrangescan(List *qptlist, List *qpqual,
@@ -446,6 +454,7 @@ create_plan_recurse(PlannerInfo *root, Path *best_path, int flags)
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:
+		case T_YbBitmapTableScan:
 		case T_TidScan:
 		case T_TidRangeScan:
 		case T_SubqueryScan:
@@ -737,6 +746,13 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 													(BitmapHeapPath *) best_path,
 													tlist,
 													scan_clauses);
+			break;
+
+		case T_YbBitmapTableScan:
+			plan = (Plan *) create_yb_bitmap_scan_plan(root,
+													   (YbBitmapTablePath *) best_path,
+													   tlist,
+													   scan_clauses);
 			break;
 
 		case T_TidScan:
@@ -1091,6 +1107,12 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 	 */
 	if (rel->is_yb_relation)
 		return false;
+
+	/*
+	 * YbBitmapTablePath should only be selected for YB relations, which are
+	 * handled above
+	 */
+	Assert(!IsA(path, YbBitmapTablePath));
 
 	/*
 	 * Also, don't do it to a CustomPath; the premise that we're extracting
@@ -4488,6 +4510,118 @@ create_bitmap_scan_plan(PlannerInfo *root,
 }
 
 /*
+ * create_yb_bitmap_scan_plan
+ *	  Returns a bitmap scan plan for the base relation scanned by 'best_path'
+ *	  with restriction clauses 'scan_clauses' and targetlist 'tlist'.
+ */
+static YbBitmapTableScan *
+create_yb_bitmap_scan_plan(PlannerInfo *root,
+						YbBitmapTablePath *best_path,
+						List *tlist,
+						List *scan_clauses)
+{
+	Index		baserelid = best_path->path.parent->relid;
+	Plan	   *bitmapqualplan;
+	List	   *bitmapqualorig;
+	List	   *indexquals;
+	List	   *indexECs;
+	List	   *qpqual;
+	ListCell   *l;
+	YbBitmapTableScan *scan_plan;
+
+	/* it should be a base rel... */
+	Assert(baserelid > 0);
+	Assert(best_path->path.parent->rtekind == RTE_RELATION);
+
+	/* Process the bitmapqual tree into a Plan tree and qual lists */
+	bitmapqualplan = create_bitmap_subplan(root, best_path->bitmapqual,
+										   &bitmapqualorig, &indexquals,
+										   &indexECs);
+
+	/*
+	 * The qpqual list must contain all restrictions not automatically handled
+	 * by the index, other than pseudoconstant clauses which will be handled
+	 * by a separate gating plan node.  All the predicates in the indexquals
+	 * will be checked (either by the index itself, or by
+	 * nodeYbBitmapTablescan.c), but if there are any "special" operators
+	 * involved then they must be added to qpqual.  The upshot is that qpqual
+	 * must contain scan_clauses minus whatever appears in indexquals.
+	 *
+	 * This loop is similar to the comparable code in create_indexscan_plan(),
+	 * but with some differences because it has to compare the scan clauses to
+	 * stripped (no RestrictInfos) indexquals.  See comments there for more
+	 * info.
+	 *
+	 * In normal cases simple equal() checks will be enough to spot duplicate
+	 * clauses, so we try that first.  We next see if the scan clause is
+	 * redundant with any top-level indexqual by virtue of being generated
+	 * from the same EC.  After that, try predicate_implied_by().
+	 *
+	 * Unlike create_indexscan_plan(), the predicate_implied_by() test here is
+	 * useful for getting rid of qpquals that are implied by index predicates,
+	 * because the predicate conditions are included in the "indexquals"
+	 * returned by create_bitmap_subplan().  Bitmap scans have to do it that
+	 * way because predicate conditions need to be rechecked if the scan
+	 * becomes lossy, so they have to be included in bitmapqualorig.
+	 */
+	qpqual = NIL;
+	foreach(l, scan_clauses)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+		Node	   *clause = (Node *) rinfo->clause;
+
+		if (rinfo->pseudoconstant)
+			continue;			/* we may drop pseudoconstants here */
+		if (list_member(indexquals, clause))
+			continue;			/* simple duplicate */
+		if (rinfo->parent_ec && list_member_ptr(indexECs, rinfo->parent_ec))
+			continue;			/* derived from same EquivalenceClass */
+		if (!contain_mutable_functions(clause) &&
+			predicate_implied_by(list_make1(clause), indexquals, false))
+			continue;			/* provably implied by indexquals */
+		qpqual = lappend(qpqual, rinfo);
+	}
+
+	/* Sort clauses into best execution order */
+	qpqual = order_qual_clauses(root, qpqual);
+
+	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
+	qpqual = extract_actual_clauses(qpqual, false); // TODO(#21141): pushdown
+
+	/*
+	 * When dealing with special operators, we will at this point have
+	 * duplicate clauses in qpqual and bitmapqualorig.  We may as well drop
+	 * 'em from bitmapqualorig, since there's no point in making the tests
+	 * twice.
+	 */
+	bitmapqualorig = list_difference_ptr(bitmapqualorig, qpqual);
+
+	/*
+	 * We have to replace any outer-relation variables with nestloop params in
+	 * the qpqual and bitmapqualorig expressions.  (This was already done for
+	 * expressions attached to plan nodes in the bitmapqualplan tree.)
+	 */
+	if (best_path->path.param_info)
+	{
+		qpqual = (List *)
+			replace_nestloop_params(root, (Node *) qpqual);
+		bitmapqualorig = (List *)
+			replace_nestloop_params(root, (Node *) bitmapqualorig);
+	}
+
+	/* Finally ready to build the plan node */
+	scan_plan = make_yb_bitmap_tablescan(tlist,
+										 qpqual,
+										 bitmapqualplan,
+										 bitmapqualorig,
+										 baserelid);
+
+	copy_generic_path_info(&scan_plan->scan.plan, &best_path->path);
+
+	return scan_plan;
+}
+
+/*
  * Given a bitmapqual tree, generate the Plan tree that implements it
  *
  * As byproducts, we also return in *qual and *indexqual the qual lists
@@ -7249,6 +7383,26 @@ make_bitmap_heapscan(List *qptlist,
 	return node;
 }
 
+static YbBitmapTableScan *
+make_yb_bitmap_tablescan(List *qptlist,
+						 List *qpqual,
+						 Plan *lefttree,
+						 List *bitmapqualorig,
+						 Index scanrelid)
+{
+	YbBitmapTableScan *node = makeNode(YbBitmapTableScan);
+	Plan	   *plan = &node->scan.plan;
+
+	plan->targetlist = qptlist;
+	plan->qual = qpqual;
+	plan->lefttree = lefttree;
+	plan->righttree = NULL;
+	node->scan.scanrelid = scanrelid;
+	node->bitmapqualorig = bitmapqualorig;
+
+	return node;
+}
+
 static TidScan *
 make_tidscan(List *qptlist,
 			 List *qpqual,
@@ -8843,10 +8997,10 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	 */
 	RangeTblEntry *rte = root->simple_rte_array[linitial_int(resultRelations)];
 	Relation relation = RelationIdGetRelation(rte->relid);
-	node->ybUseScanTupleInUpdate =
-		YbUseScanTupleInUpdate(relation, rte->updatedCols);
-	node->ybHasWholeRowAttribute =
-		YbUseWholeRowJunkAttribute(relation, rte->updatedCols, operation);
+	node->ybUseScanTupleInUpdate = YbUseScanTupleInUpdate(
+		relation, rte->updatedCols, root->parse->returningList);
+	node->ybHasWholeRowAttribute = YbUseWholeRowJunkAttribute(
+		relation, rte->updatedCols, operation, root->parse->returningList);
 	RelationClose(relation);
 	return node;
 }

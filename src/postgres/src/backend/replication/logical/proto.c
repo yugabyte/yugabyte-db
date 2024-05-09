@@ -20,6 +20,9 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /*
  * Protocol message flags.
  */
@@ -463,7 +466,8 @@ logicalrep_write_update(StringInfo out, TransactionId xid, Relation rel,
 
 	Assert(rel->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT ||
 		   rel->rd_rel->relreplident == REPLICA_IDENTITY_FULL ||
-		   rel->rd_rel->relreplident == REPLICA_IDENTITY_INDEX);
+		   rel->rd_rel->relreplident == REPLICA_IDENTITY_INDEX ||
+		   (IsYugaByteEnabled() && rel->rd_rel->relreplident == YB_REPLICA_IDENTITY_CHANGE));
 
 	/* transaction ID (if not valid, we're not streaming) */
 	if (TransactionIdIsValid(xid))
@@ -536,7 +540,8 @@ logicalrep_write_delete(StringInfo out, TransactionId xid, Relation rel,
 {
 	Assert(rel->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT ||
 		   rel->rd_rel->relreplident == REPLICA_IDENTITY_FULL ||
-		   rel->rd_rel->relreplident == REPLICA_IDENTITY_INDEX);
+		   rel->rd_rel->relreplident == REPLICA_IDENTITY_INDEX ||
+		   (IsYugaByteEnabled() && rel->rd_rel->relreplident == YB_REPLICA_IDENTITY_CHANGE));
 
 	pq_sendbyte(out, LOGICAL_REP_MSG_DELETE);
 

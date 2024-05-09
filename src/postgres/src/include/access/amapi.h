@@ -215,6 +215,10 @@ typedef bool (*amgettuple_function) (IndexScanDesc scan,
 typedef int64 (*amgetbitmap_function) (IndexScanDesc scan,
 									   TIDBitmap *tbm);
 
+/* YB: fetch all valid tuples */
+typedef int64 (*yb_amgetbitmap_function) (IndexScanDesc scan,
+										  YbTIDBitmap *ybtbm);
+
 /* end index scan */
 typedef void (*amendscan_function) (IndexScanDesc scan);
 
@@ -324,6 +328,7 @@ typedef struct IndexAmRoutine
 	yb_amdelete_function yb_amdelete;
 	yb_ambackfill_function yb_ambackfill;
 	yb_ammightrecheck_function yb_ammightrecheck;
+	yb_amgetbitmap_function yb_amgetbitmap;
 
 } IndexAmRoutine;
 

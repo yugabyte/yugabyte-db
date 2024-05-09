@@ -256,6 +256,7 @@ typedef struct PgPrepareParameters {
   bool index_only_scan;
   bool use_secondary_index;
   bool querying_colocated_table;
+  bool fetch_ybctids_only;
 } YBCPgPrepareParameters;
 
 // Opaque type for output parameter.

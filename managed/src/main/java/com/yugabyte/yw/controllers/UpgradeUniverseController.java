@@ -474,7 +474,12 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "Resize Node",
-      notes = "Queues a task to perform node resize and rolling restart in a universe.",
+      notes =
+          "Queues a task to perform node resize and rolling restart in a universe.<p>This API can"
+              + " be used to change the deviceInfo.volumeSize,"
+              + " masterDeviceInfo.volumeSize,instanceType, masterInstanceType of all the nodes of"
+              + " a Universe simultaneously without moving data from old nodes to new nodes. Refer:"
+              + " https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/edit-universe/#smart-resize",
       nickname = "resizeNode",
       response = YBPTask.class)
   @ApiImplicitParams(

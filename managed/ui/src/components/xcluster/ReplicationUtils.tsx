@@ -35,7 +35,10 @@ import {
 } from './XClusterTypes';
 import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
-import { IAlertConfiguration as AlertConfiguration } from '../../redesign/features/alerts/TemplateComposer/ICustomVariables';
+import {
+  AlertThresholdCondition,
+  IAlertConfiguration as AlertConfiguration
+} from '../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 import { DrConfigState } from './disasterRecovery/dtos';
 
 import './ReplicationUtils.scss';
@@ -50,23 +53,21 @@ export const MaxAcceptableLag = ({
     name: AlertName.REPLICATION_LAG,
     targetUuid: currentUniverseUUID
   };
-  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+  const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
-  if (maxAcceptableLagQuery.isLoading || maxAcceptableLagQuery.isIdle) {
+  if (replicationLagAlertConfigQuery.isLoading || replicationLagAlertConfigQuery.isIdle) {
     return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
   }
-  if (maxAcceptableLagQuery.isError || maxAcceptableLagQuery.data.length === 0) {
+  if (replicationLagAlertConfigQuery.isError || replicationLagAlertConfigQuery.data.length === 0) {
     return <span>-</span>;
   }
 
-  const maxAcceptableLag = Math.min(
-    ...maxAcceptableLagQuery.data.map(
-      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-    )
-  );
-  return <span>{formatLagMetric(maxAcceptableLag)}</span>;
+  const maxAcceptableLag = getStrictestReplicationLagAlertConfig(
+    replicationLagAlertConfigQuery.data
+  )?.thresholds?.SEVERE?.threshold;
+  return <span>{maxAcceptableLag ? formatLagMetric(maxAcceptableLag) : '-'}</span>;
 };
 
 // TODO: Rename, refactor and pull into separate file
@@ -99,7 +100,7 @@ export const CurrentReplicationLag = ({
     name: AlertName.REPLICATION_LAG,
     targetUuid: sourceUniverseUuid
   };
-  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+  const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
@@ -108,8 +109,8 @@ export const CurrentReplicationLag = ({
     sourceUniverseQuery.isIdle ||
     universeLagQuery.isLoading ||
     universeLagQuery.isIdle ||
-    maxAcceptableLagQuery.isLoading ||
-    maxAcceptableLagQuery.isIdle
+    replicationLagAlertConfigQuery.isLoading ||
+    replicationLagAlertConfigQuery.isIdle
   ) {
     return <i className="fa fa-spinner fa-spin yb-spinner" />;
   }
@@ -118,20 +119,18 @@ export const CurrentReplicationLag = ({
     BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfigStatus) ||
     sourceUniverseQuery.isError ||
     universeLagQuery.isError ||
-    maxAcceptableLagQuery.isError
+    replicationLagAlertConfigQuery.isError
   ) {
     return <span>-</span>;
   }
 
-  const maxAcceptableLag = Math.min(
-    ...maxAcceptableLagQuery.data.map(
-      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-    )
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+    replicationLagAlertConfigQuery.data
   );
-
   const maxNodeLag = getLatestMaxNodeLag(universeLagQuery.data);
   const formattedLag = formatLagMetric(maxNodeLag);
-  const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
+  const isReplicationUnhealthy =
+    maxNodeLag === undefined || (maxAcceptableLag && maxNodeLag > maxAcceptableLag);
 
   if (maxNodeLag === undefined) {
     return <span className="replication-lag-value warning">{formattedLag}</span>;
@@ -182,7 +181,7 @@ export const CurrentTableReplicationLag = ({
     name: AlertName.REPLICATION_LAG,
     targetUuid: sourceUniverseUUID
   };
-  const maxAcceptableLagQuery = useQuery(
+  const replicationLagAlertConfigQuery = useQuery(
     alertConfigQueryKey.list(alertConfigFilter),
     () => getAlertConfigurations(alertConfigFilter),
     {
@@ -193,8 +192,8 @@ export const CurrentTableReplicationLag = ({
   if (
     tableLagQuery.isLoading ||
     tableLagQuery.isIdle ||
-    maxAcceptableLagQuery.isLoading ||
-    maxAcceptableLagQuery.isIdle
+    replicationLagAlertConfigQuery.isLoading ||
+    replicationLagAlertConfigQuery.isIdle
   ) {
     return <i className="fa fa-spinner fa-spin yb-spinner" />;
   }
@@ -202,20 +201,18 @@ export const CurrentTableReplicationLag = ({
   if (
     BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfigStatus) ||
     tableLagQuery.isError ||
-    maxAcceptableLagQuery.isError
+    replicationLagAlertConfigQuery.isError
   ) {
     return <span>-</span>;
   }
 
-  const maxAcceptableLag = Math.min(
-    ...maxAcceptableLagQuery.data.map(
-      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-    )
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+    replicationLagAlertConfigQuery.data
   );
-
   const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
   const formattedLag = formatLagMetric(maxNodeLag);
-  const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
+  const isReplicationUnhealthy =
+    maxNodeLag === undefined || (maxAcceptableLag && maxNodeLag > maxAcceptableLag);
 
   if (maxNodeLag === undefined) {
     return <span className="replication-lag-value warning">{formattedLag}</span>;
@@ -448,15 +445,35 @@ export const getStrictestReplicationLagAlertConfig = (
   alertConfigs: AlertConfiguration[] | undefined
 ): AlertConfiguration | undefined =>
   alertConfigs?.reduce(
-    (strictestReplicationLagAlertConfig: any, currentReplicationLagAlertConfig: any) =>
-      strictestReplicationLagAlertConfig?.thresholds?.SEVERE?.threshold &&
-      (!currentReplicationLagAlertConfig?.thresholds?.SEVERE?.threshold ||
-        strictestReplicationLagAlertConfig.thresholds.SEVERE.threshold <=
-          currentReplicationLagAlertConfig.thresholds.SEVERE.threshold)
+    (strictestReplicationLagAlertConfig: any, currentReplicationLagAlertConfig: any) => {
+      const isUpperLimitThreshold =
+        currentReplicationLagAlertConfig.thresholds.SEVERE?.condition ===
+        AlertThresholdCondition.GREATER_THAN;
+      const isReplicationLagAlert =
+        currentReplicationLagAlertConfig.name === AlertName.REPLICATION_LAG;
+      const strictestThreshold = strictestReplicationLagAlertConfig?.thresholds.SEVERE?.threshold;
+      const currentThreshold = currentReplicationLagAlertConfig.thresholds.SEVERE?.threshold;
+
+      return strictestThreshold &&
+        (!currentThreshold ||
+          !isUpperLimitThreshold ||
+          !isReplicationLagAlert ||
+          strictestThreshold <= currentThreshold)
         ? strictestReplicationLagAlertConfig
-        : currentReplicationLagAlertConfig,
-    {}
+        : isUpperLimitThreshold && isReplicationLagAlert
+        ? currentReplicationLagAlertConfig
+        : undefined;
+    },
+    undefined
   );
+
+/**
+ * Returns undefined when `alertConfigs` is undefined or empty array.
+ */
+export const getStrictestReplicationLagAlertThreshold = (
+  alertConfigs: AlertConfiguration[] | undefined
+): number | undefined =>
+  getStrictestReplicationLagAlertConfig(alertConfigs)?.thresholds?.SEVERE?.threshold;
 
 export const tableSort = <RowType,>(
   a: RowType,

@@ -114,12 +114,10 @@ public class CloudProviderHandler {
     if (providerCode.equals(Common.CloudType.gcp)) {
       cloudProviderHelper.maybeUpdateGCPProject(reqProvider);
     }
-
+    cloudProviderHelper.maybeUpdateVPC(reqProvider);
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(providerCode.toString());
-    if (cloudAPI != null
-        && !cloudAPI.isValidCreds(
-            reqProvider, CloudProviderHelper.getFirstRegionCode(reqProvider))) {
+    if (cloudAPI != null && !cloudAPI.isValidCreds(reqProvider)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format("Invalid %s Credentials.", providerCode.toString().toUpperCase()));
@@ -144,7 +142,6 @@ public class CloudProviderHandler {
     }
     Provider provider =
         Provider.create(customer.getUuid(), providerCode, providerName, reqProvider.getDetails());
-    cloudProviderHelper.maybeUpdateVPC(provider);
 
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(provider);
     if (!providerConfig.isEmpty()) {
@@ -388,7 +385,6 @@ public class CloudProviderHandler {
         taskParams.perRegionMetadata.put(regionCode, new CloudBootstrap.Params.PerRegionMetadata());
       }
     }
-    cloudProviderHelper.validateInstanceTemplate(provider, taskParams);
 
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(

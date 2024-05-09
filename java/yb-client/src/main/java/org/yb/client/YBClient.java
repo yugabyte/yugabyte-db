@@ -32,6 +32,7 @@
 package org.yb.client;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -46,6 +47,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -446,6 +448,29 @@ public class YBClient implements AutoCloseable {
     } while (resp.hasRetriableError() && numTries++ < MAX_NUM_RETRIES);
     return resp;
   }
+
+  public AreNodesSafeToTakeDownResponse areNodesSafeToTakeDown(Set<String> masterIps,
+                                                               Set<String> tserverIps,
+                                                               long followerLagBoundMs)
+      throws Exception {
+    ListTabletServersResponse tabletServers = listTabletServers();
+    Collection<String> tserverUUIDs = tabletServers.getTabletServersList().stream()
+        .filter(ts -> tserverIps.contains(ts.getHost()))
+        .map(ts -> ts.getUuid())
+        .collect(Collectors.toSet());
+
+    ListMastersResponse masters = listMasters();
+    Collection<String> masterUUIDs = masters.getMasters().stream()
+        .filter(m -> masterIps.contains(m.getHost()))
+        .map(m -> m.getUuid())
+        .collect(Collectors.toSet());
+
+    Deferred<AreNodesSafeToTakeDownResponse> d = asyncClient.areNodesSafeToTakeDown(
+        masterUUIDs, tserverUUIDs, followerLagBoundMs
+    );
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
 
   /**
    * Get the tablet load move completion percentage for blacklisted nodes, if any.

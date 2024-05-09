@@ -2,7 +2,7 @@ import _ from 'lodash';
 import { useQuery, useQueryClient } from 'react-query';
 import { AxiosError } from 'axios';
 import { api, QUERY_KEY } from '../../../redesign/helpers/api';
-import { HAConfig } from '../../../redesign/helpers/dtos';
+import { HaConfig } from '../dtos';
 
 interface LoadHAOptions {
   loadSchedule: boolean;
@@ -13,7 +13,7 @@ export const REFETCH_INTERVAL_MS = 5000;
 
 export const useLoadHAConfiguration = ({ loadSchedule, autoRefresh }: LoadHAOptions) => {
   const queryClient = useQueryClient();
-  const cachedConfig = queryClient.getQueryData<HAConfig>(QUERY_KEY.getHAConfig);
+  const cachedConfig = queryClient.getQueryData<HaConfig>(QUERY_KEY.getHAConfig);
 
   // enable refetching when HA config already available, otherwise no point in auto-refreshing
   const refetchInterval = autoRefresh && !_.isEmpty(cachedConfig) && REFETCH_INTERVAL_MS;

@@ -80,8 +80,8 @@
 /* Yugabyte includes */
 #include "hdr/hdr_histogram.h"
 #include "utils/json.h"
+#include "utils/jsonapi.h"
 #include "utils/jsonb.h"
-#include "common/jsonapi.h"
 #include "common/pg_yb_common.h"
 
 
@@ -133,11 +133,10 @@ typedef enum pgssVersion
 	PGSS_V1_1,
 	PGSS_V1_2,
 	PGSS_V1_3,
-	YB_PGSS_V1_4,
 	PGSS_V1_8,
 	PGSS_V1_9,
 	PGSS_V1_10,
-	YB_PGSS_V1_10
+	YB_PGSS_V1_4
 } pgssVersion;
 /*
  * yb change: Added YB_PGSS_V1_4 which adds a the column yb_latency_histogram to
@@ -150,17 +149,7 @@ typedef enum pgssVersion
  * only gets added to pg_stat_statements if api_version >= YB_PGSS_V1_4.
  */
 
-/*
- * Hashtable key that defines the identity of a hashtable entry.  We separate
- * queries by user and by database even if they are otherwise identical.
- *
- * If you add a new key to this struct, make sure to teach pgss_store() to
- * zero the padding bytes.  Otherwise, things will break, because pgss_hash is
- * created using HASH_BLOBS, and thus tag_hash is used to hash this.
-
- */
-
- typedef enum pgssStoreKind
+typedef enum pgssStoreKind
 {
 	PGSS_INVALID = -1,
 
@@ -175,6 +164,15 @@ typedef enum pgssVersion
 	PGSS_NUMKIND				/* Must be last value of this enum */
 } pgssStoreKind;
 
+/*
+ * Hashtable key that defines the identity of a hashtable entry.  We separate
+ * queries by user and by database even if they are otherwise identical.
+ *
+ * If you add a new key to this struct, make sure to teach pgss_store() to
+ * zero the padding bytes.  Otherwise, things will break, because pgss_hash is
+ * created using HASH_BLOBS, and thus tag_hash is used to hash this.
+
+ */
 typedef struct pgssHashKey
 {
 	Oid			userid;			/* user OID */
@@ -256,14 +254,14 @@ typedef struct pgssGlobalStats
  */
 typedef struct pgssEntry
 {
-	pgssHashKey		key;			/* hash key of entry - MUST BE FIRST */
-	Counters		counters;		/* the statistics for this query */
-	Size			query_offset;	/* query text offset in external file */
-	int				query_len;		/* # of valid bytes in query string, or -1 */
-	int				encoding;		/* query text encoding */
-	slock_t			mutex;			/* protects the counters only */
-	size_t			yb_slow_executions; /* # of executions >= yb_hdr_max_value * yb_hdr_latency_res_ms */
-	hdr_histogram	yb_hdr_histogram; /* flexible array member at end - MUST BE LAST */
+	pgssHashKey	key;			/* hash key of entry - MUST BE FIRST */
+	Counters	counters;		/* the statistics for this query */
+	Size	query_offset;	/* query text offset in external file */
+	int	query_len;		/* # of valid bytes in query string, or -1 */
+	int	encoding;		/* query text encoding */
+	slock_t	mutex;			/* protects the counters only */
+	size_t yb_slow_executions; /* # of executions >= yb_hdr_max_value * yb_hdr_latency_res_ms */
+	hdr_histogram yb_hdr_histogram; /* flexible array member at end - MUST BE LAST */
 } pgssEntry;
 
 typedef struct
@@ -388,7 +386,6 @@ PG_FUNCTION_INFO_V1(pg_stat_statements);
 PG_FUNCTION_INFO_V1(pg_stat_statements_info);
 
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_4);
-PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_10);
 
 static void pgss_shmem_request(void);
 static void pgss_shmem_startup(void);
@@ -442,7 +439,7 @@ static int	comp_location(const void *a, const void *b);
 /* YB functions */
 PG_FUNCTION_INFO_V1(yb_get_histogram_jsonb);
 Datum
-yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level);
+yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid);
 static void yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
 	count_t count, JsonbPair *pair);
 static Datum yb_add_histogram_jsonb(JsonbParseState *state,
@@ -657,7 +654,7 @@ yb_add_hist_json(void *cb_arg, hdr_histogram *h, size_t yb_slow_executions) {
 			appendStringInfo(&buf, "[%.1f,%.1f)",
 				(iter.value_iterated_to) * yb_hdr_latency_res_ms,
 				(iter.highest_equivalent_value + 1) * yb_hdr_latency_res_ms);
-			WriteIntValueObjectToJson(cb_arg, buf.data, &iter.count);
+			WriteHistElemToJson(cb_arg, buf.data, &iter.count);
 		}
 	}
 
@@ -665,14 +662,9 @@ yb_add_hist_json(void *cb_arg, hdr_histogram *h, size_t yb_slow_executions) {
 	{
 		resetStringInfo(&buf);
 		appendStringInfo(&buf, "[%.1f,)", yb_hdr_max_value * yb_hdr_latency_res_ms);
-		WriteIntValueObjectToJson(cb_arg, buf.data, &yb_slow_executions);
+		WriteHistElemToJson(cb_arg, buf.data, &yb_slow_executions);
 	}
 	pfree(buf.data);
-}
-
-static double calc_stddev(int64 calls, double sum_var_time)
-{
-	return (calls > 1) ? (sqrt(sum_var_time / calls)) : 0.0;
 }
 
 static void
@@ -682,6 +674,7 @@ getYsqlStatementStats(void *cb_arg)
 	char	   *qbuffer = NULL;
 	Size		qbuffer_size = 0;
 	pgssEntry  *entry;
+	YsqlStatementStat tmp;
 
 	qbuffer = qtext_load_file(&qbuffer_size);
 	if (qbuffer == NULL)
@@ -693,46 +686,29 @@ getYsqlStatementStats(void *cb_arg)
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
 		// some entries have 0 calls and strange query text - ignore them
-		if (IS_STICKY(entry->counters))
-			continue;
+		if (!entry->counters.calls)
+		continue;
 
 		char *qry = qtext_fetch(entry->query_offset, entry->query_len, qbuffer, qbuffer_size);
 		if (qry != NULL)
 		{
+			tmp.query        = qry;
+			tmp.calls        = entry->counters.calls;
+
+			tmp.total_time   = entry->counters.total_time;
+			tmp.min_time     = entry->counters.min_time;
+			tmp.max_time     = entry->counters.max_time;
+			tmp.mean_time    = entry->counters.mean_time;
+			tmp.sum_var_time = entry->counters.sum_var_time;
+
+			tmp.rows         = entry->counters.rows;
+			tmp.query_id     = entry->key.queryid;
+
 			WriteStartObjectToJson(cb_arg);
-			
-			WriteIntToJson(cb_arg, "query_id", entry->key.queryid);
-			WriteStringToJson(cb_arg, "query", qry);
-			WriteIntToJson(cb_arg, "calls",
-						   entry->counters.calls[PGSS_PLAN] +
-							   entry->counters.calls[PGSS_EXEC]);
-
-			WriteDoubleToJson(cb_arg, "total_plan_time", entry->counters.total_time[PGSS_PLAN]);
-			WriteDoubleToJson(cb_arg, "total_exec_time", entry->counters.total_time[PGSS_EXEC]);
-
-			WriteDoubleToJson(cb_arg, "min_plan_time", entry->counters.min_time[PGSS_PLAN]);
-			WriteDoubleToJson(cb_arg, "min_exec_time", entry->counters.min_time[PGSS_EXEC]);
-
-			WriteDoubleToJson(cb_arg, "max_plan_time", entry->counters.max_time[PGSS_PLAN]);
-			WriteDoubleToJson(cb_arg, "max_exec_time", entry->counters.max_time[PGSS_EXEC]);
-
-			WriteDoubleToJson(cb_arg, "mean_plan_time", entry->counters.mean_time[PGSS_PLAN]);
-			WriteDoubleToJson(cb_arg, "mean_exec_time", entry->counters.mean_time[PGSS_EXEC]);
-
-			WriteDoubleToJson(
-				cb_arg, "stddev_plan_time",
-				calc_stddev(entry->counters.calls[PGSS_PLAN],
-							entry->counters.sum_var_time[PGSS_PLAN]));
-			WriteDoubleToJson(
-				cb_arg, "stddev_exec_time",
-				calc_stddev(entry->counters.calls[PGSS_EXEC],
-							entry->counters.sum_var_time[PGSS_EXEC]));
-
-			WriteIntToJson(cb_arg, "rows", entry->counters.rows);
-
-			WriteArrayBeginToJson(cb_arg, "yb_latency_histogram");
+			WriteStatArrayElemToJson(cb_arg, &tmp);
+			WriteHistArrayBeginToJson(cb_arg);
 			yb_add_hist_json(cb_arg, &entry->yb_hdr_histogram, entry->yb_slow_executions);
-			WriteArrayEndToJson(cb_arg);
+			WriteHistArrayEndToJson(cb_arg);
 			WriteEndObjectToJson(cb_arg);
 		}
 	}
@@ -768,7 +744,7 @@ static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
 	(*context->buffer)[qlen] = '\0';
 
 	/* Skip loading "sticky" entries */
-	if ((counters->calls[PGSS_EXEC] + counters->calls[PGSS_PLAN]) == 0)
+	if (counters->calls == 0)
 		return 0;
 
 	/* Store the query text */
@@ -1691,6 +1667,15 @@ pgss_store(const char *query, uint64 queryId,
 		return;
 
 	/*
+	 * YB_TODO(lnguyen@yugabyte)
+	 * Postgres 13 drop this case. Need to verify if that's what we want.
+	 *
+	 * Use the redacted query for checking purposes.
+	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
+	queryId = pgss_hash_string(redacted_query, redacted_query_len);
+	 */
+
+	/*
 	 * Nothing to do if compute_query_id isn't enabled and no other module
 	 * computed a query identifier.
 	 */
@@ -1705,10 +1690,6 @@ pgss_store(const char *query, uint64 queryId,
 	 * location and length if needed.
 	 */
 	query = CleanQuerytext(query, &query_location, &query_len);
-
-	redacted_query = pnstrdup(query, query_len);
-	redacted_query = RedactPasswordIfExists(redacted_query);
-	redacted_query_len = strlen(redacted_query);
 
 	/* Set up key for hashtable search */
 
@@ -1746,7 +1727,7 @@ pgss_store(const char *query, uint64 queryId,
 			LWLockRelease(pgss->lock);
 			norm_query = generate_normalized_query(jstate, redacted_query,
 												   query_location,
-												   &redacted_query_len);
+												   &query_len);
 			LWLockAcquire(pgss->lock, LW_SHARED);
 		}
 
@@ -1809,8 +1790,7 @@ pgss_store(const char *query, uint64 queryId,
 		e->counters.calls[kind] += 1;
 		e->counters.total_time[kind] += total_time;
 
-		/* Add record for only execution time for queries in latency histograms */
-		if (IsYugaByteEnabled() && kind == PGSS_EXEC)
+		if (IsYugaByteEnabled())
 		{
 			int64_t tt_int = (int64_t)(total_time/yb_hdr_latency_res_ms);
 			if (tt_int < yb_hdr_max_value)
@@ -1928,11 +1908,11 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
 #define PG_STAT_STATEMENTS_COLS_V1_1	18
 #define PG_STAT_STATEMENTS_COLS_V1_2	19
 #define PG_STAT_STATEMENTS_COLS_V1_3	23
-#define YB_PG_STAT_STATEMENTS_COLS_V1_4	24
 #define PG_STAT_STATEMENTS_COLS_V1_8	32
 #define PG_STAT_STATEMENTS_COLS_V1_9	33
 #define PG_STAT_STATEMENTS_COLS_V1_10	43
-#define YB_PG_STAT_STATEMENTS_COLS_V1_10	44
+
+#define YB_PG_STAT_STATEMENTS_COLS_V1_4	44
 #define PG_STAT_STATEMENTS_COLS			44	/* maximum of above */
 
 /*
@@ -1951,16 +1931,6 @@ yb_pg_stat_statements_1_4(PG_FUNCTION_ARGS)
 	bool		showtext = PG_GETARG_BOOL(0);
 
 	pg_stat_statements_internal(fcinfo, YB_PGSS_V1_4, showtext);
-
-	return (Datum) 0;
-}
-
-Datum
-yb_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
-{
-	bool		showtext = PG_GETARG_BOOL(0);
-
-	pg_stat_statements_internal(fcinfo, YB_PGSS_V1_10, showtext);
 
 	return (Datum) 0;
 }
@@ -2063,7 +2033,6 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 	 * being a good safety check, we need a kluge here to detect API version
 	 * 1.1, which was wedged into the code in an ill-considered way.
 	 */
-
 	switch (rsinfo->setDesc->natts)
 	{
 		case PG_STAT_STATEMENTS_COLS_V1_0:
@@ -2098,10 +2067,6 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			break;
 		case YB_PG_STAT_STATEMENTS_COLS_V1_4:
 			if (api_version != YB_PGSS_V1_4)
-				elog(ERROR, "incorrect number of output arguments");
-			break;
-		case YB_PG_STAT_STATEMENTS_COLS_V1_10:
-			if (api_version != YB_PGSS_V1_10)
 				elog(ERROR, "incorrect number of output arguments");
 			break;
 		default:
@@ -2338,12 +2303,9 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			values[i++] = Float8GetDatumFast(tmp.jit_emission_time);
 		}
 
-		if (api_version == YB_PGSS_V1_4 || api_version == YB_PGSS_V1_10)
+		if (api_version >= YB_PGSS_V1_4)
 		{
-			values[i++] = yb_get_histogram_jsonb_args(queryid,
-												entry->key.userid,
-												entry->key.dbid,
-												entry->key.toplevel);
+			values[i++] = yb_get_histogram_jsonb_args(queryid, entry->key.userid, entry->key.dbid);
 		}
 
 		Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
@@ -2354,7 +2316,6 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 					 api_version == PGSS_V1_9 ? PG_STAT_STATEMENTS_COLS_V1_9 :
 					 api_version == PGSS_V1_10 ? PG_STAT_STATEMENTS_COLS_V1_10 :
 					 api_version == YB_PGSS_V1_4 ? YB_PG_STAT_STATEMENTS_COLS_V1_4 :
-					 api_version == YB_PGSS_V1_10 ? YB_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 -1 /* fail if you forget to update this assert */ ));
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
@@ -3425,24 +3386,23 @@ comp_location(const void *a, const void *b)
 
 /*
  * DIRECT CALL IN PG_STAT_STATEMENTS.C
- * Given queryid, userid, dbid and top_level, returns jsonb histogram of execution time
+ * Given queryid, userid, and dbid, returns jsonb histogram of execution time
  * of that query. Userid and dbid can be passed as NULL or 0 to use the
  * currently connected userid and dbid.
  */
 Datum
-yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level)
+yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid)
 {
 	userid = userid != InvalidOid ? userid : GetUserId();
 	dbid = dbid != InvalidOid ? dbid : MyDatabaseId;
 	pgssHashKey key;
 	pgssEntry  *entry;
-	bool is_allowed_role = has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
+	bool is_allowed_role = is_member_of_role(GetUserId(),
+		DEFAULT_ROLE_READ_ALL_STATS);
 
-	memset(&key, 0, sizeof(pgssHashKey));
 	key.queryid = queryid;
 	key.userid = userid;
 	key.dbid = dbid;
-	key.toplevel = top_level;
 
 	if (!is_allowed_role && userid != GetUserId())
 	{
@@ -3456,7 +3416,7 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level
 	if (!entry)
 	{
 		ereport(ERROR, (errmsg(
-			"Invalid combination of queryid, userid, dbid and top_level.\n" \
+			"Invalid combination of queryid, userid, dbid.\n" \
 			"Please refer to pg_stat_statements for the correct details.")));
 		PG_RETURN_DATUM(0);
 	}
@@ -3544,16 +3504,15 @@ yb_get_histogram_jsonb(PG_FUNCTION_ARGS)
 	uint64 queryid = PG_GETARG_INT64(0);
 	Oid userid = PG_NARGS() >= 2 && PG_GETARG_OID(1) != InvalidOid ?
 		PG_GETARG_OID(1) : InvalidOid;
-	Oid dbid = PG_NARGS() >= 3 && PG_GETARG_OID(2) != InvalidOid ?
+	Oid dbid = PG_NARGS() == 3 && PG_GETARG_OID(2) != InvalidOid ?
 		PG_GETARG_OID(2) : InvalidOid;
-	bool top_level = PG_NARGS() == 4 ? PG_GETARG_BOOL(3) : false;
 	/*
 	 * Check for null queryid
 	 */
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
 
-	return yb_get_histogram_jsonb_args(queryid, userid, dbid, top_level);
+	return yb_get_histogram_jsonb_args(queryid, userid, dbid);
 }
 
 /*

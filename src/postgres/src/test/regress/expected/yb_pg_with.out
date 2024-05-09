@@ -677,8 +677,7 @@ select * from search_graph order by seq;
                              Output: sg.seq, sg.t
    ->  CTE Scan on search_graph
          Output: search_graph.f, search_graph.t, search_graph.label, search_graph.seq
- Query Identifier: 3444486310600338725
-(23 rows)
+(22 rows)
 
 with recursive search_graph(f, t, label) as (
 	select * from graph0 g
@@ -751,8 +750,7 @@ select * from search_graph order by seq;
                              Output: sg.seq, sg.t
    ->  CTE Scan on search_graph
          Output: search_graph.f, search_graph.t, search_graph.label, search_graph.seq
- Query Identifier: -3688306605028644246
-(23 rows)
+(22 rows)
 
 with recursive search_graph(f, t, label) as (
 	select * from graph0 g
@@ -813,8 +811,7 @@ select * from test limit 5;
                  Output: (test_1.x + 1), array_cat(test_1.y, ARRAY[ROW((test_1.x + 1))])
    ->  CTE Scan on test
          Output: test.x, test.y
- Query Identifier: -8446988129280537983
-(11 rows)
+(10 rows)
 
 with recursive test as (
   select 1 as x
@@ -852,8 +849,7 @@ select * from test limit 5;
                  Output: (test_1.x + 1), ROW(int8inc((test_1.y)."*DEPTH*"), (test_1.x + 1))
    ->  CTE Scan on test
          Output: test.x, test.y
- Query Identifier: -8446988129280537983
-(11 rows)
+(10 rows)
 
 with recursive test as (
   select 1 as x
@@ -1137,8 +1133,7 @@ select * from search_graph;
                        ->  WorkTable Scan on search_graph sg
                              Output: sg.path, sg.t
                              Filter: (NOT sg.is_cycle)
- Query Identifier: 1451129708929781629
-(21 rows)
+(20 rows)
 
 with recursive search_graph(f, t, label) as (
 	select * from graph g
@@ -1233,8 +1228,7 @@ select * from test;
            ->  WorkTable Scan on test test_1
                  Output: ((test_1.x + 1) % 10), CASE WHEN (ROW(((test_1.x + 1) % 10)) = ANY (test_1.path)) THEN true ELSE false END, array_cat(test_1.path, ARRAY[ROW(((test_1.x + 1) % 10))])
                  Filter: (NOT test_1.is_cycle)
- Query Identifier: 1853107004442979150
-(10 rows)
+(9 rows)
 
 with recursive test as (
   select 0 as x
@@ -2711,14 +2705,13 @@ SELECT q1 FROM
   SELECT q1, (SELECT q2 FROM t_cte WHERE t_cte.q1 = i8.q1) AS t_sub
   FROM int8_tbl i8
 ) ss;
-               QUERY PLAN
-----------------------------------------
+              QUERY PLAN              
+--------------------------------------
  Subquery Scan on ss
    Output: ss.q1
    ->  Seq Scan on public.int8_tbl i8
          Output: i8.q1, NULL::bigint
- Query Identifier: -6430714326514791595
-(5 rows)
+(4 rows)
 
 SELECT q1 FROM
 (
@@ -2751,8 +2744,7 @@ SELECT q1 FROM
          CTE t_cte
            ->  Seq Scan on public.int8_tbl t
                  Output: t.q1, t.q2
- Query Identifier: 1981257424389013267
-(8 rows)
+(7 rows)
 
 SELECT q1 FROM
 (

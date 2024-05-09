@@ -138,8 +138,7 @@ SELECT count(*) FROM
          Group Key: tenk1.two, tenk1.four, tenk1.two
          ->  Seq Scan on public.tenk1
                Output: tenk1.two, tenk1.four, tenk1.two
- Query Identifier: 1338968227608089561
-(8 rows)
+(7 rows)
 
 SELECT count(*) FROM
   (SELECT DISTINCT two, four, two FROM tenk1) ss;

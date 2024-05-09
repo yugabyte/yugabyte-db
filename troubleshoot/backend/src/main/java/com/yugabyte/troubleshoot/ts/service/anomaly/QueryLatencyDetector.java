@@ -6,7 +6,6 @@ import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
 import com.yugabyte.troubleshoot.ts.service.PgStatStatementsQueryService;
 import io.ebean.Lists;
-import java.time.Duration;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -16,8 +15,6 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class QueryLatencyDetector extends AnomalyDetectorBase {
-
-  private static final long MIN_ANOMALY_SIZE_MILLIS = Duration.ofMinutes(5).toMillis();
   private static final int QUERY_BATCH_SIZE = 10;
 
   private final PgStatStatementsQueryService pgStatStatementsQueryService;
@@ -66,6 +63,7 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
             .setEnd(context.getEndTime())
             .setStepSeconds(context.getStepSeconds())
             .setSettings(settings)
+            .setReplaceNaN(false)
             .setFilters(
                 ImmutableMap.of(
                     GraphFilter.universeUuid,
@@ -91,8 +89,9 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
                     data -> data.getLabels().get(GraphFilter.queryId.name()), Collectors.toList()));
 
     GraphAnomalyDetectionService.AnomalyDetectionSettings detectionSettings =
-        new GraphAnomalyDetectionService.AnomalyDetectionSettings();
-    long minAnomalySize = Math.max(response.getStepSeconds() * 1000, MIN_ANOMALY_SIZE_MILLIS);
+        new GraphAnomalyDetectionService.AnomalyDetectionSettings()
+            .setMinimalAnomalyDurationMillis(getMinAnomalySizeMillis());
+    long minAnomalySize = Math.max(response.getStepSeconds() * 1000, getMinAnomalySizeMillis());
     detectionSettings
         .getIncreaseDetectionSettings()
         .setWindowMinSize(minAnomalySize)

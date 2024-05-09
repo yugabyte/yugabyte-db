@@ -1593,8 +1593,8 @@ heap_create_with_catalog(const char *relname,
 	 * while bootstrapping.
 	 *
 	 * YB NOTE:
-	 * For non-view system relations during YSQL upgrade, we only need to
-	 * record a pin dependency, nothing else.
+	 * For non-view system relations during YSQL upgrade, we do not need to do
+	 * anything.
 	 */
 	if (relkind != RELKIND_COMPOSITE_TYPE &&
 		relkind != RELKIND_TOASTVALUE &&
@@ -1604,11 +1604,7 @@ heap_create_with_catalog(const char *relname,
 					referenced;
 		ObjectAddresses *addrs;
 
-		if (IsYsqlUpgrade && is_system && relkind != RELKIND_VIEW)
-		{
-			YbRecordPinDependency(&myself, shared_relation);
-		}
-		else
+		if (!IsYsqlUpgrade || !is_system || relkind == RELKIND_VIEW)
 		{
 			ObjectAddressSet(myself, RelationRelationId, relid);
 

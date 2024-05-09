@@ -240,6 +240,7 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
       stmt.execute("SET yb_enable_optimizer_statistics = true");
       stmt.execute("SET yb_enable_base_scans_cost_model = true");
       stmt.execute("SET yb_bnl_batch_size = 1024");
+      stmt.execute("SET enable_bitmapscan = false"); // TODO(#20573): update bitmap scan cost model
     }
   }
 

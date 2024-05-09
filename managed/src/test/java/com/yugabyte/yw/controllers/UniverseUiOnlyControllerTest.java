@@ -289,7 +289,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     for (NodeInstance ni : NodeInstance.listByProvider(p.getUuid())) {
       if (k < 5) {
         k++;
-        ni.setInUse(true);
+        ni.setState(NodeInstance.State.USED);
         ni.save();
       } else {
         break;

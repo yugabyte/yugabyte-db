@@ -15,4 +15,5 @@ public class GraphQuery {
   private String name;
   private Map<GraphFilter, List<String>> filters;
   private GraphSettings settings;
+  private boolean replaceNaN = true;
 }

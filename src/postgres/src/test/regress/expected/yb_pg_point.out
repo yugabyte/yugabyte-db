@@ -459,9 +459,12 @@ SELECT COUNT(*) FROM point_gist_tbl WHERE f1 ~= '(0.0000009,0.0000009)'::point;
   1002
 (1 row)
 
--- YB_TODO(#21435): should be count 1.
 SELECT COUNT(*) FROM point_gist_tbl WHERE f1 <@ '(0.0000009,0.0000009),(0.0000009,0.0000009)'::box;
-ERROR:  GiST only supports forward scan direction
+ count 
+-------
+     1
+(1 row)
+
 SELECT COUNT(*) FROM point_gist_tbl WHERE f1 ~= '(0.0000018,0.0000018)'::point;
  count
 -------

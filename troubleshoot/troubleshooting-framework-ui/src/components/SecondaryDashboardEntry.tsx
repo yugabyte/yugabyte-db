@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Box, Typography } from '@material-ui/core';
+import { Box, Typography, makeStyles } from '@material-ui/core';
 import _ from 'lodash';
-import { YBButton, YBErrorIndicator } from '@yugabytedb/ui-components';
+import clsx from 'clsx';
+import { YBButton } from '@yugabytedb/ui-components';
+import { YBErrorIndicator } from '../common/YBErrorIndicator';
 import { YBBreadcrumb } from '../common/YBBreadcrumb';
 import { SecondaryDashboardData } from './SecondaryDashboardData';
 import { QUERY_KEY, TroubleshootAPI } from '../api';
@@ -10,6 +12,16 @@ import { Anomaly, AppName, GraphQuery, Universe } from '../helpers/dtos';
 import { getGraphRequestParams, getRecommendationMetricsMap } from '../helpers/utils';
 
 import { ReactComponent as LoadingIcon } from '../assets/loading.svg';
+
+const useStyles = makeStyles((theme) => ({
+  inProgressIcon: {
+    color: '#1A44A5'
+  },
+  icon: {
+    height: '14px',
+    width: '14px'
+  }
+}));
 
 export interface SecondaryDashboardEntryProps {
   universeUuid: string;
@@ -29,21 +41,20 @@ export const SecondaryDashboardEntry = ({
   timezone,
   onSelectedIssue
 }: SecondaryDashboardEntryProps) => {
+  const classes = useStyles();
+
   const [userSelectedAnomaly, setUserSelectedAnomaly] = useState<Anomaly | null>(null);
   const [graphRequestParams, setGraphRequestParams] = useState<GraphQuery[] | null>(null);
   const [recommendationMetrics, setRecommendationMetrics] = useState<any>(null);
 
   const { isLoading, isError, isIdle } = useQuery(
     [QUERY_KEY.fetchAnamolies, universeUuid],
-    () => TroubleshootAPI.fetchAnamolies(universeUuid),
+    () => TroubleshootAPI.fetchAnamoliesById(universeUuid, troubleshootUuid),
     {
-      onSuccess: (anomalyListdata: Anomaly[]) => {
-        const selectedAnomalyData = anomalyListdata?.find(
-          (anomaly: Anomaly) => anomaly.uuid === troubleshootUuid
-        );
-        setUserSelectedAnomaly(selectedAnomalyData!);
-        setGraphRequestParams(getGraphRequestParams(selectedAnomalyData!));
-        setRecommendationMetrics(getRecommendationMetricsMap(selectedAnomalyData!));
+      onSuccess: (anomalyData: Anomaly) => {
+        setUserSelectedAnomaly(anomalyData);
+        setGraphRequestParams(getGraphRequestParams(anomalyData));
+        setRecommendationMetrics(getRecommendationMetricsMap(anomalyData));
       },
       onError: (error: any) => {
         console.error('Failed to fetch Anomalies', error);
@@ -52,7 +63,7 @@ export const SecondaryDashboardEntry = ({
   );
 
   if (isLoading) {
-    return <LoadingIcon />;
+    return <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />;
   }
 
   if (isError || (isIdle && userSelectedAnomaly === undefined)) {

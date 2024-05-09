@@ -40,7 +40,7 @@ export const HAReplication: FC = () => {
       );
     } else {
       return (
-        <HAReplicationViewContainer config={config} schedule={schedule} editConfig={editConfig} />
+        <HAReplicationViewContainer haConfig={config} schedule={schedule} editConfig={editConfig} />
       );
     }
   }

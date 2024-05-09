@@ -260,6 +260,38 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
   writer.EndArray();
 }
 
+static void DoWriteStatArrayElemToJson(JsonWriter *writer, YsqlStatementStat *stat) {
+  writer->String("query_id");
+  // Use Int64 for this uint64 field to keep consistent output with PG.
+  writer->Int64(stat->query_id);
+
+  writer->String("query");
+  writer->String(stat->query);
+
+  writer->String("calls");
+  writer->Int64(stat->calls);
+
+  writer->String("total_time");
+  writer->Double(stat->total_time);
+
+  writer->String("min_time");
+  writer->Double(stat->min_time);
+
+  writer->String("max_time");
+  writer->Double(stat->max_time);
+
+  writer->String("mean_time");
+  writer->Double(stat->mean_time);
+
+  writer->String("stddev_time");
+  // Based on logic in pg_stat_monitor_internal().
+  double stddev = (stat->calls > 1) ? (sqrt(stat->sum_var_time / stat->calls)) : 0.0;
+  writer->Double(stddev);
+
+  writer->String("rows");
+  writer->Int64(stat->rows);
+}
+
 static void PgStatStatementsHandler(
     const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
@@ -482,42 +514,11 @@ void WriteStartObjectToJson(void *p1) {
   writer->StartObject();
 }
 
-void WriteStringToJson(void *p1, const char* key, const char* value) {
+void WriteStatArrayElemToJson(void *p1, void *p2) {
   JsonWriter *writer = static_cast<JsonWriter *>(p1);
-  writer->String(key);
-  writer->String(value);
-}
+  YsqlStatementStat *stat = static_cast<YsqlStatementStat *>(p2);
 
-void WriteIntToJson(void *p1, const char* key, const int64_t value) {
-  JsonWriter *writer = static_cast<JsonWriter *>(p1);
-  writer->String(key);
-  writer->Int64(value);
-}
-
-void WriteDoubleToJson(void *p1, const char* key, const double value) {
-  JsonWriter *writer = static_cast<JsonWriter *>(p1);
-  writer->String(key);
-  writer->Double(value);
-}
-
-void WriteIntArrayToJson(void *p1, const char *key, const int64 *values, const size_t size) {
-  JsonWriter *writer = static_cast<JsonWriter *>(p1);
-  writer->String(key);
-  writer->StartArray();
-  for (size_t i = 0; i < size; ++i) {
-    writer->Int64(values[i]);
-  }
-  writer->EndArray();
-}
-
-void WriteDoubleArrayToJson(void *p1, const char *key, const double *values, const size_t size) {
-  JsonWriter *writer = static_cast<JsonWriter *>(p1);
-  writer->String(key);
-  writer->StartArray();
-  for (size_t i = 0; i < size; ++i) {
-    writer->Double(values[i]);
-  }
-  writer->EndArray();
+  DoWriteStatArrayElemToJson(writer, stat);
 }
 
 void WriteHistArrayBeginToJson(void *p1) {
@@ -526,13 +527,7 @@ void WriteHistArrayBeginToJson(void *p1) {
   writer->StartArray();
 }
 
-void WriteArrayBeginToJson(void *p1, const char* key) {
-  JsonWriter *writer = static_cast<JsonWriter *>(p1);
-  writer->String(key);
-  writer->StartArray();
-}
-
-void WriteIntValueObjectToJson(void *p1, void *p2, void *p3) {
+void WriteHistElemToJson(void *p1, void *p2, void *p3) {
   JsonWriter *writer = static_cast<JsonWriter *>(p1);
   char *key = static_cast<char*>(p2);
   int64_t *value = static_cast<int64_t *>(p3);
@@ -542,7 +537,7 @@ void WriteIntValueObjectToJson(void *p1, void *p2, void *p3) {
   writer->EndObject();
 }
 
-void WriteArrayEndToJson(void* p1) {
+void WriteHistArrayEndToJson(void* p1) {
   JsonWriter *writer = static_cast<JsonWriter *>(p1);
   writer->EndArray();
 }

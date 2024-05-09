@@ -7,6 +7,7 @@ import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { getAlertConfigurations } from '../../actions/universe';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { alertConfigQueryKey } from '../../redesign/helpers/api';
+import { getStrictestReplicationLagAlertThreshold } from './ReplicationUtils';
 
 import { usePillStyles } from '../../redesign/styles/styles';
 
@@ -26,22 +27,21 @@ export const XClusterTableStatusLabel = ({
     name: AlertName.REPLICATION_LAG,
     targetUuid: sourceUniverseUuid
   };
-  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+  const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
   switch (status) {
     case XClusterTableStatus.RUNNING: {
-      if (maxAcceptableLagQuery.isLoading || maxAcceptableLagQuery.isIdle) {
+      if (replicationLagAlertConfigQuery.isLoading || replicationLagAlertConfigQuery.isIdle) {
         return <YBLoadingCircleIcon />;
       }
 
-      const maxAcceptableLag = Math.min(
-        ...maxAcceptableLagQuery.data.map(
-          (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-        )
+      const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+        replicationLagAlertConfigQuery.data
       );
-      return replicationLag === undefined || replicationLag > maxAcceptableLag ? (
+      return replicationLag === undefined ||
+        (maxAcceptableLag && replicationLag > maxAcceptableLag) ? (
         <Typography variant="body2" className={clsx(classes.pill, classes.warning)}>
           Warning
           <i className="fa fa-exclamation-triangle" />

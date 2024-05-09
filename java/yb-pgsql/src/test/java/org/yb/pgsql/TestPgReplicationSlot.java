@@ -247,7 +247,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
-        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'd',
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -369,7 +369,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
-        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'd',
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("name", 25))));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -380,7 +380,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
-        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'd',
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("name", 25))));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -513,7 +513,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       {
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
         add(PgOutputTypeMessage.CreateForComparison("public", "coupon_discount_type"));
-        add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'd',
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("col_bit", 1560),
                 PgOutputRelationMessageColumn.CreateForComparison("col_boolean", 16),
@@ -685,7 +685,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
-        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'd',
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -961,7 +961,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
-        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'd',
+        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,

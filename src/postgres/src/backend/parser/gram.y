@@ -739,7 +739,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	BACKFILL BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
 	BOOLEAN_P BOTH BREADTH BY
 
-	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
+	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHANGE CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLOCATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED COMPRESSION CONCURRENTLY CONFIGURATION CONFLICT
@@ -2990,7 +2990,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> REPLICA IDENTITY */
 			| REPLICA IDENTITY_P replica_identity
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE REPLICA IDENTITY", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_ReplicaIdentity;
@@ -3094,8 +3093,16 @@ replica_identity:
 					n->name = NULL;
 					$$ = (Node *) n;
 				}
+			| CHANGE
+				{
+					ReplicaIdentityStmt *n = makeNode(ReplicaIdentityStmt);
+					n->identity_type = YB_REPLICA_IDENTITY_CHANGE;
+					n->name = NULL;
+					$$ = (Node *) n;
+				}
 			| USING INDEX name
 				{
+					parser_ybc_signal_unsupported(@1, "ALTER TABLE REPLICA IDENTITY USING INDEX", 1124);
 					ReplicaIdentityStmt *n = makeNode(ReplicaIdentityStmt);
 
 					n->identity_type = REPLICA_IDENTITY_INDEX;
@@ -17734,6 +17741,7 @@ unreserved_keyword:
 			| CASCADED
 			| CATALOG_P
 			| CHAIN
+			| CHANGE
 			| CHARACTERISTICS
 			| CHECKPOINT
 			| CLASS
@@ -18271,6 +18279,7 @@ bare_label_keyword:
 			| CAST
 			| CATALOG_P
 			| CHAIN
+			| CHANGE
 			| CHARACTERISTICS
 			| CHECK
 			| CHECKPOINT

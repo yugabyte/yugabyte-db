@@ -232,8 +232,20 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_saop_pushdown, kLocalVolatile, false
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replica_identity, false,
+    "Enable replica identity command for Alter Table query");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
     "The number of rows to plan per parallel worker, zero disables the feature");
+
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_nonempty_ms, 1,  // 1 msec
+    "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
+    "the CDC service in case the last received response was non-empty.");
+
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 1 * 1000,  // 1 sec
+    "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
+    "the CDC service in case the last received response was empty. The response can be empty in "
+    "case there are no DMLs happening in the system.");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
@@ -416,12 +428,12 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
 
   // Gather the default extensions:
   vector<string> metricsLibs;
-  if (FLAGS_pg_stat_statements_enabled) {
-    metricsLibs.push_back("pg_stat_statements");
-  }
 #ifdef YB_TODO
   // Enabling this block throws FATAL:  could not access file "<extension name>": No such file or
   // directory error.
+  if (FLAGS_pg_stat_statements_enabled) {
+    metricsLibs.push_back("pg_stat_statements");
+  }
   metricsLibs.push_back("pgaudit");
 #endif
   metricsLibs.push_back("yb_pg_metrics");

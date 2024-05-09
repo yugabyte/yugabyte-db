@@ -4212,8 +4212,14 @@ create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 	if (parallel_workers <= 0)
 		return;
 
-	add_partial_path(rel, (Path *) create_bitmap_heap_path(root, rel,
-														   bitmapqual, rel->lateral_relids, 1.0, parallel_workers));
+	if (IsYugaByteEnabled() && rel->is_yb_relation)
+		/* TODO(#20575): support parallel bitmap scans */
+		return;
+	else
+		add_partial_path(rel, (Path *) create_bitmap_heap_path(root, rel,
+															   bitmapqual,
+															   rel->lateral_relids,
+															   1.0, parallel_workers));
 }
 
 /*
@@ -4533,6 +4539,9 @@ print_path(PlannerInfo *root, Path *path, int indent)
 			break;
 		case T_BitmapHeapPath:
 			ptype = "BitmapHeapScan";
+			break;
+		case T_YbBitmapTablePath:
+			ptype = "YbBitmapTableScan";
 			break;
 		case T_BitmapAndPath:
 			ptype = "BitmapAndPath";

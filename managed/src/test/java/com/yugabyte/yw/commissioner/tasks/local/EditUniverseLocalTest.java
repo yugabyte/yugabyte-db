@@ -24,7 +24,6 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import play.libs.Json;
 
@@ -507,24 +506,6 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
         UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     verifyNodeModifications(
         universe, increment > 0 ? increment : 0, increment < 0 ? -increment : 0);
-  }
-
-  private SpecificGFlags getGFlags(String... additional) {
-    Map<String, String> gflags = new HashMap<>(GFLAGS);
-    for (int i = 0; i < additional.length / 2; i++) {
-      gflags.put(additional[i], additional[i + 1]);
-    }
-    return SpecificGFlags.construct(gflags, gflags);
-  }
-
-  private String getAllErrorsStr(TaskInfo taskInfo) {
-    StringBuilder sb = new StringBuilder(taskInfo.getErrorMessage());
-    for (TaskInfo subTask : taskInfo.getSubTasks()) {
-      if (!StringUtils.isEmpty(subTask.getErrorMessage())) {
-        sb.append("\n").append(subTask.getErrorMessage());
-      }
-    }
-    return sb.toString();
   }
 
   private void verifyNodeModifications(Universe universe, int added, int removed) {

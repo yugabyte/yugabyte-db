@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
+import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -406,6 +407,7 @@ public class CustomerTaskManager {
       case EditUniverse:
       case InstallYbcSoftwareOnK8s:
       case EditKubernetesUniverse:
+      case ReadOnlyKubernetesClusterCreate:
       case ReadOnlyClusterCreate:
         taskParams = Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         break;
@@ -588,6 +590,9 @@ public class CustomerTaskManager {
         break;
       case CloudBootstrap:
         taskParams = Json.fromJson(oldTaskParams, CloudBootstrap.Params.class);
+        break;
+      case ReadOnlyClusterDelete:
+        taskParams = Json.fromJson(oldTaskParams, ReadOnlyKubernetesClusterDelete.Params.class);
         break;
       default:
         String errMsg =

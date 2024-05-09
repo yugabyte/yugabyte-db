@@ -57,6 +57,7 @@ import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.DateUtils;
 import org.junit.Before;
 import org.junit.Rule;
@@ -69,6 +70,7 @@ import org.yb.client.ListMastersResponse;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
+@Slf4j
 public class ResizeNodeTest extends UpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
@@ -88,18 +90,20 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   // Tasks for RF1 configuration do not create sub-tasks for
   // leader blacklisting. So create two PLACEHOLDER indexes
   // as well as two separate base task sequences
-  private static final int PLACEHOLDER_INDEX = 4;
-  private static final int PLACEHOLDER_INDEX_RF1 = 2;
+  private static final int PLACEHOLDER_INDEX = 5;
+  private static final int PLACEHOLDER_INDEX_RF1 = 3;
 
   private static final List<TaskType> TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> PROCESS_START_SEQ =
       ImmutableList.of(
@@ -137,6 +141,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      setCheckNodesAreSafeToTakeDown(mockClient);
     } catch (Exception ignored) {
     }
 
@@ -1201,8 +1206,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     assertEquals(1, updateMounts.size());
     assertEquals(nodeName.get(), updateMounts.get(0).getDetails().get("nodeName").textValue());
-    assertEquals(1L, (long) updateMounts.get(0).getPosition());
-    assertTasksSequence(2, subTasks, true, true, true, false);
+    assertEquals(2, updateMounts.get(0).getPosition().intValue());
+    assertTasksSequence(3, subTasks, true, true, true, false);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
   }
@@ -1246,7 +1251,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     }
     taskTypes.add(TaskType.PersistResizeNode);
     taskTypes.add(TaskType.UniverseUpdateSucceeded);
-    assertTasksSequence(2, subTasksByPosition, taskTypes, paramsForTask, false);
+    assertTasksSequence(3, subTasksByPosition, taskTypes, paramsForTask, false);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
       if (nodeDetails.getAzUuid().equals(az2.getUuid())) {
@@ -1357,7 +1362,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     }
     taskTypes.add(TaskType.PersistResizeNode);
     taskTypes.add(TaskType.UniverseUpdateSucceeded);
-    assertTasksSequence(2, subTasksByPosition, taskTypes, paramsForTask, false);
+    assertTasksSequence(3, subTasksByPosition, taskTypes, paramsForTask, false);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
       assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
@@ -1488,6 +1493,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     List<TaskType> expectedTaskTypes = new ArrayList<>();
     Map<Integer, Map<String, Object>> expectedParams = new HashMap<>();
     if (startPosition == 0) {
+      if (changeInstance || updateMasterGflags || updateTserverGflags) {
+        expectedTaskTypes.add(TaskType.CheckNodesAreSafeToTakeDown);
+      }
       expectedTaskTypes.add(TaskType.FreezeUniverse);
     }
     expectedTaskTypes.add(TaskType.ModifyBlackList); // removing all tservers from BL

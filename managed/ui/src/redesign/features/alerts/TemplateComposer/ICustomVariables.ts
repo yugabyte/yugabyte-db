@@ -82,6 +82,26 @@ const AlertTemplateList = [
   'UNDER_REPLICATED_TABLETS',
   'PRIVATE_ACCESS_KEY_STATUS'
 ] as const;
+
+/**
+ * Source: src/main/java/com/yugabyte/yw/models/AlertConfiguration.java
+ */
+export const AlertThresholdSeverity = {
+  SEVERE: 'SEVERE',
+  WARNING: 'WARNING'
+} as const;
+export type AlertThresholdSeverity = typeof AlertThresholdSeverity[keyof typeof AlertThresholdSeverity];
+
+/**
+ * Source: src/main/java/com/yugabyte/yw/models/common/Condition.java
+ */
+export const AlertThresholdCondition = {
+  GREATER_THAN: 'GREATER_THAN',
+  LESS_THAN: 'LESS_THAN',
+  NOT_EQUAL: 'NOT_EQUAL'
+};
+export type AlertThresholdCondition = typeof AlertThresholdCondition[keyof typeof AlertThresholdCondition];
+
 export interface IAlertConfiguration {
   uuid: string;
   customerUUID: string;
@@ -94,8 +114,8 @@ export interface IAlertConfiguration {
     uuids?: string[];
   };
   thresholds: {
-    SEVERE?: {
-      condition: string;
+    [key in AlertThresholdSeverity]?: {
+      condition: AlertThresholdCondition;
       threshold: number;
     };
   };

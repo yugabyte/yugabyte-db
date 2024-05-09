@@ -71,6 +71,8 @@ class PgDml : public PgStatement {
   // Process the secondary index request if it is nested within this statement.
   Result<bool> ProcessSecondaryIndexRequest(const PgExecParameters *exec_params);
 
+  Status UpdateRequestWithYbctids(const std::vector<Slice> *ybctids, bool keepOrder);
+
   // Fetch a row and return it to Postgres layer.
   Status Fetch(int32_t natts,
                uint64_t *values,
@@ -91,6 +93,8 @@ class PgDml : public PgStatement {
   Result<YBCPgColumnInfo> GetColumnInfo(int attr_num) const;
 
   bool has_aggregate_targets() const;
+
+  bool has_secondary_index_with_doc_op() const;
 
   bool has_doc_op() const {
     return doc_op_ != nullptr;
@@ -199,10 +203,23 @@ class PgDml : public PgStatement {
   PgPrepareParameters prepare_params_ = { .index_relfilenode_oid = kInvalidOid,
                                           .index_only_scan = false,
                                           .use_secondary_index = false,
-                                          .querying_colocated_table = false };
+                                          .querying_colocated_table = false,
+                                          .fetch_ybctids_only = false };
 
   // Whether or not the statement accesses data within the local region.
   const bool is_region_local_;
+
+  // -----------------------------------------------------------------------------------------------
+  // Data members for YB Bitmap Scans.
+
+  // Retrieved ybctids are populated by secondary index requests and used by Bitmap Index Scans.
+  const std::vector<Slice> *retrieved_ybctids_ = NULL;
+  // If requested_ybctids_ is populated, replace the statement binds with this list of ybctids.
+  // This is used by YB Bitmap Table Scans.
+  const std::vector<Slice> *requested_ybctids_ = NULL;
+  // To allow for the ybctid list to be broken up into batches, we only want to initialize doc_op
+  // on the first ybctid request.
+  bool first_ybctid_request_ = true;
 
   // -----------------------------------------------------------------------------------------------
   // Data members for nested query: This is used for an optimization in PgGate.
