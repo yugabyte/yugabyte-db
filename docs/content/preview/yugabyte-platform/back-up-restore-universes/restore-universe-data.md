@@ -19,6 +19,12 @@ To access backups from a specific universe, navigate to the universe and choose 
 
 To access all universe backups, navigate to **Backups**.
 
+{{< warning title="Restoring a backup using YBC" >}}
+
+Backups from a stable track can only be restored to a higher stable track YugabyteDB version, and the same applies for preview track.
+
+{{< /warning >}}
+
 ## Prerequisites
 
 - The target universe must have enough nodes to accommodate the restore.
