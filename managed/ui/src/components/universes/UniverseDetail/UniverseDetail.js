@@ -5,7 +5,6 @@ import { Link, withRouter, browserHistory } from 'react-router';
 import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { mouseTrap } from 'react-mousetrap';
-import { TroubleshootAdvisor } from '@yugabytedb/troubleshoot-ui';
 import { CustomerMetricsPanel } from '../../metrics';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 import {
@@ -63,10 +62,13 @@ import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpe
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
+import { TroubleshootUniverse } from '../TroubleshootUniverse/TroubleshootUniverse';
 import {
   VM_PATCHING_RUNTIME_CONFIG,
   isImgBundleSupportedByProvider
 } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+
+import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
 import { RuntimeConfigKey, UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 
@@ -647,10 +649,9 @@ class UniverseDetail extends Component {
                 'universes.details.troubleshooting'
               )}
             >
-              <TroubleshootAdvisor
+              <TroubleshootUniverse
                 universeUuid={currentUniverse.data.universeUUID}
-                universeData={currentUniverse.data.universeDetails}
-                appName={'YBA'}
+                appName={AppName.YBA}
                 timezone={currentUser.data.timezone}
               />
             </Tab.Pane>

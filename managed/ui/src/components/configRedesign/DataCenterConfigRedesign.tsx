@@ -35,6 +35,7 @@ import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
+import { TroubleshootConfiguration } from '@yugabytedb/troubleshoot-ui';
 
 interface ReactRouterProps {
   location: LocationShape;
@@ -58,6 +59,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
       queryFn: () => api.fetchRegionMetadata(providerCode)
     }))
   );
+
   useQueries(
     SUPPORTED_KUBERNETES_PROVIDERS.map((kubernetesProvider) => ({
       queryKey: regionMetadataQueryKey.detail(ProviderCode.KUBERNETES, kubernetesProvider),
@@ -81,9 +83,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
   return (
     <div>
       <h2 className="content-title">Provider Configuration</h2>
-      <RbacValidator
-        accessRequiredOn={ApiPermissionMap.GET_PROVIDERS}
-      >
+      <RbacValidator accessRequiredOn={ApiPermissionMap.GET_PROVIDERS}>
         <YBTabsWithLinksPanel
           defaultTab={defaultTab}
           activeTab={activeTab}
@@ -211,10 +211,14 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
           )}
           {(featureFlags.test['enableMultiRegionConfig'] ||
             featureFlags.released['enableMultiRegionConfig']) && (
-              <Tab eventKey={ConfigTabKey.BACKUP_NEW} title="New Backup Config" key="new-backup-config">
-                <NewStorageConfiguration activeTab={params.section} />
-              </Tab>
-            )}
+            <Tab
+              eventKey={ConfigTabKey.BACKUP_NEW}
+              title="New Backup Config"
+              key="new-backup-config"
+            >
+              <NewStorageConfiguration activeTab={params.section} />
+            </Tab>
+          )}
         </YBTabsWithLinksPanel>
       </RbacValidator>
     </div>

@@ -101,7 +101,7 @@ export const TroubleshootAdvisor = ({
             />
           ) : (
             <Box className={helperClasses.recommendation}>
-              <span>{'There are not issues with the current universe'}</span>
+              <span>{'There are no issues with the current universe'}</span>
             </Box>
           )}
         </Box>
