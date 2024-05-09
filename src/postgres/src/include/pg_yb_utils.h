@@ -636,7 +636,7 @@ extern bool yb_test_table_rewrite_keep_old_table;
 */
 extern bool yb_enable_ddl_atomicity_infra;
 extern bool yb_ddl_rollback_enabled;
-static bool inline
+static inline bool
 YbDdlRollbackEnabled () {
 	return yb_enable_ddl_atomicity_infra && yb_ddl_rollback_enabled;
 }
