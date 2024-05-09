@@ -26,6 +26,7 @@ import {
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { FieldGroup } from '../components/FieldGroup';
 import { FieldLabel } from '../components/FieldLabel';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import { FormContainer } from '../components/FormContainer';
 import { FormField } from '../components/FormField';
 import { K8sCertIssuerType, RegionOperation } from '../configureRegion/constants';
@@ -534,9 +535,7 @@ export const K8sProviderEditForm = ({
               )}
             </FieldGroup>
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-              </Box>
+              <SubmitInProgress isValidationEnabled={isValidationEnabled} />
             )}
           </Box>
           <Box marginTop="16px">
