@@ -5786,16 +5786,36 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 
 	if (IsYBRelation(relation))
 	{
-		/* Currently, this function is only used during reindex in YB. */
-		Assert(relation->rd_rel->relkind == RELKIND_INDEX);
 		/*
-		 * Drop the old DocDB table associated with this index.
-		 * Note: The drop isn't finalized until after the txn commits/aborts.
+		 * Currently, this function is only used during reindex/truncate in YB.
 		 */
-		YBCDropIndex(relation);
-		/* Create a new DocDB table for the index. */
-		YbIndexSetNewRelfileNode(relation, newrelfilenode,
-								 yb_copy_split_options);
+		Assert(relation->rd_rel->relkind == RELKIND_INDEX ||
+			   relation->rd_rel->relkind == RELKIND_RELATION);
+
+		if (relation->rd_rel->relkind == RELKIND_INDEX &&
+			!relation->rd_index->indisprimary)
+			/*
+			 * Note: caller is responsible for dropping the old DocDB table
+			 * associated with the index, if required.
+			 * Create a new DocDB table for the secondary index.
+			 * This is not required for primary indexes, as they are
+			 * an implicit part of the base table.
+			 */
+			YbIndexSetNewRelfileNode(relation, newrelfilenode,
+									 yb_copy_split_options);
+		else if (relation->rd_rel->relkind == RELKIND_RELATION)
+		{
+			/*
+			 * Drop the old DocDB table associated with this relation.
+			 * Note: The drop isn't finalized until after the txn
+			 * commits/aborts.
+			 */
+			YBCDropTable(relation);
+			/* Create a new DocDB table for the relation. */
+			YbRelationSetNewRelfileNode(relation, newrelfilenode,
+										yb_copy_split_options,
+										true /* is_truncate */);
+		}
 	}
 	else
 	{

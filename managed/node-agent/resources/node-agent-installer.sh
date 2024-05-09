@@ -254,10 +254,19 @@ modify_selinux() {
       run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
     else
       if command -v yum >/dev/null 2>&1; then
+        # Install the semanage package directly.
         run_as_super_user yum install -y policycoreutils-python-utils
+        if ! command -v semanage >/dev/null 2>&1; then
+          # Search and install the package that provides semanage.
+          run_as_super_user yum install -y /usr/sbin/semanage
+        fi
       elif command -v apt-get >/dev/null 2>&1; then
         run_as_super_user apt-get update -y
         run_as_super_user apt-get install -y semanage-utils
+      fi
+      if ! command -v semanage >/dev/null 2>&1; then
+        # Let it proceed as there can be policies to allow.
+        echo "Command semanage does not exist. Installation did not succeed"
       fi
     fi
   fi

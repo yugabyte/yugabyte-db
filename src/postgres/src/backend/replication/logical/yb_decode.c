@@ -200,8 +200,32 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 	 */
 	RepOriginId					origin_id = 1;
 
+	/*
+	 * Skip the records which the client hasn't asked for. Simpler version of a
+	 * similar check done in DecodeCommit in decode.c
+	 */
+	if (commit_lsn < ctx->yb_start_decoding_at)
+	{
+		/*
+		 * ReorderBufferForget handles the cleanup of subtransactions as well.
+		 * So this is sufficient to clean up the transaction along with its
+		 * subtransactions.
+		 */
+		elog(DEBUG1,
+			 "YBDecodeCommit: Ignoring txn %d with commit_lsn = %lu as "
+			 "yb_start_decoding_at = %lu.",
+			 yb_record->xid, commit_lsn, ctx->yb_start_decoding_at);
+		ReorderBufferForget(ctx->reorder, yb_record->xid, commit_lsn);
+		return;
+	}
+
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
 						yb_record->commit_time, origin_id, origin_lsn);
+
+	elog(DEBUG1,
+		 "Successfully streamed transaction: %d with commit_lsn: %lu and "
+		 "end_lsn: %lu",
+		 yb_record->xid, commit_lsn, end_lsn);
 }
 
 static HeapTuple

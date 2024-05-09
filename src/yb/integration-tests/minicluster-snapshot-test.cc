@@ -72,10 +72,13 @@
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(enable_db_clone);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pgsql_proxy_webserver_port);
+DECLARE_string(ysql_hba_conf_csv);
+DECLARE_string(TEST_mini_cluster_pg_host_port);
 
 namespace yb {
 namespace master {
@@ -362,75 +365,18 @@ TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
   messenger->Shutdown();
 }
 
-class PgSnapshotTest : public YBTest {
+class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase,
+                                public ::testing::WithParamInterface<master::YsqlColocationConfig> {
  public:
-  void SetUp() override {
-    master::SetDefaultInitialSysCatalogSnapshotFlags();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
-    YBTest::SetUp();
-    MiniClusterOptions opts;
-    opts.num_tablet_servers = 3;
+  MiniCluster* mini_cluster() { return cluster_.get(); }
 
-    test_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
-
-    ASSERT_OK(mini_cluster()->Start());
-    ASSERT_OK(mini_cluster()->WaitForTabletServerCount(3));
-    ASSERT_OK(WaitForInitDb(mini_cluster()));
-    test_cluster_.client_ = ASSERT_RESULT(mini_cluster()->CreateClient());
-    ASSERT_OK(InitPostgres(&test_cluster_));
-
-    LOG(INFO) << "Cluster created successfully";
-  }
-
-  void TearDown() override {
-    YBTest::TearDown();
-
-    LOG(INFO) << "Destroying cluster";
-
-    if (test_cluster_.pg_supervisor_) {
-      test_cluster_.pg_supervisor_->Stop();
-    }
-    if (test_cluster_.mini_cluster_) {
-      test_cluster_.mini_cluster_->Shutdown();
-      test_cluster_.mini_cluster_.reset();
-    }
-    test_cluster_.client_.reset();
-  }
-
-  Status InitPostgres(PostgresMiniCluster* cluster) {
-    auto pg_ts = RandomElement(cluster->mini_cluster_->mini_tablet_servers());
-    auto port = cluster->mini_cluster_->AllocateFreePort();
-    pgwrapper::PgProcessConf pg_process_conf =
-        VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-            AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-            pg_ts->server()->GetSharedMemoryFd()));
-    pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
-    pg_process_conf.force_disable_log_file = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
-        cluster->mini_cluster_->AllocateFreePort();
-
-    LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
-              << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
-              << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-    cluster->pg_supervisor_ =
-        std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
-    RETURN_NOT_OK(cluster->pg_supervisor_->Start());
-
-    cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
-    return Status::OK();
-  }
-  MiniCluster* mini_cluster() { return test_cluster_.mini_cluster_.get(); }
-
-  client::YBClient* client() { return test_cluster_.client_.get(); }
   Status CreateDatabase(
-      PostgresMiniCluster* cluster, const std::string& namespace_name,
-      YsqlColocationConfig colocated) {
-    auto conn = VERIFY_RESULT(cluster->Connect());
+      const std::string& namespace_name,
+      master::YsqlColocationConfig colocated = master::YsqlColocationConfig::kNotColocated) {
+    auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(conn.ExecuteFormat(
         "CREATE DATABASE $0$1", namespace_name,
-        colocated == YsqlColocationConfig::kDBColocated ? " with colocation = true" : ""));
+        colocated == master::YsqlColocationConfig::kDBColocated ? " with colocation = true" : ""));
     return Status::OK();
   }
 
@@ -444,15 +390,18 @@ class PgSnapshotTest : public YBTest {
   }
 
  protected:
-  PostgresMiniCluster test_cluster_;
+  void BeforePgProcessStart() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_hba_conf_csv) =
+        "local all yugabyte trust, host all all all trust";
+  }
 };
 
-class MasterExportSnapshotTest : public PgSnapshotTest,
-                                 public ::testing::WithParamInterface<YsqlColocationConfig> {};
+class MasterExportSnapshotTest : public PostgresMiniClusterTest {};
 
 INSTANTIATE_TEST_CASE_P(
     Colocation, MasterExportSnapshotTest,
-    ::testing::Values(YsqlColocationConfig::kNotColocated, YsqlColocationConfig::kDBColocated));
+    ::testing::Values(
+        master::YsqlColocationConfig::kNotColocated, master::YsqlColocationConfig::kDBColocated));
 
 // Test that export_snapshot_from_schedule as of time generates correct SnapshotInfoPB.
 // 1. Create some tables.
@@ -464,17 +413,18 @@ INSTANTIATE_TEST_CASE_P(
 // 6. Assert the output of 5 and 3 are the same.
 TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
   const auto kNamespaceName = "testdb";
-  ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName, GetParam()));
+  ASSERT_OK(CreateDatabase(kNamespaceName, GetParam()));
   LOG(INFO) << "Database created.";
   auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
   auto proxy_cache = rpc::ProxyCache(messenger.get());
-  auto proxy = MasterBackupProxy(&proxy_cache, mini_cluster()->mini_master()->bound_rpc_addr());
+  auto proxy =
+      master::MasterBackupProxy(&proxy_cache, mini_cluster()->mini_master()->bound_rpc_addr());
 
   const auto timeout = MonoDelta::FromSeconds(30);
   SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
       &proxy, YQL_DATABASE_PGSQL, kNamespaceName, kInterval, kRetention, timeout));
   ASSERT_OK(WaitScheduleSnapshot(&proxy, schedule_id, timeout));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
   // 1.
   LOG(INFO) << Format("Create tables t1,t2");
   ASSERT_OK(conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
@@ -506,17 +456,17 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
   messenger->Shutdown();
 }
 
-class PgCloneTest : public PgSnapshotTest {
+class PgCloneTest : public PostgresMiniClusterTest {
  protected:
   void SetUp() override {
-    PgSnapshotTest::SetUp();
+    PostgresMiniClusterTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
   }
 
   Status CloneAndWait(
       const master::CloneNamespaceRequestPB& clone_req, const MasterBackupProxy& proxy) {
     rpc::RpcController controller;
-    controller.set_timeout(60s);
+    controller.set_timeout(120s);
     master::CloneNamespaceResponsePB clone_resp;
     RETURN_NOT_OK(proxy.CloneNamespace(clone_req, &clone_resp, &controller));
     if (clone_resp.has_error()) {
@@ -528,25 +478,27 @@ class PgCloneTest : public PgSnapshotTest {
     master::IsCloneDoneResponsePB done_resp;
     done_req.set_seq_no(clone_resp.seq_no());
     done_req.set_source_namespace_id(clone_resp.source_namespace_id());
-    RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
-      controller.Reset();
-      RETURN_NOT_OK(proxy.IsCloneDone(done_req, &done_resp, &controller));
-      if (done_resp.has_error()) {
-        return StatusFromPB(clone_resp.error().status());
-      }
-      return done_resp.is_done();
-    }, 60s, "Wait for clone to finish"));
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          controller.Reset();
+          RETURN_NOT_OK(proxy.IsCloneDone(done_req, &done_resp, &controller));
+          if (done_resp.has_error()) {
+            return StatusFromPB(clone_resp.error().status());
+          }
+          return done_resp.is_done();
+        },
+        120s, "Wait for clone to finish"));
 
     return Status::OK();
   }
 };
 
-TEST_F(PgCloneTest, Clone) {
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(Clone)) {
   // Basic clone test for PG.
   // Writes some data before time t and some data after t, and verifies that the cloning as of t
   // creates a clone with only the first set of rows, and cloning after t creates a clone with both
   // sets of rows.
-  auto conn = ASSERT_RESULT(test_cluster_.Connect());
+  auto conn = ASSERT_RESULT(Connect());
   const auto kSourceNamespaceName = "testdb";
   const auto kTargetNamespaceName1 = "testdb_clone1";
   const auto kTargetNamespaceName2 = "testdb_clone2";
@@ -554,9 +506,6 @@ TEST_F(PgCloneTest, Clone) {
   const auto kTimeout = MonoDelta::FromSeconds(30);
 
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kSourceNamespaceName));
-  // TODO: remove these CREATEs once ysql_dump is included in CloneNamespace.
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kTargetNamespaceName1));
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kTargetNamespaceName2));
 
   // Create a snapshot schedule.
   auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
@@ -567,21 +516,15 @@ TEST_F(PgCloneTest, Clone) {
   ASSERT_OK(WaitScheduleSnapshot(&proxy, schedule_id, kTimeout));
 
   // Write a row.
-  auto source_conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kSourceNamespaceName));
+  auto source_conn = ASSERT_RESULT(ConnectToDB(kSourceNamespaceName));
   ASSERT_OK(source_conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
   ASSERT_OK(source_conn.ExecuteFormat("INSERT INTO t1 VALUES ($0, $1)",
             std::get<0>(kRows[0]), std::get<1>(kRows[0])));
 
-  // TODO: remove these CREATEs once ysql_dump is included in CloneNamespace.
-  auto target_conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kTargetNamespaceName1));
-  ASSERT_OK(target_conn1.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
-  auto target_conn2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kTargetNamespaceName2));
-  ASSERT_OK(target_conn2.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
-
   // Write a second row after recording the hybrid time.
   auto ht1 = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
-  ASSERT_OK(source_conn.ExecuteFormat("INSERT INTO t1 VALUES ($0, $1)",
-            std::get<0>(kRows[1]), std::get<1>(kRows[1])));
+  ASSERT_OK(source_conn.ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[1]), std::get<1>(kRows[1])));
   auto ht2 = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
 
   CloneNamespaceRequestPB req;
@@ -591,6 +534,8 @@ TEST_F(PgCloneTest, Clone) {
   *req.mutable_source_namespace() = source_namespace;
   req.set_restore_ht(ht1.ToUint64());
   req.set_target_namespace_name(kTargetNamespaceName1);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_pg_host_port) = pg_host_port().ToString();
+
   ASSERT_OK(CloneAndWait(req, proxy));
 
   req.set_restore_ht(ht2.ToUint64());
@@ -602,10 +547,12 @@ TEST_F(PgCloneTest, Clone) {
   ASSERT_VECTORS_EQ(rows, kRows);
 
   // Verify first clone only has the first row.
+  auto target_conn1 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
   auto row = ASSERT_RESULT((target_conn1.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
   ASSERT_EQ(row, kRows[0]);
 
   // Verify second clone has both rows.
+  auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
   rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
   ASSERT_VECTORS_EQ(rows, kRows);
 

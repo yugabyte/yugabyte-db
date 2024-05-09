@@ -557,6 +557,8 @@ typedef struct PgReplicationSlotDescriptor {
   uint32_t xmin;
 } YBCReplicationSlotDescriptor;
 
+// Upon adding any more palloc'd members in the below struct, add logic to free it in
+// DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct PgDatumMessage {
   const char* column_name;
   uint64_t after_op_datum;
@@ -574,6 +576,8 @@ typedef enum PgRowMessageAction {
   YB_PG_ROW_MESSAGE_ACTION_DELETE = 5,
 } YBCPgRowMessageAction;
 
+// Upon adding any more palloc'd members in the below struct, add logic to free it in
+// DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct PgRowMessage {
   int col_count;
   YBCPgDatumMessage* cols;
@@ -586,6 +590,8 @@ typedef struct PgRowMessage {
   uint32_t xid;
 } YBCPgRowMessage;
 
+// Upon adding any more palloc'd members in the below struct, add logic to free it in
+// DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct PgChangeRecordBatch {
   int row_count;
   YBCPgRowMessage* rows;

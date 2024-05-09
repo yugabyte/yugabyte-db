@@ -14,7 +14,6 @@ import { YBErrorIndicator } from '../../common/indicators';
 import { MetricsPanelOld } from '../../metrics';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
 import {
-  AlertName,
   DEFAULT_METRIC_TIME_RANGE_OPTION,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
@@ -29,6 +28,7 @@ import {
 } from '../ReplicationUtils';
 
 import { MetricTimeRangeOption, Metrics, XClusterTable } from '../XClusterTypes';
+import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import styles from './TableLagGraph.module.scss';
 
@@ -93,7 +93,7 @@ export const TableLagGraph: FC<Props> = ({
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: universeUUID
   };
   const alertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>

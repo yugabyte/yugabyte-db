@@ -8,6 +8,7 @@ models/model_api_error.go
 models/model_api_error_error.go
 models/model_api_for_plan_and_asses_page.go
 models/model_assesment_complexity_info.go
+models/model_backup_details.go
 models/model_cloud_enum.go
 models/model_cloud_info.go
 models/model_cluster_data.go
@@ -34,6 +35,9 @@ models/model_gflags_info.go
 models/model_health_check_info.go
 models/model_health_check_response.go
 models/model_individual_migration_task_info.go
+models/model_schedules_response.go
+models/model_backup_response.go
+models/model_restore_response.go
 models/model_is_load_balancer_idle.go
 models/model_live_query_response_data.go
 models/model_live_query_response_schema.go
@@ -49,10 +53,12 @@ models/model_node_data.go
 models/model_node_data_cloud_info.go
 models/model_node_data_metrics.go
 models/model_node_data_metrics_active_connections.go
+models/model_pitr_schedule.go
 models/model_placement_block.go
 models/model_placement_cloud_info.go
 models/model_placement_info.go
 models/model_raft_config.go
+models/model_restore_details.go
 models/model_slow_query_response_data.go
 models/model_slow_query_response_schema.go
 models/model_slow_query_response_ysql_data.go

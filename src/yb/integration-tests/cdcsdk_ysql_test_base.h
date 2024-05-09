@@ -200,17 +200,30 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   // The range is exclusive of end i.e. [start, end)
   Status WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
+      const vector<string>& optional_cols_name = {},
+      pgwrapper::PGConn* conn = nullptr);
+
+  Status WriteRowsWithConn(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
+      pgwrapper::PGConn* conn = nullptr,
       const vector<string>& optional_cols_name = {});
 
   // The range is exclusive of end i.e. [start, end)
-  Status WriteRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster, uint32_t num_cols);
+  Status WriteRows(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, uint32_t num_cols,
+      std::string table_name = kTableName);
 
   void DropTable(PostgresMiniCluster* cluster, const char* table_name = kTableName);
 
   Status WriteRowsHelper(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t num_cols = 2,
       const char* const table_name = kTableName, const vector<string>& optional_cols_name = {},
-      const bool trasaction_enabled = true);
+      const bool trasaction_enabled = true, pgwrapper::PGConn* conn = nullptr);
+
+  Status WriteRowsHelperWithConn(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
+      pgwrapper::PGConn* conn, uint32_t num_cols = 2, const char* const table_name = kTableName,
+      const vector<string>& optional_cols_name = {}, const bool trasaction_enabled = true);
 
   Status CreateTableWithoutPK(PostgresMiniCluster* cluster);
 
@@ -261,7 +274,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::string& type_suffix = "");
   Status WriteRangeArrayCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
-  Status UpdateRows(uint32_t key, uint32_t value, PostgresMiniCluster* cluster);
+  Status UpdateRows(
+      uint32_t key, uint32_t value, PostgresMiniCluster* cluster,
+      std::string table_name = kTableName);
 
   Status UpdatePrimaryKey(uint32_t key, uint32_t value, PostgresMiniCluster* cluster);
 
@@ -278,7 +293,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t key,
       const std::map<std::string, uint32_t>& col_val_map, uint32_t num_cols);
 
-  Status DeleteRows(uint32_t key, PostgresMiniCluster* cluster);
+  Status DeleteRows(
+      uint32_t key, PostgresMiniCluster* cluster, std::string table_name = kTableName);
 
   Status SplitTablet(const TabletId& tablet_id, PostgresMiniCluster* cluster);
 
@@ -401,7 +417,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void CheckRecord(
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::ExpectedRecord expected_records,
       uint32_t* count, const bool& validate_old_tuple = false,
-      CDCSDKYsqlTest::ExpectedRecord expected_before_image_records = {});
+      CDCSDKYsqlTest::ExpectedRecord expected_before_image_records = {},
+      std::string table_name = kTableName, bool is_nothing_record = false);
 
   void CheckRecordWithThreeColumns(
       const CDCSDKProtoRecordPB& record,
@@ -615,7 +632,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckRecordCount(GetAllPendingChangesResponse resp, int expected_dml_records);
 
-  void CheckRecordsConsistencyWithWriteId(const std::vector<CDCSDKProtoRecordPB>& records);
+  void CheckRecordsConsistencyFromVWAL(const std::vector<CDCSDKProtoRecordPB>& records);
 
   void GetRecordsAndSplitCount(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,
@@ -661,7 +678,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::vector<TableId>& table_ids, bool add_indexes, int timeout_secs,
       bool is_compaction);
 
-  Status XreplValidateSplitCandidateTable(const TableId& table);
+  Status XReplValidateSplitCandidateTable(const TableId& table);
 
   void LogRetentionBarrierAndRelatedDetails(const GetCheckpointResponsePB& checkpoint_result,
                                             const tablet::TabletPeerPtr& tablet_peer);
@@ -707,6 +724,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       xrepl::StreamId stream_id, YBTableName table,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
       CDCSDKCheckpointPB checkpoint, GetChangesResponsePB* change_resp);
+
+  void TestTableIdAndPkInCDCRecords(bool colocated_db);
+
+  void VerifyTableIdAndPkInCDCRecords(
+      GetChangesResponsePB* resp, std::unordered_set<std::string>* record_primary_key,
+      std::unordered_set<std::string>* record_table_id);
 };
 
 }  // namespace cdc

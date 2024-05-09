@@ -697,6 +697,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                       (n.dedicatedTo == null || n.dedicatedTo != ServerType.TSERVER)
                           && Objects.equals(n.placementUuid, currentNode.placementUuid)
                           && !n.getNodeName().equals(currentNode.getNodeName())
+                          && n.getRegion().equals(currentNode.getRegion())
                           && n.getZone().equals(currentNode.getZone()))
               .collect(Collectors.toList());
       // This takes care of picking up the node that was previously selected.
@@ -2822,6 +2823,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .mapToInt(this::getSleepTimeForProcess)
             .max()
             .orElse(-1);
+    return createSleepAfterStartupTask(universeUUID, processTypes, dateKey, sleepTime);
+  }
+
+  protected SubTaskGroup createSleepAfterStartupTask(
+      UUID universeUUID, Collection<ServerType> processTypes, String dateKey, long sleepTime) {
     if (sleepTime <= 0) {
       log.debug("Skipping wait for processes {}", processTypes);
       return null;

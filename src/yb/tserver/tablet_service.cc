@@ -115,6 +115,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -127,8 +128,10 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/write_buffer.h"
+#include "yb/util/ysql_binary_runner.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
 using namespace std::literals;  // NOLINT
@@ -139,9 +142,7 @@ DEPRECATE_FLAG(int32, scanner_max_batch_size_bytes, "10_2022");
 
 DEPRECATE_FLAG(int32, scanner_batch_size_rows, "10_2022");
 
-DEFINE_UNKNOWN_int32(max_wait_for_safe_time_ms, 5000,
-    "Maximum time in milliseconds to wait for the safe time to advance when trying to "
-    "scan at the given hybrid_time.");
+DEPRECATE_FLAG(int32, max_wait_for_safe_time_ms, "02_2024");
 
 DEFINE_RUNTIME_int32(num_concurrent_backfills_allowed, -1,
     "Maximum number of concurrent backfill jobs that is allowed to run.");
@@ -222,6 +223,9 @@ DEFINE_UNKNOWN_bool(enable_ysql, true,
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 DECLARE_bool(ysql_yb_disable_wait_for_backends_catalog_version);
 
+DEFINE_test_flag(
+    string, mini_cluster_pg_host_port, "", "The PG host:port used in PostgresMiniclusterTest");
+
 DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
     "If true, setup an error status in AlterSchema and respond success to rpc call. "
     "This failure should not cause the TServer to crash but "
@@ -253,6 +257,8 @@ DEFINE_test_flag(int32, set_tablet_follower_lag_ms, 0,
 
 DEFINE_test_flag(bool, pause_before_tablet_health_response, false,
     "Whether to pause before responding to CheckTserverTabletHealth.");
+
+DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -362,20 +368,6 @@ void PerformAtLeader(
 }
 
 } // namespace
-
-template<class Resp>
-bool TabletServiceImpl::CheckWriteThrottlingOrRespond(
-    double score, tablet::TabletPeer* tablet_peer, Resp* resp, rpc::RpcContext* context) {
-  // Check for memory pressure; don't bother doing any additional work if we've
-  // exceeded the limit.
-  auto status = CheckWriteThrottling(score, tablet_peer);
-  if (!status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), status, context);
-    return false;
-  }
-
-  return true;
-}
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 typedef ListMasterServersResponsePB::MasterServerAndTypePB MasterServerAndTypePB;
@@ -1590,7 +1582,8 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
       req->table_type(), schema, qlexpr::IndexMap(),
       req->has_index_info() ? boost::optional<qlexpr::IndexInfo>(req->index_info()) : boost::none,
-      0 /* schema_version */, partition_schema, req->pg_table_id());
+      0 /* schema_version */, partition_schema, req->pg_table_id(),
+      tablet::SkipTableTombstoneCheck(FLAGS_ysql_yb_enable_alter_table_rewrite));
 
   if (req->has_wal_retention_secs()) {
     table_info->wal_retention_secs = req->wal_retention_secs();
@@ -1911,6 +1904,63 @@ void TabletServiceAdminImpl::CloneTablet(
   });
 }
 
+void TabletServiceAdminImpl::ClonePgSchema(
+    const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp, rpc::RpcContext context) {
+  auto status = DoClonePgSchema(req, resp);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+Status TabletServiceAdminImpl::DoClonePgSchema(
+    const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp) {
+  // Run ysql_dump to generate the schema of the clone database as of restore time.
+  auto restore_time = HybridTime(req->restore_ht());
+  std::string timestamp_flag =
+      "--read-time=" + std::to_string(restore_time.GetPhysicalValueMicros());
+  HostPort local_pg_host_port;
+  if (!FLAGS_TEST_mini_cluster_pg_host_port.empty()) {
+    RETURN_NOT_OK(local_pg_host_port.ParseString(
+        FLAGS_TEST_mini_cluster_pg_host_port, pgwrapper::PgProcessConf::kDefaultPort));
+  } else {
+    local_pg_host_port = server_->pgsql_proxy_bind_address();
+  }
+  const std::string& target_db_name = req->target_db_name();
+  std::string unix_domain_socket = PgDeriveSocketDir(local_pg_host_port);
+  HostPort local_hostport(unix_domain_socket, local_pg_host_port.port());
+  YsqlDumpRunner ysql_dump_runner =
+      VERIFY_RESULT(YsqlDumpRunner::GetYsqlDumpRunner(local_hostport));
+  std::string dump_output =
+      VERIFY_RESULT(ysql_dump_runner.DumpSchemaAsOfTime(req->source_db_name(), restore_time));
+  std::string modified_dump_script =
+      ysql_dump_runner.ModifyDBNameInScript(dump_output, target_db_name);
+  // Write the modified dump output to a file in order to execute it using ysqlsh
+  std::unique_ptr<WritableFile> dump_output_file;
+  std::string tmp_file_name;
+  RETURN_NOT_OK(Env::Default()->NewTempWritableFile(
+      WritableFileOptions(), target_db_name + "_ysql_dump_XXXXXX", &tmp_file_name,
+      &dump_output_file));
+  RETURN_NOT_OK(dump_output_file->Append(modified_dump_script));
+  RETURN_NOT_OK(dump_output_file->Close());
+  auto scope_exit = ScopeExit([tmp_file_name] {
+    if (Env::Default()->FileExists(tmp_file_name)) {
+      WARN_NOT_OK(
+          Env::Default()->DeleteFile(tmp_file_name),
+          Format("Failed to delete ysql_dump_file $0 as a cloning cleanup.", tmp_file_name));
+    }
+  });
+  // Execute the sql script to generate the PG database
+  YsqlshRunner ysqlsh_runner =
+      VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(HostPort::FromPB(local_hostport)));
+  Result<std::string> ysqlsh_output = VERIFY_RESULT(ysqlsh_runner.ExecuteSqlScript(tmp_file_name));
+  LOG(INFO) << Format(
+      "Clone Pg Schema Objects for source database: $0 to clone database: $1 done successfully",
+      req->source_db_name(), target_db_name);
+  return Status::OK();
+}
+
 void TabletServiceAdminImpl::UpgradeYsql(
     const UpgradeYsqlRequestPB* req,
     UpgradeYsqlResponsePB* resp,
@@ -2208,9 +2258,6 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   }
 
   const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_tablet_id()) {
-    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = req->tablet_id(), .method = "Write"});
-  }
   if (wait_state && req->has_ash_metadata()) {
     wait_state->UpdateMetadataFromPB(req->ash_metadata());
   }
@@ -2245,9 +2292,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   }
 
   const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_tablet_id()) {
-    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = req->tablet_id(), .method = "Read"});
-  }
   if (wait_state && req->has_ash_metadata()) {
     wait_state->UpdateMetadataFromPB(req->ash_metadata());
   }
@@ -2929,6 +2973,17 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
+                                          ClearUniverseUuidResponsePB* resp,
+                                          rpc::RpcContext context) {
+  const Status s = server_->tablet_manager()->server()->ClearUniverseUuid();
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::CheckTserverTabletHealth(const CheckTserverTabletHealthRequestPB* req,
                                                 CheckTserverTabletHealthResponsePB* resp,
                                                 rpc::RpcContext context) {
@@ -3188,8 +3243,9 @@ void TabletServiceImpl::GetTabletKeyRanges(
         const auto& tablet = leader_tablet_peer.tablet;
         RETURN_NOT_OK(tablet->GetTabletKeyRanges(
             req->lower_bound_key(), req->upper_bound_key(), req->max_num_ranges(),
-            req->range_size_bytes(), tablet::IsForward(req->is_forward()), req->max_key_length(),
-            &context.sidecars().Start()));
+            req->range_size_bytes(),
+            req->is_forward() ? tablet::Direction::kForward : tablet::Direction::kBackward,
+            req->max_key_length(), &context.sidecars().Start()));
         return Status::OK();
       });
 }

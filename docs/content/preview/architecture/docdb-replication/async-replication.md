@@ -228,6 +228,10 @@ In the future, it may be possible to detect such unsafe constraints and issue a 
 
 Note that if you attempt to insert the same row on both universes at the same time to a table that does not have a primary key then you will end up with two rows with the same data. This is the expected PostgreSQL behavior &mdash; tables without primary keys can have multiple rows with the same data.
 
+### Materialized views are not supported
+
+Setting up xCluster replication for [materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) is currently not supported. When setting up replication for a database, materialized views need to be excluded. YugabyteDB Anywhere automatically excludes materialized views from replication setup.
+
 ### Non-transactional&ndash;mode consistency issues
 
 When interacting with data replicated from another universe using non-transactional mode:

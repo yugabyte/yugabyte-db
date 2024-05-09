@@ -39,7 +39,7 @@ func waitForUpgradeUniverseTask(
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
-		fmt.Printf("The universe %s (%s) has been upgraded\n",
+		logrus.Infof("The universe %s (%s) has been upgraded\n",
 			formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 
 		universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
@@ -55,7 +55,7 @@ func waitForUpgradeUniverseTask(
 		universeFormatter.Write(universesCtx, universeData)
 
 	} else {
-		fmt.Println(msg)
+		logrus.Infoln(msg + "\n")
 	}
 
 }
@@ -84,7 +84,7 @@ func UpgradeValidations(cmd *cobra.Command, operation string) (
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
 	if len(r) < 1 {
-		err := fmt.Errorf("No universes found")
+		err := fmt.Errorf("No universes with name: %s found\n", universeName)
 		return nil, ybaclient.UniverseResp{}, err
 	}
 	return authAPI, r[0], nil
@@ -97,7 +97,7 @@ func FetchMasterGFlags(masterGFlagsString string) map[string]string {
 			kvp := strings.Split(masterGFlagPair, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in master gflag.",
+					formatter.Colorize("Incorrect format in master gflag.\n",
 						formatter.RedColor))
 			}
 			masterGFlags[kvp[0]] = kvp[1]
@@ -118,7 +118,7 @@ func FetchTServerGFlags(
 				kvp := strings.Split(tserverGFlagPair, "=")
 				if len(kvp) != 2 {
 					logrus.Fatalln(
-						formatter.Colorize("Incorrect format in tserver gflag.",
+						formatter.Colorize("Incorrect format in tserver gflag.\n",
 							formatter.RedColor))
 				}
 				tserverGFlags[kvp[0]] = kvp[1]

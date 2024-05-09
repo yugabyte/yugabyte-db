@@ -97,15 +97,7 @@ DEFINE_NON_RUNTIME_string(mini_cluster_base_dir, "", "Directory for master/ts da
 DEFINE_NON_RUNTIME_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
 DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
                  "Time to wait for tservers to register to master.");
-DECLARE_int32(master_svc_num_threads);
 DECLARE_int32(memstore_size_mb);
-DECLARE_int32(master_consensus_svc_num_threads);
-DECLARE_int32(master_remote_bootstrap_svc_num_threads);
-DECLARE_int32(generic_svc_num_threads);
-DECLARE_int32(tablet_server_svc_num_threads);
-DECLARE_int32(ts_admin_svc_num_threads);
-DECLARE_int32(ts_consensus_svc_num_threads);
-DECLARE_int32(ts_remote_bootstrap_svc_num_threads);
 DECLARE_int32(replication_factor);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(use_private_ip);
@@ -202,22 +194,6 @@ Status MiniCluster::StartAsync(
   if (!options_.master_env->FileExists(fs_root_)) {
     RETURN_NOT_OK(options_.master_env->CreateDir(fs_root_));
   }
-
-  // TODO: properly handle setting these variables in case of multiple MiniClusters in the same
-  // process.
-
-  // Use conservative number of threads for the mini cluster for unit test env
-  // where several unit tests tend to run in parallel.
-  // To get default number of threads - try to find SERVICE_POOL_OPTIONS macro usage.
-  FLAGS_master_svc_num_threads = 2;
-  FLAGS_master_consensus_svc_num_threads = 2;
-  FLAGS_master_remote_bootstrap_svc_num_threads = 2;
-  FLAGS_generic_svc_num_threads = 2;
-
-  FLAGS_tablet_server_svc_num_threads = 8;
-  FLAGS_ts_admin_svc_num_threads = 2;
-  FLAGS_ts_consensus_svc_num_threads = 8;
-  FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
 
   // Limit number of transaction table tablets to help avoid timeouts.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) =

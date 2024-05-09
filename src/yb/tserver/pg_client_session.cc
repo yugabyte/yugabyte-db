@@ -30,6 +30,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/common_util.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
@@ -46,7 +47,7 @@
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_table_cache.h"
-#include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
@@ -80,8 +81,13 @@ DEFINE_RUNTIME_string(ysql_sequence_cache_method, "connection",
     "Where sequence values are cached for both existing and new sequences. Valid values are "
     "\"connection\" and \"server\"");
 
+DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, false,
+                    "If set, DDL transactions will wait for DDL verification to complete before "
+                    "returning to the client. ");
+
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 
 namespace yb {
@@ -573,7 +579,7 @@ Status Commit(client::YBTransaction* txn, PgResponseCache::Disabler disabler) {
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
     client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
-    const std::optional<XClusterContext>& xcluster_context,
+    const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
     PgSequenceCache* sequence_cache)
     : shared_this_(std::shared_ptr<PgClientSession>(std::move(shared_this_source), this)),
@@ -638,7 +644,7 @@ Status PgClientSession::DropTable(
   if (req.index()) {
     client::YBTableName indexed_table;
     RETURN_NOT_OK(client().DeleteIndexTable(
-        yb_table_id, &indexed_table, !FLAGS_ysql_ddl_rollback_enabled /* wait */,
+        yb_table_id, &indexed_table, !YsqlDdlRollbackEnabled() /* wait */,
         metadata, context->GetClientDeadline()));
     indexed_table.SetIntoTableIdentifierPB(resp->mutable_indexed_table());
     table_cache_.Invalidate(indexed_table.table_id());
@@ -646,7 +652,7 @@ Status PgClientSession::DropTable(
     return Status::OK();
   }
 
-  RETURN_NOT_OK(client().DeleteTable(yb_table_id, !FLAGS_ysql_ddl_rollback_enabled, metadata,
+  RETURN_NOT_OK(client().DeleteTable(yb_table_id, !YsqlDdlRollbackEnabled(), metadata,
         context->GetClientDeadline()));
   table_cache_.Invalidate(yb_table_id);
   return Status::OK();
@@ -956,7 +962,7 @@ Status PgClientSession::FinishTransaction(
   }
 
   const TransactionMetadata* metadata = nullptr;
-  if (has_docdb_schema_changes && FLAGS_report_ysql_ddl_txn_status_to_master) {
+  if (has_docdb_schema_changes) {
     metadata = VERIFY_RESULT(GetDdlTransactionMetadata(true, context->GetClientDeadline()));
     LOG_IF(DFATAL, !metadata) << "metadata is required";
   }
@@ -995,12 +1001,28 @@ Status PgClientSession::FinishTransaction(
     txn_value->Abort();
   }
 
-  if (metadata) {
-    // If we failed to report the status of this DDL transaction, we can just log and ignore it,
-    // as the poller in the YB-Master will figure out the status of this transaction using the
-    // transaction status tablet and PG catalog.
-    ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, req.commit()),
-                 "Sending ReportYsqlDdlTxnStatus call failed");
+  // If this transaction was DDL that had DocDB syscatalog changes, then the YB-Master may have
+  // any operations postponed to the end of transaction. Report the status of the transaction and
+  // wait for the post-processing by YB-Master to end.
+  if (YsqlDdlRollbackEnabled() && has_docdb_schema_changes && metadata) {
+    if (FLAGS_report_ysql_ddl_txn_status_to_master) {
+      // If we failed to report the status of this DDL transaction, we can just log and ignore it,
+      // as the poller in the YB-Master will figure out the status of this transaction using the
+      // transaction status tablet and PG catalog.
+      ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, req.commit()),
+                  "Sending ReportYsqlDdlTxnStatus call failed");
+    }
+
+    if (FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) {
+      // Wait for DDL verification to end. This may include actions such as a) removing an added
+      // column in case of ADD COLUMN abort b) dropping a column marked for deletion in case of
+      // DROP COLUMN commit. c) removing DELETE marker on a column if DROP COLUMN aborted d) Roll
+      // back changes to table/column names in case of transaction abort. d) dropping a table in
+      // case of DROP TABLE commit. All the above actions take place only after the transaction
+      // is completed.
+      ERROR_NOT_OK(client().WaitForDdlVerificationToFinish(*metadata),
+                  "WaitForDdlVerificationToFinish call failed");
+    }
   }
   return Status::OK();
 }
@@ -1041,15 +1063,19 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
     }
   }
   auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();
-  if (!ddl_mode && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
+  if (!ddl_mode && xcluster_context_ &&
+      xcluster_context_->IsXClusterReadOnlyMode(options.namespace_id())) {
     for (const auto& op : data->req.ops()) {
       if (op.has_write() && !op.write().is_backfill()) {
         // Only DDLs and index backfill is allowed in xcluster read only mode.
         return STATUS(
-            InvalidArgument, "Data modification by DML is forbidden with STANDBY xCluster role");
+            IllegalState,
+            "Data modification is forbidden on database that is the target of a transactional "
+            "xCluster replication");
       }
     }
   }
+
   if (options.has_caching_info()) {
     data->cache_setter = VERIFY_RESULT(response_cache_.Get(
         options.mutable_caching_info(), &data->resp, &data->sidecars, deadline));
@@ -1146,8 +1172,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
     return Status::OK();
   }
 
-  auto xcluster_safe_time =
-      VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(namespace_id));
+  auto xcluster_safe_time = VERIFY_RESULT(xcluster_context_->GetSafeTime(namespace_id));
   if (!xcluster_safe_time) {
     // No xCluster safe time for this namespace.
       return Status::OK();
@@ -1169,8 +1194,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
   // If read_point is set to a time ahead of the xcluster safe time then we wait.
   return WaitFor(
       [&requested_read_time, &namespace_id, this]() -> Result<bool> {
-        auto safe_time =
-            VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(namespace_id));
+        auto safe_time = VERIFY_RESULT(xcluster_context_->GetSafeTime(namespace_id));
         if (!safe_time) {
           // We dont have a safe time anymore so no need to wait.
           return true;
@@ -1802,8 +1826,12 @@ void PgClientSession::GetTableKeyRanges(
     read_request->set_limit(max_num_ranges);
   }
 
+  read_request->set_is_forward_scan(is_forward);
   auto* req = read_request->mutable_get_tablet_key_ranges_request();
 
+  // IsInclusive is actually ignored by Tablet::GetTabletKeyRanges, and it always treats both
+  // boundaries as inclusive. But we are setting it here to avoid check failures inside
+  // YBPgsqlReadOp.
   if (!lower_bound_key.empty()) {
     read_request->mutable_lower_bound()->mutable_key()->assign(
         lower_bound_key.cdata(), lower_bound_key.size());
@@ -1814,10 +1842,9 @@ void PgClientSession::GetTableKeyRanges(
   if (!upper_bound_key.empty()) {
     read_request->mutable_upper_bound()->mutable_key()->assign(
         upper_bound_key.cdata(), upper_bound_key.size());
-    read_request->mutable_upper_bound()->set_is_inclusive(false);
+    read_request->mutable_upper_bound()->set_is_inclusive(true);
     req->mutable_upper_bound_key()->assign(upper_bound_key.cdata(), upper_bound_key.size());
   }
-  req->set_is_forward(is_forward);
   req->set_range_size_bytes(range_size_bytes);
   req->set_max_key_length(max_key_length);
 

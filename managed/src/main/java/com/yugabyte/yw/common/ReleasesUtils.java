@@ -1,5 +1,7 @@
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
@@ -35,12 +37,14 @@ import play.libs.Json;
 public class ReleasesUtils {
 
   @Inject private Config appConfig;
+  @Inject private ConfigHelper configHelper;
 
   public final String RELEASE_PATH_CONFKEY = "yb.releases.artifacts.upload_path";
 
   public final String YB_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
-  public final String YB_HELM_PACKAGE_REGEX = "(.*)yugabyte-(?:ee-)?(.*)-(helm)(.*).tar.gz";
+  // We can see helm packages as either yugabyte-<version>.tgz or yugabyte-version-helm.tgz
+  public final String YB_HELM_PACKAGE_REGEX = "yugabyte-(?:ee-)?(.*?)(?:-helm)?.tar.gz";
   // Match release form 2.16.1.2 and return 2.16 or 2024.1.0.0 and return 2024
   public final String YB_VERSION_TYPE_REGEX = "(2\\.\\d+|\\d\\d\\d\\d)";
 
@@ -56,6 +60,12 @@ public class ReleasesUtils {
         }
       };
 
+  public static class MetadataParseException extends Exception {
+    public MetadataParseException(String errMsg) {
+      super(errMsg);
+    }
+  }
+
   public static class ExtractedMetadata {
     public String version;
     public Release.YbType yb_type;
@@ -65,6 +75,7 @@ public class ReleasesUtils {
     public String release_type;
     public Date release_date;
     public String release_notes;
+    public String minimumYbaVersion;
   }
 
   public ExtractedMetadata metadataFromPath(Path releaseFilePath) {
@@ -80,8 +91,9 @@ public class ReleasesUtils {
               new BufferedInputStream(new FileInputStream(releaseFilePath.toFile())));
       em.sha256 = sha256;
       return em;
-    } catch (RuntimeException e) {
+    } catch (MetadataParseException e) {
       // Fallback to file name validation
+      log.warn("falling back to file name metadata parsing for file " + releaseFilePath.toString());
       ExtractedMetadata em = metadataFromName(releaseFilePath.getFileName().toString());
       em.sha256 = sha256;
       return em;
@@ -94,8 +106,9 @@ public class ReleasesUtils {
   public ExtractedMetadata versionMetadataFromURL(URL url) {
     try {
       return versionMetadataFromInputStream(new BufferedInputStream(url.openStream()));
-    } catch (RuntimeException e) {
+    } catch (MetadataParseException e) {
       // Fallback to file name validation
+      log.warn("falling back to file name metadata parsing for url " + url.toString(), e);
       ExtractedMetadata em = metadataFromName(url.getFile());
       return em;
     } catch (IOException e) {
@@ -105,7 +118,8 @@ public class ReleasesUtils {
   }
 
   // Everything but the sha256
-  private ExtractedMetadata versionMetadataFromInputStream(InputStream inputStream) {
+  private ExtractedMetadata versionMetadataFromInputStream(InputStream inputStream)
+      throws MetadataParseException {
     ExtractedMetadata metadata = new ExtractedMetadata();
     try (GzipCompressorInputStream gzIn = new GzipCompressorInputStream(inputStream);
         TarArchiveInputStream tarInput = new TarArchiveInputStream(gzIn)) {
@@ -117,8 +131,9 @@ public class ReleasesUtils {
           // oneshot
           byte[] fileContent = new byte[(int) entry.getSize()];
           tarInput.read(fileContent, 0, fileContent.length);
-          log.debug("read version_metadata.json string: {}", new String(fileContent));
+          log.trace("read version_metadata.json string: {}", new String(fileContent));
           JsonNode node = Json.parse(fileContent);
+          metadata.minimumYbaVersion = getAndValidateYbaMinimumVersion(node);
           metadata.yb_type = Release.YbType.YBDB;
 
           // Populate required fields from version metadata. Bad Request if required fields do not
@@ -129,13 +144,13 @@ public class ReleasesUtils {
                     "%s-b%s",
                     node.get("version_number").asText(), node.get("build_number").asText());
           } else {
-            throw new RuntimeException("no version_number or build_number found");
+            throw new MetadataParseException("no version_number or build_number found");
           }
           if (node.has("platform")) {
             metadata.platform =
                 ReleaseArtifact.Platform.valueOf(node.get("platform").asText().toUpperCase());
           } else {
-            throw new RuntimeException("no platform found");
+            throw new MetadataParseException("no platform found");
           }
           // TODO: release type should be mandatory
           if (node.has("release_type")) {
@@ -149,7 +164,7 @@ public class ReleasesUtils {
             if (node.has("architecture")) {
               metadata.architecture = Architecture.valueOf(node.get("architecture").asText());
             } else {
-              throw new RuntimeException("no 'architecture' for linux platform");
+              throw new MetadataParseException("no 'architecture' for linux platform");
             }
           }
 
@@ -170,10 +185,10 @@ public class ReleasesUtils {
         }
       } // end of while loop
       log.error("No verison_metadata found in given input stream");
-      throw new RuntimeException("no version_metadata found");
+      throw new MetadataParseException("no version_metadata found");
     } catch (java.io.IOException e) {
       log.error("failed reading the local file", e);
-      throw new RuntimeException("failed to read metadata");
+      throw new MetadataParseException("failed to read metadata");
     }
   }
 
@@ -237,18 +252,22 @@ public class ReleasesUtils {
       }
     } else if (helmPackage.find()) {
       em.platform = ReleaseArtifact.Platform.KUBERNETES;
-      em.version = helmPackage.group(2);
+      em.version = helmPackage.group(1);
       em.architecture = null;
     } else {
       throw new RuntimeException("failed to parse package " + fileName);
     }
+    em.release_type = releaseTypeFromVersion(em.version);
+    return em;
+  }
+
+  public String releaseTypeFromVersion(String version) {
     Pattern versionPattern = Pattern.compile(YB_VERSION_TYPE_REGEX);
-    Matcher versionMatcher = versionPattern.matcher(em.version);
+    Matcher versionMatcher = versionPattern.matcher(version);
     if (!versionMatcher.find()) {
       throw new RuntimeException("Could not parse version");
     }
-    em.release_type = releaseTypeMap.getOrDefault(versionMatcher.group(), "PREVIEW");
-    return em;
+    return releaseTypeMap.getOrDefault(versionMatcher.group(), "PREVIEW");
   }
 
   public ReleaseMetadata releaseToReleaseMetadata(Release release) {
@@ -282,10 +301,10 @@ public class ReleasesUtils {
     s3Location.paths = new ReleaseMetadata.PackagePaths();
     if (artifact.isKubernetes()) {
       s3Location.paths.helmChart = s3File.path;
-      s3Location.paths.helmChartChecksum = artifact.getSha256();
+      s3Location.paths.helmChartChecksum = artifact.getFormattedSha256();
     } else {
       s3Location.paths.x86_64 = s3File.path;
-      s3Location.paths.x86_64_checksum = artifact.getSha256();
+      s3Location.paths.x86_64_checksum = artifact.getFormattedSha256();
     }
     return s3Location;
   }
@@ -297,10 +316,10 @@ public class ReleasesUtils {
     gcsLocation.paths = new ReleaseMetadata.PackagePaths();
     if (artifact.isKubernetes()) {
       gcsLocation.paths.helmChart = gcsFile.path;
-      gcsLocation.paths.helmChartChecksum = artifact.getSha256();
+      gcsLocation.paths.helmChartChecksum = artifact.getFormattedSha256();
     } else {
       gcsLocation.paths.x86_64 = gcsFile.path;
-      gcsLocation.paths.x86_64_checksum = artifact.getSha256();
+      gcsLocation.paths.x86_64_checksum = artifact.getFormattedSha256();
     }
     return gcsLocation;
   }
@@ -310,11 +329,39 @@ public class ReleasesUtils {
     httpLocation.paths = new ReleaseMetadata.PackagePaths();
     if (artifact.isKubernetes()) {
       httpLocation.paths.helmChart = artifact.getPackageURL();
-      httpLocation.paths.helmChartChecksum = artifact.getSha256();
+      httpLocation.paths.helmChartChecksum = artifact.getFormattedSha256();
     } else {
       httpLocation.paths.x86_64 = artifact.getPackageURL();
-      httpLocation.paths.x86_64_checksum = artifact.getSha256();
+      httpLocation.paths.x86_64_checksum = artifact.getFormattedSha256();
     }
     return httpLocation;
+  }
+
+  private String getAndValidateYbaMinimumVersion(JsonNode node) {
+    if (node.has("minimum_yba_version")) {
+      String minVersion = node.get("minimum_yba_version").asText();
+      String currVersion = ybaCurrentVersion();
+      // If the current version is less then the minimum version, validation failed
+      if (Util.compareYbVersions(currVersion, minVersion) < 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "current version %s is less then the specified yba minimum version %s",
+                currVersion.toString(), minVersion.toString()));
+      }
+      return minVersion;
+    }
+    log.warn("no key 'minimum_yba_version' found");
+    return null;
+  }
+
+  private String ybaCurrentVersion() {
+    Map<String, Object> versionCfg =
+        configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion);
+    if (!versionCfg.containsKey("version")) {
+      throw new RuntimeException(
+          "no 'version' key found config " + ConfigHelper.ConfigType.SoftwareVersion);
+    }
+    return (String) versionCfg.get("version");
   }
 }

@@ -144,10 +144,7 @@ export const AddReleaseModal = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [reviewReleaseDetails, setReviewReleaseDetails] = useState<boolean>(false);
   const [releaseMetadatFetchError, setReleaseMetadatFetchError] = useState<boolean>(false);
-  const [releaseBasePart, setReleaseBasePart] = useState<string>('');
-  const [releaseFirstPart, setReleaseFirstPart] = useState<string>('');
-  const [releaseSecondPart, setReleaseSecondPart] = useState<string>('');
-  const [releaseThirdPart, setReleaseThirdPart] = useState<string>('');
+  const [releaseVersion, setReleaseVersion] = useState<string>('');
   const [deploymentType, setDeploymentType] = useState<ReleasePlatform | null>(null);
   const [architecture, setArchitecure] = useState<ReleasePlatformArchitecture | null>(null);
   const [installationPackageFile, setInstallationPackageFile] = useState<File | undefined>(
@@ -171,7 +168,7 @@ export const AddReleaseModal = ({
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const { watch, control, handleSubmit, setValue } = formMethods;
+  const { watch, control, handleSubmit, setValue, getValues } = formMethods;
 
   const hideModal = () => {
     onClose();
@@ -294,7 +291,7 @@ export const AddReleaseModal = ({
   // When adding new release make a POST API call
   const addRelease = useMutation((payload: any) => ReleasesAPI.createRelease(payload), {
     onSuccess: (data) => {
-      toast.success('Add release successfully');
+      toast.success('Added release successfully');
       onActionPerformed();
       onClose();
     },
@@ -330,7 +327,7 @@ export const AddReleaseModal = ({
       // When metadata fetch fails, we display a different view where we want
       // the default selection of platform to be linux
       setValue('platform', ReleasePlatform.LINUX);
-      setValue('architecture', '');
+      setValue('architecture', ReleasePlatformArchitecture.X86);
       setValue('version', '');
       toast.error('Failed to extract metadata from URL');
     }
@@ -342,13 +339,12 @@ export const AddReleaseModal = ({
     setValue('platform', response.platform);
     setValue('sha256', response.sha256);
 
-    if (isAddRelease) {
-      setValue('version', response.version);
-      setValue('ybType', response.yb_type);
-      setValue('releaseType', response.release_type);
-      setValue('releaseDate', response.release_date);
-      setValue('releaseNotes', response.release_notes);
-    }
+    setValue('version', response.version);
+    setValue('ybType', response.yb_type);
+    setValue('releaseType', response.release_type);
+    setValue('releaseDate', response.release_date);
+    setValue('releaseNotes', response.release_notes);
+
     setUrlMetadata({
       version: response.version,
       releaseType: response.release_type,
@@ -383,6 +379,8 @@ export const AddReleaseModal = ({
           setValue('version', response.version);
           setValue('ybType', response.yb_type);
           setValue('sha256', response.sha256);
+          setValue('platform', ReleasePlatform.LINUX);
+          setValue('architecture', ReleasePlatformArchitecture.X86);
           toast.error('Failed to extract metadata from URL');
         }
       },
@@ -394,7 +392,7 @@ export const AddReleaseModal = ({
         // When metadata fetch fails, we display a different view where we want
         // the default selection of platform to be linux
         setValue('platform', ReleasePlatform.LINUX);
-        setValue('architecture', '');
+        setValue('architecture', ReleasePlatformArchitecture.X86);
         setValue('version', '');
         toast.error('Failed to extract metadata from URL');
       }
@@ -417,7 +415,7 @@ export const AddReleaseModal = ({
         // When metadata fetch fails, we display a different view where we want
         // the default selection of platform to be linux
         setValue('platform', ReleasePlatform.LINUX);
-        setValue('architecture', '');
+        setValue('architecture', ReleasePlatformArchitecture.X86);
         setValue('version', '');
         toast.error('Failed to extract metadata from the file');
       }
@@ -430,15 +428,16 @@ export const AddReleaseModal = ({
       const newReleasePayload: any = {
         version: formValues.version,
         release_tag: formValues.releaseTag,
-        yb_type: formValues.ybType,
+        yb_type: formValues.ybType ?? ReleaseYBType.YUGABYTEDB,
         artifacts: [
           {
             sha256: formValues.sha256,
             platform: formValues.platform,
-            architecture: formValues.architecture
+            architecture:
+              formValues.platform === ReleasePlatform.KUBERNETES ? null : formValues.architecture
           }
         ],
-        release_type: formValues.releaseType,
+        release_type: formValues.releaseType ?? '',
         release_date: formValues.releaseDate,
         release_notes: formValues.releaseNotes
       };
@@ -456,8 +455,10 @@ export const AddReleaseModal = ({
       newArchitecturePayload.artifacts.push({
         sha256: formValues.sha256,
         platform: formValues.platform,
-        architecture: formValues.architecture
+        architecture:
+          formValues.platform === ReleasePlatform.KUBERNETES ? null : formValues.architecture
       });
+      newArchitecturePayload.release_tag = formValues.releaseTag;
       setIsSubmitting(true);
       const artifactsLength = newArchitecturePayload.artifacts.length;
       if (importMethodValue === AddReleaseImportMethod.URL) {
@@ -475,24 +476,9 @@ export const AddReleaseModal = ({
     setIsSubmitting(false);
   };
 
-  const handleReleaseFirstPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseFirstPart(event.target.value);
-  };
-
-  const handleReleaseBasePart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseBasePart(event.target.value);
-  };
-
-  const handleReleaseSecondPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReleaseSecondPart(event.target.value);
-  };
-
-  const handleReleaseThirdPart = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setValue(
-      'version',
-      releaseBasePart + releaseFirstPart + releaseSecondPart + event.target.value
-    );
-    setReleaseThirdPart(event.target.value);
+  const handleReleaseVersionPart = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setValue('version', event.target.value);
+    setReleaseVersion(event.target.value);
   };
 
   const handlePlatformSelect = (val: ReleasePlatformButtonProps) => {
@@ -539,11 +525,11 @@ export const AddReleaseModal = ({
     if (importMethodValue === AddReleaseImportMethod.URL) {
       if (isNonEmptyString(errorHelperText)) {
         return true;
-      } else if (!isNonEmptyString(versionValue) && !isNonEmptyString(architectureValue)) {
+      } else if (!isNonEmptyString(versionValue)) {
         return true;
       } else if (!isNonEmptyString(installationPackageUrlValue)) {
         return true;
-      } else if (!urlMetadata) {
+      } else if (!releaseMetadatFetchError && !urlMetadata) {
         return true;
       }
     }
@@ -587,7 +573,7 @@ export const AddReleaseModal = ({
       }}
     >
       <FormProvider {...formMethods}>
-        <Box>
+        <Box data-testid="AddRelease-Container">
           <Box className={helperClasses.bannerBox}>
             {isMetadataLoading && <YBBanner message={t('releases.bannerFileUploadMessage')} />}
           </Box>
@@ -687,14 +673,8 @@ export const AddReleaseModal = ({
                   releaseMetadatFetchError={releaseMetadatFetchError}
                   deploymentType={deploymentType}
                   architecture={architecture}
-                  releaseBasePart={releaseBasePart}
-                  releaseFirstPart={releaseFirstPart}
-                  releaseSecondPart={releaseSecondPart}
-                  releaseThirdPart={releaseThirdPart}
-                  handleReleaseBasePart={handleReleaseBasePart}
-                  handleReleaseSecondPart={handleReleaseSecondPart}
-                  handleReleaseThirdPart={handleReleaseThirdPart}
-                  handleReleaseFirstPart={handleReleaseFirstPart}
+                  releaseVersion={releaseVersion}
+                  handleReleaseVersionPart={handleReleaseVersionPart}
                   handlePlatformSelect={handlePlatformSelect}
                   handleArchitectureSelect={handleArchitectureSelect}
                 />
@@ -703,8 +683,9 @@ export const AddReleaseModal = ({
                     mt={4}
                     className={helperClasses.reviewReleaseMetadataRow}
                     style={{ cursor: 'pointer' }}
+                    onClick={handleViewTag}
                   >
-                    <img src={viewTag ? PathDown : Path} alt="path" onClick={handleViewTag} />
+                    <img src={viewTag ? PathDown : Path} alt="path" />
                     <span className={clsx(helperClasses.largerMetaData, helperClasses.marginLeft)}>
                       {t('releases.addReleaseModal.addReleaseTag')}
                     </span>

@@ -25,7 +25,6 @@ import {
 } from '../../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
-  AlertName,
   DEFAULT_METRIC_TIME_RANGE_OPTION,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
@@ -56,7 +55,10 @@ import {
   MetricTrace
 } from '../../../../redesign/helpers/dtos';
 import { NodeAggregation, SplitMode, SplitType } from '../../../metrics/dtos';
-import { IAlertConfiguration as AlertConfiguration } from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
+import {
+  AlertTemplate,
+  IAlertConfiguration as AlertConfiguration
+} from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 interface ConfigReplicationLagGraphProps {
   xClusterConfig: XClusterConfig;
@@ -139,7 +141,7 @@ export const XClusterMetrics = ({
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: xClusterConfig.sourceUniverseUUID
   };
   const alertConfigQuery = useQuery<AlertConfiguration[]>(

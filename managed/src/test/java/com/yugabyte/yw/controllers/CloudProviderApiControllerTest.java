@@ -919,6 +919,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ArrayNode regionsList = Json.newArray();
     regionsList.add(region);
     bodyJson.set("regions", regionsList);
+    ArrayNode imageBundlesList = Json.newArray();
+    ObjectNode ybImage = Json.newObject().put("ybImage", "image_id");
+    ObjectNode regions = Json.newObject().set("us-west-2", ybImage);
+    ObjectNode details = Json.newObject().put("arch", "x86_64").set("regions", regions);
+    ObjectNode imageBundle = Json.newObject().put("name", "").set("details", details);
+    imageBundlesList.add(imageBundle);
+    bodyJson.set("imageBundles", imageBundlesList);
     Image image = new Image();
     image.setArchitecture("random_arch");
     image.setRootDeviceType("random_device_type");
@@ -1411,14 +1418,15 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     p.setImageBundles(ImmutableList.of());
     result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
     assertBadRequest(result, "Image Bundle ib-1 is associated with some universes. Cannot delete!");
-
-    ib.setUseAsDefault(false);
+    ib.getDetails().setSshUser("centos");
     p.setImageBundles(ImmutableList.of(ib));
     result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
     assertBadRequest(result, "Image Bundle ib-1 is associated with some universes. Cannot modify!");
 
     result = getProvider(p.getUuid());
     Provider provider = Json.fromJson(Json.parse(contentAsString(result)), Provider.class);
+    // Default for the bundle can be changed in case it is associated to the universe.
+    provider.getImageBundles().get(0).setUseAsDefault(false);
     JsonNode providerJson = Json.toJson(provider);
     JsonNode regionJson = providerJson.get("regions");
     ObjectMapper objectMapper = new ObjectMapper();

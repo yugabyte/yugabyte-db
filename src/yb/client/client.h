@@ -643,7 +643,8 @@ class YBClient {
       cdc::StreamModeTransactional* transactional,
       std::optional<uint64_t>* consistent_snapshot_time = nullptr,
       std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
-      std::optional<uint64_t>* stream_creation_time = nullptr);
+      std::optional<uint64_t>* stream_creation_time = nullptr,
+      std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(const ReplicationSlotName& replication_slot_name);
 
@@ -737,7 +738,8 @@ class YBClient {
   Result<std::vector<YBTableName>> ListTables(
       const std::string& filter = "",
       bool exclude_ysql = false,
-      const std::string& ysql_db_filter = "");
+      const std::string& ysql_db_filter = "",
+      bool skip_hidden = false);
 
   // List tables in a namespace.
   //
@@ -817,9 +819,9 @@ class YBClient {
     CoarseTimePoint deadline,
     std::vector<std::string>* master_uuids);
 
-  // Check if the table given by 'table_name' exists.
-  // Result value is set only on success.
-  Result<bool> TableExists(const YBTableName& table_name);
+  // Check if the table given by 'table_name' exists. 'skip_hidden' indicates whether to consider
+  // hidden tables. Result value is set only on success.
+  Result<bool> TableExists(const YBTableName& table_name, bool skip_hidden = false);
 
   Result<bool> IsLoadBalanced(uint32_t num_servers);
   Result<bool> IsLoadBalancerIdle();
@@ -934,6 +936,8 @@ class YBClient {
 
   // Provide the completion status of 'txn' to the YB-Master.
   Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
+
+  Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn);
 
   Result<bool> CheckIfPitrActive();
 

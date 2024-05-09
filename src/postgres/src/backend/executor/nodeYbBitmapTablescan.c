@@ -32,6 +32,7 @@
 
 
 static TupleTableSlot *YbBitmapTableNext(YbBitmapTableScanState *node);
+static TableScanDesc CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate);
 
 /* ----------------------------------------------------------------
  *		YbBitmapTableNext
@@ -44,18 +45,19 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 {
 	YbTIDBitmap  *ybtbm;
 	TableScanDesc tsdesc;
-	EState	   *estate;
 	TupleTableSlot *slot;
 	YbTBMIterateResult *ybtbmres;
 	ExprContext *econtext;
 	MemoryContext oldcontext;
 	YbScanDesc ybScan;
 
+	if (!node->ss.ss_currentScanDesc)
+		node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(node);
+
 	/*
 	 * extract necessary information from index scan node
 	 */
 	tsdesc = node->ss.ss_currentScanDesc;
-	estate = node->ss.ps.state;
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;
 	ybtbm = node->ybtbm;
@@ -79,27 +81,7 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		node->work_mem_exceeded = ybtbm->work_mem_exceeded;
 		node->average_ybctid_bytes = yb_tbm_get_average_bytes(ybtbm);
 		node->recheck_required |= ybtbm->recheck;
-
-		YbSeqScan *plan = (YbSeqScan *) node->ss.ps.plan;
-		YbScanDesc ybScan = ybcBeginScan(node->ss.ss_currentRelation,
-										 NULL /* index */,
-										 false /* xs_want_itup */,
-										 0 /* nkeys */,
-										 NULL /* key */,
-										 (Scan *) plan,
-										 NULL /* rel_pushdown */,
-										 NULL /* idx_pushdown */,
-										 NULL /* aggrefs */,
-										 0 /* distinct_prefixlen */,
-										 &estate->yb_exec_params,
-										 false /* is_internal_scan */,
-										 false /* fetch_ybctids_only */);
-
-		tsdesc = (TableScanDesc) ybScan;
-		tsdesc->rs_snapshot = estate->es_snapshot;
-		tsdesc->rs_flags = SO_TYPE_SEQSCAN;
-
-		node->ss.ss_currentScanDesc = tsdesc;
+		node->skipped_tuples = 0;
 	}
 
 	ybScan = (YbScanDesc) tsdesc;
@@ -246,6 +228,32 @@ ExecYbBitmapTableScan(PlanState *pstate)
 	return ExecScan(&node->ss,
 					(ExecScanAccessMtd) YbBitmapTableNext,
 					(ExecScanRecheckMtd) YbBitmapTableRecheck);
+}
+
+static TableScanDesc
+CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
+{
+	TableScanDesc tsdesc;
+	YbSeqScan *plan = (YbSeqScan *) scanstate->ss.ps.plan;
+	YbScanDesc ybScan = ybcBeginScan(scanstate->ss.ss_currentRelation,
+									 NULL /* index */,
+									 false /* xs_want_itup */,
+									 0 /* nkeys */,
+									 NULL /* key */,
+									 (Scan *) plan,
+									 NULL /* rel_pushdown */,
+									 NULL /* idx_pushdown */,
+									 NULL /* aggrefs */,
+									 0 /* distinct_prefixlen */,
+									 &scanstate->ss.ps.state->yb_exec_params,
+									 false /* is_internal_scan */,
+									 false /* fetch_ybctids_only */);
+
+	tsdesc = (TableScanDesc) ybScan;
+	tsdesc->rs_snapshot = scanstate->ss.ps.state->es_snapshot;
+	tsdesc->rs_flags = SO_TYPE_SEQSCAN;
+
+	return tsdesc;
 }
 
 /* ----------------------------------------------------------------

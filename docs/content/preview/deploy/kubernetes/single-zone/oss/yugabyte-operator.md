@@ -28,14 +28,16 @@ type: docs
   <li >
     <a href="../yugabyte-operator/" class="nav-link active">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      Kubernetes Operator (legacy)
+      Kubernetes Operator
     </a>
   </li>
 </ul>
 
-The Kubernetes Operator for YugabyteDB is no longer maintained. It is recommended that you use the actively maintained [Helm charts](../helm-chart/) for YugabyteDB to install YugabyteDB on Kubernetes. For documentation on using the Kubernetes Operator for YugabyteDB, refer to the [GitHub repository](https://github.com/yugabyte/yugabyte-operator).
+A preliminary version of the YugabyteDB Kubernetes Operator is available in [Tech Preview](/preview/releases/versioning/#feature-availability) (not recommended for production use). The operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
 
-A newer version of the Kubernetes Operator for YugabyteDB is in development.
+For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.
+
+<!-- It is recommended that you use the actively maintained [Helm charts](../helm-chart/) for YugabyteDB to install YugabyteDB on Kubernetes. -->
 
 <!--
 Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`.

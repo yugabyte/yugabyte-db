@@ -8,6 +8,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.RollbackAutoFlagsResponse;
@@ -16,8 +18,6 @@ import org.yb.master.MasterTypes.MasterErrorPB;
 
 @Slf4j
 public class RollbackAutoFlags extends ServerSubTaskBase {
-
-  private static final long SLEEP_AFTER_ROLLBACK_MS = 1000 * 180;
 
   @Inject
   protected RollbackAutoFlags(BaseTaskDependencies baseTaskDependencies) {
@@ -41,7 +41,7 @@ public class RollbackAutoFlags extends ServerSubTaskBase {
   @Override
   public void run() {
     log.info("Running {}", getName());
-
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     try (YBClient client = getClient()) {
       RollbackAutoFlagsResponse resp = client.rollbackAutoFlags(taskParams().rollbackVersion);
       if (resp.hasError()) {
@@ -49,12 +49,12 @@ public class RollbackAutoFlags extends ServerSubTaskBase {
         log.error(error.toString());
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, error.toString());
       }
-      if (resp.getFlagsRolledBack()) {
-        log.info(
-            "Some AutoFlags were rolled back. Sleeping {} ms to allow in-flight operations to"
-                + " complete",
-            SLEEP_AFTER_ROLLBACK_MS);
-        waitFor(Duration.ofMillis(SLEEP_AFTER_ROLLBACK_MS));
+      Duration sleepTime =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds);
+      log.info("waiting for {} ms after updating auto flags", sleepTime.toMillis());
+      if (sleepTime.toMillis() > 0) {
+        waitFor(sleepTime);
       }
     } catch (Exception e) {
       log.error("Rollback AutoFlag task failed: ", e);

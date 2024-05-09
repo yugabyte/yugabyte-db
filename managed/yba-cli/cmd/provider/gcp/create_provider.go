@@ -7,7 +7,6 @@ package gcp
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -208,6 +207,8 @@ func init() {
 			formatter.Colorize("Required if use-host-credentials is set to false.",
 				formatter.GreenColor),
 			util.GCPCredentialsEnv))
+	createGCPProviderCmd.Flags().Bool("use-host-credentials", false,
+		"[Optional] Enabling YugabyteDB Anywhere Host credentials in GCP, defaults to false.")
 
 	createGCPProviderCmd.Flags().String("network", "",
 		"[Required] Custom GCE network name.")
@@ -216,8 +217,6 @@ func init() {
 		"[Optional] Tags for firewall rules in GCP.")
 	createGCPProviderCmd.Flags().Bool("use-host-vpc", true,
 		"[Optional] Enabling YugabyteDB Anywhere Host VPC in GCP.")
-	createGCPProviderCmd.Flags().Bool("use-host-credentials", false,
-		"[Optional] Enabling YugabyteDB Anywhere Host credentials in GCP, defaults to false.")
 	createGCPProviderCmd.Flags().String("project-id", "",
 		"[Optional] Project ID that hosts universe nodes in GCP.")
 	createGCPProviderCmd.Flags().String("shared-vpc-project-id", "",
@@ -263,55 +262,14 @@ func buildGCPRegions(regionStrings []string, allowed bool, version string) (
 	res []ybaclient.Region) {
 	if len(regionStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one region is required per provider.",
+			formatter.Colorize("Atleast one region is required per provider.\n",
 				formatter.RedColor))
 	}
 	for _, regionString := range regionStrings {
-		region := map[string]string{}
-		for _, regionInfo := range strings.Split(regionString, ",") {
-			kvp := strings.Split(regionInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in region description.",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "region-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "shared-subnet":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["shared-subnet"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "instance-template":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["instance-template"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "yb-image":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["yb-image"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			}
-		}
-		if _, ok := region["name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Name not specified in region.",
-					formatter.RedColor))
-		}
+		region := providerutil.BuildRegionMapFromString(regionString, "")
 		if _, ok := region["shared-subnet"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Subnet ID not specified in region.",
+				formatter.Colorize("Subnet ID not specified in region.\n",
 					formatter.RedColor))
 		}
 
@@ -332,7 +290,7 @@ func buildGCPRegions(regionStrings []string, allowed bool, version string) (
 		if !allowed {
 			logrus.Info(
 				fmt.Sprintf("YugabyteDB Anywhere version %s does not support Instance "+
-					"Templates, ignoring value.", version))
+					"Templates, ignoring value.\n", version))
 		}
 		res = append(res, r)
 	}
@@ -346,7 +304,7 @@ func buildGCPZones(sharedSubnet string) (res []ybaclient.AvailabilityZone) {
 	res = append(res, z)
 	if len(res) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return res

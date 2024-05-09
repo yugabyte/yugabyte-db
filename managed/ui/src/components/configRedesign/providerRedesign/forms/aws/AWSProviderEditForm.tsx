@@ -93,7 +93,7 @@ import {
   hasNecessaryPerm,
   RbacValidator
 } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
@@ -208,6 +208,9 @@ export const AWSProviderEditForm = ({
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
+
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
 
   if (hostInfoQuery.isError) {
     return (
@@ -619,6 +622,7 @@ export const AWSProviderEditForm = ({
               infoTitle="SSH Key Pairs"
               infoContent="YBA requires SSH access to DB nodes. For public clouds, YBA provisions the VM instances as part of the DB node provisioning. The OS images come with a preprovisioned user."
             >
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
@@ -629,7 +633,7 @@ export const AWSProviderEditForm = ({
                     'sshUser',
                     isFormDisabled,
                     isProviderInUse
-                  )}
+                  ) || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -645,7 +649,7 @@ export const AWSProviderEditForm = ({
                     'sshPort',
                     isFormDisabled,
                     isProviderInUse
-                  )}
+                  ) || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>

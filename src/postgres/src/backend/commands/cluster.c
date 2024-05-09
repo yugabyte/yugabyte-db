@@ -771,36 +771,9 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 	Assert(OIDNewHeap != InvalidOid);
 
 	if (IsYugaByteEnabled() && relpersistence != RELPERSISTENCE_TEMP)
-	{
-		CreateStmt *dummyStmt	 = makeNode(CreateStmt);
-		dummyStmt->relation		 = makeRangeVar(NULL, NewHeapName, -1);
-		Relation pg_constraint = table_open(ConstraintRelationId,
-										    RowExclusiveLock);
-		YbATCopyPrimaryKeyToCreateStmt(OldHeap, pg_constraint, dummyStmt);
-		table_close(pg_constraint, RowExclusiveLock);
-		if (yb_copy_split_options)
-		{
-			YbGetTableProperties(OldHeap);
-			dummyStmt->split_options = YbGetSplitOptions(OldHeap);
-		}
-		bool is_null;
-		HeapTuple tuple = SearchSysCache1(RELOID,
-			ObjectIdGetDatum(RelationGetRelid(OldHeap)));
-		Datum datum = SysCacheGetAttr(RELOID,
-			tuple, Anum_pg_class_reloptions, &is_null);
-		if (!is_null)
-			dummyStmt->options = untransformRelOptions(datum);
-		ReleaseSysCache(tuple);
-		YBCCreateTable(dummyStmt, RelationGetRelationName(OldHeap),
-					   OldHeap->rd_rel->relkind, OldHeapDesc, OIDNewHeap,
-					   namespaceid,
-					   YbGetTableProperties(OldHeap)->tablegroup_oid,
-					   InvalidOid, NewTableSpace, OIDOldHeap,
-					   OldHeap->rd_rel->relfilenode);
-
-		if (yb_test_fail_table_rewrite_after_creation)
-			elog(ERROR, "Injecting error.");
-	}
+		YbRelationSetNewRelfileNode(OldHeap, OIDNewHeap,
+									yb_copy_split_options,
+									false /* is_truncate */);
 
 	ReleaseSysCache(tuple);
 

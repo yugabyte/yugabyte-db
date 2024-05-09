@@ -78,7 +78,7 @@ import {
   hasNecessaryPerm,
   RbacValidator
 } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
@@ -200,6 +200,9 @@ export const AZUProviderEditForm = ({
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
+
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
 
   if (hostInfoQuery.isError) {
     return (
@@ -548,6 +551,7 @@ export const AZUProviderEditForm = ({
               providerStatus={providerConfig.usabilityState}
             />
             <FieldGroup heading="SSH Key Pairs">
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
@@ -558,7 +562,7 @@ export const AZUProviderEditForm = ({
                     'sshUser',
                     isFormDisabled,
                     isProviderInUse
-                  )}
+                  ) || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -574,7 +578,7 @@ export const AZUProviderEditForm = ({
                     'sshPort',
                     isFormDisabled,
                     isProviderInUse
-                  )}
+                  ) || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>

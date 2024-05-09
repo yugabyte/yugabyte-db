@@ -278,6 +278,12 @@ DEFINE_NON_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_r
     20000,
     "WaitForYsqlBackendsCatalogVersion client-to-master RPC timeout. Specifically, both the "
     "postgres-to-tserver and tserver-to-master RPC timeout.");
+
+DEFINE_RUNTIME_uint32(ddl_verification_timeout_multiplier, 5,
+    "Multiplier for the timeout used for DDL verification. DDL verification may involve waiting for"
+    " DDL operations to finish at the yb-master. This is a multiplier for"
+    " default_admin_operation_timeout which is the timeout used for a single DDL operation ");
+
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms, advanced);
 
 namespace yb {
@@ -1504,7 +1510,8 @@ Status YBClient::GetCDCStream(
     cdc::StreamModeTransactional* transactional,
     std::optional<uint64_t>* consistent_snapshot_time,
     std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option,
-    std::optional<uint64_t>* stream_creation_time) {
+    std::optional<uint64_t>* stream_creation_time,
+    std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1534,6 +1541,15 @@ Status YBClient::GetCDCStream(
   }
 
   *transactional = cdc::StreamModeTransactional(resp.stream().transactional());
+
+  if (replica_identity_map) {
+    replica_identity_map->clear();
+    replica_identity_map->reserve(resp.stream().replica_identity_map_size());
+    for (const auto& entry : resp.stream().replica_identity_map()) {
+        replica_identity_map->emplace(entry.first, entry.second);
+    }
+  }
+
   if (consistent_snapshot_time && resp.stream().has_cdcsdk_consistent_snapshot_time()) {
     *consistent_snapshot_time = resp.stream().cdcsdk_consistent_snapshot_time();
   }
@@ -2490,6 +2506,13 @@ Status YBClient::ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_
   return data_->ReportYsqlDdlTxnStatus(txn, is_committed, deadline);
 }
 
+Status YBClient::WaitForDdlVerificationToFinish(const TransactionMetadata& txn) {
+  auto deadline = CoarseMonoClock::Now() +
+      MonoDelta::FromSeconds(FLAGS_ddl_verification_timeout_multiplier *
+                             default_admin_operation_timeout().ToSeconds());
+  return data_->WaitForDdlVerificationToFinish(txn, deadline);
+}
+
 Result<bool> YBClient::CheckIfPitrActive() {
   auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
   return data_->CheckIfPitrActive(deadline);
@@ -2497,7 +2520,8 @@ Result<bool> YBClient::CheckIfPitrActive() {
 
 Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
                                                       bool exclude_ysql,
-                                                      const std::string& ysql_db_filter) {
+                                                      const std::string& ysql_db_filter,
+                                                      bool skip_hidden) {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
 
@@ -2520,6 +2544,9 @@ Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
     DCHECK(table_info.namespace_().has_name());
     DCHECK(table_info.namespace_().has_id());
     if (exclude_ysql && table_info.table_type() == TableType::PGSQL_TABLE_TYPE) {
+      continue;
+    }
+    if (skip_hidden && table_info.hidden()) {
       continue;
     }
     result.emplace_back(master::GetDatabaseTypeForTable(table_info.table_type()),
@@ -2648,8 +2675,10 @@ Result<pair<Schema, uint32_t>> YBClient::GetTableSchemaFromSysCatalog(
   return make_pair(current_schema, resp.version());
 }
 
-Result<bool> YBClient::TableExists(const YBTableName& table_name) {
-  for (const YBTableName& table : VERIFY_RESULT(ListTables(table_name.table_name()))) {
+Result<bool> YBClient::TableExists(const YBTableName& table_name, bool skip_hidden) {
+  auto tables = VERIFY_RESULT(ListTables(
+      table_name.table_name(), /*exclude_ysql=*/false, /*ysql_db_filter=*/"", skip_hidden));
+  for (const YBTableName& table : tables) {
     if (table == table_name) {
       return true;
     }

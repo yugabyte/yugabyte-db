@@ -74,15 +74,18 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
   // Cleanup streams marked for deletion and get the list of xcluster streams.
   std::unordered_set<xrepl::StreamId> CleanupAndGetAllXClusterStreams() {
     catalog_manager_->RunXReplBgTasks(epoch_);
-    return catalog_manager_->GetAllXreplStreamIds();
+    return catalog_manager_->GetAllXReplStreamIds();
   }
 
   void VerifyNamespaceCheckpointInfo(
-      const TableId& table_id1, const TableId& table_id2,
-      const std::unordered_set<xrepl::StreamId>& all_xcluster_streams,
+      const TableId& table_id1, const TableId& table_id2, size_t all_xcluster_streams_count,
       const master::GetXClusterStreamsResponsePB& resp, bool skip_schema_name_check = false) {
     ASSERT_FALSE(resp.initial_bootstrap_required());
     ASSERT_EQ(resp.table_infos_size(), 2);
+
+    auto all_xcluster_streams = CleanupAndGetAllXClusterStreams();
+    ASSERT_EQ(all_xcluster_streams.size(), all_xcluster_streams_count);
+
     std::set<TableId> table_ids;
     for (const auto& table_info : resp.table_infos()) {
       if (table_info.table_name() == kTableName1) {
@@ -160,11 +163,10 @@ TEST_F(XClusterOutboundReplicationGroupTest, TestMultipleTable) {
   auto resp = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
 
   // We should have 2 streams now.
-  auto all_xcluster_streams = CleanupAndGetAllXClusterStreams();
-  ASSERT_EQ(all_xcluster_streams.size(), 2);
-
+  size_t stream_count = 2;
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      table_id_1, table_id_2, all_xcluster_streams, resp, /*skip_schema_name_check=*/true));
+      table_id_1, table_id_2, stream_count, resp, /*skip_schema_name_check=*/true));
+
   for (const auto& table_info : resp.table_infos()) {
     // Order is not deterministic so search with the table name.
     if (table_info.table_name() == kTableName1) {
@@ -179,7 +181,7 @@ TEST_F(XClusterOutboundReplicationGroupTest, TestMultipleTable) {
       kReplicationGroupId, namespace_id_, {kTableName2, kTableName1},
       {pg_schema_name2, kPgSchemaName}));
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      table_id_1, table_id_2, all_xcluster_streams, resp, /*skip_schema_name_check=*/true));
+      table_id_1, table_id_2, stream_count, resp, /*skip_schema_name_check=*/true));
   ASSERT_EQ(resp.table_infos(0).pg_schema_name(), pg_schema_name2);
   ASSERT_EQ(resp.table_infos(1).pg_schema_name(), kPgSchemaName);
   ASSERT_EQ(resp.table_infos(0).table_name(), kTableName2);
@@ -192,7 +194,7 @@ TEST_F(XClusterOutboundReplicationGroupTest, TestMultipleTable) {
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
 
   // We should have 0 streams now.
-  all_xcluster_streams = CleanupAndGetAllXClusterStreams();
+  auto all_xcluster_streams = CleanupAndGetAllXClusterStreams();
   ASSERT_TRUE(all_xcluster_streams.empty());
 }
 
@@ -214,6 +216,7 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddDeleteNamespaces) {
   auto ns1_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
 
   // We should have 2 streams now.
+  size_t stream_count = 2;
   auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
   ASSERT_EQ(all_xcluster_streams_initial.size(), 2);
 
@@ -223,8 +226,8 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddDeleteNamespaces) {
   // Make sure only the namespace that was added is returned.
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_2));
 
-  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      ns1_table_id_1, ns1_table_id_2, all_xcluster_streams_initial, ns1_info));
+  ASSERT_NO_FATALS(
+      VerifyNamespaceCheckpointInfo(ns1_table_id_1, ns1_table_id_2, stream_count, ns1_info));
 
   // Add the second namespace.
   auto out_namespace_id2 =
@@ -233,8 +236,7 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddDeleteNamespaces) {
   ASSERT_EQ(out_namespace_id2, namespace_id_2);
 
   // We should have 4 streams now.
-  auto all_xcluster_streams_2ns = CleanupAndGetAllXClusterStreams();
-  ASSERT_EQ(all_xcluster_streams_2ns.size(), 4);
+  stream_count = 4;
 
   // The info of the first namespace should not change.
   auto ns1_info_dup = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
@@ -242,8 +244,8 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddDeleteNamespaces) {
 
   // Validate the seconds namespace.
   auto ns2_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_2));
-  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      ns2_table_id_1, ns2_table_id_2, all_xcluster_streams_2ns, ns2_info));
+  ASSERT_NO_FATALS(
+      VerifyNamespaceCheckpointInfo(ns2_table_id_1, ns2_table_id_2, stream_count, ns2_info));
 
   ASSERT_OK(client_->XClusterRemoveNamespaceFromOutboundReplicationGroup(
       kReplicationGroupId, namespace_id_));
@@ -283,12 +285,10 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddTable) {
 
   auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
 
-  all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
-  ASSERT_EQ(all_xcluster_streams_initial.size(), 2);
-
   auto ns1_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
-  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      table_id_1, table_id_2, all_xcluster_streams_initial, ns1_info));
+
+  size_t stream_count = 2;
+  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(table_id_1, table_id_2, stream_count, ns1_info));
 
   ASSERT_OK(VerifyWalRetentionOfTable(table_id_2));
 }

@@ -31,6 +31,11 @@ public class XClusterConfigEditFormData {
       example = "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]")
   public Set<String> tables;
 
+  @ApiModelProperty(
+      value =
+          "Whether or not YBA should also include all index tables from any provided main tables.")
+  public boolean autoIncludeIndexTables = true;
+
   @Valid
   @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
   public XClusterConfigCreateFormData.BootstrapParams bootstrapParams;

@@ -352,7 +352,7 @@ CREATE MATERIALIZED VIEW m3 with (colocation = false) AS SELECT * FROM t1;
 \c yugabyte
 DROP DATABASE colocation_test;
 
--- Test Colocated Materialized View 
+-- Test Colocated Materialized View
 CREATE DATABASE colocation_test WITH colocation = true;
 \c colocation_test
 CREATE TABLE t1 (a INT PRIMARY KEY) WITH (colocation = true);
@@ -434,3 +434,40 @@ SELECT * FROM get_table_indexes('qux');
 -- With ASC as default, creating a colocated table or index with SPLIT AT should fail
 CREATE INDEX ON qux (b) SPLIT AT VALUES((10), (20), (30));
 CREATE TABLE split_table(a int primary key, b int) SPLIT AT VALUES ((1000),(2000),(3000));
+
+-- Test Table Rewrite operations with table colocation option
+CREATE TABLE non_col_tbl_without_pk (k INT) WITH (colocation=0);
+INSERT INTO non_col_tbl_without_pk SELECT generate_series(1, 100);
+ALTER TABLE non_col_tbl_without_pk ADD PRIMARY KEY(k);
+\d non_col_tbl_without_pk
+SELECT min(k), max(k) FROM non_col_tbl_without_pk;
+
+CREATE TABLE col_tbl_without_pk (k INT) WITH (colocation=1);
+INSERT INTO col_tbl_without_pk SELECT generate_series(1, 10);
+ALTER TABLE col_tbl_without_pk ADD PRIMARY KEY(k);
+\d col_tbl_without_pk
+SELECT sum(k) FROM col_tbl_without_pk;
+
+CREATE MATERIALIZED VIEW non_col_mv WITH (colocation=0) AS SELECT * FROM col_tbl_without_pk WHERE k % 2 = 0;
+CREATE MATERIALIZED VIEW col_mv WITH (colocation=1) AS SELECT * FROM col_tbl_without_pk WHERE k % 2 = 1;
+SELECT sum(k) FROM non_col_mv;
+SELECT sum(k) FROM col_mv;
+INSERT INTO col_tbl_without_pk VALUES (11);
+REFRESH MATERIALIZED VIEW non_col_mv;
+REFRESH MATERIALIZED VIEW col_mv;
+SELECT sum(k) FROM non_col_mv;
+SELECT sum(k) FROM col_mv;
+
+-- Test table partitions with colocation option
+CREATE TABLE partitioned_table (k INT) PARTITION BY LIST (k);
+CREATE TABLE col_table_partition PARTITION OF partitioned_table FOR VALUES IN (2) WITH (COLOCATION=TRUE);
+\d col_table_partition
+CREATE TABLE non_col_table_partition PARTITION OF partitioned_table FOR VALUES IN (4) WITH (COLOCATION=FALSE);
+\d non_col_table_partition
+
+INSERT INTO partitioned_table VALUES (2), (4);
+SELECT * FROM col_table_partition;
+SELECT * FROM non_col_table_partition;
+
+\c yugabyte
+DROP DATABASE colocation_test;

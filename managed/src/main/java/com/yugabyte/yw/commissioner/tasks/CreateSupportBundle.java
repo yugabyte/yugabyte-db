@@ -5,10 +5,15 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable;
 import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
@@ -31,6 +36,8 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +51,8 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Inject private SupportBundleComponentFactory supportBundleComponentFactory;
   @Inject private SupportBundleUtil supportBundleUtil;
   @Inject private Config config;
+  @Inject private NodeUniverseManager nodeUniverseManager;
+  @Inject RuntimeConfGetter confGetter;
 
   private final OperatorStatusUpdater operatorStatusUpdater;
 
@@ -109,9 +118,22 @@ public class CreateSupportBundle extends AbstractTaskBase {
       endDate = endDateIsValid ? supportBundle.getEndDate() : new Date(Long.MAX_VALUE);
     }
 
-    // Downloads each type of node level support bundle component type into the bundle path
+    // Filters out the nodes which are unresponsive for 60 seconds or throw error for simple ssh
+    // command like ls. We do not collect any of the components from these nodes. This is mainly
+    // done to help optimise the speed of support bundles when a node(s) is down.
+    int nodeReachableTimeout =
+        confGetter.getGlobalConf(GlobalConfKeys.supportBundleNodeCheckTimeoutSec);
+    Set<NodeDetails> nodesReachable = ConcurrentHashMap.newKeySet();
     List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
+
     for (NodeDetails node : nodes) {
+      createCheckNodeReachableTask(node, universe, nodeReachableTimeout, nodesReachable);
+    }
+    // Run checks to all nodes in parallel to optimise bundle creation time.
+    getRunnableTask().runSubTasks();
+
+    // Downloads each type of node level support bundle component type into the bundle path
+    for (NodeDetails node : nodesReachable) {
       for (BundleDetails.ComponentType componentType :
           supportBundle.getBundleDetails().getNodeLevelComponents()) {
         SupportBundleComponent supportBundleComponent =
@@ -180,5 +202,24 @@ public class CreateSupportBundle extends AbstractTaskBase {
     String bundleName = "yb-support-bundle-" + universe.getName() + "-" + datePrefix + "-logs";
     Path bundlePath = Paths.get(storagePath + "/" + bundleName);
     return bundlePath;
+  }
+
+  protected SubTaskGroup createCheckNodeReachableTask(
+      NodeDetails node,
+      Universe universe,
+      long nodeReachableTimeout,
+      Set<NodeDetails> nodesReachable) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckNodeReachable");
+    CheckNodeReachable.Params params = new CheckNodeReachable.Params();
+    params.node = node;
+    params.universe = universe;
+    params.nodeReachableTimeout = nodeReachableTimeout;
+    params.nodesReachable = nodesReachable;
+
+    CheckNodeReachable CheckNodeReachable = createTask(CheckNodeReachable.class);
+    CheckNodeReachable.initialize(params);
+    subTaskGroup.addSubTask(CheckNodeReachable);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 }

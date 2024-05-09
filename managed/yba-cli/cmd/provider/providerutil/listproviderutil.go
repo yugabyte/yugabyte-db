@@ -70,7 +70,11 @@ func ListProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 		Format: provider.NewProviderFormat(viper.GetString("output")),
 	}
 	if len(r) < 1 {
-		fmt.Println("No providers found")
+		if util.IsOutputType("table") {
+			logrus.Infoln("No providers found\n")
+		} else {
+			logrus.Infoln("{}\n")
+		}
 		return
 	}
 	provider.Write(providerCtx, r)

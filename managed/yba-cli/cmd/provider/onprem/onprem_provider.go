@@ -33,6 +33,7 @@ func init() {
 	OnpremProviderCmd.AddCommand(instancetypes.InstanceTypesCmd)
 	OnpremProviderCmd.AddCommand(listOnpremProviderCmd)
 	OnpremProviderCmd.AddCommand(describeOnpremProviderCmd)
+	OnpremProviderCmd.AddCommand(updateOnpremProviderCmd)
 	OnpremProviderCmd.AddCommand(deleteOnpremProviderCmd)
 
 	OnpremProviderCmd.PersistentFlags().StringP("name", "n", "",

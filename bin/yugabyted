@@ -2364,6 +2364,8 @@ class ControlScript(object):
                                                             get("master_webserver_port")),
                                 "-tserver_ui_port={}".format(self.configs.saved_data.
                                                             get("tserver_webserver_port")),
+                                "-data_dir={}".format(self.configs.saved_data.
+                                                            get("data_dir")),
                                 "-warnings={}".format("|".join(warnings_for_ui))
                             ]
                         if self.configs.saved_data.get("secure"):

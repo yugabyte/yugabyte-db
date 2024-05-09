@@ -13,4 +13,3 @@ func (a *AuthAPIClient) GetListOfCertificates() (
 	ybaclient.CertificateInfoApiApiGetListOfCertificateRequest) {
 	return a.APIClient.CertificateInfoApi.GetListOfCertificate(a.ctx, a.CustomerUUID)
 }
-

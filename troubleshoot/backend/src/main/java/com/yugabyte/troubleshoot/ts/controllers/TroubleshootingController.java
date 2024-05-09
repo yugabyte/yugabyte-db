@@ -17,6 +17,7 @@ import com.yugabyte.troubleshoot.ts.service.TroubleshootingService;
 import com.yugabyte.troubleshoot.ts.service.anomaly.AnomalyMetadataProvider;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -84,7 +85,7 @@ public class TroubleshootingController {
     Map<UUID, Anomaly> lastUniverseAnomalies =
         result.stream().collect(Collectors.toMap(Anomaly::getUuid, Function.identity()));
     lastAnomalies.put(universeUuid, lastUniverseAnomalies);
-    return result;
+    return result.stream().sorted(Comparator.comparing(Anomaly::getStartTime).reversed()).toList();
   }
 
   @GetMapping("/anomalies/{id}")

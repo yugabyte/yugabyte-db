@@ -108,8 +108,7 @@ DEFINE_UNKNOWN_uint64(redis_max_command_size, 253_MB, "Maximum size of the comma
 
 // Maximum value size is 64MB
 DEFINE_UNKNOWN_uint64(redis_max_value_size, 64_MB, "Maximum size of the value in redis");
-DEFINE_UNKNOWN_int32(redis_callbacks_threadpool_size, 64,
-             "The maximum size for the threadpool which handles callbacks from the ybclient layer");
+DEPRECATE_FLAG(int32, redis_callbacks_threadpool_size, "02_2024");
 
 DEFINE_UNKNOWN_int32(redis_password_caching_duration_ms, 5000,
              "The duration for which we will cache the redis passwords. 0 to disable.");

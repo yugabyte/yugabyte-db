@@ -465,13 +465,15 @@ public class MetricGraphService implements GraphSourceIF {
         }
       }
 
+      metricGraphData.setLabels(new HashMap<>());
+      metricGraphData.getLabels().putAll(metricInfo);
+
       if (metricInfo.size() <= 1) {
         if (layout.getYaxis() != null
             && layout.getYaxis().getAlias().containsKey(metricGraphData.getName())) {
           metricGraphData.setName(layout.getYaxis().getAlias().get(metricGraphData.getName()));
         }
       } else {
-        metricGraphData.setLabels(new HashMap<>());
         // In case we want to use instance name - it's already set above
         // Otherwise - replace metric name with alias.
         if (layout.getYaxis() != null && !useInstanceName) {
@@ -493,8 +495,6 @@ public class MetricGraphService implements GraphSourceIF {
               metricGraphData.setName(entry.getValue());
             }
           }
-        } else {
-          metricGraphData.getLabels().putAll(metricInfo);
         }
       }
       if (result.getValues() != null) {

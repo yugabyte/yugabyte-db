@@ -556,8 +556,9 @@ static inline int od_console_show_pools_add_cb(od_route_t *route, void **argv)
 
 	od_route_lock(route);
 	int rc;
-	rc = kiwi_be_write_data_row_add(stream, offset, route->id.database,
-					route->id.database_len - 1);
+	rc = kiwi_be_write_data_row_add(
+		stream, offset, (char *)route->yb_database_entry->name,
+		(int)route->yb_database_entry->name_len);
 	if (rc == NOT_OK_RESPONSE)
 		goto error;
 	rc = kiwi_be_write_data_row_add(stream, offset, route->id.user,
@@ -706,8 +707,9 @@ static inline int od_console_show_databases_add_cb(od_route_t *route,
 
 	od_route_lock(route);
 	int rc;
-	rc = kiwi_be_write_data_row_add(stream, offset, route->id.database,
-					route->id.database_len - 1);
+	rc = kiwi_be_write_data_row_add(
+		stream, offset, (char *)route->yb_database_entry->name,
+		(int)route->yb_database_entry->name_len);
 	if (rc == NOT_OK_RESPONSE)
 		goto error;
 	od_rule_t *rule = route->rule;
@@ -967,8 +969,9 @@ static inline int od_console_show_servers_server_cb(od_server_t *server,
 	if (rc == NOT_OK_RESPONSE)
 		return NOT_OK_RESPONSE;
 	/* database */
-	rc = kiwi_be_write_data_row_add(stream, offset, route->id.database,
-					route->id.database_len - 1);
+	rc = kiwi_be_write_data_row_add(
+		stream, offset, (char *)route->yb_database_entry->name,
+		(int)route->yb_database_entry->name_len);
 	if (rc == NOT_OK_RESPONSE)
 		return NOT_OK_RESPONSE;
 	/* state */
@@ -1096,8 +1099,9 @@ static inline int od_console_show_server_prep_stmt_cb(od_server_t *server,
 
 			/* database */
 			rc = kiwi_be_write_data_row_add(
-				stream, offset, route->id.database,
-				route->id.database_len - 1);
+				stream, offset,
+				(char *)route->yb_database_entry->name,
+				(int)route->yb_database_entry->name_len);
 			if (rc == NOT_OK_RESPONSE) {
 				goto error;
 			}

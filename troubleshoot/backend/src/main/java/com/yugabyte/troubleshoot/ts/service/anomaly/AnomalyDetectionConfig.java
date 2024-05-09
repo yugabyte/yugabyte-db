@@ -14,13 +14,15 @@ public class AnomalyDetectionConfig {
       UnevenCpuUsageDetector unevenCpuUsageDetector,
       UnevenQueryDetector unevenQueryDetector,
       UnevenYsqlQueryDetector unevenYsqlQueryDetector,
-      SlowDisksDetector slowDisksDetector) {
+      SlowDisksDetector slowDisksDetector,
+      UnevenDataDetector unevenDataDetector) {
     return ImmutableList.<AnomalyDetector>builder()
         .add(queryLatencyDetector)
         .add(unevenCpuUsageDetector)
         .add(unevenQueryDetector)
         .add(unevenYsqlQueryDetector)
         .add(slowDisksDetector)
+        .add(unevenDataDetector)
         .build();
   }
 }

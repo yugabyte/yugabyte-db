@@ -213,7 +213,7 @@ YBCDropTablegroup(Oid grpoid)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTablegroup(MyDatabaseId, grpoid, &handle));
-	if (ddl_rollback_enabled)
+	if (yb_ddl_rollback_enabled)
 	{
 		/*
 		 * The following function marks the tablegroup for deletion. YB-Master
@@ -566,7 +566,7 @@ void
 YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid relationId, Oid namespaceId, Oid tablegroupId,
 			   Oid colocationId, Oid tablespaceId, Oid pgTableId,
-			   Oid oldRelfileNodeId)
+			   Oid oldRelfileNodeId, bool isTruncate)
 {
 	bool is_internal_rewrite = oldRelfileNodeId != InvalidOid;
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
@@ -691,15 +691,6 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		if (strcmp(def->defname, "colocated") == 0 ||
 			strcmp(def->defname, "colocation") == 0)
 		{
-			/*
-			 * If this is a table rewrite we don't need to emit this error as
-			 * this isn't a user supplied TABLEGROUP clause.
-			 */
-			if (!is_internal_rewrite && OidIsValid(tablegroupId))
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
-
 			bool colocated_relopt = defGetBoolean(def);
 			if (MyDatabaseColocated)
 				is_colocated_via_database = colocated_relopt;
@@ -778,6 +769,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   is_matview,
 									   pgTableId,
 									   oldRelfileNodeId,
+									   isTruncate,
 									   &handle));
 
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
@@ -852,7 +844,7 @@ YBCDropTable(Relation relation)
 			return;
 		}
 
-		if (ddl_rollback_enabled)
+		if (YbDdlRollbackEnabled())
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the
@@ -1710,7 +1702,7 @@ YBCDropIndex(Relation index)
 		if (not_found)
 			return;
 
-		if (ddl_rollback_enabled)
+		if (YbDdlRollbackEnabled())
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the

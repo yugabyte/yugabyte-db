@@ -152,6 +152,14 @@ class CassandraPrepared {
 
   CassandraStatement Bind();
 
+  bool operator!() const {
+    return !prepared_;
+  }
+
+  explicit operator bool() const {
+    return prepared_ != nullptr;
+  }
+
  private:
   CassPreparedPtr prepared_;
 };

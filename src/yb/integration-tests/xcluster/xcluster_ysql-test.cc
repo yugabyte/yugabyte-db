@@ -13,7 +13,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <map>
 #include <string>
 #include <vector>
 #include <unordered_set>
@@ -23,12 +22,10 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_value.h"
-#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.h"
@@ -39,35 +36,21 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/client/client.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
-#include "yb/client/session.h"
 #include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/docdb/docdb.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_client.pb.h"
-#include "yb/master/master.h"
-#include "yb/master/master_cluster.proxy.h"
-#include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_util.h"
 #include "yb/master/master_replication.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -79,17 +62,13 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/faststring.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
-#include "yb/util/random.h"
-#include "yb/util/random_util.h"
 #include "yb/util/result.h"
-#include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::string;
 
@@ -129,6 +108,10 @@ DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_uint32(cdc_wal_retention_time_secs);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_bool(TEST_enable_sync_points);
 
 namespace yb {
 
@@ -174,6 +157,9 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     return GetYsqlTable(
         cluster, table.namespace_name(), table.pgschema_name(), table.table_name() + "_mv");
   }
+
+  void TestDropTableOnConsumerThenProducer(bool restart_master);
+  void TestDropTableOnProducerThenConsumer(bool restart_master);
 
  private:
 };
@@ -1528,7 +1514,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
 
   ASSERT_EQ(producer_tables_.size(), 1);
 
-  ASSERT_OK(SetupUniverseReplication({producer_table_}));
+  ASSERT_OK(SetupUniverseReplication());
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_OK(VerifyUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, &get_universe_replication_resp));
@@ -1568,8 +1554,11 @@ TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
   ASSERT_OK(VerifyWrittenRecords());
   count += kRecordBatch;
 
-  // Drop the Index.
-  ASSERT_OK(producer_conn.ExecuteFormat("DROP INDEX $0", kIndexName));
+  ASSERT_OK(DropYsqlTable(
+      &producer_cluster_, namespace_name, /*schema_name=*/"", kIndexName, /*is_index=*/true));
+
+  // We need to wait for the pg catalog to refresh.
+  SleepFor(2s * kTimeMultiplier);
 
   // The main Table should no longer list having an index.
   ASSERT_FALSE(ASSERT_RESULT(producer_conn.HasIndexScan(query)));
@@ -1886,22 +1875,11 @@ TEST_F(XClusterYsqlTest, DeleteTableChecks) {
 
   // Attempt to destroy the producer and consumer tables.
   for (size_t i = 0; i < producer_tables_.size(); ++i) {
-    // GH issue #12003, allow deletion of YSQL tables under replication for now.
     ASSERT_OK(producer_client()->DeleteTable(producer_tables_[i]->id()));
     ASSERT_OK(consumer_client()->DeleteTable(consumer_tables_[i]->id()));
   }
 
   ASSERT_OK(DeleteUniverseReplication());
-
-  // TODO(jhe) re-enable these checks after we disallow deletion of YSQL xCluster tables, part
-  // of gh issue #753.
-
-  // for (size_t i = 0; i < producer_tables_.size(); ++i) {
-  //   string producer_table_id = producer_tables_[i]->id();
-  //   string consumer_table_id = consumer_tables_[i]->id();
-  //   ASSERT_OK(producer_client()->DeleteTable(producer_table_id));
-  //   ASSERT_OK(consumer_client()->DeleteTable(consumer_table_id));
-  // }
 }
 
 TEST_F(XClusterYsqlTest, TruncateTableChecks) {
@@ -1942,9 +1920,6 @@ TEST_F(XClusterYsqlTest, TruncateTableChecks) {
   ASSERT_NOK(TruncateTable(&producer_cluster_, {producer_table_id}));
   ASSERT_NOK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_delete_truncate_xcluster_replicated_table) = true;
-  ASSERT_OK(TruncateTable(&producer_cluster_, {producer_table_id}));
-  ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 }
 
 TEST_F(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
@@ -2385,8 +2360,15 @@ TEST_F(XClusterYsqlTest, XClusterWithCDCSDKUpdateCDCInterval) {
 TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   constexpr int kNTabletsPerTable = 1;
   const int num_tables = 3;
+  namespace_name = "test_namespace";
 
-  ASSERT_OK(SetUpWithParams({1, 1}, {1, 1}, 1));
+  SetupParams params{
+      .num_consumer_tablets = {1, 1},
+      .num_producer_tablets = {1, 1},
+      .replication_factor = 1,
+  };
+  ASSERT_OK(SetUpClusters(params));
+
   // Additional namespaces.
   const string kNamespaceName2 = "test_namespace2";
 
@@ -2394,11 +2376,11 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   auto producer_db_2 = CreateDatabase(&producer_cluster_, kNamespaceName2, false);
   auto consumer_db_2 = CreateDatabase(&consumer_cluster_, kNamespaceName2, false);
 
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables_;
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
   std::vector<YBTableName> producer_table_names;
   std::vector<YBTableName> consumer_table_names;
 
-  auto create_tables = [this, &producer_tables_](
+  auto create_tables = [this, &producer_tables](
                            const string namespace_name, Cluster& cluster,
                            bool is_replicated_producer, std::vector<YBTableName>& table_names) {
     for (int i = 0; i < num_tables; i++) {
@@ -2409,7 +2391,7 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
       if (is_replicated_producer && i > 0) {
         std::shared_ptr<client::YBTable> yb_table;
         ASSERT_OK(producer_client()->OpenTable(table, &yb_table));
-        producer_tables_.push_back(yb_table);
+        producer_tables.push_back(yb_table);
       }
     }
   };
@@ -2429,23 +2411,42 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   create_tables(namespace_name, consumer_cluster_, false, consumer_table_names);
 
   // Setup universe replication for the tables.
-  ASSERT_OK(SetupUniverseReplication(producer_tables_));
+  ASSERT_OK(SetupUniverseReplication(producer_tables));
   master::IsSetupUniverseReplicationDoneResponsePB is_resp;
   ASSERT_OK(WaitForSetupUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, &is_resp));
 
   // Delete a table on the source and target so that there are dropped tables in syscatalog.
-  ASSERT_OK(producer_client()->DeleteTable(producer_tables_[0]->id()));
-  ASSERT_OK(consumer_client()->DeleteTable(consumer_tables_[0]->id()));
+  ASSERT_OK(producer_client()->DeleteTable(producer_tables_[1]->id()));
+  ASSERT_OK(consumer_client()->DeleteTable(consumer_tables_[1]->id()));
+
+  auto status = DropDatabase(producer_cluster_, namespace_name);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(
+      status.ToString(), "Cannot delete a database that contains tables under replication");
   ASSERT_NOK(producer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
+
+  status = DropDatabase(consumer_cluster_, namespace_name);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(
+      status.ToString(), "Cannot delete a database that contains tables under replication");
   ASSERT_NOK(consumer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
+
   ASSERT_OK(producer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
   ASSERT_OK(consumer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
 
+  // Make sure we can still use the DB.
+  ASSERT_OK(InsertRowsInProducer(0, 10));
+
   ASSERT_OK(DeleteUniverseReplication());
 
-  ASSERT_OK(producer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
-  ASSERT_OK(consumer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
+  ASSERT_OK(DropDatabase(producer_cluster_, namespace_name));
+  master::GetNamespaceInfoResponsePB ret;
+  ASSERT_NOK(producer_client()->GetNamespaceInfo(
+      /*namespace_id=*/"", namespace_name, YQL_DATABASE_PGSQL, &ret));
+  ASSERT_OK(DropDatabase(consumer_cluster_, namespace_name));
+  ASSERT_NOK(consumer_client()->GetNamespaceInfo(
+      /*namespace_id=*/"", namespace_name, YQL_DATABASE_PGSQL, &ret));
 }
 
 struct XClusterPgSchemaNameParams {
@@ -2540,6 +2541,11 @@ class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
 
   static const std::string kTableName;
 
+  static Status CreateTable(Cluster* cluster, const NamespaceName& namespace_name) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.ExecuteFormat("CREATE TABLE $0(id INT PRIMARY KEY, balance INT)", kTableName);
+  }
+
   Result<Connections> PrepareClusters() {
     RETURN_NOT_OK(Initialize(3 /* replication factor */));
     const auto namespace_2 = "test_namespace2";
@@ -2551,8 +2557,7 @@ class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
 
     for (const auto& namespace_name : namespaces) {
       RETURN_NOT_OK(RunOnBothClusters([&namespace_name](Cluster* cluster) -> Status {
-        auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-        return conn.ExecuteFormat("CREATE TABLE $0(id INT PRIMARY KEY, balance INT)", kTableName);
+        return CreateTable(cluster, namespace_name);
       }));
     }
     auto table_names = VERIFY_RESULT(producer_client()->ListTables(kTableName));
@@ -2600,6 +2605,12 @@ const std::string XClusterYsqlTestReadOnly::kTableName{"test_table"};
 
 TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTestReadOnly) {
   auto consumer_conns = ASSERT_RESULT(PrepareClusters());
+
+  const auto namespace_3 = "namespace_3";
+  ASSERT_OK(CreateDatabase(&consumer_cluster_, namespace_3));
+  ASSERT_OK(CreateTable(&consumer_cluster_, namespace_3));
+  auto non_replicated_db_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_3));
+
   auto query_patterns = {
       "INSERT INTO $0 VALUES($1, 100)", "UPDATE $0 SET balance = 0 WHERE id = $1",
       "DELETE FROM $0 WHERE id = $1"};
@@ -2615,6 +2626,10 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
     }
   }
 
+  for (const auto& query : queries) {
+    ASSERT_OK(non_replicated_db_conn.Execute(query));
+  }
+
   ASSERT_OK(SetRoleToStandbyAndWaitForValidSafeTime());
 
   // Test that INSERT, UPDATE, and DELETE operations fail while the cluster is on STANDBY mode.
@@ -2624,13 +2639,19 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
       const auto status = conn.Execute(query);
       ASSERT_NOK(status);
       ASSERT_STR_CONTAINS(
-          status.ToString(), "Data modification by DML is forbidden with STANDBY xCluster role");
+          status.ToString(),
+          "Data modification is forbidden on database that is the target of a transactional "
+          "xCluster replication");
 
       // Writes should be allowed when yb_non_ddl_txn_for_sys_tables_allowed is set
       // which happens during ysql_upgrades
       ASSERT_OK(conn.Execute(Format("$0 $1", allow_writes, query)));
     }
     ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
+  }
+
+  for (const auto& query : queries) {
+    ASSERT_OK(non_replicated_db_conn.Execute(query));
   }
 
   ASSERT_OK(SetRoleToActive());
@@ -2640,6 +2661,10 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
     for (const auto& query : queries) {
       ASSERT_OK(conn.Execute(query));
     }
+  }
+
+  for (const auto& query : queries) {
+    ASSERT_OK(non_replicated_db_conn.Execute(query));
   }
 }
 
@@ -2665,33 +2690,35 @@ TEST_F_EX(XClusterYsqlTest, DdlAndReadOperationsAllowedOnStandbyCluster, XCluste
   }
 }
 
-TEST_F(XClusterYsqlTest, TestAlterOperationTableRewrite) {
+TEST_F(XClusterYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams({1}, {1}, 3, 1));
   constexpr auto kColumnName = "c1";
+  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
   ASSERT_OK(SetupUniverseReplication(producer_tables_));
   for (int i = 0; i <= 1; ++i) {
     auto conn = i == 0 ? EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name))
                        : EXPECT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
     const auto kTableName =
         i == 0 ? producer_table_->name().table_name() : consumer_table_->name().table_name();
-    // Verify alter primary key, column type operations are disallowed on the table.
+    // Verify rewrite operations are disallowed on the table.
     auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
     ASSERT_NOK(res);
-    ASSERT_STR_CONTAINS(
-        res.ToString(),
-        "cannot rewrite a table that is a part of CDC or XCluster replication");
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
     ASSERT_OK(
         conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 varchar(10)", kTableName, kColumnName));
     res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
     ASSERT_NOK(res);
-    ASSERT_STR_CONTAINS(
-        res.ToString(),
-        "cannot rewrite a table that is a part of CDC or XCluster replication");
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
     res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
     ASSERT_NOK(res);
-    ASSERT_STR_CONTAINS(
-        res.ToString(),
-        "cannot rewrite a table that is a part of CDC or XCluster replication");
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
+    res = conn.ExecuteFormat("TRUNCATE $0", kTableName);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
+    // Truncate should be disallowed even if enable_delete_truncate_xcluster_replicated_table
+    // is set.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_delete_truncate_xcluster_replicated_table) = true;
+    ASSERT_NOK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
   }
 }
 
@@ -2843,6 +2870,291 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
   ASSERT_OK(RunInsertUpdateDeleteTransactionWithSplitTest(kNumTablets));
+}
+
+void XClusterYsqlTest::TestDropTableOnConsumerThenProducer(bool restart_master) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = restart_master;
+
+  // Create replication with 2 tables.
+  const std::vector<uint32_t> kNumTablets = {1, 1};
+  ASSERT_OK(SetUpWithParams(kNumTablets, kNumTablets, /* replication_factor */ 1));
+  ASSERT_OK(SetupUniverseReplication());
+
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+
+  // Validate universe_info is valid on consumer.
+  auto universe_info = ASSERT_RESULT(GetUniverseReplicationInfo(consumer_cluster_)).entry();
+  ASSERT_TRUE(
+      std::find(
+          universe_info.tables().begin(), universe_info.tables().end(), producer_table_->id()) !=
+      universe_info.tables().end());
+  ASSERT_TRUE(ContainsKey(universe_info.validated_tables(), producer_table_->id()));
+  ASSERT_TRUE(ContainsKey(universe_info.table_streams(), producer_table_->id()));
+  ASSERT_EQ(stream_id.ToString(), universe_info.table_streams().at(producer_table_->id()));
+
+  // Validate producer_map on consumer.
+  auto producer_map =
+      ASSERT_RESULT(GetClusterConfig(consumer_cluster_)).consumer_registry().producer_map();
+  ASSERT_TRUE(ContainsKey(producer_map, kReplicationGroupId.ToString()));
+  ASSERT_TRUE(ContainsKey(
+      producer_map.at(kReplicationGroupId.ToString()).stream_map(), stream_id.ToString()));
+  ASSERT_EQ(
+      producer_map.at(kReplicationGroupId.ToString())
+          .stream_map()
+          .at(stream_id.ToString())
+          .producer_table_id(),
+      producer_table_->id());
+
+  auto consumer_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+  auto consumer_table_info = consumer_master->catalog_manager().GetTableInfo(consumer_table_->id());
+  ASSERT_TRUE(consumer_table_info);
+
+  // Perform the drop on consumer cluster.
+  if (restart_master) {
+    // Crash the consumer Master after table has been marked as dropped in sys catalog, but before
+    // tablets are dropped, or xCluster streams dropped.
+    auto* sync_point_instance = yb::SyncPoint::GetInstance();
+    Synchronizer sync;
+    sync_point_instance->SetCallBack(
+        "DeleteTableInternal::FailAfterTableMarkedInSysCatalog",
+        [sync_point_instance, callback = sync.AsStdStatusCallback()](void* arg) {
+          LOG(WARNING) << "Forcing master failure";
+          *reinterpret_cast<bool*>(arg) = true;
+
+          sync_point_instance->DisableProcessing();
+          callback(Status::OK());
+        });
+    sync_point_instance->EnableProcessing();
+
+    Status drop_table_status;
+    auto test_thread_holder = TestThreadHolder();
+
+    test_thread_holder.AddThread([&drop_table_status, this]() {
+      drop_table_status = DropYsqlTable(consumer_cluster_, *consumer_table_);
+    });
+
+    ASSERT_OK(sync.Wait());
+    auto consumer_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+    ASSERT_OK(consumer_master->Restart());
+    ASSERT_OK(consumer_cluster()->WaitForAllTabletServers());
+
+    test_thread_holder.JoinAll();
+    ASSERT_OK(drop_table_status);
+
+    // Wait for the background task to process the dropped table after master restart.
+    SleepFor(2ms * FLAGS_catalog_manager_bg_task_wait_ms);
+  } else {
+    ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_table_));
+  }
+
+  ASSERT_TRUE(consumer_table_info->LockForRead()->started_deleting());
+
+  // Make sure table is cleared from consumer universe_info.
+  universe_info = ASSERT_RESULT(GetUniverseReplicationInfo(consumer_cluster_)).entry();
+  ASSERT_TRUE(
+      std::find(
+          universe_info.tables().begin(), universe_info.tables().end(), producer_table_->id()) ==
+      universe_info.tables().end())
+      << producer_table_->id() << " not removed from universe replication info tables";
+  ASSERT_FALSE(ContainsKey(universe_info.validated_tables(), producer_table_->id()))
+      << producer_table_->id() << " not removed from universe replication info validated_tables";
+  ASSERT_FALSE(ContainsKey(universe_info.table_streams(), producer_table_->id()))
+      << producer_table_->id() << " not removed from universe replication info table_streams";
+
+  // Make sure table is cleared from consumer producer_map.
+  producer_map =
+      ASSERT_RESULT(GetClusterConfig(consumer_cluster_)).consumer_registry().producer_map();
+  ASSERT_FALSE(ContainsKey(
+      producer_map.at(kReplicationGroupId.ToString()).stream_map(), stream_id.ToString()));
+
+  // Make sure stream is deleted from producer.
+  ASSERT_NOK(GetCDCStreamID(producer_table_->id()));
+
+  // Perform the drop on producer.
+  ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table_));
+
+  // Make sure the table is completely dropped and not hidden.
+  auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
+  auto producer_table_info = producer_master->catalog_manager().GetTableInfo(producer_table_->id());
+  ASSERT_TRUE(!producer_table_info || producer_table_info->is_deleted());
+}
+
+// Dropping a table on consumer should cleanup both the consumer and producer xcluster info.
+TEST_F(XClusterYsqlTest, DropTableOnConsumerThenProducer) {
+  ASSERT_NO_FATALS(TestDropTableOnConsumerThenProducer(/*restart_master=*/false));
+}
+
+TEST_F(XClusterYsqlTest, ConsumerMasterRestartAfterTableDrop) {
+  ASSERT_NO_FATALS(TestDropTableOnConsumerThenProducer(/*restart_master=*/true));
+}
+
+void XClusterYsqlTest::TestDropTableOnProducerThenConsumer(bool restart_master) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = restart_master;
+  const auto kMaxAsyncTaskWait = 2s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs;
+
+  // Create replication with 2 tables.
+  const std::vector<uint32_t> kNumTablets = {1, 1};
+  ASSERT_OK(SetUpWithParams(kNumTablets, kNumTablets, /* replication_factor */ 1));
+  ASSERT_OK(SetupUniverseReplication());
+
+  // Perform the drop on producer.
+  if (restart_master) {
+    // Crash the Master after table has been marked as dropped in sys catalog, but before tablets
+    // are dropped, or xCluster streams dropped.
+    auto* sync_point_instance = yb::SyncPoint::GetInstance();
+    Synchronizer sync;
+    sync_point_instance->SetCallBack(
+        "DeleteTableInternal::FailAfterTableMarkedInSysCatalog",
+        [sync_point_instance, callback = sync.AsStdStatusCallback()](void* arg) {
+          LOG(WARNING) << "Forcing master failure";
+          *reinterpret_cast<bool*>(arg) = true;
+
+          sync_point_instance->DisableProcessing();
+          callback(Status::OK());
+        });
+    sync_point_instance->EnableProcessing();
+
+    Status drop_table_status;
+    auto test_thread_holder = TestThreadHolder();
+
+    test_thread_holder.AddThread(
+        [&]() { drop_table_status = DropYsqlTable(producer_cluster_, *producer_table_); });
+
+    ASSERT_OK(sync.Wait());
+    auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
+    ASSERT_OK(producer_master->Restart());
+    ASSERT_OK(producer_cluster()->WaitForAllTabletServers());
+
+    test_thread_holder.JoinAll();
+    ASSERT_OK(drop_table_status);
+  } else {
+    ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table_));
+  }
+
+  // Table should exist even after async tasks have run.
+  SleepFor(kMaxAsyncTaskWait);
+
+  auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
+
+  // Make sure the table is hidden.
+  auto producer_table_info = producer_master->catalog_manager().GetTableInfo(producer_table_->id());
+  ASSERT_TRUE(producer_table_info);
+  ASSERT_TRUE(producer_table_info->IsHiddenButNotDeleting());
+
+  // Perform the drop on consumer cluster.
+  auto consumer_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+  auto consumer_table_info = consumer_master->catalog_manager().GetTableInfo(consumer_table_->id());
+  ASSERT_TRUE(consumer_table_info);
+  ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_table_));
+  ASSERT_TRUE(consumer_table_info->is_deleted());
+
+  // Make sure stream is deleted from producer.
+  ASSERT_NOK(GetCDCStreamID(producer_table_->id()));
+
+  ASSERT_OK(LoggedWaitFor(
+      [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
+      kMaxAsyncTaskWait, "Waiting for table to get delete"));
+}
+
+// Drop table on producer should hide the table until the consumer table is also dropped.
+TEST_F(XClusterYsqlTest, DropTableOnProducerThenConsumer) {
+  ASSERT_NO_FATALS(TestDropTableOnProducerThenConsumer(/*restart_master=*/false));
+}
+
+// If master restarts in the middle of the table drop on producer, then we should still hide the
+// table.
+TEST_F(XClusterYsqlTest, ProducerMasterRestartAfterTableDrop) {
+  ASSERT_NO_FATALS(TestDropTableOnProducerThenConsumer(/*restart_master=*/false));
+}
+
+// Make sure rows inserted just before dropping the table are replicated.
+TEST_F(XClusterYsqlTest, DropTableWithWorkload) {
+  // Create replication with 2 tables.
+  const std::vector<uint32_t> kNumTablets = {1, 1};
+  ASSERT_OK(SetUpWithParams(kNumTablets, kNumTablets, /* replication_factor */ 1));
+  ASSERT_OK(SetupUniverseReplication());
+
+  // Pause replication and wait for inflight polls to complete.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = true;
+  SleepFor(2s);
+  ASSERT_OK(InsertRowsInProducer(0, 10));
+
+  ASSERT_NOK(WaitForRowCount(consumer_table_->name(), 10, &consumer_cluster_));
+
+  // Perform the drop on producer.
+  ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table_));
+
+  // Resume replication and make sure data is replicated.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = false;
+  ASSERT_OK(WaitForRowCount(consumer_table_->name(), 10, &consumer_cluster_));
+
+  // Perform the drop on consumer.
+  ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_table_));
+}
+
+// Drop table on producer should hide the table until cdc_wal_retention_time_secs.
+TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1000;
+  const auto kMaxAsyncTaskWait =
+      3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1000;
+
+  // Create replication with 2 tables.
+  const std::vector<uint32_t> kNumTablets = {1, 1};
+  ASSERT_OK(SetUpWithParams(kNumTablets, kNumTablets, /* replication_factor */ 1));
+  ASSERT_OK(SetupUniverseReplication());
+
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  std::vector<TabletId> tablet_ids;
+  if (producer_tables_[0]) {
+    ASSERT_OK(
+        producer_client()->GetTablets(producer_tables_[0]->name(), (int32_t)1, &tablet_ids, NULL));
+    ASSERT_GT(tablet_ids.size(), 0);
+  }
+  auto& tablet_id = tablet_ids.front();
+
+  cdc::CDCStateTable cdc_state_table(producer_client());
+  auto key = cdc::CDCStateTableKey(tablet_id, stream_id);
+  auto cdc_row = ASSERT_RESULT(
+      cdc_state_table.TryFetchEntry(key, cdc::CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(cdc_row.has_value());
+
+  // Perform the drop on producer.
+  ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table_));
+
+  // Table should exist even after async tasks have run.
+  SleepFor(kMaxAsyncTaskWait);
+
+  auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
+
+  // Make sure the table is hidden.
+  auto producer_table_info = producer_master->catalog_manager().GetTableInfo(producer_table_->id());
+  ASSERT_TRUE(producer_table_info->IsHiddenButNotDeleting());
+
+  // Table should remain hidden.
+  ASSERT_NOK(LoggedWaitFor(
+      [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
+      kMaxAsyncTaskWait, "Waiting for table to get delete"));
+  ASSERT_TRUE(producer_table_info->IsHiddenButNotDeleting());
+
+  // Reduce retention and make sure table drops.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
+
+  ASSERT_OK(LoggedWaitFor(
+      [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
+      kMaxAsyncTaskWait, "Waiting for table to get delete"));
+
+  // Make sure stream is deleted from producer.
+  ASSERT_NOK(GetCDCStreamID(producer_table_->id()));
+
+  // Make sure cdc state table is cleaned up.
+  cdc_row = ASSERT_RESULT(
+      cdc_state_table.TryFetchEntry(key, cdc::CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_FALSE(cdc_row.has_value());
 }
 
 }  // namespace yb

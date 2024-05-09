@@ -698,6 +698,24 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	return 0;
 }
 
+static inline void
+send_oid_info(const char oid_type, const int oid)
+{
+	/* Note:: oid can be 0 here: it is handled by odyssey */
+	Assert(YbIsClientYsqlConnMgr());
+
+	StringInfoData buf;
+	CHECK_FOR_INTERRUPTS();
+
+	pq_beginmessage(&buf, 'O');
+	pq_sendint8(&buf, oid_type);
+	pq_sendint32(&buf, oid);
+	pq_endmessage(&buf);
+
+	pq_flush();
+	CHECK_FOR_INTERRUPTS();
+}
+
 void
 YbCreateClientId(void)
 {
@@ -712,6 +730,9 @@ YbCreateClientId(void)
 		return;
 
 	database = get_database_oid(MyProcPort->database_name, true);
+
+	/* Send back the database oid */
+	send_oid_info('d', database);
 	if (database == InvalidOid)
 	{
 		YbSendFatalForLogicalConnectionPacket();
@@ -770,6 +791,15 @@ yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 						"if the authentication method was yb-tserver-key")));
 
 	return true;
+}
+
+void
+yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
+{
+	yb_is_client_ysqlconnmgr = newval;
+
+	if (yb_is_client_ysqlconnmgr == true)
+		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
 }
 
 /*

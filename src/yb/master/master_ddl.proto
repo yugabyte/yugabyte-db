@@ -114,12 +114,15 @@ message CreateTableRequestPB {
 
   repeated StatefulServiceKind hosted_stateful_services = 27;
 
-  optional bool ysql_ddl_rollback_enabled = 28 [ default = false ];
+  optional bool ysql_yb_ddl_rollback_enabled = 28 [ default = false ];
 
   // Used during table rewrite - the TableId of the old DocDB table that is being rewritten.
   optional bytes old_rewrite_table_id = 29;
 
   optional bool is_clone = 30;
+
+  // Set to true when the table is being re-written as part of a TRUNCATE operation.
+  optional bool is_truncate = 31;
 }
 
 message CreateTableResponsePB {
@@ -348,7 +351,7 @@ message DeleteTableRequestPB {
   required TableIdentifierPB table = 1;
   optional bool is_index_table = 2 [ default = false ];
   optional TransactionMetadataPB transaction = 3;
-  optional bool ysql_ddl_rollback_enabled = 4 [ default = false ];
+  optional bool ysql_yb_ddl_rollback_enabled = 4 [ default = false ];
 }
 
 message DeleteTableResponsePB {
@@ -447,7 +450,7 @@ message AlterTableRequestPB {
   optional bool increment_schema_version = 11 [default = false];
 
   // If set, YB-Master will poll the status of 'transaction' and rollback the Alter if failed.
-  optional bool ysql_ddl_rollback_enabled = 12 [ default = false ];
+  optional bool ysql_yb_ddl_rollback_enabled = 12 [ default = false ];
 
   // For CDCSDK Stream creation with consistent snapshot
   optional bytes cdc_sdk_stream_id = 13;
@@ -619,7 +622,7 @@ message CreateTablegroupRequestPB {
   // These two fields ensure that YB-Master will poll the status of 'transaction' and delete the
   // tablegroup if aborted.
   optional TransactionMetadataPB transaction = 5;
-  optional bool ysql_ddl_rollback_enabled = 6 [ default = false ];
+  optional bool ysql_yb_ddl_rollback_enabled = 6 [ default = false ];
 
   // This denotes the tablespace that this tablegroup is associated with.
   optional bytes tablespace_id = 4;
@@ -643,7 +646,7 @@ message DeleteTablegroupRequestPB {
   // status of 'transaction' and rollback the marker if failed. Otherwise deletion of the tablegroup
   // will be initiated upon receipt of this request.
   optional TransactionMetadataPB transaction = 3;
-  optional bool ysql_ddl_rollback_enabled = 4 [ default = false ];
+  optional bool ysql_yb_ddl_rollback_enabled = 4 [ default = false ];
 }
 
 message DeleteTablegroupResponsePB {
@@ -711,6 +714,10 @@ message GetUDTypeInfoResponsePB {
   optional UDTypeInfoPB udtype = 2;
 }
 
+// ============================================================================
+//  YSQL DDL Atomicity
+// ============================================================================
+
 message ReportYsqlDdlTxnStatusRequestPB {
   // The transaction whose status is being reported.
   optional bytes transaction_id = 1;
@@ -721,6 +728,16 @@ message ReportYsqlDdlTxnStatusRequestPB {
 
 message ReportYsqlDdlTxnStatusResponsePB {
   optional MasterErrorPB error = 1;
+}
+
+message IsYsqlDdlVerificationDoneRequestPB {
+  optional TransactionMetadataPB transaction = 1;
+}
+
+message IsYsqlDdlVerificationDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bool done = 2;
 }
 
 service MasterDdl {
@@ -775,4 +792,6 @@ service MasterDdl {
 
   rpc ReportYsqlDdlTxnStatus(ReportYsqlDdlTxnStatusRequestPB) returns
       (ReportYsqlDdlTxnStatusResponsePB);
+  rpc IsYsqlDdlVerificationDone(IsYsqlDdlVerificationDoneRequestPB) returns
+      (IsYsqlDdlVerificationDoneResponsePB);
 }

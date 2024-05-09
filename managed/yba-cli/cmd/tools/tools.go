@@ -81,13 +81,13 @@ func init() {
 func RemoveContents(dir string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*"))
 	if err != nil {
-		logrus.Errorf("%s", err.Error())
+		logrus.Errorf("%s\n", err.Error())
 		return err
 	}
 	for _, file := range files {
 		err = os.RemoveAll(file)
 		if err != nil {
-			logrus.Errorf("%s", err.Error())
+			logrus.Errorf("%s\n", err.Error())
 			return err
 		}
 	}

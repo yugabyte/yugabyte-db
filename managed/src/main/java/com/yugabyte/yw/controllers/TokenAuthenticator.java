@@ -56,7 +56,8 @@ public class TokenAuthenticator extends Action.Simple {
           "/performance_recommendations/page",
           "/performance_recommendation_state_change/page",
           "/node_agents/page",
-          "/login");
+          "/login",
+          "/api_token");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";

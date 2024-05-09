@@ -203,6 +203,8 @@ class FsManager {
 
   Status SetUniverseUuidOnTserverInstanceMetadata(const UniverseUuid& universe_uuid);
 
+  Status ClearUniverseUuidOnTserverInstanceMetadata();
+
   // Return the path where InstanceMetadataPB is stored.
   std::string GetInstanceMetadataPath(const std::string& root) const;
 

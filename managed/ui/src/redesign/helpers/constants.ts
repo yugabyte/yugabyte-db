@@ -52,7 +52,8 @@ export const RuntimeConfigKey = {
   RELEASES_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.releases_redesign',
   ENABLE_DEDICATED_NODES: 'yb.ui.enable_dedicated_nodes',
   GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled',
-  ENABLE_TROUBLESHOOTING: 'yb.ui.feature_flags.enable_troubleshooting'
+  ENABLE_TROUBLESHOOTING: 'yb.ui.feature_flags.enable_troubleshooting',
+  AWS_COOLDOWN_HOURS: 'yb.aws.disk_resize_cooldown_hours'
 } as const;
 
 /**
@@ -60,8 +61,8 @@ export const RuntimeConfigKey = {
  */
 export const ToastNotificationDuration = {
   SHORT: 2000,
-  DEFAULT: 3000,
-  LONG: 5000
+  DEFAULT: 6000,
+  LONG: 8000
 } as const;
 
 export const CHART_RESIZE_DEBOUNCE = 100;

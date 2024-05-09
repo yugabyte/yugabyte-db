@@ -2308,7 +2308,8 @@ Status create_xcluster_checkpoint_action(
               << AsString(dbs_without_bootstrap) << " on the target universe";
   }
 
-  std::cout << "Once the above step(s) complete run `setup_xcluster_replication`" << std::endl;
+  std::cout << std::endl
+            << "Once the above step(s) complete run `setup_xcluster_replication`" << std::endl;
 
   return Status::OK();
 }

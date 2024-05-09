@@ -39,7 +39,7 @@ func WaitForCreateProviderTask(
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
-		fmt.Printf("The provider %s (%s) has been created\n",
+		logrus.Infof("The provider %s (%s) has been created\n",
 			formatter.Colorize(providerName, formatter.GreenColor), providerUUID)
 
 		providerData, response, err = authAPI.GetListOfProviders().
@@ -56,7 +56,7 @@ func WaitForCreateProviderTask(
 		providerFormatter.Write(providersCtx, providerData)
 
 	} else {
-		fmt.Println(msg)
+		logrus.Infoln(msg + "\n")
 	}
 
 }

@@ -103,6 +103,42 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     }
   }
 
+  private void testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(
+      Statement stmt, String query,
+      String table_name, String index_name,
+      double expected_seeks,
+      double expected_nexts,
+      Integer expected_docdb_result_width) throws Exception {
+    double expected_seeks_lower_bound = expected_seeks * SEEK_LOWER_BOUND_FACTOR
+        - SEEK_FAULT_TOLERANCE_OFFSET;
+    double expected_seeks_upper_bound = expected_seeks * SEEK_UPPER_BOUND_FACTOR
+        + SEEK_FAULT_TOLERANCE_OFFSET;
+    double expected_nexts_lower_bound = expected_nexts * NEXT_LOWER_BOUND_FACTOR
+        - NEXT_FAULT_TOLERANCE_OFFSET;
+    double expected_nexts_upper_bound = expected_nexts * NEXT_UPPER_BOUND_FACTOR
+        + NEXT_FAULT_TOLERANCE_OFFSET;
+    try {
+      testExplainDebug(stmt, query,
+          makeTopLevelBuilder()
+              .plan(makePlanBuilder()
+                  .nodeType(NODE_INDEX_SCAN)
+                  .relationName(table_name)
+                  .indexName(index_name)
+                  .estimatedSeeks(Checkers.closed(expected_seeks_lower_bound,
+                                                  expected_seeks_upper_bound))
+                  .estimatedNexts(Checkers.closed(expected_nexts_lower_bound,
+                                                  expected_nexts_upper_bound))
+                  .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
+                  .build())
+              .build());
+    }
+    catch (AssertionError e) {
+      LOG.info("Failed Query: " + query);
+      LOG.info(e.toString());
+      throw e;
+    }
+  }
+
   private void testSeekAndNextEstimationSeqScanHelper(
       Statement stmt, String query,
       String table_name, double expected_seeks,
@@ -421,6 +457,31 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 AND k3 >= 4 AND k3 < 14", T4_NAME, T4_NAME),
         T4_NAME, 67, 160065, 20);
+    }
+  }
+
+  @Test
+  public void testSeekNextEstimationStorageIndexFilters() throws Exception {
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE test (k1 INT, v1 INT)");
+      stmt.execute("CREATE INDEX test_index_k1 ON test (k1 ASC)");
+      stmt.execute("CREATE INDEX test_index_k1_v1 ON test (k1 ASC) INCLUDE (v1)");
+      stmt.execute("INSERT INTO test (SELECT s, s FROM generate_series(1, 100000) s)");
+      stmt.execute("ANALYZE test");
+
+      /* All rows matching the filter on k1 will be seeked in the base table, and the filter on v1
+       * will be applied on the base table.
+       */
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        "/*+IndexScan(test test_index_k1) */ SELECT * FROM test WHERE k1 > 50000 and v1 > 80000",
+        "test", "test_index_k1", 50000, 50000, 10);
+
+      /* The filter on v1 will be executed on the included column in test_index_k1_v1. As a result,
+       * fewer seeks will be needed on the base table.
+       */
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        "/*+IndexScan(test test_index_k1_v1) */ SELECT * FROM test WHERE k1 > 50000 and v1 > 80000",
+        "test", "test_index_k1_v1", 10000, 50000, 10);
     }
   }
 }

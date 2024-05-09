@@ -29,7 +29,7 @@ func init() {
 	K8sProviderCmd.Flags().SortFlags = false
 
 	K8sProviderCmd.AddCommand(createK8sProviderCmd)
-	// K8sProviderCmd.AddCommand(updateK8sProviderCmd)
+	K8sProviderCmd.AddCommand(updateK8sProviderCmd)
 	K8sProviderCmd.AddCommand(listK8sProviderCmd)
 	K8sProviderCmd.AddCommand(describeK8sProviderCmd)
 	K8sProviderCmd.AddCommand(deleteK8sProviderCmd)
@@ -37,6 +37,6 @@ func init() {
 	K8sProviderCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe.",
+				"Required for create, delete, describe, update.",
 				formatter.GreenColor)))
 }

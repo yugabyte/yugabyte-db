@@ -931,7 +931,7 @@ public class CloudProviderHelper {
           }
           ImageBundle currentImageBundle = currentImageBundles.get(uuid);
           if (imageBundle.getUniverseCount() > 0
-              && currentImageBundle.isUpdateNeeded(imageBundle)) {
+              && !currentImageBundle.allowUpdateDuringUniverseAssociation(imageBundle)) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(
@@ -968,7 +968,7 @@ public class CloudProviderHelper {
     // Validate the provider request so as to ensure we only allow editing of fields
     // that does not impact the existing running universes.
     long universeCount = provider.getUniverseCount();
-    if (!confGetter.getGlobalConf(GlobalConfKeys.allowUsedProviderEdit) && universeCount > 0) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.allowUsedProviderEdit) && universeCount > 0) {
       validateProviderEditPayload(provider, editProviderReq);
     }
     boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);

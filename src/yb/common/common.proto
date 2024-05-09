@@ -650,7 +650,7 @@ message AshMetadataPB {
 
 // Some optional/additional fields that is collected in addition to the wait
 // statement Depending on the wait-state we may choose to persist at most one of
-// these into the pg_active_universe_history.wait_event_aux field.
+// these into the yb_active_universe_history.wait_event_aux field.
 message AshAuxDataPB {
   optional string tablet_id = 1;
   optional string table_id = 2;
@@ -664,7 +664,7 @@ message WaitStateInfoPB {
   // Represents the state of the curreent rpc/request when it was polled.
   optional uint32 wait_status_code = 2;
   // Some additional information that may be persisted as
-  // pg_active_universe_history.wait_event_aux
+  // yb_active_universe_history.wait_event_aux
   optional AshAuxDataPB aux_info = 3;
   // A string representation of wait_status_code for easy human consumption.
   optional string wait_status_code_as_string = 4;

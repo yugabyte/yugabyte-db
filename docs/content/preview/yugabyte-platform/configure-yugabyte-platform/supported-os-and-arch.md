@@ -14,6 +14,8 @@ type: docs
 
 Using YugabyteDB Anywhere (YBA), you can deploy YugabyteDB universes on nodes with the following architectures and operating systems.
 
+-> For information on prerequisites for the node running YBA, refer to [Prerequisites for YBA](../../install-yugabyte-platform/prerequisites/installer/).
+
 ## Supported operating systems and CPU architectures
 
 YBA supports deploying YugabyteDB on both x86 and ARM (aarch64) architecture-based hardware.
@@ -24,7 +26,7 @@ YBA supports deploying YugabyteDB on a variety of [operating systems](../../../r
 
 Python v3.6 or later is required. If you're using YBA to provision nodes in public clouds, be sure the custom AMI you plan to use has Python v3.6 or later installed.
 
-The host AMI must have `gtar` and `zipinfo` installed.
+For more information on requirements for nodes for use in on-premises provider configurations, refer to [Prepare nodes for on-premises deployment](../../install-yugabyte-platform/prepare-on-prem-nodes/).
 
 ### Oracle Linux and AlmaLinux notes
 

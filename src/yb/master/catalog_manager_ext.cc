@@ -25,7 +25,6 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/snapshot.h"
-#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
@@ -33,6 +32,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"

@@ -270,10 +270,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               createServerControlTask(node, processType, "start")
                   .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
               createWaitForServersTasks(new HashSet<>(nodeList), processType);
-              createWaitForServerReady(
-                      node,
-                      processType,
-                      getOrCreateExecutionContext().getWaitForServerTimeout().toMillis())
+              createWaitForServerReady(node, processType)
                   .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
               // If there are no universe keys on the universe, it will have no effect.
               if (processType == ServerType.MASTER
