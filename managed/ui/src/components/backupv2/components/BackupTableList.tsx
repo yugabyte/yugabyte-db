@@ -409,7 +409,7 @@ const IncrementalBackupCard = ({
                 };
                 if (incrementalBackup.kmsConfigUUID)
                   incrementalBackupProps.kmsConfigUUID = incrementalBackup.kmsConfigUUID;
-                onRestore(incrementalBackup.responseList, incrementalBackup);
+                onRestore(incrementalBackup.responseList, incrementalBackupProps);
               }}
             />
           </RbacValidator>
