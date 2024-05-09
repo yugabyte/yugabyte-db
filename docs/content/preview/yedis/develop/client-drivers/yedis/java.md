@@ -10,6 +10,7 @@ menu:
     identifier: client-drivers-yedis-java
     parent: develop-yedis
 type: docs
+image: fa-brands fa-java
 ---
 
 ## Maven

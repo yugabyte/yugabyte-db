@@ -151,15 +151,7 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
 
 } // namespace
 
-#if defined(__APPLE__) && !defined(NDEBUG)
-// We are experiencing more slowness in tests on macOS in debug mode.
-const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
-#else
-const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
-#endif
-
-DEFINE_UNKNOWN_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
-             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
+DEPRECATE_FLAG(int32, pg_yb_session_timeout_ms, "02_2024");
 
 PgTxnManager::PgTxnManager(
     PgClient* client,

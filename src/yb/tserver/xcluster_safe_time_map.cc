@@ -38,6 +38,11 @@
 namespace yb {
 XClusterSafeTimeMap::XClusterSafeTimeMap() : map_initialized_(false) {}
 
+bool XClusterSafeTimeMap::HasNamespace(const NamespaceId& namespace_id) const {
+  SharedLock l(xcluster_safe_time_map_mutex_);
+  return ContainsKey(xcluster_safe_time_map_, namespace_id);
+}
+
 Result<std::optional<HybridTime>> XClusterSafeTimeMap::GetSafeTime(
     const NamespaceId& namespace_id) const {
   SharedLock l(xcluster_safe_time_map_mutex_);

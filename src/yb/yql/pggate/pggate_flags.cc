@@ -18,10 +18,7 @@
 #include "yb/util/flags.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
-DEFINE_UNKNOWN_int32(pgsql_rpc_keepalive_time_ms, 0,
-             "If an RPC connection from a client is idle for this amount of time, the server "
-             "will disconnect the client. Setting flag to 0 disables this clean up.");
-TAG_FLAG(pgsql_rpc_keepalive_time_ms, advanced);
+DEPRECATE_FLAG(int32, pgsql_rpc_keepalive_time_ms, "02_2024");
 
 DEFINE_UNKNOWN_int32(pggate_rpc_timeout_secs, 60,
              "Timeout for RPCs from pggate to YB cluster");
@@ -36,8 +33,7 @@ DEFINE_UNKNOWN_string(pggate_master_addresses, "",
 DEFINE_UNKNOWN_int32(pggate_tserver_shm_fd, -1,
               "File descriptor of the local tablet server's shared memory.");
 
-DEFINE_test_flag(bool, pggate_ignore_tserver_shm, false,
-              "Ignore the shared memory of the local tablet server.");
+DEPRECATE_FLAG(bool, TEST_pggate_ignore_tserver_shm, "02_2024");
 
 DEFINE_UNKNOWN_int32(ysql_request_limit, 1024,
              "Maximum number of requests to be sent at once");

@@ -145,6 +145,7 @@ export function editXClusterConfigTables(
   return axios
     .put<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
       tables: tables,
+      autoIncludeIndexTables: false,
       ...(bootstrapParams !== undefined && { bootstrapParams })
     })
     .then((response) => response.data);

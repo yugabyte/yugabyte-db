@@ -94,9 +94,7 @@ TAG_FLAG(num_reactor_threads, advanced);
 
 DECLARE_bool(use_hybrid_clock);
 
-DEFINE_UNKNOWN_int32(generic_svc_num_threads, 10,
-             "Number of RPC worker threads to run for the generic service");
-TAG_FLAG(generic_svc_num_threads, advanced);
+DEPRECATE_FLAG(int32, generic_svc_num_threads, "02_2024");
 
 DEFINE_UNKNOWN_int32(generic_svc_queue_length, 50,
              "RPC Queue length for the generic service");
@@ -662,6 +660,7 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
   // TLS.
   DisplayIconTile(output, "fa-lock", "TLS", "/tls");
+  DisplayIconTile(output, "fa-times", "xCluster", "/xcluster");
 }
 
 void RpcAndWebServerBase::DisplayMemoryIcons(std::stringstream* output) {

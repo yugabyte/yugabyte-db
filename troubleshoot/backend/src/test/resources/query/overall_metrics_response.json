@@ -34,7 +34,9 @@
         "namespaceId": null,
         "nodePrefix": null,
         "type": "scatter",
-        "labels": null,
+        "labels": {
+          "service_method": "DeleteStmt"
+        },
         "x": [
           1706272080000,
           1706272200000,
@@ -251,7 +253,9 @@
         "namespaceId": null,
         "nodePrefix": null,
         "type": "scatter",
-        "labels": null,
+        "labels": {
+          "service_method": "InsertStmt"
+        },
         "x": [
           1706272080000,
           1706272200000,
@@ -468,7 +472,9 @@
         "namespaceId": null,
         "nodePrefix": null,
         "type": "scatter",
-        "labels": null,
+        "labels": {
+          "service_method": "SelectStmt"
+        },
         "x": [
           1706272080000,
           1706272200000,
@@ -685,7 +691,9 @@
         "namespaceId": null,
         "nodePrefix": null,
         "type": "scatter",
-        "labels": null,
+        "labels": {
+          "service_method": "UpdateStmt"
+        },
         "x": [
           1706272080000,
           1706272200000,

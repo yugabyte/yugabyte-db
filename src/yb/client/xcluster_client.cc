@@ -64,7 +64,7 @@ Status XClusterClient::CreateXClusterReplication(
   return Status::OK();
 }
 
-Result<bool> XClusterClient::IsCreateXClusterReplicationDone(
+Result<IsOperationDoneResult> XClusterClient::IsCreateXClusterReplicationDone(
     const xcluster::ReplicationGroupId& replication_group_id,
     const std::string& target_master_addresses) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
@@ -83,7 +83,11 @@ Result<bool> XClusterClient::IsCreateXClusterReplicationDone(
     return StatusFromPB(resp.error().status());
   }
 
-  return resp.done();
+  if (resp.has_replication_error()) {
+    return IsOperationDoneResult::Done(StatusFromPB(resp.replication_error()));
+  }
+
+  return IsOperationDoneResult::Done();
 }
 
 Result<std::vector<NamespaceId>> XClusterClient::XClusterCreateOutboundReplicationGroup(

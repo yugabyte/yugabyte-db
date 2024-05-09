@@ -34,7 +34,7 @@ func DeleteProviderValidation(cmd *cobra.Command) {
 		fmt.Sprintf("Are you sure you want to delete %s: %s", util.ProviderType, providerName),
 		viper.GetBool("force"))
 	if err != nil {
-		logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 }
 
@@ -65,8 +65,11 @@ func DeleteProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 	}
 
 	if len(r) < 1 {
-		fmt.Println("No providers found")
-		return
+		logrus.Fatalf(
+			formatter.Colorize(
+				fmt.Sprintf("No providers with name: %s found\n", providerName),
+				formatter.RedColor,
+			))
 	}
 
 	var providerUUID string
@@ -96,9 +99,9 @@ func DeleteProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
-		fmt.Printf("The provider %s (%s) has been deleted\n",
+		logrus.Infof("The provider %s (%s) has been deleted\n",
 			formatter.Colorize(providerName, formatter.GreenColor), providerUUID)
 		return
 	}
-	fmt.Println(msg)
+	logrus.Infoln(msg + "\n")
 }

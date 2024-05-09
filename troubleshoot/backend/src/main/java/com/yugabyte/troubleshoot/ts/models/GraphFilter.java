@@ -16,6 +16,7 @@ public enum GraphFilter {
   regionCode(""),
   azCode(""),
   instanceType(""),
+  dbName("namespace_name"),
   tableName("table_name"),
   tableId("table_id"),
   mountPoint("mountpoint");

@@ -3,7 +3,6 @@ package com.yugabyte.troubleshoot.ts.service.anomaly;
 import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
 import java.util.*;
-import java.util.stream.Collectors;
 import lombok.Value;
 
 public abstract class ThresholdExceedDetector extends AnomalyDetectorBase {
@@ -46,12 +45,10 @@ public abstract class ThresholdExceedDetector extends AnomalyDetectorBase {
                   .getThresholdExceedSettings()
                   .setThreshold(graphWithThreshold.getThreshold());
 
-              Map<String, List<GraphData>> graphsByLineName =
-                  response.getData().stream()
-                      .collect(Collectors.groupingBy(GraphData::getName, Collectors.toList()));
+              List<List<GraphData>> groupedLines = groupGraphLines(response.getData());
 
-              graphsByLineName.forEach(
-                  (mode, graphs) ->
+              groupedLines.forEach(
+                  graphs ->
                       anomalies.addAll(
                           anomalyDetectionService.getAnomalies(
                               GraphAnomaly.GraphAnomalyType.EXCEED_THRESHOLD,
@@ -63,8 +60,7 @@ public abstract class ThresholdExceedDetector extends AnomalyDetectorBase {
       return result;
     }
 
-    List<GraphAnomaly> mergedAnomalies = anomalyDetectionService.mergeAnomalies(anomalies);
-    createAnomalies(result, mergedAnomalies, contextWithUpdatedStep.build());
+    groupAndCreateAnomalies(contextWithUpdatedStep.build(), anomalies, result);
 
     return result;
   }

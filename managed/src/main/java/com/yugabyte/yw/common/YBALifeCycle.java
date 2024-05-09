@@ -78,7 +78,7 @@ public class YBALifeCycle {
     boolean isCurrentVersionStable = Util.isStableVersion(version, false);
     // Skip version checks if runtime flag enabled. User must take care of downgrades
     if (!config.getBoolean(GlobalConfKeys.skipVersionChecks.getKey())) {
-      if (isPreviousVersionStable ^ isCurrentVersionStable) {
+      if (previousSoftwareVersion != "" && (isPreviousVersionStable ^ isCurrentVersionStable)) {
         String msg =
             String.format(
                 "Cannot upgrade from preview to stable version or stable to preview. If required,"

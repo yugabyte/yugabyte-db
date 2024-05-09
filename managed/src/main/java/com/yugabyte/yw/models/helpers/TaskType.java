@@ -942,6 +942,8 @@ public enum TaskType {
 
   ValidateNodeDiskSize(com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize.class),
 
+  CheckNodeReachable(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable.class),
+
   WaitStartingFromTime(WaitStartingFromTime.class);
 
   private final Class<? extends ITask> taskClass;

@@ -466,6 +466,11 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 
 			break;
 
+		case YB_OID_DETAILS:
+			/* Read the oid details */
+			yb_handle_oid_pkt_client(instance, client, msg);
+			continue;
+
 		case KIWI_BE_ERROR_RESPONSE:
 			/* Physical connection is broken, no need to wait for readyForQuery pkt */
 			server->offline = 1;

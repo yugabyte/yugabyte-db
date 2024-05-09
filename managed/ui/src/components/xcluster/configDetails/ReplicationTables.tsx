@@ -34,7 +34,6 @@ import {
   xClusterQueryKey
 } from '../../../redesign/helpers/api';
 import {
-  AlertName,
   BROKEN_XCLUSTER_CONFIG_STATUSES,
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue,
@@ -63,6 +62,7 @@ import {
 import { XClusterTable } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
 import { NodeAggregation, SplitType } from '../../metrics/dtos';
+import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import styles from './ReplicationTables.module.scss';
 
@@ -105,7 +105,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: xClusterConfig.sourceUniverseUUID
   };
   const alertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>

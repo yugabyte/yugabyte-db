@@ -98,7 +98,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
   // Should be ok to split before creating a stream.
-  ASSERT_OK(XreplValidateSplitCandidateTable(table_id));
+  ASSERT_OK(XReplValidateSplitCandidateTable(table_id));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -106,7 +106,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
 
   // Split disallowed since FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables is false and we have
   // a CDCSDK stream on the table.
-  auto s = XreplValidateSplitCandidateTable(table_id);
+  auto s = XReplValidateSplitCandidateTable(table_id);
   ASSERT_NOK(s);
   ASSERT_NE(
       s.message().AsStringView().find(
@@ -116,7 +116,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
   // Should be ok to split since FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables is true.
-  ASSERT_OK(XreplValidateSplitCandidateTable(table_id));
+  ASSERT_OK(XReplValidateSplitCandidateTable(table_id));
 }
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitWithBeforeImage)) {

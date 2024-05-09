@@ -48,14 +48,14 @@ var RestartCmd = &cobra.Command{
 				util.UniverseType, universeName),
 			viper.GetBool("force"))
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 
 		authAPI, universe, err := UpgradeValidations(cmd, util.UpgradeOperation)
 		if err != nil {
-			logrus.Fatalf(err.Error() + "\n")
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		universeName := universe.GetName()
@@ -65,17 +65,17 @@ var RestartCmd = &cobra.Command{
 
 		upgradeOption, err := cmd.Flags().GetString("upgrade-option")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		tserverDelay, err := cmd.Flags().GetInt32("delay-between-tservers")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		req := ybaclient.RestartTaskParams{

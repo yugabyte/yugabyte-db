@@ -656,9 +656,15 @@ extern bool yb_test_table_rewrite_keep_old_table;
 
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
- * back upon failure.
+ * back upon failure. These two GUC variables are used together. See comments
+ * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
 */
-extern bool ddl_rollback_enabled;
+extern bool yb_enable_ddl_atomicity_infra;
+extern bool yb_ddl_rollback_enabled;
+static inline bool
+YbDdlRollbackEnabled () {
+	return yb_enable_ddl_atomicity_infra && yb_ddl_rollback_enabled;
+}
 
 extern bool yb_use_hash_splitting_by_default;
 
@@ -1129,4 +1135,7 @@ extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_t
 extern void YbGetRedactedQueryString(const char* query, int query_len,
 									 const char** redacted_query, int* redacted_query_len);
 
+extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
+										bool yb_copy_split_options,
+										bool is_truncate);
 #endif /* PG_YB_UTILS_H */

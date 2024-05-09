@@ -515,7 +515,7 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
       true /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
-      "/xcluster", "xcluster",
+      "/xcluster", "xCluster",
       std::bind(&TabletServerPathHandlers::HandleXClusterPage, this, _1, _2), true /* styled */,
       false /* is_on_nav_bar */);
 

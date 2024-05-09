@@ -353,16 +353,32 @@ $(document).ready(() => {
    */
   (() => {
     $('.td-content .nav-tabs-yb .nav-link').each((index, element) => {
-      const tabId = element.id;
+      let tabId = element.id;
       if (tabId) {
+        const regex = /(?<name>.*)-[0-9]+-tab/;
+        const found = tabId.match(regex);
+        if (found && found.groups) {
+          tabId = `${found.groups.name}-tab`;
+        }
+
+        console.log('id:', tabId);
         $(element).addClass(tabId);
       }
     });
 
     $(document).on('click', '.td-content .nav-tabs-yb .nav-link', (event) => {
       if (event.target && event.originalEvent && event.originalEvent.isTrusted) {
-        const tabId = event.target.getAttribute('id');
+        let tabId = event.target.getAttribute('id');
+
         if (tabId) {
+          const regex = /(?<name>.*)-[0-9]+-tab/;
+          const found = tabId.match(regex);
+          if (found && found.groups) {
+            tabId = `${found.groups.name}-tab`;
+          }
+
+          console.log('clicked id:', tabId);
+          console.log($(`.td-content .nav-tabs-yb .nav-link.${tabId}`));
           $(`.td-content .nav-tabs-yb .nav-link.${tabId}`).trigger('click');
         }
       }

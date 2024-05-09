@@ -161,7 +161,7 @@ Default: `""`
 
 ##### --defer_index_backfill
 
-If enabled, yb-master avoids launching any new index-backfill jobs on the cluster for all new YCQL indexes.  
+If enabled, yb-master avoids launching any new index-backfill jobs on the cluster for all new YCQL indexes.
 You will need to run [`yb-admin backfill_indexes_for_table`](../../../admin/yb-admin/#backfill-indexes-for-table) manually for indexes to be functional.
 See [`CREATE DEFERRED INDEX`](../../../api/ycql/ddl_create_index/#deferred-index) for reference.
 
@@ -767,7 +767,7 @@ Default: `true`
 
 ## Advanced flags
 
-#### ysql_index_backfill_rpc_timeout_ms
+##### ysql_index_backfill_rpc_timeout_ms
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 

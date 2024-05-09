@@ -87,7 +87,7 @@ export const PrimaryDashboardData = ({
 
   const [filteredAnomalyList, setFilteredAnomalyList] = useState<Anomaly[]>([]);
   const [anomalyCategoryOptions, setAnomalyCategoryOptions] = useState<AnomalyCategory[]>();
-  const [filterDuration, setFilterDuration] = useState<string>(anomalyFilterDurations[0].label);
+  const [filterDuration, setFilterDuration] = useState<string>(anomalyFilterDurations[0].value);
   const [datetimeError, setDateTimeError] = useState<string>('');
   const [startDateTime, setStartDateTime] = useState<Date>(yesterday);
   const [endDateTime, setEndDateTime] = useState<Date>(today);

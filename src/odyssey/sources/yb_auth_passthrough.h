@@ -27,6 +27,9 @@
 #ifndef YB_AUTH_PASSTHROUGH_H
 #define YB_AUTH_PASSTHROUGH_H
 
+#include <kiwi.h>
+#include <argp.h>
+
 extern int yb_auth_frontend_passthrough(od_client_t *, od_server_t *);
 
 extern void yb_handle_fatalforlogicalconnection_pkt(od_client_t*, od_server_t*);

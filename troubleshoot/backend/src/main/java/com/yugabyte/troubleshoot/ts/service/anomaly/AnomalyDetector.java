@@ -30,8 +30,6 @@ public interface AnomalyDetector {
   @Accessors(chain = true)
   public static class AnomalyDetectionContext {
     UUID universeUuid;
-    String dbId;
-    String queryId;
     Instant startTime;
     Long stepSeconds;
     Instant endTime;

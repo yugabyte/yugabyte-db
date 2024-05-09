@@ -225,7 +225,7 @@ func init() {
 
 	createAzureProviderCmd.Flags().String("network-subscription-id", "",
 		"Azure Network Subscription ID.")
-	createAzureProviderCmd.Flags().String("az-network-rg", "", "Azure Network Resource Group.")
+	createAzureProviderCmd.Flags().String("network-rg", "", "Azure Network Resource Group.")
 
 	createAzureProviderCmd.Flags().String("hosted-zone-id", "",
 		"[Optional] Hosted Zone ID corresponging to Private DNS Zone.")
@@ -279,55 +279,14 @@ func init() {
 func buildAzureRegions(regionStrings, zoneStrings []string) (res []ybaclient.Region) {
 	if len(regionStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one region is required per provider.",
+			formatter.Colorize("Atleast one region is required per provider.\n",
 				formatter.RedColor))
 	}
 	for _, regionString := range regionStrings {
-		region := map[string]string{}
-		for _, regionInfo := range strings.Split(regionString, ",") {
-			kvp := strings.Split(regionInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in region description.",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "region-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "vnet":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["vnet"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "sg-id":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["sg-id"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "yb-image":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["yb-image"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			}
-		}
-		if _, ok := region["name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Name not specified in region.",
-					formatter.RedColor))
-		}
+		region := providerutil.BuildRegionMapFromString(regionString, "")
 		if _, ok := region["vnet"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Virtual Network not specified in region info.",
+				formatter.Colorize("Virtual Network not specified in region info.\n",
 					formatter.RedColor))
 
 		}
@@ -354,56 +313,11 @@ func buildAzureRegions(regionStrings, zoneStrings []string) (res []ybaclient.Reg
 
 func buildAzureZones(zoneStrings []string, regionName string) (res []ybaclient.AvailabilityZone) {
 	for _, zoneString := range zoneStrings {
-		zone := map[string]string{}
-		for _, zoneInfo := range strings.Split(zoneString, ",") {
-			kvp := strings.Split(zoneInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in zone description",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "zone-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "region-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["region-name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "subnet":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["subnet"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "secondary-subnet":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["secondary-subnet"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			}
-		}
-		if _, ok := zone["name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Name not specified in zone.",
-					formatter.RedColor))
-		}
-		if _, ok := zone["region-name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Region name not specified in zone.",
-					formatter.RedColor))
-		}
+		zone := providerutil.BuildZoneMapFromString(zoneString, "")
+
 		if _, ok := zone["subnet"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Subnet not specified in zone info.",
+				formatter.Colorize("Subnet not specified in zone info.\n",
 					formatter.RedColor))
 		}
 
@@ -419,7 +333,7 @@ func buildAzureZones(zoneStrings []string, regionName string) (res []ybaclient.A
 	}
 	if len(res) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return res

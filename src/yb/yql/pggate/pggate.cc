@@ -897,12 +897,13 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool is_matview,
                                  const PgObjectId& pg_table_oid,
                                  const PgObjectId& old_relfilenode_oid,
+                                 bool is_truncate,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, is_colocated_via_database,
       tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
-      old_relfilenode_oid);
+      old_relfilenode_oid, is_truncate);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -1202,7 +1203,8 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
       is_colocated_via_database, tablegroup_oid, colocation_id,
-      tablespace_oid, false /* is_matview */, pg_table_id, old_relfilenode_id);
+      tablespace_oid, false /* is_matview */, pg_table_id, old_relfilenode_id,
+      false /* is_truncate */);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
       stmt->UseTransaction();

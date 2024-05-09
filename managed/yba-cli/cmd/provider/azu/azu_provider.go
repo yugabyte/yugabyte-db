@@ -28,7 +28,7 @@ func init() {
 	AzureProviderCmd.Flags().SortFlags = false
 
 	AzureProviderCmd.AddCommand(createAzureProviderCmd)
-	// AzureProviderCmd.AddCommand(updateAzureProviderCmd)
+	AzureProviderCmd.AddCommand(updateAzureProviderCmd)
 	AzureProviderCmd.AddCommand(listAzureProviderCmd)
 	AzureProviderCmd.AddCommand(describeAzureProviderCmd)
 	AzureProviderCmd.AddCommand(deleteAzureProviderCmd)
@@ -36,6 +36,6 @@ func init() {
 	AzureProviderCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe.",
+				"Required for create, delete, describe, update.",
 				formatter.GreenColor)))
 }

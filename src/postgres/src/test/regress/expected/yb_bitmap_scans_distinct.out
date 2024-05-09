@@ -15,7 +15,7 @@ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using test_distinct_pkey on test_distinct (actual rows=2 loops=1)
          Index Cond: (r1 < 2)
-         Distinct Prefix: 1
+         Distinct Keys: r1
          Storage Table Read Requests: 2
          Storage Table Rows Scanned: 2
 (6 rows)
@@ -32,7 +32,7 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
 ---------------------------------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
    ->  Distinct Index Scan using test_distinct_pkey on test_distinct (actual rows=7 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
          Storage Filter: ((r1 < 2) OR (r2 < 3))
 (4 rows)
 

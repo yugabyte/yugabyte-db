@@ -405,5 +405,58 @@
         ]
       }
     ]
+  },
+  {
+    "metadataUuid": "2355a3d0-c4ca-42d1-929d-4a0fbfb4ddd7",
+    "category": "NODE",
+    "type": "HOT_NODE_DATA",
+    "title": "Table data is spread unevenly across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "table_size",
+        "filters": {
+          "universeUuid": [],
+          "dbName": [],
+          "tableId": [],
+          "tableName": []
+        }
+      },
+      {
+        "name": "table_sst_size",
+        "filters": {
+          "universeUuid": [],
+          "dbName": [],
+          "tableId": [],
+          "tableName": []
+        }
+      },
+      {
+        "name": "table_wal_size",
+        "filters": {
+          "universeUuid": [],
+          "dbName": [],
+          "tableId": [],
+          "tableName": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "Suboptimal table partitioning logic",
+        "possibleCauseDescription": "Particular range/hash key has significantly more data, than the other",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check amount of rows for each range/hash value"
+          }
+        ]
+      }
+    ]
   }
 ]

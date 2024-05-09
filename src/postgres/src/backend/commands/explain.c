@@ -168,7 +168,8 @@ static void
 YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
 									 const YbInstrumentation *instr);
 static void YbExplainDistinctPrefixLen(
-	int yb_distinct_prefixlen, ExplainState *es);
+	PlanState *planstate, List *indextlist, int yb_distinct_prefixlen,
+	ExplainState *es, List *ancestors);
 static void show_ybtidbitmap_info(YbBitmapTableScanState *planstate,
 								  ExplainState *es);
 
@@ -2649,7 +2650,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 * that's currently the order of operations in DocDB.
 			 */
 			YbExplainDistinctPrefixLen(
-				((IndexScan *) plan)->yb_distinct_prefixlen, es);
+				planstate, ((IndexScan *) plan)->indextlist,
+				((IndexScan *) plan)->yb_distinct_prefixlen, es, ancestors);
 			show_scan_qual(((IndexScan *) plan)->yb_idx_pushdown.quals,
 						   "Storage Index Filter", planstate, ancestors, es);
 			show_scan_qual(((IndexScan *) plan)->yb_rel_pushdown.quals,
@@ -2687,7 +2689,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 * that's currently the order of operations in DocDB.
 			 */
 			YbExplainDistinctPrefixLen(
-				((IndexOnlyScan *) plan)->yb_distinct_prefixlen, es);
+				planstate, ((IndexOnlyScan *) plan)->indextlist,
+				((IndexOnlyScan *) plan)->yb_distinct_prefixlen, es, ancestors);
 			/*
 			 * Storage filter is applied first, so it is output first.
 			 */
@@ -6226,15 +6229,56 @@ YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
  * --------------
  * Distinct Index Scan
  *       ...
- * 	 Distinct Prefix: <prefix length>
+ * 	 Distinct Keys: <Index Prefix Keys>
  *       ...
  *
  * Adds Distinct Prefix to explain info
  */
 static void
-YbExplainDistinctPrefixLen(int yb_distinct_prefixlen, ExplainState *es)
+YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
+						   int yb_distinct_prefixlen, ExplainState *es,
+						   List *ancestors)
 {
 	if (yb_distinct_prefixlen > 0)
-		ExplainPropertyInteger(
-			"Distinct Prefix", NULL, yb_distinct_prefixlen, es);
+	{
+		/* Print distinct prefix keys. */
+		List		   *context;
+		List		   *result = NIL;
+		StringInfoData	distinct_prefix_key_buf;
+		bool			useprefix;
+		int				keyno;
+		ListCell	   *tlelc;
+
+		initStringInfo(&distinct_prefix_key_buf);
+
+		/* Set up deparsing context */
+		context = set_deparse_context_plan(es->deparse_cxt,
+										   planstate->plan,
+										   ancestors);
+		useprefix = (list_length(es->rtable) > 1 || es->verbose);
+
+		keyno = 0;
+		foreach(tlelc, indextlist)
+		{
+			TargetEntry	*indextle;
+			char 		*exprstr;
+
+			if (keyno >= yb_distinct_prefixlen)
+				break;
+
+			indextle = (TargetEntry *) lfirst(tlelc);
+
+			/* Deparse the expression, showing any top-level cast */
+			exprstr = deparse_expression((Node *) indextle->expr, context,
+										useprefix, true);
+			resetStringInfo(&distinct_prefix_key_buf);
+			appendStringInfoString(&distinct_prefix_key_buf, exprstr);
+			/* Emit one property-list item per key */
+			result = lappend(result, pstrdup(distinct_prefix_key_buf.data));
+
+			keyno++;
+		}
+
+		ExplainPropertyList("Distinct Keys", result, es);
+	}
 }

@@ -151,13 +151,6 @@ static YbBitmapTableScan *create_yb_bitmap_scan_plan(PlannerInfo *root,
 static Plan *create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 								   List **qual, List **indexqual, List **indexECs);
 static void bitmap_subplan_mark_shared(Plan *plan);
-static void extract_pushdown_clauses(List *restrictinfo_list,
-									 IndexOptInfo *indexinfo,
-									 List **local_quals,
-									 List **rel_remote_quals,
-									 List **rel_colrefs,
-									 List **idx_remote_quals,
-									 List **idx_colrefs);
 static TidScan *create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 									List *tlist, List *scan_clauses);
 static TidRangeScan *create_tidrangescan_plan(PlannerInfo *root,
@@ -7066,115 +7059,6 @@ bitmap_subplan_mark_shared(Plan *plan)
 		((BitmapIndexScan *) plan)->isshared = true;
 	else
 		elog(ERROR, "unrecognized node type: %d", nodeTag(plan));
-}
-
-/*
- * is_index_only_refs
- *		Check if all column references from the list are available from the
- *		index described by the indexinfo.
- */
-static bool
-is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo)
-{
-	ListCell *lc;
-	foreach (lc, colrefs)
-	{
-		bool found = false;
-		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, lfirst(lc));
-		for (int i = 0; i < indexinfo->ncolumns; i++)
-		{
-			if (colref->attno == indexinfo->indexkeys[i])
-			{
-				/*
-				 * If index key can not return, it does not have actual value
-				 * to evaluate the expression.
-				 */
-				if (indexinfo->canreturn[i])
-				{
-					found = true;
-					break;
-				}
-				else
-					return false;
-			}
-		}
-		if (!found)
-			return false;
-	}
-	return true;
-}
-
-/*
- * extract_pushdown_clauses
- *	  Extract actual clauses from RestrictInfo list and distribute them
- * 	  between three groups:
- *	  - local_quals - conditions not eligible for pushdown. They are evaluated
- *	  on the Postgres side on the rows fetched from DocDB;
- *	  - rel_remote_quals - conditions to pushdown with the request to the main
- *	  scanned relation. In the case of sequential scan or index only scan
- *	  the DocDB table or DocDB index respectively is the main (and only)
- *	  scanned relation, so the function returns only two groups;
- *	  - idx_remote_quals - conditions to pushdown with the request to the
- *	  secondary (index) relation. Used with the index scan on a secondary
- *	  index, and caller must provide IndexOptInfo record for the index.
- *	  - rel_colrefs, idx_colrefs are columns referenced by respective
- *	  rel_remote_quals or idx_remote_quals.
- *	  The output parameters local_quals, rel_remote_quals, rel_colrefs must
- *	  point to valid lists. The output parameters idx_remote_quals and
- *	  idx_colrefs may be NULL if the indexinfo is NULL.
- */
-static void
-extract_pushdown_clauses(List *restrictinfo_list,
-						 IndexOptInfo *indexinfo,
-						 List **local_quals,
-						 List **rel_remote_quals,
-						 List **rel_colrefs,
-						 List **idx_remote_quals,
-						 List **idx_colrefs)
-{
-	ListCell *lc;
-	foreach(lc, restrictinfo_list)
-	{
-		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
-		/* ignore pseudoconstants */
-		if (ri->pseudoconstant)
-			continue;
-
-		if (ri->yb_pushable)
-		{
-			List *colrefs = NIL;
-			bool pushable PG_USED_FOR_ASSERTS_ONLY;
-
-			/*
-			 * Find column references. It has already been determined that
-			 * the expression is pushable.
-			 */
-			pushable = YbCanPushdownExpr(ri->clause, &colrefs);
-			Assert(pushable);
-
-			/*
-			 * If there are both main and secondary (index) relations,
-			 * determine one to pushdown the condition. It is more efficient
-			 * to apply filter earlier, so prefer index, if it has all the
-			 * necessary columns.
-			 */
-			if (indexinfo == NULL ||
-				!is_index_only_refs(colrefs, indexinfo))
-			{
-				*rel_colrefs = list_concat(*rel_colrefs, colrefs);
-				*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
-			}
-			else
-			{
-				*idx_colrefs = list_concat(*idx_colrefs, colrefs);
-				*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
-			}
-		}
-		else
-		{
-			*local_quals = lappend(*local_quals, ri->clause);
-		}
-	}
 }
 
 /*****************************************************************************

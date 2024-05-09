@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { ROOT_URL } from '../../../config';
-import { ReleaseArtifactId, ReleaseSpecificArtifact, Releases, UUID } from './components/dtos';
+import { ReleaseSpecificArtifact, Releases, UUID } from './components/dtos';
 
 export enum QUERY_KEY {
   fetchReleasesList = 'fetchReleasesList',

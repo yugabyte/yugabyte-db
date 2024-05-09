@@ -536,7 +536,7 @@ public class ApiUtils {
       node.isMaster = true;
       node.isTserver = false;
       node.cloudInfo = new CloudSpecificInfo();
-      node.cloudInfo.private_ip = "1.2.3.4";
+      node.cloudInfo.private_ip = "1.2.3." + Integer.toString(i);
       counter++;
       nodeDetailsSet.add(node);
     }
@@ -548,7 +548,7 @@ public class ApiUtils {
       node.isMaster = false;
       node.isTserver = true;
       node.cloudInfo = new CloudSpecificInfo();
-      node.cloudInfo.private_ip = "1.2.3.4";
+      node.cloudInfo.private_ip = "1.2.2." + Integer.toString(i);
       counter++;
       nodeDetailsSet.add(node);
     }

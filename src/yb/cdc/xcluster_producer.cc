@@ -211,9 +211,8 @@ Status PopulateTransactionRecord(
   return Status::OK();
 }
 
-// Populate a CDCRecordPB for a tablet split operation. Returns true iff the operation was
-// successfully processed.
-Result<bool> PopulateSplitOpRecord(
+// Populate a CDCRecordPB for a tablet split operation.
+Status PopulateSplitOpRecord(
     const xrepl::StreamId& stream_id, const TabletId& tablet_id,
     const consensus::LWReplicateMsg& msg, UpdateOnSplitOpFunc update_on_split_op_func,
     GetChangesResponsePB* resp) {
@@ -221,7 +220,7 @@ Result<bool> PopulateSplitOpRecord(
       msg.has_split_request(), InvalidArgument,
       Format("Split op message requires split_request: $0", msg.ShortDebugString()));
   if (msg.split_request().tablet_id() != tablet_id) {
-    return true;
+    return Status::OK();
   }
 
   // Only send split if it is our split, and if we can update the children tablet entries
@@ -231,7 +230,7 @@ Result<bool> PopulateSplitOpRecord(
   if (!s.ok()) {
     LOG(INFO) << "Not replicating SPLIT_OP yet for tablet: " << tablet_id
               << ", stream: " << stream_id << " : " << s;
-    return false;
+    return s;
   }
 
   CDCRecordPB* record = resp->add_records();
@@ -239,7 +238,7 @@ Result<bool> PopulateSplitOpRecord(
   record->set_time(msg.hybrid_time());
   msg.split_request().ToGoogleProtobuf(record->mutable_split_tablet_request());
 
-  return true;
+  return Status::OK();
 }
 
 // Populate a CDCRecordPB for a Change Metadata operation. Returns true if the record was added and
@@ -387,13 +386,8 @@ Status GetChangesForXCluster(
         RETURN_NOT_OK(PopulateWriteRecord(msg, *stream_metadata, tablet_peer, resp));
         break;
       case consensus::OperationType::SPLIT_OP:
-        if (!VERIFY_RESULT(
-                PopulateSplitOpRecord(stream_id, tablet_id, msg, update_on_split_op_func, resp))) {
-          // Failed to process the Split Op, so stop processing it and any further records. We can
-          // still send all previous records to the consumer.
-          checkpoint = previous_checkpoint;
-          exit_early = true;
-        }
+        RETURN_NOT_OK(
+            PopulateSplitOpRecord(stream_id, tablet_id, msg, update_on_split_op_func, resp));
         break;
       case consensus::OperationType::CHANGE_METADATA_OP:
         if (VERIFY_RESULT(PopulateChangeMetadataRecord(tablet_id, msg, resp))) {
@@ -405,12 +399,13 @@ Status GetChangesForXCluster(
         // Nothing to do for other operation types.
         break;
     }
+    ht_of_last_returned_message = HybridTime(msg.hybrid_time());
+
     if (exit_early) {
       have_more_messages = HaveMoreMessages::kTrue;
       break;
     }
 
-    ht_of_last_returned_message = HybridTime(msg.hybrid_time());
     previous_checkpoint = checkpoint;
   }
 
@@ -427,12 +422,14 @@ Status GetChangesForXCluster(
   if (transactional) {
     // We can set the apply_safe_time if no messages were read from the WAL and there is nothing
     // to send. Or, the apply_safe_time_checkpoint_op_id_ was included in the response.
-    if ((checkpoint.index == 0 && !read_ops.have_more_messages) ||
-        checkpoint.index >= stream_tablet_metadata->apply_safe_time_checkpoint_op_id_) {
-      resp->set_safe_hybrid_time(stream_tablet_metadata->last_apply_safe_time_.ToUint64());
-      // Clear out the checkpoint and recompute it on next call.
-      stream_tablet_metadata->apply_safe_time_checkpoint_op_id_ = 0;
-      stream_tablet_metadata->last_apply_safe_time_ = HybridTime::kInvalid;
+    if (stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
+      if ((checkpoint.index == 0 && !read_ops.have_more_messages) ||
+          checkpoint.index >= stream_tablet_metadata->apply_safe_time_checkpoint_op_id_) {
+        resp->set_safe_hybrid_time(stream_tablet_metadata->last_apply_safe_time_.ToUint64());
+        // Clear out the checkpoint and recompute it on next call.
+        stream_tablet_metadata->apply_safe_time_checkpoint_op_id_ = 0;
+        stream_tablet_metadata->last_apply_safe_time_ = HybridTime::kInvalid;
+      }
     }
   } else {
     auto safe_time =

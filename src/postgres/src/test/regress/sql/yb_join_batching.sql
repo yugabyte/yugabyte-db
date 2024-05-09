@@ -515,6 +515,17 @@ a = int4table.a;
 drop table oidtable;
 drop table int4table;
 
+create table ss1(a int);
+create table ss2(a int);
+create table ss3(a int, b int, primary key(a asc, b asc));
+
+-- Should not result in an illegal BNL on the inner side
+/*+Leading((ss1 (ss2 ss3)))*/ explain (costs off) select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
+/*+Leading((ss1 (ss2 ss3)))*/ select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
+drop table ss1;
+drop table ss2;
+drop table ss3;
+
 SELECT '' AS "xxx", *
   FROM J1_TBL AS tx order by 1, 2, 3, 4;
 

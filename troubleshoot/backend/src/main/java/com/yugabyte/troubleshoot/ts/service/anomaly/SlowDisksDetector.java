@@ -22,7 +22,7 @@ public class SlowDisksDetector extends ThresholdExceedDetector {
   protected List<GraphWithThreshold> getGraphsWithThresholds() {
     return ImmutableList.of(
         new GraphWithThreshold("disk_io_time", 99),
-        new GraphWithThreshold("disk_io_queue_depth", 100));
+        new GraphWithThreshold("disk_io_queue_depth", 10));
   }
 
   @Override

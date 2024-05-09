@@ -19,7 +19,9 @@ public class KubernetesOverridesSerializer extends StdSerializer<KubernetesOverr
       throws IOException {
     Resource resource = value.getResource();
     gen.writeStartObject();
-    provider.defaultSerializeField("nodeSelector", value.getNodeSelector(), gen);
+    if (value.getNodeSelector() != null) {
+      provider.defaultSerializeField("nodeSelector", value.getNodeSelector(), gen);
+    }
     if (value.getMaster() != null) {
       provider.defaultSerializeField("master", value.getMaster(), gen);
     }

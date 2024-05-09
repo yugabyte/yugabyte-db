@@ -103,16 +103,71 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
     return response;
   }
 
-  protected void createAnomalies(
-      AnomalyDetectionResult result,
+  private GraphMetadata fillGraphMetadata(
+      GraphMetadata template, GraphAnomaly graphAnomaly, AnomalyDetectionContext context) {
+    GraphMetadata.GraphMetadataBuilder metadataBuilder = template.toBuilder();
+    Map<GraphFilter, List<String>> filters = new HashMap<>(template.getFilters());
+    for (GraphFilter filterKey : template.getFilters().keySet()) {
+      if (graphAnomaly.getLabels().containsKey(filterKey.name())) {
+        filters.put(filterKey, new ArrayList<>(graphAnomaly.getLabels().get(filterKey.name())));
+      }
+    }
+    if (template.getFilters().containsKey(GraphFilter.universeUuid)) {
+      filters.put(GraphFilter.universeUuid, ImmutableList.of(context.getUniverseUuid().toString()));
+    }
+    return metadataBuilder.filters(filters).build();
+  }
+
+  protected long getMinAnomalySizeMillis() {
+    return MIN_ANOMALY_SIZE_MILLIS;
+  }
+
+  protected List<List<GraphData>> groupGraphLines(List<GraphData> lines) {
+    return new ArrayList<>(
+        lines.stream()
+            .collect(Collectors.groupingBy(this::graphLinesGroupBy, Collectors.toList()))
+            .values());
+  }
+
+  protected List<List<GraphAnomaly>> groupGraphAnomalies(List<GraphAnomaly> anomalies) {
+    return new ArrayList<>(
+        anomalies.stream()
+            .collect(Collectors.groupingBy(this::anomaliesGroupBy, Collectors.toList()))
+            .values());
+  }
+
+  protected String graphLinesGroupBy(GraphData graphData) {
+    return graphData.getName();
+  }
+
+  protected String anomaliesGroupBy(GraphAnomaly anomaly) {
+    return StringUtils.EMPTY;
+  }
+
+  protected void groupAndCreateAnomalies(
+      AnomalyDetectionContext context,
       List<GraphAnomaly> graphAnomalies,
-      AnomalyDetectionContext context) {
+      AnomalyDetectionResult result) {
+    List<List<GraphAnomaly>> groupedAnomalies = groupGraphAnomalies(graphAnomalies);
+
+    List<List<GraphAnomaly>> mergedAnomalies =
+        groupedAnomalies.stream().map(anomalyDetectionService::mergeAnomalies).toList();
+
+    mergedAnomalies.forEach(anomalyGroup -> createAnomalies(context, anomalyGroup, result));
+  }
+
+  protected void createAnomalies(
+      AnomalyDetectionContext context,
+      List<GraphAnomaly> graphAnomalies,
+      AnomalyDetectionResult result) {
     graphAnomalies.forEach(
         graphAnomaly -> {
           AnomalyMetadata metadata = metadataProvider.getMetadata(getAnomalyType());
           AnomalyMetadata.AnomalyMetadataBuilder metadataBuilder = metadata.toBuilder();
           metadataBuilder.mainGraphs(
-              metadata.getMainGraphs().stream().map(t -> fillGraphMetadata(t, context)).toList());
+              metadata.getMainGraphs().stream()
+                  .map(t -> fillGraphMetadata(t, graphAnomaly, context))
+                  .toList());
           metadataBuilder.rcaGuidelines(
               metadata.getRcaGuidelines().stream()
                   .map(
@@ -132,7 +187,8 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
                                                               .stream()
                                                               .map(
                                                                   t ->
-                                                                      fillGraphMetadata(t, context))
+                                                                      fillGraphMetadata(
+                                                                          t, graphAnomaly, context))
                                                               .toList())
                                                       .build())
                                       .toList())
@@ -179,24 +235,5 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
 
           result.getAnomalies().add(anomalyBuilder.build());
         });
-  }
-
-  private GraphMetadata fillGraphMetadata(GraphMetadata template, AnomalyDetectionContext context) {
-    GraphMetadata.GraphMetadataBuilder metadataBuilder = template.toBuilder();
-    Map<GraphFilter, List<String>> filters = new HashMap<>(template.getFilters());
-    if (template.getFilters().containsKey(GraphFilter.universeUuid)) {
-      filters.put(GraphFilter.universeUuid, ImmutableList.of(context.getUniverseUuid().toString()));
-    }
-    if (template.getFilters().containsKey(GraphFilter.dbId)) {
-      filters.put(GraphFilter.dbId, ImmutableList.of(context.getDbId()));
-    }
-    if (template.getFilters().containsKey(GraphFilter.queryId)) {
-      filters.put(GraphFilter.queryId, ImmutableList.of(context.getQueryId()));
-    }
-    return metadataBuilder.filters(filters).build();
-  }
-
-  protected long getMinAnomalySizeMillis() {
-    return MIN_ANOMALY_SIZE_MILLIS;
   }
 }

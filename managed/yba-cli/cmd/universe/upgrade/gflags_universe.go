@@ -41,7 +41,9 @@ var upgradeGflagsCmd = &cobra.Command{
 		if !skipValidations {
 			_, _, err := UpgradeValidations(cmd, util.UpgradeOperation)
 			if err != nil {
-				logrus.Fatalf(err.Error() + "\n")
+				logrus.Fatalf(
+					formatter.Colorize(err.Error()+"\n", formatter.RedColor),
+				)
 			}
 
 		}
@@ -50,13 +52,14 @@ var upgradeGflagsCmd = &cobra.Command{
 				util.UniverseType, universeName),
 			viper.GetBool("force"))
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI, universe, err := UpgradeValidations(cmd, util.UpgradeOperation)
 		if err != nil {
-			logrus.Fatalf(err.Error() + "\n")
+			logrus.Fatalf(
+				formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		universeName := universe.GetName()
@@ -64,8 +67,10 @@ var upgradeGflagsCmd = &cobra.Command{
 		universeDetails := universe.GetUniverseDetails()
 		clusters := universeDetails.GetClusters()
 		if len(clusters) < 1 {
-			fmt.Println("No clusters found in universe " + universeName + " (" + universeUUID + ")")
-			return
+			logrus.Fatalln(formatter.Colorize(
+				"No clusters found in universe "+universeName+" ("+universeUUID+")\n",
+				formatter.RedColor,
+			))
 		}
 
 		primaryUserIntent := clusters[0].GetUserIntent()
@@ -77,12 +82,12 @@ var upgradeGflagsCmd = &cobra.Command{
 
 		masterGflags, err := editMasterGflags(cmd, oldMasterGflags)
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		tserverGflags, err := editTserverGflags(cmd, "primary", oldTserverGflags)
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		primaryGflagsValue[util.TserverServerType] = tserverGflags
@@ -95,7 +100,7 @@ var upgradeGflagsCmd = &cobra.Command{
 		if len(clusters) > 1 {
 			inheritFromPrimary, err := cmd.Flags().GetBool("inherit-from-primary")
 			if err != nil {
-				logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			rrUserIntent := clusters[1].GetUserIntent()
 			rrSpecificGflags := rrUserIntent.GetSpecificGFlags()
@@ -105,7 +110,7 @@ var upgradeGflagsCmd = &cobra.Command{
 			if !inheritFromPrimary {
 				rrSpecificGflags.SetInheritFromPrimary(false)
 				var oldRRTserverGflags map[string]string
-				if !clusterInheritFromPrimaryValue{
+				if !clusterInheritFromPrimaryValue {
 					oldRRTserverGflags = rrGflagsValue[util.TserverServerType]
 				} else {
 					oldRRTserverGflags = oldMasterGflags
@@ -114,7 +119,7 @@ var upgradeGflagsCmd = &cobra.Command{
 				}
 				rrTserverGflags, err := editTserverGflags(cmd, "rr", oldRRTserverGflags)
 				if err != nil {
-					logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+					logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 				rrGflagsValue[util.TserverServerType] = rrTserverGflags
 				rrPerProccessFlags.SetValue(rrGflagsValue)
@@ -129,17 +134,17 @@ var upgradeGflagsCmd = &cobra.Command{
 
 		upgradeOption, err := cmd.Flags().GetString("upgrade-option")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		tserverDelay, err := cmd.Flags().GetInt32("delay-between-tservers")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		req := ybaclient.GFlagsUpgradeParams{
@@ -268,7 +273,7 @@ func editMasterGflags(
 	for key, value := range addMasterGFlags {
 		if _, exists := masterGflags[key]; exists {
 			logrus.Info(
-				fmt.Sprintf("%s already exists in master gflags, ignoring", key))
+				fmt.Sprintf("%s already exists in master gflags, ignoring\n", key))
 		} else {
 			masterGflags[key] = value
 		}
@@ -277,7 +282,7 @@ func editMasterGflags(
 	for key, value := range editMasterGFlags {
 		if _, exists := masterGflags[key]; !exists {
 			logrus.Info(
-				fmt.Sprintf("%s does not exist in master gflags to edit, ignoring", key))
+				fmt.Sprintf("%s does not exist in master gflags to edit, ignoring\n", key))
 		} else {
 			masterGflags[key] = value
 		}
@@ -287,7 +292,7 @@ func editMasterGflags(
 		for _, key := range strings.Split(removeMasterGFlagsString, ",") {
 			if _, exists := masterGflags[key]; !exists {
 				logrus.Info(
-					fmt.Sprintf("%s does not exist in master gflags to remove, ignoring", key))
+					fmt.Sprintf("%s does not exist in master gflags to remove, ignoring\n", key))
 			} else {
 				delete(masterGflags, key)
 			}
@@ -326,7 +331,7 @@ func editTserverGflags(
 		for key, value := range addGFlags[0] {
 			if _, exists := tserverGflags[key]; exists {
 				logrus.Info(
-					fmt.Sprintf("%s already exists in %s tserver gflags, ignoring", key, cluster))
+					fmt.Sprintf("%s already exists in %s tserver gflags, ignoring\n", key, cluster))
 			} else {
 				tserverGflags[key] = value
 			}
@@ -337,7 +342,7 @@ func editTserverGflags(
 			if _, exists := tserverGflags[key]; !exists {
 				logrus.Info(
 					fmt.Sprintf(
-						"%s does not exist in %s tserver gflags to edit, ignoring", key, cluster))
+						"%s does not exist in %s tserver gflags to edit, ignoring\n", key, cluster))
 			} else {
 				tserverGflags[key] = value
 			}
@@ -349,7 +354,7 @@ func editTserverGflags(
 			if _, exists := tserverGflags[key]; !exists {
 				logrus.Info(
 					fmt.Sprintf(
-						"%s does not exist in %s tsever gflags to remove, ignoring", key, cluster))
+						"%s does not exist in %s tsever gflags to remove, ignoring\n", key, cluster))
 			} else {
 				delete(tserverGflags, key)
 			}

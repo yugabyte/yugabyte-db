@@ -25,4 +25,7 @@ namespace yb {
 int GetInitialNumTabletsPerTable(YQLDatabase db_type, size_t tserver_count);
 int GetInitialNumTabletsPerTable(TableType table_type, size_t tserver_count);
 
+// Returns true if YSQL DDL rollback is enabled.
+bool YsqlDdlRollbackEnabled();
+
 } // namespace yb

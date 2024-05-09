@@ -330,6 +330,7 @@ public class DrConfigController extends AuthenticatedController {
             targetUniverse,
             setTablesForm.tables,
             bootstrapParams,
+            setTablesForm.autoIncludeIndexTables,
             false /* dryRun */);
 
     UUID taskUUID = commissioner.submit(TaskType.SetTablesDrConfig, taskParams);

@@ -2609,13 +2609,14 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"yb_enable_optimizer_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables use postgres selectivity model."),
+			gettext_noop("Enables use of the PostgreSQL selectivity estimation which utilizes "
+			"table statistics collected with ANALYZE. When disabled, a simpler heuristics based "
+			"selectivity estimation is used."),
 			NULL
 		},
 		&yb_enable_optimizer_statistics,
 		false,
 		NULL, NULL, NULL
-
 	},
 	{
 		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -2762,7 +2763,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_is_client_ysqlconnmgr,
 		false,
-		yb_is_client_ysqlconnmgr_check_hook, NULL, NULL
+		yb_is_client_ysqlconnmgr_check_hook, yb_is_client_ysqlconnmgr_assign_hook, NULL
 	},
 
 	{
@@ -2788,14 +2789,26 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"ddl_rollback_enabled", PGC_SUSET, DEVELOPER_OPTIONS,
+		{"yb_ddl_rollback_enabled", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("If set, any DDL that involves DocDB schema changes will have those "
 						 "changes rolled back upon failure."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&ddl_rollback_enabled,
+		&yb_ddl_rollback_enabled,
 		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_ddl_atomicity_infra", PGC_SUSET, DEVELOPER_OPTIONS,
+			NULL,
+			gettext_noop("Used along side with yb_ddl_rollback_enabled to control "
+						 "whether DDL atomicity is enabled."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_ddl_atomicity_infra,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4605,7 +4618,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_ash_sampling_interval", PGC_SIGHUP, STATS_MONITORING,
+		{"yb_ash_sampling_interval_ms", PGC_SIGHUP, STATS_MONITORING,
 			gettext_noop("Time (in milliseconds) between two consecutive sampling events"),
 			NULL,
 			GUC_UNIT_MS

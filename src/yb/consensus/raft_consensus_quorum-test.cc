@@ -558,6 +558,24 @@ class RaftConsensusQuorumTest : public YBTest {
     ASSERT_FALSE(cmeta->has_voted_for());
   }
 
+  void TearDown() override {
+    // Use the same order of shutdown operations as is done by TabletPeer in production. In this
+    // test we don't use TabletPeer so we have to emulate this order.
+    // 1. TabletPeer::StartShutdown shuts down the consensus.
+    // 2. TabletPeer::CompleteShutdown closes the log.
+    // 3. TabletPeer::CompleteShutdown destroys the consensus object.
+    // If we don't do this, it is possible that a log append operation callback task might try to
+    // call methods on PeerMessageQueue concurrently with PeerMessageQueue being destroyed.
+    // See https://github.com/yugabyte/yugabyte-db/issues/21564 for more details.
+    for (auto& [_, consensus_ptr] : peers_->GetPeerMapCopy()) {
+      consensus_ptr->Shutdown();
+    }
+    for (auto& log : logs_) {
+      ASSERT_OK(log->Close());
+    }
+    YBTest::TearDown();
+  }
+
   ~RaftConsensusQuorumTest() {
     peers_->Clear();
     operation_factories_.clear();

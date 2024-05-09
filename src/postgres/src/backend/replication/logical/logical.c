@@ -218,6 +218,9 @@ StartupDecodingContext(List *output_plugin_options,
 		AllocateSnapshotBuilder(ctx->reorder, xmin_horizon, start_lsn,
 								need_full_snapshot, slot->data.two_phase_at);
 
+	if (IsYugaByteEnabled())
+		ctx->yb_start_decoding_at = start_lsn;
+
 	ctx->reorder->private_data = ctx;
 
 	/* wrap output plugin callbacks, so we can add error context information */

@@ -28,6 +28,10 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     flexDirection: 'row'
   },
+  flexColumn: {
+    display: 'flex',
+    flexDirection: 'column'
+  },
   smallerMetadata: {
     fontWeight: 400,
     fontFamily: 'Inter',
@@ -43,7 +47,8 @@ const useStyles = makeStyles((theme) => ({
     width: 'fit-content'
   },
   smallInputTextBox: {
-    width: '50px'
+    width: '300px',
+    marginTop: theme.spacing(1)
   },
   largeInputTextBox: {
     width: '384px'
@@ -66,9 +71,17 @@ const useStyles = makeStyles((theme) => ({
     border: '1px',
     borderRadius: '8px',
     backgroundColor: theme.palette.warning[100]
+  },
+  helperVersionMessage: {
+    marginTop: theme.spacing(1),
+    color: '#818182',
+    fontFamily: 'Inter',
+    fontSize: '12px',
+    fontWeight: 400
   }
 }));
 
+const VERSION_FORMAT = 'Format: 2.22.0.0 or 2024.1.0.0';
 interface ReleasePlatformButtonProps {
   label: string;
   value: ReleasePlatform;
@@ -84,14 +97,8 @@ interface ReviewReleaseMetadataProps {
   urlMetadata?: any;
   deploymentType: ReleasePlatform | null;
   architecture: ReleasePlatformArchitecture | null;
-  releaseBasePart: string;
-  releaseFirstPart: string;
-  releaseSecondPart: string;
-  releaseThirdPart: string;
-  handleReleaseBasePart: (event: any) => void;
-  handleReleaseSecondPart: (event: any) => void;
-  handleReleaseThirdPart: (event: any) => void;
-  handleReleaseFirstPart: (event: any) => void;
+  releaseVersion: string;
+  handleReleaseVersionPart: (event: any) => void;
   handlePlatformSelect: (value: ReleasePlatformButtonProps) => void;
   handleArchitectureSelect: (value: ReleaseArchitectureButtonProps) => void;
 }
@@ -101,14 +108,8 @@ export const ReviewReleaseMetadata = ({
   urlMetadata,
   deploymentType,
   architecture,
-  releaseBasePart,
-  releaseFirstPart,
-  releaseSecondPart,
-  releaseThirdPart,
-  handleReleaseBasePart,
-  handleReleaseSecondPart,
-  handleReleaseThirdPart,
-  handleReleaseFirstPart,
+  releaseVersion,
+  handleReleaseVersionPart,
   handlePlatformSelect,
   handleArchitectureSelect
 }: ReviewReleaseMetadataProps) => {
@@ -217,29 +218,14 @@ export const ReviewReleaseMetadata = ({
             <Box className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}>
               <YBLabel className={helperClasses.largerMetaData}>{t('releases.version')}</YBLabel>
               <YBLabel className={helperClasses.labelWidth}>
-                <YBInput
-                  className={helperClasses.smallInputTextBox}
-                  value={releaseBasePart}
-                  onChange={handleReleaseBasePart}
-                />
-                {t('common.dot')}
-                <YBInput
-                  className={helperClasses.smallInputTextBox}
-                  value={releaseFirstPart}
-                  onChange={handleReleaseFirstPart}
-                />
-                {t('common.dot')}
-                <YBInput
-                  className={helperClasses.smallInputTextBox}
-                  value={releaseSecondPart}
-                  onChange={handleReleaseSecondPart}
-                />
-                {t('common.dot')}
-                <YBInput
-                  className={helperClasses.smallInputTextBox}
-                  value={releaseThirdPart}
-                  onChange={handleReleaseThirdPart}
-                />
+                <Box className={helperClasses.flexColumn}>
+                  <YBInput
+                    className={helperClasses.smallInputTextBox}
+                    value={releaseVersion}
+                    onChange={handleReleaseVersionPart}
+                  />
+                  <span className={helperClasses.helperVersionMessage}>{VERSION_FORMAT}</span>
+                </Box>
               </YBLabel>
             </Box>
 

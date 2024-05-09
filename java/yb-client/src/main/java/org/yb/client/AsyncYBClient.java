@@ -401,6 +401,13 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<GetMasterHeartbeatDelaysResponse> getMasterHeartbeatDelays() {
+    checkIsClosed();
+    GetMasterHeartbeatDelaysRequest request = new GetMasterHeartbeatDelaysRequest(this.masterTable);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
   /**
    * Create for a given table and stream.
    * @param hp host port of the server.

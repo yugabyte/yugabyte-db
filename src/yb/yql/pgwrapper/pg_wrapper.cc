@@ -55,7 +55,8 @@
 
 DECLARE_bool(enable_ysql_conn_mgr);
 
-DEFINE_UNKNOWN_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
+DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
+
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_UNKNOWN_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
@@ -212,6 +213,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_add_column_missing_default, kExterna
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_alter_table_rewrite, kLocalPersisted, false, true,
                             "Enable ALTER TABLE rewrite operations");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
+    "Enables use of the PostgreSQL selectivity estimation which utilizes table statistics "
+    "collected with ANALYZE. When disabled, a simpler heuristics based selectivity estimation is "
+    "used.");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 
@@ -265,8 +271,9 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
 DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
     "Size (in KiBs) of ASH circular buffer that stores the samples");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval, 1000,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval_ms, 1000,
     "Time (in milliseconds) between two consecutive sampling events");
+DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
     "Number of samples captured from each component per sampling event");
@@ -497,7 +504,6 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   } else if (!FLAGS_ysql_hba_conf.empty()) {
     ReadCommaSeparatedValues(FLAGS_ysql_hba_conf, &lines);
   }
-
   // Add auto-generated config for the enable auth and enable_tls flags.
   if (FLAGS_ysql_enable_auth || conf.enable_tls) {
     const auto host_type =  conf.enable_tls ? "hostssl" : "host";

@@ -1789,8 +1789,9 @@ removing_database_from_system:
 				yb_num_physical_conn_from_ysqlconnmgr,
 				yb_net_client_connections;
 
-	yb_net_client_connections =
-		CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
+	CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
+
+	yb_net_client_connections = notherbackends;
 
 	/*
 	 * Ignore the number of logical or physical connections to the database
@@ -1803,12 +1804,12 @@ removing_database_from_system:
 		yb_net_client_connections +=
 			yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
 
-	if (yb_net_client_connections)
+	if (yb_net_client_connections != 0 || npreparedxacts != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("database \"%s\" is being accessed by other users",
-						dbname),
-				 errdetail_busy_db(notherbackends, npreparedxacts)));
+				 errmsg("database \"%s\" is being accessed by other users, num logical conn %d physical %d",
+						dbname, yb_num_logical_conn, yb_num_physical_conn_from_ysqlconnmgr),
+				 errdetail_busy_db(yb_net_client_connections, npreparedxacts)));
 
 	/*
 	 * Check for other backends in the target database.  (Because we hold the

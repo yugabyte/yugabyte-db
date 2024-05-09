@@ -135,10 +135,14 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 //  Raft group metadata
 // ============================================================================
 
-TableInfo::TableInfo(const std::string& log_prefix_, TableType table_type, PrivateTag)
+TableInfo::TableInfo(const std::string& log_prefix_,
+                     TableType table_type,
+                     SkipTableTombstoneCheck skip_table_tombstone_check,
+                     PrivateTag)
     : log_prefix(log_prefix_),
       doc_read_context(new docdb::DocReadContext(log_prefix, table_type, docdb::Index::kFalse)),
-      index_map(std::make_shared<IndexMap>()) {
+      index_map(std::make_shared<IndexMap>()),
+      skip_table_tombstone_check(skip_table_tombstone_check) {
   CompleteInit();
 }
 
@@ -153,7 +157,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      const boost::optional<IndexInfo>& index_info,
                      const SchemaVersion schema_version,
                      dockv::PartitionSchema partition_schema,
-                     TableId pg_table_id_)
+                     TableId pg_table_id_,
+                     SkipTableTombstoneCheck skip_table_tombstone_check_)
     : table_id(std::move(table_id_)),
       namespace_name(std::move(namespace_name)),
       table_name(std::move(table_name)),
@@ -167,7 +172,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(std::move(partition_schema)),
-      pg_table_id(std::move(pg_table_id_)) {
+      pg_table_id(std::move(pg_table_id_)),
+      skip_table_tombstone_check(skip_table_tombstone_check_) {
   CompleteInit();
 }
 
@@ -190,6 +196,7 @@ TableInfo::TableInfo(const TableInfo& other,
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(other.partition_schema),
+      skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols) {
   this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
   CompleteInit();
@@ -210,6 +217,7 @@ TableInfo::TableInfo(const TableInfo& other,
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
+      skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols) {
   CompleteInit();
 }
@@ -227,6 +235,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
+      skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols) {
   CompleteInit();
 }
@@ -245,7 +254,8 @@ Result<TableInfoPtr> TableInfo::LoadFromPB(
     const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb) {
   Primary primary(primary_table_id == pb.table_id());
   auto log_prefix = MakeTableInfoLogPrefix(tablet_log_prefix, primary, pb.table_id());
-  auto result = std::make_shared<TableInfo>(log_prefix, pb.table_type(), PrivateTag());
+  auto result = std::make_shared<TableInfo>(log_prefix, pb.table_type(),
+      SkipTableTombstoneCheck::kFalse, PrivateTag());
   RETURN_NOT_OK(result->DoLoadFromPB(primary, pb));
   result->CompleteInit();
   return result;
@@ -259,6 +269,7 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   table_type = pb.table_type();
   cotable_id = VERIFY_RESULT(ParseCotableId(primary, table_id));
   pg_table_id = pb.pg_table_id();
+  skip_table_tombstone_check = SkipTableTombstoneCheck(pb.skip_table_tombstone_check());
 
   RETURN_NOT_OK(doc_read_context->LoadFromPB(pb));
   if (pb.has_index_info()) {
@@ -338,6 +349,7 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
     deleted_col.CopyToPB(pb->mutable_deleted_cols()->Add());
   }
   pb->set_pg_table_id(pg_table_id);
+  pb->set_skip_table_tombstone_check(skip_table_tombstone_check);
 }
 
 const Schema& TableInfo::schema() const {
@@ -1327,7 +1339,8 @@ void RaftGroupMetadata::AddTable(
     const std::string& table_id, const std::string& namespace_name, const std::string& table_name,
     const TableType table_type, const Schema& schema, const IndexMap& index_map,
     const dockv::PartitionSchema& partition_schema, const boost::optional<IndexInfo>& index_info,
-    const SchemaVersion schema_version, const OpId& op_id, const TableId& pg_table_id) {
+    const SchemaVersion schema_version, const OpId& op_id, const TableId& pg_table_id,
+    const SkipTableTombstoneCheck skip_table_tombstone_check) {
   DCHECK(schema.has_column_ids());
   std::lock_guard lock(data_mutex_);
   Primary primary(table_id == primary_table_id_);
@@ -1342,7 +1355,8 @@ void RaftGroupMetadata::AddTable(
                                                             index_info,
                                                             schema_version,
                                                             partition_schema,
-                                                            pg_table_id);
+                                                            pg_table_id,
+                                                            skip_table_tombstone_check);
   if (!primary) {
     if (schema.table_properties().is_ysql_catalog_table()) {
       // TODO(alex): cotable_id seems to be properly copied from schema, do we need this section?
@@ -1966,6 +1980,15 @@ std::shared_ptr<IndexMap> RaftGroupMetadata::index_map(const TableId& table_id) 
   return table_info->index_map;
 }
 
+void RaftGroupMetadata::GetTableIdToSchemaVersionMap(
+    TableIdToSchemaVersionMap* table_to_version) const {
+  std::lock_guard lock(data_mutex_);
+  for (const auto& table_id : GetAllColocatedTablesUnlocked()) {
+    const TableInfoPtr table_info = CHECK_RESULT(GetTableInfoUnlocked(table_id));
+    (*table_to_version)[table_id] = table_info->schema_version;
+  }
+}
+
 SchemaVersion RaftGroupMetadata::schema_version(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info = CHECK_RESULT(GetTableInfo(table_id));
@@ -2044,6 +2067,10 @@ bool RaftGroupMetadata::UsePartialRangeKeyIntents() const {
 
 std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() const {
   std::lock_guard lock(data_mutex_);
+  return GetAllColocatedTablesUnlocked();
+}
+
+std::vector<TableId> RaftGroupMetadata::GetAllColocatedTablesUnlocked() const {
   std::vector<TableId> table_ids;
   table_ids.reserve(kv_store_.tables.size());
   for (const auto& id_and_info : kv_store_.tables) {

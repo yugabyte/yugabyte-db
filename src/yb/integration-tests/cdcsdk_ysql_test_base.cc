@@ -201,8 +201,18 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   // The range is exclusive of end i.e. [start, end)
   Status CDCSDKYsqlTest::WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
-      const vector<string>& optional_cols_name) {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      const vector<string>& optional_cols_name, pgwrapper::PGConn* conn) {
+    if (conn == nullptr) {
+      auto conn_obj = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      return WriteRowsWithConn(start, end, cluster, &conn_obj, optional_cols_name);
+    } else {
+      return WriteRowsWithConn(start, end, cluster, conn, optional_cols_name);
+    }
+  }
+
+  Status CDCSDKYsqlTest::WriteRowsWithConn(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
+      pgwrapper::PGConn* conn, const vector<string>& optional_cols_name) {
     LOG(INFO) << "Writing " << end - start << " row(s)";
 
     for (uint32_t i = start; i < end; ++i) {
@@ -217,20 +227,19 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         }
         columns_name << " )";
         columns_value << " )";
-        RETURN_NOT_OK(conn.ExecuteFormat(
+        RETURN_NOT_OK(conn->ExecuteFormat(
             "INSERT INTO $0 $1 VALUES $2", kTableName, columns_name.str(), columns_value.str()));
       } else {
-        RETURN_NOT_OK(conn.ExecuteFormat(
+        RETURN_NOT_OK(conn->ExecuteFormat(
             "INSERT INTO $0($1, $2) VALUES ($3, $4)", kTableName, kKeyColumnName, kValueColumnName,
             i, i + 1));
       }
     }
-
     int retry_count = 1;
     return WaitFor(
         [&]() -> Result<bool> {
           LOG(INFO) << "Retry : " << retry_count++;
-          auto rows = VERIFY_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+          auto rows = VERIFY_RESULT((conn->FetchRows<int32_t, int32_t>(Format(
               "SELECT $1, $2 FROM $0 WHERE $1 >= $3 AND $1 < $4", kTableName, kKeyColumnName,
               kValueColumnName, start, end))));
 
@@ -245,7 +254,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   // The range is exclusive of end i.e. [start, end)
   Status CDCSDKYsqlTest::WriteRows(
-      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, uint32_t num_cols) {
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, uint32_t num_cols,
+      std::string table_name) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s)";
 
@@ -259,7 +269,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
       std::string statement(statement_buff.str());
       statement.at(statement.size() - 1) = ')';
-      RETURN_NOT_OK(conn.ExecuteFormat(statement, kTableName));
+      RETURN_NOT_OK(conn.ExecuteFormat(statement, table_name));
     }
     return Status::OK();
   }
@@ -271,13 +281,28 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Status CDCSDKYsqlTest::WriteRowsHelper(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t num_cols,
-      const char* const table_name,  const vector<string>& optional_cols_name,
-      const bool transaction_enabled) {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      const char* const table_name, const vector<string>& optional_cols_name,
+      const bool transaction_enabled, pgwrapper::PGConn* conn) {
+    if (conn == nullptr) {
+      auto conn_obj = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      return WriteRowsHelperWithConn(
+          start, end, cluster, flag, &conn_obj, num_cols, table_name, optional_cols_name,
+          transaction_enabled);
+    } else {
+      return WriteRowsHelperWithConn(
+          start, end, cluster, flag, conn, num_cols, table_name, optional_cols_name,
+          transaction_enabled);
+    }
+  }
+
+  Status CDCSDKYsqlTest::WriteRowsHelperWithConn(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
+      pgwrapper::PGConn* conn, uint32_t num_cols, const char* const table_name,
+      const vector<string>& optional_cols_name, const bool transaction_enabled) {
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
     if (transaction_enabled) {
-      RETURN_NOT_OK(conn.Execute("BEGIN"));
+      RETURN_NOT_OK(conn->Execute("BEGIN"));
     }
 
     for (uint32_t i = start; i < end; ++i) {
@@ -292,7 +317,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         }
         columns_name << " )";
         columns_value << " )";
-        RETURN_NOT_OK(conn.ExecuteFormat(
+        RETURN_NOT_OK(conn->ExecuteFormat(
             "INSERT INTO $0 $1 VALUES $2", table_name, columns_name.str(), columns_value.str()));
       } else {
         uint32_t value = i;
@@ -304,15 +329,15 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
         std::string statement(statement_buff.str());
         statement.at(statement.size() - 1) = ')';
-        RETURN_NOT_OK(conn.ExecuteFormat(statement, table_name));
+        RETURN_NOT_OK(conn->ExecuteFormat(statement, table_name));
       }
     }
 
     if (transaction_enabled) {
       if (flag) {
-        RETURN_NOT_OK(conn.Execute("COMMIT"));
+        RETURN_NOT_OK(conn->Execute("COMMIT"));
       } else {
-        RETURN_NOT_OK(conn.Execute("ABORT"));
+        RETURN_NOT_OK(conn->Execute("ABORT"));
       }
     }
 
@@ -560,11 +585,12 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::UpdateRows(uint32_t key, uint32_t value, PostgresMiniCluster* cluster) {
+  Status CDCSDKYsqlTest::UpdateRows(
+      uint32_t key, uint32_t value, PostgresMiniCluster* cluster, std::string table_name) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Updating row for key " << key << " with value " << value;
     RETURN_NOT_OK(conn.ExecuteFormat(
-        "UPDATE $0 SET $1 = $2 WHERE $3 = $4", kTableName, kValueColumnName, value, kKeyColumnName,
+        "UPDATE $0 SET $1 = $2 WHERE $3 = $4", table_name, kValueColumnName, value, kKeyColumnName,
         key));
     return Status::OK();
   }
@@ -730,11 +756,12 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::DeleteRows(uint32_t key, PostgresMiniCluster* cluster) {
+  Status CDCSDKYsqlTest::DeleteRows(
+      uint32_t key, PostgresMiniCluster* cluster, std::string table_name) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Deleting row for key " << key;
     RETURN_NOT_OK(
-        conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = $2", kTableName, kKeyColumnName, key));
+        conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = $2", table_name, kKeyColumnName, key));
     return Status::OK();
   }
 
@@ -1229,16 +1256,17 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   void CDCSDKYsqlTest::CheckRecord(
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::ExpectedRecord expected_records,
       uint32_t* count, const bool& validate_old_tuple,
-      CDCSDKYsqlTest::ExpectedRecord expected_before_image_records) {
+      CDCSDKYsqlTest::ExpectedRecord expected_before_image_records, std::string table_name,
+      bool is_nothing_record) {
     // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
     switch (record.row_message().op()) {
       case RowMessage::DDL: {
-        ASSERT_EQ(record.row_message().table(), kTableName);
+        ASSERT_EQ(record.row_message().table(), table_name);
         count[0]++;
       } break;
       case RowMessage::INSERT: {
         AssertKeyValue(record, expected_records.key, expected_records.value);
-        ASSERT_EQ(record.row_message().table(), kTableName);
+        ASSERT_EQ(record.row_message().table(), table_name);
         count[1]++;
       } break;
       case RowMessage::UPDATE: {
@@ -1247,21 +1275,26 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           AssertBeforeImageKeyValue(
               record, expected_before_image_records.key, expected_before_image_records.value);
         }
-        ASSERT_EQ(record.row_message().table(), kTableName);
+        ASSERT_EQ(record.row_message().table(), table_name);
         count[2]++;
       } break;
       case RowMessage::DELETE: {
-        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), expected_records.key);
-        if (validate_old_tuple) {
-          AssertBeforeImageKeyValue(
-              record, expected_before_image_records.key, expected_before_image_records.value);
+        if (is_nothing_record) {
+          ASSERT_EQ(record.row_message().old_tuple_size(), 0);
+          ASSERT_EQ(record.row_message().new_tuple_size(), 0);
+        } else {
+          ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), expected_records.key);
+          if (validate_old_tuple) {
+            AssertBeforeImageKeyValue(
+                record, expected_before_image_records.key, expected_before_image_records.value);
+          }
         }
-        ASSERT_EQ(record.row_message().table(), kTableName);
+        ASSERT_EQ(record.row_message().table(), table_name);
         count[3]++;
       } break;
       case RowMessage::READ: {
         AssertKeyValue(record, expected_records.key, expected_records.value);
-        ASSERT_EQ(record.row_message().table(), kTableName);
+        ASSERT_EQ(record.row_message().table(), table_name);
         count[4]++;
       } break;
       case RowMessage::TRUNCATE: {
@@ -3662,11 +3695,14 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_EQ(commit_records, last_txn_id);
   }
 
-  void CDCSDKYsqlTest::CheckRecordsConsistencyWithWriteId(
+  void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
       const std::vector<CDCSDKProtoRecordPB>& records) {
     uint64_t prev_commit_time = 0;
+    std::string prev_docdb_txn_id = "";
     uint64_t prev_record_time = 0;
     uint32_t prev_write_id = 0;
+    TableId prev_table_id = "";
+    std::string prev_primary_key = "";
     uint64_t prev_lsn = 0;
     uint64_t prev_txn_id = 0;
     bool in_transaction = false;
@@ -3680,6 +3716,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         ASSERT_GT(record.row_message().commit_time(), prev_commit_time);
         ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
         ASSERT_GT(record.row_message().pg_transaction_id(), prev_txn_id);
+        ASSERT_FALSE(record.row_message().has_table_id());
+        ASSERT_FALSE(record.row_message().has_primary_key());
         prev_commit_time = record.row_message().commit_time();
         prev_lsn = record.row_message().pg_lsn();
         prev_txn_id = record.row_message().pg_transaction_id();
@@ -3692,6 +3730,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
         // PG txn_id should be same as the BEGIN record of the current txn.
         ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
+        ASSERT_FALSE(record.row_message().has_table_id());
+        ASSERT_FALSE(record.row_message().has_primary_key());
         prev_commit_time = record.row_message().commit_time();
         prev_lsn = record.row_message().pg_lsn();
       }
@@ -3700,23 +3740,57 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           record.row_message().op() == RowMessage::UPDATE ||
           record.row_message().op() == RowMessage::DELETE) {
         ASSERT_TRUE(in_transaction);
+        ASSERT_TRUE(record.row_message().has_table_id());
+        ASSERT_TRUE(record.row_message().has_primary_key());
         ASSERT_EQ(record.row_message().commit_time(), prev_commit_time);
         ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
         // PG txn_id should be same as the BEGIN record of the current txn.
         ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
-        prev_commit_time = record.row_message().commit_time();
         prev_lsn = record.row_message().pg_lsn();
+        bool has_tie_broken = false;
 
         if (!first_record_in_transaction) {
-          ASSERT_GE(record.row_message().record_time(), prev_record_time);
-          if (record.row_message().record_time() == prev_record_time) {
-            ASSERT_GE(record.cdc_sdk_op_id().write_id(), prev_write_id);
+          if (record.row_message().has_transaction_id()) {
+            if (record.row_message().transaction_id() != prev_docdb_txn_id) {
+              ASSERT_GT(record.row_message().transaction_id(), prev_docdb_txn_id);
+              has_tie_broken = true;
+              break;
+            }
+          }
+
+          if (record.row_message().record_time() != prev_record_time) {
+            ASSERT_GT(record.row_message().record_time(), prev_record_time);
+            has_tie_broken = true;
+            break;
+          }
+          if (record.cdc_sdk_op_id().write_id() != prev_write_id) {
+            ASSERT_GT(record.cdc_sdk_op_id().write_id(), prev_write_id);
+            has_tie_broken = true;
+            break;
+          }
+          if (record.row_message().table_id() != prev_table_id) {
+            ASSERT_GT(record.row_message().table_id(), prev_table_id);
+            has_tie_broken = true;
+            break;
+          }
+          if (record.row_message().primary_key() != prev_primary_key) {
+            ASSERT_GT(record.row_message().primary_key(), prev_primary_key);
+            has_tie_broken = true;
           }
         }
 
+        if(!first_record_in_transaction) {
+          ASSERT_TRUE(has_tie_broken);
+        }
+
+
         first_record_in_transaction = false;
+        prev_docdb_txn_id =
+            record.row_message().has_transaction_id() ? record.row_message().transaction_id() : "";
         prev_record_time = record.row_message().record_time();
         prev_write_id = record.cdc_sdk_op_id().write_id();
+        prev_table_id = record.row_message().table_id();
+        prev_primary_key = record.row_message().primary_key();
       }
     }
   }
@@ -3800,19 +3874,22 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   void CDCSDKYsqlTest::PerformSingleAndMultiShardInserts(
       const int& num_batches, const int& inserts_per_batch, int apply_update_latency,
       const int& start_index) {
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
     for (int i = 0; i < num_batches; i++) {
       int multi_shard_inserts = inserts_per_batch / 2;
       int curr_start_id = start_index + i * inserts_per_batch;
 
-      ANNOTATE_UNPROTECTED_WRITE(
-          FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) = apply_update_latency;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) =
+          apply_update_latency;
       ASSERT_OK(WriteRowsHelper(
-          curr_start_id, curr_start_id + multi_shard_inserts, &test_cluster_, true));
+          curr_start_id, curr_start_id + multi_shard_inserts, &test_cluster_, true, 2, kTableName,
+          {}, true, &conn));
 
-      ANNOTATE_UNPROTECTED_WRITE(
-          FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) = 0;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) =
+          0;
       ASSERT_OK(WriteRows(
-          curr_start_id + multi_shard_inserts, curr_start_id + inserts_per_batch, &test_cluster_));
+          curr_start_id + multi_shard_inserts, curr_start_id + inserts_per_batch, &test_cluster_,
+          {}, &conn));
     }
   }
 
@@ -3976,10 +4053,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::XreplValidateSplitCandidateTable(const TableId& table_id) {
+  Status CDCSDKYsqlTest::XReplValidateSplitCandidateTable(const TableId& table_id) {
     auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
-    auto table = cm.GetTableInfo(table_id);
-    return cm.XreplValidateSplitCandidateTable(*table);
+    return cm.XReplValidateSplitCandidateTable(table_id);
   }
 
   void CDCSDKYsqlTest::LogRetentionBarrierAndRelatedDetails(
@@ -4175,6 +4251,26 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_EQ(reads_snapshot, 100);
   }
 
+  void CDCSDKYsqlTest::VerifyTableIdAndPkInCDCRecords(
+      GetChangesResponsePB* resp, std::unordered_set<std::string>* record_primary_key,
+      std::unordered_set<std::string>* record_table_id) {
+    for (int i = 0; i < resp->cdc_sdk_proto_records_size(); i++) {
+      auto record = resp->cdc_sdk_proto_records(i);
+      if (IsDMLRecord(record)) {
+        ASSERT_TRUE(record.row_message().has_table_id());
+        ASSERT_TRUE(record.row_message().has_primary_key());
+        record_table_id->insert(record.row_message().table_id());
+        record_primary_key->insert(record.row_message().primary_key());
+      } else if (record.row_message().op() == RowMessage_Op_DDL) {
+        ASSERT_TRUE(record.row_message().has_table_id());
+        ASSERT_FALSE(record.row_message().has_primary_key());
+        record_table_id->insert(record.row_message().table_id());
+      } else {
+        ASSERT_FALSE(record.row_message().has_table_id());
+        ASSERT_FALSE(record.row_message().has_primary_key());
+      }
+    }
+  }
 
 } // namespace cdc
 } // namespace yb

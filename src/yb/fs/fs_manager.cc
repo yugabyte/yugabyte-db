@@ -339,7 +339,18 @@ Status FsManager::SetUniverseUuidOnTserverInstanceMetadata(
     const UniverseUuid& universe_uuid) {
   std::lock_guard lock(metadata_mutex_);
   SCHECK_NOTNULL(metadata_);
+  LOG(INFO) << "Setting the universe_uuid to " << universe_uuid;
   metadata_->mutable_tserver_instance_metadata()->set_universe_uuid(universe_uuid.ToString());
+  auto instance_metadata_path = VERIFY_RESULT(GetExistingInstanceMetadataPath());
+  return pb_util::WritePBContainerToPath(
+      env_, instance_metadata_path, *metadata_.get(), pb_util::OVERWRITE, pb_util::SYNC);
+}
+
+Status FsManager::ClearUniverseUuidOnTserverInstanceMetadata() {
+  std::lock_guard lock(metadata_mutex_);
+  SCHECK_NOTNULL(metadata_);
+  LOG(INFO) << "Clearing the universe_uuid from Instance Metadata";
+  metadata_->mutable_tserver_instance_metadata()->clear_universe_uuid();
   auto instance_metadata_path = VERIFY_RESULT(GetExistingInstanceMetadataPath());
   return pb_util::WritePBContainerToPath(
       env_, instance_metadata_path, *metadata_.get(), pb_util::OVERWRITE, pb_util::SYNC);

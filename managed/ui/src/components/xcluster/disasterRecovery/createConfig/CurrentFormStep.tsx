@@ -71,7 +71,7 @@ export const CurrentFormStep = ({
       );
     case FormStep.CONFIGURE_BOOTSTRAP:
       return <ConfigureBootstrapStep isFormDisabled={isFormDisabled} />;
-    case FormStep.CONFIGURE_ALERT:
+    case FormStep.CONFIRM_ALERT:
       return <ConfirmAlertStep isFormDisabled={isFormDisabled} sourceUniverse={sourceUniverse} />;
     default:
       return assertUnreachableCase(currentFormStep);

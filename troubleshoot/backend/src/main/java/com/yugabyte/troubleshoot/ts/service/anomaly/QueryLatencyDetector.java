@@ -104,12 +104,7 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
         (queryId, data) -> {
           result.merge(
               findAnomalies(
-                  contextWithUpdatedStep,
-                  detectionSettings,
-                  dbId,
-                  queryId,
-                  queryMap.get(queryId),
-                  data));
+                  contextWithUpdatedStep, detectionSettings, queryMap.get(queryId), data));
         });
 
     return result;
@@ -118,8 +113,6 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
   private AnomalyDetectionResult findAnomalies(
       AnomalyDetectionContext context,
       GraphAnomalyDetectionService.AnomalyDetectionSettings detectionSettings,
-      String dbId,
-      String queryId,
       PgStatStatementsQuery query,
       List<GraphData> graphDataList) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
@@ -127,16 +120,12 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
         anomalyDetectionService.getAnomalies(
             GraphAnomaly.GraphAnomalyType.INCREASE, graphDataList, detectionSettings);
 
-    List<GraphAnomaly> mergedAnomalies = anomalyDetectionService.mergeAnomalies(anomalies);
-
     AnomalyDetectionContext updatedContext =
         context.toBuilder()
-            .dbId(dbId)
-            .queryId(queryId)
             .customContext(new QueryLatencyDetectionContext().setQuery(query))
             .build();
 
-    createAnomalies(result, mergedAnomalies, updatedContext);
+    groupAndCreateAnomalies(updatedContext, anomalies, result);
 
     return result;
   }

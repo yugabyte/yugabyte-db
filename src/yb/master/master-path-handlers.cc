@@ -74,6 +74,7 @@
 #include "yb/master/ts_manager.h"
 
 #include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/xcluster/xcluster_status.h"
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 
@@ -139,6 +140,25 @@ std::optional<HostPortPB> GetPublicHttpHostPort(const ServerRegistrationPB& regi
 
 std::string BoolToString(bool val) { return val ? "true" : "false"; }
 
+class AutoFieldsetScope {
+ public:
+  explicit AutoFieldsetScope(std::stringstream& output, const std::string& name) : output_(output) {
+    output_ << kFieldsetStart;
+    output << kFieldsetLegendStart << name << kFieldsetLegendEnd;
+  }
+  ~AutoFieldsetScope() { output_ << kFieldsetEnd; }
+
+ private:
+  static constexpr auto kFieldsetStart =
+      "<br><fieldset style=\"border: solid; border-width: thin;padding: 10px 10px;border-color:  "
+      "#a8a8a8;\">\n";
+  static constexpr auto kFieldsetEnd = "</fieldset>\n";
+  static constexpr auto kFieldsetLegendStart =
+      "<legend visible=\"true\" style=\"width:auto;padding: 0px 10px;\">";
+  static constexpr auto kFieldsetLegendEnd = "</legend>\n";
+
+  std::stringstream& output_;
+};
 }  // namespace
 
 using consensus::RaftPeerPB;
@@ -2810,195 +2830,134 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
   jw.Protobuf(config);
 }
 
-Status MasterPathHandlers::GetXClusterConfigs(
-    SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config,
-    GetReplicationStatusResponsePB* xcluster_status,
-    std::vector<SysUniverseReplicationEntryPB>* replication_infos) {
-  RETURN_NOT_OK(master_->xcluster_manager()->GetXClusterConfigEntryPB(xcluster_config));
-
-  GetReplicationStatusRequestPB req;
-  RETURN_NOT_OK(master_->catalog_manager_impl()->GetReplicationStatus(
-      &req, xcluster_status, /*rpc=*/nullptr));
-
-  *replication_infos = master_->catalog_manager_impl()->GetAllXClusterUniverseReplicationInfos();
-
-  RETURN_NOT_OK(master_->catalog_manager()->GetClusterConfig(cluster_config));
-
-  return Status::OK();
-}
-
 void MasterPathHandlers::GetXClusterJSON(std::stringstream& output, bool pretty) {
   JsonWriter jw(&output, pretty ? JsonWriter::PRETTY : JsonWriter::COMPACT);
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  SysXClusterConfigEntryPB xcluster_config;
-  SysClusterConfigEntryPB cluster_config;
-  GetReplicationStatusResponsePB xcluster_status;
-  std::vector<SysUniverseReplicationEntryPB> replication_infos;
-  Status s =
-      GetXClusterConfigs(&xcluster_config, &cluster_config, &xcluster_status, &replication_infos);
+  jw.StartObject();
+  auto s = master_->xcluster_manager()->PopulateXClusterStatusJson(jw);
   if (!s.ok()) {
-    jw.StartObject();
     jw.String("error");
     jw.String(s.ToString());
-    jw.EndObject();
-    return;
   }
-
-  jw.StartObject();
-  jw.String("version");
-  jw.Int64(xcluster_config.version());
-  jw.String("xcluster_producer_registry");
-  jw.Protobuf(xcluster_config.xcluster_producer_registry());
-  jw.String("replication_status");
-  jw.Protobuf(xcluster_status);
-
-  jw.String("replication_infos");
-  jw.StartArray();
-  for (auto const& replication_info : replication_infos) {
-    jw.Protobuf(replication_info);
-  }
-  jw.EndArray();
-
-  jw.String("consumer_registry");
-  jw.Protobuf(cluster_config.consumer_registry());
   jw.EndObject();
+  return;
 }
 
-void MasterPathHandlers::HandleGetXClusterConfigJSON(
+void MasterPathHandlers::HandleGetXClusterJSON(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   GetXClusterJSON(resp->output, /*pretty=*/false);
-}
-
-void MasterPathHandlers::HandleGetXClusterConfig(
-    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream& output = resp->output;
-
-  output << "<h1>xCluster state</h1>\n";
-  std::stringstream json_output;
-  GetXClusterJSON(json_output, /*pretty=*/true);
-  output << EscapeForHtmlToString(json_output.str());
 }
 
 void MasterPathHandlers::HandleXCluster(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream& output = resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  auto xcluster_status_result = master_->xcluster_manager()->GetXClusterStatus();
 
-  SysXClusterConfigEntryPB xcluster_config;
-  SysClusterConfigEntryPB cluster_config;
-  GetReplicationStatusResponsePB replication_status;
-  std::vector<SysUniverseReplicationEntryPB> replication_infos;
-  Status s = GetXClusterConfigs(
-      &xcluster_config, &cluster_config, &replication_status, &replication_infos);
-
-  if (!s.ok()) {
-    output << "<div class=\"alert alert-warning\">" << EscapeForHtmlToString(s.ToString())
-           << "</div>";
+  if (!xcluster_status_result.ok()) {
+    output << "<div class=\"alert alert-warning\">"
+           << EscapeForHtmlToString(xcluster_status_result.status().ToString()) << "</div>";
     return;
   }
-  const auto& consumer_registry = cluster_config.consumer_registry();
+  const auto& xcluster_status = *xcluster_status_result;
 
-  if (!xcluster_config.has_xcluster_producer_registry() &&
-      consumer_registry.producer_map_size() == 0 && replication_infos.empty()) {
+  if (!xcluster_status.IsEnabled()) {
     output << "<h3>xCluster replication is not enabled</h3 >\n";
     return;
   }
-
-  std::unordered_map<std::string, std::string> stream_status;
-
-  for (const auto& table_stream_status : replication_status.statuses()) {
-    if (!table_stream_status.errors_size()) {
-      continue;
-    }
-    std::stringstream errors;
-    bool first = true;
-    for (const auto& error : table_stream_status.errors()) {
-      errors << (first ? "" : ";") << error.ShortDebugString();
-      first = false;
-    }
-
-    stream_status[table_stream_status.stream_id()] = errors.str();
-  }
-
   output << "<h1>xCluster state</h1>\n";
 
-  if (replication_infos.empty()) {
-    return;
+  uint32 outbound_group_table_id = 0;
+  if (!xcluster_status.outbound_replication_group_statuses.empty()) {
+    output << "<h3>Outbound ReplicationGroups</h3>\n";
+    for (const auto& outbound_replication_group :
+         xcluster_status.outbound_replication_group_statuses) {
+      auto group_fs = AutoFieldsetScope(
+          output, Format("Group: $0", outbound_replication_group.replication_group_id));
+
+      output << "<pre class=\"prettyprint\">"
+             << "state: " << outbound_replication_group.state;
+      if (!outbound_replication_group.target_universe_info.empty()) {
+        output << "\ntarget_universe_info: " << outbound_replication_group.target_universe_info;
+      }
+      output << "</pre>";
+
+      for (const auto& namespace_status : outbound_replication_group.namespace_statuses) {
+        auto namespace_fs =
+            AutoFieldsetScope(output, Format("Namespace: $0", namespace_status.namespace_name));
+
+        output << "<pre class=\"prettyprint\">";
+        output << "NamespaceId: " << namespace_status.namespace_id
+               << "\nstate: " << namespace_status.state << "\ninitial_bootstrap_required: "
+               << BoolToString(namespace_status.initial_bootstrap_required)
+               << "\nstatus: " << namespace_status.status;
+        output << "</pre>";
+
+        HTML_PRINT_TABLE_WITH_HEADER_ROW_WITH_ID(
+            outbound_replication_group, outbound_group_table_id, "Table Id", "Stream Id", "State",
+            "Checkpointing", "Part of initial bootstrap");
+        outbound_group_table_id++;
+
+        for (const auto& table_status : namespace_status.table_statuses) {
+          HTML_PRINT_TABLE_ROW(
+              table_status.table_id, table_status.stream_id, table_status.state,
+              BoolToString(table_status.is_checkpointing),
+              BoolToString(table_status.is_part_of_initial_bootstrap));
+        }
+        HTML_END_TABLE;
+      }
+    }
   }
 
-  output << "<h3>xCluster inbound ReplicationGroups</h3>\n";
-  output << "<pre class=\"prettyprint\">"
-         << "XClusterRole: " << XClusterRole_Name(consumer_registry.role())
-         << "\ntransactional: " << consumer_registry.transactional() << "</pre>";
-
-  for (size_t i = 0; i < replication_infos.size(); i++) {
-    const auto& replication_info = replication_infos[i];
-    auto* producer_map =
-        FindOrNull(consumer_registry.producer_map(), replication_info.replication_group_id());
-
-    output << "\n\n<h4>ReplicationGroup: " << replication_info.replication_group_id() << "</h4>\n";
-    output << "<pre class=\"prettyprint\">"
-           << "state: " << SysUniverseReplicationEntryPB::State_Name(replication_info.state())
-           << "\ntransactional: " << BoolToString(replication_info.transactional())
-           << "\nvalidated_local_auto_flags_config_version: "
-           << replication_info.validated_local_auto_flags_config_version();
-    if (producer_map) {
-      output << "\nmaster_addrs: ";
-      bool first = true;
-      for (const auto& add : producer_map->master_addrs()) {
-        output << (first ? "" : ",") << add.ShortDebugString();
-        first = false;
-      }
-      output << "\ndisable_stream: " << BoolToString(producer_map->disable_stream());
-      output << "\ncompatible_auto_flag_config_version: "
-             << producer_map->compatible_auto_flag_config_version();
-      output << "\nvalidated_auto_flags_config_version: "
-             << producer_map->validated_auto_flags_config_version();
+  if (!xcluster_status.outbound_table_stream_statuses.empty()) {
+    output << "<br><h3>Outbound table streams</h3>\n";
+    HTML_PRINT_TABLE_WITH_HEADER_ROW(outbound_table_streams, "Table Id", "Stream Id", "State");
+    for (const auto& table_status : xcluster_status.outbound_table_stream_statuses) {
+      HTML_PRINT_TABLE_ROW(table_status.table_id, table_status.stream_id, table_status.state);
     }
+    HTML_END_TABLE;
+  }
+
+  output << "<br><h3>Inbound ReplicationGroups</h3>\n";
+  output << "<pre class=\"prettyprint\">"
+         << "XClusterRole: " << xcluster_status.role
+         << "\ntransactional: " << BoolToString(xcluster_status.transactional) << "</pre>";
+  output << "</pre>";
+
+  uint32 inbound_group_table_id = 0;
+  for (const auto& inbound_replication_group : xcluster_status.inbound_replication_group_statuses) {
+    auto group_fs = AutoFieldsetScope(
+        output, Format("Group: $0", inbound_replication_group.replication_group_id));
+
+    output << "<pre class=\"prettyprint\">"
+           << "state: " << inbound_replication_group.state
+           << "\ndisable_stream: " << BoolToString(inbound_replication_group.disable_stream)
+           << "\ntransactional: " << BoolToString(inbound_replication_group.transactional)
+           << "\nmaster_addrs: " << inbound_replication_group.master_addrs;
+    if (!inbound_replication_group.db_scoped_info.empty()) {
+      output << "\ndb_scoped_info: " << inbound_replication_group.db_scoped_info;
+    }
+    output << "\nvalidated_local_auto_flags_config_version: "
+           << inbound_replication_group.validated_local_auto_flags_config_version
+           << "\nvalidated_remote_auto_flags_config_version: "
+           << inbound_replication_group.validated_remote_auto_flags_config_version
+           << "\ncompatible_auto_flag_config_version: "
+           << inbound_replication_group.compatible_auto_flag_config_version;
     output << "</pre>";
-    yb::ToString(1);
 
     HTML_PRINT_TABLE_WITH_HEADER_ROW_WITH_ID(
-        inbound_replication_group, i, "Producer Table Id", "Stream Id", "Consumer Table Id",
-        "Producer Tablet Count", "Consumer Tablet Count", "Local tserver optimized",
-        "Producer schema version", "Consumer schema version", "Status");
+        inbound_replication_group, inbound_group_table_id, "Producer Table Id", "Stream Id",
+        "Consumer Table Id", "Producer Tablet Count", "Consumer Tablet Count",
+        "Local tserver optimized", "Producer schema version", "Consumer schema version", "Status");
+    inbound_group_table_id++;
 
-    for (int j = 0; j < replication_info.tables_size(); j++) {
-      auto& producer_table_id = replication_info.tables(j);
-      std::string status, stream_id, consumer_table_id;
-      uint32 producer_tablet_count = 0, consumer_tablet_count = 0, producer_schema_version = 0,
-             consumer_schema_version = 0;
-      bool local_tserver_optimized = false;
-      auto* stream_id_it = FindOrNull(replication_info.table_streams(), producer_table_id);
-      if (stream_id_it) {
-        stream_id = *stream_id_it;
-        auto it = FindOrNull(stream_status, stream_id);
-        status = it ? *it : "OK";
-
-        if (producer_map) {
-          auto* stream_info = FindOrNull(producer_map->stream_map(), stream_id);
-          if (stream_info) {
-            consumer_table_id = stream_info->consumer_table_id();
-            consumer_tablet_count = stream_info->consumer_producer_tablet_map_size();
-            local_tserver_optimized = stream_info->local_tserver_optimized();
-            producer_schema_version =
-                stream_info->schema_versions().current_producer_schema_version();
-            consumer_schema_version =
-                stream_info->schema_versions().current_consumer_schema_version();
-            for (const auto& [_, producer_tablets] : stream_info->consumer_producer_tablet_map()) {
-              producer_tablet_count += producer_tablets.tablets_size();
-            }
-          }
-        }
-      } else {
-        status = "Not Ready";
-      }
-
+    for (const auto& table_status : inbound_replication_group.table_statuses) {
       HTML_PRINT_TABLE_ROW(
-          producer_table_id, stream_id, consumer_table_id, producer_tablet_count,
-          consumer_tablet_count, BoolToString(local_tserver_optimized), producer_schema_version,
-          consumer_schema_version, status);
+          table_status.source_table_id, table_status.stream_id, table_status.target_table_id,
+          table_status.source_tablet_count, table_status.target_tablet_count,
+          BoolToString(table_status.local_tserver_optimized), table_status.source_schema_version,
+          table_status.target_schema_version, table_status.status);
     }
     HTML_END_TABLE;
   }
@@ -3250,11 +3209,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
       is_styled);
 
   RegisterLeaderOrRedirect(
-      server, "/xcluster-config", "XCluster Config", &MasterPathHandlers::HandleGetXClusterConfig,
-      is_styled);
-
-  RegisterLeaderOrRedirect(
-      server, "/xcluster", "XCluster", &MasterPathHandlers::HandleXCluster, is_styled);
+      server, "/xcluster", "xCluster", &MasterPathHandlers::HandleXCluster, is_styled);
 
   RegisterLeaderOrRedirect(
       server, "/tasks", "Tasks", &MasterPathHandlers::HandleTasksPage, is_styled);
@@ -3318,8 +3273,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
       &MasterPathHandlers::HandleGetClusterConfigJSON);
 
   RegisterLeaderOrRedirect(
-      server, "/api/v1/xcluster-config", "XCluster Config JSON",
-      &MasterPathHandlers::HandleGetXClusterConfigJSON);
+      server, "/api/v1/xcluster", "xCluster", &MasterPathHandlers::HandleGetXClusterJSON);
 
   return Status::OK();
 }

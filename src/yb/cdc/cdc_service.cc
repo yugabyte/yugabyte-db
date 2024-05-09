@@ -46,6 +46,7 @@
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/colocated_util.h"
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
@@ -188,6 +189,8 @@ DECLARE_int64(cdc_intent_retention_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
+
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 METRIC_DEFINE_entity(xcluster);
 
@@ -2398,6 +2401,50 @@ void CDCServiceImpl::FilterOutTabletsToBeDeletedByAllStreams(
   }
 }
 
+Result<bool> CDCServiceImpl::CheckBeforeImageActive(
+    const TabletId& tablet_id, const StreamMetadata& stream_metadata) {
+  bool is_before_image_active = false;
+  if (FLAGS_ysql_yb_enable_replica_identity) {
+    auto tablet_peeer = context_->LookupTablet(tablet_id);
+    auto replica_identity_map = stream_metadata.GetReplicaIdentities();
+
+    // If the tablet is colocated, we check the replica identities of all the tables residing in it.
+    // If before image is active for any one of the tables then we should return true
+    if (tablet_peeer->tablet_metadata()->colocated()) {
+      auto table_ids = tablet_peeer->tablet_metadata()->GetAllColocatedTables();
+      for (auto table_id : table_ids) {
+        auto table_name = tablet_peeer->tablet_metadata()->table_name(table_id);
+        if ((boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
+             boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
+          continue;
+        }
+
+        if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
+          if (replica_identity_map.at(table_id) == PgReplicaIdentity::FULL) {
+            is_before_image_active = true;
+            break;
+          }
+        } else {
+          return STATUS_FORMAT(NotFound, "Replica identity not found for table: $0 ", table_id);
+        }
+      }
+    } else {
+      auto table_id = tablet_peeer->tablet_metadata()->table_id();
+      if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
+        is_before_image_active = replica_identity_map.at(table_id) == PgReplicaIdentity::FULL;
+      } else {
+        return STATUS_FORMAT(NotFound, "Replica identity not found for table: $0 ", table_id);
+      }
+    }
+
+  } else {
+    is_before_image_active =
+        (stream_metadata.GetRecordType() == CDCRecordType::ALL ||
+         stream_metadata.GetRecordType() == CDCRecordType::PG_FULL);
+  }
+  return is_before_image_active;
+}
+
 Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     const TabletId& input_tablet_id, TabletIdStreamIdSet* tablet_stream_to_be_deleted) {
   TabletIdCDCCheckpointMap tablet_min_checkpoint_map;
@@ -2481,9 +2528,9 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
     // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
     // taking the snapshot of any table.
-    if (entry.cdc_sdk_safe_time &&
-       ((record.GetRecordType() == CDCRecordType::ALL ||
-         record.GetRecordType() == CDCRecordType::PG_FULL) || entry.snapshot_key.has_value())) {
+    bool is_before_image_active = VERIFY_RESULT(CheckBeforeImageActive(tablet_id, record));
+
+    if (entry.cdc_sdk_safe_time && (is_before_image_active || entry.snapshot_key.has_value())) {
       cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
     }
 
@@ -4323,13 +4370,14 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     }
 
     std::string error_msg = Format("VirtualWAL initialisation failed for stream_id: $0", stream_id);
-    LOG(WARNING) << error_msg;
+    LOG(WARNING) << s.CloneAndPrepend(error_msg);
     RPC_STATUS_RETURN_ERROR(
         s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     return;
   }
 
-  LOG(INFO) << "VirtualWAL instance successfully created for session_id: " << session_id;
+  LOG(INFO) << "VirtualWAL instance successfully created for stream_id: " << stream_id
+            << " with session_id: " << session_id;
   context.RespondSuccess();
 }
 
@@ -4340,7 +4388,7 @@ void CDCServiceImpl::GetConsistentChanges(
     return;
   }
 
-  VLOG(4) << "Received GetConsistentChanges request: " << req->DebugString();
+  VLOG(1) << "Received GetConsistentChanges request: " << req->DebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4369,12 +4417,10 @@ void CDCServiceImpl::GetConsistentChanges(
   Status s = virtual_wal->GetConsistentChangesInternal(
       stream_id, resp, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
-    std::string msg = Format("GetConsistentChanges failed for stream_id: $0", stream_id);
+    std::string msg =
+        Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
     LOG(WARNING) << msg;
   }
-
-  VLOG(4) << "Sending GetConsistentChanges response with num_records: "
-          << resp->cdc_sdk_proto_records_size();
 
   context.RespondSuccess();
 }
@@ -4457,7 +4503,7 @@ void CDCServiceImpl::UpdateAndPersistLSN(
     return;
   }
 
-  VLOG(4) << "Received UpdateAndPersistLSN request: " << req->DebugString();
+  VLOG(1) << "Received UpdateAndPersistLSN request: " << req->DebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4506,7 +4552,7 @@ void CDCServiceImpl::UpdateAndPersistLSN(
 
   resp->set_restart_lsn(*res);
 
-  VLOG(4) << "Succesfully persisted LSN values for stream_id: " << stream_id
+  VLOG(1) << "Succesfully persisted LSN values for stream_id: " << stream_id
           << ", confirmed_flush_lsn = " << confirmed_flush_lsn
           << ", restart_lsn = " << *res;
   context.RespondSuccess();

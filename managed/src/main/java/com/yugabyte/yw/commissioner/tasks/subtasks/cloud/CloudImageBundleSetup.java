@@ -119,7 +119,8 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       CloudQueryHelper cloudQueryHelper,
       Architecture arch,
       boolean isDefault,
-      boolean forceFetchFromMetadata) {
+      boolean forceFetchFromMetadata,
+      boolean enableVMOSPatching) {
     List<Region> regions = provider.getRegions();
     CloudType cloudType = provider.getCloudCode();
     if (arch == null) {
@@ -151,14 +152,16 @@ public class CloudImageBundleSetup extends CloudTaskBase {
           // We are doing this as, once the bundle is configured with the custom image,
           // we should get rid of the image in the region object, so that during bundle
           // update it does not pick the image from region.
-          r.setYbImage(null);
-          r.save();
+          if (enableVMOSPatching) {
+            r.setYbImage(null);
+            r.save();
+          }
         }
         bundleInfo.setYbImage(ybImage);
         if (isCustomImage) {
-          bundleInfo.setSshUserOverride(provider.getDetails().getSshUser());
+          details.setSshUser(provider.getDetails().getSshUser());
         } else {
-          bundleInfo.setSshUserOverride(cloudType.getSshUser());
+          details.setSshUser(cloudType.getSshUser());
         }
         regionsImageInfo.put(r.getCode(), bundleInfo);
       }
@@ -187,14 +190,22 @@ public class CloudImageBundleSetup extends CloudTaskBase {
         // We are doing this as, once the bundle is configured with the custom image,
         // we should get rid of the image in the region object, so that during bundle
         // update it does not pick the image from region.
-        regions.stream()
-            .forEach(
-                r -> {
-                  r.setYbImage(null);
-                  r.save();
-                });
+        if (enableVMOSPatching) {
+          regions.stream()
+              .forEach(
+                  r -> {
+                    r.setYbImage(null);
+                    r.save();
+                  });
+        }
       }
       details.setGlobalYbImage(ybImage);
+      details.setSshUser(provider.getDetails().getSshUser());
+    }
+    if (provider.getDetails().getSshPort() != null) {
+      details.setSshPort(provider.getDetails().getSshPort());
+    } else {
+      details.setSshPort(22);
     }
     // If the bundle is not specified we will create YBA default with the type
     // YBA_ACTIVE.
@@ -217,6 +228,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
     List<Region> regions = provider.getRegions();
 
     List<ImageBundle> imageBundles = taskParams().imageBundles;
+    boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
     if ((imageBundles == null || imageBundles.size() == 0)
         && provider.getImageBundles().size() == 0
         && !taskParams().updateBundleRequest) {
@@ -240,7 +252,8 @@ public class CloudImageBundleSetup extends CloudTaskBase {
           }
         }
       }
-      generateYBADefaultImageBundle(provider, cloudQueryHelper, arch, true, false);
+      generateYBADefaultImageBundle(
+          provider, cloudQueryHelper, arch, true, false, enableVMOSPatching);
     } else if (imageBundles != null) {
       Map<UUID, ImageBundle> existingImageBundles =
           provider.getImageBundles().stream()
@@ -252,7 +265,6 @@ public class CloudImageBundleSetup extends CloudTaskBase {
         // creation failed in first try mid-way, we will delete up existing Bundles
         existingImageBundles.forEach((bundleUUID, bundle) -> bundle.delete());
       }
-      boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
       for (ImageBundle bundle : imageBundles) {
         if (taskParams().updateBundleRequest && bundle.getUuid() != null) {
           updateBundles(
@@ -317,7 +329,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       String defaultRegionImage =
           cloudQueryHelper.getDefaultImage(region, bundle.getDetails().getArch().toString());
       info.setYbImage(defaultRegionImage);
-      info.setSshUserOverride(provider.getDetails().getSshUser());
+      details.setSshUser(provider.getDetails().getSshUser());
 
       regionBundleInfo.put(region.getCode(), info);
       details.setRegions(regionBundleInfo);
@@ -357,12 +369,21 @@ public class CloudImageBundleSetup extends CloudTaskBase {
           bundle.setName(getDefaultImageBundleName(provider.getCode()));
           String defaultImage = cloudQueryHelper.getDefaultImage(region, arch.toString());
           bundleInfo.setYbImage(defaultImage);
-          bundleInfo.setSshUserOverride(cloudType.getSshUser());
+          details.setSshUser(cloudType.getSshUser());
+          details.setSshPort(22);
           // If we are populating the ybImage, bundle will be YBA_DEFAULT.
           metadata.setType(ImageBundleType.YBA_ACTIVE);
           metadata.setVersion(CLOUD_OS_MAP.get(provider.getCode()).getVersion());
         } else {
           // In case user specified the AMI ids bundle will be CUSTOM.
+          if (StringUtils.isNotBlank(bundleInfo.getSshUserOverride())) {
+            details.setSshUser(bundleInfo.getSshUserOverride());
+            bundleInfo.setSshUserOverride(null);
+          }
+          if (bundleInfo.getSshPortOverride() != null) {
+            details.setSshPort(bundleInfo.getSshPortOverride());
+            bundleInfo.setSshPortOverride(null);
+          }
           metadata.setType(ImageBundleType.CUSTOM);
         }
 
@@ -385,6 +406,12 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       } else {
         // In case user specified the image id bundle will be CUSTOM.
         metadata.setType(ImageBundleType.CUSTOM);
+      }
+      if (details.getSshPort() == null) {
+        details.setSshPort(22);
+      }
+      if (StringUtils.isBlank(details.getSshUser())) {
+        details.setSshUser(cloudType.getSshUser());
       }
     }
     if (bundle.getUseAsDefault()) {

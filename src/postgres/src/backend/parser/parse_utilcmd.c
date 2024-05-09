@@ -3919,7 +3919,7 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 								 * in the case of failure, we aren't left with orphaned DocDB
 								 * columns.
 								 */
-								if (!ddl_rollback_enabled)
+								if (!YbDdlRollbackEnabled())
 									ereport(ERROR,
 											(errcode(
 												ERRCODE_FEATURE_NOT_SUPPORTED),

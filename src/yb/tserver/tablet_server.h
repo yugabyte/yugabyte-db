@@ -62,8 +62,6 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
-#include "yb/tserver/xcluster_safe_time_map.h"
-#include "yb/tserver/xcluster_context.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -94,6 +92,8 @@ class CDCServiceImpl;
 namespace tserver {
 
 class TserverAutoFlagsManager;
+class TserverXClusterContext;
+class TserverXClusterContextIf;
 class PgClientServiceImpl;
 class XClusterConsumerIf;
 
@@ -293,11 +293,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
 
-  const XClusterSafeTimeMap& GetXClusterSafeTimeMap() const;
+  const TserverXClusterContextIf& GetXClusterContext() const;
 
   PgMutationCounter& GetPgNodeLevelMutationCounter();
-
-  void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
   Result<cdc::XClusterRole> TEST_GetXClusterRole() const;
 
@@ -309,6 +307,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
+
+  Status ClearUniverseUuid();
 
   XClusterConsumerIf* GetXClusterConsumer() const;
 
@@ -328,8 +328,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
     return nullptr;
   }
-
-  void SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode);
 
   std::optional<uint64_t> GetCatalogVersionsFingerprint() const {
     return catalog_versions_fingerprint_.load(std::memory_order_acquire);
@@ -453,9 +451,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Bind address of postgres proxy under this tserver.
   HostPort pgsql_proxy_bind_address_;
 
-  XClusterSafeTimeMap xcluster_safe_time_map_;
-
-  std::atomic<bool> xcluster_read_only_mode_{false};
+  std::unique_ptr<TserverXClusterContext> xcluster_context_;
 
   PgMutationCounter pg_node_level_mutation_counter_;
 

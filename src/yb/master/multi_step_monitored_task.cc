@@ -195,17 +195,15 @@ void MultiStepMonitoredTask::EndTask(const Status& status) {
 
   TaskCompleted(status);
 
-  StdStatusCallback callback;
-  callback.swap(completion_callback_);
-
   completion_timestamp_ = MonoTime::Now();
   LOG_WITH_PREFIX(INFO) << this << " task ended" << (status.ok() ? " successfully" : "");
 
+  auto retain_self = shared_from_this();
   UnregisterTask();
-  // Unsafe to use 'this' beyond this point.
 
-  if (callback) {
-    callback(status);
+  if (completion_callback_) {
+    completion_callback_(status);
+    completion_callback_ = nullptr;
   }
 }
 
