@@ -1666,9 +1666,10 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	 * sort in the same ordering used by the index column, so that the
 	 * successive primitive indexscans produce data in index order.
 	 */
-	num_elems = _bt_sort_array_elements(&tmp_scan_desc, key,
-										false /* reverse */,
-										elem_values, num_valid);
+	// TODO (arpan)
+	if (index)
+		num_elems = _bt_sort_array_elements(
+			&tmp_scan_desc, key, false /* reverse */, elem_values, num_valid);
 
 	/*
 	 * And set up the BTArrayKeyInfo data.
@@ -2277,6 +2278,8 @@ YbCollectHashKeyComponents(YbScanDesc ybScan, YbScanPlan scan_plan,
 static Bitmapset *
 YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 {
+	// TODO(arpan)
+	return NULL;
 	if (ybScan->all_ordinary_keys_bound)
 		return NULL;
 
