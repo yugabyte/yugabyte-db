@@ -252,3 +252,21 @@ export interface ProviderNode {
 export interface TaskResponse {
   taskUUID: string;
 }
+
+export interface MetadataFields {
+	id: string;
+	name?: string;
+	customerId: string;
+	apiToken: string;
+	platformUrl: string;
+	metricsUrl: string;
+	metricsScrapePeriodSec: number;
+	dataMountPoints: string[];
+	otherMountPoints: string[];
+	lastSyncError?: string | null;
+}
+
+export interface UpdateMetadataFormFields {
+	apiToken: string;
+	metricsScrapePeriodSec: number;
+}

@@ -110,6 +110,7 @@ export enum GraphLabel {
   WAIT_EVENT_COMPONENT = 'waitEventComponent',
   WAIT_EVENT_TYPE = 'waitEventType',
   WAIT_EVENT_CLASS = 'waitEventClass',
+  WAIT_EVENT_TYPE = 'waitEventType',
   WAIT_EVENT = 'waitEvent',
   CLIENT_NODE_IP = 'clientNodeIp',
   QUERY_ID = 'queryId'
@@ -175,4 +176,22 @@ export enum AppName {
 export enum GraphType {
   MAIN = 'MAIN',
   SUPPORTING = 'SUPPORTING'
+}
+
+export interface MetadataFields {
+	id: string;
+	name?: string;
+	customerId: string;
+	apiToken: string;
+	platformUrl: string;
+	metricsUrl: string;
+	metricsScrapePeriodSec: number;
+	dataMountPoints: string[];
+	otherMountPoints: string[];
+	lastSyncError?: string | null;
+}
+
+export interface UpdateMetadataFormFields {
+	apiToken: string;
+	metricsScrapePeriodSec: number;
 }
