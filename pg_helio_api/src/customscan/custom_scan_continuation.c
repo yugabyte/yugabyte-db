@@ -22,6 +22,8 @@
 #include <utils/rel.h>
 #include <access/detoast.h>
 #include <miscadmin.h>
+#include <catalog/pg_operator.h>
+#include <optimizer/restrictinfo.h>
 
 #include "io/helio_bson_core.h"
 #include "customscan/helio_custom_scan.h"
@@ -479,8 +481,34 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 			}
 		}
 
-		if (inputPath->pathtype != T_SeqScan &&
-			inputPath->pathtype != T_BitmapHeapScan)
+		Const *tidLowerBoundConst = NULL;
+		ItemPointer tidLowerPointPointer = NULL;
+		if (inputPath->pathtype == T_SeqScan)
+		{
+			/* Convert a seqscan to a TidScan */
+			if ((rel->amflags & AMFLAG_HAS_TID_RANGE) != 0)
+			{
+				tidLowerPointPointer = palloc0(sizeof(ItemPointerData));
+				tidLowerBoundConst = makeConst(TIDOID, -1, InvalidOid,
+											   sizeof(ItemPointerData), PointerGetDatum(
+												   tidLowerPointPointer), false,
+											   false);
+				OpExpr *tidLowerBoundScan = (OpExpr *) make_opclause(
+					TIDGreaterEqOperator, BOOLOID, false,
+					(Expr *) makeVar(rel->relid, SelfItemPointerAttributeNumber, TIDOID,
+									 -1, InvalidOid, 0),
+					(Expr *) tidLowerBoundConst, InvalidOid, InvalidOid);
+				RestrictInfo *rinfo = make_simple_restrictinfo(root,
+															   (Expr *) tidLowerBoundScan);
+				inputPath = (Path *) create_tidrangescan_path(root, rel, list_make1(
+																  rinfo),
+															  rel->lateral_relids);
+			}
+		}
+
+		if (inputPath->pathtype != T_BitmapHeapScan &&
+			inputPath->pathtype != T_TidScan &&
+			inputPath->pathtype != T_TidRangeScan)
 		{
 			/* For now just break if it's not a seq scan or bitmap scan */
 			elog(INFO, "Skipping unsupported path type %d", inputPath->pathtype);
@@ -540,6 +568,18 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 		inputContinuation->continuation = continuation;
 		inputContinuation->queryTableId = rte->relid;
 		inputContinuation->queryTableName = tableName;
+
+		if (tidLowerBoundConst != NULL)
+		{
+			ExtensionScanState scanState;
+			memset(&scanState, 0, sizeof(ExtensionScanState));
+			ParseContinuationState(&scanState, inputContinuation);
+			if (scanState.hasUserContinuationState)
+			{
+				*tidLowerPointPointer = scanState.userContinuationState;
+				tidLowerBoundConst->constvalue = PointerGetDatum(tidLowerPointPointer);
+			}
+		}
 
 		/* Store the input continuation to be used later, as well as the inner projection
 		 * target List
