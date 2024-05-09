@@ -472,7 +472,10 @@ public class NodeUniverseManager extends DevopsBase {
         String sshPort = provider.getDetails().sshPort.toString();
         UUID imageBundleUUID =
             Util.retreiveImageBundleUUID(
-                universe.getUniverseDetails().arch, cluster.userIntent, provider);
+                universe.getUniverseDetails().arch,
+                cluster.userIntent,
+                provider,
+                confGetter.getStaticConf().getBoolean("yb.cloud.enabled"));
         if (imageBundleUUID != null) {
           ImageBundle.NodeProperties toOverwriteNodeProperties =
               imageBundleUtil.getNodePropertiesOrFail(
