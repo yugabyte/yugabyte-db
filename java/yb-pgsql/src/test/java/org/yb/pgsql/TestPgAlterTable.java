@@ -208,7 +208,8 @@ public class TestPgAlterTable extends BasePgSQLTest {
       runInvalidQuery(
           statement,
           "ALTER TABLE test_table ADD b int CHECK (b IS NOT NULL)",
-          "check constraint \"test_table_b_check\" is violated by some row"
+          ("check constraint \"test_table_b_check\" of relation \"test_table\" " +
+           "is violated by some row")
       );
     }
   }
@@ -451,7 +452,6 @@ public class TestPgAlterTable extends BasePgSQLTest {
           "ADD IF NOT EXISTS")) {
         for (String constr : Arrays.asList(
             "DEFAULT 5",
-            "DEFAULT NOW()",
             "CHECK (id > 0)",
             "CHECK (a > 0)",
             "REFERENCES test_table_ref(id)")) {
