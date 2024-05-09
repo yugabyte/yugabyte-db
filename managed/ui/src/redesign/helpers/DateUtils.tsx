@@ -18,11 +18,7 @@ export const YBTimeFormats = {
   YB_ISO8601_TIMESTAMP: 'YYYY-MM-DD[T]H:mm:ssZZ',
   YB_TIME_ONLY_TIMESTAMP: 'HH:mm:ss'
 } as const;
-
 export type YBTimeFormats = typeof YBTimeFormats[keyof typeof YBTimeFormats];
-
-export const YB_INPUT_TIMESTAMP_FORMAT = 'ddd MMM DD HH:mm:ss z YYYY';
-
 /**
  * Converts date to RFC3339 format("yyyy-MM-dd'T'HH:mm:ss'Z'")
  * @param d Date
@@ -61,10 +57,7 @@ export const formatDatetime = (
   timeFormat: YBTimeFormats = YBTimeFormats.YB_DEFAULT_TIMESTAMP,
   timezone?: string
 ): string => {
-  const momentObj = moment(date, YB_INPUT_TIMESTAMP_FORMAT).isValid()
-    ? moment(date, YB_INPUT_TIMESTAMP_FORMAT)
-    : moment(date);
-  return timezone ? momentObj.tz(timezone).format(timeFormat) : momentObj.format(timeFormat);
+  return timezone ? moment(date).tz(timezone).format(timeFormat) : moment(date).format(timeFormat);
 };
 
 type FormatDateProps = {
