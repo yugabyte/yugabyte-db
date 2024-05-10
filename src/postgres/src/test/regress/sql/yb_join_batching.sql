@@ -511,6 +511,24 @@ explain (costs off) select * from ss1 t1, ss2 t2 where t1.a = t2.a and t1.b = t2
 drop table ss1;
 drop table ss2;
 
+CREATE TABLE ss1(a int);
+CREATE TABLE ss2(a int);
+CREATE TABLE ss3(a int, b int, c int, primary key(a asc, b asc));
+
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading((ss2 (ss1 ss3)))
+*/EXPLAIN (COSTS OFF) SELECT *
+FROM ss1, ss2, ss3
+WHERE ss1.a = ss3.a and ss3.c <= (SELECT a FROM ss3 where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
+
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading(((ss1 ss2) ss3))
+*/SELECT *
+FROM ss1, ss2, ss3
+WHERE ss1.a = ss3.a and ss3.c <= (SELECT a FROM ss3 where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
+
+DROP TABLE ss1;
+DROP TABLE ss2;
+DROP TABLE ss3;
+
 --
 --
 -- Inner joins (equi-joins)

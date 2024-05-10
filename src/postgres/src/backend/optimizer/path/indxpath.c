@@ -604,6 +604,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	bool batched_paths_added = false;
 
+	Relids total_relids = NULL;
+
 	for (size_t i = 0; i < INDEX_MAX_KEYS && clauses->nonempty; i++)
 	{
 		List *colclauses = clauses->indexclauses[i];
@@ -642,16 +644,18 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				unbatchablerelids = bms_union(unbatchablerelids,
 											  rinfo->clause_relids);
 			}
+
+			total_relids = bms_union(total_relids, outer_relids);
 		}
 	}
+
+	total_relids = bms_union(total_relids, inner_relids);
 
 	batchedrelids = bms_del_member(batchedrelids,
 								   index->rel->relid);
 	batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
 
 	/* See if we have any unbatchable filters. */
-	Relids batched_and_inner_relids =
-		bms_union(batchedrelids, index->rel->relids);
 	List *pclauses = NIL;
 	if (!bms_is_empty(batchedrelids)) {
 		pclauses = generate_join_implied_equalities(
@@ -660,11 +664,16 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			batchedrelids,
 			rel);
 
+		/*
+		 * Anything in joininfo that can be pushed down to this scan
+		 * will end up as a qpqual. Add these to the list of clauses
+		 * to check for batchability.
+		 */
 		foreach(lc, rel->joininfo)
 		{
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 			if (join_clause_is_movable_into(rinfo, rel->relids,
-											batched_and_inner_relids))
+											total_relids))
 				pclauses = lappend(pclauses, rinfo);
 		}
 	}
@@ -727,7 +736,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	bms_free(batched_inner_attnos);
 	bms_free(pclause_batched_inner_attnos);
-	bms_free(batched_and_inner_relids);
+	bms_free(total_relids);
 
 	unbatchablerelids = bms_del_member(unbatchablerelids,
 									   index->rel->relid);
