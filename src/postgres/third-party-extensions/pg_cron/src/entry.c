@@ -123,7 +123,7 @@ parse_cron_entry(char *schedule)
 		 */
 		ch = get_string(cmd, MAX_COMMAND, file, " \t\n");
 		if (!strcmp("reboot", cmd) || !strcmp("restart", cmd)) {
-			e->flags |= WHEN_REBOOT;
+			e->flags |= WHEN_REBOOT; /* TODO(hari): Disable in YB? */
 		} else if (!strcmp("yearly", cmd) || !strcmp("annually", cmd)){
 			set_element(e->minute, FIRST_MINUTE, LAST_MINUTE,
 				    FIRST_MINUTE);

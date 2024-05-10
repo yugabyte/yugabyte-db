@@ -1,0 +1,3 @@
+# third-party-extensions/pg_cron/yb_schedule
+
+test: pg_cron-test
