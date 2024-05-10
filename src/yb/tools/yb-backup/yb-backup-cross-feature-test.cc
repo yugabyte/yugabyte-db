@@ -920,6 +920,96 @@ TEST_F_EX(YBBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+// Test backup/restore when a range-partitioned GIN index undergoes manual tablet splitting and
+// GinNullItem become part of its tablets' partition bounds.
+// Any kind of GinNull (GinNullKey, GinEmptyItem, and GinNullItem) can be used for this test.
+// In the case where GinNull is part of one partition bound of a GIN index, during backup,
+// yb_get_range_split_clause fails to decode the partition bound, and YSQL_DUMP doesn't dump the
+// SPLIT AT clause of the index.
+// During restore, restoring snapshot to the index with different partition boundaries
+// should be detected and handled by repartitioning the index. See CatalogManager::RepartitionTable.
+// This test exercises that:
+// 1. create a table and a GIN index
+// 2. insert NULL data into the table
+// 3. split the GIN index into 2 tablets to make GinNull become part of partition bounds
+// 4. backup
+// 5. drop table
+// 6. restore
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitGINIndexWithGinNullInPartitionBounds),
+          YBBackupTestNumTablets) {
+  const string table_name = "mytbl";
+  const string index_name = "my_gin_idx";
+
+  // Create table and index
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (v tsvector)", table_name)));
+  ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX $0 ON $1 USING ybgin(v)",
+                                      index_name, table_name)));
+
+  // Verify the index has only one tablet
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+  // Use this function for side effects. It validates the begin and end partitions are empty.
+  ASSERT_OK(GetSplitPoints(tablets));
+
+  // Insert data
+  const string insert_null_sql = Format(R"#(
+    DO $$$$
+    BEGIN
+      FOR i in 1..1000 LOOP
+        INSERT INTO $0 VALUES (NULL);
+      END LOOP;
+    END $$$$;
+  )#", table_name);
+  ASSERT_NO_FATALS(RunPsqlCommand(insert_null_sql, "DO"));
+
+  // Flush index
+  auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
+  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+
+  // Split the GIN index into two tablets and wait for its split to complete.
+  // The splits make GinNull become part of its tablets' partition bounds:
+  // tablet-1 boundaries: [ "", (GinNullItem, <ybctid>) )
+  // tablet-2 boundaries: [ (GinNullItem, <ybctid>), "" )
+  const auto num_tablets = 2;
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, index_name, /* wait_for_parent_deletion */ true, tablets[0].tablet_id()));
+
+  // Verify that it has two tablets:
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  // Verify GinNull is in the split point.
+  // 'v' represents the KeyEntryType for kGinNull.
+  auto split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_EQ(split_points.size(), num_tablets - 1);
+  ASSERT_EQ(split_points[0][0], 'v');
+
+  // Backup
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Validate
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
+  ASSERT_EQ(tablets.size(), 2);
+  auto post_restore_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  // Rely on CatalogManager::RepartitionTable to repartition the GIN index with correct partition
+  // boundaries. Validate if repartition works correctly.
+  ASSERT_EQ(split_points,
+            post_restore_split_points);
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 // Test backup/restore on a colocated database which has colocated tables with tablespaces.
 // (Colocated tables support tablespaces only if preview flag
 // ysql_enable_colocated_tables_with_tablespaces is enabled.)
