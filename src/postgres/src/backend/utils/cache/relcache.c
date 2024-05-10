@@ -4265,6 +4265,8 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 		pfree(relation->rd_partcheck);
 	if (relation->rd_fdwroutine)
 		pfree(relation->rd_fdwroutine);
+	if (relation->yb_table_properties)
+		pfree(relation->yb_table_properties);
 	pfree(relation);
 }
 
