@@ -71,6 +71,12 @@ class MasterTabletServer : public tserver::TabletServerIf,
   Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const override;
 
+  virtual Result<std::vector<client::internal::RemoteTabletServerPtr>>
+      GetRemoteTabletServers() const override;
+
+  virtual Result<std::vector<client::internal::RemoteTabletServerPtr>>
+      GetRemoteTabletServers(const std::unordered_set<std::string>& ts_uuids) const override;
+
   const std::shared_ptr<MemTracker>& mem_tracker() const override;
 
   void SetPublisher(rpc::Publisher service) override;

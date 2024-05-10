@@ -2315,13 +2315,6 @@ std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinR
   return std::make_pair(id, *requests.running_requests.begin());
 }
 
-Result<std::shared_ptr<internal::RemoteTabletServer>> YBClient::GetRemoteTabletServer(
-    const std::string& permanent_uuid) {
-  auto tserver = data_->meta_cache_->GetRemoteTabletServer(permanent_uuid);
-  RETURN_NOT_OK(tserver->InitProxy(this));
-  return tserver;
-}
-
 void YBClient::AddMetaCacheInfo(JsonWriter* writer) {
   data_->meta_cache_->AddAllTabletInfo(writer);
 }
