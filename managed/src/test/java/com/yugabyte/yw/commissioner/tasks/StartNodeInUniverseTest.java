@@ -12,12 +12,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
@@ -130,6 +132,14 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
     setFollowerLagMock();
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
+    doAnswer(
+            inv -> {
+              ObjectNode res = Json.mapper().createObjectNode();
+              res.put("response", "success");
+              return res;
+            })
+        .when(mockYsqlQueryExecutor)
+        .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -168,6 +178,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForServer,
           TaskType.CheckFollowerLag,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
@@ -180,7 +191,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
-          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
+          Json.toJson(ImmutableMap.of("serverType", "YSQLSERVER")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()),
@@ -211,6 +223,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForServer,
           TaskType.CheckFollowerLag,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
@@ -236,6 +249,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
+          Json.toJson(ImmutableMap.of("serverType", "YSQLSERVER")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()),

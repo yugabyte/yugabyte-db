@@ -152,7 +152,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         createConfigureServerTasks(nodeCollection, params -> params.updateMasterAddrsOnly = true)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
         // Start tservers on tserver nodes.
-        createStartTserverProcessTasks(nodeCollection, cluster.userIntent.isYSQLAuthEnabled());
+        createStartTserverProcessTasks(nodeCollection, cluster.userIntent.enableYSQL);
 
         if (followerLagCheckEnabled) {
           createCheckFollowerLagTask(currentNode, ServerType.TSERVER)
