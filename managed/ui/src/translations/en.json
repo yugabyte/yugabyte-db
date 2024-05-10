@@ -739,8 +739,11 @@
             "drConfigTabs": "DR Config Tabs"
           },
           "tab": {
-            "metrics": "Metrics",
-            "tables": "Tables"
+            "metrics": {
+              "label": "Metrics",
+              "metricsUnavailableDuringFailover": "Metrics are unavailable during failover."
+            },
+            "tables": { "label": "Tables" }
           },
           "status": {
             "Initializing": "Initializing",
