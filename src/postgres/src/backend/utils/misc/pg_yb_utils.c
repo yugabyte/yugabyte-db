@@ -946,17 +946,37 @@ YBCCommitTransaction()
 	if (!IsYugaByteEnabled())
 		return;
 
-	HandleYBStatus(YBCPgCommitTransaction());
+	HandleYBStatus(YBCPgCommitPlainTransaction());
 }
 
 void
 YBCAbortTransaction()
 {
-	if (!IsYugaByteEnabled())
+	if (!IsYugaByteEnabled() || !YBTransactionsEnabled())
 		return;
 
-	if (YBTransactionsEnabled())
-		HandleYBStatus(YBCPgAbortTransaction());
+	/*
+	 * If a DDL operation during a DDL txn fails, the txn will be aborted before
+	 * we get here. However if there are failures afterwards (i.e. during
+	 * COMMIT or catalog version increment), then we might get here as part of
+	 * top level error recovery in PostgresMain() with the DDL txn state still
+	 * set in pggate. Clean it up in that case.
+	 */
+	 YBCStatus status = YBCPgClearSeparateDdlTxnMode();
+
+	/*
+	 * Aborting a transaction is likely to fail only when there are issues
+	 * communicating with the tserver. Close the backend connection in such
+	 * scenarios to avoid a recursive loop of aborting again and again as part
+	 * of error handling in PostgresMain() because of the error faced during
+	 * abort.
+	 */
+	if (unlikely(status))
+		elog(FATAL, "Failed to abort DDL transaction: %s", YBCMessageAsCString(status));
+
+	status = YBCPgAbortPlainTransaction();
+	if (unlikely(status))
+		elog(FATAL, "Failed to abort DML transaction: %s", YBCMessageAsCString(status));
 }
 
 void
