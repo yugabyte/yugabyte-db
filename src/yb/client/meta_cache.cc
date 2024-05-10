@@ -167,6 +167,11 @@ RemoteTabletServer::RemoteTabletServer(const master::TSInfoPB& pb)
   Update(pb);
 }
 
+RemoteTabletServer::RemoteTabletServer(const master::TSInformationPB& pb)
+    : uuid_(pb.tserver_instance().permanent_uuid()) {
+  Update(pb);
+}
+
 RemoteTabletServer::RemoteTabletServer(const consensus::RaftPeerPB& raft_peer)
     : uuid_(raft_peer.permanent_uuid()) {
   UpdateFromRaftPeer(raft_peer);
@@ -228,6 +233,19 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
   private_rpc_hostports_ = pb.private_rpc_addresses();
   public_rpc_hostports_ = pb.broadcast_addresses();
   cloud_info_pb_ = pb.cloud_info();
+}
+
+void RemoteTabletServer::Update(const master::TSInformationPB& pb) {
+  if (pb.tserver_instance().permanent_uuid() != uuid_) {
+    LOG(WARNING) << "RemoteTabletServer " << uuid_ << " cannot be updated "
+                 << "because the TSInformationPB has a wrong permanent_uuid "
+                 << pb.tserver_instance().permanent_uuid();
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  private_rpc_hostports_ = pb.registration().common().private_rpc_addresses();
+  public_rpc_hostports_ = pb.registration().common().broadcast_addresses();
+  cloud_info_pb_ = pb.registration().common().cloud_info();
 }
 
 void RemoteTabletServer::UpdateFromRaftPeer(const consensus::RaftPeerPB& raft_peer) {
@@ -356,13 +374,13 @@ Status RemoteTablet::RefreshFromRaftConfig(
   std::vector<std::shared_ptr<RemoteReplica>> new_replicas;
   std::string leader_uuid = "";
   for (const auto& peer : raft_config.peers()) {
-    auto tserver = FindPtrOrNull(tservers, peer.permanent_uuid());
+    auto tserver = FindOrNull(tservers, peer.permanent_uuid());
     SCHECK(tserver, NotFound, Format("TServer with ID $0 not found.", peer.permanent_uuid()));
     auto role = GetConsensusRole(peer.permanent_uuid(), consensus_state);
     if (role == PeerRole::LEADER) {
       leader_uuid = peer.permanent_uuid();
     }
-    new_replicas.emplace_back(std::make_shared<RemoteReplica>(tserver.get(), role));
+    new_replicas.emplace_back(std::make_shared<RemoteReplica>((*tserver).get(), role));
   }
   replicas_ = std::move(new_replicas);
   raft_config_opid_index_ = consensus_state.config().opid_index();
@@ -759,7 +777,7 @@ void MetaCache::SetLocalTabletServer(const string& permanent_uuid,
                                      const shared_ptr<TabletServerServiceProxy>& proxy,
                                      const LocalTabletServer* local_tserver) {
   const auto entry = ts_cache_.emplace(permanent_uuid,
-                                       std::make_shared<RemoteTabletServer>(permanent_uuid,
+                                       std::make_unique<RemoteTabletServer>(permanent_uuid,
                                                                             proxy,
                                                                             local_tserver));
   CHECK(entry.second);
@@ -775,7 +793,7 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
   }
 
   VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Master TSInfo " << permanent_uuid;
-  CHECK(ts_cache_.emplace(permanent_uuid, std::make_shared<RemoteTabletServer>(pb)).second);
+  CHECK(ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second);
 }
 
 Status MetaCache::UpdateTabletServerWithRaftPeerUnlocked(const consensus::RaftPeerPB& pb) {
@@ -787,7 +805,7 @@ Status MetaCache::UpdateTabletServerWithRaftPeerUnlocked(const consensus::RaftPe
   }
   VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Raft Peer " << permanent_uuid;
   SCHECK(
-      ts_cache_.emplace(permanent_uuid, std::make_shared<RemoteTabletServer>(pb)).second,
+      ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second,
       IllegalState, "Failed to emplace a remote tablet server into tablet server cache");
   return Status::OK();
 }
@@ -1350,16 +1368,6 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
         "MetaCache for table $0 has been invalidated.", table_id);
     boost::apply_visitor(LookupCallbackVisitor(s), callback);
   }
-}
-
-std::shared_ptr<RemoteTabletServer> MetaCache::GetRemoteTabletServer(
-    const std::string& permanent_uuid) {
-  SharedLock lock(mutex_);
-  auto it = ts_cache_.find(permanent_uuid);
-  if (it != ts_cache_.end()) {
-    return it->second;
-  }
-  return nullptr;
 }
 
 void MetaCache::AddAllTabletInfo(JsonWriter* writer) {

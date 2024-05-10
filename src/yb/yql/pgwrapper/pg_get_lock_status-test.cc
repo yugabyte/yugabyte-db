@@ -14,6 +14,10 @@
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/master_heartbeat.pb.h"
+
+#include "yb/master/mini_master.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
@@ -973,6 +977,65 @@ TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterTableRewrite) {
   }
   fetched_locks.CountDown();
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
+}
+
+TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterNodeOperations) {
+  const auto kPgLocksQuery = "SELECT count(*) FROM pg_locks";
+  const size_t num_tservers = cluster_->num_tablet_servers();
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 0);
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(1, 10), 0"));
+
+  // Create a connection and acquire a few locks.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+
+  SleepFor(FLAGS_heartbeat_interval_ms * 2ms * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);
+
+  // Add a new tserver to the cluster and wait for it to become "live".
+  ASSERT_OK(cluster_->AddTabletServer());
+  const auto& mini_ts_1 = cluster_->mini_tablet_server(0);
+  ASSERT_OK(WaitFor([&] {
+    std::vector<master::TSInformationPB> tservers;
+    if (!mini_ts_1->server()->GetLiveTServers(&tservers).ok()) {
+      return false;
+    }
+    return tservers.size() == num_tservers + 1;
+  }, 5s * kTimeMultiplier, "Failed to learn about new tserver from master"));
+
+  // Move replicas off to the new tserver.
+  ASSERT_OK(cluster_->AddTServerToBlacklist(0));
+  WaitForLoadBalanceCompletion();
+
+  // Assert that the pg_locks query returns correct results after the add node operation.
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);
+
+  ASSERT_OK(cluster_->ClearBlacklist());
+  // Move replicas back to the old tserver
+  ASSERT_OK(cluster_->AddTServerToBlacklist(1));
+  WaitForLoadBalanceCompletion();
+
+  // Stop the new tserver, and restart the master so that the recently dead TS isn't
+  // invoved in the master <-> tserver heartbeats.
+  cluster_->mini_tablet_server(1)->server()->Shutdown();
+  ASSERT_OK(cluster_->mini_master()->Restart());
+  ASSERT_OK(WaitFor([&] {
+    std::vector<master::TSInformationPB> tservers;
+    if (!mini_ts_1->server()->GetLiveTServers(&tservers).ok()) {
+      return false;
+    }
+    return tservers.size() == num_tservers;
+  }, 5s * kTimeMultiplier, "Failed to learn about removed tserver from master"));
+
+  // Assert that the pg_locks query returns correct results after the remove node operation.
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);
+
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 0);
 }
 
 } // namespace pgwrapper
