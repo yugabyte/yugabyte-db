@@ -48,21 +48,24 @@ insert into people values ('(Joe,Blow)', '1984-01-10');
 
 select * from people;
 
--- TODO(jason): uncomment when issue #1124 is closed or closing.
--- -- at the moment this will not work due to ALTER TABLE inadequacy:
--- alter table fullname add column suffix text default '';
---
--- -- but this should work:
--- alter table fullname add column suffix text default null;
---
--- select * from people;
---
--- -- test insertion/updating of subfields
--- update people set fn.suffix = 'Jr';
---
--- select * from people;
+-- at the moment this will not work due to ALTER TABLE inadequacy:
+alter table fullname add column suffix text default '';
+
+-- but this should work:
+alter table fullname add column suffix text default null;
+
+select * from people;
+
+-- test insertion/updating of subfields
+update people set fn.suffix = 'Jr';
+
+select * from people;
 
 insert into quadtable (f1, q.c1.r, q.c2.i) values(44,55,66);
+
+update quadtable set q.c1.r = 12 where f1 = 2;
+
+update quadtable set q.c1 = 12;  -- error, type mismatch
 
 select * from quadtable;
 
@@ -71,13 +74,11 @@ select * from quadtable;
 -- be toasted inside pp, it must still work after being copied to people.
 
 create temp table pp (f1 text);
--- TODO(jason): uncomment when issue #2003 is closed or closing.
--- insert into pp values (repeat('abcdefghijkl', 100000));
---
--- TODO(jason): uncomment when issue #1124 is closed or closing.
--- insert into people select ('Jim', f1, null)::fullname, current_date from pp;
---
--- select (fn).first, substr((fn).last, 1, 20), length((fn).last) from people;
+-- insert into pp values (repeat('abcdefghijkl', 100000)); -- YB: TODO(jason): uncomment when issue #2003 is closed or closing.
+
+insert into people select ('Jim', f1, null)::fullname, current_date from pp;
+
+select (fn).first, substr((fn).last, 1, 20), length((fn).last) from people; -- YB: output is missing a row due to commented out INSERT above
 
 -- Test row comparison semantics.  Prior to PG 8.2 we did this in a totally
 -- non-spec-compliant way.
@@ -122,6 +123,33 @@ select thousand, tenthous from tenk1
 where (thousand, tenthous) >= (997, 5000)
 order by thousand, tenthous;
 
+explain (costs off)
+select thousand, tenthous, four from tenk1
+where (thousand, tenthous, four) > (998, 5000, 3)
+order by thousand, tenthous; -- YB: TODO(tim): update output when bitmap scan is supported
+
+select thousand, tenthous, four from tenk1
+where (thousand, tenthous, four) > (998, 5000, 3)
+order by thousand, tenthous;
+
+explain (costs off)
+select thousand, tenthous from tenk1
+where (998, 5000) < (thousand, tenthous)
+order by thousand, tenthous;
+
+select thousand, tenthous from tenk1
+where (998, 5000) < (thousand, tenthous)
+order by thousand, tenthous;
+
+explain (costs off)
+select thousand, hundred from tenk1
+where (998, 5000) < (thousand, hundred)
+order by thousand, hundred; -- YB: TODO(tim): update output when bitmap scan is supported
+
+select thousand, hundred from tenk1
+where (998, 5000) < (thousand, hundred)
+order by thousand, hundred;
+
 -- Test case for bug #14010: indexed row comparisons fail with nulls
 create temp table test_table (a text, b text);
 insert into test_table values ('a', 'b');
@@ -146,6 +174,15 @@ where i8 in (row(123,456,1)::int8_tbl, '(4567890123456789,123,3)'); -- YB: adjus
 
 select q1, q2 from int8_tbl i8 -- YB: avoid ybsort column
 where i8 in (row(123,456,1)::int8_tbl, '(4567890123456789,123,3)'); -- YB: adjust for ybsort column
+
+-- Check ability to select columns from an anonymous rowtype
+select (row(1, 2.0)).f1;
+select (row(1, 2.0)).f2;
+select (row(1, 2.0)).nosuch;  -- fail
+select (row(1, 2.0)).*;
+select (r).f1 from (select row(1, 2.0) as r) ss;
+select (r).f3 from (select row(1, 2.0) as r) ss;  -- fail
+select (r).* from (select row(1, 2.0) as r) ss;
 
 -- Check some corner cases involving empty rowtypes
 select ROW();
@@ -262,6 +299,12 @@ select row(1, '(1,2)')::testtype6 *< row(1, '(1,3)')::testtype6;
 select row(1, '(1,2)')::testtype6 *>= row(1, '(1,3)')::testtype6;
 select row(1, '(1,2)')::testtype6 *<> row(1, '(1,3)')::testtype6;
 
+-- anonymous rowtypes in coldeflists
+select q.a, q.b = row(2), q.c = array[row(3)], q.d = row(row(4)) from
+    unnest(array[row(1, row(2), array[row(3)], row(row(4))),
+                 row(2, row(3), array[row(4)], row(row(5)))])
+      as q(a int, b record, c record[], d record);
+
 drop type testtype1, testtype2, testtype3, testtype4, testtype5, testtype6;
 
 
@@ -301,7 +344,7 @@ UPDATE price
     FROM unnest(ARRAY[(10, 123.00), (11, 99.99)]::price_input[]) input_prices
     WHERE price_key_from_table(price.*) = price_key_from_input(input_prices.*);
 
-select * from price order by id;
+select * from price order by id; -- YB: add ordering since PK is default HASH instead of ASC; output differs with upstream PG on 123
 
 rollback;
 
@@ -312,10 +355,9 @@ rollback;
 
 create temp table compos (f1 int, f2 text);
 
--- TODO(jason): uncomment when issue #2073 is closed or closing.
--- create function fcompos1(v compos) returns void as $$
--- insert into compos values (v);  -- fail
--- $$ language sql;
+create function fcompos1(v compos) returns void as $$
+insert into compos values (v);  -- fail
+$$ language sql;
 
 create function fcompos1(v compos) returns void as $$
 insert into compos values (v.*);
@@ -332,7 +374,7 @@ $$ language sql;
 select fcompos1(row(1,'one'));
 select fcompos2(row(2,'two'));
 select fcompos3(row(3,'three'));
-select * from compos order by f1;
+select * from compos;
 
 --
 -- We allow I/O conversion casts from composite types to strings to be
@@ -406,16 +448,17 @@ select row_to_json(q) from
   (select thousand as x, tenthous as y from tenk1
    where thousand = 42 and tenthous < 2000 offset 0) q(a,b);
 
--- TODO(jason): uncomment when issue #1129 is closed or closing.
--- create temp table tt1 as select * from int8_tbl limit 2;
--- create temp table tt2 () inherits(tt1);
--- insert into tt2 values(0,0);
--- select row_to_json(r) from (select q2,q1 from tt1 offset 0) r;
---
--- -- check no-op rowtype conversions
--- create temp table tt3 () inherits(tt2);
--- insert into tt3 values(33,44);
--- select row_to_json(tt3::tt2::tt1) from tt3;
+/* YB: TODO(jason): uncomment when issue #1129 is closed or closing.
+create temp table tt1 as select * from int8_tbl limit 2;
+create temp table tt2 () inherits(tt1);
+insert into tt2 values(0,0);
+select row_to_json(r) from (select q2,q1 from tt1 offset 0) r;
+
+-- check no-op rowtype conversions
+create temp table tt3 () inherits(tt2);
+insert into tt3 values(33,44);
+select row_to_json(tt3::tt2::tt1) from tt3;
+*/ -- YB
 
 --
 -- IS [NOT] NULL should not recurse into nested composites (bug #14235)
@@ -431,12 +474,12 @@ from (values (1,row(1,2)), (1,row(null,null)), (1,null),
              (null,row(1,2)), (null,row(null,null)), (null,null) ) r(a,b);
 
 explain (verbose, costs off)
-with r(a,b) as
+with r(a,b) as materialized
   (values (1,row(1,2)), (1,row(null,null)), (1,null),
           (null,row(1,2)), (null,row(null,null)), (null,null) )
 select r, r is null as isnull, r is not null as isnotnull from r;
 
-with r(a,b) as
+with r(a,b) as materialized
   (values (1,row(1,2)), (1,row(null,null)), (1,null),
           (null,row(1,2)), (null,row(null,null)), (null,null) )
 select r, r is null as isnull, r is not null as isnotnull from r;
@@ -452,8 +495,8 @@ INSERT INTO compositetable(a, b) VALUES('fa', 'fb');
 SELECT d.a FROM (SELECT compositetable AS d FROM compositetable) s;
 -- but can be accessed with proper parens
 SELECT (d).a, (d).b FROM (SELECT compositetable AS d FROM compositetable) s;
--- oids can't be accessed in composite types (error)
-SELECT (d).oid FROM (SELECT compositetable AS d FROM compositetable) s;
+-- system columns can't be accessed in composite types (error)
+SELECT (d).ctid FROM (SELECT compositetable AS d FROM compositetable) s;
 
 -- accessing non-existing column in NULL datum errors out
 SELECT (NULL::compositetable).nonexistent;

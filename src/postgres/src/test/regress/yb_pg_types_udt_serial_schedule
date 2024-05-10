@@ -6,6 +6,8 @@
 ####################################################################################################
 # Dependency for yb_pg_rangetypes, yb_pg_rowtypes
 test: yb_pg_test_setup
+# Dependency for yb_pg_rowtypes
+test: yb_dep_tenk1
 
 # Enum types
 test: yb_pg_enum
