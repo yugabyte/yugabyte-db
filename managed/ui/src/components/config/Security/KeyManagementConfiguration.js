@@ -25,6 +25,8 @@ import { readUploadedFile } from '../../../utils/UniverseUtils';
 import { change } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { getYBAHost } from '../../configRedesign/providerRedesign/utils';
+import { YBAHost } from '../../../redesign/helpers/constants';
 
 const awsRegionList = AWS_REGIONS.map((region, index) => {
   return {
@@ -119,6 +121,7 @@ class KeyManagementConfiguration extends Component {
         this.setState({ listView: true });
       }
     });
+    this.props.fetchHostInfo();
     this._ismounted = true;
   }
 
