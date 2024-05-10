@@ -3724,10 +3724,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     RETURN_NOT_OK(s);
     return expected_row;
   }
-
-  Result<CDCSDKYsqlTest::CdcStateTableSlotRow> CDCSDKYsqlTest::ReadSlotEntryFromStateTable(
-      const xrepl::StreamId& stream_id) {
-    CdcStateTableSlotRow slot_row;
+  Result<std::optional<CDCSDKYsqlTest::CdcStateTableSlotRow>>
+  CDCSDKYsqlTest::ReadSlotEntryFromStateTable(const xrepl::StreamId& stream_id) {
+    std::optional<CdcStateTableSlotRow> slot_row = std::nullopt;
     CDCStateTable cdc_state_table(test_client());
     Status s;
     auto table_range =
@@ -3737,18 +3736,19 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       RETURN_NOT_OK(row_result);
       auto& row = *row_result;
       if (row.key.tablet_id == kCDCSDKSlotEntryTabletId && row.key.stream_id == stream_id) {
-        slot_row.confirmed_flush_lsn = *(row.confirmed_flush_lsn);
-        slot_row.restart_lsn = *(row.restart_lsn);
-        slot_row.xmin = *(row.xmin);
-        slot_row.record_id_commit_time = HybridTime(*(row.record_id_commit_time));
-        slot_row.last_pub_refresh_time = HybridTime(*(row.last_pub_refresh_time));
-        slot_row.pub_refresh_times = *(row.pub_refresh_times);
+        slot_row = CdcStateTableSlotRow();
+        slot_row->confirmed_flush_lsn = *(row.confirmed_flush_lsn);
+        slot_row->restart_lsn = *(row.restart_lsn);
+        slot_row->xmin = *(row.xmin);
+        slot_row->record_id_commit_time = HybridTime(*(row.record_id_commit_time));
+        slot_row->last_pub_refresh_time = HybridTime(*(row.last_pub_refresh_time));
+        slot_row->pub_refresh_times = *(row.pub_refresh_times);
         LOG(INFO) << "Read cdc_state table slot entry for slot with stream id: " << stream_id
-                  << " confirmed_flush_lsn: " << slot_row.confirmed_flush_lsn
-                  << " restart_lsn: " << slot_row.restart_lsn << " xmin: " << slot_row.xmin
-                  << " record_id_commit_time: " << slot_row.record_id_commit_time.ToUint64()
-                  << " last_pub_refresh_time: " << slot_row.last_pub_refresh_time.ToUint64()
-                  << " pub_refresh_times: " << slot_row.pub_refresh_times;
+                  << " confirmed_flush_lsn: " << slot_row->confirmed_flush_lsn
+                  << " restart_lsn: " << slot_row->restart_lsn << " xmin: " << slot_row->xmin
+                  << " record_id_commit_time: " << slot_row->record_id_commit_time.ToUint64()
+                  << " last_pub_refresh_time: " << slot_row->last_pub_refresh_time.ToUint64()
+                  << " pub_refresh_times: " << slot_row->pub_refresh_times;
       }
     }
     RETURN_NOT_OK(s);
