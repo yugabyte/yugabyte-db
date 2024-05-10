@@ -229,7 +229,7 @@ Status GetSplitPoints(YBCPgTableDesc table_desc,
                       const YBCPgTypeEntity **type_entities,
                       YBCPgTypeAttrs *type_attrs_arr,
                       YBCPgSplitDatum *split_datums,
-                      bool *has_null) {
+                      bool *has_null, bool *has_gin_null) {
   CHECK(table_desc->IsRangePartitioned());
   const Schema& schema = table_desc->schema();
   size_t num_range_key_columns = table_desc->num_range_key_columns();
@@ -254,6 +254,9 @@ Status GetSplitPoints(YBCPgTableDesc table_desc,
       } else if (entry_type == dockv::KeyEntryType::kHighest) {
         column_bounds.consume_byte();
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MAX;
+      } else if (entry_type == dockv::KeyEntryType::kGinNull) {
+        *has_gin_null = true;
+        return Status::OK();
       } else {
         table_row.Reset();
         RETURN_NOT_OK(dockv::PgKeyDecoder::DecodeEntry(
@@ -1087,9 +1090,9 @@ YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
                             const YBCPgTypeEntity **type_entities,
                             YBCPgTypeAttrs *type_attrs_arr,
                             YBCPgSplitDatum *split_datums,
-                            bool *has_null) {
+                            bool *has_null, bool *has_gin_null) {
   return ToYBCStatus(GetSplitPoints(table_desc, type_entities, type_attrs_arr, split_datums,
-                                    has_null));
+                                    has_null, has_gin_null));
 }
 
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
