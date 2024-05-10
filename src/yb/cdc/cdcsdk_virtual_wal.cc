@@ -13,6 +13,8 @@
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/cdc/cdcsdk_virtual_wal.h"
+#include "yb/cdc/xrepl_stream_metadata.h"
+#include "yb/util/backoff_waiter.h"
 
 DEFINE_RUNTIME_uint32(
     cdcsdk_max_consistent_records, 500,
@@ -1055,6 +1057,11 @@ Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
   }
 
   if (!tables_to_be_added.empty()) {
+    // Wait and validate that all the tables to be added to the streaming list have been added to
+    // the stream. This is required for the dynamically created tables, as their addition to the
+    // stream is done by the master background thread. Calling GetTabletListAndCheckpoint on a table
+    // that is yet to be added to the stream will cause it to fail.
+    RETURN_NOT_OK(ValidateTablesToBeAddedPresentInStream(tables_to_be_added, deadline));
     for (auto table_id : tables_to_be_added) {
       // Initialize the tablet_queues_, tablet_id_to_table_id_map_, and tablet_next_req_map_
       auto s = GetTabletListAndCheckpoint(table_id, hostport, deadline);
@@ -1132,6 +1139,42 @@ std::string CDCSDKVirtualWAL::GetPubRefreshTimesString() {
     oss << "," << *iter;
   }
   return oss.str();
+}
+
+Status CDCSDKVirtualWAL::ValidateTablesToBeAddedPresentInStream(
+    const std::unordered_set<TableId>& tables_to_be_added, const CoarseTimePoint deadline) {
+  CoarseTimePoint now = CoarseMonoClock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      deadline - now - std::chrono::milliseconds(1));
+  MonoDelta timeout = MonoDelta::FromNanoseconds(duration.count());
+
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto stream_metadata_result =
+            cdc_service_->GetStream(stream_id_, RefreshStreamMapOption::kAlways);
+        if (!stream_metadata_result.ok()) {
+          LOG_WITH_PREFIX(WARNING) << "Unable to get stream metadata for stream id: " << stream_id_
+                                   << " " << ResultToStatus(stream_metadata_result);
+          return false;
+        }
+        const auto& stream_metadata = **stream_metadata_result;
+
+        std::unordered_set<TableId> tables_in_stream;
+        for (const auto& table_id : stream_metadata.GetTableIds()) {
+          tables_in_stream.insert(table_id);
+        }
+
+        bool all_tables_present_in_stream = true;
+
+        for (const auto& table_id : tables_to_be_added) {
+          all_tables_present_in_stream &= tables_in_stream.contains(table_id);
+        }
+
+        return all_tables_present_in_stream;
+      },
+      timeout, "Timed out waiting for table to get added to the stream"));
+
+  return Status::OK();
 }
 
 }  // namespace cdc

@@ -93,6 +93,7 @@ static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
 static Oid *YBCGetTableOids(List *tables);
+static void YBCRefreshReplicaIdentities();
 
 void
 YBCInitVirtualWal(List *yb_publication_names)
@@ -252,6 +253,9 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
 			pfree(table_oids);
 			list_free(tables);
 			AbortCurrentTransaction();
+
+			// Refresh the replica identities.
+			YBCRefreshReplicaIdentities();
 
 			needs_publication_table_list_refresh = false;
 		}
@@ -544,4 +548,28 @@ YBCGetTableOids(List *tables)
 		table_oids[table_idx++] = lfirst_oid(lc);
 	
 	return table_oids;
+}
+
+static void 
+YBCRefreshReplicaIdentities()
+{
+	YBCReplicationSlotDescriptor 	*yb_replication_slot;
+	int							 	replica_identity_idx = 0;
+
+	YBCGetReplicationSlot(MyReplicationSlot->data.name.data, &yb_replication_slot);
+
+	for (replica_identity_idx = 0;
+	 replica_identity_idx <
+	 yb_replication_slot->replica_identities_count;
+	 replica_identity_idx++)
+	{
+		YBCPgReplicaIdentityDescriptor *desc =
+			&yb_replication_slot->replica_identities[replica_identity_idx];
+
+		YBCPgReplicaIdentityDescriptor *value =
+			hash_search(MyReplicationSlot->data.yb_replica_identities,
+						&desc->table_oid, HASH_ENTER, NULL);
+		value->table_oid = desc->table_oid;
+		value->identity_type = desc->identity_type;
+	}
 }
