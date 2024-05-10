@@ -1,6 +1,10 @@
 {{- /* Both the pages should of the format: <name>-ycql.md, <name>-ysql.md */ -}}
 {{- $tabs := default "ycql,ysql" (.Get "list") -}}
 {{- $path := (path.Split $.Page.File).File -}}
+{{- $markdownPath := substr $path -3 }}
+{{- if ne $markdownPath ".md" }}
+{{- $path = printf "%s%s" $path ".md" -}}
+{{- end -}}
 {{- $active := "ysql" -}}
 {{- if strings.Contains $path "-ycql." -}}
 {{- $active = "ycql" -}}

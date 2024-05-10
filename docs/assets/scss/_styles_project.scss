@@ -67,6 +67,15 @@ a {
 	}
 }
 
+
+.td-heading-self-link:before {
+    content: "";
+    background: url(/icons/heading-link.svg) 50% no-repeat;
+    height: 15px;
+    width: 15px;
+    display: inline-block;
+}
+
 .dropdown-list .dropdown-menu[data-popper-placement="top-start"] {
 	margin-bottom: -2px !important;
 }
