@@ -21,7 +21,7 @@ To access all universe backups, navigate to **Backups**.
 
 {{< warning title="Restoring a backup using YBC" >}}
 
-Backups from a stable track can only be restored to a higher stable track YugabyteDB version, and the same applies for preview track.
+Backups from a stable track universe can only be restored to a higher version stable track YugabyteDB universe, and the same applies for preview track. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB and YBA version checks during restores. For more information, contact {{% support-platform %}}.
 
 {{< /warning >}}
 

@@ -55,16 +55,18 @@ For information on YugabyteDB release support timelines, refer to [YugabyteDB re
 
 Keep YBA up-to-date with the latest stable version to get the latest fixes and improvements, as well as to be able to deploy the latest releases of YugabyteDB.
 
-Note that you cannot deploy or upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere. To upgrade a universe to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.
+Note that you cannot deploy or upgrade a universe to a higher version of YugabyteDB than the version of YugabyteDB Anywhere. To upgrade a universe to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.
 
-- For YugabyteDB upgrades in YBA, you can only upgrade from a _stable_ version to another _stable_ version, or from a _preview_ version to another _preview_ version.
+- For YugabyteDB upgrades in YBA, you can only upgrade from a _stable_ version to another _stable_ version, or from a _preview_ version to another _preview_ version. Optionally, you can [skip tests](#skip-tests) during upgrades.
 
-- For YBA upgrades, you can only upgrade from a _stable_ version to another _stable_ version, or from a _preview_ version to another _preview_ version.
+- For YBA upgrades, you can only upgrade from a _stable_ version to another _stable_ version, or from a _preview_ version to another _preview_ version. Optionally, you can [skip tests](#skip-tests) during upgrades.
 
 {{< warning title="Replicated end of life" >}}
 YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. To perform the migration, you must first upgrade to YBA v2.20.1 or later using Replicated.
 {{< /warning >}}
 
 For information on upgrading YugabyteDB Anywhere, refer to [Upgrade YugabyteDB Anywhere](../../yugabyte-platform/upgrade/).
+
+#### Skip tests
 
 Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB and YBA version checks during upgrades. For more information, contact {{% support-platform %}}.
