@@ -2115,16 +2115,16 @@ bool PgApiImpl::IsRestartReadPointRequested() {
   return pg_txn_manager_->IsRestartReadPointRequested();
 }
 
-Status PgApiImpl::CommitTransaction() {
+Status PgApiImpl::CommitPlainTransaction() {
   DCHECK(pg_session_->explicit_row_lock_buffer().IsEmpty());
   pg_session_->InvalidateForeignKeyReferenceCache();
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  return pg_txn_manager_->CommitTransaction();
+  return pg_txn_manager_->CommitPlainTransaction();
 }
 
-Status PgApiImpl::AbortTransaction() {
+Status PgApiImpl::AbortPlainTransaction() {
   ClearSessionState();
-  return pg_txn_manager_->AbortTransaction();
+  return pg_txn_manager_->AbortPlainTransaction();
 }
 
 Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {

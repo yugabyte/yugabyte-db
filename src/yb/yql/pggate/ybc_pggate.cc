@@ -1689,12 +1689,12 @@ bool YBCIsRestartReadPointRequested() {
   return pgapi->IsRestartReadPointRequested();
 }
 
-YBCStatus YBCPgCommitTransaction() {
-  return ToYBCStatus(pgapi->CommitTransaction());
+YBCStatus YBCPgCommitPlainTransaction() {
+  return ToYBCStatus(pgapi->CommitPlainTransaction());
 }
 
-YBCStatus YBCPgAbortTransaction() {
-  return ToYBCStatus(pgapi->AbortTransaction());
+YBCStatus YBCPgAbortPlainTransaction() {
+  return ToYBCStatus(pgapi->AbortPlainTransaction());
 }
 
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation) {
