@@ -16,7 +16,6 @@ import { HAInstancesContainer } from '../ha/instances/HAInstanceContainer';
 
 import ListCACerts from '../customCACerts/ListCACerts';
 import { RBACContainer } from '../../redesign/features/rbac/RBACContainer';
-import { isCertCAEnabledInRuntimeConfig } from '../customCACerts';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isRbacEnabled } from '../../redesign/features/rbac/common/RbacUtils';
@@ -104,7 +103,6 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     ? AdministrationTabs.HA
     : AdministrationTabs.AC;
 
-  const isCustomCaCertsEnabled = isCertCAEnabledInRuntimeConfig(globalRuntimeConfigs?.data);
 
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'menu.administration');
@@ -225,7 +223,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         {getHighAvailabilityTab()}
         {getAlertTab()}
         {!isRbacEnabled() && getUserManagementTab()}
-        {isCustomCaCertsEnabled && getCustomCACertsTab()}
+        {getCustomCACertsTab()}
         {isCongifUIEnabled && getAdvancedTab()}
         {isRbacEnabled() && getRbacTab()}
       </YBTabsWithLinksPanel>

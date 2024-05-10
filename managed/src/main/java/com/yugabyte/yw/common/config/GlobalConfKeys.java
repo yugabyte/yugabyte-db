@@ -369,14 +369,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC client timeout in milliseconds for operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> customCAStoreEnabled =
-      new ConfKeyInfo<>(
-          "yb.customCATrustStore.enabled",
-          ScopeType.GLOBAL,
-          "Enable YBA's custom CA trust-store",
-          "Enable YBA's custom CA trust-store",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enforceCertVerificationBackupRestore =
       new ConfKeyInfo<>(
           "yb.certVerifyBackupRestore.is_enforced",
