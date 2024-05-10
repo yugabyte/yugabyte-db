@@ -12,7 +12,6 @@ import { api, CreateHaConfigRequest, QUERY_KEY } from '../../../redesign/helpers
 import { HaConfig, HaReplicationSchedule } from '../dtos';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import {
-  getPeerCertIdentifier,
   getPeerCerts,
   YbHAWebService,
   YB_HA_WS_RUNTIME_CONFIG_KEY,
@@ -22,7 +21,6 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 
 import './HAReplicationForm.scss';
 import { ManagePeerCertsModal } from '../modals/ManagePeerCertsModal';
-import { isCertCAEnabledInRuntimeConfig } from '../../customCACerts';
 
 export enum HAInstanceTypes {
   Active = 'Active',
@@ -118,10 +116,6 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // fetch only specific key
-  const showAddPeerCertModal = () => {
-    fetchRuntimeConfigs();
-    setAddPeerCertsModalVisible(true);
-  };
   const hideAddPeerCertModal = () => {
     fetchRuntimeConfigs();
     setAddPeerCertsModalVisible(false);
@@ -191,7 +185,6 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
       )
     : EMPTY_YB_HA_WEBSERVICE;
 
-  const isCACertStoreEnabled = isCertCAEnabledInRuntimeConfig(runtimeConfigs?.data);
 
   const peerCerts = getPeerCerts(ybHAWebService);
   return (
@@ -215,21 +208,6 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
           const { instanceType, clusterKey } = formikProps.values;
           return (
             <>
-              <div className="ha-replication-form__action-bar">
-                {instanceType === HAInstanceTypes.Active &&
-                  isRuntimeConfigLoaded &&
-                  !isCACertStoreEnabled && (
-                    <YBButton
-                      btnText={`${
-                        getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
-                      } Peer Certificates`}
-                      onClick={(e: any) => {
-                        showAddPeerCertModal();
-                        e.currentTarget.blur();
-                      }}
-                    />
-                  )}
-              </div>
               <Form role="form">
                 <Grid fluid>
                   {instanceType === HAInstanceTypes.Standby && !isEditMode && (
@@ -369,45 +347,6 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                       </Col>
                     </Row>
                   </div>
-                  {instanceType === HAInstanceTypes.Active &&
-                    isRuntimeConfigLoaded &&
-                    !isCACertStoreEnabled && (
-                      <Row className="ha-replication-form__row">
-                        <Col xs={2} className="ha-replication-form__label">
-                          Peer Certificates
-                        </Col>
-                        <Col xs={10} className="ha-replication-form__certs">
-                          {!isCACertStoreEnabled && peerCerts.length === 0 ? (
-                            <button
-                              className="ha-replication-form__no-cert--add-button"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                showAddPeerCertModal();
-                              }}
-                            >
-                              {`Add a peer certificate ${
-                                isHTTPS ? '(Required for HTTPS setup)' : ''
-                              }`}
-                            </button>
-                          ) : (
-                            peerCerts.map((peerCert) => {
-                              return (
-                                <>
-                                  <div className="ha-replication-form__cert-container">
-                                    <span className="ha-replication-form__cert-container--identifier">
-                                      {getPeerCertIdentifier(peerCert)}
-                                    </span>
-                                    <span className="ha-replication-form__cert-container--ellipse">
-                                      ( . . . )
-                                    </span>
-                                  </div>
-                                </>
-                              );
-                            })
-                          )}
-                        </Col>
-                      </Row>
-                    )}
 
                   <Row className="ha-replication-form__row">
                     <Col xs={12} className="ha-replication-form__footer">
@@ -416,11 +355,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                         btnType="submit"
                         disabled={
                           formikProps.isSubmitting ||
-                          !formikProps.isValid ||
-                          (!isCACertStoreEnabled &&
-                            instanceType === HAInstanceTypes.Active &&
-                            isHTTPS &&
-                            peerCerts.length === 0)
+                          !formikProps.isValid
                         }
                         loading={formikProps.isSubmitting}
                         btnClass="btn btn-orange"

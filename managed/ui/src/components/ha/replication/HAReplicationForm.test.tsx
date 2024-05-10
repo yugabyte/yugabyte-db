@@ -299,33 +299,6 @@ describe('HA replication configuration form', () => {
 
     expect(backToView).toBeCalled();
   });
-  it('should disable the submit button for active config if peer certs do not exist and using https', async () => {
-    const fakeValues = {
-      configId: 'fake-config-id',
-      instanceAddress: 'https://fake-address',
-      clusterKey: 'fake-key',
-      replicationFrequency: '30'
-    };
-    (api.generateHAKey as jest.Mock).mockResolvedValue({ cluster_key: fakeValues.clusterKey });
-
-    const { component, formFields } = setup(false);
-
-    // enter address
-    userEvent.clear(formFields.instanceAddress);
-    userEvent.type(formFields.instanceAddress, fakeValues.instanceAddress);
-
-    // generate cluster key and check form value
-    userEvent.click(component.queryByRole('button', { name: /generate key/i })!);
-    await waitFor(() => expect(api.generateHAKey).toBeCalled());
-    expect(formFields.clusterKey).toHaveValue(fakeValues.clusterKey);
-
-    // set replication frequency
-    userEvent.clear(formFields.replicationFrequency);
-    userEvent.type(formFields.replicationFrequency, fakeValues.replicationFrequency);
-
-    // Verify the submit button is disabled (since no peer certs were added).
-    expect(component.getByRole('button', { name: /create/i })).toBeDisabled();
-  });
   it('should not disable the submit button for active config if peer certs do not exist and not using https', async () => {
     const fakeValues = {
       configId: 'fake-config-id',

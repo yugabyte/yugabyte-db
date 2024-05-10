@@ -39,7 +39,6 @@ import org.apache.commons.lang3.StringUtils;
 @Singleton
 @Slf4j
 public class CustomCAStoreManager {
-  private final String CUSTOM_CA_STORE_ENABLED = "yb.customCATrustStore.enabled";
   private final List<TrustStoreManager> trustStoreManagers = new ArrayList<>();
 
   // Reference to the listeners who want to get notified about updates in this custom trust-store.
@@ -458,7 +457,7 @@ public class CustomCAStoreManager {
   }
 
   public boolean isEnabled() {
-    return runtimeConfigFactory.globalRuntimeConf().getBoolean(CUSTOM_CA_STORE_ENABLED);
+    return true;
   }
 
   // ---------------- methods for CA store observers ---------------
