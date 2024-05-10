@@ -50,7 +50,52 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
-## Install necessary packages
+## TLDR
+
+{{% readfile "includes/tldr.md" %}}
+
+```sh
+# Modify to your preference:
+shellrc=~/.bashrc
+
+sudo dnf update -y
+sudo dnf groupinstall -y 'Development Tools'
+sudo dnf -y install epel-release
+packages=(
+  ccache
+  cmake3
+  gcc-toolset-11
+  gcc-toolset-11-libatomic-devel
+  golang
+  java-1.8.0-openjdk
+  libatomic
+  maven
+  npm
+  patchelf
+  python39
+  rsync
+)
+sudo dnf -y install "${packages[@]}"
+sudo alternatives --set python3 /usr/bin/python3.9
+latest_zip_url=$(curl -Ls "https://api.github.com/repos/ninja-build/ninja/releases/latest" \
+                 | grep browser_download_url | grep ninja-linux.zip | cut -d \" -f 4)
+curl -Ls "$latest_zip_url" | zcat | sudo tee /usr/local/bin/ninja >/dev/null
+sudo chmod +x /usr/local/bin/ninja
+sudo mkdir /opt/yb-build
+
+# If you'd like to use an unprivileged user for development, manually
+# run/modify instructions from here onwards (change $USER, make sure shell
+# variables are set appropriately when switching users).
+sudo chown "$USER" /opt/yb-build
+source <(echo 'export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"' \
+         | tee -a "$shellrc")
+
+git clone https://github.com/yugabyte/yugabyte-db
+cd yugabyte-db
+./yb_release
+```
+
+## Detailed instructions
 
 Update and install basic development packages as follows:
 
