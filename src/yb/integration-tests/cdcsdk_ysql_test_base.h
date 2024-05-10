@@ -652,7 +652,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<CdcStateTableRow> ReadFromCdcStateTable(
       const xrepl::StreamId stream_id, const std::string& tablet_id);
 
-  Result<CdcStateTableSlotRow> ReadSlotEntryFromStateTable(const xrepl::StreamId& stream_id);
+  Result<std::optional<CDCSDKYsqlTest::CdcStateTableSlotRow>> ReadSlotEntryFromStateTable(
+      const xrepl::StreamId& stream_id);
 
   void VerifyExplicitCheckpointingOnTablets(
       const xrepl::StreamId& stream_id,

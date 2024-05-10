@@ -2417,7 +2417,8 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
 
 Result<std::unordered_map<NamespaceId, uint64_t>>
 CDCServiceImpl::GetNamespaceMinRecordIdCommitTimeMap(
-    const CDCStateTableRange& table_range, Status* iteration_status) {
+    const CDCStateTableRange& table_range, Status* iteration_status,
+    StreamIdSet* slot_entries_to_be_deleted) {
   std::unordered_map<NamespaceId, uint64_t> namespace_to_min_record_id_commit_time;
 
   // Iterate over all the slot entries and find the minimum record_id_commit_time for each
@@ -2441,6 +2442,12 @@ CDCServiceImpl::GetNamespaceMinRecordIdCommitTimeMap(
         Format("The slot entry for the stream $0 did not have a value for record_id_commit_time"),
         stream_id);
 
+    if (slot_entries_to_be_deleted && entry.checkpoint == OpId::Max()) {
+      LOG(INFO) << "Stream : " << stream_id << " is being deleted";
+      slot_entries_to_be_deleted->insert(stream_id);
+      continue;
+    }
+
     auto stream_metadata = VERIFY_RESULT(GetStream(stream_id));
     auto namespace_id = stream_metadata->GetNamespaceId();
 
@@ -2458,7 +2465,8 @@ CDCServiceImpl::GetNamespaceMinRecordIdCommitTimeMap(
 }
 
 Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
-    const TabletId& input_tablet_id, TabletIdStreamIdSet* tablet_stream_to_be_deleted) {
+    const TabletId& input_tablet_id, TabletIdStreamIdSet* tablet_stream_to_be_deleted,
+    StreamIdSet* slot_entries_to_be_deleted) {
   TabletIdCDCCheckpointMap tablet_min_checkpoint_map;
   std::unordered_set<xrepl::StreamId> refreshed_metadata_set;
 
@@ -2470,9 +2478,10 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
 
   // Get the minimum record_id_commit_time for each namespace by looking at all the slot entries.
   std::unordered_map<NamespaceId, uint64_t> namespace_to_min_record_id_commit_time;
+  StreamIdSet streams_with_tablet_entries_to_be_deleted;
   if (FLAGS_ysql_TEST_enable_replication_slot_consumption) {
-    namespace_to_min_record_id_commit_time =
-        VERIFY_RESULT(GetNamespaceMinRecordIdCommitTimeMap(table_range, &iteration_status));
+    namespace_to_min_record_id_commit_time = VERIFY_RESULT(GetNamespaceMinRecordIdCommitTimeMap(
+        table_range, &iteration_status, slot_entries_to_be_deleted));
   }
 
   for (auto entry_result : table_range) {
@@ -2542,6 +2551,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
         VLOG(2) << "We will remove the entry for the stream: " << stream_id
                 << ", from cdc_state table.";
         tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
+        streams_with_tablet_entries_to_be_deleted.insert(stream_id);
         RemoveStreamFromCache(stream_id);
       }
       continue;
@@ -2569,14 +2579,16 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       // For replication slot consumption we can set the cdc_sdk_safe_time to the minimum
       // acknowledged commit time among all the slots on the namespace.
       if (FLAGS_ysql_TEST_enable_replication_slot_consumption) {
-        // This is possible when Update Peers and Metrics thread comes into action before the slot
-        // entry is added to the cdc_state table.
-        if (!namespace_to_min_record_id_commit_time.contains(namespace_id)) {
-          LOG(WARNING) << "Did not find any value for record_id_commit_time for the namespace: "
-                       << namespace_id;
-          continue;
+        if (slot_entries_to_be_deleted && !slot_entries_to_be_deleted->contains(stream_id)) {
+          // This is possible when Update Peers and Metrics thread comes into action before the slot
+          // entry is added to the cdc_state table.
+          if (!namespace_to_min_record_id_commit_time.contains(namespace_id)) {
+            LOG(WARNING) << "Did not find any value for record_id_commit_time for the namespace: "
+                         << namespace_id;
+            continue;
+          }
+          cdc_sdk_safe_time = HybridTime(namespace_to_min_record_id_commit_time[namespace_id]);
         }
-        cdc_sdk_safe_time = HybridTime(namespace_to_min_record_id_commit_time[namespace_id]);
       } else if (entry.cdc_sdk_safe_time) {
         cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
       }
@@ -2598,6 +2610,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
               << ", tablet_id: " << tablet_id
               << ", from cdc_state table since it has OpId::Max().";
       tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
+      streams_with_tablet_entries_to_be_deleted.insert(stream_id);
     }
 
     // If a tablet_id, stream_id pair is in "uninitialized state", we don't need to send the
@@ -2664,6 +2677,15 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
   }
 
   RETURN_NOT_OK(iteration_status);
+
+  // Delete the slot entry in the state table in the next pass of Update Peers and Metrics, if
+  // entries with valid tablet_id are being deleted in this pass. This will ensure that the slot
+  // entry is the last entry to be deleted from the state table for a particular stream.
+  for (const auto& stream : streams_with_tablet_entries_to_be_deleted) {
+    if (slot_entries_to_be_deleted && slot_entries_to_be_deleted->contains(stream)) {
+      slot_entries_to_be_deleted->erase(stream);
+    }
+  }
 
   YB_LOG_EVERY_N_SECS(INFO, 300) << "Read " << count << " records from "
                                  << kCdcStateTableName;
@@ -2960,7 +2982,9 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     // Don't exit from this thread even if below method throw error, because
     // if we fail to read cdc_state table, lets wait for the next retry after 60 secs.
     TabletIdStreamIdSet cdc_state_entries_to_delete;
-    auto result = PopulateTabletCheckPointInfo("", &cdc_state_entries_to_delete);
+    StreamIdSet slot_entries_to_be_deleted;
+    auto result =
+        PopulateTabletCheckPointInfo("", &cdc_state_entries_to_delete, &slot_entries_to_be_deleted);
     if (!result.ok()) {
       LOG(WARNING) << "Failed to populate tablets checkpoint info: " << result.status();
       continue;
@@ -2987,7 +3011,8 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     TEST_SYNC_POINT("UpdateTabletPeersWithMaxCheckpoint::Done");
 
     WARN_NOT_OK(
-        DeleteCDCStateTableMetadata(cdc_state_entries_to_delete, failed_tablet_ids),
+        DeleteCDCStateTableMetadata(
+            cdc_state_entries_to_delete, failed_tablet_ids, slot_entries_to_be_deleted),
         "Unable to cleanup CDC State table metadata");
 
     rate_limiter_->SetBytesPerSecond(
@@ -2998,7 +3023,8 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
 
 Status CDCServiceImpl::DeleteCDCStateTableMetadata(
     const TabletIdStreamIdSet& cdc_state_entries_to_delete,
-    const std::unordered_set<TabletId>& failed_tablet_ids) {
+    const std::unordered_set<TabletId>& failed_tablet_ids,
+    const StreamIdSet& slot_entries_to_be_deleted) {
   // Iterating over set and deleting entries from the cdc_state table.
   for (const auto& [tablet_id, stream_id] : cdc_state_entries_to_delete) {
     if (failed_tablet_ids.contains(tablet_id)) {
@@ -3021,6 +3047,18 @@ Status CDCServiceImpl::DeleteCDCStateTableMetadata(
       }
       LOG(INFO) << "CDC state table entry for tablet " << tablet_id << " and streamid " << stream_id
                 << " is deleted";
+    }
+  }
+
+  std::vector<CDCStateTableKey> slot_entry_keys_to_be_deleted;
+  for (const auto& stream_id : slot_entries_to_be_deleted) {
+    slot_entry_keys_to_be_deleted.push_back({kCDCSDKSlotEntryTabletId, stream_id});
+  }
+  if (!slot_entry_keys_to_be_deleted.empty()) {
+    Status s = cdc_state_table_->DeleteEntries(slot_entry_keys_to_be_deleted);
+    if (!s.ok()) {
+      LOG(WARNING) << "Unable to flush operations to delete slot entries from state table: " << s;
+      return s.CloneAndPrepend("Error deleting slot rows from cdc_state table");
     }
   }
   return Status::OK();
