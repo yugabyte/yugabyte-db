@@ -18,14 +18,14 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
+    <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li>
-    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
+    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
@@ -72,7 +72,7 @@ To set up unidirectional transactional replication manually, do the following:
       name text,
       salary int,
       primary key (id)
-    ) split into 8 tablets; 
+    ) split into 8 tablets;
 
     create index account_balance_secondary_index on account_balance(name)
     split into 8 tablets;
@@ -108,7 +108,7 @@ To set up unidirectional transactional replication manually, do the following:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \ 
+        -master_addresses <standby_master_addresses> \
         -certs_dir_name <dir_name> \
         change_xcluster_role STANDBY
     ```
@@ -139,8 +139,8 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
     create table customers (customer_id UUID, company_name text, customer_state text, primary key (customer_id));
 
     create table orders(customer_id uuid, order_id int primary key, order_details jsonb, product_name text,product_code text, order_qty int, constraint fk_customer foreign key(customer_id) references customers(customer_id));
-    create index order_covering_index on orders (customer_id, order_id) include( order_qty); 
-    create table if not exists account_balance (id uuid, name text, salary int, primary key (id)); 
+    create index order_covering_index on orders (customer_id, order_id) include( order_qty);
+    create table if not exists account_balance (id uuid, name text, salary int, primary key (id));
 
     create index account_balance_secondary_index on account_balance(name);
 
