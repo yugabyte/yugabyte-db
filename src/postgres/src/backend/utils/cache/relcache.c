@@ -7893,6 +7893,9 @@ load_relcache_init_file(bool shared)
 		rel->rd_amcache = NULL;
 		MemSet(&rel->pgstat_info, 0, sizeof(rel->pgstat_info));
 
+		/* YB properties will be loaded lazily */
+		rel->yb_table_properties = NULL;
+
 		/*
 		 * Recompute lock and physical addressing info.  This is needed in
 		 * case the pg_internal.init file was copied from some other database
