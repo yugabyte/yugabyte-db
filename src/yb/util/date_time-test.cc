@@ -13,6 +13,9 @@
 
 #include "yb/util/date_time.h"
 
+#include <boost/date_time/local_time/local_time.hpp>
+#include <boost/smart_ptr/make_shared.hpp>
+
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -73,6 +76,32 @@ TEST_F(DateTimeTest, TestIntervalFromString) {
     auto empty_interval_from_string = ASSERT_RESULT(DateTime::IntervalFromString(""));
     auto zero_sec = ASSERT_RESULT(DateTime::IntervalFromString("0 sec"));
     EXPECT_EQ(empty_interval_from_string, zero_sec);
+}
+
+// If there is a regression in #22191, uncomment the following line in CMakeLists.txt and build
+// the LTO version of this test.
+// yb_add_lto_target(date_time-test date_time-test-lto "")
+TEST_F(DateTimeTest, InvalidTimestampFromString) {
+  auto ts_result = DateTime::TimestampFromString("2021-10-10 10:00:00 UTC_b");
+  ASSERT_NOK(ts_result);
+  ASSERT_STR_CONTAINS(
+      ts_result.status().ToString(),
+      "bad lexical cast: source type value could not be interpreted as target");
+}
+
+// See the comment for InvalidTimestampFromString.
+TEST_F(DateTimeTest, InvalidBoostTimeZoneFromString) {
+  auto exception_caught = false;
+  std::string exception_msg;
+  try {
+    auto time_zone_ptr = boost::make_shared<boost::local_time::posix_time_zone>("UTC_b");
+  } catch (std::exception& e) {
+    exception_caught = true;
+    exception_msg = e.what();
+  }
+  ASSERT_TRUE(exception_caught);
+  ASSERT_EQ("bad lexical cast: source type value could not be interpreted as target",
+            exception_msg);
 }
 
 } // namespace util
