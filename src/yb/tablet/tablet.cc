@@ -292,6 +292,11 @@ DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
 DEFINE_test_flag(bool, skip_remove_intent, false,
                  "If true, remove intent will be skipped");
 
+DEFINE_test_flag(bool, cdc_immediate_transaction_cleanup_cleanup_intent_files, false,
+                 "Do intent SST file cleanup even when cdc_immediate_transaction_cleanup is on. "
+                 "This can cause data loss (#22227) but we don't run into that issue during some "
+                 "unit tests.");
+
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 
 using namespace std::placeholders;
@@ -1055,6 +1060,20 @@ void Tablet::DoCleanupIntentFiles() {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Exit because of xCluster replication";
     return;
   }
+
+  // This codepath may in some cases delete SST files that we still need for CDC, if
+  // cdc_immediate_transaction_cleanup is enabled (#22227). This is a temporary fix and should
+  // be removed when #22227 is resolved.
+  if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup) &&
+      !GetAtomicFlag(&FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files)) {
+    auto cdc_op_id = transaction_participant_->GetLatestCheckPoint();
+    if (cdc_op_id != OpId::Max()) {
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Skipping because CDC is in use with cdc_immediate_transaction_cleanup enabled";
+      return;
+    }
+  }
+
   HybridTime best_file_max_ht = HybridTime::kMax;
   OpId best_file_op_id = OpId::Max();
   std::vector<rocksdb::LiveFileMetaData> files;
