@@ -141,6 +141,8 @@ const uint32_t CursorContinuationTableNameLength = 10;
 const char CursorContinuationValue[6] = "value";
 const uint32_t CursorContinuationValueLength = 5;
 
+extern bool EnableRumIndexScan;
+
 #define InputContinuationNodeName "ExtensionScanInputContinuation"
 
 /* --------------------------------------------------------- */
@@ -274,11 +276,24 @@ UpdatePathsToForceRumIndexScanToBitmapHeapScan(PlannerInfo *root, RelOptInfo *re
 {
 	ListCell *cell;
 
+	bool allowIndexScans = false;
+	if (EnableRumIndexScan)
+	{
+		/*
+		 * Check if we can allow base index scans these can be allowed with
+		 * scenarios that have skip/limit:
+		 * Let postgres deal with whether a Bitmap path or index path is better
+		 * for high limits.
+		 */
+		allowIndexScans = root->limit_tuples > 0;
+	}
+
+	bool hasIndexPaths = false;
 	foreach(cell, rel->pathlist)
 	{
 		Path *inputPath = lfirst(cell);
 
-		if (inputPath->pathtype == T_IndexScan)
+		if (inputPath->pathtype == T_IndexScan && !allowIndexScans)
 		{
 			IndexPath *indexPath = (IndexPath *) inputPath;
 
@@ -307,6 +322,32 @@ UpdatePathsToForceRumIndexScanToBitmapHeapScan(PlannerInfo *root, RelOptInfo *re
 				cell->ptr_value = inputPath;
 			}
 		}
+
+		if (inputPath->pathtype == T_BitmapHeapScan ||
+			inputPath->pathtype == T_IndexScan)
+		{
+			hasIndexPaths = true;
+			break;
+		}
+	}
+
+	if (hasIndexPaths)
+	{
+		/* If we have index paths, then trim any parallel seqscans:
+		 * Since there's LIMIT and our selectivity today returns low values for
+		 * say $eq that match lots of documents, a parallel seqscan can easily
+		 * win over index paths. Consequently trim seqscan in the case of index winning.
+		 * TODO: Revisit this with selectivity/analyze
+		 */
+		foreach(cell, rel->partial_pathlist)
+		{
+			Path *inputPath = lfirst(cell);
+			if (inputPath->pathtype == T_SeqScan)
+			{
+				rel->partial_pathlist = foreach_delete_current(rel->partial_pathlist,
+															   cell);
+			}
+		}
 	}
 }
 
@@ -317,7 +358,7 @@ UpdatePathsToForceRumIndexScanToBitmapHeapScan(PlannerInfo *root, RelOptInfo *re
  * If there is a continuation state, then builds a custom ExtensionPath that
  * wraps the inner path using that continuation state.
  */
-void
+bool
 UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 									RangeTblEntry *rte)
 {
@@ -353,7 +394,7 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 
 	if (list_length(rel->baserestrictinfo) < 1)
 	{
-		return;
+		return false;
 	}
 
 	/* first look for a continuation function in the base quals */
@@ -391,7 +432,7 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 					 * Instead of throwing an error, stop and give the planner another
 					 * chance to generate a plan with bound parameters.
 					 */
-					return;
+					return false;
 				}
 
 				if (!IsA(secondArg, Const))
@@ -411,7 +452,7 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 	/* No continuation found. We can skip. */
 	if (!hasContinuation)
 	{
-		return;
+		return false;
 	}
 
 	bool isEmptyTableScan = false;
@@ -461,7 +502,7 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 			}
 		}
 
-		return;
+		return false;
 	}
 
 	/* Walk the existing paths and wrap them in a custom scan */
@@ -602,6 +643,13 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 
 	/* Don't need to handle parallel paths since custom_scan function is not parallel safe */
 	rel->pathlist = customPlanPaths;
+
+	/* If we got here, we need ordering on CTID, disable parallel scan
+	 * This is because streaming cursors need monotonically increasing order for
+	 * tuples and we can't allow parallel scan to reorder tuples.
+	 */
+	rel->partial_pathlist = NIL;
+	return true;
 }
 
 

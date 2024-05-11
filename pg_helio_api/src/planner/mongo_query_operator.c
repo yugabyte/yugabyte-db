@@ -65,7 +65,11 @@ static const MongoIndexOperatorInfo UnknownIndexOperator = {
 	NULL, BSON_INDEX_STRATEGY_INVALID, false
 };
 
-/* known Mongo query operators, should match order of values in MongoQueryOperatorType */
+/*
+ * known Mongo query operators, should match order of values in MongoQueryOperatorType
+ * CODESYNC: If you're updating operators here, please ensure to update any places that
+ * reference this for explain().
+ */
 static const MongoOperatorInfo QueryOperators[] = {
 	/* comparison */
 	{

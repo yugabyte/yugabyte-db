@@ -516,17 +516,20 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	}
 
 	/*
-	 * Replace Rum Index scan to BitmapHeap Scan when enabled.
-	 */
-	if (ForceRUMIndexScanToBitmapHeapScan)
-	{
-		UpdatePathsToForceRumIndexScanToBitmapHeapScan(root, rel);
-	}
-
-	/*
 	 * Update any paths with custom scans as appropriate.
 	 */
-	UpdatePathsWithExtensionCustomPlans(root, rel, rte);
+	bool updatedPaths = UpdatePathsWithExtensionCustomPlans(root, rel, rte);
+	if (!updatedPaths)
+	{
+		/* Not a streaming cursor scenario.
+		 * Streaming cursors auto convert into Bitmap Paths.
+		 * Handle force conversion of bitmap paths.
+		 */
+		if (ForceRUMIndexScanToBitmapHeapScan)
+		{
+			UpdatePathsToForceRumIndexScanToBitmapHeapScan(root, rel);
+		}
+	}
 
 	/* For vector, text search inject custom scan path to track lifetime of
 	 * $meta/ivfprobes.

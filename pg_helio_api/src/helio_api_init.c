@@ -230,6 +230,9 @@ bool EnableGroupPushSupport = DEFAULT_ENABLE_PUSH_SUPPORT;
 #define DEFAULT_ENABLE_ADD_TO_SET_SUPPORT false
 bool EnableGroupAddToSetSupport = DEFAULT_ENABLE_ADD_TO_SET_SUPPORT;
 
+#define DEFAULT_ENABLE_RUM_INDEX_SCAN false
+bool EnableRumIndexScan = DEFAULT_ENABLE_RUM_INDEX_SCAN;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -607,6 +610,17 @@ InitApiConfigurations(char *prefix)
 		"helio_api.enableGroupAddToSetSupport",
 		gettext_noop("Feature flag for the group addToSet support"), NULL,
 		&EnableGroupAddToSetSupport, DEFAULT_ENABLE_ADD_TO_SET_SUPPORT, PGC_USERSET, 0,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableRumIndexScan",
+		gettext_noop(
+			"Allow rum index scans."),
+		NULL,
+		&EnableRumIndexScan,
+		DEFAULT_ENABLE_RUM_INDEX_SCAN,
+		PGC_USERSET,
+		0,
 		NULL, NULL, NULL);
 }
 

@@ -13,7 +13,7 @@
 
 #include <optimizer/plancat.h>
 
-void UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
+bool UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 										 RangeTblEntry *rte);
 
 void UpdatePathsToForceRumIndexScanToBitmapHeapScan(PlannerInfo *root, RelOptInfo *rel);
