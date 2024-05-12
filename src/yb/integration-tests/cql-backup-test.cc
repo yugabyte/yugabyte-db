@@ -97,8 +97,10 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithoutTSWebUI)) {
   }
   createTestTable();
 
-  // A thread that starts the stopped WebServer after 130 sec. as retry round = 110 sec.
-  yb::ThreadPtr thread = stopWebServerAndStartAfter(0, 130);
+  // A thread that starts the stopped WebServer after
+  //  - 130 seconds as retry round = 110 seconds for yb_backup script
+  //  -   1 seconds as retry round =   1 second for YB Controller
+  yb::ThreadPtr thread = stopWebServerAndStartAfter(0, UseYbController() ? 1 : 130);
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir_, "--keyspace", kCqlTestKeyspace, "create"}));
@@ -117,8 +119,10 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupRestoreWithoutTSWe
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir_, "--keyspace", kCqlTestKeyspace, "create"}));
 
-  // A thread that starts the stopped WebServer after 110 sec. as retry round = 90 sec.
-  yb::ThreadPtr thread = stopWebServerAndStartAfter(0, 110);
+  // A thread that starts the stopped WebServer after
+  //  - 110 seconds as retry round = 90 seconds for yb_backup script
+  //  -   1 seconds as retry round =  1 second for YB Controller
+  yb::ThreadPtr thread = stopWebServerAndStartAfter(0, UseYbController() ? 1 : 110);
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir_, "--keyspace", kCqlTestKeyspace, "restore"}));
@@ -200,25 +204,16 @@ void CqlBackupTest::DoTestRestoreUDT(const string& new_ks, UDTypeOp udtOp) {
 }
 
 TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreUDT)) {
-  if (DisableMiniClusterBackupTests()) {
-    return;
-  }
   DoTestRestoreUDT(kCqlTestKeyspace, UDTypeOp::kDrop);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreReuseExistingUDT)) {
-  if (DisableMiniClusterBackupTests()) {
-    return;
-  }
   DoTestRestoreUDT(kCqlTestKeyspace, UDTypeOp::kKeep);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreUDTIntoNewKS)) {
-  if (DisableMiniClusterBackupTests()) {
-    return;
-  }
   DoTestRestoreUDT("ks2", UDTypeOp::kDrop);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -243,9 +238,6 @@ void CqlBackupTest::DoTestImportSnapshotFailure(Fn1 fnBeforeRestore, Fn2 fnAfter
 }
 
 TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshot)) {
-  if (DisableMiniClusterBackupTests()) {
-    return;
-  }
   DoTestImportSnapshotFailure(
     []() -> void {}, // Before backup-restore
     [this]() -> void { // After backup-restore
@@ -261,9 +253,6 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshot)) {
 }
 
 TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshotKeepExistingUDT)) {
-  if (DisableMiniClusterBackupTests()) {
-    return;
-  }
   DoTestImportSnapshotFailure(
     [this]() -> void { // Before backup-restore
       cql("CREATE KEYSPACE ks2");
@@ -280,9 +269,6 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshotKeep
 }
 
 TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshotKeepExistingKS)) {
-  if (DisableMiniClusterBackupTests()) {
-    return;
-  }
   DoTestImportSnapshotFailure(
     [this]() -> void { // Before backup-restore
       cql("CREATE KEYSPACE ks2");

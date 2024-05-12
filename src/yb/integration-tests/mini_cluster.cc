@@ -74,6 +74,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_flags.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -97,6 +98,8 @@ DEFINE_NON_RUNTIME_string(mini_cluster_base_dir, "", "Directory for master/ts da
 DEFINE_NON_RUNTIME_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
 DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
                  "Time to wait for tservers to register to master.");
+
+DECLARE_string(fs_data_dirs);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int32(replication_factor);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
@@ -234,7 +237,17 @@ Status MiniCluster::StartAsync(
     }
   }
 
-  if (!DisableMiniClusterBackupTests() && UseYbController()) {
+  string ts_data_dirs;
+  for (const shared_ptr<MiniTabletServer>& ts : mini_tablet_servers_) {
+    for (const string& dir : ts->options()->fs_opts.data_paths) {
+      ts_data_dirs += string(ts_data_dirs.empty() ? "" : ",") +  dir;
+    }
+  }
+  // All TSes have the same following g-flags, because this is all-in-one-process MiniCluster.
+  // Use ExternalMiniCluster if you need independent values.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) = ts_data_dirs;
+
+  if (UseYbController()) {
     // We need 1 yb controller server for each tserver.
     // YB Controller uses the same IP as corresponding tserver.
     yb_controllers_.reserve(options_.num_tablet_servers);
@@ -299,12 +312,17 @@ Status MiniCluster::StartMasters() {
     VLOG(1) << "Started MiniMaster with UUID " << mini_masters_[i]->permanent_uuid()
             << " at index " << i;
   }
+
   int i = 0;
+  string master_addresses;
   for (const shared_ptr<MiniMaster>& master : mini_masters_) {
-    LOG(INFO) << "Waiting to initialize catalog manager on master " << i++;
+    LOG(INFO) << "Waiting to initialize catalog manager on master " << i;
     RETURN_NOT_OK_PREPEND(master->WaitForCatalogManagerInit(),
                           Substitute("Could not initialize catalog manager on master $0", i));
+    master_addresses += string(i++ == 0 ? "" : ",") + master->bound_rpc_addr().ToString();
   }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_master_addrs) = master_addresses;
   started = true;
   return Status::OK();
 }
