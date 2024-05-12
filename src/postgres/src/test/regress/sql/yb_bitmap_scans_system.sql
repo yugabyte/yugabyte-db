@@ -10,16 +10,16 @@ SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER B
 /*+ BitmapScan(pg_authid) */
 SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
 
-/*+ BitmapScan(pg_roles) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+/*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
-/*+ BitmapScan(pg_roles) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+/*+ BitmapScan(pg_authid) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
 
 SET yb_enable_expression_pushdown = false;
 
-/*+ BitmapScan(pg_roles) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+/*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
-/*+ BitmapScan(pg_roles) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+/*+ BitmapScan(pg_authid) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
 
 RESET yb_enable_expression_pushdown;

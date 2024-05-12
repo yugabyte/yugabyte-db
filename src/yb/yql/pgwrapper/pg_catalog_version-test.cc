@@ -772,6 +772,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   const auto max_oid = ASSERT_RESULT(
       conn_template1.FetchRow<PGOid>("SELECT max(oid) FROM pg_database"));
   // Delete the row with max_oid from pg_catalog.pg_yb_catalog_version.
+  ASSERT_OK(conn_template1.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
   ASSERT_OK(conn_template1.ExecuteFormat(
       "DELETE FROM pg_catalog.pg_yb_catalog_version WHERE db_oid = $0", max_oid));
   // Add an extra row to pg_catalog.pg_yb_catalog_version.
