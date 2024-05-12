@@ -107,8 +107,11 @@ Status RunBackupCommand(
 
 Status RunYbControllerCommand(
     MiniClusterBase* cluster, const std::string& tmp_dir, const std::vector<std::string>& args) {
+  auto ybc_daemons = cluster->yb_controller_daemons();
+  LOG_IF(DFATAL, ybc_daemons.empty()) << "YB Controller not started";
+  auto yb_controller = ybc_daemons[0].get();
+
   string backupDir, ns, ns_type, backup_command;
-  auto yb_controller = cluster->yb_controller_daemons()[0].get();
   bool use_tablespaces = false;
   for (size_t idx = 0; idx < args.size(); idx++) {
     string arg = args[idx];
