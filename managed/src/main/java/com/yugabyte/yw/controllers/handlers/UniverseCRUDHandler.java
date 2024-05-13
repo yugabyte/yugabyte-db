@@ -138,7 +138,7 @@ public class UniverseCRUDHandler {
 
   @Inject CertificateHelper certificateHelper;
 
-  private enum OpType {
+  public enum OpType {
     CONFIGURE,
     CREATE,
     UPDATE
@@ -350,7 +350,7 @@ public class UniverseCRUDHandler {
     }
   }
 
-  private void checkGeoPartitioningParameters(
+  public void checkGeoPartitioningParameters(
       Customer customer, UniverseDefinitionTaskParams taskParams, OpType op) {
 
     UUID defaultRegionUUID = PlacementInfoUtil.getDefaultRegion(taskParams);
@@ -1074,7 +1074,7 @@ public class UniverseCRUDHandler {
   }
 
   /** Merge node exporter related information from current universe details to the task params */
-  private void mergeNodeExporterInfo(Universe u, UniverseDefinitionTaskParams taskParams) {
+  public void mergeNodeExporterInfo(Universe u, UniverseDefinitionTaskParams taskParams) {
     // Set the node exporter config based on the provider
     UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
     boolean installNodeExporter = universeDetails.extraDependencies.installNodeExporter;
@@ -1127,7 +1127,7 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
-  private void notHelm2LegacyOrBadRequest(Universe u) {
+  public void notHelm2LegacyOrBadRequest(Universe u) {
     Map<String, String> universeConfig = u.getConfig();
     if (!universeConfig.containsKey(Universe.HELM2_LEGACY)) {
       throw new PlatformServiceException(
@@ -1140,7 +1140,7 @@ public class UniverseCRUDHandler {
     }
   }
 
-  private UUID checkValidRootCA(UUID rootCA) {
+  public UUID checkValidRootCA(UUID rootCA) {
     if (!CertificateInfo.isCertificateValid(rootCA)) {
       String errMsg =
           String.format(
@@ -1506,7 +1506,7 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
-  static void validateConsistency(Cluster primaryCluster, Cluster cluster) {
+  public static void validateConsistency(Cluster primaryCluster, Cluster cluster) {
     checkEquals(c -> c.userIntent.enableYSQL, primaryCluster, cluster, "Ysql setting");
     checkEquals(c -> c.userIntent.enableYSQLAuth, primaryCluster, cluster, "Ysql auth setting");
     checkEquals(c -> c.userIntent.enableYCQL, primaryCluster, cluster, "Ycql setting");
@@ -2069,7 +2069,7 @@ public class UniverseCRUDHandler {
     return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
   }
 
-  private void checkHelmChartExists(String ybSoftwareVersion) {
+  public void checkHelmChartExists(String ybSoftwareVersion) {
     try {
       kubernetesManagerFactory.getManager().getHelmPackagePath(ybSoftwareVersion);
     } catch (RuntimeException e) {

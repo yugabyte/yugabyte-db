@@ -11,8 +11,10 @@ import api.v2.models.UniverseSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Provider;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public abstract class UniverseDefinitionTaskParamsDecorator
     implements UniverseDefinitionTaskParamsMapper {
@@ -69,11 +71,15 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   @Override
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParams(UniverseSpec universeSpec) {
     UniverseDefinitionTaskParams params = delegate.toV1UniverseDefinitionTaskParams(universeSpec);
+    // find out the provider type of universe
     // set universeName, ysqlPassword, ycqlPassword into all cluster's userIntent
     if (params.clusters != null) {
       for (Cluster cluster : params.clusters) {
         if (cluster.userIntent != null) {
           cluster.userIntent.universeName = universeSpec.getName();
+          Provider clusterProvider =
+              Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+          cluster.userIntent.providerType = clusterProvider.getCloudCode();
         }
       }
     }

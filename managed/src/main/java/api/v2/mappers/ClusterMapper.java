@@ -1,14 +1,17 @@
 // Copyright (c) YugaByte, Inc.
 package api.v2.mappers;
 
+import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterInfo;
 import api.v2.models.ClusterSpec;
 import api.v2.models.PlacementAZ;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.List;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValueCheckStrategy;
 
 @Mapper(
@@ -36,6 +39,28 @@ public interface ClusterMapper {
 
   @Mapping(target = ".", source = "userIntent")
   ClusterInfo toV2ClusterInfo(Cluster v1Cluster);
+
+  @Mapping(target = "userIntent", source = ".")
+  // @Mapping(target = "userIntent.deviceInfo", source = "storageSpec")
+  @Mapping(target = "placementInfo", source = "placementSpec")
+  Cluster toV1ClusterFromClusterEditSpec(
+      ClusterEditSpec clusterEditSpec, @MappingTarget Cluster v1Cluster);
+
+  default List<Cluster> toV1ClusterFromClusterEditSpecList(
+      List<ClusterEditSpec> clusterEditSpecList, @MappingTarget List<Cluster> v1Clusters) {
+    if (clusterEditSpecList == null) {
+      return v1Clusters;
+    }
+    for (ClusterEditSpec clusterEditSpec : clusterEditSpecList) {
+      Cluster v1Cluster =
+          v1Clusters.stream()
+              .filter(c -> c.uuid.equals(clusterEditSpec.getUuid()))
+              .findAny()
+              .orElseThrow();
+      toV1ClusterFromClusterEditSpec(clusterEditSpec, v1Cluster);
+    }
+    return v1Clusters;
+  }
 
   // used implicitly in above mapping
   @Mapping(target = "numNodesInAZ", source = "numNodesInAz")
