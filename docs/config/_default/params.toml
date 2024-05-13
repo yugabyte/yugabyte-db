@@ -7,13 +7,13 @@ drift_snippet = true
 search_banner = true
 version_menu = "Releases"
 
-[search]
-  algolia_docsearch = true
-  algolia_sequence_expressions = true
-
 # Change version_menu_pagelinks to true to go to the same page when you switch
 # versions from the dropdown menu.
 version_menu_pagelinks = true
+
+[search]
+  algolia_docsearch = true
+  algolia_sequence_expressions = true
 
 [path_base_for_github_subdir]
   from = "content/en/(.*?)/"
