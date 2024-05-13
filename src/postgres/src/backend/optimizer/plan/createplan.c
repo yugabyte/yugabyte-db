@@ -190,9 +190,7 @@ static YbSeqScan *make_yb_seqscan(List *qptlist,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
 				Index scanrelid,
-				double yb_estimated_num_nexts,
-				double yb_estimated_num_seeks,
-				int yb_estimated_docdb_result_width);
+				YbPlanInfo yb_plan_info);
 static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 				TableSampleClause *tsc);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
@@ -202,16 +200,14 @@ static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 			   List *indexqual, List *indexqualorig,
 			   List *indexorderby, List *indexorderbyorig,
 			   List *indexorderbyops, List *indextlist,
-			   ScanDirection indexscandir, double yb_estimated_num_nexts,
-			   double yb_estimated_num_seeks, int yb_estimated_docdb_result_width,
+			   ScanDirection indexscandir, YbPlanInfo yb_plan_info,
 			   YbIndexPathInfo yb_path_info);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 				   List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 				   Index scanrelid, Oid indexid,
 				   List *indexqual, List *indexorderby,
 				   List *indextlist,
-				   ScanDirection indexscandir, double yb_estimated_num_nexts,
-				   double yb_estimated_num_seeks, int yb_estimated_docdb_result_width);
+				   ScanDirection indexscandir, YbPlanInfo yb_plan_info);
 static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
 					  List *indexqual,
 					  List *indexqualorig,
@@ -220,7 +216,8 @@ static YbBitmapIndexScan *make_yb_bitmap_indexscan(Index scanrelid, Oid indexid,
 					  List *indexqual,
 					  List *indexqualorig,
 					  List *indextlist,
-					  PushdownExprs yb_idx_pushdown);
+					  PushdownExprs yb_idx_pushdown,
+					  YbPlanInfo yb_plan_info);
 static BitmapHeapScan *make_bitmap_heapscan(List *qptlist,
 					 List *qpqual,
 					 Plan *lefttree,
@@ -234,7 +231,8 @@ static YbBitmapTableScan *make_yb_bitmap_tablescan(List *qptlist,
 					 PushdownExprs recheck_pushdown,
 					 List *recheck_local_quals,
 					 PushdownExprs fallback_pushdown,
-					 List *fallback_local_quals);
+					 List *fallback_local_quals,
+					 YbPlanInfo yb_plan_info);
 static TidScan *make_tidscan(List *qptlist, List *qpqual, Index scanrelid,
 			 List *tidquals);
 static SubqueryScan *make_subqueryscan(List *qptlist,
@@ -3514,9 +3512,7 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 		scan_plan = (SeqScan *) make_yb_seqscan(tlist, local_quals,
 												remote_quals, colrefs,
 												scan_relid,
-												best_path->yb_estimated_num_nexts,
-												best_path->yb_estimated_num_seeks,
-												best_path->yb_estimated_docdb_result_width);
+												best_path->yb_plan_info);
 	else
 		scan_plan = make_seqscan(tlist, local_quals, scan_relid);
 
@@ -3896,9 +3892,7 @@ create_indexscan_plan(PlannerInfo *root,
 												fixed_indexorderbys,
 												best_path->indexinfo->indextlist,
 												best_path->indexscandir,
-												best_path->yb_estimated_num_nexts,
-												best_path->yb_estimated_num_seeks,
-												best_path->yb_estimated_docdb_result_width);
+												best_path->yb_plan_info);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
@@ -3924,9 +3918,7 @@ create_indexscan_plan(PlannerInfo *root,
 										 indexorderbyops,
 										 best_path->indexinfo->indextlist,
 										 best_path->indexscandir,
-										 best_path->yb_estimated_num_nexts,
-										 best_path->yb_estimated_num_seeks,
-										 best_path->yb_estimated_docdb_result_width,
+										 best_path->yb_plan_info,
 										 best_path->yb_index_path_info);
 		index_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
@@ -4222,7 +4214,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 										 recheck_pushdown,
 										 recheck_local_quals,
 										 fallback_pushdown,
-										 fallback_local_quals);
+										 fallback_local_quals,
+										 ((Path *) best_path)->yb_plan_info);
 
 	copy_generic_path_info(&scan_plan->scan.plan, &best_path->path);
 
@@ -4424,12 +4417,18 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 
 		/* then convert to a bitmap indexscan */
 		if (ipath->indexinfo->rel->is_yb_relation)
+		{
+			YbPlanInfo bitmap_idx_info = iscan->yb_plan_info;
+			bitmap_idx_info.estimated_docdb_result_width = ipath->ybctid_width;
+
 			plan = (Plan *) make_yb_bitmap_indexscan(iscan->scan.scanrelid,
 													 iscan->indexid,
 													 iscan->indexqual,
 													 iscan->indexqualorig,
 													 iscan->indextlist,
-													 iscan->yb_idx_pushdown);
+													 iscan->yb_idx_pushdown,
+													 bitmap_idx_info);
+		}
 		else
 			plan = (Plan *) make_bitmap_indexscan(iscan->scan.scanrelid,
 												  iscan->indexid,
@@ -6625,9 +6624,7 @@ make_yb_seqscan(List *qptlist,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
 				Index scanrelid,
-				double yb_estimated_num_nexts,
-				double yb_estimated_num_seeks,
-				int yb_estimated_docdb_result_width)
+				YbPlanInfo yb_plan_info)
 {
 	YbSeqScan  *node = makeNode(YbSeqScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6637,9 +6634,7 @@ make_yb_seqscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
-	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
-	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
-	node->yb_estimated_docdb_result_width = yb_estimated_docdb_result_width;
+	node->yb_plan_info = yb_plan_info;
 	node->yb_pushdown.quals = yb_pushdown_quals;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 
@@ -6681,9 +6676,7 @@ make_indexscan(List *qptlist,
 			   List *indexorderbyops,
 			   List *indextlist,
 			   ScanDirection indexscandir,
-			   double yb_estimated_num_nexts,
-			   double yb_estimated_num_seeks,
-			   int yb_estimated_docdb_result_width,
+			   YbPlanInfo yb_plan_info,
 			   YbIndexPathInfo yb_path_info)
 {
 	IndexScan  *node = makeNode(IndexScan);
@@ -6702,9 +6695,7 @@ make_indexscan(List *qptlist,
 	node->indexorderbyops = indexorderbyops;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
-	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
-	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
-	node->yb_estimated_docdb_result_width = yb_estimated_docdb_result_width;
+	node->yb_plan_info = yb_plan_info;
 	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
 	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
 	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;
@@ -6725,9 +6716,7 @@ make_indexonlyscan(List *qptlist,
 				   List *indexorderby,
 				   List *indextlist,
 				   ScanDirection indexscandir,
-				   double yb_estimated_num_nexts,
-				   double yb_estimated_num_seeks,
-				   int yb_estimated_docdb_result_width)
+				   YbPlanInfo yb_plan_info)
 {
 	IndexOnlyScan *node = makeNode(IndexOnlyScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6744,9 +6733,7 @@ make_indexonlyscan(List *qptlist,
 	node->indexorderdir = indexscandir;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 	node->yb_pushdown.quals = yb_pushdown_quals;
-	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
-	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
-	node->yb_estimated_docdb_result_width = yb_estimated_docdb_result_width;
+	node->yb_plan_info = yb_plan_info;
 
 	return node;
 }
@@ -6779,7 +6766,8 @@ make_yb_bitmap_indexscan(Index scanrelid,
 					  List *indexqual,
 					  List *indexqualorig,
 					  List *indextlist,
-					  PushdownExprs yb_idx_pushdown)
+					  PushdownExprs yb_idx_pushdown,
+					  YbPlanInfo yb_plan_info)
 {
 	YbBitmapIndexScan *node = makeNode(YbBitmapIndexScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6794,6 +6782,7 @@ make_yb_bitmap_indexscan(Index scanrelid,
 	node->indexqualorig = indexqualorig;
 	node->indextlist = indextlist;
 	node->yb_idx_pushdown = yb_idx_pushdown;
+	node->yb_plan_info = yb_plan_info;
 
 	return node;
 }
@@ -6827,7 +6816,8 @@ make_yb_bitmap_tablescan(List *qptlist,
 						 PushdownExprs recheck_pushdown,
 						 List *recheck_local_quals,
 						 PushdownExprs fallback_pushdown,
-						 List *fallback_local_quals)
+						 List *fallback_local_quals,
+						 YbPlanInfo yb_plan_info)
 {
 	YbBitmapTableScan *node = makeNode(YbBitmapTableScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6842,6 +6832,7 @@ make_yb_bitmap_tablescan(List *qptlist,
 	node->recheck_local_quals = recheck_local_quals;
 	node->fallback_pushdown = fallback_pushdown;
 	node->fallback_local_quals = fallback_local_quals;
+	node->yb_plan_info = yb_plan_info;
 
 	return node;
 }
