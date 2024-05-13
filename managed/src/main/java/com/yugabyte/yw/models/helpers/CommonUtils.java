@@ -799,19 +799,29 @@ public class CommonUtils {
    * response on line number 3
    */
   public static String extractJsonisedSqlResponse(ShellResponse shellResponse) {
-    String data = null;
+    StringBuilder data = new StringBuilder();
     if (StringUtils.isNotBlank(shellResponse.message)) {
       try (Scanner scanner = new Scanner(shellResponse.message)) {
-        int i = 0;
+        boolean headerStarted = false;
         while (scanner.hasNextLine()) {
-          data = scanner.nextLine();
-          if (i++ == 3) {
+          String line = scanner.nextLine();
+          if (!headerStarted && !line.startsWith("-")) {
+            // Read till header start
+            continue;
+          } else if (line.startsWith("-")) {
+            // Read '------...' header
+            headerStarted = true;
+            continue;
+          }
+          if (line.startsWith("(1 row)")) {
+            // jsonb_agg(x) always returns 1 row - it's the last line
             break;
           }
+          data.append(line);
         }
       }
     }
-    return data;
+    return data.toString();
   }
 
   /**
