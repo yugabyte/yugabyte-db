@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.TelemetryProviderServiceTest;
 import java.util.Arrays;
@@ -71,7 +72,9 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
     List<TelemetryProvider> providers =
         Arrays.asList(Json.fromJson(providersJson, TelemetryProvider[].class));
     assertThat(providers, hasSize(2));
-    assertThat(providers, containsInAnyOrder(provider1, provider2));
+    assertThat(
+        providers,
+        containsInAnyOrder(CommonUtils.maskObject(provider1), CommonUtils.maskObject(provider2)));
   }
 
   @Test
