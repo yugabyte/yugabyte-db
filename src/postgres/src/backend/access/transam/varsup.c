@@ -560,6 +560,7 @@ YbGetMaxAllocatedSystemOid()
 	List		   *attrelids = NIL;
 	List		   *attnums = NIL;
 	ArrayType	   *array;
+	SysScanDesc  	sys_scan;
 
 	pg_class = table_open(RelationRelationId, AccessShareLock);
 
@@ -611,16 +612,17 @@ YbGetMaxAllocatedSystemOid()
 				F_NAMEEQ, CStringGetDatum("oid"));
 
 	pg_attribute = table_open(AttributeRelationId, AccessShareLock);
-	scan = table_beginscan_catalog(pg_attribute, 2, key);
 
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	sys_scan = systable_beginscan(
+		pg_attribute, AttributeRelidNameIndexId, true, NULL, 2, key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(sys_scan)))
 	{
 		Form_pg_attribute pg_att = (Form_pg_attribute) GETSTRUCT(tuple);
 		attrelids = lappend_oid(attrelids, pg_att->attrelid);
 		attnums = lappend_int(attnums, pg_att->attnum);
 	}
-
-	table_endscan(scan);
+	systable_endscan(sys_scan);
 	table_close(pg_attribute, AccessShareLock);
 	pfree(array);
 
