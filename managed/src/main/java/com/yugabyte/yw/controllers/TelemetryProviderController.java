@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -26,6 +27,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -51,7 +53,7 @@ public class TelemetryProviderController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider =
         telemetryProviderService.getOrBadRequest(customerUUID, providerUUID);
-    return PlatformResults.withData(provider);
+    return PlatformResults.withData(CommonUtils.maskObject(provider));
   }
 
   @ApiOperation(
@@ -69,7 +71,10 @@ public class TelemetryProviderController extends AuthenticatedController {
   })
   public Result listTelemetryProviders(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    List<TelemetryProvider> providers = telemetryProviderService.list(customerUUID);
+    List<TelemetryProvider> providers =
+        telemetryProviderService.list(customerUUID).stream()
+            .map(tp -> CommonUtils.maskObject(tp))
+            .collect(Collectors.toList());
     return PlatformResults.withData(providers);
   }
 
