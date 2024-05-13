@@ -32,6 +32,15 @@ func StringSlice(in []interface{}) *[]string {
 	return &out
 }
 
+// Float64Slice accepts array of interface and returns a pointer to slice of float64
+func Float64Slice(in []interface{}) *[]float64 {
+	var out []float64
+	for _, v := range in {
+		out = append(out, v.(float64))
+	}
+	return &out
+}
+
 // StringSliceFromString accepts slice of string and returns a pointer to slice of string
 func StringSliceFromString(in []string) *[]string {
 	if len(in) == 0 {
