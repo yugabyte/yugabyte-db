@@ -536,7 +536,9 @@ set -euo pipefail
         fi
         chmod 0755 '{untar_script_path_for_reference}'
         yb_src_root_extract_tmp_dir='{remote_yb_src_root}'.$RANDOM.$RANDOM.$RANDOM.$RANDOM
-        mkdir "$yb_src_root_extract_tmp_dir"
+        # Remove any left over temp directories
+        rm -rf '{remote_yb_src_root}'.*.*.*.*
+        mkdir -p "$yb_src_root_extract_tmp_dir"
         if [[ -x /bin/pigz ]]; then
             # Decompress faster with pigz
             /bin/pigz -dc '{archive_path}' | tar xf - -C "$yb_src_root_extract_tmp_dir"
