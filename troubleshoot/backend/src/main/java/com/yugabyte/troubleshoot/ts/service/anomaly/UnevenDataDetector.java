@@ -9,24 +9,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class UnevenDataDetector extends UnevenDistributionDetector {
 
-  // Don't care for tables less than 50MB
-  private static final double MIN_ANOMALY_VALUE = 50 * 1024 * 1024;
-
   protected UnevenDataDetector(
       GraphService graphService,
       AnomalyMetadataProvider metadataProvider,
       GraphAnomalyDetectionService anomalyDetectionService) {
     super(graphService, metadataProvider, anomalyDetectionService);
-  }
-
-  @Override
-  protected double getMinAnomalyValue() {
-    return MIN_ANOMALY_VALUE;
-  }
-
-  @Override
-  protected long getMinAnomalySizeMillis() {
-    return 0;
   }
 
   @Override
@@ -79,10 +66,25 @@ public class UnevenDataDetector extends UnevenDistributionDetector {
         + anomaly.getLabelFirstValue(GraphFilter.tableId.name());
   }
 
-  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+  protected AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context) {
     AnomalyDetectionContext updatedContext =
         context.toBuilder().stepSeconds(Duration.ofHours(3).toSeconds()).build();
 
-    return super.findAnomalies(updatedContext);
+    return super.findAnomaliesInternal(updatedContext);
+  }
+
+  @Override
+  protected RuntimeConfigKey getMinAnomalyValueKey() {
+    return RuntimeConfigKey.UNEVEN_DATA_MIN_ANOMALY_VALUE;
+  }
+
+  @Override
+  protected RuntimeConfigKey getMinAnomalyDurationKey() {
+    return RuntimeConfigKey.UNEVEN_DATA_MIN_ANOMALY_DURATION;
+  }
+
+  @Override
+  protected RuntimeConfigKey getThresholdRatioKey() {
+    return RuntimeConfigKey.UNEVEN_DATA_THRESHOLD;
   }
 }

@@ -49,7 +49,9 @@ import {
   generateLowerCaseAlphanumericId,
   getIsFieldDisabled,
   getIsFormDisabled,
-  readFileAsText
+  readFileAsText,
+  handleFormSubmitServerError,
+  UseProviderValidationEnabled
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
 import {
@@ -70,7 +72,7 @@ import {
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { adaptSuggestedKubernetesConfig } from './utils';
 import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
-
+import { CloudType } from '../../../../../redesign/helpers/dtos';
 import {
   K8sAvailabilityZone,
   K8sAvailabilityZoneMutation,
@@ -86,6 +88,7 @@ import {
 } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
+import { K8S_FORM_MAPPERS } from './constants';
 
 interface K8sProviderEditFormProps {
   editProvider: EditProvider;
@@ -161,7 +164,10 @@ export const K8sProviderEditForm = ({
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
-
+  const {
+    isLoading: isProviderValidationLoading,
+    isValidationEnabled
+  } = UseProviderValidationEnabled(CloudType.kubernetes);
   if (customerRuntimeConfigQuery.isError) {
     return (
       <YBErrorIndicator
@@ -173,7 +179,8 @@ export const K8sProviderEditForm = ({
     (enableSuggestedConfigFeature &&
       (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)) ||
     customerRuntimeConfigQuery.isLoading ||
-    customerRuntimeConfigQuery.isIdle
+    customerRuntimeConfigQuery.isIdle ||
+    isProviderValidationLoading
   ) {
     return <YBLoading />;
   }
@@ -182,7 +189,19 @@ export const K8sProviderEditForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
-        await editProvider(providerPayload);
+        await editProvider(providerPayload, {
+          shouldValidate: isValidationEnabled,
+          ignoreValidationErrors: false,
+          mutateOptions: {
+            onError: (err) => {
+              handleFormSubmitServerError(
+                (err as any)?.response?.data,
+                formMethods,
+                K8S_FORM_MAPPERS
+              );
+            }
+          }
+        });
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
@@ -482,6 +501,7 @@ export const K8sProviderEditForm = ({
                   isProviderInUse
                 )}
                 isError={!!formMethods.formState.errors.regions}
+                errors={formMethods.formState.errors.regions as any}
                 linkedUniverses={linkedUniverses}
                 isEditInUseProviderEnabled={isEditInUseProviderEnabled}
               />

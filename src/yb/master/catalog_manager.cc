@@ -7455,10 +7455,8 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
   // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
-  if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-      resp->schema().pgschema_name().empty() &&
-      !table->is_system() &&
-      !IsSequencesSystemTable(*table) &&
+  if (l->table_type() == TableType::PGSQL_TABLE_TYPE && resp->schema().pgschema_name().empty() &&
+      !table->is_system() && !table->IsSequencesSystemTable() &&
       !table->IsColocationParentTable()) {
     SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock for schema name lookup");
@@ -7934,7 +7932,7 @@ bool CatalogManager::IsUserCreatedTable(const TableInfo& table) const {
 
 bool CatalogManager::IsUserCreatedTableUnlocked(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE || table.GetTableType() == YQL_TABLE_TYPE) {
-    if (!IsSystemTable(table) && !IsSequencesSystemTable(table) &&
+    if (!IsSystemTable(table) && !table.IsSequencesSystemTable() &&
         GetNamespaceNameUnlocked(table.namespace_id()) != kSystemNamespaceName &&
         !table.IsColocationParentTable()) {
       return true;
@@ -7959,30 +7957,6 @@ bool CatalogManager::IsUserIndex(const TableInfo& table) const {
 
 bool CatalogManager::IsUserIndexUnlocked(const TableInfo& table) const {
   return IsUserCreatedTableUnlocked(table) && !table.indexed_table_id().empty();
-}
-
-bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
-  if (table.GetTableType() == PGSQL_TABLE_TYPE && !table.IsColocationParentTable()) {
-    // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
-    if (!IsPgsqlId(table.namespace_id()) || !IsPgsqlId(table.id())) {
-      LOG(WARNING) << "Not PGSQL IDs " << table.namespace_id() << ", " << table.id();
-      return false;
-    }
-    Result<uint32_t> database_oid = GetPgsqlDatabaseOid(table.namespace_id());
-    if (!database_oid.ok()) {
-      LOG(WARNING) << "Invalid Namespace ID " << table.namespace_id();
-      return false;
-    }
-    Result<uint32_t> table_oid = GetPgsqlTableOid(table.id());
-    if (!table_oid.ok()) {
-      LOG(WARNING) << "Invalid Table ID " << table.id();
-      return false;
-    }
-    if (*database_oid == kPgSequencesDataDatabaseOid && *table_oid == kPgSequencesDataTableOid) {
-      return true;
-    }
-  }
-  return false;
 }
 
 bool CatalogManager::IsMatviewTable(const TableInfo& table) const {

@@ -238,6 +238,9 @@ class PgClient {
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
 
+  Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+
   Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
   Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
@@ -259,6 +262,8 @@ class PgClient {
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DECLARE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
 
   Status CancelTransaction(const unsigned char* transaction_id);
+
+  Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
 
  private:
   class Impl;

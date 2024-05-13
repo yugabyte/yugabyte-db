@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
@@ -30,6 +31,7 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_xcluster_fail_table_create_during_bootstrap);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_bool(TEST_enable_xcluster_api_v2);
+DECLARE_bool(TEST_fail_universe_replication_merge);
 
 using std::string;
 using namespace std::chrono_literals;
@@ -104,11 +106,13 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     ASSERT_OK(ValidateRows());
   }
 
+  Status CreateTable(Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.ExecuteFormat("CREATE TABLE $0(id1 INT PRIMARY KEY, id2 INT);", kTableName);
+  }
+
   virtual Status CreateObjects() {
-    return RunOnBothClusters([&](Cluster* cluster) {
-      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-      return conn.ExecuteFormat("CREATE TABLE $0(id1 INT PRIMARY KEY, id2 INT);", kTableName);
-    });
+    return RunOnBothClusters([&](Cluster* cluster) { return CreateTable(cluster); });
   }
 
   virtual Transactional IsTransactional() { return Transactional::kTrue; }
@@ -298,23 +302,33 @@ TEST_F(XClusterYsqlIndexTest, CreateIndexWithWorkload) {
 
 TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
   // Create index on consumer before producer should fail.
-  ASSERT_QUERY_FAIL(CreateIndex(*consumer_conn_), "not found");
+  ASSERT_NOK_STR_CONTAINS(
+      CreateIndex(*consumer_conn_), "Failed to bootstrap table on the source universe");
 
   ASSERT_OK(CreateIndex(*producer_conn_));
 
   // Create index while replication is paused should fail.
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  ASSERT_QUERY_FAIL(CreateIndex(*consumer_conn_), "is currently disabled");
+  ASSERT_NOK_STR_CONTAINS(CreateIndex(*consumer_conn_), "is currently disabled");
 
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
 
   // Failure during bootstrap
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = true;
-  ASSERT_QUERY_FAIL(
+  ASSERT_NOK_STR_CONTAINS(
       CreateIndex(*consumer_conn_), "FLAGS_TEST_xcluster_fail_table_create_during_bootstrap");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = false;
+
+  // Failure when adding table to the replication group
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_universe_replication_merge) = true;
+  ASSERT_NOK_STR_CONTAINS(CreateIndex(*consumer_conn_), "TEST_fail_universe_replication_merge");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_universe_replication_merge) = false;
+
+  for (int i = 0; i < 20; row_count_++, i++) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(kInsertStmtFormat, row_count_));
+  }
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(ValidateRows());
@@ -468,6 +482,7 @@ class XClusterDbScopedYsqlIndexTest : public XClusterYsqlIndexTest {
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
     return Status::OK();
   }
+
   Status ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster) override {
     // No-op for Db scoped repl groups.
     return Status::OK();
@@ -498,6 +513,74 @@ TEST_F(XClusterDbScopedYsqlIndexTest, CreateIndex) {
 
 TEST_F(XClusterDbScopedYsqlIndexTest, CreateIndexWithWorkload) {
   ASSERT_OK(TestCreateIndexConcurrentWorkload());
+}
+
+class XClusterYsqlIndexProducerOnlyTest : public XClusterYsqlIndexTest {
+  void SetUp() override {
+    XClusterYsqlTestBase::SetUp();
+    google::SetVLOGLevel("backfill_index*", 4);
+    google::SetVLOGLevel("xrepl*", 4);
+    google::SetVLOGLevel("xcluster*", 4);
+    google::SetVLOGLevel("add_table*", 4);
+    google::SetVLOGLevel("multi_step*", 4);
+    google::SetVLOGLevel("catalog*", 4);
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
+
+    XClusterYsqlTestBase::SetUp();
+    MiniClusterOptions opts;
+    opts.num_tablet_servers = 1;
+    opts.num_masters = 1;
+    ASSERT_OK(InitProducerClusterOnly(opts));
+
+    ASSERT_OK(CreateTable(&producer_cluster_));
+
+    producer_master_ = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
+
+    yb_table_name_ = ASSERT_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, "" /* schema_name */, kTableName));
+
+    client::YBTablePtr producer_table;
+    ASSERT_OK(producer_client()->OpenTable(yb_table_name_, &producer_table));
+    namespace_id_ = producer_table->name().namespace_id();
+    producer_tables_.push_back(std::move(producer_table));
+    producer_table_ = producer_tables_.front();
+
+    producer_conn_ = std::make_unique<pgwrapper::PGConn>(
+        ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
+  }
+};
+
+// Make sure indexes are checkpointed to the End of WAL.
+TEST_F_EX(
+    XClusterDbScopedYsqlIndexTest, IndexCheckpointLocation, XClusterYsqlIndexProducerOnlyTest) {
+  ASSERT_OK(CheckpointReplicationGroup());
+
+  for (; row_count_ < 100; row_count_++) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(kInsertStmtFormat, row_count_));
+  }
+
+  ASSERT_OK(CreateIndex(*producer_conn_));
+  auto index_table_name = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, "" /* schema_name */, kIndexName));
+  client::YBTablePtr index_table;
+  ASSERT_OK(producer_client()->OpenTable(index_table_name, &index_table));
+
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(index_table->id()));
+
+  std::vector<TabletId> tablet_ids;
+  ASSERT_OK(producer_cluster_.client_->GetTablets(index_table_name, (int32_t)1, &tablet_ids, NULL));
+  ASSERT_EQ(tablet_ids.size(), 1);
+
+  cdc::CDCStateTable cdc_state_table(producer_client());
+  LOG(INFO) << "Fetching CDC state for tablet " << tablet_ids.front() << " and stream "
+            << stream_id;
+  auto key = cdc::CDCStateTableKey(tablet_ids.front(), stream_id);
+  auto cdc_row = ASSERT_RESULT(
+      cdc_state_table.TryFetchEntry(key, cdc::CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(cdc_row.has_value());
+
+  ASSERT_GT(cdc_row->checkpoint->index, OpId().Min().index);
 }
 
 }  // namespace yb

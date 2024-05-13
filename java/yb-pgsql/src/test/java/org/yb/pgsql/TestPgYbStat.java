@@ -72,7 +72,10 @@ public class TestPgYbStat extends BasePgSQLTest {
         try {
           statement.execute(query);
         } catch (Throwable throwable) {
-          assertEquals("An I/O error occurred while sending to the backend.",
+          if(isTestRunningWithConnectionManager())
+            assertTrue(throwable.getMessage().contains("remote server read/write error"));
+          else
+            assertEquals("An I/O error occurred while sending to the backend.",
                        throwable.getMessage());
         }
       });

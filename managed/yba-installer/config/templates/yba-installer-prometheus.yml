@@ -208,7 +208,14 @@
     fileName: "{{ .WebConfFile }}"
     contents: |
       {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
+      {{ $tlsCiphers := yamlPathSlice "prometheus.allowedTLSCiphers" }}
       tls_server_config:
         cert_file: "{{ yamlPath "prometheus.httpsCertPath" }}"
         key_file: "{{ yamlPath "prometheus.httpsKeyPath" }}"
+        {{ if gt (len $tlsCiphers) 0 }}
+        cipher_suites:
+          {{ range $suite :=  $tlsCiphers }}
+          - {{ removeQuotes $suite }}
+          {{ end }}
+        {{ end }}
       {{ end }}

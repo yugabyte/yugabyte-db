@@ -1,10 +1,11 @@
 {{- $tabs := default "local,cloud,anywhere" (.Get "list") -}}
 {{- $active := default "local" (.Get "active") -}}
+{{- $repeatedTabs := default false (.Get "repeatedTabs") -}}
 {{ $suffix := "" }}
 {{ $name := "" }}
 {{ $numpanels := .Page.Scratch.Get "numpanels" }}
 {{ if $numpanels }}{{ $suffix = printf "-%d" $numpanels }}{{ end }}
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs{{- if $repeatedTabs }} repeated-tabs{{ end }}">
     {{if strings.Contains $tabs "local"}}
     {{$name = printf "%s%s" "local" $suffix}}
     <li>

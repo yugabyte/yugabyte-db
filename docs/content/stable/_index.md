@@ -41,7 +41,7 @@ resources:
     title="Build a Hello World application"
     description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
     buttonText="Build"
-    buttonUrl="/preview/develop/build-apps/"
+    buttonUrl="/preview/tutorials/build-apps/"
   >}}
 
   {{< sections/3-box-card

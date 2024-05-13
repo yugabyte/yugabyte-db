@@ -656,7 +656,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -687,6 +687,32 @@ To turn off the default size of cache flag, set the flag to `0`.
 For details on the expected behaviour when used with the sequence cache clause, see the semantics under [CREATE SEQUENCE](../../../api/ysql/the-sql-language/statements/ddl_create_sequence/#cache-cache) and [ALTER SEQUENCE](../../../api/ysql/the-sql-language/statements/ddl_alter_sequence/#cache-cache) pages.
 
 Default: `100`
+
+##### --ysql_yb_fetch_size_limit
+
+Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
+
+You can also specify the value as a string. For example, you can set it to `'10MB'`.
+
+You should have at least one of row limit or size limit set.
+
+If both `--ysql_yb_fetch_row_limit` and `--ysql_yb_fetch_size_limit` are greater than zero, then limit is taken as the lower bound of the two values.
+
+See also the [yb_fetch_size_limit](#yb-fetch-size-limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 0
+
+##### --ysql_yb_fetch_row_limit
+
+Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+
+You should have at least one of row limit or size limit set.
+
+If both `--ysql_yb_fetch_row_limit` and `--ysql_yb_fetch_size_limit` are greater than zero, then limit is taken as the lower bound of the two values.
+
+See also the [yb_fetch_row_limit](#yb-fetch-row-limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 1024
 
 ##### --ysql_log_statement
 
@@ -1257,6 +1283,8 @@ Default: 128
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
 
+### Modify configuration parameters
+
 You can modify these parameters in the following ways:
 
 - Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
@@ -1309,6 +1337,8 @@ You can modify these parameters in the following ways:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
+### YSQL configuration parameters
+
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
 
 ##### log_line_prefix
@@ -1341,6 +1371,36 @@ You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
 Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
 
 Default: `1GB`
+
+##### yb_bnl_batch_size
+
+Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+Default: 1024
+
+##### yb_enable_batchednl
+
+Enable or disable the query planner's use of Batched Nested Loop Join.
+
+Default: true
+
+##### yb_fetch_size_limit
+
+Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+
+If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
+
+See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If the flag is set, this parameter takes precedence.
+
+Default: 0
+
+##### yb_fetch_row_limit
+
+Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+
+See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
+
+Default: 1024
 
 ##### default_transaction_isolation
 

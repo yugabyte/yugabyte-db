@@ -9,6 +9,7 @@
       "continue": "Continue",
       "create": "Create",
       "disable": "Disable",
+      "enable": "Enable",
       "genericFailure": "Something went wrong. Please try again.",
       "no": "No",
       "proceed": "Proceed",
@@ -917,13 +918,19 @@
           },
           "editTablesModal": {
             "title": "Select Databases and Tables",
-            "instruction": "Select the databases to enable disaster recovery for",
+            "instruction": {
+              "dr": "Select the tables to enable disaster recovery for",
+              "xCluster": "Select the tables to enable xCluster replication for"
+            },
             "step": {
               "selectTables": {
                 "nextButton": "Next: Confirm Full Copy"
               },
               "configureBootstrap": {
-                "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a full copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
+                "infoText": {
+                  "dr": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a full copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
+                  "xCluster": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold>. To enable xCluster replication for these databases and/or tables, a full copy will be required before aynchronous replication from the source universe to the target universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>"
+                },
                 "backupStorageConfig": {
                   "label": "Backup Storage Config"
                 },
@@ -1648,12 +1655,14 @@
       },
       "state": {
         "active": "Active",
-        "disabled": "Disabled"
+        "disabled": "Disabled",
+        "Incomplete": "Incomplete"
       },
       "type": {
         "STS": "STS",
         "LTS": "LTS",
-        "PREVIEW (DEFAULT)": "PREVIEW"
+        "PREVIEW (DEFAULT)": "PREVIEW",
+        "PREVIEW": "PREVIEW"
       },
       "fetchMetadata": "Fetch Metadata",
       "bannerFileUploadMessage": "Fetching artifacts may take some time. please wait for it to finish and then add the release",
@@ -1687,6 +1696,7 @@
         "importMethod": "Import Method",
         "location": "Location"
       },
+      "inCompleteTooltipMessage": "Kubernetes artifacts require a YugabyteDB build before the release can be used",
       "allowedReleases": "Show only allowed releases",
       "releaseType": "Release Type:",
       "searchVersions": "Search Versions",
@@ -1708,19 +1718,41 @@
         "upload": "Upload",
         "installerURL": "Database Installer(Linux) or helm chart (Kubernetes)",
         "uploadSignatureFile": "Upload signature file",
-        "signature": "Signature"
+        "signature": "Signature",
+        "extractMetadataUrlSuccess": "Extracted metadata from URL successfully"
       },
       "addReleaseModal": {
-        "addReleaseTag": "Add a release tag (optional)"
+        "addReleaseTag": "Add a release tag (optional)",
+        "uploadSuccess": "Uploaded file successfully",
+        "uploadFailure": "Not able to upload file, please try again",
+        "addReleaseSucess": "Added release successfully",
+        "addReleaseFailure": "Failed to add release",
+        "updateArtifactsSuccess": "Updated release artifacts successfully",
+        "updateArtifactsFailure": "Failed to update release artifacts",
+        "extractMetadataFileSuccess": "Extracted metadata from file successfully",
+        "extractMetadataFileFailure": "Failed to extract metadata from the file",
+        "extractMetadataUrlFailure": "Failed to extract metadata from URL"
       },
       "disableReleaseModal": {
-        "disableMessage": "Are you sure you want to disable the release {{release_version}}?",
+        "disableMessage": "Are you sure you want to {{release_status}} the release {{release_version}}?",
         "enableRelease": "Enable Release",
-        "disableRelease": "Disable Release"
+        "disableRelease": "Disable Release",
+        "enable": "enable",
+        "disable": "disable",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "releaseStateSuccess": "{{release_status}} release successfully",
+        "releaseStateFailure": "Failed to {{release_status}} release"
+      },
+      "editReleaseTagModal": {
+        "updateReleaseTagSuccess": "Updated release tag successfully",
+        "updateReleaseTagFailure": "Failed to update release tag"
       },
       "deleteReleaseModal": {
         "deleteMessage": "Are you sure you want to delete the release {{release_version}}?",
-        "modalTile": "Delete Release"
+        "modalTitle": "Delete Release",
+        "deleteReleaseSuccess": "Deleted release successfully",
+        "deleteReleaseFailure": "Failed to delete release"
       },
       "editKubernetesModal": {
         "modalTitle": "Edit Kubernetes",
@@ -1735,7 +1767,9 @@
           "AwaitingReplicas": "Awaiting Connection to Replicas",
           "Operational": "Operational",
           "Error": "Error",
-          "Warning": "Warning"
+          "Warning": "Warning",
+          "StandbyConnected": "Standby Connected",
+          "StandbyDisconnected": "Standby Disconnected"
         },
         "instanceState": {
           "Awaiting Connection to Replicas": "Awaiting Connection to Replicas",

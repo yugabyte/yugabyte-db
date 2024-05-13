@@ -52,6 +52,7 @@ import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -146,6 +147,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
+  @Mock ReleasesUtils mockReleasesUtils;
+
   String cert1Contents =
       "-----BEGIN CERTIFICATE-----\n"
           + "MIIDEjCCAfqgAwIBAgIUEdzNoxkMLrZCku6H1jQ4pUgPtpQwDQYJKoZIhvcNAQEL\n"
@@ -203,7 +206,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         ReleaseManager.ReleaseMetadata.create("1.0.0")
             .withChartPath(TMP_CHART_PATH + "/uuct_yugabyte-1.0.0-helm.tar.gz");
     when(mockReleaseManager.getReleaseByVersion(any()))
-        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig));
+        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig, mockReleasesUtils));
     when(mockConfig.getString("yb.security.type")).thenReturn("");
     when(mockConfig.getString("yb.security.clientID")).thenReturn("");
     when(mockConfig.getString("yb.security.secret")).thenReturn("");

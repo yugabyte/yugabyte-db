@@ -3883,3 +3883,74 @@ select * from sample where b <= 3 and b <= 2 and b >= 2;
 (1 row)
 
 drop table sample;
+-- GHI 21451 HASH Index on multiple expressions
+drop table IF EXISTS t1;
+create table t1 (c1 bigint, c2 jsonb, primary key ((c1)));
+insert into t1 (c1,c2) values (1,'{"c3":1,"c4":1}');
+insert into t1 (c1,c2) values (2,'{"c3":2,"c4":2}');
+create index t1_idx on t1 (((c2->>'c3'), (c2->>'c4')) hash);
+select * from t1;
+ c1 |         c2
+----+--------------------
+  2 | {"c3": 2, "c4": 2}
+  1 | {"c3": 1, "c4": 1}
+(2 rows)
+
+/*+IndexScan(t1 t1_idx)*/ explain (costs off) select * from t1 where (c2->>'c3') = '4';
+                   QUERY PLAN
+-------------------------------------------------
+ Index Scan using t1_idx on t1
+   Index Cond: ((c2 ->> 'c3'::text) = '4'::text)
+(2 rows)
+
+/*+IndexScan(t1 t1_idx)*/ select * from t1 where (c2->>'c3') = '4';
+ c1 | c2
+----+----
+(0 rows)
+
+/*+IndexScan(t1 t1_idx)*/ explain (costs off) select * from t1 where (c2->>'c4') = '4';
+                   QUERY PLAN
+-------------------------------------------------
+ Index Scan using t1_idx on t1
+   Index Cond: ((c2 ->> 'c4'::text) = '4'::text)
+(2 rows)
+
+/*+IndexScan(t1 t1_idx)*/ select * from t1 where (c2->>'c4') = '4';
+ c1 | c2
+----+----
+(0 rows)
+
+/*+IndexScan(t1 t1_idx)*/ explain (costs off) select * from t1 where (c2->>'c3') = '4' and (c2->>'c4') = '4';
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Index Scan using t1_idx on t1
+   Index Cond: (((c2 ->> 'c3'::text) = '4'::text) AND ((c2 ->> 'c4'::text) = '4'::text))
+(2 rows)
+
+/*+IndexScan(t1 t1_idx)*/ select * from t1 where (c2->>'c3') = '4' and (c2->>'c4') = '4';
+ c1 | c2
+----+----
+(0 rows)
+
+drop table t1;
+create table sample(a int, primary key(a asc));
+insert into sample values (0);
+select * from sample where a = x'8000000000000000'::bigint;
+ a
+---
+(0 rows)
+
+drop table sample;
+create table sample(a int2, primary key(a asc));
+insert into sample values (0);
+select * from sample where a = x'8000000000000000'::bigint;
+ a
+---
+(0 rows)
+
+select * from sample where a = x'80000000'::int;
+ a
+---
+(0 rows)
+
+drop table sample;

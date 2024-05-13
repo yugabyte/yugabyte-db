@@ -33,6 +33,7 @@ import {
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
 import {
+  UseProviderValidationEnabled,
   addItem,
   constructAccessKeysEditPayload,
   deleteItem,
@@ -40,6 +41,7 @@ import {
   generateLowerCaseAlphanumericId,
   getIsFieldDisabled,
   getIsFormDisabled,
+  handleFormSubmitServerError,
   readFileAsText
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
@@ -81,6 +83,7 @@ import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayloa
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
+import { GCPCreateFormErrFields } from './constants';
 
 interface GCPProviderEditFormProps {
   editProvider: EditProvider;
@@ -191,6 +194,7 @@ export const GCPProviderEditForm = ({
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
   const sshConfigureMsg = ConfigureSSHDetailsMsg();
+  const { isLoading: isProviderValidationLoading, isValidationEnabled } = UseProviderValidationEnabled(CloudType.gcp);
 
   if (hostInfoQuery.isError) {
     return (
@@ -210,7 +214,8 @@ export const GCPProviderEditForm = ({
     hostInfoQuery.isLoading ||
     hostInfoQuery.isIdle ||
     customerRuntimeConfigQuery.isLoading ||
-    customerRuntimeConfigQuery.isIdle
+    customerRuntimeConfigQuery.isIdle ||
+    isProviderValidationLoading
   ) {
     return <YBLoading />;
   }
@@ -227,7 +232,14 @@ export const GCPProviderEditForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
-        await editProvider(providerPayload);
+        await editProvider(providerPayload,
+          {
+            shouldValidate: isValidationEnabled,
+            mutateOptions: {
+              onError: err => handleFormSubmitServerError((err as any)?.response?.data, formMethods, GCPCreateFormErrFields)
+            }
+          }
+        );
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
@@ -527,6 +539,7 @@ export const GCPProviderEditForm = ({
                   isProviderInUse
                 )}
                 isError={!!formMethods.formState.errors.regions}
+                errors={formMethods.formState.errors.regions as any}
                 linkedUniverses={linkedUniverses}
                 isEditInUseProviderEnabled={isEditInUseProviderEnabled}
               />

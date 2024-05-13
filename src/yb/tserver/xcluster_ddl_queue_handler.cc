@@ -92,10 +92,13 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
   }
 
   // Wait for all other pollers to have gotten to this safe time.
-  HybridTime target_safe_ht(response.get_changes_response->safe_hybrid_time());
-  SCHECK(
-      !target_safe_ht.is_special(), InvalidArgument, "Received invalid safe hybrid time $0",
-      target_safe_ht);
+  auto target_safe_ht = HybridTime::FromPB(response.get_changes_response->safe_hybrid_time());
+  // We don't expect to get an invalid safe time, but it is possible in edge cases (see #21528).
+  // Log an error and return for now, wait until a valid safe time does come in so we can continue.
+  if (target_safe_ht.is_special()) {
+    LOG(WARNING) << "Received invalid safe time " << target_safe_ht;
+    return Status::OK();
+  }
 
   // TODO(#20928): Make these calls async.
   HybridTime safe_time_ht = VERIFY_RESULT(GetXClusterSafeTimeForNamespace());
@@ -105,10 +108,10 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
   SCHECK_GE(
       safe_time_ht, target_safe_ht, TryAgain, "Waiting for other pollers to catch up to safe time");
 
-  RETURN_NOT_OK(InitPGConnection(target_safe_ht));
+  RETURN_NOT_OK(InitPGConnection());
 
   // TODO(#20928): Make these calls async.
-  auto rows = VERIFY_RESULT(GetRowsToProcess());
+  auto rows = VERIFY_RESULT(GetRowsToProcess(target_safe_ht));
   for (const auto& [start_time, query_id, raw_json_data] : rows) {
     rapidjson::Document doc = VERIFY_RESULT(ParseSerializedJson(raw_json_data));
     VALIDATE_MEMBER(doc, kDDLJsonVersion, Int);
@@ -143,10 +146,9 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(
   return Status::OK();
 }
 
-Status XClusterDDLQueueHandler::InitPGConnection(const HybridTime& apply_safe_time) {
-  // Since applies can come out of order, need to read at the apply_safe_time and not latest.
+Status XClusterDDLQueueHandler::InitPGConnection() {
   if (pg_conn_ && FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
-    return pg_conn_->ExecuteFormat("SET yb_read_time = $0", apply_safe_time.ToUint64());
+    return Status::OK();
   }
   // Create pg connection if it doesn't exist.
   // TODO(#20693) Create prepared statements as part of opening the connection.
@@ -155,9 +157,7 @@ Status XClusterDDLQueueHandler::InitPGConnection(const HybridTime& apply_safe_ti
       VERIFY_RESULT(connect_to_pg_func_(namespace_name_, deadline)));
 
   // Read with tablet level consistency so that we see all the latest records.
-  RETURN_NOT_OK(pg_conn_->ExecuteFormat(
-      "SET yb_xcluster_consistency_level = tablet; SET yb_read_time = $0",
-      apply_safe_time.ToUint64()));
+  RETURN_NOT_OK(pg_conn_->Execute("SET yb_xcluster_consistency_level = tablet"));
 
   return Status::OK();
 }
@@ -168,13 +168,20 @@ Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
 }
 
 Result<std::vector<std::tuple<int64, int64, std::string>>>
-XClusterDDLQueueHandler::GetRowsToProcess() {
-  return pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
-      "SELECT $0, $1, $2, FROM $3 "
+XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
+  // Since applies can come out of order, need to read at the apply_safe_time and not latest.
+  RETURN_NOT_OK(
+      pg_conn_->ExecuteFormat("SET yb_read_time = $0", apply_safe_time.GetPhysicalValueMicros()));
+  // Select all rows that are in ddl_queue but not in replicated_ddls.
+  auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
+      "SELECT $0, $1, $2 FROM $3 "
       "WHERE ($0, $1) NOT IN (SELECT $0, $1 FROM $4) "
       "ORDER BY $0 ASC",
       xcluster::kDDLQueueStartTimeColumn, xcluster::kDDLQueueQueryIdColumn,
-      xcluster::kDDLQueueYbDataColumn, kDDLQueueFullTableName, kReplicatedDDLsFullTableName));
+      xcluster::kDDLQueueYbDataColumn, kDDLQueueFullTableName, kReplicatedDDLsFullTableName))));
+  // DDLs are blocked when yb_read_time is non-zero, so reset.
+  RETURN_NOT_OK(pg_conn_->Execute("SET yb_read_time = 0"));
+  return rows;
 }
 
 }  // namespace yb::tserver

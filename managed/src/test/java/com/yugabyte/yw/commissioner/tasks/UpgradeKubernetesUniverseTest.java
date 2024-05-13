@@ -521,7 +521,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
               : createUpdateGflagsResult(isSingleAZ);
       JsonNode expectedResults = expectedResultsList.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }

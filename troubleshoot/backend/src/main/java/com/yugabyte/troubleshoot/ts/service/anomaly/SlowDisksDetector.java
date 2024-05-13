@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.troubleshoot.ts.models.Anomaly;
 import com.yugabyte.troubleshoot.ts.models.AnomalyMetadata;
 import com.yugabyte.troubleshoot.ts.models.GraphAnomaly;
+import com.yugabyte.troubleshoot.ts.models.RuntimeConfigKey;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -19,10 +20,14 @@ public class SlowDisksDetector extends ThresholdExceedDetector {
   }
 
   @Override
-  protected List<GraphWithThreshold> getGraphsWithThresholds() {
+  protected List<GraphWithThreshold> getGraphsWithThresholds(AnomalyDetectionContext context) {
     return ImmutableList.of(
-        new GraphWithThreshold("disk_io_time", 99),
-        new GraphWithThreshold("disk_io_queue_depth", 10));
+        new GraphWithThreshold(
+            "disk_io_time",
+            context.getConfig().getDouble(RuntimeConfigKey.SLOW_DISKS_THRESHOLD_IO_TIME)),
+        new GraphWithThreshold(
+            "disk_io_queue_depth",
+            context.getConfig().getDouble(RuntimeConfigKey.SLOW_DISKS_THRESHOLD_QUEUE_SIZE)));
   }
 
   @Override
@@ -39,5 +44,10 @@ public class SlowDisksDetector extends ThresholdExceedDetector {
     String summary = "Node(s) " + affectedNodesStr + " are possibly low on disk IO.";
     builder.summary(summary);
     return builder;
+  }
+
+  @Override
+  protected RuntimeConfigKey getMinAnomalyDurationKey() {
+    return RuntimeConfigKey.SLOW_DISKS_MIN_ANOMALY_DURATION;
   }
 }

@@ -73,7 +73,7 @@ In the **SSH User** field, enter the name of the user that has SSH privileges on
 If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**) and [manually provision the instances](../on-premises-script/).
 
 {{< tip title="SSH access" >}}
-After you have provisioned and added the instances to the provider (including installing the [node agent](../../../../faq/yugabyte-platform/#node-agent)), YBA no longer requires SSH or sudo access to nodes.
+After you have provisioned and added the instances to the provider (including installing the [node agent](/preview/faq/yugabyte-platform/#node-agent)), YBA no longer requires SSH or sudo access to nodes.
 {{< /tip >}}
 
 In the **SSH Port** field, provide the port number of SSH client connections.

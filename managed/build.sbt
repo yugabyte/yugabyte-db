@@ -120,10 +120,19 @@ def commonSettings = Seq(
   scalaVersion := "2.13.12"
 )
 
+lazy val TestLocalProviderSuite = config("testLocalSuite") extend(Test)
+lazy val TestQuickSuite = config("testQuickSuite") extend(Test)
+lazy val TestRetrySuite = config("testRetrySuite") extend(Test)
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging, JavaAgent)
+  .configs(TestLocalProviderSuite, TestQuickSuite, TestRetrySuite)
   .disablePlugins(PlayLayoutPlugin)
   .settings(commonSettings)
+  .settings(
+    inConfig(TestLocalProviderSuite)(Defaults.testTasks),
+    inConfig(TestQuickSuite)(Defaults.testTasks),
+    inConfig(TestRetrySuite)(Defaults.testTasks)
+  )
   .settings(commands += Command.command("deflake") { state =>
     "test" :: "deflake" :: state
   })
@@ -868,8 +877,10 @@ Universal / mappings ++= {
     ybLog("Error generating YBA CLI binary.")
     Seq.empty
   }
+}
 
-  // Copying 'support/thirdparty-dependencies.txt' into the YBA tarball at 'conf/thirdparty-dependencies.txt'.
+// Copying 'support/thirdparty-dependencies.txt' into the YBA tarball at 'conf/thirdparty-dependencies.txt'.
+Universal / mappings ++= {
   val tpdSourceFile = baseDirectory.value / "support" / "thirdparty-dependencies.txt"
   Seq((tpdSourceFile, "conf/thirdparty-dependencies.txt"))
 }
@@ -961,6 +972,34 @@ Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSiz
 
 Test / javaOptions += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testOptions += Tests.Filter(s =>
+  !s.contains("com.yugabyte.yw.commissioner.tasks.local")
+)
+
+lazy val testLocal = taskKey[Unit]("Runs local provider tests")
+lazy val testFast = taskKey[Unit]("Runs quick tests")
+lazy val testUpgradeRetry = taskKey[Unit]("Runs retry tests")
+
+def localTestSuiteFilter(name: String): Boolean = (name startsWith "com.yugabyte.yw.commissioner.tasks.local")
+def quickTestSuiteFilter(name: String): Boolean =
+  !(name.startsWith("com.yugabyte.yw.commissioner.tasks.local") ||
+    name.startsWith("com.yugabyte.yw.commissioner.tasks.upgrade"))
+def upgradeRetryTestSuiteFilter(name: String): Boolean = (name startsWith "com.yugabyte.yw.commissioner.tasks.upgrade")
+
+TestLocalProviderSuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestLocalProviderSuite / testOptions := Seq(Tests.Filter(localTestSuiteFilter))
+TestLocalProviderSuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testLocal := (TestLocalProviderSuite / test).value
+
+TestQuickSuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestQuickSuite / testOptions := Seq(Tests.Filter(quickTestSuiteFilter))
+TestQuickSuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testFast := (TestQuickSuite / test).value
+
+TestRetrySuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestRetrySuite / testOptions := Seq(Tests.Filter(upgradeRetryTestSuiteFilter))
+TestRetrySuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testUpgradeRetry := (TestRetrySuite / test).value
 
 // Skip packaging javadoc for now
 Compile / doc / sources := Seq()

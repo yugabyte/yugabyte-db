@@ -3208,7 +3208,9 @@ XLogSendLogical(void)
 
 	if (IsYugaByteEnabled())
 	{
-		yb_record = YBCReadRecord(logical_decoding_ctx->reader, &errm);
+		yb_record = YBCReadRecord(logical_decoding_ctx->reader,
+								  logical_decoding_ctx->options.yb_publication_names,
+								  &errm);
 
 		/*
 		 * Explicitly set record to NULL so that the NULL check below is only

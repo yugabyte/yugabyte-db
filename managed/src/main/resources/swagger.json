@@ -11951,11 +11951,17 @@
       "type" : "object"
     },
     "SubtaskData" : {
+      "description" : "Detailed subtask data",
       "properties" : {
         "creationTime" : {
           "description" : "Creation time (unix timestamp) of the task",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
+          "type" : "string"
+        },
+        "errorCode" : {
+          "description" : "WARNING: This is a preview API that could change. Subtask error code",
+          "enum" : [ "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED" ],
           "type" : "string"
         },
         "errorString" : {

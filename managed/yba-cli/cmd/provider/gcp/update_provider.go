@@ -128,13 +128,46 @@ var updateGCPProviderCmd = &cobra.Command{
 			gcpCloudInfo.SetYbFirewallTags(ybFirewallTags)
 		}
 
-		if cmd.Flags().Changed("use-host-vpc") {
-			logrus.Debug("Updating use host VPC\n")
-			useHostVPC, err := cmd.Flags().GetBool("use-host-vpc")
+		var createVPC bool
+		if cmd.Flags().Changed("create-vpc") {
+			logrus.Debug("Updating Create VPC\n")
+			createVPC, err = cmd.Flags().GetBool("create-vpc")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			gcpCloudInfo.SetUseHostVPC(useHostVPC)
+			if createVPC {
+				gcpCloudInfo.SetUseHostVPC(false)
+				if len(network) > 0 {
+					logrus.Debug("Updating Network\n")
+					gcpCloudInfo.SetDestVpcId(network)
+				} else {
+					errMessage := "Network required if create-vpc is set\n"
+					logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
+				}
+			}
+		}
+
+		if !createVPC {
+			if cmd.Flags().Changed("use-host-vpc") {
+				logrus.Debug("Updating use host VPC\n")
+				useHostVPC, err := cmd.Flags().GetBool("use-host-vpc")
+				if err != nil {
+					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+				if useHostVPC {
+					gcpCloudInfo.SetUseHostVPC(useHostVPC)
+					gcpCloudInfo.SetDestVpcId("")
+				} else {
+					gcpCloudInfo.SetUseHostVPC(true)
+					if len(network) > 0 {
+						logrus.Debug("Updating Network\n")
+						gcpCloudInfo.SetDestVpcId(network)
+					} else {
+						errMessage := "Network required if use-host-vpc is not set\n"
+						logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
+					}
+				}
+			}
 		}
 
 		projectID, err := cmd.Flags().GetString("project-id")
@@ -292,11 +325,18 @@ func init() {
 				formatter.GreenColor)))
 
 	updateGCPProviderCmd.Flags().String("network", "",
-		"[Optional] Update custom GCE network name.")
+		fmt.Sprintf("[Optional] Update Custom GCE network name. %s",
+			formatter.Colorize("Required if create-vpc is true or use-host-vpc is false.",
+				formatter.GreenColor)))
 	updateGCPProviderCmd.Flags().String("yb-firewall-tags", "",
 		"[Optional] Update tags for firewall rules in GCP.")
+	updateGCPProviderCmd.Flags().Bool("create-vpc", false,
+		"[Optional] Creating a new VPC network in GCP (Beta Feature). "+
+			"Specify VPC name using --network.")
 	updateGCPProviderCmd.Flags().Bool("use-host-vpc", false,
-		"[Optional] Enabling YugabyteDB Anywhere Host VPC in GCP.")
+		"[Optional] Using VPC from YugabyteDB Anywhere Host. "+
+			"If set to false, specify an exsiting VPC using --network. "+
+			"Ignored if create-vpc is set.")
 	updateGCPProviderCmd.Flags().String("project-id", "",
 		"[Optional] Update project ID that hosts universe nodes in GCP.")
 	updateGCPProviderCmd.Flags().String("shared-vpc-project-id", "",

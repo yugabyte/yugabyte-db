@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/client/xcluster_client.h"
+#include "yb/common/colocated_util.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 #include "yb/util/is_operation_done_result.h"
@@ -326,13 +327,49 @@ void XClusterOutboundReplicationGroup::MarkCheckpointNamespaceAsFailed(
   WARN_NOT_OK(Upsert(*lock_result, epoch), ToString());
 }
 
+Result<scoped_refptr<NamespaceInfo>> XClusterOutboundReplicationGroup::GetYbNamespaceInfo(
+    const NamespaceId& namespace_id) const {
+  NamespaceIdentifierPB ns_id_pb;
+  ns_id_pb.set_id(namespace_id);
+  return helper_functions_.get_namespace_func(ns_id_pb);
+}
+
+Result<NamespaceId> XClusterOutboundReplicationGroup::GetNamespaceId(
+    const NamespaceName& namespace_name) const {
+  NamespaceIdentifierPB ns_id_pb;
+  ns_id_pb.set_name(namespace_name);
+  ns_id_pb.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  auto ns = VERIFY_RESULT(helper_functions_.get_namespace_func(ns_id_pb));
+  return ns->id();
+}
+
+Result<NamespaceName> XClusterOutboundReplicationGroup::GetNamespaceName(
+    const NamespaceId& namespace_id) const {
+  return VERIFY_RESULT(GetYbNamespaceInfo(namespace_id))->name();
+}
+
 Result<XClusterOutboundReplicationGroup::NamespaceInfoPB>
 XClusterOutboundReplicationGroup::CreateNamespaceInfo(
     const NamespaceId& namespace_id, const LeaderEpoch& epoch) {
   auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
   VLOG_WITH_PREFIX_AND_FUNC(1) << "Tables: " << yb::ToString(table_infos);
 
-  SCHECK(!table_infos.empty(), InvalidArgument, "No tables to bootstrap");
+  SCHECK(
+      !table_infos.empty(), InvalidArgument,
+      "Database should have at least one table in order to be part of xCluster replication");
+
+  auto yb_ns_info = VERIFY_RESULT(GetYbNamespaceInfo(namespace_id));
+  if (yb_ns_info->colocated()) {
+    bool has_any_colocated_table =
+        std::any_of(table_infos.begin(), table_infos.end(), [](const TableInfoPtr& table_info) {
+          return IsColocatedDbTablegroupParentTableId(table_info->id());
+        });
+    SCHECK(
+        has_any_colocated_table, InvalidArgument,
+        "Colocated database should have at least one colocated table in order to be part of "
+        "xCluster replication");
+  }
+
   NamespaceInfoPB ns_info;
   ns_info.set_state(NamespaceInfoPB::CHECKPOINTING);
 
@@ -352,8 +389,7 @@ Result<NamespaceId> XClusterOutboundReplicationGroup::AddNamespaceInternal(
   SCHECK(!namespace_name.empty(), InvalidArgument, "Namespace name cannot be empty");
   VLOG_WITH_PREFIX_AND_FUNC(1) << namespace_name;
 
-  auto namespace_id = VERIFY_RESULT(
-      helper_functions_.get_namespace_id_func(YQLDatabase::YQL_DATABASE_PGSQL, namespace_name));
+  auto namespace_id = VERIFY_RESULT(GetNamespaceId(namespace_name));
 
   auto& outbound_group_pb = l.mutable_data()->pb;
 
@@ -573,9 +609,7 @@ Status XClusterOutboundReplicationGroup::CreateXClusterReplication(
         Format("Namespace $0 is not yet ready to start replicating", ns_id));
 
     namespace_ids.push_back(ns_id);
-    namespace_names.push_back(VERIFY_RESULT(helper_functions_.get_namespace_name_func(ns_id)));
-
-    auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(ns_id));
+    namespace_names.push_back(VERIFY_RESULT(GetNamespaceName(ns_id)));
 
     for (const auto& [table_id, table_info] : ns_info.table_infos()) {
       if (!table_info.is_part_of_initial_bootstrap()) {

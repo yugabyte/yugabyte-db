@@ -33,12 +33,14 @@ import {
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
 import {
+  UseProviderValidationEnabled,
   addItem,
   constructAccessKeysCreatePayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
   getIsFormDisabled,
+  handleFormSubmitServerError,
   readFileAsText
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
@@ -62,13 +64,14 @@ import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUs
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import { GCPCreateFormErrFields } from './constants';
 
 interface GCPProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
   onBack: () => void;
 }
 
-interface GCPProviderCreateFormFieldValues {
+export interface GCPProviderCreateFormFieldValues {
   dbNodePublicInternetAccess: boolean;
   destVpcId: string;
   gceProject: string;
@@ -163,9 +166,9 @@ export const GCPProviderCreateForm = ({
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
   const sshConfigureMsg = ConfigureSSHDetailsMsg();
+  const { isLoading: isProviderValidationLoading, isValidationEnabled } = UseProviderValidationEnabled(CloudType.gcp);
 
-
-  if (hostInfoQuery.isLoading || hostInfoQuery.isIdle) {
+  if (hostInfoQuery.isLoading || hostInfoQuery.isIdle || isProviderValidationLoading) {
     return <YBLoading />;
   }
   if (hostInfoQuery.isError) {
@@ -292,7 +295,13 @@ export const GCPProviderCreateForm = ({
       imageBundles
     };
     try {
-      await createInfraProvider(providerPayload);
+      await createInfraProvider(providerPayload,
+        {
+          shouldValidate: isValidationEnabled,
+          mutateOptions: {
+            onError: err => handleFormSubmitServerError((err as any)?.response?.data, formMethods, GCPCreateFormErrFields)
+          }
+        });
     } catch (_) {
       // Request errors are handled by the onError callback
     }
@@ -477,6 +486,7 @@ export const GCPProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                errors={formMethods.formState.errors.regions as any}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>

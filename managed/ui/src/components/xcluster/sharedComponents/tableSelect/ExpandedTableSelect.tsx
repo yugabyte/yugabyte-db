@@ -33,6 +33,7 @@ interface ExpandedTableSelectProps {
   selectedTableUUIDs: string[];
   // `isSelectable` determines if the rows in this expanded table select are selectable.
   isSelectable: boolean;
+  isTransactionalConfig: boolean;
   tableType: XClusterTableType;
   xClusterConfigAction: XClusterConfigAction;
   handleTableSelect: (row: TableReplicationCandidate, isSelected: boolean) => void;
@@ -43,6 +44,7 @@ export const ExpandedTableSelect = ({
   row,
   selectedTableUUIDs: selectedTableUuids,
   isSelectable,
+  isTransactionalConfig,
   tableType,
   xClusterConfigAction,
   handleTableSelect,
@@ -82,7 +84,8 @@ export const ExpandedTableSelect = ({
           <IndexTableList
             mainTableReplicationCandidate={mainTableReplicationCandidate}
             xClusterConfigAction={xClusterConfigAction}
-            isSelectable={isSelectable}
+            isMainTableSelectable={isSelectable}
+            isTransactionalConfig={isTransactionalConfig}
             selectedTableUuids={selectedTableUuids}
             handleTableSelect={handleTableSelect}
             handleTableGroupSelect={handleTableGroupSelect}

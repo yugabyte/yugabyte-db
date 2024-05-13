@@ -14,7 +14,7 @@
       "yaxis": {
         "type": null,
         "alias": {},
-        "ticksuffix": "&nbsp;µs",
+        "ticksuffix": "&nbsp;ms",
         "tickformat": null
       }
     },

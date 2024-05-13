@@ -456,6 +456,7 @@ restore_backup() {
   ybdb="${14}"
   ysqlsh_path="${15}"
   ybai_data_dir="${16}"
+  skip_old_files="${17}"
   prometheus_dir_regex="\.\/${PROMETHEUS_SNAPSHOT_DIR}\/[[:digit:]]{8}T[[:digit:]]{6}Z-[[:alnum:]]{16}\/$"
 
   # Perform K8s restore.
@@ -479,16 +480,15 @@ restore_backup() {
     fi
     backup_script="/opt/yugabyte/devops/bin/yb_platform_backup.sh"
 
-    #Passing in the required argument for --disable_version_check if set to true, since
-    #the script is called again within the Kubernetes container.
-    d="--disable_version_check"
-
+    # Skip old files as script was called outside of container so may lack permissions to overwrite
     if [ "$disable_version_check" != true ]; then
       kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file}"
+        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} \
+        --skip_old_files"
     else
       kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} ${d}"
+        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} \
+        --disable_version_check --skip_old_files"
     fi
 
     # Delete backup archive from container.
@@ -606,8 +606,7 @@ restore_backup() {
       fi
     done
   else
-    # Skipping old files due to issues with k8s restore without permission to overwrite
-    $tar_cmd "${input_path}" --directory "${destination}" --skip-old-files
+    $tar_cmd "${input_path}" --directory "${destination}" "${skip_old_files}"
   fi
 
   db_backup_path="${untar_dir}"/"${PLATFORM_DUMP_FNAME}"
@@ -742,6 +741,7 @@ print_restore_usage() {
   echo "  --ysqlsh_path                  path to ysqlsh to restore ybdb (default: false)"
   echo "  --migration                    migration from Replicated or Yugabundle (default: false)"
   echo "  --ybai_data_dir                YBA data dir (default: /opt/yugabyte/data/yb-platform)"
+  echo "  --skip_old_files               skip old files when untarring backup"
   echo "  -?, --help                     show restore help, then exit"
   echo
 }
@@ -795,6 +795,7 @@ ysqlsh_path=""
 migration=false
 ybai_data_dir=/opt/yugabyte/data/yb-platform
 yba_user=yugabyte
+skip_old_files=""
 
 case $command in
   -?|--help)
@@ -1041,6 +1042,10 @@ case $command in
           USE_SYSTEM_PG=true
           shift
           ;;
+        --skip_old_files)
+          skip_old_files="--skip-old-files"
+          shift
+          ;;
         -?|--help)
           print_restore_usage
           exit 0
@@ -1068,7 +1073,8 @@ case $command in
 
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
     "$prometheus_host" "$prometheus_port" "$data_dir" "$k8s_namespace" "$k8s_pod" \
-    "$disable_version_check" "$pgrestore_path" "$ybdb" "$ysqlsh_path" "$ybai_data_dir"
+    "$disable_version_check" "$pgrestore_path" "$ybdb" "$ysqlsh_path" "$ybai_data_dir" \
+    "$skip_old_files"
     exit 0
     ;;
   *)

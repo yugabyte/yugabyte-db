@@ -37,11 +37,31 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
 };
 
 TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
-  ASSERT_OK(SetUpClusters());
+  SetupParams param;
+  param.num_producer_tablets = {};
+  param.num_consumer_tablets = {};
+  ASSERT_OK(SetUpClusters(param));
+
+  ASSERT_NOK_STR_CONTAINS(
+      CheckpointReplicationGroup(),
+      "Database should have at least one table in order to be part of xCluster replication");
+
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/0, /*num_tablets=*/3, &producer_cluster_));
+  ASSERT_OK(producer_client()->OpenTable(producer_table_name, &producer_table_));
 
   ASSERT_OK(CheckpointReplicationGroup());
 
+  ASSERT_OK(InsertRowsInProducer(0, 50));
+
   ASSERT_NOK(CreateReplicationFromCheckpoint("bad-master-addr"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      CreateReplicationFromCheckpoint(), "Could not find matching table for yugabyte.test_table_0");
+
+  auto consumer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/0, /*num_tablets=*/3, &consumer_cluster_));
+  ASSERT_OK(producer_client()->OpenTable(consumer_table_name, &consumer_table_));
 
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -52,7 +72,7 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
 
-  ASSERT_OK(InsertRowsInProducer(0, 50));
+  ASSERT_OK(InsertRowsInProducer(50, 100));
 
   ASSERT_OK(VerifyWrittenRecords());
 }
@@ -63,10 +83,10 @@ TEST_F(XClusterDBScopedTest, CreateTable) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Creating a new table on target first should fail.
-  auto status = CreateYsqlTable(
-      /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_);
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "Table public.test_table_1 not found");
+  ASSERT_NOK_STR_CONTAINS(
+      CreateYsqlTable(
+          /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_),
+      "Table public.test_table_1 not found");
 
   auto new_producer_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
@@ -123,6 +143,103 @@ TEST_F(XClusterDBScopedTest, DropTableOnProducerThenConsumer) {
   auto result = promise.get_future().get();
   ASSERT_NOK(result) << result->DebugString();
   ASSERT_STR_CONTAINS(result.status().ToString(), "test_table_0 not found in namespace");
+}
+
+TEST_F(XClusterDBScopedTest, ColocatedDB) {
+  namespace_name = "colocated_db";
+  SetupParams param;
+  param.is_colocated = true;
+
+  // Create clusters with colocated database, and 1 non-colocated table.
+  ASSERT_OK(SetUpClusters(param));
+
+  ASSERT_NOK_STR_CONTAINS(
+      CheckpointReplicationGroup(),
+      "Colocated database should have at least one colocated table in order to be part of "
+      "xCluster replication");
+
+  auto producer_colocated_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &producer_cluster_,
+      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+  std::shared_ptr<client::YBTable> producer_colocated_table;
+  ASSERT_OK(producer_client()->OpenTable(producer_colocated_table_name, &producer_colocated_table));
+
+  ASSERT_OK(CheckpointReplicationGroup());
+
+  ASSERT_OK(InsertRowsInProducer(0, 10));
+  ASSERT_OK(InsertRowsInProducer(0, 50, producer_colocated_table));
+
+  ASSERT_NOK_STR_CONTAINS(
+      CreateReplicationFromCheckpoint(),
+      "Could not find matching table for colocated_db.test_table_1");
+
+  auto consumer_colocated_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_,
+      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+  std::shared_ptr<client::YBTable> consumer_colocated_table;
+  ASSERT_OK(consumer_client()->OpenTable(consumer_colocated_table_name, &consumer_colocated_table));
+
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(producer_colocated_table_name, consumer_colocated_table_name));
+  ASSERT_OK(VerifyWrittenRecords(producer_colocated_table, consumer_colocated_table));
+
+  // Make sure we only colocated parent table and one non-colocated table
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(&resp));
+  ASSERT_EQ(resp.entry().tables_size(), 2);
+
+  auto producer_table2_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/2, /*num_tablets=*/3, &producer_cluster_));
+  std::shared_ptr<client::YBTable> producer_table2;
+  ASSERT_OK(producer_client()->OpenTable(producer_table2_name, &producer_table2));
+
+  ASSERT_OK(InsertRowsInProducer(0, 50, producer_table2));
+
+  auto consumer_table2_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/2, /*num_tablets=*/3, &consumer_cluster_));
+  std::shared_ptr<client::YBTable> consumer_table2;
+  ASSERT_OK(producer_client()->OpenTable(consumer_table2_name, &consumer_table2));
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table2, consumer_table2));
+
+  auto producer_colocated_table2_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/3, /*num_tablets=*/3, &producer_cluster_,
+      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+  std::shared_ptr<client::YBTable> producer_colocated_table2;
+  ASSERT_OK(
+      producer_client()->OpenTable(producer_colocated_table2_name, &producer_colocated_table2));
+  ASSERT_OK(InsertRowsInProducer(0, 50, producer_colocated_table2));
+
+  auto consumer_colocated_table2_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/3, /*num_tablets=*/3, &consumer_cluster_,
+      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+  std::shared_ptr<client::YBTable> consumer_colocated_table2;
+  ASSERT_OK(
+      consumer_client()->OpenTable(consumer_colocated_table2_name, &consumer_colocated_table2));
+  ASSERT_OK(VerifyWrittenRecords(producer_colocated_table2, consumer_colocated_table2));
+
+  ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_colocated_table));
+  ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_colocated_table));
+
+  ASSERT_OK(VerifyUniverseReplication(&resp));
+  ASSERT_EQ(resp.entry().tables_size(), 3);
+
+  // Insert some rows to the initial table.
+  ASSERT_OK(InsertRowsInProducer(10, 20, producer_table_));
+  ASSERT_OK(InsertRowsInProducer(50, 100, producer_table2));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // Make sure the other table remains unchanged.
+  ASSERT_OK(VerifyWrittenRecords(producer_table2, consumer_table2));
+  ASSERT_OK(VerifyWrittenRecords(producer_colocated_table2, consumer_colocated_table2));
+
+  ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table2));
+  ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_table2));
+
+  ASSERT_OK(VerifyUniverseReplication(&resp));
+  ASSERT_EQ(resp.entry().tables_size(), 2);
 }
 
 }  // namespace yb

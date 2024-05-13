@@ -147,6 +147,7 @@ public class MainModule extends AbstractModule {
 
     Security.addProvider(new PemKeyStoreProvider());
     Security.addProvider(new BouncyCastleProvider());
+    TLSConfig.modifyTLSDisabledAlgorithms(config);
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     install(new CustomerConfKeys());
     install(new ProviderConfKeys());

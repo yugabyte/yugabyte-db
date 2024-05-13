@@ -75,6 +75,8 @@ func authUtil(url *url.URL, apiToken string) {
 	}
 	logrus.Debugf("Session Info response without errors\n")
 
+	authAPI.IsCLISupported()
+
 	// Fetch Customer UUID
 	err = authAPI.GetCustomerUUID()
 	if err != nil {

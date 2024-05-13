@@ -17,7 +17,12 @@ namespace cdc {
 
 class CDCSDKBeforeImageTest : public CDCSDKYsqlTest {
  public:
-  void SetUp() override { CDCSDKYsqlTest::SetUp(); }
+  void SetUp() override {
+    CDCSDKYsqlTest::SetUp();
+    // These tests work on older RECORD_TYPE support, so we disable replica identity support here so
+    // that the record_type mode is used.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
+  }
 };
 
 TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage)) {

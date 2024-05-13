@@ -53,7 +53,10 @@ const (
 
 	// YBAAllowFailureSubTaskListMinVersion specifies minimum version
 	// required to fetch failed subtask message from YugabyteDB Anywhere
-	YBAAllowFailureSubTaskListMinVersion = "2.18.1.0-b68"
+	YBAAllowFailureSubTaskListMinVersion = "2.19.0.0-b68"
+
+	MinCLIStableVersion  = "2024.1.0.0-b4"
+	MinCLIPreviewVersion = "2.21.0.0-b545"
 )
 
 // UniverseStates

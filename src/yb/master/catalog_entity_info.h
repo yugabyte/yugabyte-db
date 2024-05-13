@@ -725,6 +725,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsColocatedDbParentTable() const;
   bool IsTablegroupParentTable() const;
   bool IsColocatedUserTable() const;
+  bool IsSequencesSystemTable() const;
 
   // Provides the ID of the tablespace that will be used to determine
   // where the tablets for this table should be placed when the table
@@ -1235,6 +1236,8 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
 
   // Get the Status of the last error from the current SetupUniverseReplication.
   Status GetSetupUniverseReplicationErrorStatus() const;
+
+  bool IsDbScoped() const;
 
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;

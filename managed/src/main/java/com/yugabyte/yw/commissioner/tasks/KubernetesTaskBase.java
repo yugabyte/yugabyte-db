@@ -991,7 +991,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Returns the NodeDetails of the pod that we need to wait for.
   */
-  public NodeDetails getKubernetesNodeName(
+  public static NodeDetails getKubernetesNodeName(
       int partition,
       String azCode,
       ServerType serverType,
@@ -1027,7 +1027,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Sends a collection of all the pods that need to be added.
   */
-  public Set<NodeDetails> getPodsToAdd(
+  public static Set<NodeDetails> getPodsToAdd(
       Map<UUID, Integer> newPlacement,
       Map<UUID, Integer> currPlacement,
       ServerType serverType,
@@ -1054,7 +1054,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Sends a collection of all the pods that need to be removed.
   */
-  public Set<NodeDetails> getPodsToRemove(
+  public static Set<NodeDetails> getPodsToRemove(
       Map<UUID, Integer> newPlacement,
       Map<UUID, Integer> currPlacement,
       ServerType serverType,

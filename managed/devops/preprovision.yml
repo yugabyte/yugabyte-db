@@ -141,7 +141,7 @@
         (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
       tags: yb-prebuilt-ami
 
-    - name: Install policycoreutils-python-utils on CentOS 8
+    - name: Install policycoreutils-python-utils on CentOS 8 and up
       module_defaults:
         yum:
           lock_timeout: 600
@@ -150,7 +150,7 @@
         state: present
       when: >
         'policycoreutils-python-utils' not in ansible_facts.packages and custom_ssh_port != '22' and
-        (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '8')
+        (ansible_os_family == 'RedHat' and ansible_distribution_major_version != '7')
       tags: yb-prebuilt-ami
 
     - name: Accept target in firewalld on Oracle Linux

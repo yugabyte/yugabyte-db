@@ -646,7 +646,9 @@ class YBClient {
       std::optional<uint64_t>* stream_creation_time = nullptr,
       std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map = nullptr);
 
-  Result<CDCSDKStreamInfo> GetCDCStream(const ReplicationSlotName& replication_slot_name);
+  Result<CDCSDKStreamInfo> GetCDCStream(
+      const ReplicationSlotName& replication_slot_name,
+      std::unordered_map<uint32_t, PgReplicaIdentity>* replica_identities);
 
   void GetCDCStream(
       const xrepl::StreamId& stream_id,

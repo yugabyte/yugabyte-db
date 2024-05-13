@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 
+#include "yb/cdc/xcluster_util.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/util/is_operation_done_result.h"
@@ -50,7 +51,7 @@ AddTableToXClusterTargetTask::AddTableToXClusterTargetTask(
           std::move(epoch)),
       universe_(universe),
       xcluster_manager_(*catalog_manager.GetXClusterManager()) {
-  is_db_scoped_ = universe_->LockForRead()->pb.has_db_scoped_info();
+  is_db_scoped_ = universe_->IsDbScoped();
 }
 
 std::string AddTableToXClusterTargetTask::description() const {
@@ -131,16 +132,13 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
     // the bootstrap time to ensure the base table has all the data before we start the backfill
     // job.
     //
-    // In Db scoped replication we checkpoint the index when it is created on the source at OpId 0.
-    // We still need to run the backfill job on the target since we still do not get the data
-    // produced by the source backfill job. The DDL handler which issues the create index DDL waits
-    // for the xCluster safe time to advance upto the DDL commit time before executing it. This time
-    // is guaranteed to be higher than the backfill time of the source universe since index creation
+    // In Db scoped replication the DDL handler which issues the create index DDL waits for the
+    // xCluster safe time to advance upto the DDL commit time before executing it. This time is
+    // guaranteed to be higher than the backfill time of the source universe since index creation
     // waits for the backfill job to finish.
     //
-    // We set to coarse time now (and dont worry about clock skews) to have some valid time to
-    // compare against.
-    bootstrap_time = HybridTime::FromMicros(GetCurrentTimeMicros());
+    // We set to kMin here and later update it to GetXClusterSafeTimeWithoutDdlQueue.
+    bootstrap_time = HybridTime::kMin;
   } else {
     SCHECK(
         !bootstrap_time.is_special(), IllegalState, "xCluster Bootstrap time is not valid $0",
@@ -171,8 +169,8 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
 }
 
 Status AddTableToXClusterTargetTask::WaitForSetupUniverseReplicationToFinish() {
-  auto operation_result = VERIFY_RESULT(
-      IsSetupUniverseReplicationDone(universe_->ReplicationGroupId(), catalog_manager_));
+  auto operation_result = VERIFY_RESULT(IsSetupUniverseReplicationDone(
+      xcluster::GetAlterReplicationGroupId(universe_->ReplicationGroupId()), catalog_manager_));
 
   if (!operation_result.done()) {
     VLOG_WITH_PREFIX(2) << "Waiting for setup universe replication to finish";
@@ -230,6 +228,7 @@ Status AddTableToXClusterTargetTask::RefreshAndGetXClusterSafeTime() {
 Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
   auto ht = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue());
   if (!ht) {
+    // The namespace is no longer part of any xCluster replication.
     Complete();
     return Status::OK();
   }

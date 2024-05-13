@@ -54,7 +54,10 @@ func (a *AuthAPIClient) RestartUniverse(uUUID string) (
 // UniverseYBAVersionCheck checks if the new API request body can be used for the Create
 // Provider API
 func (a *AuthAPIClient) UniverseYBAVersionCheck() (bool, string, error) {
-	allowedVersions := []string{util.YBAAllowUniverseMinVersion}
+	allowedVersions := YBAMinimumVersion{
+		Stable: util.YBAAllowUniverseMinVersion,
+		Preview: util.YBAAllowUniverseMinVersion,
+	}
 	allowed, version, err := a.CheckValidYBAVersion(allowedVersions)
 	if err != nil {
 		return false, "", err

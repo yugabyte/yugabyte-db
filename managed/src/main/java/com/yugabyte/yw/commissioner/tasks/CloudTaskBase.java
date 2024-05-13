@@ -51,6 +51,13 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
     return provider;
   }
 
+  public Provider getProvider(boolean forceFetch) {
+    if (forceFetch) {
+      return Provider.getOrBadRequest(taskParams().providerUUID);
+    }
+    return getProvider();
+  }
+
   public Map<String, Object> getRegionMetadata() {
     return regionMetadata;
   }

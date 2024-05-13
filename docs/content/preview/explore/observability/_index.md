@@ -68,6 +68,7 @@ The following table describes views in YSQL you can use to monitor and tune quer
 | [pg_stat_activity](./pg-stat-activity) | View and analyze live queries |
 | [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
 | [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
+| [pg_locks](./pg-locks) | Get information on locks held by a transaction |
 | [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
 
 To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
@@ -105,11 +106,11 @@ To get more details about the various steps of a query execution, use the [Expla
       href="./pg-stat-progress-copy/"
       icon="/images/section_icons/explore/json_documents.png">}}
 
-  <!-- {{<index/item
+  {{<index/item
       title="Get lock information insights with pg_locks"
       body="Get lock information about current transactions, diagnose and resolve any contention issues in YugabyteDB"
       href="./pg-locks/"
-      icon="/images/section_icons/explore/secure.png">}} -->
+      icon="/images/section_icons/explore/secure.png">}}
 
   {{<index/item
       title="Query statistics using pg_stat_statements"

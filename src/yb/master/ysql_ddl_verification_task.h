@@ -75,6 +75,8 @@ class PollTransactionStatusBase {
 
   virtual ~PollTransactionStatusBase();
 
+  virtual std::shared_ptr<server::MonitoredTask> GetSharedFromThis() = 0;
+
  protected:
   Status VerifyTransaction();
   virtual void TransactionPending() = 0;
@@ -114,6 +116,10 @@ class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
   };
 
   ~NamespaceVerificationTask() = default;
+
+  std::shared_ptr<server::MonitoredTask> GetSharedFromThis() override {
+    return shared_from_this();
+  }
 
   NamespaceVerificationTask(
     CatalogManager& catalog_manager,
@@ -161,6 +167,10 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
   };
 
   ~TableSchemaVerificationTask() = default;
+
+  std::shared_ptr<server::MonitoredTask> GetSharedFromThis() override {
+    return shared_from_this();
+  }
 
   TableSchemaVerificationTask(
     CatalogManager& catalog_manager,

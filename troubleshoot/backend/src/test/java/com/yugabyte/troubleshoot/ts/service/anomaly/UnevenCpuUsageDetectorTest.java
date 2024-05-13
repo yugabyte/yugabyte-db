@@ -9,6 +9,7 @@ import com.yugabyte.troubleshoot.ts.service.*;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.SneakyThrows;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -17,6 +18,17 @@ import org.springframework.http.MediaType;
 public class UnevenCpuUsageDetectorTest extends AnomalyDetectorTestBase {
 
   @Autowired UnevenCpuUsageDetector unevenCpuUsageDetector;
+
+  UniverseMetadata metadata;
+
+  @BeforeEach
+  public void setUp() {
+    super.setUp();
+    metadata =
+        new UniverseMetadata()
+            .setId(UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"))
+            .setCustomerId(UUID.randomUUID());
+  }
 
   @SneakyThrows
   @Test
@@ -40,9 +52,10 @@ public class UnevenCpuUsageDetectorTest extends AnomalyDetectorTestBase {
     AnomalyDetector.AnomalyDetectionResult result =
         unevenCpuUsageDetector.findAnomalies(
             AnomalyDetector.AnomalyDetectionContext.builder()
-                .universeUuid(UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"))
+                .universeMetadata(metadata)
                 .startTime(Instant.parse("2024-01-18T15:00:00Z"))
                 .endTime(Instant.parse("2024-01-18T19:00:00Z"))
+                .config(runtimeConfigService.getUniverseConfig(metadata))
                 .build());
 
     assertResult(result, "anomaly/uneven_cpu_usage/anomalies.json");
@@ -70,9 +83,10 @@ public class UnevenCpuUsageDetectorTest extends AnomalyDetectorTestBase {
     AnomalyDetector.AnomalyDetectionResult result =
         unevenCpuUsageDetector.findAnomalies(
             AnomalyDetector.AnomalyDetectionContext.builder()
-                .universeUuid(UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"))
+                .universeMetadata(metadata)
                 .startTime(Instant.parse("2024-03-05T15:58:41Z"))
                 .endTime(Instant.parse("2024-03-05T16:13:41Z"))
+                .config(runtimeConfigService.getUniverseConfig(metadata))
                 .build());
 
     assertResult(result, "anomaly/uneven_cpu_usage/short_anomaly.json");
@@ -99,9 +113,10 @@ public class UnevenCpuUsageDetectorTest extends AnomalyDetectorTestBase {
     AnomalyDetector.AnomalyDetectionResult result =
         unevenCpuUsageDetector.findAnomalies(
             AnomalyDetector.AnomalyDetectionContext.builder()
-                .universeUuid(UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"))
+                .universeMetadata(metadata)
                 .startTime(Instant.parse("2024-03-07T00:06:17Z"))
                 .endTime(Instant.parse("2024-03-07T01:06:15Z"))
+                .config(runtimeConfigService.getUniverseConfig(metadata))
                 .build());
 
     assertResult(result, "anomaly/uneven_cpu_usage/larger_anomaly.json");

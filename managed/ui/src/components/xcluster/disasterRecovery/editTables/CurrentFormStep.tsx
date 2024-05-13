@@ -30,7 +30,9 @@ export const CurrentFormStep = ({
     case FormStep.SELECT_TABLES:
       return (
         <>
-          <Typography variant="body1">{t('instruction')}</Typography>
+          <Typography variant="body1">
+            {t(`instruction.${isDrInterface ? 'dr' : 'xCluster'}`)}
+          </Typography>
           <TableSelect {...tableSelectProps} />
         </>
       );

@@ -1,6 +1,7 @@
 package com.yugabyte.troubleshoot.ts.service;
 
-import static com.yugabyte.troubleshoot.ts.service.GraphService.fillConfigMap;
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.*;
+import static com.yugabyte.troubleshoot.ts.service.GraphService.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.troubleshoot.ts.models.*;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class TsStorageGraphService implements GraphSourceIF {
+
   public static final String ALIAS = "alias";
   private final NamedParameterJdbcTemplate jdbcTemplate;
   private final Map<String, TsStorageGraphConfig> tsStorageGraphConfigs;
@@ -54,6 +56,8 @@ public class TsStorageGraphService implements GraphSourceIF {
 
   public GraphResponse getGraph(
       UniverseMetadata universeMetadata, UniverseDetails universeDetails, GraphQuery query) {
+    Long startTime = System.currentTimeMillis();
+
     TsStorageGraphConfig config = tsStorageGraphConfigs.get(query.getName());
     GraphResponse response = new GraphResponse();
     response.setSuccessful(true);
@@ -105,6 +109,7 @@ public class TsStorageGraphService implements GraphSourceIF {
                     e -> e.getKey().name(),
                     e -> convertParamValues(config, e.getKey().name(), e.getValue()))));
 
+    Long queryStartTime = System.currentTimeMillis();
     // Get raw lines
     Map<LineKey, RawLine> rawLines =
         jdbcTemplate.query(
@@ -131,6 +136,9 @@ public class TsStorageGraphService implements GraphSourceIF {
               }
               return result;
             });
+    DATA_RETRIEVAL_TIME
+        .labels(query.getName())
+        .observe(System.currentTimeMillis() - queryStartTime);
 
     if (rawLines == null) {
       return response;
@@ -247,6 +255,10 @@ public class TsStorageGraphService implements GraphSourceIF {
         Comparator.comparing(GraphData::getInstanceNameOrEmpty)
             .thenComparing(GraphData::getNameOrEmpty);
     response.setData(response.getData().stream().sorted(graphDataComparator).toList());
+
+    QUERY_TIME
+        .labels(RESULT_SUCCESS, query.getName())
+        .observe(System.currentTimeMillis() - startTime);
     return response;
   }
 

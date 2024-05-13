@@ -380,7 +380,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
       assertNotNull(subtaskGroup);
       assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
     }
-    String taskErrMsg = taskInfo.getSubTasks().get(3).getDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(3).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "Failed to delete replication for XClusterConfig(%s): %s",

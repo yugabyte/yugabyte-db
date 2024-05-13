@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Random;
 
 import org.junit.Test;
+import org.junit.Assume;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -113,6 +114,9 @@ public class TestPgConnection extends BasePgSQLTest {
 
   @Test
   public void testConnectionKills() throws Exception {
+    Assume.assumeFalse(BasePgSQLTest.LESSER_PHYSICAL_CONNS,
+      isTestRunningWithConnectionManager());
+
     final int NUM_CONNECTIONS = getRemainingAvailableConnections();
 
     final Connection[] connections = createConnections(NUM_CONNECTIONS);
@@ -150,6 +154,9 @@ public class TestPgConnection extends BasePgSQLTest {
 
   @Test
   public void testConnectionKillsAndRestarts() throws Exception {
+    Assume.assumeFalse(BasePgSQLTest.LESSER_PHYSICAL_CONNS,
+      isTestRunningWithConnectionManager());
+
     final int NUM_CONNECTIONS = getRemainingAvailableConnections();
 
     // Create N connections, kill them all. Repeat this process a few times

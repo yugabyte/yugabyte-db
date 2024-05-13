@@ -1563,12 +1563,21 @@ Status YBClient::GetCDCStream(
   return Status::OK();
 }
 
-Result<CDCSDKStreamInfo> YBClient::GetCDCStream(const ReplicationSlotName& replication_slot_name) {
+Result<CDCSDKStreamInfo> YBClient::GetCDCStream(
+    const ReplicationSlotName& replication_slot_name,
+    std::unordered_map<uint32_t, PgReplicaIdentity>* replica_identities) {
   GetCDCStreamRequestPB req;
   req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name.ToString());
 
   GetCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetCDCStream);
+
+  if (replica_identities) {
+    replica_identities->reserve(resp.stream().replica_identity_map_size());
+    for (const auto& entry : resp.stream().replica_identity_map()) {
+      replica_identities->emplace(VERIFY_RESULT(GetPgsqlTableOid(entry.first)), entry.second);
+    }
+  }
 
   return CDCSDKStreamInfo::FromPB(resp.stream());
 }

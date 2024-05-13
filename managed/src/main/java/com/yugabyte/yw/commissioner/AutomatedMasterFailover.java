@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.nodeui.MetricGroup;
@@ -78,6 +79,7 @@ public class AutomatedMasterFailover {
     log.info("Running Automated Master Failover Check");
     List<Customer> customers = Customer.getAll();
     for (Customer customer : customers) {
+      boolean cloudEnabled = confGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled);
       Set<Universe> universes = customer.getUniverses();
       for (Universe universe : universes) {
         boolean isAutomatedMasterFailoverEnabled =
@@ -100,7 +102,7 @@ public class AutomatedMasterFailover {
             ybClientService.getClient(
                 universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
           List<String> errors =
-              CheckClusterConsistency.checkCurrentServers(ybClient, universe, false);
+              CheckClusterConsistency.checkCurrentServers(ybClient, universe, false, cloudEnabled);
           if (!errors.isEmpty()) {
             log.error(
                 "Skipping automated master failover for universe {} as the master view of YBA is"

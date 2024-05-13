@@ -725,9 +725,11 @@ Status PgClientSession::CreateReplicationSlot(
     const PgCreateReplicationSlotRequestPB& req, PgCreateReplicationSlotResponsePB* resp,
     rpc::RpcContext* context) {
   std::unordered_map<std::string, std::string> options;
-  // TODO(#19260): Support customizing the CDCRecordType.
   options.reserve(5);
   options.emplace(cdc::kIdType, cdc::kNamespaceId);
+  // TODO(#21686): This line should be removed. This is only here because in some tests, we create
+  // tables after creating the slot/stream. In those cases, we cannot rely on the replica identity
+  // support and hence, fallback on the record type support.
   options.emplace(cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
   options.emplace(cdc::kRecordFormat, CDCRecordFormat_Name(cdc::CDCRecordFormat::PROTO));
   options.emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
@@ -805,10 +807,6 @@ Status PgClientSession::CreateTablegroup(
 
   if (s.IsAlreadyPresent()) {
     return STATUS(InvalidArgument, "Duplicate tablegroup");
-  }
-
-  if (s.IsNotFound()) {
-    return STATUS(InvalidArgument, "Database not found", req.database_name());
   }
 
   return STATUS_FORMAT(
@@ -1060,6 +1058,7 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     if (options.has_ash_metadata()) {
       wait_state->UpdateMetadataFromPB(options.ash_metadata(), /* use_hex */ false);
+      wait_state->set_session_id(id_);
     }
   }
   auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();

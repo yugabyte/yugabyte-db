@@ -20,6 +20,10 @@ DEFINE_RUNTIME_uint32(
     "Controls the maximum number of records sent in GetConsistentChanges "
     "response");
 
+DEFINE_RUNTIME_uint64(
+    cdcsdk_publication_list_refresh_interval_micros, 300000000 /* 5 minutes */,
+    "Interval in micro seconds at which the table list in the publication will be refreshed");
+
 namespace yb {
 namespace cdc {
 
@@ -48,7 +52,6 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     const HostPort hostport, const CoarseTimePoint deadline) {
   DCHECK_EQ(publication_table_list_.size(), 0);
   for (const auto& table_id : table_list) {
-    publication_table_list_.insert(table_id);
     // TODO: Make parallel calls or introduce a batch GetTabletListToPoll API in CDC which takes a
     // list of tables and provide the information in one shot.
     auto s = GetTabletListAndCheckpoint(stream_id, table_id, hostport, deadline);
@@ -57,6 +60,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
           Format("Error fetching tablet list & checkpoints for table_id: $0", table_id));
       RETURN_NOT_OK(s);
     }
+    publication_table_list_.insert(table_id);
   }
 
   auto s = InitLSNAndTxnIDGenerators(stream_id);
@@ -64,6 +68,21 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     LOG(WARNING) << Format("Init LSN & TxnID generators failed for stream_id: $0", stream_id);
     RETURN_NOT_OK(s.CloneAndPrepend(Format("Init LSN & TxnID generators failed")));
   }
+
+  pub_refresh_interval = GetAtomicFlag(&FLAGS_cdcsdk_publication_list_refresh_interval_micros);
+
+  s = CreatePublicationRefreshTabletQueue();
+  if (!s.ok()) {
+    LOG(WARNING) << "Could not create Publication Refresh Tablet Queue";
+    RETURN_NOT_OK(s);
+  }
+
+  s = PushRecordToPublicationRefreshTabletQueue();
+  if (!s.ok()) {
+    LOG(WARNING) << "Could not push an entry to the Publication Refresh Tablet queue";
+    RETURN_NOT_OK(s);
+  }
+
   return Status::OK();
 }
 
@@ -75,6 +94,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
   auto table_info = req.mutable_table_info();
   table_info->set_stream_id(stream_id.ToString());
   table_info->set_table_id(table_id);
+  // parent_tablet_id will be non-empty in case of tablet split.
   if (!parent_tablet_id.empty()) {
     req.set_tablet_id(parent_tablet_id);
   }
@@ -103,16 +123,38 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
     }
   }
 
-  // parent_tablet_id will be non-empty in case of tablet split. Hence, remove parent tablet's entry
-  // from all relevant maps.
+  // parent_tablet_id will be non-empty in case of tablet split. Hence, add children tablet entries
+  // in all relevant maps & then remove parent tablet's entry from all relevant maps.
   if (!parent_tablet_id.empty()) {
-    RETURN_NOT_OK(RemoveParentTabletEntryOnSplit(parent_tablet_id));
+    std::vector<TabletId> children_tablets;
+    for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
+      auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
+      children_tablets.push_back(tablet_id);
+    }
+
+    RSTATUS_DCHECK(
+        !tablet_id_to_table_id_map_[parent_tablet_id].empty(), NotFound,
+        Format("Table_id not found for parent tablet_id $0"), parent_tablet_id);
+    RSTATUS_DCHECK(
+        tablet_next_req_map_.contains(parent_tablet_id), NotFound,
+        Format("Next getchanges_request_info not found for parent tablet_id $0", parent_tablet_id));
+    RSTATUS_DCHECK(
+        tablet_queues_.contains(parent_tablet_id), NotFound,
+        Format("Tablet queue not found for parent tablet_id $0", parent_tablet_id));
+
+    // We cannot assert entry of parent tablet_id in last_sent_req_map because it is only
+    // initialised after the 1st Getchanges call on a tablet. Therefore, in a scenario, it can
+    // happen that on the 1st GetChanges call on the parent tablet, we might get the split error and
+    // so, we might not even add an entry for the parent tablet in the last_sent_req_map.
+
+    RETURN_NOT_OK(UpdateTabletMapsOnSplit(parent_tablet_id, children_tablets));
+    return Status::OK();
   }
 
   for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
     auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
     if (!tablet_id_to_table_id_map_.contains(tablet_id)) {
-      tablet_id_to_table_id_map_[tablet_id] = table_id;
+      tablet_id_to_table_id_map_[tablet_id].insert(table_id);
     }
     auto checkpoint = tablet_checkpoint_pair.cdc_sdk_checkpoint();
     if (!tablet_next_req_map_.contains(tablet_id)) {
@@ -135,20 +177,72 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
   return Status::OK();
 }
 
-Status CDCSDKVirtualWAL::RemoveParentTabletEntryOnSplit(const TabletId& parent_tablet_id) {
-  // TODO (20968): get the parent from_op_id and assign it to children's entry on split.
-  if (tablet_next_req_map_.contains(parent_tablet_id)) {
-    tablet_next_req_map_.erase(parent_tablet_id);
-    VLOG(1) << "Removed entry in tablet checkpoint map for tablet_id: " << parent_tablet_id;
+Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
+    const TabletId& parent_tablet_id, const std::vector<TabletId> children_tablets) {
+  // First add children tablet entries in all relevant maps and initialise them with the values of
+  // the parent tablet, then erase parent tablet's entry from these maps.
+  const auto parent_tablet_table_id = tablet_id_to_table_id_map_.at(parent_tablet_id);
+  const auto parent_next_req_info = tablet_next_req_map_.at(parent_tablet_id);
+
+  LastSentGetChangesRequestInfo parent_last_sent_req_info;
+  if (tablet_last_sent_req_map_.contains(parent_tablet_id)) {
+    parent_last_sent_req_info = tablet_last_sent_req_map_.at(parent_tablet_id);
+  } else {
+    // If parent tablet's entry is not found in tablet_last_sent_req_map_, add children tablet
+    // entries in this map with the same values that we are planning to send in the 1st GetChanges
+    // call on the children tablets. It is safe to do this because without making the GetChanges
+    // call on children tablets, we are not going to ship anything from the VWAL. Since, after the
+    // 1st GetChanges call, this map will anyway be updated with the values present in the
+    // tablet_next_req_map_, it is safe to perform the same step here itself.
+    parent_last_sent_req_info.from_op_id = parent_next_req_info.from_op_id;
+    parent_last_sent_req_info.safe_hybrid_time = parent_next_req_info.safe_hybrid_time;
   }
 
-  if (tablet_queues_.contains(parent_tablet_id)) {
-    tablet_queues_.erase(parent_tablet_id);
-    VLOG(1) << "Removed tablet queue for tablet_id: " << parent_tablet_id;
-  }
-
-  if (tablet_id_to_table_id_map_.contains(parent_tablet_id)) {
+  for (const auto& child_tablet_id : children_tablets) {
+    DCHECK(!tablet_id_to_table_id_map_.contains(child_tablet_id));
+    tablet_id_to_table_id_map_[child_tablet_id] = parent_tablet_table_id;
     tablet_id_to_table_id_map_.erase(parent_tablet_id);
+
+    DCHECK(!tablet_queues_.contains(child_tablet_id));
+    tablet_queues_[child_tablet_id] = std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>();
+    VLOG(3) << "Adding empty tablet queue for child tablet_id: " << child_tablet_id;
+    tablet_queues_.erase(parent_tablet_id);
+    VLOG(3) << "Removed tablet queue for parent tablet_id: " << parent_tablet_id;
+
+    DCHECK(!tablet_last_sent_req_map_.contains(child_tablet_id));
+    tablet_last_sent_req_map_[child_tablet_id] = parent_last_sent_req_info;
+    VLOG(3) << "Added entry in tablet_last_sent_req_map_ for child tablet_id: " << child_tablet_id
+            << " with last_sent_request_info: " << parent_last_sent_req_info.ToString();
+    if (tablet_last_sent_req_map_.contains(parent_tablet_id)) {
+      tablet_last_sent_req_map_.erase(parent_tablet_id);
+      VLOG(3) << "Removed entry in tablet_last_sent_req_map_ for parent tablet_id: "
+              << parent_tablet_id;
+    }
+
+    DCHECK(!tablet_next_req_map_.contains(child_tablet_id));
+    tablet_next_req_map_[child_tablet_id] = parent_next_req_info;
+    VLOG(3) << "Added entry in tablet_next_req_map_ for child tablet_id: " << child_tablet_id
+            << " with next getchanges_request_info: " << parent_next_req_info.ToString();
+    tablet_next_req_map_.erase(parent_tablet_id);
+    VLOG(3) << "Removed entry in tablet_next_req_map_ for parent tablet_id: " << parent_tablet_id;
+  }
+
+  for (auto& entry : commit_meta_and_last_req_map_) {
+    auto& last_req_map = entry.second.last_sent_req_for_begin_map;
+    if (last_req_map.contains(parent_tablet_id)) {
+      auto parent_tablet_req_info = last_req_map.at(parent_tablet_id);
+      for (const auto& child_tablet_id : children_tablets) {
+        DCHECK(!last_req_map.contains(child_tablet_id));
+        last_req_map[child_tablet_id] = parent_tablet_req_info;
+      }
+      // Delete parent's tablet entry
+      last_req_map.erase(parent_tablet_id);
+      VLOG(3) << "Succesfully added entries in last_sent_req_for_begin_map corresponding to "
+                 "commit_lsn: "
+              << entry.first << " for child tablets: " << children_tablets[0] << " &  "
+              << children_tablets[1]
+              << " and removed entry for parent tablet_id: " << parent_tablet_id;
+    }
   }
 
   return Status::OK();
@@ -179,10 +273,18 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(const xrepl::StreamId& stream
           "stream_id: $0",
           stream_id));
 
+  RSTATUS_DCHECK_GT(
+      *entry_opt->last_pub_refresh_time, 0, NotFound,
+      Format(
+          "Couldnt find last_pub_refresh_time on the slot's cdc_state entry for stream_id: $0",
+          stream_id));
+
   last_seen_lsn_ = *entry_opt->restart_lsn;
   last_received_restart_lsn = *entry_opt->restart_lsn;
 
   last_seen_txn_id_ = *entry_opt->xmin;
+
+  last_pub_refresh_time = *entry_opt->last_pub_refresh_time;
 
   auto commit_time = *entry_opt->record_id_commit_time;
   // Values from the slot's entry will be used to form a unique record ID corresponding to a COMMIT
@@ -191,13 +293,14 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(const xrepl::StreamId& stream
   TabletId commit_record_table_id = "";
   std::string commit_record_primary_key = "";
   last_seen_unique_record_id_ = std::make_shared<CDCSDKUniqueRecordID>(CDCSDKUniqueRecordID(
-      RowMessage::COMMIT, commit_time, commit_record_docdb_txn_id,
-      std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(),
-      commit_record_table_id, commit_record_primary_key));
+      false /* publication_refresh_record*/, RowMessage::COMMIT, commit_time,
+      commit_record_docdb_txn_id, std::numeric_limits<uint64_t>::max(),
+      std::numeric_limits<uint32_t>::max(), commit_record_table_id, commit_record_primary_key));
 
   last_shipped_commit.commit_lsn = last_seen_lsn_;
   last_shipped_commit.commit_txn_id = last_seen_txn_id_;
   last_shipped_commit.commit_record_unique_id = last_seen_unique_record_id_;
+  last_shipped_commit.last_pub_refresh_time = last_pub_refresh_time;
 
   VLOG(2) << "LSN & txnID generator initialised with LSN: " << last_seen_lsn_
           << ", txnID: " << last_seen_txn_id_ << ", commit_time: " << commit_time;
@@ -214,7 +317,11 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     auto records_queue = tablet_queue.second;
 
     if (records_queue.empty()) {
-      tablet_to_poll_list.insert(tablet_id);
+      if (tablet_id == kPublicationRefreshTabletID) {
+        RETURN_NOT_OK(PushRecordToPublicationRefreshTabletQueue());
+      } else {
+        tablet_to_poll_list.insert(tablet_id);
+      }
     }
   }
   if (!tablet_to_poll_list.empty()) {
@@ -248,6 +355,14 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       continue;
     }
 
+    // Skip generating LSN & txnID for a DDL record and directly add it to the response.
+    if(record->row_message().op() == RowMessage_Op_DDL) {
+      auto records = resp->add_cdc_sdk_proto_records();
+      records->CopyFrom(*record);
+      metadata.ddl_records++;
+      continue;
+    }
+
     // We want to ship all the txns having same commit_time as a single txn. Therefore, when we
     // encounter the first commit_record for a txn in progress, dont ship it right away since
     // there can be more txns at the same commit_time that are not yet popped from PQ. We'll ship
@@ -271,6 +386,20 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
                 << last_seen_txn_id_ << ". Will skip it";
         continue;
       }
+    }
+
+    // When a publication refresh record is popped from the priority queue, stop populating further
+    // records in the response. Set the fields 'needs_publication_table_list_refresh' and
+    // 'publication_refresh_time' and return the response.
+    if (unique_id->IsPublicationRefreshRecord()) {
+      last_pub_refresh_time = unique_id->GetCommitTime();
+      resp->set_needs_publication_table_list_refresh(true);
+      resp->set_publication_refresh_time(last_pub_refresh_time);
+      metadata.contains_publication_refresh_record = true;
+      VLOG(2) << "Notifying walsender to refresh publication list in the GetConsistentChanges "
+                 "response at commit_time: "
+              << last_pub_refresh_time;
+      break;
     }
 
     auto row_message = record->mutable_row_message();
@@ -314,6 +443,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         last_shipped_commit.commit_lsn = *lsn_result;
         last_shipped_commit.commit_txn_id = *txn_id_result;
         last_shipped_commit.commit_record_unique_id = unique_id;
+        last_shipped_commit.last_pub_refresh_time = last_pub_refresh_time;
 
         ResetCommitDecisionVariables();
 
@@ -334,15 +464,33 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   if (resp->cdc_sdk_proto_records_size() == 0) {
     VLOG(1) << "Sending empty response for GetConsistentChanges for stream_id: " << stream_id;
   } else {
-    VLOG(1) << "Sending non-empty GetConsistentChanges response for stream_id: " << stream_id
-            << " with total_records: " << resp->cdc_sdk_proto_records_size()
-            << ", total_txns: " << metadata.txn_ids.size()
-            << ", min_txn_id: " << metadata.min_txn_id << ", max_txn_id: " << metadata.max_txn_id
-            << ", min_lsn: " << metadata.min_lsn << ", max_lsn: " << metadata.max_lsn
-            << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
-            << ", begin_records: " << metadata.begin_records
-            << ", commit_records: " << metadata.commit_records
-            << ", dml_records: " << metadata.dml_records;
+    int64_t vwal_lag_in_ms = 0;
+    // VWAL lag is only calculated when the response contains a commit record. If there are
+    // multiple commit records in the same resposne, lag will be calculated for the last shipped
+    // commit.
+    if (metadata.commit_records > 0) {
+      auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
+      vwal_lag_in_ms = (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(
+                                last_shipped_commit.commit_record_unique_id->GetCommitTime()))) /
+                            1000;
+    }
+    VLOG(1)
+        << "Sending non-empty GetConsistentChanges response for stream_id: " << stream_id
+        << " with total_records: " << resp->cdc_sdk_proto_records_size()
+        << ", total_txns: " << metadata.txn_ids.size() << ", min_txn_id: "
+        << ((metadata.min_txn_id == std::numeric_limits<uint32_t>::max()) ? 0 : metadata.min_txn_id)
+        << ", max_txn_id: " << metadata.max_txn_id << ", min_lsn: "
+        << (metadata.min_lsn == std::numeric_limits<uint64_t>::max() ? 0 : metadata.min_lsn)
+        << ", max_lsn: " << metadata.max_lsn
+        << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
+        << ", begin_records: " << metadata.begin_records
+        << ", commit_records: " << metadata.commit_records
+        << ", dml_records: " << metadata.dml_records << ", ddl_records: " << metadata.ddl_records
+        << ", contains_publication_refresh_record: " << metadata.contains_publication_refresh_record
+        << ", VWAL lag: " << (metadata.commit_records > 0 ? Format("$0 ms", vwal_lag_in_ms) : "-1")
+        << ", Number of unacked txns in VWAL: "
+        << (metadata.max_txn_id -
+            commit_meta_and_last_req_map_.begin()->second.record_metadata.commit_txn_id);
   }
 
   return Status::OK();
@@ -375,11 +523,15 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
               tablet_id_to_table_id_map_.contains(tablet_id), InternalError,
               Format("Couldnt find the correspondig table_id for tablet_id: $0", tablet_id));
           LOG(INFO) << "Tablet split encountered on tablet_id : " << tablet_id
-                    << " on table_id: " << tablet_id_to_table_id_map_[tablet_id]
+                    << " on table_id: " << *tablet_id_to_table_id_map_[tablet_id].begin()
                     << ". Fetching children tablets";
 
+          // It is safe to get the table_id at the begin position since there will be only one
+          // single entry in the set unless it's a colocated table case, in which case, the tablet
+          // is not expected to split.
           s = GetTabletListAndCheckpoint(
-                  stream_id, tablet_id_to_table_id_map_[tablet_id], hostport, deadline, tablet_id);
+                  stream_id, *tablet_id_to_table_id_map_[tablet_id].begin(), hostport, deadline,
+              tablet_id);
           if (!s.ok()) {
             error_msg = Format("Error fetching children tablets for tablet_id: $0", tablet_id);
             LOG(WARNING) << s.CloneAndPrepend(error_msg).ToString();
@@ -464,7 +616,15 @@ Status CDCSDKVirtualWAL::AddRecordsToTabletQueue(
   std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>& tablet_queue = tablet_queues_[tablet_id];
   if (resp->cdc_sdk_proto_records_size() > 0) {
     for (const auto& record : resp->cdc_sdk_proto_records()) {
-      tablet_queue.push(std::make_shared<CDCSDKProtoRecordPB>(record));
+      // cdc_service sends artificially generated DDL records whenever it has a cache miss while
+      // checking for table schema. These DDL records do not have a commit_time value as they does
+      // not correspond to an actual WAL entry. Hence, it is safe to skip them from adding into the
+      // tablet queue.
+      if (record.row_message().has_commit_time()) {
+        tablet_queue.push(std::make_shared<CDCSDKProtoRecordPB>(record));
+      } else {
+        DCHECK_EQ(record.row_message().op(), RowMessage_Op_DDL);
+      }
     }
   }
 
@@ -505,14 +665,12 @@ Status CDCSDKVirtualWAL::AddRecordToVirtualWalPriorityQueue(
           InternalError, Format("Tablet queue is empty for tablet_id: $0", tablet_id));
     }
     auto record = tablet_queue->front();
-    // TODO: Remove this check once we add support for streaming DDL records.
-    if (record->row_message().op() == RowMessage_Op_DDL) {
-      tablet_queue->pop();
-      continue;
-    }
-    bool result = CDCSDKUniqueRecordID::CanFormUniqueRecordId(record);
+    bool is_publication_refresh_record = (tablet_id == kPublicationRefreshTabletID);
+    bool result =
+        CDCSDKUniqueRecordID::CanFormUniqueRecordId(is_publication_refresh_record, record);
     if (result) {
-      auto unique_id = std::make_shared<CDCSDKUniqueRecordID>(CDCSDKUniqueRecordID(record));
+      auto unique_id = std::make_shared<CDCSDKUniqueRecordID>(
+          CDCSDKUniqueRecordID(is_publication_refresh_record, record));
       sorted_records->push({tablet_id, {unique_id, record}});
       break;
     } else {
@@ -650,6 +808,14 @@ Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
     commit_meta_and_last_req_map_.erase(commit_meta_and_last_req_map_.begin(), pos);
   }
 
+  auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
+  auto lag_in_ms = (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(
+                       record_metadata.commit_record_unique_id->GetCommitTime()))) /
+                   1000;
+  VLOG(2) << "Replication Lag: " << Format("$0 ms", lag_in_ms)
+          << ", commit_lsn: " << record_metadata.commit_lsn
+          << ", commit_txn_id: " << record_metadata.commit_txn_id;
+
   RETURN_NOT_OK(UpdateSlotEntryInCDCState(stream_id, confirmed_flush_lsn, record_metadata));
   last_received_restart_lsn = restart_lsn_hint;
 
@@ -696,6 +862,7 @@ Status CDCSDKVirtualWAL::UpdateSlotEntryInCDCState(
   entry.xmin = record_metadata.commit_txn_id;
   entry.record_id_commit_time = record_metadata.commit_record_unique_id->GetCommitTime();
   entry.cdc_sdk_safe_time = entry.record_id_commit_time;
+  entry.last_pub_refresh_time = record_metadata.last_pub_refresh_time;
   // Doing an update instead of upsert since we expect an entry for the slot to already exist in
   // cdc_state.
   VLOG(2) << "Updating slot entry in cdc_state with confirmed_flush_lsn: " << confirmed_flush_lsn
@@ -719,6 +886,111 @@ bool CDCSDKVirtualWAL::CompareCDCSDKProtoRecords::operator()(
   auto new_record_id = new_record.second.first;
 
   return old_record_id->HasHigherPriorityThan(new_record_id);
+}
+
+Status CDCSDKVirtualWAL::CreatePublicationRefreshTabletQueue() {
+  RSTATUS_DCHECK(
+      !tablet_queues_.contains(kPublicationRefreshTabletID), InternalError,
+      "Publication Refresh Tablet Queue already exists");
+  tablet_queues_[kPublicationRefreshTabletID] = std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>();
+
+  return Status::OK();
+}
+
+Status CDCSDKVirtualWAL::PushRecordToPublicationRefreshTabletQueue() {
+  auto publication_refresh_record = std::make_shared<CDCSDKProtoRecordPB>();
+  auto row_message = publication_refresh_record->mutable_row_message();
+  auto last_pub_refresh_time_hybrid = HybridTime(last_pub_refresh_time);
+  auto hybrid_sum = last_pub_refresh_time_hybrid.AddMicroseconds(pub_refresh_interval);
+  row_message->set_commit_time(hybrid_sum.ToUint64());
+  RSTATUS_DCHECK(
+      tablet_queues_[kPublicationRefreshTabletID].empty(), InternalError,
+      Format("Expected the Publication Refresh Tablet queue to be empty before inserting a record "
+             "to it, but it had $0 records"),
+      tablet_queues_[kPublicationRefreshTabletID].size());
+
+  std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>& tablet_queue =
+      tablet_queues_[kPublicationRefreshTabletID];
+  tablet_queue.push(publication_refresh_record);
+  return Status::OK();
+}
+
+std::vector<TabletId> CDCSDKVirtualWAL::GetTabletsForTable(const TableId& table_id) {
+  std::vector<TabletId> tablet_ids;
+  for (const auto& entry : tablet_id_to_table_id_map_) {
+    if (entry.second.contains(table_id)) {
+      tablet_ids.push_back(entry.first);
+    }
+  }
+  return tablet_ids;
+}
+
+Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
+    const xrepl::StreamId& stream_id, const std::unordered_set<TableId>& new_tables,
+    const HostPort hostport, const CoarseTimePoint deadline) {
+  std::unordered_set<TableId> tables_to_be_added;
+  std::unordered_set<TableId> tables_to_be_removed;
+
+  for (auto table_id : new_tables) {
+    if (!publication_table_list_.contains(table_id)) {
+      tables_to_be_added.insert(table_id);
+      VLOG(2) << "Table: " << table_id << "to be added to polling list";
+    }
+  }
+
+  for (auto table_id : publication_table_list_) {
+    if (!new_tables.contains(table_id)) {
+      tables_to_be_removed.insert(table_id);
+      VLOG(2) << "Table: " << table_id << "to be removed from polling list";
+    }
+  }
+
+  if (!tables_to_be_added.empty()) {
+    for (auto table_id : tables_to_be_added) {
+      // Initialize the tablet_queues_, tablet_id_to_table_id_map_, and tablet_next_req_map_
+      auto s = GetTabletListAndCheckpoint(stream_id, table_id, hostport, deadline);
+      if (!s.ok()) {
+        LOG(WARNING) << s.CloneAndPrepend(
+            Format("Error fetching tablet list & checkpoints for table_id: $0", table_id));
+        RETURN_NOT_OK(s);
+      }
+      publication_table_list_.insert(table_id);
+      VLOG(2) << "Table: " << table_id << " added to polling list";
+    }
+  }
+
+  if (!tables_to_be_removed.empty()) {
+    for (auto table_id : tables_to_be_removed) {
+      publication_table_list_.erase(table_id);
+      auto tablet_list = GetTabletsForTable(table_id);
+      for (auto tablet : tablet_list) {
+        if (tablet_id_to_table_id_map_.contains(tablet)) {
+          tablet_id_to_table_id_map_.erase(tablet);
+        }
+
+        if (tablet_next_req_map_.contains(tablet)) {
+          tablet_next_req_map_.erase(tablet);
+        }
+
+        if (tablet_queues_.contains(tablet)) {
+          tablet_queues_.erase(tablet);
+        }
+
+        if (tablet_last_sent_req_map_.contains(tablet)) {
+          tablet_last_sent_req_map_.erase(tablet);
+        }
+
+        for (auto& entry : commit_meta_and_last_req_map_) {
+          if (entry.second.last_sent_req_for_begin_map.contains(tablet)) {
+            entry.second.last_sent_req_for_begin_map.erase(tablet);
+          }
+        }
+      }
+      VLOG(2) << "Table: " << table_id << " removed from the polling list";
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace cdc

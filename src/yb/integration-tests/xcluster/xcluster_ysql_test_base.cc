@@ -286,6 +286,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
       }
     }
   }
+  LOG_WITH_FUNC(INFO) << "Executing: " << query;
   RETURN_NOT_OK(conn.Execute(query));
 
   // Only check the schema name if it is set AND we created the table with a valid pgschema_name.

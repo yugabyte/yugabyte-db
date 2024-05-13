@@ -18,13 +18,15 @@ import {
   MainTableReplicationCandidate,
   TableReplicationCandidate
 } from '../../XClusterTypes';
+import { TableType } from '../../../../redesign/helpers/dtos';
 
 import styles from './IndexTableList.module.scss';
 
 interface IndexTableListProps {
   mainTableReplicationCandidate: MainTableReplicationCandidate;
   xClusterConfigAction: XClusterConfigAction;
-  isSelectable: boolean;
+  isMainTableSelectable: boolean;
+  isTransactionalConfig: boolean;
   selectedTableUuids: string[];
   handleTableSelect: (row: TableReplicationCandidate, isSelected: boolean) => void;
   handleTableGroupSelect: (isSelected: boolean, rows: TableReplicationCandidate[]) => boolean;
@@ -35,7 +37,8 @@ const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as co
 
 export const IndexTableList = ({
   mainTableReplicationCandidate,
-  isSelectable,
+  isMainTableSelectable,
+  isTransactionalConfig,
   selectedTableUuids,
   handleTableSelect,
   handleTableGroupSelect,
@@ -61,8 +64,17 @@ export const IndexTableList = ({
       tableSort<MainTableReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
     ) ?? [];
   const untoggleableTableUuids = indexTableRows
-    .filter((table) => !isTableToggleable(table, xClusterConfigAction))
+    .filter(
+      (table) =>
+        mainTableReplicationCandidate.tableType !== TableType.PGSQL_TABLE_TYPE ||
+        isTransactionalConfig ||
+        !isTableToggleable(table, xClusterConfigAction)
+    )
     .map((table) => table.tableUUID);
+  const isSelectable =
+    isMainTableSelectable &&
+    !isTransactionalConfig &&
+    mainTableReplicationCandidate.tableType === TableType.PGSQL_TABLE_TYPE;
   return (
     <div className={styles.expandComponent}>
       <BootstrapTable

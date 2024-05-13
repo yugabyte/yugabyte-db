@@ -32,7 +32,7 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 {{< tip title="YugabyteDB Managed requires SSL" >}}
 
-Are you using YugabyteDB Managed? Install the [prerequisites](../../../../develop/build-apps/cloud-add-ip/).
+Are you using YugabyteDB Managed? Install the [prerequisites](/preview/tutorials/build-apps/cloud-add-ip/).
 
 {{</ tip >}}
 

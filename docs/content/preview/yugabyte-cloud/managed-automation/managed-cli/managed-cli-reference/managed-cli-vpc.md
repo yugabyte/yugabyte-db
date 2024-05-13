@@ -40,7 +40,7 @@ Create a VPC.
 | Flag | Description |
 | :--- | :--- |
 | --name | Required. Name for the VPC. |
-| --cloud-provider | Cloud provider for the VPC. `AWS` or `GCP`. |
+| --cloud-provider | Cloud provider for the VPC. `AWS`, `AZURE`, or `GCP`. |
 | --global-cidr | Global CIDR for a GCP VPC. |
 | --region | Comma-delimited list of regions for the VPC. |
 | --cidr | Comma-delimited list of CIDRs for the regions in the VPC. Only required if `--region` specified. |

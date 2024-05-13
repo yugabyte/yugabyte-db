@@ -285,7 +285,7 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
 <div class="tab-content">
   <div id="cloudworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
 
-To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
+To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
 
 To start the application against a running YugabyteDB Managed cluster, use the following command:
 

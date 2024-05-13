@@ -2312,8 +2312,12 @@ uint64_t PgApiImpl::GetReadTimeSerialNo() {
   return pg_txn_manager_->GetReadTimeSerialNo();
 }
 
-void PgApiImpl::ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
-  pg_txn_manager_->ForceReadTimeSerialNo(read_time_serial_no);
+uint64_t PgApiImpl::GetTxnSerialNo() {
+  return pg_txn_manager_->GetTxnSerialNo();
+}
+
+void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
+  pg_txn_manager_->RestoreSessionParallelData(session_data);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2352,6 +2356,11 @@ Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
   return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids);
 }
 
+Result<cdc::UpdatePublicationTableListResponsePB> PgApiImpl::UpdatePublicationTableList(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+  return pg_session_->pg_client().UpdatePublicationTableList(stream_id, table_ids);
+}
+
 Result<cdc::DestroyVirtualWALForCDCResponsePB> PgApiImpl::DestroyVirtualWALForCDC() {
   return pg_session_->pg_client().DestroyVirtualWALForCDC();
 }
@@ -2380,6 +2389,10 @@ Status PgApiImpl::ExecDropReplicationSlot(PgStatement *handle) {
   }
   PgDropReplicationSlot *pg_stmt = down_cast<PgDropReplicationSlot*>(handle);
   return pg_stmt->Exec();
+}
+
+Result<tserver::PgYCQLStatementStatsResponsePB> PgApiImpl::YCQLStatementStats() {
+  return pg_session_->YCQLStatementStats();
 }
 
 Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistory() {

@@ -67,7 +67,7 @@ Create a cluster.
 
 | Flag | Description |
 | :--- | :--- |
-| --cloud-provider | Cloud provider. `AWS` (default) or `GCP`.
+| --cloud-provider | Cloud provider. `AWS` (default), `AZURE`, `GCP`. |
 | --cluster-name | Required. Name for the cluster. |
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
@@ -161,7 +161,7 @@ Update the specified cluster.
 | Flag | Description |
 | :--- | :--- |
 | --cluster-name | Required. Name of the cluster to update. |
-| --cloud-provider | Cloud provider. `AWS` or `GCP`. |
+| --cloud-provider | Cloud provider. `AWS`, `AZURE`, or `GCP`. |
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
 | --database-version | Database version to use for the cluster. `Stable` or `Preview`. |

@@ -12,6 +12,7 @@
 //
 
 #include <atomic>
+#include <fstream>
 #include <optional>
 #include <thread>
 
@@ -82,9 +83,12 @@ DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 
+DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(gzip_stream_compression_level);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(stream_compression_algo);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tracing_level);
@@ -92,7 +96,6 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
 
-DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_int64(db_block_size_bytes);
@@ -118,6 +121,8 @@ DECLARE_bool(ysql_yb_enable_ash);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
+METRIC_DECLARE_histogram(handler_latency_outbound_transfer);
+METRIC_DECLARE_gauge_int64(rpc_busy_reactors);
 
 namespace yb::pgwrapper {
 namespace {
@@ -928,6 +933,17 @@ TEST_F_EX(PgMiniTest, SmallParallelScan, PgMiniTestSingleNode) {
   LOG(INFO) << "Starting scan";
   auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
   ASSERT_EQ(res, kNumRows);
+
+  LOG(INFO) << "Starting transaction";
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, kNumRows);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i FROM generate_series($0, $1) i",
+                               kNumRows + 1, kNumRows * 2));
+  res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, kNumRows * 2);
+  ASSERT_OK(conn.CommitTransaction());
 }
 
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {
@@ -1442,6 +1458,31 @@ class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
 
 };
 
+template <class T>
+T* GetMetricOpt(const MetricEntity& metric_entity, const MetricPrototype& prototype) {
+  const auto& map = metric_entity.UnsafeMetricsMapForTests();
+  auto it = map.find(&prototype);
+  if (it == map.end()) {
+    return nullptr;
+  }
+  return down_cast<T*>(it->second.get());
+}
+
+template <class T>
+T* GetMetricOpt(const tserver::MiniTabletServer& server, const MetricPrototype& prototype) {
+  return GetMetricOpt<T>(server.metric_entity(), prototype);
+}
+
+template <class T>
+T* GetMetricOpt(const tablet::Tablet& tablet, const MetricPrototype& prototype) {
+  return GetMetricOpt<T>(*tablet.GetTabletMetricsEntity(), prototype);
+}
+
+template <class T>
+T& GetMetric(tserver::MiniTabletServer& server, const MetricPrototype& prototype) {
+  return *CHECK_NOTNULL(GetMetricOpt<T>(server, prototype));
+}
+
 } // namespace
 
 // The test checks all rows are returned in case of index scan with dynamic table splitting for
@@ -1603,12 +1644,10 @@ void PgMiniTest::ValidateAbortedTxnMetric() {
   auto tablet_peers = cluster_->GetTabletPeers(0);
   for(size_t i = 0; i < tablet_peers.size(); ++i) {
     auto tablet = ASSERT_RESULT(tablet_peers[i]->shared_tablet_safe());
-    const auto& metric_map = tablet->GetTabletMetricsEntity()->UnsafeMetricsMapForTests();
-    std::reference_wrapper<const MetricPrototype> metric =
-        METRIC_aborted_transactions_pending_cleanup;
-    auto item = metric_map.find(&metric.get());
-    if (item != metric_map.end()) {
-      EXPECT_EQ(0, down_cast<const AtomicGauge<uint64>&>(*item->second).value());
+    auto* gauge = GetMetricOpt<const AtomicGauge<uint64>>(
+        *tablet, METRIC_aborted_transactions_pending_cleanup);
+    if (gauge) {
+      EXPECT_EQ(0, gauge->value());
     }
   }
 }
@@ -2050,6 +2089,80 @@ TEST_F(PgMiniTest, BloomFilterBackwardScanTest) {
 
   auto after_blooms_checked = GetBloomFilterCheckedMetric();
   ASSERT_EQ(after_blooms_checked, before_blooms_checked + 1);
+}
+
+class PgMiniStreamCompressionTest : public PgMiniTest {
+ public:
+  void SetUp() override {
+    FLAGS_stream_compression_algo = 1; // gzip
+    FLAGS_gzip_stream_compression_level = 6; // old default compression level
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgMiniTest, DISABLED_ReadsDuringRBS, PgMiniStreamCompressionTest) {
+  constexpr auto kNumRows = RegularBuildVsSanitizers(10000, 100);
+  constexpr auto kValueSize = RegularBuildVsSanitizers(10000, 100);
+  constexpr auto kNumReaders = 200;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value BYTEA) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.CopyBegin("COPY t FROM STDIN WITH BINARY"));
+  for (auto key : Range(kNumRows)) {
+    conn.CopyStartRow(2);
+    conn.CopyPutInt32(key);
+    conn.CopyPutString(RandomString(kValueSize));
+  }
+  ASSERT_OK(conn.CopyEnd());
+
+  FlushAndCompactTablets();
+
+  LOG(INFO) << "Rows: " << ASSERT_RESULT(conn.FetchAllAsString("SELECT key FROM t"));
+
+  TestThreadHolder thread_holder;
+  std::atomic<int> num_reads{0};
+  for (int i = 0 ; i != kNumReaders; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &num_reads]() {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop.load()) {
+        ASSERT_RESULT(conn.FetchRow<int32_t>(
+            Format("SELECT key FROM t WHERE key = $0", RandomUniformInt(0, kNumRows - 1))));
+        ++num_reads;
+      }
+    });
+  }
+
+  // Do reads for 20 seconds. After 5 seconds, add new tserver to trigger remote bootstrap.
+  for (int i = 0; i != 20; ++i) {
+    if (i == 5) {
+      ASSERT_OK(cluster_->AddTabletServer());
+      ASSERT_OK(cluster_->AddTServerToBlacklist(0));
+    }
+
+    for (const auto& server : cluster_->mini_tablet_servers()) {
+      GetMetric<Histogram>(*server, METRIC_handler_latency_outbound_transfer).Reset();
+    }
+    auto before_reads = num_reads.load();
+    std::this_thread::sleep_for(1s);
+    auto last_reads = num_reads.load() - before_reads;
+
+    std::string suffix;
+    for (const auto& server : cluster_->mini_tablet_servers()) {
+      auto latency = MonoDelta::FromNanoseconds(
+          GetMetric<Histogram>(*server, METRIC_handler_latency_outbound_transfer).MeanValue());
+      auto busy_reactors =
+          GetMetric<AtomicGauge<int64_t>>(*server, METRIC_rpc_busy_reactors).value();
+      if (suffix.empty()) {
+        suffix += ", latency (busy reactors): ";
+      } else {
+        suffix += ", ";
+      }
+      suffix += Format("$0 ($1)", latency, busy_reactors);
+    }
+    LOG(INFO) << "Num reads/s: " << last_reads << suffix;
+  }
+
+  thread_holder.Stop();
 }
 
 } // namespace yb::pgwrapper

@@ -78,17 +78,15 @@ public class ExtraMigrationManager extends DevopsBase {
                 releaseManager.metadataFromObject(metadataObject);
             Release release = Release.getByVersion(releaseVersion);
             if (release == null) {
-              LOG.debug("Creating new release");
               release =
                   Release.create(
                       releaseVersion, releasesUtils.releaseTypeFromVersion(releaseVersion));
-            } else {
-              LOG.trace("Found existing release");
             }
             createArtifacts(metadata, release);
             transaction.commit();
           } catch (Exception e) {
-            LOG.error("failed to migrate, skipping version " + releaseVersion, e);
+            LOG.error(
+                "failed to migrate, skipping version " + releaseVersion, e.getLocalizedMessage());
           }
         });
   }
@@ -96,7 +94,6 @@ public class ExtraMigrationManager extends DevopsBase {
   private void createArtifacts(ReleaseMetadata metadata, Release release) {
     // create helm artifact if necessary
     if (metadata.chartPath != null && release.getKubernetesArtifact() == null) {
-      LOG.debug("updating k8s");
       ReleaseLocalFile rlf = ReleaseLocalFile.create(metadata.chartPath);
       release.addArtifact(
           ReleaseArtifact.create(
@@ -106,11 +103,9 @@ public class ExtraMigrationManager extends DevopsBase {
     List<ReleaseArtifact> existingArtifacts = release.getArtifacts();
     // Now create the db.tgz artifact if necessary
     if (metadata.s3 != null) {
-      LOG.debug("its an s3 release");
       Optional<ReleaseArtifact> foundArtifact =
           existingArtifacts.stream().filter(a -> a.getS3File() != null).findAny();
       if (foundArtifact.isPresent()) {
-        LOG.trace("updating s3 release");
         // s3 artifact exists, but needs update.
         if (!foundArtifact.get().getS3File().path.equals(metadata.s3.paths.x86_64)) {
           S3File s3File = foundArtifact.get().getS3File();
@@ -122,7 +117,6 @@ public class ExtraMigrationManager extends DevopsBase {
         }
       } else {
         // S3 artifact does not exist, create it
-        LOG.trace("Creating new s3 artifact");
         ExtractedMetadata em = releasesUtils.metadataFromName(metadata.s3.paths.x86_64);
         S3File s3File = new S3File();
         s3File.accessKeyId = metadata.s3.accessKeyId;
@@ -137,13 +131,11 @@ public class ExtraMigrationManager extends DevopsBase {
         }
       }
     } else if (metadata.gcs != null) {
-      LOG.debug("its a gcs release");
       Optional<ReleaseArtifact> foundArtifact =
           existingArtifacts.stream().filter(a -> a.getGcsFile() != null).findAny();
       if (foundArtifact.isPresent()) {
         // GCS artifact exists, but needs update
         if (!foundArtifact.get().getGcsFile().path.equals(metadata.gcs.paths.x86_64)) {
-          LOG.trace("Updating gcs artifact");
           GCSFile gcsFile = foundArtifact.get().getGcsFile();
           gcsFile.path = metadata.gcs.paths.x86_64;
           gcsFile.credentialsJson = metadata.gcs.credentialsJson;
@@ -151,7 +143,6 @@ public class ExtraMigrationManager extends DevopsBase {
           foundArtifact.get().setSha256(metadata.gcs.paths.x86_64_checksum);
         }
       } else {
-        LOG.trace("Creating new gcs artifact");
         // GCS file does not exist, create it
         ExtractedMetadata em = releasesUtils.metadataFromName(metadata.gcs.paths.x86_64);
         GCSFile gcsFile = new GCSFile();
@@ -166,7 +157,6 @@ public class ExtraMigrationManager extends DevopsBase {
         }
       }
     } else if (metadata.http != null) {
-      LOG.debug("its an http release");
       Optional<ReleaseArtifact> foundArtifact =
           existingArtifacts.stream().filter(a -> a.getPackageURL() != null).findAny();
       if (foundArtifact.isPresent()) {
@@ -178,7 +168,6 @@ public class ExtraMigrationManager extends DevopsBase {
         }
       } else {
         // http file does not exist, create it
-        LOG.trace("Creating new http artifact");
         ExtractedMetadata em = releasesUtils.metadataFromName(metadata.http.paths.x86_64);
         try {
           release.addArtifact(
@@ -192,18 +181,15 @@ public class ExtraMigrationManager extends DevopsBase {
         }
       }
     } else {
-      LOG.debug("its a local artifact");
       // Handle local file
       Optional<ReleaseArtifact> foundArtifact =
           existingArtifacts.stream().filter(a -> a.getPackageFileID() != null).findAny();
       if (foundArtifact.isPresent()) {
         ReleaseLocalFile rlf = ReleaseLocalFile.get(foundArtifact.get().getPackageFileID());
-        if (rlf.getLocalFilePath().equals(metadata.filePath)) {
-          LOG.trace("updating local file path");
+        if (!rlf.getLocalFilePath().equals(metadata.filePath)) {
           rlf.setLocalFilePath(metadata.filePath);
         }
       } else {
-        LOG.trace("Creating local artifact");
         ExtractedMetadata em = releasesUtils.metadataFromPath(Paths.get(metadata.filePath));
         try {
           release.addArtifact(

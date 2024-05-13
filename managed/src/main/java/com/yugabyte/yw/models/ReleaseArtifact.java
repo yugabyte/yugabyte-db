@@ -326,16 +326,17 @@ public class ReleaseArtifact extends Model {
 
   private void fillJsonText() {
     if (gcsFileJson != null) {
-      log.debug("filling out gcs file json");
       gcsFile = Json.fromJson(Json.parse(gcsFileJson), GCSFile.class);
     }
     if (s3FileJson != null) {
-      log.debug("filling out s3 file json");
       s3File = Json.fromJson(Json.parse(s3FileJson), S3File.class);
     }
   }
 
   private static String sha256Format(String sha256) {
+    if (sha256 == null) {
+      return sha256;
+    }
     // This only happens when migrating from legacy releases, where md5 was supported.
     if (sha256.startsWith("md5")) {
       throw new RuntimeException("cannot set md5sum as sha256 value");

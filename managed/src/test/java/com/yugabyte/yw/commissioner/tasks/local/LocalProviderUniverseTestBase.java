@@ -852,7 +852,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             new RetryTaskUntilCondition<>(
                 () -> {
                   try {
-                    return CheckClusterConsistency.checkCurrentServers(client, universe, true);
+                    return CheckClusterConsistency.checkCurrentServers(
+                        client, universe, true, false);
                   } catch (Exception e) {
                     return Collections.singletonList("Got error: " + e.getMessage());
                   }
@@ -938,7 +939,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected void verifyUniverseTaskSuccess(TaskInfo taskInfo) {
     Universe universe =
         Universe.getOrBadRequest(
-            UUID.fromString(taskInfo.getDetails().get("universeUUID").textValue()));
+            UUID.fromString(taskInfo.getTaskParams().get("universeUUID").textValue()));
     String separator = System.getProperty("line.separator");
     StringBuilder errorBuilder = new StringBuilder();
     if (taskInfo.getTaskState() != TaskInfo.State.Success) {
@@ -948,10 +949,10 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
         if (subTask.getTaskState() == TaskInfo.State.Failure) {
           if (subTask.getTaskType() == TaskType.WaitForServer
               || subTask.getTaskType() == TaskType.WaitForServerReady) {
-            String nodeName = subTask.getDetails().get("nodeName").textValue();
+            String nodeName = subTask.getTaskParams().get("nodeName").textValue();
             UniverseTaskBase.ServerType serverType =
                 UniverseTaskBase.ServerType.valueOf(
-                    subTask.getDetails().get("serverType").asText());
+                    subTask.getTaskParams().get("serverType").asText());
             localNodeManager.dumpProcessOutput(universe, nodeName, serverType);
           } else {
             failedTasksMessages.add(

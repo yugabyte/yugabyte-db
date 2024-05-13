@@ -14,6 +14,11 @@
           "is_runtime": true
         },
         {
+          "name": "cdc_enable_postgres_replica_identity",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
           "name": "enable_automatic_tablet_splitting",
           "class": 2,
           "is_runtime": true
@@ -24,8 +29,23 @@
           "is_runtime": true
         },
         {
+          "name": "enable_object_retention_due_to_snapshots",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
           "name": "enable_tablet_split_of_xcluster_replicated_tables",
           "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "enable_xcluster_auto_flag_validation",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "master_enable_universe_uuid_heartbeat_check",
+          "class": 2,
           "is_runtime": true
         },
         {
@@ -59,6 +79,11 @@
           "is_runtime": true
         },
         {
+          "name": "ysql_yb_enable_alter_table_rewrite",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
           "name": "ysql_yb_enable_expression_pushdown",
           "class": 1,
           "is_runtime": true
@@ -75,6 +100,11 @@
         },
         {
           "name": "ysql_yb_enable_pg_locks",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_saop_pushdown",
           "class": 1,
           "is_runtime": true
         },
@@ -119,6 +149,11 @@
           "is_runtime": true
         },
         {
+          "name": "enable_xcluster_auto_flag_validation",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
           "name": "regular_tablets_data_block_key_value_encoding",
           "class": 3,
           "is_runtime": true
@@ -144,6 +179,11 @@
           "is_runtime": true
         },
         {
+          "name": "ysql_yb_enable_alter_table_rewrite",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
           "name": "ysql_yb_enable_expression_pushdown",
           "class": 1,
           "is_runtime": true
@@ -160,6 +200,11 @@
         },
         {
           "name": "ysql_yb_enable_pg_locks",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_saop_pushdown",
           "class": 1,
           "is_runtime": true
         },

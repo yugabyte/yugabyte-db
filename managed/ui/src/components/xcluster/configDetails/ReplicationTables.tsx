@@ -19,7 +19,8 @@ import { YBButton } from '../../common/forms/fields';
 import {
   formatBytes,
   augmentTablesWithXClusterDetails,
-  getStrictestReplicationLagAlertThreshold
+  getStrictestReplicationLagAlertThreshold,
+  shouldAutoIncludeIndexTables
 } from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
@@ -38,6 +39,7 @@ import {
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue,
   MetricName,
+  XClusterConfigType,
   XClusterModalName,
   XClusterTableStatus,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
@@ -140,7 +142,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     (replication: XClusterConfig) => {
       return props.isDrInterface
         ? api.updateTablesInDr(props.drConfigUuid, { tables: replication.tables })
-        : editXClusterConfigTables(replication.uuid, replication.tables);
+        : editXClusterConfigTables(replication.uuid, {
+            tables: replication.tables,
+            autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfig)
+          });
     },
     {
       onSuccess: (response, xClusterConfig) => {

@@ -75,7 +75,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void SetPublisher(rpc::Publisher service) override;
 
-  void SetCQLServer(yb::server::RpcAndWebServerBase* server) override {
+  void SetCQLServer(yb::server::RpcAndWebServerBase* server,
+      server::YCQLStatementStatsProvider* stmt_provider) override {
     LOG_WITH_FUNC(FATAL) << "should not be called on the master";
   }
 
@@ -90,6 +91,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
   }
 
   void ClearAllMetaCachesOnServer() override;
+
+  Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+      tserver::PgYCQLStatementStatsResponsePB* resp) const override;
 
  private:
   Master* master_ = nullptr;

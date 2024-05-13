@@ -27,6 +27,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
@@ -92,9 +93,8 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
 
   if (tserver_) {
     tserver_->RegisterCertificateReloader(std::bind(&CQLServer::ReloadKeysAndCertificates, this));
-
-    if (FLAGS_ysql_yb_enable_ash && tserver) {
-      tserver->SetCQLServer(this);
+    if (tserver) {
+      tserver->SetCQLServer(this, this);
     }
   }
 }
@@ -243,5 +243,11 @@ Status CQLServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   }
   return Status::OK();
 }
+
+Status CQLServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+      tserver::PgYCQLStatementStatsResponsePB* resp) const {
+  return cql_service_->YCQLStatementStats(req, resp);
+}
+
 }  // namespace cqlserver
 }  // namespace yb

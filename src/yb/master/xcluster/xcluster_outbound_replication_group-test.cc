@@ -188,7 +188,11 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   }
 
   void CreateNamespace(const NamespaceName& namespace_name, const NamespaceId& namespace_id) {
-    namespace_ids[namespace_name] = namespace_id;
+    scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(namespace_id, /*tasks_tracker=*/nullptr);
+    auto l = ns->LockForWrite();
+    l.mutable_data()->pb.set_name(namespace_name);
+    l.Commit();
+    namespace_infos[namespace_id] = std::move(ns);
   }
 
   TableInfoPtr CreateTable(
@@ -229,25 +233,15 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   }
 
   std::unordered_map<NamespaceId, std::vector<TableInfoPtr>> namespace_tables;
-  std::unordered_map<NamespaceName, NamespaceId> namespace_ids;
+  std::unordered_map<NamespaceId, scoped_refptr<NamespaceInfo>> namespace_infos;
   std::unordered_set<xrepl::StreamId> xcluster_streams;
   std::unique_ptr<ThreadPool> thread_pool;
   std::unique_ptr<rpc::Messenger> messenger;
   std::unique_ptr<XClusterOutboundReplicationGroupTaskFactoryMocked> task_factory;
 
   XClusterOutboundReplicationGroup::HelperFunctions helper_functions = {
-      .get_namespace_id_func =
-          [this](YQLDatabase, const NamespaceName& namespace_name) {
-            return namespace_ids[namespace_name];
-          },
-      .get_namespace_name_func = [this](const NamespaceId& namespace_id) -> Result<NamespaceName> {
-        for (const auto& [name, id] : namespace_ids) {
-          if (id == namespace_id) {
-            return name;
-          }
-        }
-        return STATUS_FORMAT(NotFound, "Namespace $0 not found", namespace_id);
-      },
+      .get_namespace_func =
+          std::bind(&XClusterOutboundReplicationGroupMockedTest::GetNamespace, this, _1),
       .get_tables_func =
           [this](const NamespaceId& namespace_id) { return namespace_tables[namespace_id]; },
       .create_xcluster_streams_func =
@@ -280,6 +274,23 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       .delete_from_sys_catalog_func =
           [](const LeaderEpoch&, XClusterOutboundReplicationGroupInfo*) { return Status::OK(); },
   };
+
+  Result<scoped_refptr<NamespaceInfo>> GetNamespace(const NamespaceIdentifierPB& ns_identifier) {
+    scoped_refptr<NamespaceInfo> ns_info;
+    if (ns_identifier.has_id()) {
+      ns_info = FindPtrOrNull(namespace_infos, ns_identifier.id());
+    } else {
+      for (const auto& [_, namespace_info] : namespace_infos) {
+        if (namespace_info->name() == ns_identifier.name()) {
+          ns_info = namespace_info;
+          break;
+        }
+      }
+    }
+
+    SCHECK(ns_info, NotFound, "Namespace not found", ns_identifier.DebugString());
+    return ns_info;
+  }
 
   void VerifyNamespaceCheckpointInfo(
       const TableId& table_id1, const TableId& table_id2, const NamespaceCheckpointInfo& ns_info,

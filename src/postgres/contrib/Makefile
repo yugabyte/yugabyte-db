@@ -56,7 +56,9 @@ SUBDIRS = \
 		unaccent	\
 		vacuumlo    \
 		yb_pg_metrics \
-		yb_test_extension
+		yb_test_extension \
+		yb_xcluster_ddl_replication \
+		yb_ycql_utils
 
 ifeq ($(with_ssl),openssl)
 SUBDIRS += pgcrypto sslinfo

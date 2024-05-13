@@ -1,0 +1,5 @@
+{{- $num := .Get 0 -}}
+{{- $text := default (printf "TA&#8208;%d" $num) (.Get 1)}}
+<a href="/preview/releases/techadvisories/ta-{{$num}}">
+    {{$text | htmlUnescape}}
+</a>

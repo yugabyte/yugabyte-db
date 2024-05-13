@@ -48,7 +48,7 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   @Override
-  public JsonNode getTaskDetails() {
+  public JsonNode getTaskParams() {
     return Json.toJson(taskParams);
   }
 

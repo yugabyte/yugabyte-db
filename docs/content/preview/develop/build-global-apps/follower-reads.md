@@ -53,7 +53,7 @@ In this scenario, the read latency for the application in `us-west` drops drasti
 
 As replicas may not be up-to-date (by design), this might return slightly stale data (the default staleness is 30 seconds). This is the case even if the read goes to a leader.
 
-You can change the staleness value using the following configuration parameter:
+You can change the staleness value using the following YSQL configuration parameter:
 
 ```plpgsql
 SET yb_follower_read_staleness_ms = 10000; -- 10s

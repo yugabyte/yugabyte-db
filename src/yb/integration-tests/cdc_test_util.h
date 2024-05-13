@@ -27,8 +27,13 @@ class XClusterTabletMetrics;
 }  // namespace xrepl
 namespace cdc {
 
-void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& key,
-                  int32_t value);
+Result<QLValuePB> ExtractKey(
+    const Schema& schema, const cdc::KeyValuePairPB& key, std::string expected_col_name,
+    size_t col_id = 0, bool range_col = false);
+
+void AssertIntKey(
+    const Schema& schema, const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& key,
+    int32_t value);
 
 Result<xrepl::StreamId> CreateCDCStream(
     const std::unique_ptr<CDCServiceProxy>& cdc_proxy,

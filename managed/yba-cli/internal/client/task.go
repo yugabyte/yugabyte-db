@@ -51,20 +51,13 @@ func (a *AuthAPIClient) TasksList() (
 
 func (a *AuthAPIClient) failureSubTaskListYBAVersionCheck() (
 	bool, string, error) {
-	allowedVersions := []string{util.YBAAllowFailureSubTaskListMinVersion}
+	allowedVersions := YBAMinimumVersion{
+		Stable: util.YBAAllowFailureSubTaskListMinVersion, 
+		Preview: util.YBAAllowFailureSubTaskListMinVersion,
+	}
 	allowed, version, err := a.CheckValidYBAVersion(allowedVersions)
 	if err != nil {
 		return false, "", err
-	}
-	if allowed {
-		// if the release is 2.19.0.0, block it like YBA < 2.18.1.0 and send generic message
-		restrictedVersions := util.YBARestrictFailedSubtasksVersions()
-		for _, i := range restrictedVersions {
-			allowed, err = util.IsVersionAllowed(version, i)
-			if err != nil {
-				return false, version, err
-			}
-		}
 	}
 	return allowed, version, err
 }

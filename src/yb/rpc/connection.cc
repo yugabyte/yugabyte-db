@@ -83,8 +83,7 @@ DEFINE_test_flag(double, simulated_failure_to_send_call_probability, 0.0,
     "being closed.");
 
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 namespace {
 
@@ -585,7 +584,8 @@ Status Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
     UniqueLock outbound_data_queue_lock(outbound_data_queue_mtx_);
     if (!shutdown_status_.ok()) {
       auto task = MakeFunctorReactorTaskWithAbort(
-          std::bind(&OutboundData::Transferred, outbound_data, _2, /* conn */ nullptr),
+          std::bind(
+              &OutboundData::Transferred, outbound_data, shutdown_status_, /* conn */ nullptr),
           SOURCE_LOCATION());
       outbound_data_queue_lock.unlock();
       responses_queued_after_shutdown_.fetch_add(1, std::memory_order_acq_rel);
@@ -714,5 +714,10 @@ std::string Connection::LogPrefix() const {
   return ToString() + ": ";
 }
 
-}  // namespace rpc
-}  // namespace yb
+void Connection::ReportQueueTime(MonoDelta delta) {
+  if (handler_latency_outbound_transfer_) {
+    handler_latency_outbound_transfer_->Increment(delta.ToNanoseconds());
+  }
+}
+
+}  // namespace yb::rpc

@@ -1124,6 +1124,13 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats() {
+    tserver::PgYCQLStatementStatsRequestPB req;
+    tserver::PgYCQLStatementStatsResponsePB resp;
+    RETURN_NOT_OK(proxy_->YCQLStatementStats(req, &resp, PrepareController()));
+    return resp;
+  }
+
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
     cdc::InitVirtualWALForCDCRequestPB req;
@@ -1136,6 +1143,22 @@ class PgClient::Impl : public BigDataFetcher {
 
     cdc::InitVirtualWALForCDCResponsePB resp;
     RETURN_NOT_OK(local_cdc_service_proxy_->InitVirtualWALForCDC(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+    cdc::UpdatePublicationTableListRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_stream_id(stream_id);
+    for (const auto& table_id : table_ids) {
+      *req.add_table_id() = table_id.GetYbTableId();
+    }
+
+    cdc::UpdatePublicationTableListResponsePB resp;
+    RETURN_NOT_OK(
+        local_cdc_service_proxy_->UpdatePublicationTableList(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1465,9 +1488,18 @@ Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory
   return impl_->ActiveSessionHistory();
 }
 
+Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
+  return impl_->YCQLStatementStats();
+}
+
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
   return impl_->InitVirtualWALForCDC(stream_id, table_ids);
+}
+
+Result<cdc::UpdatePublicationTableListResponsePB> PgClient::UpdatePublicationTableList(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+  return impl_->UpdatePublicationTableList(stream_id, table_ids);
 }
 
 Result<cdc::DestroyVirtualWALForCDCResponsePB> PgClient::DestroyVirtualWALForCDC() {

@@ -34,6 +34,11 @@
 
 namespace yb {
 
+namespace tserver {
+class PgYCQLStatementStatsRequestPB;
+class PgYCQLStatementStatsResponsePB;
+}
+
 class JsonWriter;
 
 namespace cqlserver {
@@ -138,6 +143,10 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // Reset counters for prepared and unprepared statements.
   void ResetStatementsCounters();
+
+  // Fetch the statement stats for prepared and unprepared statements
+  Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+      tserver::PgYCQLStatementStatsResponsePB* resp);
 
  private:
   constexpr static int kRpcTimeoutSec = 5;
