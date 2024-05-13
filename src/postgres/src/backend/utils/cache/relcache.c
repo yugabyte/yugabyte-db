@@ -1890,6 +1890,8 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	/* Set up constraint/default info */
 	if (constr->has_not_null || ndef > 0 || attrmiss || relation->rd_rel->relchecks)
 	{
+		if (relation->rd_att->constr)
+			pfree(relation->rd_att->constr);
 		relation->rd_att->constr = constr;
 
 		if (ndef > 0)            /* DEFAULTs */

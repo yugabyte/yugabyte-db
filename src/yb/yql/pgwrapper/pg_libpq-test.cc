@@ -3881,6 +3881,30 @@ TEST_F(PgLibPqTest, TempTableMultiNodeNamespaceConflict) {
   ASSERT_EQ(rows, (decltype(rows){4, 5, 6}));
 }
 
+TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto query = "SELECT total_bytes, used_bytes FROM "
+               "pg_get_backend_memory_contexts() "
+               "WHERE name = 'CacheMemoryContext'"s;
+  string stable_result;
+  for (int i = 0; i < 20; i++) {
+    BumpCatalogVersion(1, &conn1);
+    // Wait for heartbeat to propagate the new catalog version to trigger
+    // catalog cache refresh on conn2.
+    SleepFor(2s);
+    auto result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+    LOG(INFO) << "result: " << result;
+    if (stable_result.empty()) {
+      stable_result = result;
+    } else {
+      // If each catalog cache refresh had a memory leak in cache memory,
+      // then this assertion would fail.
+      ASSERT_EQ(result, stable_result);
+    }
+  }
+}
+
 class PgBackendsSessionExpireTest : public LibPqTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
