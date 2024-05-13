@@ -55,7 +55,7 @@ For information on YugabyteDB release support timelines, refer to [YugabyteDB re
 
 Keep YBA up-to-date with the latest stable version to get the latest fixes and improvements, as well as to be able to deploy the latest releases of YugabyteDB.
 
-Note that you cannot deploy or upgrade a universe to a higher version of YugabyteDB than the version of YugabyteDB Anywhere. To upgrade a universe to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.
+You can't use YBA to deploy versions of YugabyteDB that are newer than your YBA instance. To upgrade a universe to a more recent version of YugabyteDB, you may first have to upgrade YBA.
 
 - For YugabyteDB upgrades in YBA, you can only upgrade from a _stable_ version to another _stable_ version, or from a _preview_ version to another _preview_ version. Optionally, you can [skip tests](#skip-tests) during upgrades.
 
