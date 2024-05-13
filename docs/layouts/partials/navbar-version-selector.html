@@ -2,7 +2,8 @@
 {{ $pagePermalink := .Page.RelPermalink }}
 <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
   {{ range .Site.Params.versions }}
-    {{ if hasPrefix $pagePermalink .url }}
+    {{ $versionUrl := printf "%s/" .url }}
+    {{ if hasPrefix $pagePermalink $versionUrl }}
       {{ $versionName = .version }}
       {{- if in .version "(Preview)" -}}
         {{ $versionName = replace .version "(Preview)" "<span class='metadata-tag-gray'>Preview</span>" }}
