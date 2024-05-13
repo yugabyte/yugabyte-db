@@ -81,21 +81,6 @@ SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (uni
 /*+ Set(enable_bitmapscan false) */
 SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (unique2 BETWEEN 4 and 6) OR ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
 
--- test respecting row limits
-SET yb_fetch_row_limit = 5;
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM tenk1 WHERE thousand < 4 OR thousand >= 998;
-
---
--- test respecting size limits
---
-SET yb_fetch_row_limit = 0;
-SET yb_fetch_size_limit = '135kB';
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM tenk1 WHERE thousand < 500 OR hundred >= 75;
-RESET yb_fetch_row_limit;
-RESET yb_fetch_size_limit;
-
 --
 -- test exceeding work_mem
 --

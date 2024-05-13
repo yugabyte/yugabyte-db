@@ -172,6 +172,7 @@ double		yb_local_throughput_cost = YB_DEFAULT_LOCAL_THROUGHPUT_COST;
 int			effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 
 Cost		disable_cost = 1.0e10;
+Cost		bitmap_exceeded_work_mem_cost = 5.0e9;
 
 int			max_parallel_workers_per_gather = 2;
 
@@ -238,6 +239,8 @@ static void set_rel_width(PlannerInfo *root, RelOptInfo *rel);
 static double relation_byte_size(double tuples, int width);
 static double page_size(double tuples, int width);
 static double get_parallel_divisor(Path *path);
+static Cost yb_compute_result_transfer_cost(double result_tuples,
+											int result_width);
 
 /*
  * clamp_row_est
@@ -1108,31 +1111,6 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 }
 
 /*
- * cost_yb_bitmap_table_scan
- *	  Determines and returns the cost of scanning a relation using a YB bitmap
- *	  index-then-table plan.
- *
- * 'baserel' is the relation to be scanned
- * 'param_info' is the ParamPathInfo if this is a parameterized path, else NULL
- * 'bitmapqual' is a tree of IndexPaths, BitmapAndPaths, and BitmapOrPaths
- * 'loop_count' is the number of repetitions of the indexscan to factor into
- *		estimates of caching behavior
- *
- * Note: the component IndexPaths in bitmapqual should have been costed
- * using the same loop_count.
- */
-void
-cost_yb_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
-					  ParamPathInfo *param_info,
-					  Path *bitmapqual, double loop_count)
-{
-	Assert(baserel->is_yb_relation);
-	Assert(yb_enable_bitmapscan);
-	return cost_bitmap_heap_scan(path, root, baserel, param_info, bitmapqual,
-								 loop_count);
-}
-
-/*
  * cost_bitmap_tree_node
  *		Extract cost and selectivity from a bitmap tree node (index/and/or)
  */
@@ -1261,6 +1239,239 @@ cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root)
 	path->path.rows = 0;		/* per above, not used */
 	path->path.startup_cost = totalCost;
 	path->path.total_cost = totalCost;
+}
+
+/*
+ * yb_cost_bitmap_tree_node
+ *		Extract cost and selectivity from a bitmap tree node (index/and/or)
+ */
+void
+yb_cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec, int *ybctid_width)
+{
+	Assert(yb_enable_base_scans_cost_model);
+
+	if (IsA(path, IndexPath))
+	{
+		IndexPath *ipath = (IndexPath *) path;
+		*cost = ipath->indextotalcost;
+		*selec = ipath->indexselectivity;
+
+		/*
+		 * Do not select Bitmap Scan if we expect to exceed work_mem, because
+		 * we become extremely inefficient when we exceed work_mem.
+		 */
+		long maxentries = yb_tbm_calculate_entries(work_mem * 1024L,
+												   ipath->ybctid_width);
+
+		double bitmap_rows = clamp_row_est(ipath->indexselectivity * ipath->path.parent->tuples);
+
+		if (bitmap_rows > maxentries && *cost < bitmap_exceeded_work_mem_cost)
+			*cost += bitmap_exceeded_work_mem_cost;
+
+		/* Update the node cost with new calculations */
+		ipath->indextotalcost = *cost;
+
+		if (ybctid_width)
+			*ybctid_width = ipath->ybctid_width;
+
+		/*
+		 * Charge a small amount per retrieved tuple to reflect the costs of
+		 * manipulating the bitmap.  This is mostly to make sure that a bitmap
+		 * scan doesn't look to be the same cost as an indexscan to retrieve a
+		 * single tuple.
+		 */
+		*cost += 0.1 * cpu_operator_cost * path->rows;
+	}
+	else if (IsA(path, BitmapAndPath))
+	{
+		*cost = path->total_cost;
+		*selec = ((BitmapAndPath *) path)->bitmapselectivity;
+		if (ybctid_width)
+			*ybctid_width = ((BitmapAndPath *) path)->ybctid_width;
+	}
+	else if (IsA(path, BitmapOrPath))
+	{
+		*cost = path->total_cost;
+		*selec = ((BitmapOrPath *) path)->bitmapselectivity;
+		if (ybctid_width)
+			*ybctid_width = ((BitmapOrPath *) path)->ybctid_width;
+	}
+	else
+	{
+		elog(ERROR, "unrecognized node type: %d", nodeTag(path));
+		*cost = *selec = 0;		/* keep compiler quiet */
+	}
+}
+
+/*
+ * yb_cost_bitmap_and_node
+ *		Estimate the cost of a BitmapAnd node
+ *
+ * Note that this considers only the costs of index scanning and bitmap
+ * creation, not the eventual table access.  In that sense the object isn't
+ * truly a Path, but it has enough path-like properties (costs in particular)
+ * to warrant treating it as one.
+ */
+void
+yb_cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root)
+{
+	Cost		startup_cost;
+	Cost		run_cost;
+	Selectivity selec;
+	double		least_rows;
+	ListCell   *l;
+	int			ybctid_width_sum;
+	bool		exceeded_work_mem;
+
+	Assert(yb_enable_base_scans_cost_model);
+
+	/*
+	 * We estimate AND selectivity on the assumption that the inputs are
+	 * independent.  This is probably often wrong, but we don't have the info
+	 * to do better.
+	 *
+	 * The runtime cost of the BitmapAnd itself is estimated at
+	 *   cpu_operator_cost * [estimated number of rows from each subpath]
+	 *
+	 * We estimate the number of rows returned as
+	 *   [the smallest bitmap] * [the estimated selectivity of the AND node]
+	 *
+	 * We simply estimate the average ybctid width as
+	 *   avg(ybctid_width for subpath.ybctid_width in subpaths]
+	 * We make no effort to account for some subpaths contributing more rows,
+	 * because the difference is negligible.
+	 */
+	startup_cost = 0.0;
+	run_cost = 0.0;
+	selec = 1.0;
+	least_rows = path->path.parent->rows;
+	ybctid_width_sum = 0;
+	exceeded_work_mem = false;
+
+	foreach(l, path->bitmapquals)
+	{
+		Path	   *subpath = (Path *) lfirst(l);
+		Cost		subcost;
+		Selectivity subselec;
+		int			subybctidwidth;
+
+		yb_cost_bitmap_tree_node(subpath, &subcost, &subselec, &subybctidwidth);
+
+		selec *= subselec;
+
+		if (subcost < bitmap_exceeded_work_mem_cost)
+			startup_cost += subcost;
+		else
+		{
+			startup_cost += subcost - bitmap_exceeded_work_mem_cost;
+			exceeded_work_mem = true;
+		}
+
+		if (l != list_head(path->bitmapquals))
+			run_cost += subpath->rows * cpu_operator_cost;
+
+		least_rows = Min(least_rows, subpath->rows);
+
+		ybctid_width_sum += subybctidwidth;
+	}
+
+	if (exceeded_work_mem)
+		startup_cost += bitmap_exceeded_work_mem_cost;
+
+	path->bitmapselectivity = selec;
+	path->path.rows = least_rows * selec;
+	path->ybctid_width = ybctid_width_sum / list_length(path->bitmapquals);
+	path->path.startup_cost = startup_cost;
+	path->path.total_cost = startup_cost + run_cost;
+}
+
+/*
+ * yb_cost_bitmap_or_node
+ *		Estimate the cost of a BitmapOr node
+ *
+ * See comments for yb_cost_bitmap_and_node.
+ */
+void
+yb_cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root)
+{
+	Cost		startup_cost;
+	Cost		run_cost;
+	Selectivity selec;
+	double		total_rows;
+	ListCell   *l;
+	int			ybctid_width_sum;
+	bool		exceeded_work_mem;
+
+	Assert(yb_enable_base_scans_cost_model);
+
+	/*
+	 * We estimate OR selectivity on the assumption that the inputs are
+	 * non-overlapping, since that's often the case in "x IN (list)" type
+	 * situations.  Of course, we clamp to 1.0 at the end.
+	 *
+	 * We are aware that the unions are optimized out when the inputs are
+	 * BitmapIndexScans. The runtime cost of the BitmapOr itself is estimated at
+	 *   cpu_operator_cost * [estimated rows from each non-index subpath]
+	 *
+	 * We estimate the number of rows returned as
+	 *   Min([total unioned rows], [baserel rows]) * selectivity
+	 *
+	 * We simply estimate the average ybctid width as
+	 *   avg(ybctid_width for subpath.ybctid_width in subpaths]
+	 * We make no effort to account for some subpaths contributing more rows,
+	 * because the difference is negligible.
+	 */
+	startup_cost = 0.0;
+	run_cost = 0.0;
+	selec = 0.0;
+	total_rows = 0.0;
+	ybctid_width_sum = 0;
+	exceeded_work_mem = false;
+
+	foreach(l, path->bitmapquals)
+	{
+		Path	   *subpath = (Path *) lfirst(l);
+		Cost		subcost;
+		Selectivity subselec;
+		int			subybctidwidth;
+
+		yb_cost_bitmap_tree_node(subpath, &subcost, &subselec, &subybctidwidth);
+
+		selec += subselec;
+
+		if (subcost < bitmap_exceeded_work_mem_cost)
+			startup_cost += subcost;
+		else
+		{
+			startup_cost += subcost - bitmap_exceeded_work_mem_cost;
+			exceeded_work_mem = true;
+		}
+
+		if (l != list_head(path->bitmapquals) &&
+			!IsA(subpath, IndexPath))
+			startup_cost += subpath->rows * cpu_operator_cost;
+
+		total_rows += subpath->rows;
+
+		ybctid_width_sum += subybctidwidth;
+	}
+
+	/*
+	 * Bitmap Or can increase the bitmap size, resulting in exceeding work_mem.
+	 * If any of the subpaths or this node itself is estimated to exceed
+	 * work_mem, mark this as so.
+	 */
+	if (exceeded_work_mem ||
+		path->path.rows > yb_tbm_calculate_entries(work_mem * 1024L,
+												   path->ybctid_width))
+		startup_cost += bitmap_exceeded_work_mem_cost;
+
+	path->bitmapselectivity = Min(selec, 1.0);
+	path->path.rows = Min(path->path.parent->rows, total_rows) *
+					  path->bitmapselectivity;
+	path->ybctid_width = ybctid_width_sum / list_length(path->bitmapquals);
+	path->path.startup_cost = startup_cost;
+	path->path.total_cost = startup_cost + run_cost;
 }
 
 /*
@@ -6284,14 +6495,14 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 												   NIL, /* index_conditions */
 												   local_clauses,
 												   baserel, reloid);
-	path->yb_estimated_docdb_result_width = docdb_result_width;
+	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 	num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
 										 	   docdb_result_width);
 	num_seeks = num_result_pages;
 	num_nexts = (num_result_pages - 1) + (baserel->tuples - 1);
 
-	path->yb_estimated_num_nexts = num_nexts;
-	path->yb_estimated_num_seeks = num_seeks;
+	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_seeks = num_seeks;
 
 	run_cost += (num_seeks * per_seek_cost) +
 				(num_nexts * per_next_cost);
@@ -6690,10 +6901,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	baserel_oid = rte->relid;
 	baserel_is_colocated = YbGetTablePropertiesById(baserel_oid)->is_colocated;
 
-	if (!enable_indexscan)
-		startup_cost += disable_cost;
-	/* we don't need to check enable_index_onlyscan; indxpath.c does that */
-
 	if (partial_path)
 	{
 		if (baserel->is_yb_relation)
@@ -7002,6 +7209,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		index_ybctid_transfer_cost + index_ybctid_paging_seek_next_costs) *
 		YB_BITMAP_DISCOURAGE_MODIFIER;
 	path->indexselectivity = index_selectivity;
+	path->ybctid_width = index_ybctid_width;
 
 	/* Estimate network cost for transferring the results
 	 *
@@ -7070,7 +7278,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 													index_conditions,
 													local_clauses,
 													baserel, baserel_oid);
-	path->yb_estimated_docdb_result_width = docdb_result_width;
+	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 	num_result_pages = yb_get_num_result_pages(num_docdb_result_rows,
 											   docdb_result_width);
 	int result_paging_num_seeks = num_result_pages;
@@ -7173,8 +7381,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		}
 	}
 
-	path->yb_estimated_num_nexts = num_nexts;
-	path->yb_estimated_num_seeks = num_seeks;
+	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_seeks = num_seeks;
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
@@ -7185,7 +7393,159 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	startup_cost += path->path.pathtarget->cost.startup;
 	run_cost += path->path.pathtarget->cost.per_tuple * path->path.rows;
 
+	/* we don't need to check enable_index_onlyscan; indxpath.c does that */
+	if (!enable_indexscan)
+		startup_cost += disable_cost;
+
 	path->path.startup_cost = startup_cost;
 	path->path.total_cost = startup_cost + run_cost;
 	yb_parallel_cost((Path *) path);
+}
+
+/*
+ * yb_cost_bitmap_table_scan
+ *	  Determines and returns the cost of scanning a relation using a YB bitmap
+ *	  index-then-table plan.
+ *
+ * 'baserel' is the relation to be scanned
+ * 'param_info' is the ParamPathInfo if this is a parameterized path, else NULL
+ * 'bitmapqual' is a tree of IndexPaths, BitmapAndPaths, and BitmapOrPaths
+ * 'loop_count' is the number of repetitions of the indexscan to factor into
+ *		estimates of caching behavior
+ *
+ * Note: the component IndexPaths in bitmapqual should have been costed
+ * using the same loop_count.
+ */
+void
+yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+					  ParamPathInfo *param_info,
+					  Path *bitmapqual, double loop_count)
+{
+	Cost		startup_cost = 0;
+	Cost		run_cost = 0;
+	Selectivity indexSelectivity;
+	Cost		indexTotalCost;
+	int32		tuple_width = 0;
+	Oid			reloid = planner_rt_fetch(baserel->relid, root)->relid;
+	int32		num_blocks;
+	int			max_nexts_to_avoid_seek = 2;
+	/* TODO: Plug here the actual number of key-value pairs per tuple */
+	int			num_key_value_pairs_per_tuple =
+		YB_DEFAULT_NUM_KEY_VALUE_PAIRS_PER_TUPLE;
+	/* TODO: Plug here the actual number of SST files for this index */
+	int			num_sst_files = YB_DEFAULT_NUM_SST_FILES_PER_TABLE;
+	Cost		per_merge_cost = 0.0;
+	Cost		per_seek_cost = 0.0;
+	Cost		per_next_cost = 0.0;
+	List	   *local_clauses = NIL;
+	double		remote_filtered_rows;
+	int 		num_nexts;
+	int 		num_seeks;
+	int			docdb_result_width;
+	double		tuples_fetched;
+
+	/* Should only be applied to Yugabyte base relations */
+	Assert(IsA(baserel, RelOptInfo));
+	Assert(baserel->relid > 0);
+	Assert(baserel->rtekind == RTE_RELATION);
+	Assert(baserel->is_yb_relation);
+	Assert(yb_enable_bitmapscan);
+
+	/* Mark the path with the correct row estimate */
+	if (param_info)
+		path->rows = param_info->ppi_rows;
+	else
+		path->rows = baserel->rows;
+
+	if (!enable_bitmapscan)
+		startup_cost += disable_cost;
+
+	/* DocDB costs */
+	/* Compute tuple width */
+	tuple_width = yb_get_relation_data_width(baserel, reloid);
+
+	/*
+	 * Fetch total cost of obtaining the bitmap, as well as its total
+	 * selectivity.
+	 */
+	yb_cost_bitmap_tree_node(bitmapqual, &indexTotalCost, &indexSelectivity, NULL);
+	startup_cost += indexTotalCost;
+
+	/* we fall back to a sequential scan if we exceed work_mem */
+	if (indexTotalCost > bitmap_exceeded_work_mem_cost)
+	{
+		yb_cost_seqscan(path, root, baserel, param_info);
+		if (path->startup_cost > disable_cost)
+		{
+			path->startup_cost -= disable_cost;
+			path->total_cost -= disable_cost;
+		}
+		path->startup_cost += startup_cost;
+		path->total_cost += startup_cost;
+		return;
+	}
+
+	/* TODO: account for local and remote quals */
+	tuples_fetched =
+		clamp_row_est(baserel->tuples *
+					  clauselist_selectivity(root, baserel->baserestrictinfo,
+											 baserel->relid, JOIN_INNER, NULL));
+
+	/* Block fetch cost from disk */
+	num_blocks = ceil(tuples_fetched * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
+	run_cost += yb_random_block_cost * num_blocks;
+
+	/* DocDB costs for merging key-value pairs to form tuples */
+	per_merge_cost = num_key_value_pairs_per_tuple *
+					 yb_docdb_merge_cpu_cycles * cpu_operator_cost;
+
+	/* Seek to first key cost */
+	if (tuples_fetched > 0)
+	{
+		per_seek_cost = yb_get_lsm_seek_cost(tuples_fetched,
+											 num_key_value_pairs_per_tuple,
+											 num_sst_files) +
+						per_merge_cost;
+	}
+
+	/* Next for remaining keys */
+	per_next_cost = (yb_docdb_next_cpu_cycles * cpu_operator_cost) +
+					per_merge_cost;
+
+	/* TODO: account for table pushdown quals */
+	remote_filtered_rows = tuples_fetched;
+
+	/* tlist eval costs are paid per output row, not per tuple scanned */
+	startup_cost += path->pathtarget->cost.startup;
+	run_cost += path->pathtarget->cost.per_tuple * path->rows;
+
+	docdb_result_width = yb_get_docdb_result_width(path, root,
+												   false, /* is_index_path*/
+												   false, /* is_primary_index */
+												   false, /* is_index_only */
+												   NIL, /* index_conditions */
+												   local_clauses,
+												   baserel, reloid);
+	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
+
+	num_seeks = tuples_fetched;
+	num_nexts = (max_nexts_to_avoid_seek + 1) * tuples_fetched;
+
+	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_seeks = num_seeks;
+
+	run_cost += (num_seeks * per_seek_cost) +
+				(num_nexts * per_next_cost);
+
+	/* Network latency cost is added to startup cost */
+	startup_cost += yb_local_latency_cost;
+	run_cost += yb_compute_result_transfer_cost(remote_filtered_rows,
+												docdb_result_width);
+
+	path->rows = tuples_fetched;
+	path->startup_cost = startup_cost;
+	path->total_cost = startup_cost + run_cost;
+	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_seeks = num_seeks;
+	yb_parallel_cost(path);
 }

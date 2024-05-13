@@ -631,7 +631,7 @@ size_t YBCBitmapUnionSet(SliceSet sa, ConstSliceSet sb) {
     if (a->insert(slice).second == false)
       FreeSlice(slice);
     else
-      new_bytes += slice.size();
+      new_bytes += slice.size() + sizeof(slice);
   }
   delete b;
 
@@ -672,7 +672,7 @@ size_t YBCBitmapInsertYbctidsIntoSet(SliceSet set, ConstSliceVector vec) {
 
   for (auto ybctid : *v) {
     if (s->insert(ybctid).second) // successfully inserted
-      bytes += ybctid.size();
+      bytes += ybctid.size() + sizeof(ybctid);
     else
       FreeSlice(ybctid);
   }
