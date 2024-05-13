@@ -304,8 +304,8 @@ func init() {
 
 	updateOnpremProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
-			" lacking access to the public internet for package downloads, "+
-			"defaults to false.")
+			" lacking access to the public internet for package downloads. "+
+			"(default false)")
 	updateOnpremProviderCmd.Flags().Bool("passwordless-sudo-access", false,
 		"[Optional] Can sudo actions be carried out by user without a password.")
 

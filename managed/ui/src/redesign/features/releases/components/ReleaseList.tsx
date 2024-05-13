@@ -11,7 +11,7 @@ import { DeploymentStatus } from './ReleaseDeploymentStatus';
 import { AddReleaseModal } from './ReleaseDialogs/AddReleaseModal';
 import { EditArchitectureModal } from './ReleaseDialogs/EditArchitectureModal';
 import { EditReleaseTagModal } from './ReleaseDialogs/EditReleaseTagModal';
-import { DisableReleaseModal } from './ReleaseDialogs/DisableReleaseModal';
+import { ModifyReleaseStateModal } from './ReleaseDialogs/ModifyReleaseStateModal';
 import { DeleteReleaseModal } from './ReleaseDialogs/DeleteReleaseModal';
 import { YBButton, YBCheckbox } from '../../../components';
 import { YBPanelItem } from '../../../../components/panels';
@@ -160,6 +160,7 @@ const OTHER_ACTONS = {
 } as const;
 
 const MAX_RELEASE_TAG_CHAR = 10;
+const MAX_RELEASE_VERSION_CHAR = 24;
 
 export const NewReleaseList = () => {
   const helperClasses = useStyles();
@@ -219,7 +220,7 @@ export const NewReleaseList = () => {
                 className={clsx(helperClasses.releaseTagText, helperClasses.smallerReleaseText)}
               >
                 {row.release_tag.length > MAX_RELEASE_TAG_CHAR
-                  ? `${row.release_tag.substring(0, 10)}...`
+                  ? `${row.release_tag.substring(0, MAX_RELEASE_TAG_CHAR)}...`
                   : row.release_tag}
               </span>
             </Box>
@@ -413,6 +414,7 @@ export const NewReleaseList = () => {
   const formatActionButtons = (cell: any, row: any) => {
     return (
       <DropdownButton
+        key={`release-list-actions-${row.release_uuid}`}
         title="Actions"
         id="release-list-actions"
         pullRight={false}
@@ -621,8 +623,9 @@ export const NewReleaseList = () => {
             >
               <TableHeaderColumn dataField={'release_uuid'} isKey={true} hidden={true} />
               <TableHeaderColumn
-                width="10%"
+                width="15%"
                 tdStyle={{ verticalAlign: 'middle' }}
+                dataField={'version'}
                 dataFormat={formatVersion}
                 dataSort
               >
@@ -640,7 +643,6 @@ export const NewReleaseList = () => {
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatReleaseSupport}
-                dataSort
               >
                 {t('releases.releaseSupport')}
               </TableHeaderColumn>
@@ -648,12 +650,11 @@ export const NewReleaseList = () => {
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatUsage}
-                dataSort
               >
                 {t('releases.releaseUsage')}
               </TableHeaderColumn>
               <TableHeaderColumn
-                width="20%"
+                width="15%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatImportedArchitecture}
               >
@@ -663,6 +664,7 @@ export const NewReleaseList = () => {
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatDeploymentStatus}
+                dataField={'state'}
                 dataSort
               >
                 {t('releases.releaseDeployment')}
@@ -711,7 +713,7 @@ export const NewReleaseList = () => {
         />
       )}
       {showDisableReleaseDialog && selectedReleaseDetails && (
-        <DisableReleaseModal
+        <ModifyReleaseStateModal
           open={showDisableReleaseDialog}
           onActionPerformed={onActionPerformed}
           onClose={onDisableReleaseDialogClose}

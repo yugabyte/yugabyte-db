@@ -33,9 +33,11 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 
@@ -102,10 +104,10 @@ void AssertValue(const google::protobuf::Map<string, QLValuePB>& changes, int32_
   ASSERT_EQ(value->second.int32_value(), expected_value);
 }
 
-void CheckIntentRecord(const CDCRecordPB& record, int expected_value) {
-  ASSERT_EQ(record.changes_size(), 1);
+void CheckIntentRecord(const Schema& schema, const CDCRecordPB& record, int expected_value) {
+  ASSERT_EQ(record.changes_size(), 2);
   // Check the key.
-  ASSERT_NO_FATALS(AssertIntKey(record.key(), expected_value));
+  ASSERT_NO_FATALS(AssertIntKey(schema, record.key(), expected_value));
   // Make sure transaction metadata is set.
   ASSERT_TRUE(record.has_transaction_state());
   ASSERT_TRUE(record.has_time());
@@ -123,9 +125,9 @@ void CheckApplyRecord(const CDCRecordPB& apply_record) {
   ASSERT_TRUE(apply_record.has_time());
 }
 
-void CheckRegularRecord(const CDCRecordPB& record, int expected_value) {
-  ASSERT_EQ(record.changes_size(), 1);
-  ASSERT_NO_FATALS(AssertIntKey(record.key(), expected_value));
+void CheckRegularRecord(const Schema& schema, const CDCRecordPB& record, int expected_value) {
+  ASSERT_EQ(record.changes_size(), 2);
+  ASSERT_NO_FATALS(AssertIntKey(schema, record.key(), expected_value));
 }
 
 TEST_F(CDCServiceTxnTest, TestGetChanges) {
@@ -168,6 +170,11 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
       client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
+  std::string tablet_id = tablets.Get(0).tablet_id();
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+  auto schema =
+      ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))->shared_tablet()->schema();
+
   // Create CDC stream on table.
   auto stream_id = CreateCDCStream(cdc_proxy_, table_.table()->id());
 
@@ -175,7 +182,7 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
   GetChangesResponsePB change_resp;
 
   change_req.set_stream_id(stream_id.ToString());
-  change_req.set_tablet_id(tablets.Get(0).tablet_id());
+  change_req.set_tablet_id(tablet_id);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
@@ -210,9 +217,9 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
         ASSERT_LT(write_count, 5);
         auto& expected_record = expected_write_records_order[write_count++];
         if (expected_record.is_intent) {
-          ASSERT_NO_FATALS(CheckIntentRecord(record, expected_record.value));
+          ASSERT_NO_FATALS(CheckIntentRecord(*schema, record, expected_record.value));
         } else {
-          ASSERT_NO_FATALS(CheckRegularRecord(record, expected_record.value));
+          ASSERT_NO_FATALS(CheckRegularRecord(*schema, record, expected_record.value));
         }
       } else if (record.operation() == CDCRecordPB::CHANGE_METADATA) {
         ASSERT_EQ(record.change_metadata_request().schema_version(), 0);
@@ -240,13 +247,18 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
       client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
+  std::string tablet_id = tablets.Get(0).tablet_id();
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+  auto schema =
+      ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))->shared_tablet()->schema();
+
   // Create CDC stream on table.
   auto stream_id = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
   change_req.set_stream_id(stream_id.ToString());
-  change_req.set_tablet_id(tablets.Get(0).tablet_id());
+  change_req.set_tablet_id(tablet_id);
 
   // Consume the META_OP that has the initial table Schema.
   ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
@@ -275,7 +287,7 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   int32_t expected_order[kNumIntentsToWrite] = {kStartKey, kStartKey + 1, kStartKey + 2};
 
   for (int i = 0; i < change_resp.records_size(); i++) {
-    ASSERT_NO_FATALS(CheckIntentRecord(change_resp.records(i), expected_order[i]));
+    ASSERT_NO_FATALS(CheckIntentRecord(*schema, change_resp.records(i), expected_order[i]));
   }
 
   // Commit transaction.
@@ -297,7 +309,7 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
       return change_resp.records_size() == 1;
     }, MonoDelta::FromSeconds(30), "Wait for Transaction to be committed."));
     for (int i = 0; i < change_resp.records_size() - 1; i++) {
-      ASSERT_NO_FATALS(CheckIntentRecord(change_resp.records(i), expected_order[i]));
+      ASSERT_NO_FATALS(CheckIntentRecord(*schema, change_resp.records(i), expected_order[i]));
     }
     ASSERT_NO_FATALS(CheckApplyRecord(change_resp.records(change_resp.records_size() - 1)));
   }

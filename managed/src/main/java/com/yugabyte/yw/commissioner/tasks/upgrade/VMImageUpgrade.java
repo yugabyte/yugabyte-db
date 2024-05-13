@@ -189,19 +189,19 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         continue;
       }
       List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
-      List<String> masterIps = new ArrayList<>();
+      List<NodeDetails> masters = new ArrayList<>();
       if (node.isMaster) {
         processTypes.add(ServerType.MASTER);
-        masterIps.add(node.cloudInfo.private_ip);
+        masters.add(node);
       }
-      List<String> tserverIps = new ArrayList<>();
+      List<NodeDetails> tservers = new ArrayList<>();
       if (node.isTserver) {
         processTypes.add(ServerType.TSERVER);
-        tserverIps.add(node.cloudInfo.private_ip);
+        tservers.add(node);
       }
       if (universe.isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
 
-      createCheckNodesAreSafeToTakeDownTask(masterIps, tserverIps);
+      createCheckNodesAreSafeToTakeDownTask(masters, tservers, null);
 
       // The node is going to be stopped. Ignore error because of previous error due to
       // possibly detached root volume.

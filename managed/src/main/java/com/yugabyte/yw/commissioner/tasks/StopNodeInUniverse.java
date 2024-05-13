@@ -81,7 +81,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           null);
     } else {
       createCheckNodesAreSafeToTakeDownTask(
-          Collections.singletonList(currentNode.cloudInfo.private_ip), Collections.emptyList());
+          Collections.singletonList(currentNode), Collections.emptyList(), null);
     }
     addBasicPrecheckTasks();
   }

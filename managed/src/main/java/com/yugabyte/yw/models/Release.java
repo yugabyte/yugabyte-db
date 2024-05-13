@@ -192,6 +192,10 @@ public class Release extends Model {
   }
 
   public void setState(ReleaseState state) {
+    if (this.state == ReleaseState.INCOMPLETE) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "cannot update release state from 'INCOMPLETE'");
+    }
     this.state = state;
     save();
   }
@@ -200,18 +204,29 @@ public class Release extends Model {
   public boolean delete() {
     try (Transaction transaction = DB.beginTransaction()) {
       for (ReleaseArtifact artifact : getArtifacts()) {
+        ReleaseLocalFile rlf = null;
         if (artifact.getPackageFileID() != null) {
-          ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
-          if (!rlf.delete()) {
-            return false;
-          }
+          rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
         }
-        log.debug("cascading delete to artifact {}", artifact.getArtifactUUID());
+        log.debug(
+            "Release {}: cascading delete to artifact {}", releaseUUID, artifact.getArtifactUUID());
         if (!artifact.delete()) {
+          log.error(
+              String.format(
+                  "Release %s: failed to delete artifact %s",
+                  releaseUUID, artifact.getArtifactUUID()));
+          return false;
+        }
+        if (rlf != null && !rlf.delete()) {
+          log.error(
+              String.format(
+                  "Release %s: failed to delete ReleaseLocalFile %s:%s",
+                  releaseUUID, rlf.getFileUUID(), rlf.getLocalFilePath()));
           return false;
         }
       }
       if (!super.delete()) {
+        log.error("failed to delete release " + releaseUUID);
         return false;
       }
       transaction.commit();

@@ -11,6 +11,7 @@
 package com.yugabyte.troubleshoot.ts.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.ebean.Model;
 import io.ebean.annotation.DbJsonB;
 import jakarta.validation.constraints.NotNull;
@@ -54,6 +55,7 @@ public class UniverseDetails extends Model implements ModelWithId<UUID> {
       private UUID uuid;
       private String clusterType;
       private UserIntent userIntent;
+      private PlacementInfo placementInfo;
     }
 
     @Data
@@ -67,9 +69,16 @@ public class UniverseDetails extends Model implements ModelWithId<UUID> {
       private String nodeName;
       private UUID nodeUuid;
       private UUID placementUuid;
+
+      @JsonProperty(value = "isMaster")
       private boolean isMaster;
+
+      @JsonProperty(value = "isTserver")
       private boolean isTserver;
+
+      @JsonProperty(value = "isYsqlServer")
       private boolean isYsqlServer;
+
       private CloudSpecificInfo cloudInfo;
 
       @JsonIgnore

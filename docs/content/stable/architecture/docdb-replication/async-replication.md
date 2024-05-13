@@ -134,7 +134,6 @@ xCluster safe time is computed for each database by the target-universe master l
 
 A source tablet server sends such information when it determines that no active transaction involving that tablet can commit before _T_ and that all transactions involving that tablet that committed before _T_ have application Raft entries that have been previously sent as changes.  It also periodically (currently 250 ms) checks for committed transactions that are missing apply Raft entries and generates such entries for them; this helps xCluster safe time advance faster.
 
-
 ## Schema differences
 
 xCluster replication does not support replicating between two copies of a table with different schemas.  For example, you cannot replicate a table to a version of that table missing a column or with a column having a different type.
@@ -163,27 +162,27 @@ Ongoing work, [#17862](https://github.com/yugabyte/yugabyte-db/issues/17862), wi
 
 ## Supported deployment scenarios
 
-xCluster currently supports active-passive and active-active deployments.
+xCluster currently supports active-active single-master and active-active multi-master deployments.
 
-### Active-passive
+### Active- active single-master
 
-Here the replication is unidirectional from a source universe to a target universe.  The target universe is typically located in data centers or regions that are different from the source universe. The target universe is passive because it does not take writes from the higher layer services.
+Here the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The source universe can serve both reads and writes. The target universe can only serve reads. Since only the nodes in one universe can take writes this mode is referred to as single master. Note that within the source universe all nodes can serve writes.
 
 Usually, such deployments are used for serving low-latency reads from the target universes, as well as for disaster recovery purposes.  When used primarily for disaster recovery purposes, these deployments are also called active-standby because the target universe stands by to take over if the source universe is lost.
 
 Either transactional or non-transactional mode can be used here, but transactional mode is usually preferred because it provides consistency if the source universe is lost.
 
-The following diagram shows an example active-passive deployment:
+The following diagram shows an example of this deployment:
 
 ![example of active-passive deployment](/images/architecture/replication/active-standby-deployment-new.png)
 
-### Active-active
+### Active-active multi-master
 
-The replication of data can be bidirectional between two universes, in which case both universes can perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. If the same key is updated in both universes at similar times, this results in the write with the larger timestamp becoming the latest write. In this case, the universes are both active, and this deployment mode is called a multi-master or active-active deployment.
+The replication of data can be bidirectional between two universes, in which case both universes can perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. If the same key is updated in both universes at similar times, this results in the write with the larger timestamp becoming the latest write. In this case, both the universes serve writes, hence this deployment mode is called multi-master.
 
-The multi-master deployment is built internally using two source-target unidirectional replication streams using non-transactional mode. Special care is taken to ensure that the timestamps are assigned to guarantee last-writer-wins semantics and the data arriving from the replication stream is not re-replicated.
+The multi-master deployment is built using bidirectional replication which has two unidirectional replication streams using non-transactional mode. Special care is taken to ensure that the timestamps are assigned to guarantee last-writer-wins semantics and the data arriving from the replication stream is not re-replicated.
 
-The following diagram shows an example active-active deployment:
+The following diagram shows an example of this deployment:
 
 ![example of active-active deployment](/images/architecture/replication/active-active-deployment-new.png)
 
@@ -217,15 +216,15 @@ There are a number of limitations in the current xCluster implementation besides
 
 Because xCluster replication bypasses the query layer, any database triggers are not fired on the target side for replicated records, which can result in unexpected behavior.
 
-### Constraints cannot be enforced in active-active
+### Constraints cannot be enforced in active-active multi-master
 
-Similarly, there is no way to check for violations of unique constraints in active-active setups.  It is possible, for example, to have two conflicting writes in separate universes that together would violate a unique constraint and cause the main table to contain both rows, yet the index to contain only one row, resulting in an inconsistent state.
+Similarly, there is no way to check for violations of unique constraints in active-active multiple-master setups. It is possible, for example, to have two conflicting writes in separate universes that together would violate a unique constraint and cause the main table to contain both rows, yet the index to contain only one row, resulting in an inconsistent state.
 
-Because of this applications using active-active should avoid `UNIQUE` indexes and constraints as well as serial columns in primary keys: Because both universes generate the same sequence numbers, this can result in conflicting rows.  It is recommended to use UUIDs instead.
+Because of this applications using active-active multi-master should avoid `UNIQUE` indexes and constraints as well as serial columns in primary keys: Because both universes generate the same sequence numbers, this can result in conflicting rows. It is recommended to use UUIDs instead.
 
 In the future, it may be possible to detect such unsafe constraints and issue a warning, potentially by default.  This is tracked in [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
 
-Note that if you attempt to insert the same row on both universes at the same time to a table that does not have a primary key then you will end up with two rows with the same data.  This is the expected PostgreSQL behavior &mdash; tables without primary keys can have multiple rows with the same data.
+Note that if you attempt to insert the same row on both universes at the same time to a table that does not have a primary key then you will end up with two rows with the same data. This is the expected PostgreSQL behavior &mdash; tables without primary keys can have multiple rows with the same data.
 
 ### Materialized views are not supported
 
@@ -235,9 +234,9 @@ Setting up xCluster replication for [materialized views](../../../explore/ysql-l
 
 When interacting with data replicated from another universe using non-transactional mode:
 
-- reads are only eventually consistent
-- last writer wins for writes
-- transactions are limited to isolation level SQL-92 READ COMMITTED
+- Reads are only eventually consistent
+- Last writer wins for writes
+- Transactions are limited to isolation level SQL-92 READ COMMITTED
 
 After losing one universe, the other universe may be left with torn transactions.
 
@@ -245,15 +244,15 @@ After losing one universe, the other universe may be left with torn transactions
 
 With transactional mode,
 
-- no writes are allowed in the target universe
-- active-active is not supported
+- No writes are allowed in the target universe
+- Active-active multi-master is not supported
 - YCQL is not yet supported
 
 When the source universe is lost, an explicit decision must be made to switch over to the standby universe and point-in-time recovery must run; this is expected to increase recovery time by a minute or so.
 
 ### Bootstrapping replication
 
-- Currently, it is your responsibility to ensure that a target universe has sufficiently recent updates so that replication can safely resume (for instructions, refer to [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/#bootstrap-a-target-universe)). In the future, bootstrapping the target universe will be automated, which is tracked in [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
+- Currently, it is your responsibility to ensure that a target universe has sufficiently recent updates so that replication can safely resume (for instructions, refer to [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/async-deployment/#bootstrap-a-target-universe)). In the future, bootstrapping the target universe will be automated, which is tracked in [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
 - Bootstrap currently relies on the underlying backup and restore (BAR) mechanism of YugabyteDB.  This means it also inherits all of the limitations of BAR.  For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level.  This implies that when you bootstrap a target universe, you automatically bring any tables from the source database to the target database, even the ones that you might not plan to actually configure replication on.  This is tracked in [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
 
 ### DDL changes

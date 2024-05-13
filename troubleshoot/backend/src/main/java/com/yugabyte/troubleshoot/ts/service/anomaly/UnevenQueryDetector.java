@@ -3,25 +3,18 @@ package com.yugabyte.troubleshoot.ts.service.anomaly;
 import com.yugabyte.troubleshoot.ts.models.Anomaly;
 import com.yugabyte.troubleshoot.ts.models.AnomalyMetadata;
 import com.yugabyte.troubleshoot.ts.models.GraphAnomaly;
+import com.yugabyte.troubleshoot.ts.models.RuntimeConfigKey;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
 import org.springframework.stereotype.Component;
 
 @Component
 public class UnevenQueryDetector extends UnevenDistributionDetector {
 
-  // In case it's less than 10 Reads/Writes per second - we don't care.
-  private static final double MIN_ANOMALY_VALUE = 10.0;
-
   protected UnevenQueryDetector(
       GraphService graphService,
       AnomalyMetadataProvider metadataProvider,
       GraphAnomalyDetectionService anomalyDetectionService) {
     super(graphService, metadataProvider, anomalyDetectionService);
-  }
-
-  @Override
-  protected double getMinAnomalyValue() {
-    return MIN_ANOMALY_VALUE;
   }
 
   @Override
@@ -47,5 +40,20 @@ public class UnevenQueryDetector extends UnevenDistributionDetector {
             + " than average of the other nodes.";
     builder.summary(summary);
     return builder;
+  }
+
+  @Override
+  protected RuntimeConfigKey getMinAnomalyValueKey() {
+    return RuntimeConfigKey.UNEVEN_QUERY_MIN_ANOMALY_VALUE;
+  }
+
+  @Override
+  protected RuntimeConfigKey getMinAnomalyDurationKey() {
+    return RuntimeConfigKey.UNEVEN_QUERY_MIN_ANOMALY_DURATION;
+  }
+
+  @Override
+  protected RuntimeConfigKey getThresholdRatioKey() {
+    return RuntimeConfigKey.UNEVEN_QUERY_THRESHOLD;
   }
 }

@@ -265,6 +265,9 @@ public class ReleasesControllerTest extends FakeDBApplication {
   @Test
   public void testUpdateReleaseState() {
     Release r1 = Release.create("2.21.0.1", "STS");
+    r1.addArtifact(
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url"));
     String url =
         String.format(
             "/api/customers/%s/ybdb_release/%s",
@@ -275,6 +278,23 @@ public class ReleasesControllerTest extends FakeDBApplication {
     assertOk(result);
     Release found = Release.get(r1.getReleaseUUID());
     assertEquals(Release.ReleaseState.DISABLED, found.getState());
+  }
+
+  @Test
+  public void testIncompleteStateUpdate() {
+    Release r1 = Release.create("2.21.0.1", "STS");
+    r1.addArtifact(
+        ReleaseArtifact.create("sha256", ReleaseArtifact.Platform.KUBERNETES, null, "url"));
+    String url =
+        String.format(
+            "/api/customers/%s/ybdb_release/%s",
+            defaultCustomer.getUuid(), r1.getReleaseUUID().toString());
+    ObjectNode jsonBody = Json.newObject();
+    jsonBody.put("state", "ACTIVE");
+    Result result = assertPlatformException(() -> doPutRequest(url, jsonBody));
+    assertBadRequest(result, null);
+    Release found = Release.get(r1.getReleaseUUID());
+    assertEquals(Release.ReleaseState.INCOMPLETE, found.getState());
   }
 
   @Test

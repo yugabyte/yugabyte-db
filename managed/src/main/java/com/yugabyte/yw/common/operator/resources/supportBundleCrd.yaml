@@ -11,6 +11,9 @@ spec:
     kind: SupportBundle
     shortNames:
     - sb
+    categories:
+      - all
+      - yugabyte
   versions:
     - name: v1alpha1
       subresources:

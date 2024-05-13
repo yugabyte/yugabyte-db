@@ -25,13 +25,18 @@
 
 #include "postgres.h"
 
+#include <inttypes.h>
+
 #include "access/xact.h"
+#include "pg_yb_utils.h"
 #include "replication/yb_decode.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 static void
 YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
+static void
+YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void
 YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void
@@ -42,6 +47,15 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 						 enum ReorderBufferChangeType change_type);
 static int
 YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
+static void
+YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
+
+static char
+YBGetReplicaIdentityForTable(Oid table_oid);
+
+static void 
+YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
+						  TupleDesc tupdesc);
 
 /*
  * Take every record received from the YB VirtualWAL and perform the actions
@@ -63,8 +77,17 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 	elog(DEBUG4,
 		 "YBLogicalDecodingProcessRecord: Decoding record with action = %d.",
 		 record->yb_virtual_wal_record->action);
+
+	/* Check if we need a relcache refresh. */
+	YBHandleRelcacheRefresh(ctx, record);
+
+	/* Now delegate to specific handlers depending on the action type. */
 	switch (record->yb_virtual_wal_record->action)
 	{
+		/* Nothing to handle here. */
+		case YB_PG_ROW_MESSAGE_ACTION_DDL:
+			break;
+
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
 			/*
 			 * Start a transaction so that we can get the relation by oid in
@@ -72,7 +95,7 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 			 * after processing the corresponding commit record.
 			 */
 			StartTransactionCommand();
-			return;
+			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
 		{
@@ -80,9 +103,11 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 			break;
 		}
 
-		/* TODO(#20726): Support Update operation. */
 		case YB_PG_ROW_MESSAGE_ACTION_UPDATE:
+		{
+			YBDecodeUpdate(ctx, record);
 			break;
+		}
 
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
 		{
@@ -144,6 +169,123 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	/* YB_TODO: Do the right thing for the last parameter, toast_insert. */
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
 							 ctx->reader->ReadRecPtr, change, false);
+}
+
+/*
+ * YB version of the DecodeUpdate function from decode.c
+ */
+static void
+YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
+{
+	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
+	ReorderBufferChange		*change = ReorderBufferGetChange(ctx->reorder);
+	Relation				relation;
+	TupleDesc				tupdesc;
+	int						nattrs;
+	HeapTuple				after_op_tuple;
+	HeapTuple				before_op_tuple;
+	ReorderBufferTupleBuf	*after_op_tuple_buf;
+	ReorderBufferTupleBuf	*before_op_tuple_buf;
+	bool					*before_op_is_omitted = NULL;
+	bool					*after_op_is_omitted = NULL;
+	bool 					should_handle_omitted_case;
+
+	change->action = REORDER_BUFFER_CHANGE_UPDATE;
+	change->lsn = yb_record->lsn;
+	change->origin_id = yb_record->lsn;
+
+	relation = RelationIdGetRelation(yb_record->table_oid);
+	if (!RelationIsValid(relation))
+		elog(ERROR, "could not open relation with OID %u",
+			 yb_record->table_oid);
+
+	tupdesc = RelationGetDescr(relation);
+	nattrs = tupdesc->natts;
+	YBLogTupleDescIfRequested(yb_record, tupdesc);
+
+	/*
+	 * Allocate is_omitted arrays before so that we can directly write to it
+	 * instead of creating a temporary array and doing a memcpy.
+	 * We assume that columns are omitted by default.
+	 *
+	 * The special handling of omission vs NULL is only required
+	 * for YB specific replica identity (record type) values. Presently, it is
+	 * only CHANGE.
+	 */
+	should_handle_omitted_case =
+		YBGetReplicaIdentityForTable(yb_record->table_oid) ==
+		YB_REPLICA_IDENTITY_CHANGE;
+	if (should_handle_omitted_case)
+	{
+		before_op_is_omitted = YBAllocateIsOmittedArray(ctx->reorder, nattrs);
+		after_op_is_omitted = YBAllocateIsOmittedArray(ctx->reorder, nattrs);
+		memset(after_op_is_omitted, 1, sizeof(bool) * nattrs);
+		memset(before_op_is_omitted, 1, sizeof(bool) * nattrs);
+	}
+
+	Datum after_op_datums[nattrs];
+	bool after_op_is_nulls[nattrs];
+	Datum before_op_datums[nattrs];
+	bool before_op_is_nulls[nattrs];
+	memset(after_op_is_nulls, 1, sizeof(after_op_is_nulls));
+	memset(before_op_is_nulls, 1, sizeof(before_op_is_nulls));
+	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
+	{
+		YBCPgDatumMessage *col = &yb_record->cols[col_idx];
+
+		/*
+		 * Column name is null when both new and old values are omitted. If this
+		 * were to happen here, this would indicate that an empty column value
+		 * was sent from the CDC service which should have been caught in
+		 * ybc_pggate.
+		 */
+		Assert(col->column_name);
+
+		int attr_idx =
+			YBFindAttributeIndexInDescriptor(tupdesc, col->column_name);
+
+		if (should_handle_omitted_case)
+		{
+			after_op_is_omitted[attr_idx] = col->after_op_is_omitted;
+			before_op_is_omitted[attr_idx] = col->before_op_is_omitted;
+		}
+
+		if (!should_handle_omitted_case || !col->after_op_is_omitted)
+		{
+			after_op_datums[attr_idx] = col->after_op_datum;
+			after_op_is_nulls[attr_idx] = col->after_op_is_null;
+		}
+		if (!should_handle_omitted_case || !col->before_op_is_omitted)
+		{
+			before_op_datums[attr_idx] = col->before_op_datum;
+			before_op_is_nulls[attr_idx] = col->before_op_is_null;
+		}
+	}
+
+	after_op_tuple =
+		heap_form_tuple(tupdesc, after_op_datums, after_op_is_nulls);
+	after_op_tuple_buf = ReorderBufferGetTupleBuf(
+		ctx->reorder, after_op_tuple->t_len + HEAPTUPLESIZE);
+	after_op_tuple_buf->tuple = *after_op_tuple;
+	after_op_tuple_buf->yb_is_omitted = after_op_is_omitted;
+
+	before_op_tuple =
+		heap_form_tuple(tupdesc, before_op_datums, before_op_is_nulls);
+	before_op_tuple_buf = ReorderBufferGetTupleBuf(
+		ctx->reorder, before_op_tuple->t_len + HEAPTUPLESIZE);
+	before_op_tuple_buf->tuple = *before_op_tuple;
+	before_op_tuple_buf->yb_is_omitted = before_op_is_omitted;
+
+	change->data.tp.newtuple = after_op_tuple_buf;
+	change->data.tp.oldtuple = before_op_tuple_buf;
+	change->data.tp.yb_table_oid = yb_record->table_oid;
+
+	change->data.tp.clear_toast_afterwards = true;
+	/* YB_TODO: Do the right thing for the last parameter, toast_insert. */
+	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
+							 ctx->reader->ReadRecPtr, change, false);
+
+	RelationClose(relation);
 }
 
 /*
@@ -219,6 +361,11 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		return;
 	}
 
+	elog(DEBUG1,
+		 "Going to stream transaction: %d with commit_lsn: %lu and "
+		 "end_lsn: %lu",
+		 yb_record->xid, commit_lsn, end_lsn);
+
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
 						yb_record->commit_time, origin_id, origin_lsn);
 
@@ -237,10 +384,6 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 	int							nattrs;
 	HeapTuple					tuple;
 
-	/*
-	 * TODO(#20726): This is the schema of the relation at the streaming time.
-	 * We need this to be the schema of the table at record commit time.
-	 */
 	relation = RelationIdGetRelation(yb_record->table_oid);
 	if (!RelationIsValid(relation))
 		elog(ERROR, "could not open relation with OID %u",
@@ -248,6 +391,7 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 
 	tupdesc = RelationGetDescr(relation);
 	nattrs = tupdesc->natts;
+	YBLogTupleDescIfRequested(yb_record, tupdesc);
 
 	Datum datums[nattrs];
 	bool is_nulls[nattrs];
@@ -297,4 +441,122 @@ YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name)
 			 errmsg("Could not find column with name %s in tuple"
 					" descriptor", column_name)));
 	return -1;			/* keep compiler quiet */
+}
+
+static char
+YBGetReplicaIdentityForTable(Oid table_oid)
+{
+	Assert(MyReplicationSlot);
+	bool found;
+
+	YBCPgReplicaIdentityDescriptor *value =
+		hash_search(MyReplicationSlot->data.yb_replica_identities, &table_oid,
+					HASH_FIND, &found);
+
+	Assert(found);
+	return value->identity_type;
+}
+
+static void
+YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
+{
+	Oid		table_oid = record->yb_virtual_wal_record->table_oid;
+
+	switch (record->yb_virtual_wal_record->action)
+	{
+		case YB_PG_ROW_MESSAGE_ACTION_DDL:
+		{
+			bool		found;
+
+			/*
+			 * Mark for relcache invalidation to be done on first DML by just
+			 * inserting an entry for the table_oid.
+			 */
+			hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+						HASH_ENTER, &found);
+			break;
+		}
+
+		case YB_PG_ROW_MESSAGE_ACTION_INSERT: switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_UPDATE: switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
+		{
+			bool needs_invalidation =
+				ctx->yb_handle_relcache_invalidation_startup;
+			
+			if (!needs_invalidation)
+				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+							HASH_FIND, &needs_invalidation);
+
+			if (needs_invalidation)
+			{
+				uint64_t	read_time_ht;
+				char		read_time[50];
+				bool		for_startup;
+
+				for_startup = ctx->yb_handle_relcache_invalidation_startup;
+				if (for_startup)
+				{
+					/*
+					 * Use the record_commit_time we received from the
+					 * replication slot metadata (cdc state table).
+					 */
+					read_time_ht =
+						MyReplicationSlot->data.yb_initial_record_commit_time_ht;
+					ctx->yb_handle_relcache_invalidation_startup = false;
+				}
+				else
+				{
+					/* Use the commit_time of the DML. */
+					read_time_ht = record->yb_virtual_wal_record->commit_time;
+				}
+
+				sprintf(read_time, "%" PRIu64 " ht", read_time_ht);
+				elog(DEBUG1, "Setting yb_read_time to %s", read_time);
+				assign_yb_read_time(read_time, NULL);
+				YbRelationCacheInvalidate();
+
+				/*
+				 * Let the plugin know that the schema for this table has
+				 * changed, so it must send the new relation object to the
+				 * client.
+				 */
+				YBReorderBufferSchemaChange(ctx->reorder, table_oid);
+
+				if (!for_startup)
+				{
+					bool		found;
+					hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+								HASH_REMOVE, &found);
+					Assert(found);
+				}
+			}
+			break;
+		}
+
+		/* Nothing to handle for these types. */
+		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN: switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:   switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
+			return;
+	}
+}
+
+static void 
+YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
+						  TupleDesc tupdesc)
+{
+	/* Log tuple descriptor for DEBUG1 onwards. */
+	if (log_min_messages <= DEBUG1)
+	{
+		elog(DEBUG1, "Printing tuple descriptor for relation %d\n",
+			 yb_record->table_oid);
+		for (int attr_idx = 0; attr_idx < tupdesc->natts; attr_idx++)
+		{
+			elog(DEBUG1, "Col %d: name = %s, dropped = %d, type = %d\n",
+						 attr_idx, tupdesc->attrs[attr_idx].attname.data,
+						 tupdesc->attrs[attr_idx].attisdropped,
+						 tupdesc->attrs[attr_idx].atttypid);
+		}
+	}
 }

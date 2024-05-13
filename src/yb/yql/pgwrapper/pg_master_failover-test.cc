@@ -131,10 +131,16 @@ void PgMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
 // Use special mode when non leader master times out all rpcs.
 // Then step down master leader and perform backup.
 TEST_F(PgMasterFailoverTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster)) {
+  if (DisableMiniClusterBackupTests()) {
+    return;
+  }
   TestNonRespondingMaster(WaitForTS::kFalse);
 }
 
 TEST_F(PgMasterFailoverTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMasterWithTSWaiting)) {
+  if (DisableMiniClusterBackupTests()) {
+    return;
+  }
   TestNonRespondingMaster(WaitForTS::kTrue);
 }
 

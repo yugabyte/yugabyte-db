@@ -1,7 +1,7 @@
 ---
-title: Request a free trial
-linkTitle: Request a free trial
-description: Request a free trial of YugabyteDB Managed to conduct POCs and performance testing.
+title: Start a free trial
+linkTitle: Start a free trial
+description: Start a free trial of YugabyteDB Managed to conduct POCs and performance testing.
 headcontent: Explore all YugabyteDB Managed features
 menu:
   preview_yugabyte-cloud:
@@ -11,26 +11,21 @@ menu:
 type: docs
 ---
 
-To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), request a free trial. If you qualify, you will receive free credits towards creating Dedicated clusters and accessing other features in YugabyteDB Managed.
+To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), start a free trial to receive free credits towards creating [Dedicated clusters](../cloud-basics/) and exploring other features in YugabyteDB Managed.
 
-To request a free trial:
+To start a free trial:
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
-1. On the **Clusters** page, click **Add Cluster** to display the **Create Cluster** wizard.
-
-    ![Request a free trial](/images/yb-cloud/managed-trial.png)
-
-1. In the **Create Cluster** wizard, click **Request a Free Trial** to display the **Request a Free Trial** form.
+1. Click **Start Free Trial** to display the **Start Your Free Trial** form.
 
     ![Enter your details](/images/yb-cloud/managed-trial-2.png)
 
 1. If you have a promo code, enter it and click **Start Free Trial** to start your trial right away.
 
-    Otherwise, enter your contact details and click **Request Free Trial**. The Yugabyte team will contact you within two business days. In the meantime:
+    Otherwise, enter your contact details and click **Start Free Trial**. A free trial link is sent to your email.
 
-    - [create a Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/) and run the tutorial to learn about distributed SQL
-    - [run a lab](../managed-labs/) to learn how to design global applications
+1. Click the link in the email to get started.
 
 After the free trial begins, you can use your credits to create dedicated clusters in a [variety of topologies](../cloud-basics/create-clusters-topology/), including:
 
@@ -39,6 +34,12 @@ After the free trial begins, you can use your credits to create dedicated cluste
 - Partition by region
 - Read replicas
 
-Create a [billing profile](../cloud-admin/cloud-billing-profile/) and add a payment method any time. You won't be charged until your credits are used.
+<!--[Choose a plan](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/) any time. You won't be charged until your credits are used.-->
+Add a payment method any time. You won't be charged until your credits are used.
 
-Only one free trial can be applied to an account.
+## Limitations
+
+- Only one free trial can be applied to an account.
+- The free trial features the Professional plan. Enterprise plan features are not included.
+- Not all regions are available during free trials.
+- After your trial ends, depending on your plan, you may lose access to some features.

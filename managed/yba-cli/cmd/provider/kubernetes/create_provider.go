@@ -155,7 +155,7 @@ func init() {
 			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
 			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
 			"pod-address-template=<pod-address-template>,"+
-			"overrirdes-file-path=<path-for-file-contanining-overries>\". "+
+			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Region name is a required key-value.",
 				formatter.GreenColor)+
 			" Config File Path, Storage Class, Cert Manager"+
@@ -172,7 +172,7 @@ func init() {
 			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
 			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
 			"pod-address-template=<pod-address-template>,"+
-			"overrirdes-file-path=<path-for-file-contanining-overries>\". "+
+			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Zone name and Region name are required values. ",
 				formatter.GreenColor)+
 			" Config File Path, Storage Class, Cert Manager"+
@@ -205,7 +205,7 @@ func buildK8sRegions(
 		}
 
 		var overrides string
-		if filePath, ok := region["overrirdes-file-path"]; ok {
+		if filePath, ok := region["overrides-file-path"]; ok {
 			if strings.TrimSpace(filePath) != "" {
 				logrus.Debug("Reading Region Kubernetes Overrides\n")
 				overrides = util.YAMLtoString(filePath)
@@ -252,7 +252,7 @@ func buildK8sZones(
 		}
 
 		var overrides string
-		if filePath, ok := zone["overrirdes-file-path"]; ok {
+		if filePath, ok := zone["overrides-file-path"]; ok {
 			if strings.TrimSpace(filePath) != "" {
 				logrus.Debug("Reading Region Kubernetes Overrides\n")
 				overrides = util.YAMLtoString(filePath)

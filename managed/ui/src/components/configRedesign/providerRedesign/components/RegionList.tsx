@@ -7,9 +7,11 @@
 import pluralize from 'pluralize';
 import clsx from 'clsx';
 
+import { isEmpty, split } from 'lodash';
 import { EmptyListPlaceholder } from '../EmptyListPlaceholder';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBButton } from '../../../common/forms/fields';
+import { YBPopover } from '../../../../redesign/components/YBPopover/YBPopover';
 import { CloudVendorRegionField } from '../forms/configureRegion/ConfigureRegionModal';
 import { ProviderCode, CloudVendorProviders } from '../constants';
 import { K8sRegionField } from '../forms/configureRegion/ConfigureK8sRegionModal';
@@ -23,9 +25,12 @@ import {
 } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
+import { ValidationErrMsgDelimiter } from '../forms/utils';
 import { SupportedRegionField } from '../forms/configureRegion/types';
 
 import styles from './RegionList.module.scss';
+import ErrorIcon from '../../../../redesign/assets/error.svg';
+
 
 interface RegionListCommmonProps {
   showAddRegionFormModal: () => void;
@@ -38,6 +43,7 @@ interface RegionListCommmonProps {
   linkedUniverses?: UniverseItem[];
   isEditInUseProviderEnabled?: boolean;
   isError?: boolean;
+  errors?: any[];
 }
 interface CloudVendorRegionListProps extends RegionListCommmonProps {
   providerCode: typeof CloudVendorProviders[number];
@@ -99,7 +105,8 @@ const contextualHelpers = ({
   regions,
   setRegionSelection,
   showEditRegionFormModal,
-  showDeleteRegionModal
+  showDeleteRegionModal,
+  errors = []
 }: RegionListProps) => {
   const isProviderInUse = linkedUniverses.length > 0;
   const regionToInUseAz = providerUuid
@@ -127,12 +134,17 @@ const contextualHelpers = ({
       };
       const formatZones = (zones: typeof regions[number]['zones']) =>
         pluralize('zone', zones.length, true);
-      const formatRegionActions = (_: unknown, row: CloudVendorRegionField) => {
+      const formatRegionActions = (_: unknown, row: CloudVendorRegionField, _extra: unknown, index: number) => {
         const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
+            {
+              !isEmpty(errors[index]) ? <YBPopover hoverMsg={<div> {split(errors[index]?.message, ValidationErrMsgDelimiter).map(msg => <div>{msg}</div>)}</div>}>
+                <img src={ErrorIcon} />
+              </YBPopover> : null
+            }
             {(isProviderInUse && !isEditInUseProviderEnabled) ||
-            !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
+              !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
@@ -201,12 +213,17 @@ const contextualHelpers = ({
       };
       const formatZones = (zones: typeof regions[number]['zones']) =>
         pluralize('zone', zones.length, true);
-      const formatRegionActions = (_: unknown, row: K8sRegionField) => {
+      const formatRegionActions = (_: unknown, row: K8sRegionField, _extra: unknown, index: number) => {
         const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
+            {
+              !isEmpty(errors[index]) ? <YBPopover hoverMsg={<div> {split(errors[index]?.message, ValidationErrMsgDelimiter).map(msg => <div>{msg}</div>)}</div>}>
+                <img src={ErrorIcon} />
+              </YBPopover> : null
+            }
             {(isProviderInUse && !isEditInUseProviderEnabled) ||
-            !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
+              !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
@@ -280,7 +297,7 @@ const contextualHelpers = ({
         return (
           <div className={styles.buttonContainer}>
             {(isProviderInUse && !isEditInUseProviderEnabled) ||
-            !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
+              !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"

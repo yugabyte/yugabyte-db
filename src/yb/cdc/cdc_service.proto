@@ -72,6 +72,8 @@ service CDCService {
   rpc DestroyVirtualWALForCDC (DestroyVirtualWALForCDCRequestPB)
       returns (DestroyVirtualWALForCDCResponsePB);
   rpc UpdateAndPersistLSN (UpdateAndPersistLSNRequestPB) returns (UpdateAndPersistLSNResponsePB);
+  rpc UpdatePublicationTableList (UpdatePublicationTableListRequestPB)
+      returns (UpdatePublicationTableListResponsePB);
 }
 
 message CDCErrorPB {
@@ -174,6 +176,14 @@ message GetConsistentChangesRequestPB {
 message GetConsistentChangesResponsePB {
   optional CDCErrorPB error = 1;
   repeated CDCSDKProtoRecordPB cdc_sdk_proto_records = 2;
+
+  // This field tells the walsender whether a refresh of publication's table list is needed
+  optional bool needs_publication_table_list_refresh = 3;
+
+  // This field tells the walsender the time at which the list of tables
+  // in the publication needs to be querried for refresh. This is only relevant if
+  // the above field 'needs_publication_table_list_refresh' is true.
+  optional uint64 publication_refresh_time = 4;
 }
 
 message DestroyVirtualWALForCDCRequestPB {
@@ -197,6 +207,16 @@ message UpdateAndPersistLSNRequestPB {
 message UpdateAndPersistLSNResponsePB {
   optional CDCErrorPB error = 1;
   optional uint64 restart_lsn = 2;
+}
+
+message UpdatePublicationTableListRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+  repeated string table_id = 3;
+}
+
+message UpdatePublicationTableListResponsePB {
+  optional CDCErrorPB error = 1;
 }
 
 message CreateCDCStreamRequestPB {

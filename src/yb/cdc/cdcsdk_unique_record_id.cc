@@ -21,10 +21,11 @@ namespace cdc {
 using VWALRecordType = CDCSDKUniqueRecordID::VWALRecordType;
 
 CDCSDKUniqueRecordID::CDCSDKUniqueRecordID(
-    RowMessage_Op op, uint64_t commit_time, std::string& docdb_txn_id, uint64_t record_time,
-    uint32_t write_id, std::string& table_id, std::string& primary_key)
+    bool publication_refresh_record, RowMessage_Op op, uint64_t commit_time,
+    std::string& docdb_txn_id, uint64_t record_time, uint32_t write_id, std::string& table_id,
+    std::string& primary_key)
     : op_(op),
-      vwal_record_type_(GetVWALRecordTypeFromOp(op)),
+      vwal_record_type_(GetVWALRecordTypeFromOp(publication_refresh_record, op)),
       commit_time_(commit_time),
       docdb_txn_id_(docdb_txn_id),
       record_time_(record_time),
@@ -32,41 +33,44 @@ CDCSDKUniqueRecordID::CDCSDKUniqueRecordID(
       table_id_(table_id),
       primary_key_(primary_key) {}
 
-CDCSDKUniqueRecordID::CDCSDKUniqueRecordID(const std::shared_ptr<CDCSDKProtoRecordPB>& record) {
+CDCSDKUniqueRecordID::CDCSDKUniqueRecordID(
+    const bool& publication_refresh_record, const std::shared_ptr<CDCSDKProtoRecordPB>& record) {
   this->op_ = record->row_message().op();
-  this->vwal_record_type_ = GetVWALRecordTypeFromOp(this->op_);
+  this->vwal_record_type_ = GetVWALRecordTypeFromOp(publication_refresh_record, this->op_);
   this->commit_time_ = record->row_message().commit_time();
   if (record->row_message().has_transaction_id()) {
     this->docdb_txn_id_ = record->row_message().transaction_id();
   } else {
     this->docdb_txn_id_ = "";
   }
-  switch (this->op_) {
-    case RowMessage_Op_DDL: FALLTHROUGH_INTENDED;
-    case RowMessage_Op_BEGIN:
+  switch (this->vwal_record_type_) {
+    case VWALRecordType::DDL:
+      this->record_time_ = 0;
+      this->write_id_ = 0;
+      this->table_id_ = record->row_message().table_id();
+      this->primary_key_ = "";
+      break;
+    case VWALRecordType::PUBLICATION_REFRESH: FALLTHROUGH_INTENDED;
+    case VWALRecordType::BEGIN:
       this->record_time_ = 0;
       this->write_id_ = 0;
       this->table_id_ = "";
       this->primary_key_ = "";
       break;
-    case RowMessage_Op_SAFEPOINT: FALLTHROUGH_INTENDED;
-    case RowMessage_Op_COMMIT:
+    case VWALRecordType::SAFEPOINT: FALLTHROUGH_INTENDED;
+    case VWALRecordType::COMMIT:
       this->record_time_ = std::numeric_limits<uint64_t>::max();
       this->write_id_ = std::numeric_limits<uint32_t>::max();
       this->table_id_ = "";
       this->primary_key_ = "";
       break;
-    case RowMessage_Op_INSERT: FALLTHROUGH_INTENDED;
-    case RowMessage_Op_DELETE: FALLTHROUGH_INTENDED;
-    case RowMessage_Op_UPDATE:
+    case VWALRecordType::DML:
       this->record_time_ = record->row_message().record_time();
       this->write_id_ = record->cdc_sdk_op_id().write_id();
       this->table_id_ = record->row_message().table_id();
       this->primary_key_ = record->row_message().primary_key();
       break;
-    case RowMessage_Op_UNKNOWN: FALLTHROUGH_INTENDED;
-    case RowMessage_Op_TRUNCATE: FALLTHROUGH_INTENDED;
-    case RowMessage_Op_READ:
+    case VWALRecordType::UNKNOWN:
       // This should never happen as we only invoke this constructor after ensuring that the value
       // is not one of these.
       LOG(FATAL) << "Unexpected record received: " << record->DebugString();
@@ -75,7 +79,12 @@ CDCSDKUniqueRecordID::CDCSDKUniqueRecordID(const std::shared_ptr<CDCSDKProtoReco
 
 uint64_t CDCSDKUniqueRecordID::GetCommitTime() const { return commit_time_; }
 
-VWALRecordType CDCSDKUniqueRecordID::GetVWALRecordTypeFromOp(const RowMessage_Op op) {
+VWALRecordType CDCSDKUniqueRecordID::GetVWALRecordTypeFromOp(
+    const bool& is_publication_refresh, const RowMessage_Op& op) {
+  if (is_publication_refresh) {
+    return VWALRecordType::PUBLICATION_REFRESH;
+  }
+
   switch (op) {
     case RowMessage_Op_BEGIN:
       return VWALRecordType::BEGIN;
@@ -107,8 +116,15 @@ VWALRecordType CDCSDKUniqueRecordID::GetVWALRecordTypeFromOp(const RowMessage_Op
   return VWALRecordType::UNKNOWN;
 }
 
+bool CDCSDKUniqueRecordID::IsPublicationRefreshRecord() const {
+  return vwal_record_type_ == VWALRecordType::PUBLICATION_REFRESH;
+}
+
 bool CDCSDKUniqueRecordID::CanFormUniqueRecordId(
-    const std::shared_ptr<CDCSDKProtoRecordPB>& record) {
+    const bool& is_publication_refresh_record, const std::shared_ptr<CDCSDKProtoRecordPB>& record) {
+  if (is_publication_refresh_record) {
+    return true;
+  }
   RowMessage_Op op = record->row_message().op();
   switch (op) {
     case RowMessage_Op_DDL:
@@ -137,12 +153,32 @@ bool CDCSDKUniqueRecordID::CanFormUniqueRecordId(
   return false;
 }
 
-bool IsSafepointRecordType(const VWALRecordType vwal_record_type) {
-  return vwal_record_type == VWALRecordType::SAFEPOINT;
-}
-
 bool IsBeginOrCommitRecordType(const VWALRecordType vwal_record_type) {
   return vwal_record_type == VWALRecordType::BEGIN || vwal_record_type == VWALRecordType::COMMIT;
+}
+
+bool IsBeginOrCommitOrDMLType(const VWALRecordType vwal_record_type) {
+  return vwal_record_type == VWALRecordType::DML || IsBeginOrCommitRecordType(vwal_record_type);
+}
+
+bool IsDDLRecordType(const VWALRecordType vwal_record_type) {
+  return vwal_record_type == VWALRecordType::DDL;
+}
+
+bool CDCSDKUniqueRecordID::CompareDDLOrder(
+    const std::shared_ptr<CDCSDKUniqueRecordID>& other_unique_record_id) {
+  DCHECK(
+      IsDDLRecordType(this->vwal_record_type_) ||
+      IsDDLRecordType(other_unique_record_id->vwal_record_type_));
+
+  // If both the records are DDL records, then we go for comparing table_ids.
+  if (IsDDLRecordType(this->vwal_record_type_) &&
+      IsDDLRecordType(other_unique_record_id->vwal_record_type_)) {
+    return this->table_id_ < other_unique_record_id->table_id_;
+  }
+
+  // Whichever of the two is a DDL record, should get the highest priority.
+  return IsDDLRecordType(this->vwal_record_type_);
 }
 
 // Return true iff, other_unique_record_id > this.unique_record_id
@@ -152,10 +188,19 @@ bool CDCSDKUniqueRecordID::HasHigherPriorityThan(
     return this->commit_time_ < other_unique_record_id->commit_time_;
   }
 
-  // Safepoint record should always get the lowest priority in PQ.
-  if (IsSafepointRecordType(this->vwal_record_type_) ||
-      IsSafepointRecordType(other_unique_record_id->vwal_record_type_)) {
-    return !(IsSafepointRecordType(this->vwal_record_type_));
+  // DDL records should get the highest priority.
+  if (IsDDLRecordType(this->vwal_record_type_) ||
+      IsDDLRecordType(other_unique_record_id->vwal_record_type_)) {
+    return CompareDDLOrder(other_unique_record_id);
+  }
+
+  // If either one of the records being compared is not a BEGIN/COMMIT/DML record then use
+  // vwal_record_type to break the tie.
+  if (!IsBeginOrCommitOrDMLType(this->vwal_record_type_) ||
+      !IsBeginOrCommitOrDMLType(other_unique_record_id->vwal_record_type_)) {
+    if (this->vwal_record_type_ != other_unique_record_id->vwal_record_type_) {
+      return this->vwal_record_type_ < other_unique_record_id->vwal_record_type_;
+    }
   }
 
   if (this->docdb_txn_id_ != other_unique_record_id->docdb_txn_id_) {
@@ -267,6 +312,9 @@ std::string CDCSDKUniqueRecordID::ToString() const {
       break;
     case VWALRecordType::DML:
       result = Format("RecordType: DML");
+      break;
+    case VWALRecordType::PUBLICATION_REFRESH:
+      result = Format("RecordType: PUBLICATION_REFRESH");
       break;
     case VWALRecordType::SAFEPOINT:
       result = Format("RecordType: SAFEPOINT");

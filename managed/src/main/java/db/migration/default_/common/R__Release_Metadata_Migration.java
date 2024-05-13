@@ -22,7 +22,7 @@ public class R__Release_Metadata_Migration extends BaseJavaMigration {
 
   @Override
   public Integer getChecksum() {
-    int codeChecksum = 82918230; // Change me if you want to force migration to run
+    int codeChecksum = 82918231; // Change me if you want to force migration to run
     MurmurHash3 murmurHash3 = new MurmurHash3();
     try {
       String jsonStr =
@@ -31,7 +31,7 @@ public class R__Release_Metadata_Migration extends BaseJavaMigration {
               .getString("value");
       return murmurHash3.stringHash(jsonStr, codeChecksum);
     } catch (PersistenceException e) {
-      log.warn("failed to query yugaware property", e);
+      log.warn("failed to query yugaware property: " + e.getLocalizedMessage());
       return super.getChecksum();
     }
   }

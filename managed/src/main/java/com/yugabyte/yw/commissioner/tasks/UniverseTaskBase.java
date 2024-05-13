@@ -351,7 +351,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CreateSupportBundle);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
-      ImmutableSet.of(TaskType.GFlagsUpgrade, TaskType.RestartUniverse, TaskType.VMImageUpgrade);
+      ImmutableSet.of(
+          TaskType.GFlagsUpgrade,
+          TaskType.RestartUniverse,
+          TaskType.VMImageUpgrade,
+          TaskType.GFlagsKubernetesUpgrade,
+          TaskType.KubernetesOverridesUpgrade,
+          TaskType.EditKubernetesUniverse /* Partially allowing this for resource spec changes */);
 
   private static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
       ImmutableSet.of(TaskType.RollbackKubernetesUpgrade, TaskType.RollbackUpgrade);
@@ -548,6 +554,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
     }
     return true;
+  }
+
+  public static AllowedTasks getAllowedTasksOnFailure(TaskInfo placementModificationTaskInfo) {
+    TaskType lockedTaskType = placementModificationTaskInfo.getTaskType();
+    AllowedTasks.AllowedTasksBuilder builder =
+        AllowedTasks.builder().lockedTaskType(lockedTaskType);
+    if (PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
+      builder.restricted(true);
+      builder.taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
+      if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
+        builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
+      }
+      if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
+        switch (lockedTaskType) {
+          case EditKubernetesUniverse:
+            if (EditKubernetesUniverse.checkEditKubernetesRerunAllowed(
+                placementModificationTaskInfo)) {
+              builder.taskType(lockedTaskType);
+            }
+            break;
+          default:
+            builder.taskType(lockedTaskType);
+        }
+      }
+    }
+    return builder.build();
   }
 
   /**
@@ -2230,7 +2262,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .map(
               serverInfo -> {
                 // Port in ServerInfo is set to 0.
-                NodeDetails node = universe.getNodeByPrivateIP(serverInfo.getHost());
+                NodeDetails node = universe.getNodeByAnyIP(serverInfo.getHost());
                 if (node == null || !node.isMaster) {
                   String errMsg =
                       String.format(
@@ -3285,7 +3317,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Save backupUUID to taskInfo of the CreateBackup task.
       try {
         TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
-        taskInfo.setDetails(mapper.valueToTree(backupRequestParams));
+        taskInfo.setTaskParams(mapper.valueToTree(backupRequestParams));
         taskInfo.save();
       } catch (Exception ex) {
         log.error(ex.getMessage());
@@ -3339,7 +3371,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     restoreParams.category = isYbc ? BackupCategory.YB_CONTROLLER : BackupCategory.YB_BACKUP_SCRIPT;
     // Update task params for this
     ObjectMapper mapper = new ObjectMapper();
-    taskInfo.setDetails(mapper.valueToTree(restoreParams));
+    taskInfo.setTaskParams(mapper.valueToTree(restoreParams));
     taskInfo.save();
   }
 

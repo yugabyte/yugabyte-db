@@ -39,7 +39,7 @@ const renderInstanceType = (cell: HaPlatformInstance['is_leader']): ReactElement
 );
 
 const renderBackupLag = (cell: HaPlatformInstance['last_backup']): ReactElement | string =>
-  cell ? formatDuration(moment.duration(moment().diff(moment(cell))).milliseconds()) : 'n/a';
+  cell ? formatDuration(moment.duration(moment().diff(moment(cell))).asMilliseconds()) : 'n/a';
 
 export const HAInstances: FC<HAInstancesProps> = ({
   fetchRuntimeConfigs,

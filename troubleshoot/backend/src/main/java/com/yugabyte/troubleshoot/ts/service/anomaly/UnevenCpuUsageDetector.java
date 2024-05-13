@@ -8,18 +8,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class UnevenCpuUsageDetector extends UnevenDistributionDetector {
 
-  private static final double MIN_ANOMALY_VALUE = 10.0;
-
   protected UnevenCpuUsageDetector(
       GraphService graphService,
       AnomalyMetadataProvider metadataProvider,
       GraphAnomalyDetectionService anomalyDetectionService) {
     super(graphService, metadataProvider, anomalyDetectionService);
-  }
-
-  @Override
-  protected double getMinAnomalyValue() {
-    return MIN_ANOMALY_VALUE;
   }
 
   @Override
@@ -44,5 +37,20 @@ public class UnevenCpuUsageDetector extends UnevenDistributionDetector {
             + " consume significantly more CPU than average of the other nodes.";
     builder.summary(summary);
     return builder;
+  }
+
+  @Override
+  protected RuntimeConfigKey getMinAnomalyValueKey() {
+    return RuntimeConfigKey.UNEVEN_CPU_MIN_ANOMALY_VALUE;
+  }
+
+  @Override
+  protected RuntimeConfigKey getMinAnomalyDurationKey() {
+    return RuntimeConfigKey.UNEVEN_CPU_MIN_ANOMALY_DURATION;
+  }
+
+  @Override
+  protected RuntimeConfigKey getThresholdRatioKey() {
+    return RuntimeConfigKey.UNEVEN_CPU_THRESHOLD;
   }
 }

@@ -120,6 +120,11 @@ func SplitInput(input string) []string {
 	})
 }
 
+// RemoveQuotes removes the quotes around the input string & returns the raw string.
+func RemoveQuotes(input string) string {
+	return strings.Trim(input, "\"")
+}
+
 // Create or truncate a file at a relative path for the non-root case. Have to make the directory
 // before inserting the file in that directory.
 func Create(p string) (*os.File, error) {

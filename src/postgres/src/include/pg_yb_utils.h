@@ -303,8 +303,6 @@ extern void YBInitPostgresBackend(const char *program_name,
 								  const char *user_name,
 								  uint64_t *session_id);
 
-extern bool YbGetCurrentSessionId(uint64_t *session_id);
-
 /*
  * This should be called on all exit paths from the PostgreSQL backend process.
  * Only main PostgreSQL backend thread is expected to call this.
@@ -1138,4 +1136,6 @@ extern void YbGetRedactedQueryString(const char* query, int query_len,
 extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
 										bool yb_copy_split_options,
 										bool is_truncate);
+
+extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 #endif /* PG_YB_UTILS_H */

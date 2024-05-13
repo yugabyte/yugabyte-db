@@ -563,6 +563,9 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 	tuple->alloc_tuple_size = alloc_len;
 	tuple->tuple.t_data = ReorderBufferTupleBufData(tuple);
 
+	if (IsYugaByteEnabled())
+		tuple->yb_is_omitted = NULL;
+
 	return tuple;
 }
 
@@ -572,6 +575,9 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 void
 ReorderBufferReturnTupleBuf(ReorderBuffer *rb, ReorderBufferTupleBuf *tuple)
 {
+	if (IsYugaByteEnabled() && tuple->yb_is_omitted)
+		pfree(tuple->yb_is_omitted);
+
 	pfree(tuple);
 }
 
@@ -2191,11 +2197,6 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 							 relpathperm(change->data.tp.relnode,
 										 MAIN_FORKNUM));
 
-					/*
-					 * YB note: TODO(#20726) - This is the schema of the
-					 * relation at the streaming time. Needs to be updated to
-					 * fetch the schema at the time of commit.
-					 */
 					relation = RelationIdGetRelation(reloid);
 
 					if (!RelationIsValid(relation))
@@ -5221,4 +5222,16 @@ restart:
 	if (cmax)
 		*cmax = ent->cmax;
 	return true;
+}
+
+bool *
+YBAllocateIsOmittedArray(ReorderBuffer *rb, int nattrs)
+{
+	return (bool *) MemoryContextAlloc(rb->tup_context,
+									   MAXIMUM_ALIGNOF + sizeof(bool) * nattrs);
+}
+
+void YBReorderBufferSchemaChange(ReorderBuffer *rb, Oid relid)
+{
+	rb->yb_schema_change(rb, relid);
 }

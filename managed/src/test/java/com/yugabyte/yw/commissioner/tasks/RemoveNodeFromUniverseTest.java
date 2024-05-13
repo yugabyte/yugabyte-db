@@ -332,7 +332,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = taskParams.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
@@ -345,7 +345,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = REMOVE_NODE_TASK_EXPECTED_RESULTS.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;

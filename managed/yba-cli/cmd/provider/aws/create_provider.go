@@ -205,7 +205,7 @@ func init() {
 	createAWSProviderCmd.MarkFlagsRequiredTogether("access-key-id", "secret-access-key")
 	createAWSProviderCmd.Flags().Bool("use-iam-instance-profile", false,
 		"[Optional] Use IAM Role from the YugabyteDB Anywhere Host. Provider "+
-			"creation will fail on insufficient permissions on the host, defaults to false.")
+			"creation will fail on insufficient permissions on the host. (default false)")
 	createAWSProviderCmd.Flags().String("hosted-zone-id", "",
 		"[Optional] Hosted Zone ID corresponding to Amazon Route53.")
 
@@ -252,8 +252,8 @@ func init() {
 
 	createAWSProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
-			" lacking access to the public internet for package downloads, "+
-			"defaults to false.")
+			" lacking access to the public internet for package downloads. "+
+			"(default false)")
 	createAWSProviderCmd.Flags().StringArray("ntp-servers", []string{},
 		"[Optional] List of NTP Servers. Can be provided as separate flags or "+
 			"as comma-separated values.")

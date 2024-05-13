@@ -577,7 +577,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .forEach(
             t ->
                 assertEquals(
-                    String.valueOf(NEW_CGROUP_SIZE), t.getDetails().get("cgroupSize").asText()));
+                    String.valueOf(NEW_CGROUP_SIZE), t.getTaskParams().get("cgroupSize").asText()));
     assertTasksSequence(subTasks, false, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, false, false, false);
@@ -603,7 +603,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .forEach(
             t ->
                 assertEquals(
-                    String.valueOf(NEW_CGROUP_SIZE), t.getDetails().get("cgroupSize").asText()));
+                    String.valueOf(NEW_CGROUP_SIZE), t.getTaskParams().get("cgroupSize").asText()));
     assertTasksSequence(subTasks, true, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
@@ -1205,7 +1205,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             .collect(Collectors.toList());
 
     assertEquals(1, updateMounts.size());
-    assertEquals(nodeName.get(), updateMounts.get(0).getDetails().get("nodeName").textValue());
+    assertEquals(nodeName.get(), updateMounts.get(0).getTaskParams().get("nodeName").textValue());
     assertEquals(2, updateMounts.get(0).getPosition().intValue());
     assertTasksSequence(3, subTasks, true, true, true, false);
     assertEquals(Success, taskInfo.getTaskState());
@@ -1294,7 +1294,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.PersistResizeNode);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     TaskInfo deviceTask = subTasksByPosition.get(2).get(0);
-    JsonNode params = deviceTask.getDetails();
+    JsonNode params = deviceTask.getTaskParams();
     assertEquals(azNodeName, params.get("nodeName").asText());
     JsonNode deviceParams = params.get("deviceInfo");
     DeviceInfo deviceInfo =

@@ -1967,9 +1967,24 @@ YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 }
 
 void
+YBCUpdatePublicationTableList(const char *stream_id, Oid *relations,
+							  size_t numrelations)
+{
+	Assert(MyDatabaseId);
+
+	HandleYBStatus(YBCPgUpdatePublicationTableList(stream_id, MyDatabaseId, relations,
+												   numrelations));
+}
+
+void
 YBCDestroyVirtualWalForCDC()
 {
-	HandleYBStatus(YBCPgDestroyVirtualWalForCDC());
+	/*
+	 * This is executed as part of cleanup logic. So we just treat all errors as
+	 * warning. Even if this fails, the cleanup will be done once the session is
+	 * expired.
+	 */
+	HandleYBStatusAtErrorLevel(YBCPgDestroyVirtualWalForCDC(), WARNING);
 }
 
 void

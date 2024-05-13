@@ -72,7 +72,7 @@ func init() {
 	rootCmd.PersistentFlags().StringP("logLevel", "l", "info",
 		"Select the desired log level format. Allowed values: debug, info, warn, error, fatal.")
 	rootCmd.PersistentFlags().Bool("debug", false, "Use debug mode, same as --logLevel debug.")
-	rootCmd.PersistentFlags().Bool("disable-color", false, "Disable colors in output, defaults to false.")
+	rootCmd.PersistentFlags().Bool("disable-color", false, "Disable colors in output. (default false)")
 	rootCmd.PersistentFlags().Bool("wait", true,
 		"Wait until the task is completed, otherwise it will exit immediately.")
 	rootCmd.PersistentFlags().Duration("timeout", 7*24*time.Hour,
@@ -96,6 +96,9 @@ func init() {
 	rootCmd.AddCommand(storageconfiguration.StorageConfigurationCmd)
 	rootCmd.AddCommand(task.TaskCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
+
+	// Example for adding preview commands to the list of available commands
+	// util.AddCommandIfFeatureFlag(rootCmd, exampleCmd, util.PREVIEW)
 
 }
 

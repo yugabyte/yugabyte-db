@@ -355,10 +355,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgDocMetrics& metrics() { return metrics_; }
 
-  uint64_t GetReadTimeSerialNo();
-
-  void ForceReadTimeSerialNo(uint64_t read_time_serial_no);
-
   // Check whether the specified table has a CDC stream.
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
@@ -369,6 +365,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
 
+  Result<yb::tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<yb::tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
  private:

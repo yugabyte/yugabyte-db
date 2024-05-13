@@ -450,7 +450,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
       // Letting CatalogManagerBgTasks do the cleanup.
       Thread.sleep(BuildTypeUtil.adjustTimeout(5000));
-
+      if (isTestRunningWithConnectionManager()) {
+        stmt.execute("SET yb_test_fail_next_ddl TO false");
+      }
       stmt.execute(ddlSql);
 
       String selectSql = "SELECT * FROM simple_system_table";

@@ -69,11 +69,12 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
   int get_rows_to_process_calls_ = 0;
 
  private:
-  Status InitPGConnection(const HybridTime& apply_safe_time) override { return Status::OK(); }
+  Status InitPGConnection() override { return Status::OK(); }
 
   Result<HybridTime> GetXClusterSafeTimeForNamespace() override { return safe_time_ht_; }
 
-  Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess() override {
+  Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
+      const HybridTime& apply_safe_time) override {
     get_rows_to_process_calls_++;
     return rows_;
   }
@@ -101,10 +102,10 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifySafeTimes) {
 
   auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table);
   {
-    // Pass in invalid ht, get InvalidArgument.
+    // Pass in invalid ht, should skip processing.
     auto s = ddl_queue_handler.ProcessDDLQueueTable(ht_invalid);
-    ASSERT_NOK(s);
-    ASSERT_EQ(s.code(), Status::Code::kInvalidArgument);
+    ASSERT_OK(s);
+    ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 0);
   }
   {
     // Get invalid safe time for the namespace, results in InternalError.

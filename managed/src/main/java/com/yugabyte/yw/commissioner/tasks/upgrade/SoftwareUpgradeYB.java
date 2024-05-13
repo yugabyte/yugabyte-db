@@ -66,6 +66,11 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
   }
 
   @Override
+  protected String getTargetSoftwareVersion() {
+    return taskParams().ybSoftwareVersion;
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {

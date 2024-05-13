@@ -221,12 +221,12 @@ func init() {
 		"[Optional] Can sudo actions be carried out by user without a password.")
 	createOnpremProviderCmd.Flags().Bool("skip-provisioning", false,
 		"[Optional] Set to true if YugabyteDB nodes have been prepared"+
-			" manually, set to false to provision during universe creation, defaults to false.")
+			" manually, set to false to provision during universe creation. (default false)")
 
 	createOnpremProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
-			" lacking access to the public internet for package downloads, "+
-			"defaults to false.")
+			" lacking access to the public internet for package downloads. "+
+			"(default false)")
 	createOnpremProviderCmd.Flags().Bool("install-node-exporter", true,
 		"[Optional] Install Node exporter.")
 	createOnpremProviderCmd.Flags().String("node-exporter-user", "prometheus",

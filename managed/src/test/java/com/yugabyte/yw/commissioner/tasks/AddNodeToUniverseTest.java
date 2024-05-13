@@ -417,7 +417,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       assertEquals("At position: " + position, tasks.get(0).getTaskType(), expectedTaskType);
       JsonNode expectedResults = taskExpectedResults.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(
           "At position: " + position + " taskType " + expectedTaskType,
           expectedResults,

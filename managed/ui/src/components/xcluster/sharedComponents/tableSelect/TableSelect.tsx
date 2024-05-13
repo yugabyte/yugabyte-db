@@ -93,12 +93,12 @@ interface CommonTableSelectProps {
   setSelectedNamespaceUuids: (selectedNamespaceUuids: string[]) => void;
   selectionError: { title?: string; body?: string } | undefined;
   selectionWarning: { title: string; body: string } | undefined;
+  isTransactionalConfig: boolean;
 }
 
 export type TableSelectProps =
   | (CommonTableSelectProps & {
       configAction: typeof XClusterConfigAction.CREATE;
-      isTransactionalConfig: boolean;
       handleTransactionalConfigCheckboxClick: () => void;
     })
   | (CommonTableSelectProps & {
@@ -210,7 +210,8 @@ export const TableSelect = (props: TableSelectProps) => {
     selectedNamespaceUuids,
     setSelectedNamespaceUuids,
     selectionError,
-    selectionWarning
+    selectionWarning,
+    isTransactionalConfig
   } = props;
   const [namespaceSearchTerm, setNamespaceSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
@@ -316,23 +317,37 @@ export const TableSelect = (props: TableSelectProps) => {
       tableReplicationCandidates.forEach((tableReplicationCandidate) => {
         currentSelectedTableUuids.add(getTableUuid(tableReplicationCandidate));
 
+        // When adding an index table, also add the main table.
+        // Users are unable to toggle index tables for txn config and YCQL configs
         if (tableReplicationCandidate.isIndexTable && tableReplicationCandidate.mainTableUUID) {
           currentSelectedTableUuids.add(
             formatUuidForXCluster(tableReplicationCandidate.mainTableUUID)
           );
         }
-        tableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
-          currentSelectedTableUuids.add(indexTableId)
-        );
+
+        // When adding a main table, also add the index tables.
+        // Does not apply for txn config or YCQL configs as we're passing `autoIncludeIndexTable = true` and letting the
+        // backend handle this.
+        if (!isTransactionalConfig && tableType === TableType.PGSQL_TABLE_TYPE) {
+          tableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
+            currentSelectedTableUuids.add(indexTableId)
+          );
+        }
       });
       setSelectedTableUUIDs(Array.from(currentSelectedTableUuids));
     } else {
       const removedTableUuids = new Set();
       tableReplicationCandidates.forEach((tableReplicationCandidate) => {
         removedTableUuids.add(getTableUuid(tableReplicationCandidate));
-        tableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
-          removedTableUuids.add(indexTableId)
-        );
+
+        // Remove index tables when removing the main table.
+        // Does not apply for txn config or YCQL configs as we're passing `autoIncludeIndexTable = true` and letting the
+        // backend handle this.
+        if (!isTransactionalConfig && tableType === TableType.PGSQL_TABLE_TYPE) {
+          tableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
+            removedTableUuids.add(indexTableId)
+          );
+        }
       });
       setSelectedTableUUIDs(
         selectedTableUUIDs.filter((tableUUID) => !removedTableUuids.has(tableUUID))
@@ -477,8 +492,7 @@ export const TableSelect = (props: TableSelectProps) => {
       options: {
         suppressFormatError: true
       }
-    }
-    ) < 0 &&
+    }) < 0 &&
     !participantsHaveLinkedXClusterConfig;
   return (
     <>
@@ -488,7 +502,7 @@ export const TableSelect = (props: TableSelectProps) => {
         tableType === TableType.PGSQL_TABLE_TYPE && (
           <Box display="flex" gridGap="5px">
             <YBCheckBox
-              checkState={props.isTransactionalConfig}
+              checkState={isTransactionalConfig}
               onClick={props.handleTransactionalConfigCheckboxClick}
               label="Enable transactional atomicity"
               disabled={!isTransactionalAtomicitySupported}
@@ -563,6 +577,7 @@ export const TableSelect = (props: TableSelectProps) => {
                   initialNamespaceUuids.includes(namespaceItem.uuid) &&
                   selectedNamespaceUuids.includes(namespaceItem.uuid))
               }
+              isTransactionalConfig={isTransactionalConfig}
               selectedTableUUIDs={selectedTableUUIDs}
               tableType={tableType}
               xClusterConfigAction={props.configAction}

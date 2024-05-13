@@ -29,24 +29,24 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 
 ![Live migration workflow](/images/migrate/live-migration-workflow-new.png)
 
-| Step | Description |
-| :--- | :---|
-| [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
-| [Prepare source](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
-| [Prepare target](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
-| [Export schema](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
-| [Analyze schema](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
-| [Modify schema](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
-| [Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
-| Start | Start the phases: export data first, followed by import data and archive changes simultaneously. |
-| [Export data from source](#export-data-from-source) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
-| [Import data to target](#import-data-to-target) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
-| [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | After the snapshot import is complete, import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
-| [Archive changes](#archive-changes-optional) | Continuously archive migration changes to limit disk utilization. |
-| [Initiate cutover](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
-| [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
-| [Verify migration](#verify-migration) | Check if the live migration is successful. |
-| [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source and target). |
+| Phase | Step | Description |
+| :---- | :--- | :---|
+| PREPARE |[Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
+| | [Prepare&nbsp;source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
+| | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with necessary privileges. |
+| SCHEMA | [Export](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
+| | [Analyze](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
+| | [Modify](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
+| | [Import](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
+| LIVE&nbsp;MIGRATION | Start | Start the phases: export data first, followed by import data and archive changes simultaneously. |
+| | [Export data](#export-data-from-source) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
+| | [Import data](#import-data-to-target) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
+| | [Import indexes and&nbsp;triggers to target DB](#import-indexes-and-triggers) | After the snapshot import is complete, import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
+| | [Archive changes](#archive-changes-optional) | Continuously archive migration changes to limit disk utilization. |
+| CUTOVER | [Initiate cutover](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
+| | [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
+| | [Verify target DB](#verify-migration) | Check if the live migration is successful. |
+| END | [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source and target). |
 
 Before proceeding with migration, ensure that you have completed the following steps:
 
@@ -586,7 +586,7 @@ Prepare your target YugabyteDB database cluster by creating a database, and a us
 
 Add the following flags to the cluster before starting migration, and revert them after the migration is complete.
 
-For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0`, set the following flag:
+For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0` (or later minor versions), set the following flag:
 
 ```sh
 ysql_pg_conf_csv = yb_max_query_layer_retries=0
@@ -598,6 +598,7 @@ For all the other target YugabyteDB versions, set the following flags:
 ysql_max_read_restart_attempts = 0
 ysql_max_write_restart_attempts = 0
 ```
+Turn off the [read-committed](../../../explore/transactions/isolation-levels//#read-committed-isolation) isolation level on the target YugabyteDB cluster during the migration.
 
 {{</note>}}
 

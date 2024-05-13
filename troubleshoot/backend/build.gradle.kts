@@ -73,6 +73,8 @@ val dependenciesList = dependencies {
   implementation("io.ebean:ebean-jackson-mapper:$ebeanVersion")
   implementation("org.apache.commons:commons-math3:3.6.1")
   implementation("net.sf.jsefa:jsefa:1.1.1.RELEASE")
+  implementation("org.codehaus.janino:janino:3.1.12")
+  implementation("net.logstash.logback:logstash-logback-encoder:6.6")
 
   testImplementation("org.springframework.boot:spring-boot-starter-test")
   testImplementation("io.zonky.test:embedded-database-spring-test:2.4.0")

@@ -288,6 +288,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public boolean otelCollectorEnabled = false;
 
+  @ApiModelProperty(
+      hidden = true,
+      value = "YbaApi Internal. Skip user intent match with task params")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+  public boolean skipMatchWithUserIntent = false;
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j

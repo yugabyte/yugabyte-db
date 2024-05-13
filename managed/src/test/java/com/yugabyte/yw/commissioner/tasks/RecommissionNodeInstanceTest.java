@@ -1,5 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -77,7 +78,7 @@ public class RecommissionNodeInstanceTest extends CommissionerBaseTest {
   public void testRecommissionNodeInstanceFailure() {
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "error";
-    dummyShellResponse.code = ShellResponse.ERROR_CODE_RECOVERABLE_ERROR;
+    dummyShellResponse.code = ShellResponse.ERROR_CODE_GENERIC_ERROR;
     doReturn(dummyShellResponse).when(mockNodeManager).detachedNodeCommand(any(), any());
 
     DetachedNodeTaskParams taskParams = new DetachedNodeTaskParams();
@@ -85,7 +86,7 @@ public class RecommissionNodeInstanceTest extends CommissionerBaseTest {
     taskParams.setInstanceType(node.getInstanceTypeCode());
     taskParams.setAzUuid(node.getZoneUuid());
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     // Cleanup failed.
     assertEquals(
         NodeInstance.State.DECOMMISSIONED,

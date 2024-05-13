@@ -116,6 +116,20 @@ typedef struct LogicalDecodingContext
 	 * do not use the snapbuild mechanism.
 	 */
 	XLogRecPtr	yb_start_decoding_at;
+
+	/* True if we are yet to handle the relcache invalidation at the startup. */
+	bool		yb_handle_relcache_invalidation_startup;
+
+	/*
+	 * A per table_oid to oid map.
+	 *
+	 * If an entry is present in the table, it indicates that the next
+	 * DML record should invalidate the relcache and set yb_read_time to its
+	 * commit_time.
+	 *
+	 * The entry (value) remains unused i.e. this is used like a set.
+	 */
+	HTAB		*yb_needs_relcache_invalidation;
 } LogicalDecodingContext;
 
 

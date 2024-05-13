@@ -27,7 +27,6 @@ public class RecommissionNodeInstance extends AbstractTaskBase {
   @Override
   public void run() {
     NodeInstance nodeInstance = NodeInstance.getOrBadRequest(taskParams().getNodeUuid());
-    boolean cleanupFailed = false;
 
     try {
       ShellResponse response =
@@ -36,12 +35,10 @@ public class RecommissionNodeInstance extends AbstractTaskBase {
               .processErrors();
     } catch (Exception e) {
       log.error("Clean up failed for node instance: {}", nodeInstance.getNodeUuid(), e);
-      cleanupFailed = true;
+      throw e;
     }
 
-    if (!cleanupFailed) {
-      log.debug("Successfully cleaned up node instance: {}", nodeInstance.getNodeUuid());
-      nodeInstance.clearNodeDetails();
-    }
+    log.debug("Successfully cleaned up node instance: {}", nodeInstance.getNodeUuid());
+    nodeInstance.clearNodeDetails();
   }
 }

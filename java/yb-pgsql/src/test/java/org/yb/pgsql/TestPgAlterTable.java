@@ -44,7 +44,11 @@ public class TestPgAlterTable extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity");
+    if (isTestRunningWithConnectionManager())
+      flagMap.put("allowed_preview_flags_csv",
+        "ysql_yb_enable_replica_identity,enable_ysql_conn_mgr");
+    else
+      flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity");
     flagMap.put("ysql_yb_enable_replica_identity", "true");
     return flagMap;
   }

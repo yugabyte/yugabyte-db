@@ -53,6 +53,7 @@ import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -170,6 +171,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory;
   protected OperatorStatusUpdater mockOperatorStatusUpdater;
   protected CloudUtilFactory mockCloudUtilFactory;
+  protected ReleasesUtils mockReleasesUtils;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -209,6 +211,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
     mockCloudUtilFactory = mock(CloudUtilFactory.class);
+    mockReleasesUtils = mock(ReleasesUtils.class);
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
@@ -239,7 +242,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
     when(mockBaseTaskDependencies.getReleaseManager()).thenReturn(mockReleaseManager);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
-    releaseContainer = new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig);
+    releaseContainer =
+        new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
   }
 
@@ -377,7 +381,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         taskInfo = TaskInfo.getOrBadRequest(taskUUID);
         if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
-          if (taskInfo.getDetails() != null) {
+          if (taskInfo.getTaskParams() != null) {
             return taskInfo;
           }
         }
@@ -403,17 +407,17 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public static String getBriefTaskInfo(TaskInfo taskInfo) {
     StringBuilder sb = new StringBuilder();
     sb.append(taskInfo.getTaskType());
-    if (taskInfo.getDetails().has("nodeName")) {
+    if (taskInfo.getTaskParams().has("nodeName")) {
       sb.append("(");
-      sb.append(taskInfo.getDetails().get("nodeName").textValue());
-      if (taskInfo.getDetails().has("serverType")) {
-        sb.append(" ").append(taskInfo.getDetails().get("serverType").textValue());
+      sb.append(taskInfo.getTaskParams().get("nodeName").textValue());
+      if (taskInfo.getTaskParams().has("serverType")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("serverType").textValue());
       }
-      if (taskInfo.getDetails().has("process")) {
-        sb.append(" ").append(taskInfo.getDetails().get("process").textValue());
+      if (taskInfo.getTaskParams().has("process")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("process").textValue());
       }
-      if (taskInfo.getDetails().has("command")) {
-        sb.append(" ").append(taskInfo.getDetails().get("command").textValue());
+      if (taskInfo.getTaskParams().has("command")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("command").textValue());
       }
       sb.append(")");
     }

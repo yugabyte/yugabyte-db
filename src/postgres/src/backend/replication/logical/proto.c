@@ -20,7 +20,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-/* YB includes */
+/* YB includes. */
 #include "pg_yb_utils.h"
 
 /*
@@ -36,7 +36,8 @@ static void logicalrep_write_attrs(StringInfo out, Relation rel,
 								   Bitmapset *columns);
 static void logicalrep_write_tuple(StringInfo out, Relation rel,
 								   TupleTableSlot *slot,
-								   bool binary, Bitmapset *columns);
+								   bool binary, Bitmapset *columns,
+								   bool *yb_is_omitted);
 static void logicalrep_read_attrs(StringInfo in, LogicalRepRelation *rel);
 static void logicalrep_read_tuple(StringInfo in, LogicalRepTupleData *tuple);
 
@@ -427,7 +428,8 @@ logicalrep_write_insert(StringInfo out, TransactionId xid, Relation rel,
 	pq_sendint32(out, RelationGetRelid(rel));
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
-	logicalrep_write_tuple(out, rel, newslot, binary, columns);
+	logicalrep_write_tuple(out, rel, newslot, binary, columns,
+						   NULL /* yb_is_omitted */);
 }
 
 /*
@@ -460,7 +462,8 @@ logicalrep_read_insert(StringInfo in, LogicalRepTupleData *newtup)
 void
 logicalrep_write_update(StringInfo out, TransactionId xid, Relation rel,
 						TupleTableSlot *oldslot, TupleTableSlot *newslot,
-						bool binary, Bitmapset *columns)
+						bool binary, Bitmapset *columns,
+						bool *yb_old_is_omitted, bool *yb_new_is_omitted)
 {
 	pq_sendbyte(out, LOGICAL_REP_MSG_UPDATE);
 
@@ -482,11 +485,13 @@ logicalrep_write_update(StringInfo out, TransactionId xid, Relation rel,
 			pq_sendbyte(out, 'O');	/* old tuple follows */
 		else
 			pq_sendbyte(out, 'K');	/* old key follows */
-		logicalrep_write_tuple(out, rel, oldslot, binary, columns);
+		logicalrep_write_tuple(out, rel, oldslot, binary, columns,
+							   yb_old_is_omitted);
 	}
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
-	logicalrep_write_tuple(out, rel, newslot, binary, columns);
+	logicalrep_write_tuple(out, rel, newslot, binary, columns,
+						   yb_new_is_omitted);
 }
 
 /*
@@ -557,7 +562,8 @@ logicalrep_write_delete(StringInfo out, TransactionId xid, Relation rel,
 	else
 		pq_sendbyte(out, 'K');	/* old key follows */
 
-	logicalrep_write_tuple(out, rel, oldslot, binary, columns);
+	logicalrep_write_tuple(out, rel, oldslot, binary, columns,
+						   NULL /* yb_is_omitted */);
 }
 
 /*
@@ -772,7 +778,8 @@ logicalrep_read_typ(StringInfo in, LogicalRepTyp *ltyp)
  */
 static void
 logicalrep_write_tuple(StringInfo out, Relation rel, TupleTableSlot *slot,
-					   bool binary, Bitmapset *columns)
+					   bool binary, Bitmapset *columns,
+					   bool *yb_is_omitted)
 {
 	TupleDesc	desc;
 	Datum	   *values;
@@ -812,6 +819,16 @@ logicalrep_write_tuple(StringInfo out, Relation rel, TupleTableSlot *slot,
 
 		if (!column_in_column_list(att->attnum, columns))
 			continue;
+
+		if (IsYugaByteEnabled() && yb_is_omitted && yb_is_omitted[i])
+		{
+			/*
+			 * Treat omitted column as an unchanged toast column so that the
+			 * client will ignore it.
+			 */
+			pq_sendbyte(out, 'u'); /* unchanged toast column */
+			continue;
+		}
 
 		if (isnull[i])
 		{

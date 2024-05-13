@@ -9,6 +9,9 @@ spec:
     plural: storageconfigs
     singular: storageconfig
     kind: StorageConfig
+    categories:
+      - all
+      - yugabyte
   versions:
     - name: v1alpha1
       subresources:
@@ -41,12 +44,13 @@ spec:
                 config_type:
                   description:
                     Type of storage configuration to be created.
-                    Allowed values - STORAGE_S3, STORAGE_NFS, STORAGE_GCS
+                    Allowed values - STORAGE_S3, STORAGE_NFS, STORAGE_GCS, STORAGE_AZ
                   type: string
                   enum:
                     - STORAGE_S3
                     - STORAGE_NFS
                     - STORAGE_GCS
+                    - STORAGE_AZ
                 data:
                   type: object
                   description: Data object to create storage configuration.
@@ -58,8 +62,16 @@ spec:
                       description: AWS secret access key for the S3 storage configuration.
                       type: string
                     BACKUP_LOCATION:
-                      description: Backup location for the NFS storage configuration.
+                      description: Backup location for the storage configuration.
                       type: string
+                      x-kubernetes-validations:
+                      - message: BACKUP_LOCATION cannot be changed
+                        rule: self == oldSelf
                     GCS_CREDENTIALS_JSON:
                       description: GCS credentials JSON for the GCS storage configuration.
                       type: string
+                    AZURE_STORAGE_SAS_TOKEN:
+                      description: Azure SAS token for the Azure storage configuration.
+                      type: string
+                  required:
+                  - BACKUP_LOCATION

@@ -336,8 +336,8 @@ func init() {
 
 	updateAWSProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
-			" lacking access to the public internet for package downloads, "+
-			"defaults to false.")
+			" lacking access to the public internet for package downloads. "+
+			"(default false)")
 	updateAWSProviderCmd.Flags().StringArray("ntp-servers", []string{},
 		"[Optional] List of NTP Servers. Can be provided as separate flags or "+
 			"as comma-separated values.")

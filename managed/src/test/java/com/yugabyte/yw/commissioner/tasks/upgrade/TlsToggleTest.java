@@ -46,6 +46,7 @@ import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -254,7 +255,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     CertificateInfo.create(
         rootCA,
         defaultCustomer.getUuid(),
-        "test1",
+        "test1" + RandomStringUtils.randomAlphanumeric(8),
         new Date(),
         new Date(),
         "privateKey",
@@ -265,7 +266,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
       CertificateInfo.create(
           clientRootCA,
           defaultCustomer.getUuid(),
-          "test1",
+          "test1" + RandomStringUtils.randomAlphanumeric(8),
           new Date(),
           new Date(),
           "privateKey",

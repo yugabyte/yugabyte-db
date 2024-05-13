@@ -284,7 +284,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         instanceActions.stream()
             .map(t -> t.getTaskType())
             .collect(Collectors.toCollection(ArrayList::new)));
-    JsonNode details = instanceActions.get(0).getDetails();
+    JsonNode details = instanceActions.get(0).getTaskParams();
     assertEquals(Json.toJson(newTags), details.get("tags"));
     assertEquals("q1,q3", details.get("deleteTags").asText());
 

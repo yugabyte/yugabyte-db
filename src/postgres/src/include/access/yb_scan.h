@@ -117,7 +117,6 @@ typedef struct YBParallelPartitionKeysData
 	Oid			table_relfilenode_oid; /* relfilenode_oid of the target
 										  relation */
 	bool		is_forward;		/* scan direction */
-	uint64_t	read_time_serial_no;	/* to replicate to background workers */
 	uint64_t	used_ht_for_read;	/* to replicate to background workers */
 	FetchStatus fetch_status;	/* if fetch is in progress or completed */
 	int			low_offset;		/* offset of the lowest key in the buffer */

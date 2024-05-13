@@ -116,10 +116,11 @@ Version refers to the latest tested version of the integration.
 
 ### Hardware, Software, and Data Management platforms
 
-| Tool    | Version | Support | Tutorial |
-| :------ | :------ | :------ | :------- |
-| Nutanix AHV |        |  | [Nutanix AHV](nutanix-ahv/) |
-| Commvault | | | [Commvault](commvault/)
+| Tool    | Tutorial |
+| :------ | :------- |
+| Nutanix AHV | [Nutanix AHV](nutanix-ahv/) |
+| Commvault | [Commvault](commvault/)
+| Delphix | [Delphix](delphix/)
 
 ### Other
 

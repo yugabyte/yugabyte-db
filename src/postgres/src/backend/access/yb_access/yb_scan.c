@@ -1162,12 +1162,11 @@ static bool YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max) {
 }
 
 /*
- * Return true if a scan key column type is compatible with value type. 'equal_strategy' is true
- * for BTEqualStrategyNumber.
+ * Return true if a scan key column type is compatible with value type.
  */
 static bool YbIsScanCompatible(Oid column_typid,
 							   Oid value_typid,
-							   bool equal_strategy,
+							   bool is_value_scalar,
 							   Datum value) {
 	if (column_typid == value_typid)
 		return true;
@@ -1177,24 +1176,33 @@ static bool YbIsScanCompatible(Oid column_typid,
 		case INT2OID:
 
 			/*
-			 * If column c0 has INT2OID type and value type is INT4OID, the value may overflow
-			 * INT2OID. For example, where clause condition "c0 = 65539" would become "c0 = 3"
-			 * and will unnecessarily fetch a row with key of 3. This will not affect correctness
-			 * because at upper Postgres layer filtering will be subsequently applied for equality/
-			 * inequality conditions. For example, "c0 = 65539" will be applied again to filter out
-			 * this row. We prefer to bind scan key c0 to account for the common case where INT4OID
-			 * value does not overflow INT2OID, which happens in some system relation scan queries.
+			 * If column c0 has INT2OID type and value type is INT4OID, the
+			 * value may overflow INT2OID. For example, where clause condition
+			 * "c0 = 65539" would become "c0 = 3" and will unnecessarily fetch
+			 * a row with key of 3. This will not affect correctness
+			 * because at upper Postgres layer filtering will be subsequently
+			 * applied for equality/inequality conditions. For example, "c0 =
+			 * 65539" will be applied again to filter out this row.
+			 * We prefer to bind scan key c0 to account for the
+			 * common case where INT4OID value does not overflow INT2OID,
+			 * which happens in some system relation scan queries.
 			 *
-			 * For this purpose, specifically for inequalities, we return true when we are sure that
-			 * there isn't a data overflow. For instance, if column c0 has INT2OID and value type is
-			 * INT4OID, and its an inequality strategy, we check if the actual value is within the
+			 * For this purpose, specifically for when the value is scalar,
+			 * we return true when we are sure that
+			 * there isn't a data overflow. For instance, if column c0 has
+			 * INT2OID and value type is INT4OID, and its an inequality
+			 * strategy, we check if the actual value is within the
 			 * bounds of INT2OID. If yes, then we return true, otherwise false.
 			 */
-			return equal_strategy ? (value_typid == INT4OID || value_typid == INT8OID) :
-				   YbIsIntegerInRange(value, value_typid, SHRT_MIN, SHRT_MAX);
+			return !is_value_scalar ?
+				(value_typid == INT4OID || value_typid == INT8OID) :
+					YbIsIntegerInRange(
+						value, value_typid, SHRT_MIN, SHRT_MAX);
 		case INT4OID:
-			return equal_strategy ? (value_typid == INT2OID || value_typid == INT8OID) :
-				   YbIsIntegerInRange(value, value_typid, INT_MIN, INT_MAX);
+			return !is_value_scalar ?
+				(value_typid == INT2OID || value_typid == INT8OID) :
+					YbIsIntegerInRange(
+						value, value_typid, INT_MIN, INT_MAX);
 		case INT8OID:
 			return value_typid == INT2OID || value_typid == INT4OID;
 
@@ -1339,7 +1347,7 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 	return !OidIsValid(valtypid) ||
 	       key->sk_strategy == InvalidStrategy ||
 	       YbIsScanCompatible(atttypid, valtypid,
-	                          key->sk_strategy == BTEqualStrategyNumber,
+	                          !YbIsRowHeader(key) && !YbIsSearchArray(key),
 	                          key->sk_argument) ||
 	       IsPolymorphicType(valtypid);
 }
@@ -2137,7 +2145,14 @@ YbPredetermineNeedsRecheck(Relation relation,
 	/*
 	 * Finally, ybscan has everything needed to determine recheck.  Do it now.
 	 */
-	return (YbNeedsPgRecheck(&ybscan) || YbMayFailPreliminaryCheck(&ybscan));
+	bool needs_recheck = YbNeedsPgRecheck(&ybscan) ||
+						 YbMayFailPreliminaryCheck(&ybscan);
+
+	bms_free(scan_plan.hash_key);
+	bms_free(scan_plan.primary_key);
+	bms_free(scan_plan.sk_cols);
+
+	return needs_recheck;
 }
 
 typedef struct {
@@ -2297,11 +2312,12 @@ YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 
 	Bitmapset *columns = NULL;
 	ScanKey *keys = ybScan->keys;
+	const bool is_ioscan = ybScan->prepare_params.index_only_scan;
 	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
 	{
-		if (ybScan->prepare_params.index_only_scan ||
-			(ybScan->target_key_attnums[i] != InvalidAttrNumber &&
-			 keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL)))
+		if (is_ioscan ||
+			ybScan->target_key_attnums[i] == InvalidAttrNumber ||
+			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
 		{
 			int bms_idx = YBAttnumToBmsIndexWithMinAttr(
 				YBFirstLowInvalidAttributeNumber, keys[i]->sk_attno);
@@ -3969,7 +3985,6 @@ yb_init_partition_key_data(void *data)
 	ConditionVariableInit(&ppk->cv_empty);
 	ppk->database_oid = InvalidOid;
 	ppk->table_relfilenode_oid = InvalidOid;
-	ppk->read_time_serial_no = 0;
 	ppk->used_ht_for_read = 0;
 	ppk->fetch_status = FETCH_STATUS_IDLE;
 	ppk->low_offset = 0;
@@ -4339,16 +4354,10 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 		ppk->database_oid = YBCGetDatabaseOid(relation);
 		ppk->table_relfilenode_oid = YbGetRelfileNodeId(relation);
 		ppk->is_forward = is_forward;
-		ppk->read_time_serial_no = YBCPgGetReadTimeSerialNo();
 		ppk->used_ht_for_read = *exec_params->stmt_in_txn_limit_ht_for_reads;
 	}
 	else
 	{
-		/*
-		 * Parallel worker should propagate shared session details to the local
-		 * execution environment.
-		 */
-		YBCPgForceReadTimeSerialNo(ppk->read_time_serial_no);
 		*exec_params->stmt_in_txn_limit_ht_for_reads = ppk->used_ht_for_read;
 		return;
 	}

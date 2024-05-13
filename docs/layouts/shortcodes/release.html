@@ -1,0 +1,37 @@
+{{- /* first arg is the version as a comma delimited string, spaces allowed */ -}}
+{{- $versions := .Get 0 -}}
+{{- /* second arg is one of ybdb/yba. ybdb is default */ -}}
+{{- $product := default "ybdb" (.Get 1) -}}
+{{- $versions = split $versions "," -}}
+{{- $numversions := len $versions -}}
+{{- $count := 0 -}}
+{{- range $version := $versions -}}
+    {{- /* retain the original text for display */ -}}
+    {{- $orig := trim $version " " -}}
+    {{- /* trim the spaces,+,.,x,X */ -}}
+    {{- $version = trim $version " .+xX" -}}
+    {{- $count = add $count 1 -}}
+    {{- /* split the build part eg: -b12 */ -}}
+    {{- $parts := split $version "-" -}}
+    {{- $build := "" -}}
+    {{- if gt (len $parts) 1 -}} {{- $build = index $parts 1 -}} {{ $version = index $parts 0 -}}{{- end -}}
+    {{- /* identify the base version eg 2.20 for 2.20.1.0 */ -}}
+    {{- $base := split $version "." -}}
+    {{- $base = printf "%s.%s" (index $base 0) (index $base 1) -}}
+    {{- if or (eq $product "ybdb") (eq $product "yba") -}}
+        {{- if eq "all" (lower $version) -}}
+        {{- /* link to the main release page in case of All */ -}}
+        <a href="{{- printf "/preview/releases/%s-releases/" $product}}">{{- printf "%s" $orig -}}</a>
+        {{- else if eq $base $version -}}
+        {{- /* If the version is the base version point to the top of the page */ -}}
+        <a href="{{printf "/preview/releases/%s-releases/v%s" $product $base}}">{{- printf "v%s" $orig -}}</a>
+        {{- else -}}
+        {{- /* If it is a specific version add the anchor */ -}}
+        <a href="{{printf "/preview/releases/%s-releases/v%s#v%s" $product $base $version}}">{{- printf "v%s" $orig -}}</a>
+        {{- end -}}
+        {{- /* don't add a comma to the last version */ -}}
+        {{- if ne $numversions $count -}}
+            {{- print ", " }}
+        {{end -}}
+    {{- end -}}
+{{- end -}}

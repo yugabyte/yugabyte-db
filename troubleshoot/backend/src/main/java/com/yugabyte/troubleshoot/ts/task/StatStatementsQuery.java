@@ -1,10 +1,13 @@
 package com.yugabyte.troubleshoot.ts.task;
 
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.*;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.yugabyte.troubleshoot.ts.CommonUtils;
+import com.yugabyte.troubleshoot.ts.logs.LogsUtil;
 import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.PgStatStatementsQueryService;
 import com.yugabyte.troubleshoot.ts.service.PgStatStatementsService;
@@ -13,6 +16,7 @@ import com.yugabyte.troubleshoot.ts.service.UniverseMetadataService;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClient;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClientError;
 import com.yugabyte.troubleshoot.ts.yba.models.RunQueryResult;
+import io.prometheus.client.Summary;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -41,6 +45,18 @@ import org.springframework.util.CollectionUtils;
 @Slf4j
 @Profile("!test")
 public class StatStatementsQuery {
+
+  private static final Summary UNIVERSE_PROCESS_TIME =
+      buildSummary(
+          "ts_pss_query_universe_process_time_millis",
+          "PG Stat Statements universe processing time",
+          LABEL_RESULT);
+
+  private static final Summary NODE_PROCESS_TIME =
+      buildSummary(
+          "ts_pss_query_node_process_time_millis",
+          "PG Stat Statements universe processing time",
+          LABEL_RESULT);
 
   public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT_2_18 =
       "2.18.1.0-b67";
@@ -113,6 +129,10 @@ public class StatStatementsQuery {
       fixedRateString = "${task.pg_stat_statements_query.period}",
       initialDelayString = "PT5S")
   public Map<UUID, UniverseProgress> processAllUniverses() {
+    return LogsUtil.callWithContext(this::processAllUniversesInternal);
+  }
+
+  private Map<UUID, UniverseProgress> processAllUniversesInternal() {
     Map<UUID, UniverseProgress> result = new HashMap<>();
     for (UniverseMetadata universeMetadata : universeMetadataService.listAll()) {
       UniverseDetails details = universeDetailsService.get(universeMetadata.getId());
@@ -141,7 +161,9 @@ public class StatStatementsQuery {
       result.put(universeMetadata.getId(), newProgress);
       try {
         pgStatStatementsQueryExecutor.execute(
-            () -> processUniverse(universeMetadata, details, newProgress));
+            LogsUtil.withUniverseId(
+                () -> processUniverse(universeMetadata, details, newProgress),
+                universeMetadata.getId()));
       } catch (Exception e) {
         log.error("Failed to schedule universe " + universeMetadata.getId(), e);
         universesProcessStartTime.remove(universeMetadata.getId());
@@ -153,6 +175,7 @@ public class StatStatementsQuery {
   private void processUniverse(
       UniverseMetadata metadata, UniverseDetails details, UniverseProgress progress) {
     log.debug("Processing universe {}", details.getId());
+    long startTime = System.currentTimeMillis();
     try {
       progress.setInProgress(true);
       progress.setStartTimestamp(System.currentTimeMillis());
@@ -163,7 +186,7 @@ public class StatStatementsQuery {
         results.put(
             node.getNodeName(),
             pgStatStatementsNodesQueryExecutor.submit(
-                () -> processNode(metadata, details, node, progress)));
+                LogsUtil.wrapCallable(() -> processNode(metadata, details, node, progress))));
       }
       Map<QueryKey, QueryData> combinedQueries = new HashMap<>();
       for (Map.Entry<String, Future<NodeProcessResult>> resultEntry : results.entrySet()) {
@@ -217,11 +240,15 @@ public class StatStatementsQuery {
               .toList();
       pgStatStatementsQueryService.save(pgStatStatementsQueries);
       universesProcessStartTime.remove(details.getId());
+      UNIVERSE_PROCESS_TIME.labels(RESULT_SUCCESS).observe(System.currentTimeMillis() - startTime);
+      log.info("Processed universe {}", metadata.getId());
+    } catch (Exception e) {
+      UNIVERSE_PROCESS_TIME.labels(RESULT_FAILURE).observe(System.currentTimeMillis() - startTime);
+      log.info("Failed to process universe universe " + metadata.getId(), e);
     } finally {
       progress.inProgress = false;
     }
 
-    log.info("Processed universe {}", metadata.getId());
     universesProcessStartTime.remove(metadata.getId());
   }
 
@@ -230,6 +257,7 @@ public class StatStatementsQuery {
       UniverseDetails details,
       UniverseDetails.UniverseDefinition.NodeDetails node,
       UniverseProgress progress) {
+    Long startTime = System.currentTimeMillis();
     try {
       NodeProcessResult nodeResult = new NodeProcessResult(true);
       String ybSoftwareVersion =
@@ -297,13 +325,16 @@ public class StatStatementsQuery {
         queryLastStats.put(key, statsJson);
       }
       pgStatStatementsService.save(statStatementsList);
+      NODE_PROCESS_TIME.labels(RESULT_SUCCESS).observe(System.currentTimeMillis() - startTime);
       return nodeResult;
     } catch (YBAClientError error) {
+      NODE_PROCESS_TIME.labels(RESULT_FAILURE).observe(System.currentTimeMillis() - startTime);
       log.warn(
           "Failed to retrieve pg_stat_statements for node {} - {}",
           node.getNodeName(),
           error.getError());
     } catch (Exception e) {
+      NODE_PROCESS_TIME.labels(RESULT_FAILURE).observe(System.currentTimeMillis() - startTime);
       log.warn("Failed to retrieve pg_stat_statements for node {}", node.getNodeName(), e);
     }
     return new NodeProcessResult(false);

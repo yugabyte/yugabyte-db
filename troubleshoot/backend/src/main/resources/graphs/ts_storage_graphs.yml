@@ -28,7 +28,7 @@ query_latency:
     xaxis:
       type: "date"
     yaxis:
-      ticksuffix: "&nbsp;\u00B5s"
+      ticksuffix: "&nbsp;ms"
 
 query_rps:
   table: "pg_stat_statements"

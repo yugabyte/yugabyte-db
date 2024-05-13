@@ -1,0 +1,10 @@
+create extension yb_ycql_utils;
+select ycql_stat_statements();
+ ycql_stat_statements 
+----------------------
+(0 rows)
+
+select * from ycql_stat_statements;
+ queryid | query | is_prepared | calls | total_time | min_time | max_time | mean_time | stddev_time 
+---------+-------+-------------+-------+------------+----------+----------+-----------+-------------
+(0 rows)

@@ -3,7 +3,7 @@ title: Read Committed isolation level
 headerTitle: Read Committed isolation level
 linkTitle: Read Committed
 description: Details about the Read Committed isolation level
-techPreview: /preview/releases/versioning/#feature-availability
+earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
   preview:
     identifier: architecture-read-committed
@@ -20,7 +20,7 @@ A read committed transaction in PostgreSQL doesn't raise serialization errors be
 
 YugabyteDB's Read Committed isolation provides slightly stronger guarantees than PostgreSQL's read committed, while providing the same semantics and benefits, that is, a user doesn't have to retry serialization errors in the application logic (modulo [limitation 2](#limitations) around `ysql_output_buffer_size` which is not of relevance for most OLTP workloads). In YugabyteDB, a read committed transaction retries the whole statement instead of retrying only the conflicting rows. This leads to a stronger guarantee where each statement in a YugabyteDB read committed transaction always uses a consistent snapshot of the database, while in PostgreSQL an inconsistent snapshot can be used for statements when conflicts are present. For a detailed example, see [Stronger guarantees in YugabyteDB's read committed isolation](#yugabytedb-s-implementation-with-a-stronger-guarantee).
 
-NOTE: Retries for the statement in YugabyteDB's Read Committed isolation are limited to the per-session configurable GUC variable `yb_max_query_layer_retries`. To set it at the cluster level, use the `ysql_pg_conf_csv` TServer gflag. If a serialization error isn't resolved within `yb_max_query_layer_retries`, the error will be returned to the client.
+NOTE: Retries for the statement in YugabyteDB's Read Committed isolation are limited to the per-session YSQL configuration parameter `yb_max_query_layer_retries`. To set it at the cluster level, use the `ysql_pg_conf_csv` TServer gflag. If a serialization error isn't resolved within `yb_max_query_layer_retries`, the error will be returned to the client.
 
 ## Implementation and semantics (as in PostgreSQL)
 
@@ -328,7 +328,7 @@ YugabyteDB chooses to provide this guarantee as most clients that use read commi
 Read Committed isolation faces the following limitations if using [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) instead of the default [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) concurrency control policy:
 
 * You may have to manually tune the exponential backoff parameters for performance, as described in [Performance tuning](#performance-tuning).
-* Deadlock cycles will not be automatically detected and broken quickly. Instead, the `yb_max_query_layer_retries` GUC variable will ensure that statements aren't stuck in deadlocks forever.
+* Deadlock cycles will not be automatically detected and broken quickly. Instead, the `yb_max_query_layer_retries` YSQL configuration parameter will ensure that statements aren't stuck in deadlocks forever.
 * There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
 
 The retries for serialization errors are done at the statement level. Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided as T1's statement and T2 would no longer be "concurrent".
@@ -1417,7 +1417,7 @@ Read Committed interacts with the following feature:
 Read Committed isolation has the following additional limitations when `enable_wait_queues=false` (see [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) and [Interaction with concurrency control](#interaction-with-concurrency-control)):
 
 * You may have to manually tune the exponential backoff parameters for performance, as described in [Performance tuning](#performance-tuning).
-* Deadlock cycles will not be automatically detected and broken quickly. Instead, the `yb_max_query_layer_retries` GUC variable will ensure that statements aren't stuck in deadlocks forever.
+* Deadlock cycles will not be automatically detected and broken quickly. Instead, the `yb_max_query_layer_retries` YSQL configuration parameter will ensure that statements aren't stuck in deadlocks forever.
 * There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
 
 ## Considerations

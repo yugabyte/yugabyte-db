@@ -139,6 +139,9 @@ class XClusterManager : public XClusterManagerIf,
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
+  Status MarkIndexBackfillCompleted(
+      const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) override;
+
  private:
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;

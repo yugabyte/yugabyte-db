@@ -121,9 +121,9 @@ func init() {
 	deleteUniverseCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
 	deleteUniverseCmd.Flags().Bool("force-delete", false,
-		"[Optional] Force delete the universe despite errors, defaults to false.")
+		"[Optional] Force delete the universe despite errors. (default false)")
 	deleteUniverseCmd.Flags().Bool("delete-backups", false,
-		"[Optional] Delete backups associated with name, defaults to false.")
+		"[Optional] Delete backups associated with name. (default false)")
 	deleteUniverseCmd.Flags().Bool("delete-certs", false,
-		"[Optional] Delete certs associated with name, defaults to false.")
+		"[Optional] Delete certs associated with name. (default false)")
 }

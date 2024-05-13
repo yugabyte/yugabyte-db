@@ -486,7 +486,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertNotNull(provider.getLastValidationErrors());
     assertEquals(
         Json.parse("[\"AMI details extraction failed: Not found\"]"),
-        provider.getLastValidationErrors().get("error").get("REGION.us-west-1.IMAGE"));
+        provider.getLastValidationErrors().get("error").get("REGION.us-west-1.IMAGE.test-image"));
     assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
     assertEquals("new name", provider.getName());
   }
@@ -848,7 +848,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse, null);
     backupTaskInfo.setTaskState(TaskInfo.State.Running);
     backupTaskInfo.setTaskUUID(backupTaskUUID);
-    backupTaskInfo.setDetails(Json.newObject());
+    backupTaskInfo.setTaskParams(Json.newObject());
     backupTaskInfo.setOwner("Myself");
     backupTaskInfo.save();
     ScheduleTask.create(backupTaskUUID, UUID.randomUUID());
@@ -881,7 +881,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse, null);
     backupTaskInfo.setTaskState(TaskInfo.State.Running);
     backupTaskInfo.setTaskUUID(backupTaskUUID);
-    backupTaskInfo.setDetails(Json.newObject());
+    backupTaskInfo.setTaskParams(Json.newObject());
     backupTaskInfo.setOwner("Myself");
     backupTaskInfo.save();
     ScheduleTask.create(backupTaskUUID, UUID.randomUUID());

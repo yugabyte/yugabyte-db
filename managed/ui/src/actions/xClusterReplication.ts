@@ -133,19 +133,24 @@ export function editXclusterName(replication: XClusterConfig) {
   });
 }
 
-export function editXClusterConfigTables(
-  xClusterUUID: string,
-  tables: string[],
+interface EditXClusterConfigTablesRequest {
+  tables: string[];
+  autoIncludeIndexTables?: boolean;
   bootstrapParams?: {
     tables: string[];
     backupRequestParams: any;
-  }
+  };
+}
+
+export function editXClusterConfigTables(
+  xClusterUUID: string,
+  { tables, autoIncludeIndexTables, bootstrapParams }: EditXClusterConfigTablesRequest
 ) {
   const customerId = localStorage.getItem('customerId');
   return axios
     .put<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
-      tables: tables,
-      autoIncludeIndexTables: false,
+      tables,
+      autoIncludeIndexTables: autoIncludeIndexTables ?? false,
       ...(bootstrapParams !== undefined && { bootstrapParams })
     })
     .then((response) => response.data);

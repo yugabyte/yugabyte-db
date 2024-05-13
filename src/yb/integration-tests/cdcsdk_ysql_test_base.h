@@ -110,6 +110,7 @@ DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_uint32(cdcsdk_max_consistent_records);
 DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
+DECLARE_uint64(cdcsdk_publication_list_refresh_interval_micros);
 
 namespace yb {
 
@@ -125,6 +126,10 @@ namespace cdc {
 
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
+
+static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
+static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
+static constexpr uint64_t kVWALSessionId3 = std::numeric_limits<uint64_t>::max() / 2 + 2;
 
 class CDCSDKYsqlTest : public CDCSDKTestBase {
  public:
@@ -148,6 +153,18 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     OpId op_id = OpId::Max();
     int64_t cdc_sdk_latest_active_time = 0;
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
+    uint64_t confirmed_flush_lsn = 0;
+    uint64_t restart_lsn = 0;
+    uint32_t xmin = 0;
+    uint64_t record_id_commit_time = 0;
+  };
+
+  struct CdcStateTableSlotRow {
+    uint64_t confirmed_flush_lsn = 0;
+    uint64_t restart_lsn = 0;
+    uint32_t xmin = 0;
+    HybridTime record_id_commit_time = HybridTime::kInvalid;
+    HybridTime last_pub_refresh_time = HybridTime::kInvalid;
   };
 
   struct GetAllPendingChangesResponse {
@@ -157,6 +174,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     int record_count[8];
     CDCSDKCheckpointPB checkpoint;
     int64 safe_hybrid_time = -1;
+    bool has_publication_refresh_indicator = false;
   };
 
   Result<string> GetUniverseId(PostgresMiniCluster* cluster);
@@ -401,6 +419,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
       const bool& validate_third_column = false, const int32_t& value2 = 0);
 
+  void AssertKeyValue(const CDCSDKProtoRecordPB& record1, const CDCSDKProtoRecordPB& record2);
+
+  void AssertCDCSDKProtoRecords(
+      const CDCSDKProtoRecordPB& record1, const CDCSDKProtoRecordPB& record2);
+
   void AssertBeforeImageKeyValue(
       const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
       const bool& validate_third_column = false, const int32_t& value2 = 0);
@@ -464,20 +487,21 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status InitVirtualWAL(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id = 1);
+      const uint64_t session_id = kVWALSessionId1);
 
-  Status DestroyVirtualWAL(const uint64_t session_id = 1);
+  Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
   Status UpdateAndPersistLSN(
       const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
-      const uint64_t restart_lsn, const uint64_t session_id = 1);
+      const uint64_t restart_lsn, const uint64_t session_id = kVWALSessionId1);
 
   // This method will keep on consuming changes until it gets the txns fully i.e COMMIT record of
   // the last txn. This indicates that even though we might have received the expecpted DML records,
   // we might still continue calling GetConsistentChanges until we receive the COMMIT record.
   Result<GetAllPendingChangesResponse> GetAllPendingTxnsFromVirtualWAL(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
-      bool init_virtual_wal, const uint64_t session_id = 1, bool allow_sending_feedback = true);
+      bool init_virtual_wal, const uint64_t session_id = kVWALSessionId1,
+      bool allow_sending_feedback = true);
 
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
@@ -506,8 +530,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint32_t replication_factor, bool add_tables_without_primary_key = false);
 
   Result<GetConsistentChangesResponsePB> GetConsistentChangesFromCDC(
+      const xrepl::StreamId& stream_id, const uint64_t session_id = kVWALSessionId1);
+
+  Status UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id = 1);
+      const uint64_t& session_id = kVWALSessionId1);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
@@ -568,6 +595,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void ValidateColumnCounts(const GetChangesResponsePB& resp, uint32_t excepted_column_counts);
 
+  void ValidateColumnCounts(
+      const GetAllPendingChangesResponse& resp, uint32_t excepted_column_counts);
+
   void ValidateInsertCounts(const GetChangesResponsePB& resp, uint32_t excepted_insert_counts);
 
   void WaitUntilSplitIsSuccesful(
@@ -617,6 +647,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<CdcStateTableRow> ReadFromCdcStateTable(
       const xrepl::StreamId stream_id, const std::string& tablet_id);
 
+  Result<CdcStateTableSlotRow> ReadSlotEntryFromStateTable(const xrepl::StreamId& stream_id);
+
   void VerifyExplicitCheckpointingOnTablets(
       const xrepl::StreamId& stream_id,
       const std::unordered_map<TabletId, CdcStateTableRow>& initial_tablet_checkpoint,
@@ -630,7 +662,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckRecordsConsistency(const std::vector<CDCSDKProtoRecordPB>& records);
 
-  void CheckRecordCount(GetAllPendingChangesResponse resp, int expected_dml_records);
+  void CheckRecordCount(
+      GetAllPendingChangesResponse resp, int expected_dml_records, int expected_ddl_records = 0,
+      int expected_min_txn_id = 2 /* VWAL's min_txn_id */);
 
   void CheckRecordsConsistencyFromVWAL(const std::vector<CDCSDKProtoRecordPB>& records);
 

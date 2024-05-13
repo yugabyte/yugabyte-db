@@ -34,13 +34,13 @@ YBC is used to manage backup and restore, providing faster full backups, and int
 
   - Set systemd-specific database service unit files (if used). Refer to [Manually provision on-premises nodes](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 
-  - After upgrading nodes, manually install YBC on the nodes. Refer to [Upgrade manually-provisioned on-premises universe](#upgrade-manually-provisioned-on-premises-universe).
+  - After upgrading nodes, manually install YBC on the nodes. Refer to [Upgrade manually-provisioned on-premises universe](../upgrade-software-install/#upgrade-manually-provisioned-on-premises-universe).
 
 - OS patching procedure - for universes created using an on-premises provider with manually-provisioned nodes, if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate YBC.
 
 ### Upgrading from versions earlier than v2.18.0
 
-YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading from versions earlier than v2.16.0](#upgrading-from-versions-earlier-than-v2160).
+YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading from versions earlier than v2.16.0](#upgrading-from-versions-earlier-than-v2-16-0).
 
 ### Upgrading from versions earlier than v2.18.2
 
@@ -48,8 +48,8 @@ The Node Agent was introduced for all universes in v2.18.2. Node agent is an RPC
 
 **Impacts**
 
-- Firewall ports - update your firewall rules to allow incoming TCP traffic on port 9070 for all nodes in a universe.
+- Firewall ports - update your firewall rules to allow incoming TCP traffic on port 9070 for all nodes in a universe. YugabyteDB Anywhere listens to node agents on port 443.
 
 - On-premises provider - if you use on-premises providers with manually-provisioned nodes, you will need to update your current procedures for manually provisioning instances to include installing node agent. Refer to [Install node agent](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent).
 
-- OS patching procedure - for universes created using an on-premises provider with manually-provisioned nodes, if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate YBC.
+- [OS patching](../../manage-deployments/upgrade-nodes/) procedure - for universes created using an on-premises provider with manually-provisioned nodes, if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate node agent.

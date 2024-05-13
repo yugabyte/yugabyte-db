@@ -64,7 +64,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const IMPORT_OPTIONS = {
-  COPY_FILE_PATH: 'Copy File Path',
+  COPY_FILE_NAME: 'Copy File Name',
   COPY_URL: 'Copy URL'
 } as const;
 
@@ -79,7 +79,7 @@ export const ImportedArchitecture = ({
   const { t } = useTranslation();
 
   const formatArchitectureLocation = (artifact: ReleaseArtifacts) => {
-    const btnText = artifact?.package_url ? IMPORT_OPTIONS.COPY_URL : IMPORT_OPTIONS.COPY_FILE_PATH;
+    const btnText = artifact?.package_url ? IMPORT_OPTIONS.COPY_URL : IMPORT_OPTIONS.COPY_FILE_NAME;
     const architectureLocation = artifact?.package_url
       ? artifact?.package_url
       : artifact?.file_name;

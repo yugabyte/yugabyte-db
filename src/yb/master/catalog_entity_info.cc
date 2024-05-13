@@ -960,6 +960,30 @@ bool TableInfo::IsColocatedUserTable() const {
   return colocated() && !IsColocationParentTable();
 }
 
+bool TableInfo::IsSequencesSystemTable() const {
+  if (GetTableType() == PGSQL_TABLE_TYPE && !IsColocationParentTable()) {
+    // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
+    if (!IsPgsqlId(namespace_id()) || !IsPgsqlId(id())) {
+      LOG(WARNING) << "Not PGSQL IDs " << namespace_id() << ", " << id();
+      return false;
+    }
+    Result<uint32_t> database_oid = GetPgsqlDatabaseOid(namespace_id());
+    if (!database_oid.ok()) {
+      LOG(WARNING) << "Invalid Namespace ID " << namespace_id();
+      return false;
+    }
+    Result<uint32_t> table_oid = GetPgsqlTableOid(id());
+    if (!table_oid.ok()) {
+      LOG(WARNING) << "Invalid Table ID " << id();
+      return false;
+    }
+    if (*database_oid == kPgSequencesDataDatabaseOid && *table_oid == kPgSequencesDataTableOid) {
+      return true;
+    }
+  }
+  return false;
+}
+
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
   SharedLock<decltype(lock_)> l(lock_);
   return tablespace_id_for_table_creation_;
@@ -1291,6 +1315,11 @@ void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Statu
 Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
   SharedLock<decltype(lock_)> l(lock_);
   return setup_universe_replication_error_;
+}
+
+bool UniverseReplicationInfo::IsDbScoped() const {
+  auto l = LockForRead();
+  return l->pb.has_db_scoped_info() && l->pb.db_scoped_info().namespace_infos_size() > 0;
 }
 
 // ================================================================================================

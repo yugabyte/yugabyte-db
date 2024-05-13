@@ -39,8 +39,6 @@ public class AWSCloudInfo implements CloudInfoInterface {
   @ApiModelProperty
   public String awsAccessKeySecret;
 
-  @ApiModelProperty public boolean useIMDSv2 = false;
-
   @JsonAlias("HOSTED_ZONE_ID")
   @ApiModelProperty
   @ApiParam(value = "Route 53 Zone ID")

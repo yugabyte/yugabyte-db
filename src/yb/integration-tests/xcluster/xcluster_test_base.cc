@@ -219,7 +219,7 @@ Status XClusterTestBase::CreateDatabase(
     Cluster* cluster, const std::string& namespace_name, bool colocated) {
   auto conn = VERIFY_RESULT(cluster->Connect());
   return conn.ExecuteFormat(
-      "CREATE DATABASE $0$1", namespace_name, colocated ? " colocated = true" : "");
+      "CREATE DATABASE $0$1", namespace_name, colocated ? " COLOCATION = true" : "");
 }
 
 Status XClusterTestBase::DropDatabase(Cluster& cluster, const std::string& namespace_name) {

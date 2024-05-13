@@ -56,12 +56,12 @@ export const EditReleaseTagModal = ({
     (payload: any) => ReleasesAPI.updateReleaseMetadata(payload, releaseUuid!),
     {
       onSuccess: (response: any) => {
-        toast.success('Updated release tag successfully');
+        toast.success(t('releases.editReleaseTagModal.updateReleaseTagSuccess'));
         onActionPerformed();
         onClose();
       },
       onError: () => {
-        toast.error('Failed to update release tag');
+        toast.error(t('releases.editReleaseTagModal.updateReleaseTagFailure'));
       }
     }
   );

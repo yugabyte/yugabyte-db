@@ -24,13 +24,15 @@ import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
   XClusterConfigAction,
+  XClusterConfigType,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import {
   formatUuidForXCluster,
   getTablesForBootstrapping,
   getXClusterConfigTableType,
-  parseFloatIfDefined
+  parseFloatIfDefined,
+  shouldAutoIncludeIndexTables
 } from '../../ReplicationUtils';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import { CurrentFormStep } from './CurrentFormStep';
@@ -118,7 +120,11 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
         ? api.updateTablesInDr(props.drConfigUuid, {
             tables: formValues.tableUuids
           })
-        : editXClusterConfigTables(xClusterConfig.uuid, formValues.tableUuids, bootstrapParams);
+        : editXClusterConfigTables(xClusterConfig.uuid, {
+            tables: formValues.tableUuids,
+            autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfig),
+            bootstrapParams: bootstrapParams
+          });
     },
     {
       onSuccess: (response) => {
@@ -458,7 +464,8 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
             sourceUniverseUUID: sourceUniverseUuid,
             tableType: xClusterConfigTableType,
             targetUniverseUUID: targetUniverseUuid,
-            xClusterConfigUUID: xClusterConfig.uuid
+            xClusterConfigUUID: xClusterConfig.uuid,
+            isTransactionalConfig: xClusterConfig.type === XClusterConfigType.TXN
           }}
         />
       </FormProvider>

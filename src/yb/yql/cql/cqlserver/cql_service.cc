@@ -25,6 +25,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tablet_server_interface.h"
 
 #include "yb/util/bytes_formatter.h"
@@ -583,6 +584,27 @@ void CQLServiceImpl::ResetPreparedStatementsCounters() {
     LOG_IF(DFATAL, stmt_counters == nullptr) << "Unexpected null pointer for statement counters";
     stmt_counters->ResetCounters();
   }
+}
+
+Status CQLServiceImpl::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+      tserver::PgYCQLStatementStatsResponsePB* resp) {
+  for (const IsPrepare is_prepare : {IsPrepare::kTrue, IsPrepare::kFalse}) {
+    const StmtCountersMap stmt_counters = this->GetStatementCountersForMetrics(is_prepare);
+    for (auto &stmt : stmt_counters) {
+      auto &stmt_pb = *resp->add_statements();
+      stmt_pb.set_queryid(ql::CQLMessage::QueryIdAsUint64(stmt.first));
+      stmt_pb.set_query(stmt.second.query);
+      stmt_pb.set_is_prepared(is_prepare == IsPrepare::kTrue);
+      stmt_pb.set_calls(stmt.second.num_calls);
+      stmt_pb.set_total_time(stmt.second.total_time_in_msec);
+      stmt_pb.set_min_time(stmt.second.min_time_in_msec);
+      stmt_pb.set_max_time(stmt.second.max_time_in_msec);
+      stmt_pb.set_mean_time(stmt.second.total_time_in_msec / stmt.second.num_calls);
+      const double stddev_time = stmt.second.GetStdDevTime();
+      stmt_pb.set_stddev_time(stddev_time);
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace cqlserver
