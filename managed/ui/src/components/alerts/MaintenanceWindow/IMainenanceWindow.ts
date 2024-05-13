@@ -20,4 +20,8 @@ export interface MaintenanceWindowSchema {
   startTime: string;
   state: MaintenanceWindowState;
   alertConfigurationFilter: AlertConfigurationSchema;
+  suppressHealthCheckNotificationsConfig: {
+    suppressAllUniverses: boolean;
+    universeUUIDSet: string[];
+  };
 }
