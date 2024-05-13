@@ -379,7 +379,7 @@ If you plan to create multi-region YugabyteDB universes, you can set up [Multi-C
 
 The Kubernetes MCS API is currently in alpha, though there are various implementations of MCS which are [considered to be stable](https://github.com/kubernetes-sigs/mcs-api/issues/17#issuecomment-1309073682). To know more, see [API versioning](https://kubernetes.io/docs/reference/using-api/#api-versioning) in the Kubernetes documentation.
 
-MCS support in YBA is currently in [Early Access](../../../releases/versioning/#feature-availability). Keep in mind following caveats:
+MCS support in YBA is currently in [Early Access](../../../../releases/versioning/#feature-maturity). Keep in mind following caveats:
 
 - Universe metrics may not display correct metrics for all the pods.
 - xCluster replication needs an additional manual step to work on OpenShift MCS.

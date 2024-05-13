@@ -4,7 +4,7 @@ headerTitle: Active Session History
 linkTitle: Active Session History
 description: Use Active Session History to get current and past views of the database system activity.
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues
-techPreview: /preview/releases/versioning/#feature-availability
+techPreview: /preview/releases/versioning/#feature-maturity
 menu:
   preview:
     identifier: ash
@@ -47,7 +47,7 @@ You can also use the following flags based on your requirements.
 
 ## Limitations
 
-Note that the following limitations are subject to change as the feature is in [Tech Preview](/preview/releases/versioning/#feature-availability).
+Note that the following limitations are subject to change as the feature is in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 - ASH is available per node only. [Aggregations](../../../develop/learn/aggregations-ycql/) need to be done by you.
 - ASH is not available for [YB-Master](../../../architecture/yb-master/) processes.

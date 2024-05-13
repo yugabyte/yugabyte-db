@@ -22,7 +22,7 @@ cascade:
 
 For end-of-life releases, see [Releases at end of life](../ybdb-releases/#eol-releases).
 
-For information on release support policy, see [Release support policy](../#release-support-policy).
+For information on stable release support policy, see [Stable Release support policy](../#stable-release-support-policy).
 
 For information on release versioning, see [Versioning](../versioning/).
 

@@ -34,23 +34,25 @@ This section describes the release support policy, versioning, and feature avail
   </li>
 </ul>
 
-The supported release series for YugabyteDB and YugabyteDB Anywhere include Long-term support (LTS) and standard-term support (STS).
+YugabyteDB and YugabyteDB Anywhere have three kinds of releases:
 
-Preview releases, which include features under active development, are also available. Preview releases are recommended for development and testing only.
+- Stable, with Long-term support (LTS)
+- Stable, with Standard-term support (STS)
+- Preview, with no official support
+
+Preview releases, which include features under active development are recommended for development and testing only.
 
 For details about the differences between the release series, see [Release versioning](versioning/).
 
-### Release support policy
+### Stable Release support policy
 
-The type of YugabyteDB release series you are running determines its support timelines.
+For Stable releases, the LTS or STS designation determines its support timelines.
 
-**LTS** release series receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release.
+**LTS** release series receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release. Extended support (defined below) is provided for an additional 180 days. As a result, 2.5 years of support is provided in total.
 
-**STS** release series receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release.
+**STS** release series receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release. Extended support (defined below) is provided for an additional 180 days. As a result, 1.5 years of support is provided in total.
 
-LTS and STS release series are both subject to the following support and EOL timelines:
-
-* **Extended support:** Following the maintenance support period, Yugabyte will provide support for at least an additional 180 days subject to the following guidelines:
+* **Extended support:** Following the maintenance update period, Yugabyte will provide support for at least an additional 180 days subject to the following guidelines:
   * Updates and Upgrades will not be made to the minor release.
   * Yugabyte will direct Customers to existing Updates and workarounds applicable to the reported case.
   * Yugabyte may direct Customers to Upgrade to a current release if a workaround does not exist.
@@ -70,7 +72,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| Next STS    | Mid 2024       |
+| Next STS    | End 2024       |
 
 ## Recommended release series for projects
 

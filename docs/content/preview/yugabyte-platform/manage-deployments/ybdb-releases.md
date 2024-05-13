@@ -72,3 +72,10 @@ If a release architecture that you want to install on a universe is not availabl
 1. Click **New Architecture**.
 
 When imported, the architecture is added to the Release.
+
+Note that for Kubernetes universes, if a new Kubernetes release architecture is required, perform the following steps:
+
+1. [Create the release](#import-a-release) using the related YugabyteDB x86/ARM build.
+1. Add a new architecture to the newly created release and provide the helm chart.
+
+As metadata is pulled from the YugabyteDB build, this will populate all the required data fields when creating the release, and simplify adding the helm chart after.

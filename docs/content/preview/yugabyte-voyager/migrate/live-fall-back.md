@@ -9,7 +9,7 @@ menu:
     identifier: live-fall-back
     parent: migration-types
     weight: 104
-techPreview: /preview/releases/versioning/#feature-availability
+techPreview: /preview/releases/versioning/#feature-maturity
 type: docs
 ---
 

@@ -768,7 +768,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED` {{<badge/ea>}}
 
-Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -1149,7 +1149,7 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 ## Packed row flags
 
-The packed row format for the YSQL API is [GA](/preview/releases/versioning/#feature-availability) as of v2.20.0, and for the YCQL API is [TP](/preview/releases/versioning/#feature-availability).
+The packed row format for the YSQL API is [GA](/preview/releases/versioning/#feature-maturity) as of v2.20.0, and for the YCQL API is [TP](/preview/releases/versioning/#feature-maturity).
 
 To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
 
@@ -1175,7 +1175,7 @@ Default: `0`
 
 ##### --ycql_enable_packed_row
 
-YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 Whether packed row is enabled for YCQL.
 
@@ -1193,7 +1193,7 @@ To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
-Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 Enable support for creating streams for transactional CDC.
 
