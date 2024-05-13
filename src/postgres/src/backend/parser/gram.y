@@ -922,6 +922,7 @@ stmt :
 			| CommentStmt
 			| ConstraintsSetStmt
 			| CopyStmt
+			| CreateAmStmt
 			| CreateCastStmt
 			| CreateDomainStmt
 			| CreateEventTrigStmt
@@ -1018,7 +1019,6 @@ stmt :
 			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -5855,7 +5855,6 @@ row_security_cmd:
 
 CreateAmStmt: CREATE ACCESS METHOD name TYPE_P INDEX HANDLER handler_name
 				{
-					parser_ybc_not_support(@1, "CREATE ACCESS METHOD");
 					CreateAmStmt *n = makeNode(CreateAmStmt);
 					n->amname = $4;
 					n->handler_name = $8;
@@ -6927,7 +6926,10 @@ drop_type_any_name:
 
 /* object types taking name_list */
 drop_type_name:
-			ACCESS METHOD	{ parser_ybc_not_support(@1, "DROP ACCESS METHOD"); $$ = OBJECT_ACCESS_METHOD; }
+			ACCESS METHOD
+				{
+					$$ = OBJECT_ACCESS_METHOD;
+				}
 			| EVENT TRIGGER
 				{
 					$$ = OBJECT_EVENT_TRIGGER;
