@@ -1191,7 +1191,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		}
 	}
 
-	bool needs_recheck = !can_pushdown;
+	bool needs_recheck = true;
 
 	if (can_pushdown)
 	{
@@ -1291,7 +1291,8 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 			{
 				int att_idx = YBAttnumToBmsIndex(
 				ybScan->relation, subkeys[subkey_index]->sk_attno);
-				is_not_null[att_idx] = true;
+				/* Set the first column in this RC to not null. */
+				is_not_null[att_idx] |= subkey_index == 0;
 
 				subkey_index++;
 			}

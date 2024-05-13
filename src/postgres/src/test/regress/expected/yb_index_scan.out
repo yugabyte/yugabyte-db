@@ -3570,12 +3570,14 @@ DROP TABLE pk_range_int_text;
 CREATE TABLE null_test(a int, b int);
 CREATE INDEX ON null_test(a asc, b asc);
 INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
-EXPLAIN (COSTS OFF) SELECT * FROM null_test WHERE (a,b) >= (9, 8);
-                      QUERY PLAN
-------------------------------------------------------
- Index Only Scan using null_test_a_b_idx on null_test
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM null_test WHERE (a,b) >= (9, 8);
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Index Only Scan using null_test_a_b_idx on null_test (actual rows=2 loops=1)
    Index Cond: (ROW(a, b) >= ROW(9, 8))
-(2 rows)
+   Rows Removed by Index Recheck: 1
+   Heap Fetches: 0
+(4 rows)
 
 SELECT * FROM null_test WHERE (a,b) >= (9, 8);
  a  | b
@@ -3584,18 +3586,134 @@ SELECT * FROM null_test WHERE (a,b) >= (9, 8);
  10 | 9
 (2 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM null_test WHERE (a,b) <= (9, 8);
-                      QUERY PLAN
-------------------------------------------------------
- Index Only Scan using null_test_a_b_idx on null_test
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM null_test WHERE (a,b) <= (9, 8);
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Index Only Scan using null_test_a_b_idx on null_test (actual rows=1 loops=1)
    Index Cond: (ROW(a, b) <= ROW(9, 8))
-(2 rows)
+   Heap Fetches: 0
+(3 rows)
 
 SELECT * FROM null_test WHERE (a,b) <= (9, 8);
  a | b
 ---+---
  9 | 8
 (1 row)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM null_test WHERE (a,b) <= (9, 8);
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Index Only Scan using null_test_a_b_idx on null_test (actual rows=1 loops=1)
+   Index Cond: (ROW(a, b) <= ROW(9, 8))
+   Heap Fetches: 0
+(3 rows)
+
+SELECT * FROM null_test WHERE (a,b) <= (9, 8);
+ a | b
+---+---
+ 9 | 8
+(1 row)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM null_test WHERE (a,b) >= (8, 9);
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Index Only Scan using null_test_a_b_idx on null_test (actual rows=3 loops=1)
+   Index Cond: (ROW(a, b) >= ROW(8, 9))
+   Heap Fetches: 0
+(3 rows)
+
+SELECT * FROM null_test WHERE (a,b) >= (8, 9);
+ a  | b
+----+---
+  9 | 8
+  9 |
+ 10 | 9
+(3 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)
+/*+ IndexOnlyScan(null_test) */
+SELECT * FROM null_test WHERE (a,b) >= (8, 9);
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Index Only Scan using null_test_a_b_idx on null_test (actual rows=3 loops=1)
+   Index Cond: (ROW(a, b) >= ROW(8, 9))
+   Heap Fetches: 0
+(3 rows)
+
+/*+ IndexOnlyScan(null_test) */
+SELECT * FROM null_test WHERE (a,b) >= (8, 9);
+ a  | b
+----+---
+  9 | 8
+  9 |
+ 10 | 9
+(3 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)
+/*+ IndexOnlyScan(null_test) */
+SELECT * FROM null_test WHERE a > 8 OR (a = 8 AND b >= NULL);
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Index Only Scan using null_test_a_b_idx on null_test (actual rows=3 loops=1)
+   Index Cond: (a > 8)
+   Heap Fetches: 0
+(3 rows)
+
+/*+ IndexOnlyScan(null_test) */
+SELECT * FROM null_test WHERE a > 8 OR (a = 8 AND b >= NULL);
+ a  | b
+----+---
+  9 | 8
+  9 |
+ 10 | 9
+(3 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)
+/*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */
+SELECT * FROM null_test t1 JOIN null_test t2 ON (t1.a, t1.b) >= (t2.a, t2.b);
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Nested Loop (actual rows=4 loops=1)
+   ->  Index Only Scan using null_test_a_b_idx on null_test t1 (actual rows=4 loops=1)
+         Heap Fetches: 0
+   ->  Index Only Scan using null_test_a_b_idx on null_test t2 (actual rows=1 loops=4)
+         Index Cond: (ROW(a, b) <= ROW(t1.a, t1.b))
+         Heap Fetches: 0
+(6 rows)
+
+/*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */
+SELECT * FROM null_test t1 JOIN null_test t2 ON (t1.a, t1.b) >= (t2.a, t2.b);
+ a  | b | a  | b
+----+---+----+---
+  9 | 8 |  9 | 8
+ 10 | 9 |  9 | 8
+ 10 | 9 |  9 |
+ 10 | 9 | 10 | 9
+(4 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)
+/*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */
+SELECT * FROM null_test t1 JOIN null_test t2 ON t1.a > t2.a OR (t1.a = t2.a AND t1.b >= t2.b);
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Nested Loop (actual rows=4 loops=1)
+   Join Filter: ((t1.a > t2.a) OR ((t1.a = t2.a) AND (t1.b >= t2.b)))
+   Rows Removed by Join Filter: 12
+   ->  Index Only Scan using null_test_a_b_idx on null_test t1 (actual rows=4 loops=1)
+         Heap Fetches: 0
+   ->  Index Only Scan using null_test_a_b_idx on null_test t2 (actual rows=4 loops=4)
+         Heap Fetches: 0
+(7 rows)
+
+/*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */
+SELECT * FROM null_test t1 JOIN null_test t2 ON t1.a > t2.a OR (t1.a = t2.a AND t1.b >= t2.b);
+ a  | b | a  | b
+----+---+----+---
+  9 | 8 |  9 | 8
+ 10 | 9 |  9 | 8
+ 10 | 9 |  9 |
+ 10 | 9 | 10 | 9
+(4 rows)
 
 DROP TABLE null_test;
 -- make sure row comparisons don't operate on hash keys yet

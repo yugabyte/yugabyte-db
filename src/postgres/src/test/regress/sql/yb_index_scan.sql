@@ -387,10 +387,47 @@ DROP TABLE pk_range_int_text;
 CREATE TABLE null_test(a int, b int);
 CREATE INDEX ON null_test(a asc, b asc);
 INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
-EXPLAIN (COSTS OFF) SELECT * FROM null_test WHERE (a,b) >= (9, 8);
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM null_test WHERE (a,b) >= (9, 8);
 SELECT * FROM null_test WHERE (a,b) >= (9, 8);
-EXPLAIN (COSTS OFF) SELECT * FROM null_test WHERE (a,b) <= (9, 8);
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM null_test WHERE (a,b) <= (9, 8);
 SELECT * FROM null_test WHERE (a,b) <= (9, 8);
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM null_test WHERE (a,b) <= (9, 8);
+SELECT * FROM null_test WHERE (a,b) <= (9, 8);
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM null_test WHERE (a,b) >= (8, 9);
+SELECT * FROM null_test WHERE (a,b) >= (8, 9);
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)
+/*+ IndexOnlyScan(null_test) */
+SELECT * FROM null_test WHERE (a,b) >= (8, 9);
+/*+ IndexOnlyScan(null_test) */
+SELECT * FROM null_test WHERE (a,b) >= (8, 9);
+
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)
+/*+ IndexOnlyScan(null_test) */
+SELECT * FROM null_test WHERE a > 8 OR (a = 8 AND b >= NULL);
+
+/*+ IndexOnlyScan(null_test) */
+SELECT * FROM null_test WHERE a > 8 OR (a = 8 AND b >= NULL);
+
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)
+/*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */
+SELECT * FROM null_test t1 JOIN null_test t2 ON (t1.a, t1.b) >= (t2.a, t2.b);
+
+/*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */
+SELECT * FROM null_test t1 JOIN null_test t2 ON (t1.a, t1.b) >= (t2.a, t2.b);
+
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)
+/*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */
+SELECT * FROM null_test t1 JOIN null_test t2 ON t1.a > t2.a OR (t1.a = t2.a AND t1.b >= t2.b);
+
+/*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */
+SELECT * FROM null_test t1 JOIN null_test t2 ON t1.a > t2.a OR (t1.a = t2.a AND t1.b >= t2.b);
 DROP TABLE null_test;
 
 -- make sure row comparisons don't operate on hash keys yet
