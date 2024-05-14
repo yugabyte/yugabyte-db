@@ -713,7 +713,8 @@ print_backup_usage() {
   echo "  -r, --exclude_releases         exclude Yugabyte releases from backup (default: false)"
   echo "  -d, --data_dir=DIRECTORY       data directory (default: /opt/yugabyte)"
   echo "  -v, --verbose                  verbose output of script (default: false)"
-  echo "  -s  --skip_restart             don't restart processes during execution (default: false)"
+  echo "  -s  --skip_restart             [WARNING: DEPRECATED] don't restart processes during execution (default: false)"
+  echo "  --restart                      restart processes during execution (default: false)"
   echo "  -u, --db_username=USERNAME     postgres username (default: postgres)"
   echo "  -h, --db_host=HOST             postgres host (default: localhost)"
   echo "  -P, --db_port=PORT             postgres port (default: 5432)"
@@ -823,6 +824,7 @@ case $command in
     exclude_prometheus=false
     exclude_releases=false
     output_path="${HOME}"
+    RESTART_PROCESSES=false
 
     if [[ $# -eq 0 ]]; then
       print_backup_usage
@@ -853,8 +855,11 @@ case $command in
           shift
           ;;
         -s|--skip_restart)
-          RESTART_PROCESSES=false
-          set -x
+          echo "--skip_restart flag is deprecated and default behavior skips restart. use --restart"
+          shift
+          ;;
+        --restart)
+          RESTART_PROCESSES=true
           shift
           ;;
         -u|--db_username)
