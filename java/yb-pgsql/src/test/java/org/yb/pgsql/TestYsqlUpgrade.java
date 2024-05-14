@@ -721,7 +721,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       setSystemRelsModificationGuc(stmt, true);
 
       String commonCreateSqlPattern = "CREATE TABLE pg_catalog.%s ("
-          + "  oid oid  NOT NULL"
+          + "  oid oid NOT NULL"
           + ", v1 int  NOT NULL"
           + ", v2 text NOT NULL"
           + ", CONSTRAINT %s_pk PRIMARY KEY (oid ASC)"
@@ -920,7 +920,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   public void migratingIsEquivalentToReinitdb() throws Exception {
     final String createPgTablegroupTable =
         "CREATE TABLE IF NOT EXISTS pg_catalog.pg_tablegroup (\n" +
-            "  oid        oid        NOT NULL,\n" +
+            "  oid        oid         NOT NULL,\n" +
             "  grpname    name        NOT NULL,\n" +
             "  grpowner   oid         NOT NULL,\n" +
             "  grpacl     aclitem[],\n" +
