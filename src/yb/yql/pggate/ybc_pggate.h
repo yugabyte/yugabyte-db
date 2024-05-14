@@ -114,6 +114,9 @@ YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
 // Validate the JWT based on the options including the identity matching based on the identity map.
 YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options);
 
+// Is this node acting as the pg_cron leader?
+bool YBCIsCronLeader();
+
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations
 //--------------------------------------------------------------------------------------------------

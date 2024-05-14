@@ -801,6 +801,8 @@ class PgApiImpl {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
+  bool IsCronLeader() const;
+
  private:
   void ClearSessionState();
 

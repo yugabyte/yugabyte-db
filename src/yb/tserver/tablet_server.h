@@ -356,6 +356,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
+  void TEST_SetIsCronLeader(bool is_cron_leader);
+
  protected:
   virtual Status RegisterServices();
 
@@ -496,6 +498,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
+
+  FlagCallbackRegistration TEST_is_cron_leader_callback_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

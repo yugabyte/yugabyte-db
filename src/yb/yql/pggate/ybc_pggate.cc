@@ -2579,6 +2579,8 @@ YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count) {
   return YBCStatusOK();
 }
 
+bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
+
 } // extern "C"
 
 } // namespace yb::pggate

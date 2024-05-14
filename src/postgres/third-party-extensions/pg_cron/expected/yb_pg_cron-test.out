@@ -1,0 +1,19 @@
+CREATE EXTENSION pg_cron;
+-- Recreate job with same name
+SELECT cron.schedule('myjob', '0 11 * * *', 'SELECT 1');
+ schedule
+----------
+        1
+(1 row)
+
+SELECT cron.unschedule('myjob');
+ unschedule
+------------
+ t
+(1 row)
+
+SELECT cron.schedule('myjob', '0 11 * * *', 'SELECT 1');
+ schedule
+----------
+        2
+(1 row)

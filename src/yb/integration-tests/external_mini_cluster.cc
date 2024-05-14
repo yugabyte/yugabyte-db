@@ -101,6 +101,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 #define YB_FORWARD_FLAG(flag_name) \
   "--" BOOST_PP_STRINGIZE(flag_name) "="s + FlagToString(BOOST_PP_CAT(FLAGS_, flag_name))
@@ -2087,6 +2088,18 @@ Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
       timeout,
       "IsLoadBalancerIdle"));
   return Status::OK();
+}
+
+Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
+    const std::string& db_name, std::optional<size_t> node_index, bool simple_query_protocol) {
+  if (!node_index) {
+    node_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
+  }
+
+  auto* ts = tablet_server(*node_index);
+  return pgwrapper::PGConnBuilder(
+             {.host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name})
+      .Connect(simple_query_protocol);
 }
 
 //------------------------------------------------------------
