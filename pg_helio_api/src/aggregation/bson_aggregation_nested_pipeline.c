@@ -368,10 +368,10 @@ HandleDocumentsStage(const bson_value_t *existingValue, Query *query,
 
 	RangeTblFunction *tblFunction = makeNode(RangeTblFunction);
 	tblFunction->funcexpr = (Node *) resultExpr;
-	tblFunction->funccolcount = 2;
-	tblFunction->funccoltypes = list_make2_oid(BsonTypeId(), TEXTOID);
-	tblFunction->funccolcollations = list_make2_oid(InvalidOid, InvalidOid);
-	tblFunction->funccoltypmods = list_make2_int(-1, -1);
+	tblFunction->funccolcount = 1;
+	tblFunction->funccoltypes = list_make1_oid(BsonTypeId());
+	tblFunction->funccolcollations = list_make1_oid(InvalidOid);
+	tblFunction->funccoltypmods = list_make1_int(-1);
 
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
 	rte->rtekind = RTE_FUNCTION;
@@ -955,10 +955,10 @@ CreateFunctionSelectorQuery(FuncExpr *funcExpr, const char *prefix,
 
 	RangeTblFunction *tblFunction = makeNode(RangeTblFunction);
 	tblFunction->funcexpr = (Node *) funcExpr;
-	tblFunction->funccolcount = 2;
-	tblFunction->funccoltypes = list_make2_oid(BsonTypeId(), TEXTOID);
-	tblFunction->funccolcollations = list_make2_oid(InvalidOid, InvalidOid);
-	tblFunction->funccoltypmods = list_make2_int(-1, -1);
+	tblFunction->funccolcount = 1;
+	tblFunction->funccoltypes = list_make1_oid(BsonTypeId());
+	tblFunction->funccolcollations = list_make1_oid(InvalidOid);
+	tblFunction->funccoltypmods = list_make1_int(-1);
 
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
 	rte->rtekind = RTE_FUNCTION;
@@ -1398,6 +1398,7 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 															   rightQuery->targetList) +
 														   1, "objectId", false);
 				rightQuery->targetList = lappend(rightQuery->targetList, objectEntry);
+				canInlineInnerPipeline = false;
 			}
 			else
 			{
@@ -1415,19 +1416,14 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		RangeTblEntry *rightRteCte = linitial(rightQuery->rtable);
 
 		/* If the nested pipeline can be sent down to the nested right query */
-		if (canInlineInnerPipeline && !isRightQueryAgnostic)
+		if (canInlineInnerPipeline && !isRightQueryAgnostic &&
+			!canProcessForeignFieldAsDocumentId)
 		{
-			Query *originalRightQuery = rightQuery;
 			rightQuery = MutateQueryWithPipeline(rightQuery, &lookupArgs->pipeline,
 												 &subPipelineContext);
 			if (subPipelineContext.requiresSubQuery)
 			{
 				rightQuery = MigrateQueryToSubQuery(rightQuery, &subPipelineContext);
-			}
-
-			if (originalRightQuery != rightQuery)
-			{
-				canProcessForeignFieldAsDocumentId = false;
 			}
 		}
 
@@ -1486,9 +1482,9 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		Var *rightVar = (Var *) currentRightEntry->expr;
 		int matchLevelsUp = 1;
 		Node *inClause;
-		if (canProcessForeignFieldAsDocumentId &&
-			list_length(rightQuery->targetList) == 2)
+		if (canProcessForeignFieldAsDocumentId)
 		{
+			Assert(list_length(rightQuery->targetList) == 2);
 			TargetEntry *rightObjectIdEntry = (TargetEntry *) lsecond(
 				rightQuery->targetList);
 			rightQuery->targetList = list_make1(currentRightEntry);
@@ -1650,6 +1646,11 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		subSelectQuery = MutateQueryWithPipeline(subSelectQuery,
 												 &lookupArgs->pipeline,
 												 &projectorQueryContext);
+
+		if (list_length(subSelectQuery->targetList) > 1)
+		{
+			projectorQueryContext.requiresSubQuery = true;
+		}
 
 		/* Readd the aggregate */
 		Aggref **aggrefPtr = NULL;

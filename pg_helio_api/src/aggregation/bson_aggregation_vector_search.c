@@ -912,12 +912,11 @@ AddNullVectorCheckToQuery(Query *query, const Expr *vectorSortExpr)
 static TargetEntry *
 AddSortByToQuery(Query *query, const Expr *vectorSortExpr)
 {
-	TargetEntry *entry = linitial(query->targetList);
 	ParseState *parseState = make_parsestate(NULL);
 	parseState->p_expr_kind = EXPR_KIND_ORDER_BY;
 
 	/* set after what is already taken */
-	parseState->p_next_resno = entry->resno + 1;
+	parseState->p_next_resno = list_length(query->targetList) + 1;
 
 	SortBy *sortBy = makeNode(SortBy);
 	sortBy->location = -1;

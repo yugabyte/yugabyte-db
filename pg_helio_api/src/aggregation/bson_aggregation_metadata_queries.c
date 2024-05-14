@@ -287,13 +287,11 @@ HandleCurrentOp(const bson_value_t *existingValue, Query *query,
 									   InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 	rangeFunc->funcretset = true;
 	RangeTblFunction *rangeTableFunction = makeNode(RangeTblFunction);
-	rangeTableFunction->funccolcount = 4;
+	rangeTableFunction->funccolcount = 1;
 	rangeTableFunction->funccolnames = colNames;
-	rangeTableFunction->funccoltypes = list_make4_oid(INT8OID, BsonTypeId(),
-													  BsonTypeId(), TIMESTAMPTZOID);
-	rangeTableFunction->funccoltypmods = NIL;
-	rangeTableFunction->funccolcollations = list_make4_oid(InvalidOid, InvalidOid,
-														   InvalidOid, InvalidOid);
+	rangeTableFunction->funccoltypes = list_make1_oid(BsonTypeId());
+	rangeTableFunction->funccoltypmods = list_make1_oid(-1);
+	rangeTableFunction->funccolcollations = list_make1_oid(InvalidOid);
 	rangeTableFunction->funcparams = NULL;
 	rangeTableFunction->funcexpr = (Node *) rangeFunc;
 

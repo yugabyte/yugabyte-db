@@ -2798,7 +2798,7 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 	parseState->p_expr_kind = EXPR_KIND_ORDER_BY;
 
 	/* set after what is already taken */
-	parseState->p_next_resno = entry->resno + 1;
+	parseState->p_next_resno = list_length(query->targetList) + 1;
 	List *sortlist = NIL;
 	bool isNaturalSort = false;
 	while (bson_iter_next(&sortSpec))
@@ -4251,13 +4251,11 @@ HandleSample(const bson_value_t *existingValue, Query *query,
 	}
 
 	/* Add an order by Random(), Limit N */
-	TargetEntry *entry = linitial(query->targetList);
-
 	ParseState *parseState = make_parsestate(NULL);
 	parseState->p_expr_kind = EXPR_KIND_ORDER_BY;
 
 	/* set after what is already taken */
-	parseState->p_next_resno = entry->resno + 1;
+	parseState->p_next_resno = list_length(query->targetList) + 1;
 
 	Expr *expr = (Expr *) makeFuncExpr(PgRandomFunctionOid(), FLOAT8OID, NIL,
 									   InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
