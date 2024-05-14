@@ -6376,6 +6376,213 @@ add_predicate_to_quals(IndexOptInfo *index, List *indexQuals)
 	return list_concat(predExtraQuals, indexQuals);
 }
 
+static void
+estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
+								   IndexOptInfo *index,
+								   RelOptInfo *baserel,
+								   Oid baserel_oid,
+								   List **index_conditions_on_each_column,
+								   double *num_seeks,
+								   double *num_nexts)
+{
+	ListCell 	*lc;
+	bool previous_column_had_lower_bound = false;
+	bool previous_column_had_upper_bound = false;
+	
+	Assert(*num_seeks == 0);
+	Assert(*num_nexts == 0);
+
+	for (int index_col = index->nkeycolumns - 1; index_col >= 0; --index_col)
+	{
+		bool current_column_has_lower_bound = false;
+		bool current_column_has_upper_bound = false;
+
+		List 	   *index_conditions_on_current_column =
+			index_conditions_on_each_column[index_col];
+		if (index_conditions_on_current_column == NIL)
+		{
+			/* No filters on this index column */
+			double 		ndistinct =
+				yb_get_attdistinctcount(baserel_oid, index->indexkeys[index_col]);
+			*num_seeks *= ndistinct;
+			*num_nexts *= ndistinct;
+			if (previous_column_had_lower_bound)
+			{
+				*num_seeks += ndistinct;
+				*num_nexts += ndistinct * MAX_NEXTS_TO_AVOID_SEEK;
+			}
+			if (previous_column_had_upper_bound)
+			{
+				*num_seeks += ndistinct;
+				*num_nexts += ndistinct * MAX_NEXTS_TO_AVOID_SEEK;
+			}
+		}
+		else
+		{
+			/* Check if exist equality or IN filters on the index column */
+			bool	current_column_has_in_filter = false;
+			bool	current_column_has_equality_filter = false;
+			int		in_filter_array_length = 0;
+			foreach (lc, index_conditions_on_each_column[index_col])
+			{
+				RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+				Expr *clause = rinfo->clause;
+				Oid clause_op = InvalidOid;
+				Node *other_operand = NULL;
+
+				if (IsA(clause, OpExpr))
+				{
+					OpExpr *op = (OpExpr *) clause;
+
+					clause_op = op->opno;
+					other_operand = get_rightop(clause);
+				}
+				else if (IsA(clause, RowCompareExpr))
+				{
+					RowCompareExpr *rc = (RowCompareExpr *) clause;
+
+					clause_op = linitial_oid(rc->opnos);
+					other_operand = (Node *) rc->rargs;
+				}
+				else if (IsA(clause, ScalarArrayOpExpr))
+				{
+					ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
+					
+					clause_op = saop->opno;
+					other_operand = (Node *) lsecond(saop->args);
+
+					current_column_has_in_filter = true;
+					in_filter_array_length =
+						estimate_array_length(other_operand);
+				}
+				else if (IsA(clause, NullTest))
+					clause_op = InvalidOid;
+				else
+					elog(ERROR, "unsupported indexqual type: %d",
+						 (int) nodeTag(clause));
+
+				if (OidIsValid(clause_op) && !IsA(clause, ScalarArrayOpExpr))
+				{
+					int 		op_strategy =
+						get_op_opfamily_strategy(clause_op,
+													index->opfamily[index_col]);
+					if (op_strategy == BTEqualStrategyNumber)
+					{
+						if (IsA(other_operand, YbBatchedExpr))
+						{
+							current_column_has_in_filter = true;
+							in_filter_array_length =
+								yb_batch_expr_size(root,
+												   baserel->relid,
+												   other_operand);
+						}
+						else
+							current_column_has_equality_filter = true;
+					}
+					else if (op_strategy == BTLessEqualStrategyNumber ||
+							 op_strategy == BTLessStrategyNumber)
+						current_column_has_upper_bound = true;
+					else if (op_strategy == BTGreaterEqualStrategyNumber ||
+							 op_strategy == BTGreaterStrategyNumber)
+						current_column_has_lower_bound = true;
+				}
+			}
+
+			if (current_column_has_equality_filter)
+			{
+				/* No additional seeks and nexts needed for equality filter */
+				current_column_has_lower_bound = true;
+				current_column_has_upper_bound = true;
+			}
+			else if (current_column_has_in_filter)
+			{
+				*num_seeks *= in_filter_array_length;
+				*num_nexts *= in_filter_array_length;
+				/* We assume that seek forward optimization will fail to find
+				 * the next key and we would have to seek for each value in the
+				 * array.
+				 */
+				*num_seeks += in_filter_array_length;
+				*num_nexts += in_filter_array_length * MAX_NEXTS_TO_AVOID_SEEK;
+				current_column_has_lower_bound = false;
+				current_column_has_upper_bound = true;
+			}
+			else
+			{
+				/* Inequality or BETWEEN filters */
+				Selectivity	column_filters_selectivity =
+					clauselist_selectivity(root, index_conditions_on_current_column,
+										index->rel->relid, JOIN_INNER, NULL);
+				double 		ndistinct =
+					yb_get_attdistinctcount(baserel_oid, index->indexkeys[index_col]);
+				double		num_distinct_column_values_matching_column_filters =
+					clamp_row_est(column_filters_selectivity * ndistinct);
+				*num_seeks *= num_distinct_column_values_matching_column_filters;
+				*num_nexts *= num_distinct_column_values_matching_column_filters;
+				if (previous_column_had_lower_bound)
+				{
+					/* If the previous index column had a lower bound, for each
+					 * distinct value in the current column, we would have to
+					 * seek to the lower bound value in the previous column. We
+					 * assume that seek forward optimization will fail to find
+					 * the key.
+					 * eg.
+					 * CREATE TABLE t (k1 int, k2 int, PRIMARY KEY (k1, k2));
+					 * INSERT INTO t (SELECT s1, s2
+					 * 		FROM generate_series(1, 20) s1,
+					 * 			 generate_series(1, 20) s2);
+					 * SELECT * FROM t WHERE k2 >= 5;
+					 *
+					 * For above query, for each distinct value of k1 we
+					 * have to seek to k2 = 5. The seeks and nexts will be
+					 * follows. Note that each seek will cause additional nexts
+					 * because of seek forward optimization.
+					 *
+					 * seek (-inf) -> (1, 1)
+					 * seek (1, 5) -> (1, 5)
+					 *     nexts until (1, 20)
+					 *     next -> (2, 1)
+					 * seek (2, 5) -> (2, 5)
+					 * 	   ...
+					 */
+					*num_seeks +=
+						num_distinct_column_values_matching_column_filters - 1;
+					*num_nexts +=
+						(num_distinct_column_values_matching_column_filters - 1) *
+						MAX_NEXTS_TO_AVOID_SEEK;
+				}
+				if (previous_column_had_upper_bound)
+				{
+					/* If the previous index column had an upper bound, for each
+					 * distinct value in the current column we would have to
+					 * seek to the last value in the previous column to find the
+					 * next distinct value in the current column.
+					 * eg.
+					 * Assume the table from above comment.
+					 * SELECT * FROM t WHERE k2 <= 14;
+					 *
+					 * To find the next distinct value of k1, we have to seek to
+					 * last value of k2. The seeks and nexts will be as follows,
+					 *
+					 * seek(-inf) -> (1, 1)
+					 *     nexts until (1, 15) <-- Doesn't match filter.
+				     * seek (1, inf) -> (2, 1)
+					 *     nexts until (2, 15) <-- Doesn't match filter
+					 * seek (2, inf) -> (3, 1)
+					 */
+					*num_seeks +=
+						num_distinct_column_values_matching_column_filters - 1;
+					*num_nexts +=
+						(num_distinct_column_values_matching_column_filters - 1) *
+						MAX_NEXTS_TO_AVOID_SEEK;
+				}
+			}
+			previous_column_had_lower_bound = current_column_has_lower_bound;
+			previous_column_had_upper_bound = current_column_has_upper_bound;
+		}
+	}
+}
+
 /*
  * yb_cost_index
  *		Determines and returns the cost of scanning a relation using an index.
@@ -6414,12 +6621,12 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Cost		run_cost = 0;
 	Selectivity index_lookup_selectivity;
 	Selectivity index_selectivity;
-	List	   *qinfos;
 	double		num_index_lookup_tuples;
 	double		num_index_tuples;
 	List	   *index_conditions;
 	int			index_col;
 	ListCell   *lc;
+	ListCell   *lci;
 	RangeTblEntry *rte;
 	Oid			baserel_oid;
 	int32		index_tuple_width;
@@ -6443,11 +6650,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	int			index_pages_fetched;
 	int			index_random_pages_fetched;
 	int			index_sequential_pages_fetched;
-	List	  **index_quals_on_each_column;
-	List	  **index_qual_infos_on_each_column;
-	bool		previous_column_had_lower_bound;
-	bool		previous_column_had_upper_bound;
-	int			max_nexts_to_avoid_seek = 2;
+	List	  **index_conditions_on_each_column;
 	int			num_result_pages;
 	int			docdb_result_width;
 	int32		baserel_tuple_width = 0;
@@ -6526,9 +6729,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	/*
 	 * Sort the filters into `local_clauses`, `base_table_pushed_down_clauses`
 	 * and `index_pushed_down_clauses`.
-	 */
-
-	/*
+	 *
 	 * Remote index filters are needed for secondary index scans.
 	 * * In case of primary index scan and index only scan, we group all filters
 	 *   under `base_table_pushed_down_filters`.
@@ -6542,33 +6743,34 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 							 &local_clauses, &base_table_pushed_down_filters, &base_table_colrefs,
 							 &index_pushed_down_filters, &index_colrefs);
 
-	/* Do preliminary analysis of indexquals */
-	qinfos = deconstruct_indexquals(path);
-
 	/*
-	 * Sort the index conditions into `index_quals_on_each_column` and
-	 * `index_qual_infos_on_each_column` for future use.
+	 * Sort the index conditions into `index_conditions_on_each_column`.
 	 */
-	index_quals_on_each_column = palloc0(sizeof(List*) * index->nkeycolumns);
-	index_qual_infos_on_each_column =
-			palloc0(sizeof(List*) * index->nkeycolumns);
+	index_conditions_on_each_column = palloc0(sizeof(List*) * index->nkeycolumns);
 	index_conditions = NIL;
 	index_col = 0;
-	foreach(lc, qinfos)
+	forboth(lc, path->indexquals, lci, path->indexqualcols)
 	{
-		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
-		RestrictInfo *rinfo = qinfo->rinfo;
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+		int index_qual_col = lfirst_int(lci);
 
-		while (index_col != qinfo->indexcol)
+		while (index_col != index_qual_col)
 		{
 			++index_col;
 			Assert(index_col < index->nkeycolumns);
 		}
 
-		index_quals_on_each_column[index_col] =
-			lappend(index_quals_on_each_column[index_col], rinfo);
-		index_qual_infos_on_each_column[index_col] =
-			lappend(index_qual_infos_on_each_column[index_col], qinfo);
+		if (path->path.param_info)
+		{
+			Relids batched = YB_PATH_REQ_OUTER_BATCHED(&path->path);
+			RestrictInfo *batched_rinfo = yb_get_batched_restrictinfo(
+				rinfo, batched, path->path.parent->relids);
+			if (batched_rinfo)
+				rinfo = batched_rinfo;
+		}
+
+		index_conditions_on_each_column[index_col] =
+			lappend(index_conditions_on_each_column[index_col], rinfo);
 		index_conditions = lappend(index_conditions, rinfo);
 	}
 
@@ -6595,186 +6797,9 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 */
 	num_seeks = 0;
 	num_nexts = 0;
-	previous_column_had_lower_bound = false;
-	previous_column_had_upper_bound = false;
-	for (int index_col = index->nkeycolumns - 1; index_col >= 0; --index_col)
-	{
-		List 	   *filtersOnCurrentColumn =
-			index_quals_on_each_column[index_col];
-		if (filtersOnCurrentColumn == NIL)
-		{
-			/* No filters on this index column */
-			double 		ndistinct =
-				yb_get_attdistinctcount(baserel_oid, index->indexkeys[index_col]);
-			num_seeks *= ndistinct;
-			num_nexts *= ndistinct;
-			if (previous_column_had_lower_bound)
-			{
-				num_seeks += ndistinct;
-				num_nexts += ndistinct * max_nexts_to_avoid_seek;
-			}
-			if (previous_column_had_upper_bound)
-			{
-				num_seeks += ndistinct;
-				num_nexts += ndistinct * max_nexts_to_avoid_seek;
-			}
-			previous_column_had_lower_bound = false;
-			previous_column_had_upper_bound = false;
-		}
-		else
-		{
-			/* Check if exist equality or IN filters on the index column */
-			bool	current_column_has_in_filter = false;
-			bool	current_column_has_equality_filter = false;
-			int		in_filter_array_length = 0;
-			foreach (lc, index_qual_infos_on_each_column[index_col])
-			{
-				IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
-				Expr	   *clause = qinfo->rinfo->clause;
-				Oid 		clause_op = qinfo->clause_op;
-				if (IsA(clause, ScalarArrayOpExpr))
-				{
-					current_column_has_in_filter = true;
-					in_filter_array_length =
-						estimate_array_length(qinfo->other_operand);
-				}
-				else if (OidIsValid(clause_op))
-				{
-					int 		op_strategy =
-						get_op_opfamily_strategy(clause_op,
-													index->opfamily[index_col]);
-					if (op_strategy == BTEqualStrategyNumber)
-					{
-						if (IsA(qinfo->other_operand, YbBatchedExpr))
-						{
-							current_column_has_in_filter = true;
-							in_filter_array_length =
-								yb_batch_expr_size(root,
-												   baserel->relid,
-												   qinfo->other_operand);
-						}
-						else
-						{
-							current_column_has_equality_filter = true;
-						}
-					}
-				}
-			}
-
-			if (current_column_has_equality_filter)
-			{
-				/* No additional seeks and nexts needed for equality filter */
-				previous_column_had_lower_bound = true;
-				previous_column_had_upper_bound = true;
-			}
-			else if (current_column_has_in_filter)
-			{
-				num_seeks *= in_filter_array_length;
-				num_nexts *= in_filter_array_length;
-				/* We assume that seek forward optimization will fail to find
-				 * the next key and we would have to seek for each value in the
-				 * array.
-				 */
-				num_seeks += in_filter_array_length;
-				num_nexts += in_filter_array_length * max_nexts_to_avoid_seek;
-				previous_column_had_lower_bound = false;
-				previous_column_had_upper_bound = true;
-			}
-			else
-			{
-				/* Inequality or BETWEEN filters */
-				Selectivity	column_filters_selectivity =
-					clauselist_selectivity(root, filtersOnCurrentColumn,
-										index->rel->relid, JOIN_INNER, NULL);
-				double 		ndistinct =
-					yb_get_attdistinctcount(baserel_oid, index->indexkeys[index_col]);
-				double		num_distinct_column_values_matching_column_filters =
-					clamp_row_est(column_filters_selectivity * ndistinct);
-				num_seeks *= num_distinct_column_values_matching_column_filters;
-				num_nexts *= num_distinct_column_values_matching_column_filters;
-				if (previous_column_had_lower_bound)
-				{
-					/* If the previous index column had a lower bound, for each
-					 * distinct value in the current column, we would have to
-					 * seek to the lower bound value in the previous column. We
-					 * assume that seek forward optimization will fail to find
-					 * the key.
-					 * eg.
-					 * CREATE TABLE t (k1 int, k2 int, PRIMARY KEY (k1, k2));
-					 * INSERT INTO t (SELECT s1, s2
-					 * 		FROM generate_series(1, 20) s1,
-					 * 			 generate_series(1, 20) s2);
-					 * SELECT * FROM t WHERE k2 >= 5;
-					 *
-					 * For above query, for each distinct value of k1 we
-					 * have to seek to k2 = 5. The seeks and nexts will be
-					 * follows. Note that each seek will cause additional nexts
-					 * because of seek forward optimization.
-					 *
-					 * seek (-inf) -> (1, 1)
-					 * seek (1, 5) -> (1, 5)
-					 *     nexts until (1, 20)
-					 *     next -> (2, 1)
-					 * seek (2, 5) -> (2, 5)
-					 * 	   ...
-					 */
-					num_seeks +=
-						num_distinct_column_values_matching_column_filters - 1;
-					num_nexts +=
-						(num_distinct_column_values_matching_column_filters - 1) *
-						max_nexts_to_avoid_seek;
-				}
-				if (previous_column_had_upper_bound)
-				{
-					/* If the previous index column had an upper bound, for each
-					 * distinct value in the current column we would have to
-					 * seek to the last value in the previous column to find the
-					 * next distinct value in the current column.
-					 * eg.
-					 * Assume the table from above comment.
-					 * SELECT * FROM t WHERE k2 <= 14;
-					 *
-					 * To find the next distinct value of k1, we have to seek to
-					 * last value of k2. The seeks and nexts will be as follows,
-					 *
-					 * seek(-inf) -> (1, 1)
-					 *     nexts until (1, 15) <-- Doesn't match filter.
-				     * seek (1, inf) -> (2, 1)
-					 *     nexts until (2, 15) <-- Doesn't match filter
-					 * seek (2, inf) -> (3, 1)
-					 */
-					num_seeks +=
-						num_distinct_column_values_matching_column_filters - 1;
-					num_nexts +=
-						(num_distinct_column_values_matching_column_filters - 1) *
-						max_nexts_to_avoid_seek;
-				}
-
-				foreach (lc, index_qual_infos_on_each_column[index_col])
-				{
-					IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
-					Oid 		clause_op = qinfo->clause_op;
-
-					if (OidIsValid(clause_op))
-					{
-						int 		op_strategy =
-							get_op_opfamily_strategy(clause_op, index->opfamily[index_col]);
-						Assert(op_strategy != 0);
-						if (op_strategy == BTLessEqualStrategyNumber ||
-							op_strategy == BTLessStrategyNumber)
-						{
-							previous_column_had_upper_bound = true;
-						}
-						else if (op_strategy == BTGreaterEqualStrategyNumber ||
-								op_strategy == BTGreaterStrategyNumber)
-						{
-							previous_column_had_lower_bound = true;
-						}
-					}
-				}
-			}
-		}
-	}
+	estimate_seeks_nexts_in_index_scan(root, index, baserel, baserel_oid,
+									   index_conditions_on_each_column, 
+									   &num_seeks, &num_nexts);
 
 	/*
 	 * Estimate the seek and next costs for the index.
