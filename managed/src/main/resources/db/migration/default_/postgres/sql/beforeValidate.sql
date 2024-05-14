@@ -77,6 +77,9 @@ $$
         ALTER TABLE customer_task DROP CONSTRAINT uk_task_uuid;
         ALTER TABLE customer_task DROP CONSTRAINT fk_customer_task_task_info;
        END IF;
+       
+       -- Fix the migration checksum
+       UPDATE schema_version SET checksum = 828796405 WHERE version = '342' AND checksum = 1950473975;
 
        -- Fix next migration here
     END IF;
