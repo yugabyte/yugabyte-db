@@ -31,6 +31,7 @@ DECLARE_bool(force_global_transactions);
 DECLARE_bool(TEST_mock_tablet_hosts_all_transactions);
 DECLARE_bool(TEST_fail_abort_request_with_try_again);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(TEST_skip_returning_old_transactions);
 DECLARE_uint64(force_single_shard_waiter_retry_ms);
 
 using namespace std::literals;
@@ -793,6 +794,34 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
   ASSERT_OK(status_future_read_req.get());
 }
 
+TEST_F(PgGetLockStatusTest, TestLockStatusRespHasHostNodeSet) {
+  constexpr int kMinTxnAgeMs = 1;
+  // All distributed txns returned as part of pg_locks should have the host node uuid set.
+  const auto kPgLocksQuery =
+      Format("SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks "
+             "WHERE NOT fastpath AND ybdetails->>'node' IS NULL");
+  const auto table = "foo";
+  const auto key = "1";
+
+  // Sets up a table, and launches a transaction acquiring for share lock on the key.
+  auto session = ASSERT_RESULT(Init(table, key));
+  // Launch a fast path transaction that ends up being blocked on the above transaction.
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    return conn.ExecuteFormat("UPDATE $0 SET v=v+1 WHERE k=$1", table, key);
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), 0);
+
+  // Try simulating GetLockStatus requests to tablets querying for fast path transactions alone.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_returning_old_transactions) = true;
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), 0);
+
+  ASSERT_OK(session.conn->CommitTransaction());
+  ASSERT_OK(status_future.get());
+}
 class PgGetLockStatusTestRF3 : public PgGetLockStatusTest {
   size_t NumTabletServers() override {
     return 3;
