@@ -110,6 +110,10 @@ class TServerSharedData {
     return tserver_uuid_;
   }
 
+  void SetIsCronLeader(bool is_leader) { is_cron_leader_ = is_leader; }
+
+  bool IsCronLeader() const { return is_cron_leader_; }
+
  private:
   // Endpoint that should be used by local processes to access this tserver.
   Endpoint endpoint_;
@@ -122,6 +126,8 @@ class TServerSharedData {
   std::atomic<uint64_t> db_catalog_versions_[kMaxNumDbCatalogVersions] = {0};
   // See same variable comments in CatalogManager.
   std::atomic<std::optional<bool>> catalog_version_table_in_perdb_mode_{std::nullopt};
+
+  bool is_cron_leader_ = false;
 };
 
 YB_STRONGLY_TYPED_BOOL(Create);

@@ -665,7 +665,7 @@ cron_unschedule(PG_FUNCTION_ARGS)
 	EnsureDeletePermission(cronJobsTable, heapTuple);
 
 	if (IsYugaByteEnabled())
-		YBCDeleteSysCatalogTuple(cronJobsTable, heapTuple);
+		CatalogTupleDelete(cronJobsTable, heapTuple);
 	else
 		simple_heap_delete(cronJobsTable, &heapTuple->t_self);
 
@@ -739,7 +739,7 @@ cron_unschedule_named(PG_FUNCTION_ARGS)
 	EnsureDeletePermission(cronJobsTable, heapTuple);
 
 	if (IsYugaByteEnabled())
-		YBCDeleteSysCatalogTuple(cronJobsTable, heapTuple);
+		CatalogTupleDelete(cronJobsTable, heapTuple);
 	else
 		simple_heap_delete(cronJobsTable, &heapTuple->t_self);
 

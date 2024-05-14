@@ -2459,4 +2459,6 @@ void PgApiImpl::ClearSessionState() {
   pg_session_->explicit_row_lock_buffer().Clear();
 }
 
+bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }
+
 } // namespace yb::pggate

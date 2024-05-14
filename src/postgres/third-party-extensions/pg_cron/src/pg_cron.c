@@ -151,6 +151,7 @@ static bool jobStartupTimeout(CronTask *task, TimestampTz currentTime);
 static char* pg_cron_cmdTuples(char *msg);
 static void bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata);
 static long YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime);
+static void YbCheckLeadership(List *taskList, TimestampTz currentTime);
 
 /* global settings */
 char *CronTableDatabaseName = "yugabyte";
@@ -189,6 +190,14 @@ static const struct config_enum_entry cron_message_level_options[] = {
 	{"panic", PANIC, false},
 	{NULL, 0, false}
 };
+
+/*
+ * In Yugabyte since postgres is running on several nodes we pick a single
+ * node to act as the cron leader. Only this node will run cron jobs.
+ * Once distributed scheduling(#22336) is implemented the leader will schedule
+ * the job and other nodes will execute jobs that have been scheduled on them.
+ */
+bool ybIsLeader = false;
 
 static const char *cron_error_severity(int elevel);
 
@@ -577,7 +586,9 @@ PgCronLauncherMain(Datum arg)
 	/* Establish signal handlers before unblocking signals. */
 	pqsignal(SIGHUP, pg_cron_sighup);
 	pqsignal(SIGINT, SIG_IGN);
-	pqsignal(SIGTERM, pg_cron_sigterm);
+	/* YB Note: Exit immediately. */
+	pqsignal(SIGTERM, die);
+	pqsignal(SIGQUIT, quickdie);
 
 	/* We're now ready to receive signals */
 	BackgroundWorkerUnblockSignals();
@@ -595,8 +606,10 @@ PgCronLauncherMain(Datum arg)
 	/*
 	 * Mark anything that was in progress before the database restarted as
 	 * failed.
+	 * YB Note: The cron leader will mark pending runs as failed.
 	 */
-	MarkPendingRunsAsFailed();
+	if (!IsYugaByteEnabled())
+		MarkPendingRunsAsFailed();
 
 	/* Determine how many tasks we can run concurrently */
 	if (MaxConnections < MaxRunningTasks)
@@ -646,9 +659,6 @@ PgCronLauncherMain(Datum arg)
 
 	while (!got_sigterm)
 	{
-		/* YB Note: The latest entries in the catalog must be read during every run */
-		if (IsYugaByteEnabled())
-			YBCPgResetCatalogReadTime();
 
 		List *taskList = NIL;
 		TimestampTz currentTime = 0;
@@ -664,21 +674,25 @@ PgCronLauncherMain(Datum arg)
 			CronReloadConfig = false;
 		}
 
+		currentTime = GetCurrentTimestamp();
+		YbCheckLeadership(taskList, currentTime);
+
 		/*
 		 * Both CronReloadConfig and CronJobCacheValid are triggered by SIGHUP.
 		 * ProcessConfigFile should come first, because RefreshTaskHash depends
 		 * on settings that might have changed.
 		 *
-		 * In Yugabyte mode jobs scheduled from a different nodes cannot invalidate
-		 * the cache on the cron leader. So in addition to the regular invalidations
-		 * we RefreshTaskHash every YbJobListRefreshSeconds.
-		 * NOTE: It can take up to YbJobListRefreshSeconds for change to the jobs
-		 * to take effect.
+		 * YB Note:
+		 * Jobs scheduled from a different nodes cannot
+		 * invalidate the cache on the cron leader. So in addition to the
+		 * regular invalidations we RefreshTaskHash every
+		 * YbJobListRefreshSeconds. NOTE: It can take up to
+		 * YbJobListRefreshSeconds for change to the jobs to take effect.
 		 */
-		currentTime = GetCurrentTimestamp();
 		if (!CronJobCacheValid ||
-			(IsYugaByteEnabled() &&
-				YbSecondsPassed(ybLastRefreshTime, currentTime) >= YbJobListRefreshSeconds))
+			(IsYugaByteEnabled() && ybIsLeader &&
+			 YbSecondsPassed(ybLastRefreshTime, currentTime) >=
+				 YbJobListRefreshSeconds))
 		{
 			ybLastRefreshTime = currentTime;
 			RefreshTaskHash();
@@ -688,6 +702,9 @@ PgCronLauncherMain(Datum arg)
 		currentTime = GetCurrentTimestamp();
 
 		StartAllPendingRuns(taskList, currentTime);
+
+		/* YB Note: Check again since we could have lost leadership. */
+		YbCheckLeadership(taskList, currentTime);
 
 		WaitForCronTasks(taskList);
 		ManageCronTasks(taskList, currentTime);
@@ -711,6 +728,23 @@ static void
 StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 {
 	static TimestampTz lastMinute = 0;
+
+	/*
+	 * YB Note: Only start jobs if we are the leader.
+	 * Reset lastMinute because otherwise if we go from leader to follower and
+	 * back to leader we would start all the runs while we were the follower.
+	 * If we had two or more leaders in the same minute we would not run the
+	 * task multiple times since we do not run tasks for the first minute of
+	 * leadership.
+	 * Interval jobs do not have this guarantee since their timer starts when we
+	 * become the leader. Non Yugabyte pg_cron has the same behavior when pg
+	 * restarts.
+	 */
+	if (IsYugaByteEnabled() && !ybIsLeader)
+	{
+		lastMinute = 0;
+		return;
+	}
 
 	int minutesPassed = 0;
 	ListCell *taskCell = NULL;
@@ -2081,6 +2115,8 @@ CronBackgroundWorker(Datum main_arg)
 
 	/* handle SIGTERM like regular backend */
 	pqsignal(SIGTERM, die);
+	/* YB Note: Exit immediately. */
+	pqsignal(SIGQUIT, quickdie);
 	BackgroundWorkerUnblockSignals();
 
 	/* Set up a memory context and resource owner. */
@@ -2396,4 +2432,58 @@ YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime)
 						&secondsPassed, &microsPassed);
 
 	return secondsPassed;
+}
+
+static void
+YbCheckLeadership(List *taskList, TimestampTz currentTime)
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	if (YBCIsCronLeader())
+	{
+		if (!ybIsLeader)
+		{
+			ereport(LOG, (errmsg("pg_cron switching to leader mode")));
+			ybIsLeader = true;
+
+			/*
+			 * The first time we detect that we are a leader, mark any inflight
+			 * job started by the previous leader as failed as that node might
+			 * still be alive. It will mark the job as completed and stop
+			 * scheduling new runs. This inconsistency will go away once
+			 * distributed job scheduling (#22336) is implemented.
+			 */
+			MarkPendingRunsAsFailed();
+
+			/*
+			 * Reset the start time used for interval job. Check comment in
+			 * GetCronTask.
+			 */
+			ListCell *taskCell = NULL;
+			foreach (taskCell, taskList)
+			{
+				CronTask *task = (CronTask *) lfirst(taskCell);
+				task->lastStartTime = currentTime;
+			}
+
+			CronJobCacheValid = false;
+		}
+	}
+	else if (ybIsLeader)
+	{
+		ereport(LOG, (errmsg("pg_cron switching to idle mode")));
+		ybIsLeader = false;
+
+		/*
+		 * Reset the pending run counts so that we do not start tasks that we
+		 * marked as pending while we were the leader.
+		 */
+		ListCell *taskCell = NULL;
+		foreach(taskCell, taskList)
+		{
+			CronTask *task = (CronTask *) lfirst(taskCell);
+			task->pendingRunCount = 0;
+		}
+	}
 }
