@@ -29,6 +29,8 @@
 #include "yb/util/tostring.h"
 #include "yb/util/metric_entity.h"
 
+DECLARE_bool(TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files);
+
 namespace yb {
 
 using client::YBTableName;
@@ -1813,6 +1815,9 @@ void CDCSDKYsqlTest::TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType 
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestCheckpointPersistencyAllNodesRestart);
 
 void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType checkpoint_type) {
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // We want to force every GetChanges to update the cdc_state table.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -1951,6 +1956,9 @@ CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(
     CDCSDKYsqlTest, TestHighIntentCountPersistencyAllNodesRestart);
 
 void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType checkpoint_type) {
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
+
   // Disable lb as we move tablets around
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
@@ -2570,6 +2578,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRangeArrayCompositeType)) {
 // Test GetChanges() can return records of a transaction with size was greater than
 // 'consensus_max_batch_size_bytes'.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize)) {
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 1000;
@@ -2622,6 +2633,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCompaction)) {
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // We want to force every GetChanges to update the cdc_state table.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
