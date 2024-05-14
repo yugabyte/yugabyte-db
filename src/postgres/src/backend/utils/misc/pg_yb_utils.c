@@ -4045,12 +4045,15 @@ assign_yb_read_time(const char* newval, void *extra)
 	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
 	yb_read_time = value_ull;
 	yb_is_read_time_ht = is_ht_unit;
-	ereport(NOTICE,
-			(errmsg("yb_read_time should be set with caution."),
-			 errdetail("No DDL operations should be performed while it is set and "
-			 		   "it should not be set to a timestamp before a DDL "
-					   "operation has been performed. It doesn't have well defined semantics"
-					   " for normal transactions and is only to be used after consultation")));
+	if (!am_walsender)
+	{
+		ereport(NOTICE,
+				(errmsg("yb_read_time should be set with caution."),
+				errdetail("No DDL operations should be performed while it is set and "
+						"it should not be set to a timestamp before a DDL "
+						"operation has been performed. It doesn't have well defined semantics"
+						" for normal transactions and is only to be used after consultation")));
+	}
 }
 
 void
