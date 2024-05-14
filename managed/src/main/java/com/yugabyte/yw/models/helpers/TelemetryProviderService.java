@@ -80,6 +80,19 @@ public class TelemetryProviderService {
     return provider;
   }
 
+  public boolean checkIfExists(UUID customerUUID, UUID uuid) {
+    try {
+      TelemetryProvider provider = getOrBadRequest(customerUUID, uuid);
+      ;
+      if (provider != null) {
+        return true;
+      }
+    } catch (Exception e) {
+      return false;
+    }
+    return false;
+  }
+
   public List<TelemetryProvider> list(Set<UUID> uuids) {
     return appendInClause(TelemetryProvider.createQuery(), "uuid", uuids).findList();
   }

@@ -54,6 +54,8 @@ import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,6 +64,7 @@ import java.util.Objects;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import play.libs.Json;
 
@@ -77,6 +80,7 @@ public class UpgradeUniverseHandler {
   private final CertificateHelper certificateHelper;
   private final AutoFlagUtil autoFlagUtil;
   private final XClusterUniverseService xClusterUniverseService;
+  private final TelemetryProviderService telemetryProviderService;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -87,7 +91,8 @@ public class UpgradeUniverseHandler {
       RuntimeConfGetter confGetter,
       CertificateHelper certificateHelper,
       AutoFlagUtil autoFlagUtil,
-      XClusterUniverseService xClusterUniverseService) {
+      XClusterUniverseService xClusterUniverseService,
+      TelemetryProviderService telemetryProviderService) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
@@ -96,6 +101,7 @@ public class UpgradeUniverseHandler {
     this.certificateHelper = certificateHelper;
     this.autoFlagUtil = autoFlagUtil;
     this.xClusterUniverseService = xClusterUniverseService;
+    this.telemetryProviderService = telemetryProviderService;
   }
 
   public UUID restartUniverse(
@@ -466,6 +472,35 @@ public class UpgradeUniverseHandler {
       AuditLogConfigParams requestParams, Customer customer, Universe universe) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+
+    // Verify if exporter config is set to export active.
+    if (requestParams.auditLogConfig.isExportActive()) {
+      // If exporter config is set to export active, verify if any exporter is configured.
+      if (CollectionUtils.isEmpty(requestParams.auditLogConfig.getUniverseLogsExporterConfig())) {
+        String errorMessage =
+            String.format(
+                "Audit log config is set to export active, but no exporter configured on universe"
+                    + " '%s'.",
+                universe.getUniverseUUID());
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+
+      // If exporter config is set to export active, verify if given exporter uuid(s) are empty.
+      for (UniverseLogsExporterConfig exporterConfig :
+          requestParams.auditLogConfig.getUniverseLogsExporterConfig()) {
+        UUID exporterUUID = exporterConfig.getExporterUuid();
+        if (exporterUUID == null
+            || !telemetryProviderService.checkIfExists(customer.getUuid(), exporterUUID)) {
+          String errorMessage =
+              String.format(
+                  "Exporter config UUID '%s' is invalid for universe '%s'.",
+                  exporterUUID, universe.getUniverseUUID());
+          log.error(errorMessage);
+          throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+        }
+      }
+    }
 
     requestParams.verifyParams(universe, true);
     userIntent.auditLogConfig = requestParams.auditLogConfig;
