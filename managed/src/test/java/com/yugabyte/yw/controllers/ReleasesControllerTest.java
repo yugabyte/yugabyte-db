@@ -7,6 +7,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -21,7 +22,9 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
@@ -122,6 +125,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
 
   @Test
   public void testListRelease() {
+    when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
     Release r1 = Release.create("2.21.0.1", "STS");
     Release r2 = Release.create("2.22.0.2", "LTS");
     String url = String.format("/api/customers/%s/ybdb_release", defaultCustomer.getUuid());
@@ -150,6 +154,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
 
   @Test
   public void testListX86Releases() {
+    when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
     Release r1 = Release.create("2.21.0.1", "STS");
     Release r2 = Release.create("2.22.0.2", "LTS");
     ReleaseArtifact art1 =
@@ -208,6 +213,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetRelease() {
+    when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
     Release r1 = Release.create("2.21.0.1", "STS");
     Release.create("2.22.0.2", "LTS");
     String url =
@@ -223,6 +229,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetReleaseWithArtifacts() {
+    when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
     Release r1 = Release.create("2.21.0.1", "STS");
     ReleaseArtifact linuxArtifact =
         ReleaseArtifact.create(
