@@ -1388,7 +1388,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       testRelOidsCsv = "-1";
     }
 
-    List<Row> tablesInfo = getSortedRowList(stmt.executeQuery("SELECT relname "
+    List<Row> tablesInfo = getSortedRowList(stmt.executeQuery("SELECT relname"
         + " FROM pg_class"
         + " WHERE relnamespace = 'pg_catalog'::regnamespace"
         + " AND relkind = 'r'"
