@@ -530,13 +530,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
     createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("BEGIN");
-      stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
-      stmt.execute("INSERT INTO t2 VALUES(2, 'defg')");
-      stmt.execute("COMMIT");
-      stmt.execute("CREATE TABLE t3 (a int primary key, b text)");
-    }
 
     PGReplicationStream stream = replConnection.replicationStream()
       .logical()
@@ -545,6 +538,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       .withSlotOption("proto_version", 1)
       .withSlotOption("publication_names", "pub")
       .start();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
+      stmt.execute("INSERT INTO t2 VALUES(2, 'defg')");
+      stmt.execute("COMMIT");
+      stmt.execute("CREATE TABLE t3 (a int primary key, b text)");
+    }
 
     Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
     try (Statement stmt = connection.createStatement()) {
