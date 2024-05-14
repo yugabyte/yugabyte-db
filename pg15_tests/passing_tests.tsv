@@ -95,7 +95,9 @@ JAVA	org.yb.pgsql.TestYbBackup#testGeoPartitioningRestoringIntoExistingWithTable
 JAVA	org.yb.pgsql.TestYbBackup#testGeoPartitioningWithTablespaces
 JAVA	org.yb.pgsql.TestYbBackup#testIgnoreExistingTablespaces
 JAVA	org.yb.pgsql.TestYsqlMetrics#testMetrics
+JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSharedRelsCreatesThemEverywhere
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsByNonSuperuser
+JAVA	org.yb.pgsql.TestYsqlUpgrade#insertOnConflictWithOidsWorks
 JAVA	org.yb.pgsql.TestYsqlUpgrade#invalidUpgradeActions
 JAVA	org.yb.pgsql.TestYsqlUpgrade#migrationFilenameComment
 JAVA	org.yb.ysqlconnmgr.TestCorrectErrorMessage#testErrMsgWrongDb

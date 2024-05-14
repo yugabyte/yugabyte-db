@@ -234,8 +234,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       String ts2 = "2002-03-04";
       // write -> template1
       // read  <- user DB
-      executeSystemTableDml(stmtTpl, String.format("INSERT INTO %s VALUES (pg_nextoid(%d, 'oid', %d), 1, '%s', '%s')",
-      sharedRelName, relationOid, pkIndexOid, ts1, ts2));
+      executeSystemTableDml(stmtTpl, String.format("INSERT INTO %s VALUES " +
+          "(pg_nextoid(%d, 'oid', %d), 1, '%s', '%s')",
+          sharedRelName, relationOid, pkIndexOid, ts1, ts2));
       assertQuery(stmtUsr, "SELECT c1, c2, c3 FROM " + sharedRelName,
           new Row(1, Timestamp.valueOf(ts1), new SimpleDateFormat("yyyy-MM-dd").parse(ts2)));
 
@@ -793,9 +794,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         // Insert without explicit oid value.
         long tableOid = tableOidMap.get(tableName);
         long indexOid = indexOidMap.get(tableName);
-        executeSystemTableDml(stmt,
-            String.format("INSERT INTO " + tableName + " VALUES (pg_nextoid(%d, 'oid', %d), 333, 't3')", tableOid,
-                indexOid));
+        executeSystemTableDml(stmt, String.format("INSERT INTO " + tableName +
+            " VALUES (pg_nextoid(%d, 'oid', %d), 333, 't3')", tableOid, indexOid));
         assertQuery(stmt, "SELECT v1, v2 FROM " + tableName + " ORDER BY oid",
             new Row(333, "t3"));
         assertAllOidsAreSysGenerated(stmt, tableName);
