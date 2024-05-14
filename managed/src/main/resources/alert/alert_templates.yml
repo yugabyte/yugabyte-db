@@ -1846,3 +1846,34 @@ templates:
         Node agent server has been down for universe '{{ $labels.source_name }}' for more than 1 minute.
 
         Affected nodes: {{ $labels.affected_node_names }}
+
+  TABLET_PEERS_GUARDRAIL:
+    name: Percentage of tablet peers is high
+    description: It represents the percentage of number of live tablet peers compared to number of tablet peers that can be supported based on available RAM, cores, etc.
+    queryTemplate: max by (universe_uuid) (
+      (sum by (node_name, universe_uuid) (ts_live_tablet_peers{universe_uuid="__universeUuid__"}) * 100 / sum by (node_name, universe_uuid) (ts_supportable_tablet_peers{universe_uuid="__universeUuid__"}) {{ query_condition }} {{ query_threshold }})
+      and
+      (max by (node_name, universe_uuid) (ts_supportable_tablet_peers{universe_uuid="__universeUuid__"}) > -1)
+      )
+    defaultDurationSec: 1200
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 90.0
+      SEVERE:
+        threshold: 100.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdUnitName: '%'
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        (sum by (node_name, universe_uuid) (ts_live_tablet_peers{universe_uuid='{{ $labels.universe_uuid }}'}) * 100 / sum by (node_name, universe_uuid) (ts_supportable_tablet_peers{universe_uuid='{{ $labels.universe_uuid }}'}) {{ query_condition }} {{ query_threshold }})
+        and
+        (max by (node_name, universe_uuid) (ts_supportable_tablet_peers{universe_uuid='{{ $labels.universe_uuid }}'}) > -1)" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Percentage of tablet peers is high for universe '{{ $labels.source_name }}'.
+        Current value is {{ $value | printf "%.0f" }} %.
+        Affected nodes: {{ $labels.affected_node_names }}
