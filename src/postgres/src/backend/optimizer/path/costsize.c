@@ -172,7 +172,7 @@ double		yb_local_throughput_cost = YB_DEFAULT_LOCAL_THROUGHPUT_COST;
 int			effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 
 Cost		disable_cost = 1.0e10;
-Cost		bitmap_exceeded_work_mem_cost = 5.0e9;
+Cost		bitmap_exceeded_work_mem_disable_cost = 5.0e9;
 
 int			max_parallel_workers_per_gather = 2;
 
@@ -1265,8 +1265,8 @@ yb_cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec, int *ybctid
 
 		double bitmap_rows = clamp_row_est(ipath->indexselectivity * ipath->path.parent->tuples);
 
-		if (bitmap_rows > maxentries && *cost < bitmap_exceeded_work_mem_cost)
-			*cost += bitmap_exceeded_work_mem_cost;
+		if (bitmap_rows > maxentries && *cost < bitmap_exceeded_work_mem_disable_cost)
+			*cost += bitmap_exceeded_work_mem_disable_cost;
 
 		/* Update the node cost with new calculations */
 		ipath->indextotalcost = *cost;
@@ -1359,11 +1359,11 @@ yb_cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root)
 
 		selec *= subselec;
 
-		if (subcost < bitmap_exceeded_work_mem_cost)
+		if (subcost < bitmap_exceeded_work_mem_disable_cost)
 			startup_cost += subcost;
 		else
 		{
-			startup_cost += subcost - bitmap_exceeded_work_mem_cost;
+			startup_cost += subcost - bitmap_exceeded_work_mem_disable_cost;
 			exceeded_work_mem = true;
 		}
 
@@ -1376,7 +1376,7 @@ yb_cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root)
 	}
 
 	if (exceeded_work_mem)
-		startup_cost += bitmap_exceeded_work_mem_cost;
+		startup_cost += bitmap_exceeded_work_mem_disable_cost;
 
 	path->bitmapselectivity = selec;
 	path->path.rows = least_rows * selec;
@@ -1439,11 +1439,11 @@ yb_cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root)
 
 		selec += subselec;
 
-		if (subcost < bitmap_exceeded_work_mem_cost)
+		if (subcost < bitmap_exceeded_work_mem_disable_cost)
 			startup_cost += subcost;
 		else
 		{
-			startup_cost += subcost - bitmap_exceeded_work_mem_cost;
+			startup_cost += subcost - bitmap_exceeded_work_mem_disable_cost;
 			exceeded_work_mem = true;
 		}
 
@@ -1464,7 +1464,7 @@ yb_cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root)
 	if (exceeded_work_mem ||
 		path->path.rows > yb_tbm_calculate_entries(work_mem * 1024L,
 												   path->ybctid_width))
-		startup_cost += bitmap_exceeded_work_mem_cost;
+		startup_cost += bitmap_exceeded_work_mem_disable_cost;
 
 	path->bitmapselectivity = Min(selec, 1.0);
 	path->path.rows = Min(path->path.parent->rows, total_rows) *
@@ -7472,7 +7472,7 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	startup_cost += indexTotalCost;
 
 	/* we fall back to a sequential scan if we exceed work_mem */
-	if (indexTotalCost > bitmap_exceeded_work_mem_cost)
+	if (indexTotalCost > bitmap_exceeded_work_mem_disable_cost)
 	{
 		yb_cost_seqscan(path, root, baserel, param_info);
 		if (path->startup_cost > disable_cost)
