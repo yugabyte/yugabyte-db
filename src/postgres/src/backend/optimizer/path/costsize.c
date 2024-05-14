@@ -6344,7 +6344,8 @@ yb_get_index_tuple_width(IndexOptInfo *index, Oid baserel_oid,
 		/* Aggregate the width of the columns in the secondary index */
 		for (int i = 0; i < index->ncolumns; i++)
 		{
-			index_tuple_width += index->rel->attr_widths[index->indexkeys[i]];
+			index_tuple_width += 
+				index->rel->attr_widths[index->indexkeys[i] - index->rel->min_attr];
 		}
 		index_tuple_width += HIDDEN_COLUMNS_SIZE;
 	}
