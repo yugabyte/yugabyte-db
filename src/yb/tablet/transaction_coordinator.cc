@@ -122,6 +122,10 @@ DEFINE_test_flag(bool, fail_abort_request_with_try_again, false,
                  "When enabled, the txn coordinator responds to all abort transaction requests "
                  "with TryAgain error status, for the set of transactions it hosts.");
 
+DEFINE_test_flag(bool, skip_returning_old_transactions, false,
+                 "When set, the coordinator returns an empty response to all GetOldTransactions "
+                 "requests.");
+
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_int32(rpc_workers_limit);
@@ -1167,6 +1171,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                             tserver::GetOldTransactionsResponsePB* resp,
                             CoarseTimePoint deadline) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Request to GetOldTransactions " << req->ShortDebugString();
+    if (PREDICT_FALSE(FLAGS_TEST_skip_returning_old_transactions)) {
+      return Status::OK();
+    }
 
     auto min_age = req->min_txn_age_ms() * 1ms;
     auto now = context_.clock().Now();

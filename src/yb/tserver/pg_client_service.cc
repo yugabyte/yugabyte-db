@@ -760,7 +760,8 @@ class PgClientServiceImpl::Impl {
       AtomicFlagSleepMs(&FLAGS_TEST_delay_before_get_locks_status_ms);
     }
 
-    VLOG(4) << "Request to DoGetLockStatus: " << req->ShortDebugString();
+    VLOG(4) << "Request to DoGetLockStatus: " << req->ShortDebugString()
+            << ", with existing response state " << resp->ShortDebugString();
     if (req->transactions_by_tablet().empty() && req->transaction_ids().empty()) {
       return Status::OK();
     }
@@ -881,8 +882,9 @@ class PgClientServiceImpl::Impl {
     // PgGetLockStatusRequestPB has transaction_id field set. This shouldn't be the case once
     // https://github.com/yugabyte/yugabyte-db/issues/16913 is addressed. As part of the fix,
     // remove !req.transaction_ids().empty() in the below check.
-    RSTATUS_DCHECK(seen_transactions.empty() || !req->transaction_ids().empty(), IllegalState,
-           "Host node uuid not set for all involved transactions");
+    RSTATUS_DCHECK(
+        seen_transactions.empty() || !req->transaction_ids().empty(), IllegalState,
+        Format("Host node uuid not set for transactions: $0", yb::ToString(seen_transactions)));
     return Status::OK();
   }
 
