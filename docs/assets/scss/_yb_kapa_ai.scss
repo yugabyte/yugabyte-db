@@ -60,7 +60,7 @@ body {
       cursor: pointer;
       background-color: #fff;
       border-color: #d7dee4;
-      transition: color 250ms ease, backgound 250ms ease;
+      transition: color 250ms ease, background 250ms ease;
       transform: translateX(-230px);
       animation: ask-ai-btn 500ms 3.8s ease forwards;
       position: relative;
@@ -88,13 +88,21 @@ body {
       }
     }
 
+    @media (max-width: 1131px) and (min-width: 992px) {
+      >span.tritiery-btn:not(.btn-priority) {
+        padding-right: 10px;
+      }
+    }
+
     @media(max-width:1129px) {
       margin-left: 6px;
       gap: 8px;
     }
 
     @media (max-width:767px) {
-      font-size: 0;
+      font-size: inherit;
+      display: flex;
+      flex-flow: row-reverse;
       margin: 0 20px 0 auto;
       animation: none;
       transform: translateX(0);
@@ -103,6 +111,28 @@ body {
         transform: translateX(0);
         animation: none;
       }
+    }
+
+    @media (max-width: 550px) {
+      >span.tritiery-btn:not(.btn-priority) > img {
+        display: block;
+      }
+
+      >span.tritiery-btn:not(.btn-priority) > span {
+        font-size: 0px;
+      }
+
+      >span.tritiery-btn:not(.btn-priority) > span:after {
+        content: 'Use AI';
+        font-size: 13px;
+        display: block !important;
+        position: relative;
+        top: -7px;
+      }
+    }
+
+    @media (max-width: 450px) {
+      font-size: 0px;
     }
 
     @media(max-width:419px) {
