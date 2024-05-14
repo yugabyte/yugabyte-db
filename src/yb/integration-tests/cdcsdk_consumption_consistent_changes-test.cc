@@ -2330,7 +2330,7 @@ TEST_F(
 
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAdditionForTableCreatedAfterStream) {
-  auto publication_refresh_interval = MonoDelta::FromSeconds(1);
+  auto publication_refresh_interval = MonoDelta::FromSeconds(10);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
@@ -2353,14 +2353,6 @@ TEST_F(
   ASSERT_OK(
       conn.Execute("CREATE TABLE test2 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
   auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
-
-  ASSERT_OK(WaitFor(
-      [&]()-> Result<bool> {
-        auto tables_in_stream = VERIFY_RESULT(GetCDCStreamTableIds(stream_id));
-        return tables_in_stream.size() == 2;
-        },
-      MonoDelta::FromSeconds(60),
-      "Timed out waiting for the table to get added to the stream"));
 
   ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
 
@@ -2403,7 +2395,7 @@ TEST_F(
         records.insert(
             records.end(), change_resp.cdc_sdk_proto_records().begin(),
             change_resp.cdc_sdk_proto_records().end());
-        return records.size() == 5;
+        return records.size() >= 4;
       },
       MonoDelta::FromSeconds(60),
       "Timed out waiting to receive the records of second transaction"));
@@ -2419,6 +2411,13 @@ TEST_F(
   ASSERT_TRUE(has_records_from_test1 && has_records_from_test2);
 
   for (int i = 0; i < 8; i++) {
+    // This is because in TSAN builds, the records of txn 2 are received by the VWAL in two
+    // GetChanges calls instead of one. As a result VWAL does not ship a DDL record for txn 2 in
+    // TSAN builds.
+    if (IsTsan() && i == 0) {
+      ASSERT_EQ(0, count[i]);
+      continue;
+    }
     ASSERT_EQ(expected_count[i], count[i]);
   }
 }

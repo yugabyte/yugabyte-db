@@ -169,6 +169,9 @@ class CDCSDKVirtualWAL {
 
   std::vector<TabletId> GetTabletsForTable(const TableId& table_id);
 
+  Status ValidateTablesToBeAddedPresentInStream(
+      const std::unordered_set<TableId>& tables_to_be_added, const CoarseTimePoint deadline);
+
   std::string LogPrefix() const;
 
   CDCServiceImpl* cdc_service_;
