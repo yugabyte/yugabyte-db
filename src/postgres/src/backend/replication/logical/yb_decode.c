@@ -492,7 +492,6 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 			if (needs_invalidation)
 			{
 				uint64_t	read_time_ht;
-				char		read_time[50];
 				bool		for_startup;
 
 				for_startup = ctx->yb_handle_relcache_invalidation_startup;
@@ -512,10 +511,7 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 					read_time_ht = record->yb_virtual_wal_record->commit_time;
 				}
 
-				sprintf(read_time, "%" PRIu64 " ht", read_time_ht);
-				elog(DEBUG1, "Setting yb_read_time to %s", read_time);
-				assign_yb_read_time(read_time, NULL);
-				YbRelationCacheInvalidate();
+				YBCUpdateYbReadTimeAndInvalidateRelcache(read_time_ht);
 
 				/*
 				 * Let the plugin know that the schema for this table has
