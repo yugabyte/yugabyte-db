@@ -270,6 +270,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       stmt.execute("SET yb_enable_base_scans_cost_model = true");
       stmt.execute("SET yb_bnl_batch_size = 1024");
       stmt.execute("SET enable_bitmapscan = true");
+      stmt.execute("SET yb_enable_bitmapscan = true");
     }
   }
 

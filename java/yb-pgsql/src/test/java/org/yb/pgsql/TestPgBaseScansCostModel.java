@@ -105,6 +105,7 @@ public class TestPgBaseScansCostModel extends BasePgSQLTest {
       stmt.execute("SET yb_enable_base_scans_cost_model = ON");
       stmt.execute("SET yb_enable_optimizer_statistics = ON");
       stmt.execute("SET enable_bitmapscan = TRUE");
+      stmt.execute("SET yb_enable_bitmapscan = TRUE");
       stmt.execute(String.format("CREATE TABLE %s (pk INT, a INT, b INT, " +
                                  "c INT, PRIMARY KEY (pk ASC))", TABLE_NAME));
       stmt.execute(String.format("INSERT INTO %s SELECT i, i * 2, i / 2, NULLIF(i %% 10, 0) FROM" +
