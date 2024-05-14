@@ -56,6 +56,7 @@
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
 
@@ -107,6 +108,7 @@ class RemoteTabletServer {
                      const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
                      const tserver::LocalTabletServer* local_tserver = nullptr);
   explicit RemoteTabletServer(const master::TSInfoPB& pb);
+  explicit RemoteTabletServer(const master::TSInformationPB& pb);
   ~RemoteTabletServer();
 
   // Initialize the RPC proxy to this tablet server, if it is not already set up.
@@ -117,6 +119,9 @@ class RemoteTabletServer {
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.
   void Update(const master::TSInfoPB& pb);
+
+  // Update connection information from the passed TSInformationPB.
+  void Update(const master::TSInformationPB& pb);
 
   // Is this tablet server local?
   bool IsLocal() const;
@@ -193,7 +198,7 @@ struct RemoteReplica {
   std::string ToString() const;
 };
 
-typedef std::unordered_map<std::string, std::shared_ptr<RemoteTabletServer>> TabletServerMap;
+typedef std::unordered_map<std::string, std::unique_ptr<RemoteTabletServer>> TabletServerMap;
 
 YB_STRONGLY_TYPED_BOOL(UpdateLocalTsState);
 YB_STRONGLY_TYPED_BOOL(IncludeFailedReplicas);
@@ -583,8 +588,6 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       AllowSplitTablet allow_split_tablets);
 
   void InvalidateTableCache(const YBTable& table);
-
-  std::shared_ptr<RemoteTabletServer> GetRemoteTabletServer(const std::string& permanent_uuid);
 
   void AddAllTabletInfo(JsonWriter* writer);
 
