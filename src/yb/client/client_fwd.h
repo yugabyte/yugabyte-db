@@ -143,6 +143,7 @@ class RemoteTablet;
 typedef scoped_refptr<RemoteTablet> RemoteTabletPtr;
 
 class RemoteTabletServer;
+using RemoteTabletServerPtr = std::shared_ptr<RemoteTabletServer>;
 
 class Batcher;
 using BatcherPtr = std::shared_ptr<Batcher>;

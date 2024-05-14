@@ -164,6 +164,11 @@ RemoteTabletServer::RemoteTabletServer(const master::TSInfoPB& pb)
   Update(pb);
 }
 
+RemoteTabletServer::RemoteTabletServer(const master::TSInformationPB& pb)
+    : uuid_(pb.tserver_instance().permanent_uuid()) {
+  Update(pb);
+}
+
 RemoteTabletServer::RemoteTabletServer(const string& uuid,
                                        const shared_ptr<TabletServerServiceProxy>& proxy,
                                        const LocalTabletServer* local_tserver)
@@ -222,6 +227,19 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
   cloud_info_pb_ = pb.cloud_info();
   capabilities_.assign(pb.capabilities().begin(), pb.capabilities().end());
   std::sort(capabilities_.begin(), capabilities_.end());
+}
+
+void RemoteTabletServer::Update(const master::TSInformationPB& pb) {
+  if (pb.tserver_instance().permanent_uuid() != uuid_) {
+    LOG(WARNING) << "RemoteTabletServer " << uuid_ << " cannot be updated "
+                 << "because the TSInformationPB has a wrong permanent_uuid "
+                 << pb.tserver_instance().permanent_uuid();
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  private_rpc_hostports_ = pb.registration().common().private_rpc_addresses();
+  public_rpc_hostports_ = pb.registration().common().broadcast_addresses();
+  cloud_info_pb_ = pb.registration().common().cloud_info();
 }
 
 bool RemoteTabletServer::IsLocal() const {
@@ -676,7 +694,7 @@ void MetaCache::SetLocalTabletServer(const string& permanent_uuid,
                                      const shared_ptr<TabletServerServiceProxy>& proxy,
                                      const LocalTabletServer* local_tserver) {
   const auto entry = ts_cache_.emplace(permanent_uuid,
-                                       std::make_shared<RemoteTabletServer>(permanent_uuid,
+                                       std::make_unique<RemoteTabletServer>(permanent_uuid,
                                                                             proxy,
                                                                             local_tserver));
   CHECK(entry.second);
@@ -692,7 +710,7 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
   }
 
   VLOG_WITH_PREFIX(1) << "Client caching new TabletServer " << permanent_uuid;
-  CHECK(ts_cache_.emplace(permanent_uuid, std::make_shared<RemoteTabletServer>(pb)).second);
+  CHECK(ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second);
 }
 
 // A (table, partition_key) --> tablet lookup. May be in-flight to a master, or
@@ -1187,16 +1205,6 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
         "MetaCache for table $0 has been invalidated.", table_id);
     boost::apply_visitor(LookupCallbackVisitor(s), callback);
   }
-}
-
-std::shared_ptr<RemoteTabletServer> MetaCache::GetRemoteTabletServer(
-    const std::string& permanent_uuid) {
-  SharedLock lock(mutex_);
-  auto it = ts_cache_.find(permanent_uuid);
-  if (it != ts_cache_.end()) {
-    return it->second;
-  }
-  return nullptr;
 }
 
 class MetaCache::CallbackNotifier {

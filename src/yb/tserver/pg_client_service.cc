@@ -561,7 +561,7 @@ class PgClientServiceImpl::Impl {
       return is_within_retry ? combined_status : ReplaceSplitTabletsAndGetLocations(req, true);
     }
 
-    std::set<std::string> tserver_uuids;
+    std::unordered_set<std::string> tserver_uuids;
     for (const auto& tablet_location_pb : resp.tablet_locations()) {
       for (const auto& replica : tablet_location_pb.replicas()) {
         if (replica.role() == PeerRole::LEADER) {
@@ -569,20 +569,13 @@ class PgClientServiceImpl::Impl {
         }
       }
     }
-
-    std::vector<RemoteTabletServerPtr> remote_tservers;
-    remote_tservers.reserve(tserver_uuids.size());
-    for(const auto& ts_uuid : tserver_uuids) {
-      remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(ts_uuid)));
-    }
-    return remote_tservers;
+    return tablet_server_.GetRemoteTabletServers(tserver_uuids);
   }
 
   Status GetLockStatus(
       const PgGetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp,
       rpc::RpcContext* context) {
-    std::vector<master::TSInformationPB> live_tservers;
-    RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
+    auto remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
     GetLockStatusRequestPB lock_status_req;
     lock_status_req.set_max_txn_locks_per_tablet(req.max_txn_locks_per_tablet());
     if (!req.transaction_id().empty()) {
@@ -595,12 +588,6 @@ class PgClientServiceImpl::Impl {
       // TODO(pglocks): Once we call GetTransactionStatus for involved tablets, ensure we populate
       // aborted_subtxn_set in the GetLockStatusRequests that we send to involved tablets as well.
       lock_status_req.add_transaction_ids(req.transaction_id());
-      std::vector<RemoteTabletServerPtr> remote_tservers;
-      remote_tservers.reserve(live_tservers.size());
-      for (const auto& live_ts : live_tservers) {
-        const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-        remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
-      }
       return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
     }
     const auto& min_txn_age_ms = req.min_txn_age_ms();
@@ -619,12 +606,11 @@ class PgClientServiceImpl::Impl {
 
     std::vector<std::future<Result<OldTxnsRespInfo>>> res_futures;
     std::unordered_set<TabletId> status_tablet_ids;
-    for (const auto& live_ts : live_tservers) {
-      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-      auto remote_tserver = VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid));
+    for (const auto& remote_tserver : remote_tservers) {
       auto txn_status_tablets = VERIFY_RESULT(
             client().GetTransactionStatusTablets(remote_tserver->cloud_info_pb()));
 
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
       auto proxy = remote_tserver->proxy();
       for (const auto& tablet : txn_status_tablets.global_tablets) {
         res_futures.push_back(
@@ -658,8 +644,9 @@ class PgClientServiceImpl::Impl {
 
       std::visit([&](auto&& old_txns_resp) {
         if (old_txns_resp->has_error()) {
-          // Ignore leadership errors as we broadcast the request to all tservers.
-          if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER) {
+          // Ignore leadership and NOT_FOUND errors as we broadcast the request to all tservers.
+          if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER ||
+              old_txns_resp->error().code() == TabletServerErrorPB::TABLET_NOT_FOUND) {
             it = res_futures.erase(it);
             return;
           }
@@ -735,8 +722,9 @@ class PgClientServiceImpl::Impl {
     if (include_single_shard_waiters) {
       lock_status_req.set_max_single_shard_waiter_start_time_us(max_single_shard_waiter_start_time);
     }
-    auto remote_tservers = VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(&lock_status_req));
-    return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
+    auto remote_tservers_with_locks = VERIFY_RESULT(
+        ReplaceSplitTabletsAndGetLocations(&lock_status_req));
+    return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers_with_locks);
   }
 
   // Merges the src PgGetLockStatusResponsePB into dest, while preserving existing entries in dest.
@@ -771,6 +759,7 @@ class PgClientServiceImpl::Impl {
     std::vector<std::shared_ptr<GetLockStatusResponsePB>> node_responses;
     node_responses.reserve(remote_tservers.size());
     for (const auto& remote_tserver : remote_tservers) {
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
       auto proxy = remote_tserver->proxy();
       auto status_promise = std::make_shared<std::promise<Status>>();
       status_futures.push_back(status_promise->get_future());
@@ -1059,22 +1048,15 @@ class PgClientServiceImpl::Impl {
                   TryAgain, Format("Leader not found for tablet $0", status_tablet_id)));
             }
             const auto& permanent_uuid = remote_tablet->LeaderTServer()->permanent_uuid();
-            callback(client().GetRemoteTabletServer(permanent_uuid));
+            auto remote_ts_or_status = tablet_server_.GetRemoteTabletServers({permanent_uuid});
+            if (!remote_ts_or_status.ok()) {
+              return callback(remote_ts_or_status.status());
+            }
+            callback((*remote_ts_or_status)[0]);
           },
           // Force a client cache refresh so as to not hit NOT_LEADER error.
           client::UseCache::kFalse);
     });
-  }
-
-  Result<std::vector<RemoteTabletServerPtr>> GetAllLiveTservers() {
-    std::vector<RemoteTabletServerPtr> remote_tservers;
-    std::vector<master::TSInformationPB> live_tservers;
-    RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
-    for (const auto& live_ts : live_tservers) {
-      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-      remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
-    }
-    return remote_tservers;
   }
 
   Status GetActiveTransactionList(
@@ -1101,7 +1083,7 @@ class PgClientServiceImpl::Impl {
 
     std::vector<RemoteTabletServerPtr> remote_tservers;
     if (req.status_tablet_id().empty()) {
-      remote_tservers = VERIFY_RESULT(GetAllLiveTservers());
+      remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
     } else {
       const auto& remote_ts = VERIFY_RESULT(GetTServerHostingStatusTablet(
           req.status_tablet_id(), context->GetClientDeadline()).get());
@@ -1112,6 +1094,7 @@ class PgClientServiceImpl::Impl {
     std::vector<std::future<Status>> status_future;
     std::vector<tserver::CancelTransactionResponsePB> node_resp(remote_tservers.size());
     for (size_t i = 0 ; i < remote_tservers.size() ; i++) {
+      RETURN_NOT_OK(remote_tservers[i]->InitProxy(&client()));
       const auto& proxy = remote_tservers[i]->proxy();
       auto controller = std::make_shared<rpc::RpcController>();
       status_future.push_back(
