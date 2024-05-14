@@ -4511,8 +4511,10 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
   rocksdb::ReadOptions read_options;
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
-
-  if (transactions.empty()) {
+  // It could happen that the tablet gets a lock status request with the transactions field unset,
+  // but max_single_shard_waiter_start_time_us set. If so, the response shouldn't be populated with
+  // all active intents.
+  if (transactions.empty() && max_single_shard_waiter_start_time_us == 0) {
     intent_iter->Seek(key_bounds_.lower);
     while (intent_iter->Valid() &&
            (key_bounds_.upper.empty() || intent_iter->key().compare(key_bounds_.upper) < 0)) {
@@ -4535,7 +4537,6 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
 
     RETURN_NOT_OK(intent_iter->status());
   } else {
-    DCHECK(!transactions.empty());
     // While fetching intents of transactions below, we assume that the 'transactions' map is sorted
     // following the encoded string notation order of TransactionId. This assumption helps us avoid
     // repeated SeekToFirst calls on the rocksdb iterator so we can fetch relevant intents in one
