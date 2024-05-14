@@ -41,10 +41,12 @@ export const AlertConfigurations: FC = () => {
 
   const configurationData = useMemo(
     () =>
-      alertList.map((alert) => ({
-        ...alert,
-        enabled: config?.find((item) => item.key === alert.key)?.enabled ?? true,
-      })),
+      alertList
+        .filter((alert) => !alert.hideConfiguration)
+        .map((alert) => ({
+          ...alert,
+          enabled: config?.find((item) => item.key === alert.key)?.enabled ?? true,
+        })),
     [config]
   );
 

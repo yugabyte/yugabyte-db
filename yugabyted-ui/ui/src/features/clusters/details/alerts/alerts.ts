@@ -5,9 +5,16 @@ import { subMinutes } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
 import { useLocalStorage } from "react-use";
 
+type AlertListItem = {
+  readonly name: string;
+  readonly key: string;
+  readonly status: BadgeVariant;
+  readonly hideConfiguration?: boolean;
+};
+
 export const alertConfigurationsKey = "alert-configurations";
 
-export const alertList = [
+export const alertList: AlertListItem[] = [
   {
     name: "Cluster CPU utilization exceeded 90% for 5 min",
     key: "cpu_90",
@@ -43,7 +50,13 @@ export const alertList = [
     key: "insecure",
     status: BadgeVariant.Warning,
   },
-] as const;
+  {
+    name: "Version mismatch",
+    key: "version mismatch",
+    status: BadgeVariant.Warning,
+    hideConfiguration: true
+  }
+];
 
 export type AlertConfiguration = {
   key: string;
@@ -56,7 +69,7 @@ type CPUAlert = {
 };
 
 export const useFetchAlerts = (nodeHost: string) => {
-  const { data: upstreamAlerts, refetch: refetchUpstreamAlerts } = 
+  const { data: upstreamAlerts, refetch: refetchUpstreamAlerts } =
     useGetClusterAlertsQuery({ node_address: nodeHost });
 
   return {
@@ -151,7 +164,7 @@ export const useAlerts = (nodeHost: string) => {
     ],
   }; */
 
-  const { data: cpuAlerts, refetch: refetchCPUAlerts } = 
+  const { data: cpuAlerts, refetch: refetchCPUAlerts } =
     useCPUAlert(nodeHost === "" ? undefined : nodeHost);
 
   const refetch = () => {
