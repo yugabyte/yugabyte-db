@@ -14,6 +14,7 @@ include $(top_builddir)/src/Makefile.global
 
 OBJS = \
 	nodeYbBatchedNestloop.o \
+	nodeYbBitmapIndexscan.o \
 	nodeYbBitmapTablescan.o \
 	nodeYbSeqscan.o \
 	ybcExpr.o \

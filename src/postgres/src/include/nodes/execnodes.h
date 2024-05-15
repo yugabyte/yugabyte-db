@@ -1724,7 +1724,7 @@ typedef struct IndexOnlyScanState
 typedef struct BitmapIndexScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	void	   *biss_result;	/* either TIDBitmap or YbTIDBitmap */
+	TIDBitmap  *biss_result;
 	struct ScanKeyData *biss_ScanKeys;
 	int			biss_NumScanKeys;
 	IndexRuntimeKeyInfo *biss_RuntimeKeys;
@@ -1736,6 +1736,38 @@ typedef struct BitmapIndexScanState
 	Relation	biss_RelationDesc;
 	struct IndexScanDescData *biss_ScanDesc;
 } BitmapIndexScanState;
+
+/* ----------------
+ *	 YbBitmapIndexScanState information
+ *
+ *		result			   bitmap to return output into, or NULL
+ *		ScanKeys		   Skey structures for index quals
+ *		NumScanKeys		   number of ScanKeys
+ *		RuntimeKeys		   info about Skeys that must be evaluated at runtime
+ *		NumRuntimeKeys	   number of RuntimeKeys
+ *		ArrayKeys		   info about Skeys that come from ScalarArrayOpExprs
+ *		NumArrayKeys	   number of ArrayKeys
+ *		RuntimeKeysReady   true if runtime Skeys have been computed
+ *		RuntimeContext	   expr context for evaling runtime Skeys
+ *		RelationDesc	   index relation descriptor
+ *		ScanDesc		   index scan descriptor
+ * ----------------
+ */
+typedef struct YbBitmapIndexScanState
+{
+	ScanState	ss;				/* its first field is NodeTag */
+	YbTIDBitmap *biss_result;
+	struct ScanKeyData *biss_ScanKeys;
+	int			biss_NumScanKeys;
+	IndexRuntimeKeyInfo *biss_RuntimeKeys;
+	int			biss_NumRuntimeKeys;
+	IndexArrayKeyInfo *biss_ArrayKeys;
+	int			biss_NumArrayKeys;
+	bool		biss_RuntimeKeysReady;
+	ExprContext *biss_RuntimeContext;
+	Relation	biss_RelationDesc;
+	struct IndexScanDescData *biss_ScanDesc;
+} YbBitmapIndexScanState;
 
 /* ----------------
  *	 SharedBitmapState information
@@ -1833,7 +1865,8 @@ typedef struct BitmapHeapScanState
 /* ----------------
  *	 YbBitmapTableScanState information
  *
- *		bitmapqualorig	   execution state for bitmapqualorig expressions
+ *		recheck_local_quals		execution state for recheck_local_quals
+ *		fallback_local_quals	execution state for fallback_local_quals
  *		ybtbm			   bitmap obtained from child index scan(s)
  *		ybtbmiterator	   iterator for scanning rows from ybctids
  *		ybtbmres		   current chunk of data
@@ -1844,12 +1877,16 @@ typedef struct BitmapHeapScanState
  *		average_ybctid_bytes	an estimate of the average ybctid size
  *		can_skip_fetch	   can we potentially skip tuple fetches in this scan?
  *		skipped_tuples	   how many tuples have we skipped fetching?
+ *		recheck_pushdown   if index recheck is required, check these remote
+ *						   quals
+ *		fallback_pushdown  if work_mem is exceeded, check these remote quals
  * ----------------
  */
 typedef struct YbBitmapTableScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	ExprState  *bitmapqualorig;
+	ExprState  *recheck_local_quals;
+	ExprState  *fallback_local_quals;
 	YbTIDBitmap  *ybtbm;
 	YbTBMIterator *ybtbmiterator;
 	YbTBMIterateResult *ybtbmres;

@@ -85,6 +85,10 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
                       IllegalState, "Combining aggregate and non aggregate targets");
   }
 
+  if (!(target->is_system() || is_aggregate)) {
+    has_regular_targets_ = true;
+  }
+
   if (is_aggregate) {
     auto aggregate = down_cast<PgAggregateOperator*>(target);
     aggregate->set_index(narrow_cast<int>(targets_.size()));
@@ -462,6 +466,10 @@ Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
   }
 
   return false;
+}
+
+bool PgDml::has_regular_targets() const {
+  return has_regular_targets_;
 }
 
 bool PgDml::has_aggregate_targets() const {

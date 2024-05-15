@@ -143,34 +143,31 @@ MultiExecBitmapOr(BitmapOrState *node)
 		 */
 		if (IsA(subnode, BitmapIndexScanState))
 		{
-			bool is_yugabyte = IsYugaByteEnabled() &&
-				IsYBRelation(
-					((BitmapIndexScanState *) subnode)->ss.ss_currentRelation);
-
 			if (result.tbm == NULL) /* first subplan */
 			{
-				if (is_yugabyte)
-					result.ybtbm = yb_tbm_create(work_mem * 1024L);
-				else
-					/* XXX should we use less than work_mem for this? */
-					result.tbm = tbm_create(work_mem * 1024L,
-											((BitmapOr *) node->ps.plan)->isshared
-												? node->ps.state->es_query_dsa
-												: NULL);
+				/* XXX should we use less than work_mem for this? */
+				result.tbm = tbm_create(work_mem * 1024L,
+										((BitmapOr *) node->ps.plan)->isshared
+											? node->ps.state->es_query_dsa
+											: NULL);
 			}
 
-			if (is_yugabyte)
-			{
-				((BitmapIndexScanState *) subnode)->biss_result = result.ybtbm;
-				subresult.ybtbm = (YbTIDBitmap *) MultiExecProcNode(subnode);
-			}
-			else
-			{
-				((BitmapIndexScanState *) subnode)->biss_result = result.tbm;
-				subresult.tbm = (TIDBitmap *) MultiExecProcNode(subnode);
-			}
+			((BitmapIndexScanState *) subnode)->biss_result = result.tbm;
+			subresult.tbm = (TIDBitmap *) MultiExecProcNode(subnode);
 
 			if (subresult.tbm != result.tbm)
+				elog(ERROR, "unrecognized result from subplan");
+		}
+		/* We do the same for YbBitmapIndexScan children */
+		else if (IsA(subnode, YbBitmapIndexScanState))
+		{
+			if (result.ybtbm == NULL) /* first subplan */
+				result.ybtbm = yb_tbm_create(work_mem * 1024L);
+
+			((YbBitmapIndexScanState *) subnode)->biss_result = result.ybtbm;
+			subresult.ybtbm = (YbTIDBitmap *) MultiExecProcNode(subnode);
+
+			if (subresult.ybtbm != result.ybtbm)
 				elog(ERROR, "unrecognized result from subplan");
 		}
 		else

@@ -1199,6 +1199,9 @@ create_samplescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer
  * 'index' is a usable index.
  * 'indexclauses' is a list of IndexClause nodes representing clauses
  *			to be enforced as qual conditions in the scan.
+ * 'yb_bitmap_idx_pushdowns' is a set of pushable clauses for a bitmap index scan.
+ *    These are extracted during bitmap planning and allow pushdowns that are
+ *    not possible to determine at a later stage.
  * 'indexorderbys' is a list of bare expressions (no RestrictInfos)
  *			to be used as index ordering operators in the scan.
  * 'indexorderbycols' is an integer list of index column numbers (zero based)
@@ -1219,6 +1222,7 @@ IndexPath *
 create_index_path(PlannerInfo *root,
 				  IndexOptInfo *index,
 				  List *indexclauses,
+				  List *yb_bitmap_idx_pushdowns,
 				  List *indexorderbys,
 				  List *indexorderbycols,
 				  List *pathkeys,
@@ -1243,6 +1247,7 @@ create_index_path(PlannerInfo *root,
 
 	pathnode->indexinfo = index;
 	pathnode->indexclauses = indexclauses;
+	pathnode->yb_bitmap_idx_pushdowns = yb_bitmap_idx_pushdowns;
 	pathnode->indexorderbys = indexorderbys;
 	pathnode->indexorderbycols = indexorderbycols;
 	pathnode->indexscandir = rel->is_yb_relation && pathkeys == NIL ?

@@ -432,6 +432,8 @@ class PgApiImpl {
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
+  Result<bool> DmlHasRegularTargets(PgStatement *handle);
+
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
   Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_primary);

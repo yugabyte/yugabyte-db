@@ -645,7 +645,7 @@ LIMIT ALL) ybview ORDER BY unique2;
  Sort
    Sort Key: onek2.unique2
    ->  YB Bitmap Table Scan on onek2
-         Filter: (stringu1 < 'B'::name)
+         Storage Filter: (stringu1 < 'B'::name)
          ->  BitmapOr
                ->  Bitmap Index Scan on onek2_u2_prtl
                      Index Cond: (unique2 = 11)

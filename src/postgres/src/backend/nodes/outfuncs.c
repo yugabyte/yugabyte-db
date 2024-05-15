@@ -637,6 +637,24 @@ _outBitmapIndexScan(StringInfo str, const BitmapIndexScan *node)
 }
 
 static void
+_outYbBitmapIndexScan(StringInfo str, const YbBitmapIndexScan *node)
+{
+	WRITE_NODE_TYPE("YBBITMAPINDEXSCAN");
+
+	_outScanInfo(str, (const Scan *) node);
+
+	WRITE_OID_FIELD(indexid);
+	WRITE_BOOL_FIELD(isshared);
+	WRITE_NODE_FIELD(indexqual);
+	WRITE_NODE_FIELD(indexqualorig);
+
+	WRITE_NODE_FIELD(indextlist);
+
+	WRITE_NODE_FIELD(yb_idx_pushdown.quals);
+	WRITE_NODE_FIELD(yb_idx_pushdown.colrefs);
+}
+
+static void
 _outBitmapHeapScan(StringInfo str, const BitmapHeapScan *node)
 {
 	WRITE_NODE_TYPE("BITMAPHEAPSCAN");
@@ -653,7 +671,16 @@ _outYbBitmapTableScan(StringInfo str, const YbBitmapTableScan *node)
 
 	_outScanInfo(str, (const Scan *) node);
 
-	WRITE_NODE_FIELD(bitmapqualorig);
+	WRITE_NODE_FIELD(rel_pushdown.quals);
+	WRITE_NODE_FIELD(rel_pushdown.colrefs);
+
+	WRITE_NODE_FIELD(recheck_pushdown.quals);
+	WRITE_NODE_FIELD(recheck_pushdown.colrefs);
+	WRITE_NODE_FIELD(recheck_local_quals);
+
+	WRITE_NODE_FIELD(fallback_pushdown.quals);
+	WRITE_NODE_FIELD(fallback_pushdown.colrefs);
+	WRITE_NODE_FIELD(fallback_local_quals);
 }
 
 static void
@@ -4096,6 +4123,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_BitmapIndexScan:
 				_outBitmapIndexScan(str, obj);
+				break;
+			case T_YbBitmapIndexScan:
+				_outYbBitmapIndexScan(str, obj);
 				break;
 			case T_BitmapHeapScan:
 				_outBitmapHeapScan(str, obj);

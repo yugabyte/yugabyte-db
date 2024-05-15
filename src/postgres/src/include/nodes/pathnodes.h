@@ -1303,6 +1303,10 @@ typedef struct Path
  * index-checkable restriction, with implicit AND semantics across the list.
  * An empty list implies a full index scan.
  *
+ * 'yb_bitmap_idx_pushdowns' is a set of pushable clauses for a bitmap index scan.
+ * These are extracted during bitmap planning and allow pushdowns that are not
+ * possible to determine at a later stage.
+ *
  * 'indexorderbys', if not NIL, is a list of ORDER BY expressions that have
  * been found to be usable as ordering operators for an amcanorderbyop index.
  * The list must match the path's pathkeys, ie, one expression per pathkey
@@ -1337,6 +1341,7 @@ typedef struct IndexPath
 	Path		path;
 	IndexOptInfo *indexinfo;
 	List	   *indexclauses;
+	List	   *yb_bitmap_idx_pushdowns;
 	List	   *indexorderbys;
 	List	   *indexorderbycols;
 	ScanDirection indexscandir;
