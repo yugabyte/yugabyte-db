@@ -1,8 +1,8 @@
-title: Upgrade universe gflags request
+title: Edit universe gflags request
 type: object
 properties:
   upgrade_option:
-    description: 'Universe upgrade option to use. One of "Rolling", "Non-rolling", "Non-restart"'
+    description: 'Universe upgrade option to use. * "Rolling" - Apply GFlags to each node one at a time * "Non-rolling" - Apply GFlags to all nodes at the same time, so has client downtime * "Non-restart" - Apply GFlags without restarting nodes or processes. Applicable to only certain supported GFlags.'
     type: string
     enum:
       - Rolling

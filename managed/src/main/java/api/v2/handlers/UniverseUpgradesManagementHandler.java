@@ -2,8 +2,8 @@
 package api.v2.handlers;
 
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
-import api.v2.mappers.UpgradeUniverseGFlagsMapper;
-import api.v2.models.UpgradeUniverseGFlags;
+import api.v2.mappers.UniverseEditGFlagsMapper;
+import api.v2.models.UniverseEditGFlags;
 import api.v2.models.YBPTask;
 import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -23,10 +23,10 @@ import play.mvc.Http;
 public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   @Inject public UpgradeUniverseHandler v1Handler;
 
-  public YBPTask upgradeGFlags(
-      Http.Request request, UUID cUUID, UUID uniUUID, UpgradeUniverseGFlags upgradeGFlags)
+  public YBPTask editGFlags(
+      Http.Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
       throws JsonProcessingException {
-    log.info("Starting v2 upgrade GFlags with {}", upgradeGFlags);
+    log.info("Starting v2 edit GFlags with {}", editGFlags);
 
     // get universe from db
     Customer customer = Customer.getOrBadRequest(cUUID);
@@ -42,7 +42,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
               universe.getUniverseDetails());
     }
     // fill in SpecificGFlags from universeGFlags params into v1Params
-    UpgradeUniverseGFlagsMapper.INSTANCE.copyToV1GFlagsUpgradeParams(upgradeGFlags, v1Params);
+    UniverseEditGFlagsMapper.INSTANCE.copyToV1GFlagsUpgradeParams(editGFlags, v1Params);
     // invoke v1 upgrade api UpgradeUniverseHandler.upgradeGFlags
     UUID taskUuid = v1Handler.upgradeGFlags(v1Params, customer, universe);
     // construct a v2 Task to return from here

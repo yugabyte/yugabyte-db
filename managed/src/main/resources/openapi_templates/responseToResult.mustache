@@ -4,9 +4,9 @@
 {{^noAudit}}
 {{#additionalDetails}}
 JsonNode additionalDetails = null;
-    if (UpgradeUniverseGFlags.class.isAssignableFrom({{#allParams}}{{#-last}}{{paramName}}{{/-last}}{{/allParams}}.getClass())) {
+    if (UniverseEditGFlags.class.isAssignableFrom({{#allParams}}{{#-last}}{{paramName}}{{/-last}}{{/allParams}}.getClass())) {
       additionalDetails =
-          gFlagsAuditHandler.constructGFlagAuditPayload({{auditTargetId}}, (UpgradeUniverseGFlags) {{#allParams}}{{#-last}}{{paramName}}{{/-last}}{{/allParams}});
+          gFlagsAuditHandler.constructGFlagAuditPayload({{auditTargetId}}, (UniverseEditGFlags) {{#allParams}}{{#-last}}{{paramName}}{{/-last}}{{/allParams}});
     }
 {{/additionalDetails}}
 {{/noAudit}}

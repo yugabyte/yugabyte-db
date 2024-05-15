@@ -307,7 +307,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     // The type of this cluster.
-    @Constraints.Required() public final ClusterType clusterType;
+    @Constraints.Required() public ClusterType clusterType;
 
     // The configuration for the universe the user intended.
     @Constraints.Required() public UserIntent userIntent;

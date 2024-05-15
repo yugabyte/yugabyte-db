@@ -29,10 +29,10 @@ import com.typesafe.config.Config;
 import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
-import com.yugabyte.yba.v2.client.api.UniverseUpgradesManagementApi;
+import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.ClusterGFlags;
-import com.yugabyte.yba.v2.client.models.UpgradeUniverseGFlags;
-import com.yugabyte.yba.v2.client.models.UpgradeUniverseGFlags.UpgradeOptionEnum;
+import com.yugabyte.yba.v2.client.models.UniverseEditGFlags;
+import com.yugabyte.yba.v2.client.models.UniverseEditGFlags.UpgradeOptionEnum;
 import com.yugabyte.yba.v2.client.models.YBPTask;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -84,7 +84,7 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
-public class UniverseUpgradesManagementApiControllerImpTest extends UniverseControllerTestBase {
+public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestBase {
 
   private Customer customer;
   private String authToken;
@@ -174,10 +174,9 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
     FileUtils.deleteDirectory(new File(TMP_CHART_PATH));
   }
 
-  private void runGFlagsUpgrade(UUID universeUUID, UpgradeUniverseGFlags gflags)
-      throws ApiException {
-    UniverseUpgradesManagementApi api = new UniverseUpgradesManagementApi();
-    YBPTask upgradeTask = api.upgradeGFlags(customer.getUuid(), universeUUID, gflags);
+  private void runGFlagsUpgrade(UUID universeUUID, UniverseEditGFlags gflags) throws ApiException {
+    UniverseApi api = new UniverseApi();
+    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, gflags);
   }
 
   private void verifyNoActions() {
@@ -202,8 +201,8 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
     TestHelper.updateUniverseSoftwareUpgradeState(defaultUniverse, state);
     String primaryCluserUuid =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid.toString();
-    UpgradeUniverseGFlags gflags =
-        new UpgradeUniverseGFlags()
+    UniverseEditGFlags gflags =
+        new UniverseEditGFlags()
             .putUniverseGflagsItem(
                 primaryCluserUuid,
                 new ClusterGFlags().master(Map.of("k1", "v1")).tserver(Map.of("k1", "v1")));
@@ -245,8 +244,8 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
     Universe.saveDetails(universe.getUniverseUUID(), updater);
 
     String primaryCluserUuid = universe.getUniverseDetails().getPrimaryCluster().uuid.toString();
-    UpgradeUniverseGFlags gflags =
-        new UpgradeUniverseGFlags()
+    UniverseEditGFlags gflags =
+        new UniverseEditGFlags()
             .upgradeOption(UpgradeOptionEnum.NON_ROLLING)
             .putUniverseGflagsItem(
                 primaryCluserUuid,
@@ -288,8 +287,8 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
 
     String primaryCluserUuid =
         universeToTest.getUniverseDetails().getPrimaryCluster().uuid.toString();
-    UpgradeUniverseGFlags gflags =
-        new UpgradeUniverseGFlags()
+    UniverseEditGFlags gflags =
+        new UniverseEditGFlags()
             .upgradeOption(UpgradeOptionEnum.NON_RESTART)
             .putUniverseGflagsItem(
                 primaryCluserUuid,
@@ -319,8 +318,8 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
     Universe universe = createUniverse(customer.getId());
     String primaryCluserUuid = universe.getUniverseDetails().getPrimaryCluster().uuid.toString();
 
-    UpgradeUniverseGFlags gflags =
-        new UpgradeUniverseGFlags()
+    UniverseEditGFlags gflags =
+        new UniverseEditGFlags()
             .putUniverseGflagsItem(
                 primaryCluserUuid,
                 new ClusterGFlags()
@@ -331,16 +330,6 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
             ApiException.class, () -> runGFlagsUpgrade(universe.getUniverseUUID(), gflags));
     JsonNode ex = Json.parse(exception.getMessage());
     assertEquals("JsonProcessingException parsing request body", ex.get("error").asText());
-
-    // String url =
-    //     "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID +
-    // "/upgrade/gflags";
-    // ObjectNode bodyJson = Json.newObject().put("masterGFlags", "abcd").put("tserverGFlags",
-    // "abcd");
-    // Result result =
-    //     assertPlatformException(
-    //         () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    // assertBadRequest(result, "JsonProcessingException parsing request body");
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
         ArgumentCaptor.forClass(GFlagsUpgradeParams.class);
@@ -361,10 +350,10 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
 
     ClusterGFlags primaryClusterGFlags =
         new ClusterGFlags().putTserverItem("tflag1", "123").putMasterItem("mflag1", "456");
-    UpgradeUniverseGFlags universeGFlags =
-        new UpgradeUniverseGFlags().putUniverseGflagsItem(primaryCluserUuid, primaryClusterGFlags);
-    UniverseUpgradesManagementApi api = new UniverseUpgradesManagementApi();
-    YBPTask upgradeTask = api.upgradeGFlags(customer.getUuid(), universeUUID, universeGFlags);
+    UniverseEditGFlags universeGFlags =
+        new UniverseEditGFlags().putUniverseGflagsItem(primaryCluserUuid, primaryClusterGFlags);
+    UniverseApi api = new UniverseApi();
+    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, universeGFlags);
 
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
@@ -416,15 +405,15 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
     Universe universe = createUniverse(customer.getId());
     String primaryCluserUuid = universe.getUniverseDetails().getPrimaryCluster().uuid.toString();
 
-    UpgradeUniverseGFlags gflags =
-        new UpgradeUniverseGFlags()
+    UniverseEditGFlags gflags =
+        new UniverseEditGFlags()
             .putUniverseGflagsItem(
                 primaryCluserUuid,
                 new ClusterGFlags()
                     .master(Map.of("master-flag", " 123 "))
                     .tserver(Map.of("tserver-flag", " 456 ")));
-    UniverseUpgradesManagementApi api = new UniverseUpgradesManagementApi();
-    YBPTask upgradeTask = api.upgradeGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
+    UniverseApi api = new UniverseApi();
+    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
@@ -473,11 +462,11 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
 
     ClusterGFlags primaryClusterGFlags =
         new ClusterGFlags().putTserverItem("tflag1", "123").putMasterItem("mflag1", "456");
-    UpgradeUniverseGFlags universeGFlags =
-        new UpgradeUniverseGFlags().putUniverseGflagsItem(primaryCluserUuid, primaryClusterGFlags);
+    UniverseEditGFlags universeGFlags =
+        new UniverseEditGFlags().putUniverseGflagsItem(primaryCluserUuid, primaryClusterGFlags);
     universeGFlags.upgradeOption(UpgradeOptionEnum.NON_ROLLING);
-    UniverseUpgradesManagementApi api = new UniverseUpgradesManagementApi();
-    YBPTask upgradeTask = api.upgradeGFlags(customer.getUuid(), universeUUID, universeGFlags);
+    UniverseApi api = new UniverseApi();
+    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, universeGFlags);
 
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
@@ -527,15 +516,15 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
     universe.save();
     String primaryCluserUuid = universe.getUniverseDetails().getPrimaryCluster().uuid.toString();
 
-    UpgradeUniverseGFlags gflags =
-        new UpgradeUniverseGFlags()
+    UniverseEditGFlags gflags =
+        new UniverseEditGFlags()
             .putUniverseGflagsItem(
                 primaryCluserUuid,
                 new ClusterGFlags()
                     .master(Map.of("master-flag", "123"))
                     .tserver(Map.of("tserver-flag", "456")));
-    UniverseUpgradesManagementApi api = new UniverseUpgradesManagementApi();
-    YBPTask upgradeTask = api.upgradeGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
+    UniverseApi api = new UniverseApi();
+    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
@@ -587,7 +576,7 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
     ApiException exception =
         assertThrows(
             ApiException.class,
-            () -> runGFlagsUpgrade(defaultUniverse.getUniverseUUID(), new UpgradeUniverseGFlags()));
+            () -> runGFlagsUpgrade(defaultUniverse.getUniverseUUID(), new UniverseEditGFlags()));
     JsonNode ex = Json.parse(exception.getMessage());
     assertEquals(
         "No changes in gflags (modify specificGflags in cluster)", ex.get("error").asText());
@@ -608,8 +597,8 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
     String primaryCluserUuid =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid.toString();
 
-    UpgradeUniverseGFlags gflags =
-        new UpgradeUniverseGFlags()
+    UniverseEditGFlags gflags =
+        new UniverseEditGFlags()
             .upgradeOption(UpgradeOptionEnum.NON_RESTART)
             .putUniverseGflagsItem(
                 primaryCluserUuid,

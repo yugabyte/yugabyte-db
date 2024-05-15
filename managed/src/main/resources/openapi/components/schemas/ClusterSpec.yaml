@@ -4,6 +4,7 @@ required:
   - cluster_type
   - num_nodes
   - instance_type
+  - storage_spec
   - provider_spec
 properties:
   uuid:
@@ -60,3 +61,4 @@ properties:
   gflags:
     description: 'The set of user defined gflags for tserver and master processes running on nodes. Can be changed using API /customers/:cUUID/universes/:uniUUID/upgrade/gflags.'
     $ref: ./ClusterGFlags.yaml
+    nullable: true

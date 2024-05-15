@@ -9,6 +9,7 @@ import static org.hamcrest.Matchers.either;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.hasEntry;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.nullValue;
 
 import com.yugabyte.yba.v2.client.ApiClient;
@@ -17,6 +18,7 @@ import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.models.AuditLogConfig;
 import com.yugabyte.yba.v2.client.models.AvailabilityZoneGFlags;
 import com.yugabyte.yba.v2.client.models.CloudSpecificInfo;
+import com.yugabyte.yba.v2.client.models.ClusterAddSpec;
 import com.yugabyte.yba.v2.client.models.ClusterEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterGFlags;
 import com.yugabyte.yba.v2.client.models.ClusterInfo;
@@ -30,6 +32,7 @@ import com.yugabyte.yba.v2.client.models.ClusterSpec.ClusterTypeEnum;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec.StorageTypeEnum;
 import com.yugabyte.yba.v2.client.models.CommunicationPortsSpec;
+import com.yugabyte.yba.v2.client.models.EncryptionAtRestInfo;
 import com.yugabyte.yba.v2.client.models.EncryptionAtRestSpec;
 import com.yugabyte.yba.v2.client.models.EncryptionInTransitSpec;
 import com.yugabyte.yba.v2.client.models.NodeDetails;
@@ -64,6 +67,7 @@ import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -91,7 +95,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 
-public class UniverseManagementTestBase extends UniverseControllerTestBase {
+public class UniverseTestBase extends UniverseControllerTestBase {
 
   protected UUID providerUuid;
   protected UUID universeUuid;
@@ -364,6 +368,22 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
     return universeCreateSpec;
   }
 
+  protected UniverseCreateSpec getUniverseCreateSpecWithRRV2() {
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
+    ClusterSpec primary = universeCreateSpec.getSpec().getClusters().get(0);
+    ClusterSpec rrClusterSpec = new ClusterSpec();
+    // Any property not specified for the RR cluster will inherit its value from primary cluster
+    // TODO: Rename ASYNC to READ_REPLICA
+    rrClusterSpec.setClusterType(ClusterTypeEnum.ASYNC);
+    rrClusterSpec.setNumNodes(3);
+    rrClusterSpec.setReplicationFactor(3);
+    rrClusterSpec.setInstanceType(primary.getInstanceType());
+    rrClusterSpec.setStorageSpec(primary.getStorageSpec().numVolumes(1));
+    rrClusterSpec.setProviderSpec(primary.getProviderSpec());
+    universeCreateSpec.getSpec().addClustersItem(rrClusterSpec);
+    return universeCreateSpec;
+  }
+
   // validations
   protected void validateUniverseCreateSpec(UniverseCreateSpec v2Univ, Universe dbUniv) {
     UniverseDefinitionTaskParams dbUnivDetails = dbUniv.getUniverseDetails();
@@ -554,24 +574,46 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
 
   private void validateClusters(List<ClusterSpec> v2Clusters, List<Cluster> dbClusters) {
     assertThat(v2Clusters.size(), is(dbClusters.size()));
+    ClusterSpec v2PrimaryCluster =
+        v2Clusters.stream()
+            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .findAny()
+            .orElse(null);
     for (int i = 0; i < v2Clusters.size(); i++) {
-      validateCluster(v2Clusters.get(i), dbClusters.get(i));
+      validateCluster(v2Clusters.get(i), dbClusters.get(i), v2PrimaryCluster);
     }
   }
 
-  private void validateCluster(ClusterSpec v2Cluster, Cluster dbCluster) {
+  private void validateCluster(
+      ClusterSpec v2Cluster, Cluster dbCluster, ClusterSpec v2PrimaryCluster) {
     assertThat(v2Cluster.getClusterType().getValue(), is(dbCluster.clusterType.name()));
     assertThat(v2Cluster.getNumNodes(), is(dbCluster.userIntent.numNodes));
     assertThat(v2Cluster.getReplicationFactor(), is(dbCluster.userIntent.replicationFactor));
     assertThat(v2Cluster.getInstanceType(), is(dbCluster.userIntent.instanceType));
-    assertThat(v2Cluster.getUseSpotInstance(), is(dbCluster.userIntent.useSpotInstance));
+    if (v2Cluster.getUseSpotInstance() == null) {
+      if (v2PrimaryCluster.getUseSpotInstance() == null) {
+        assertThat(dbCluster.userIntent.useSpotInstance, is(false));
+      } else {
+        assertThat(v2PrimaryCluster.getUseSpotInstance(), is(dbCluster.userIntent.useSpotInstance));
+      }
+    } else {
+      assertThat(v2Cluster.getUseSpotInstance(), is(dbCluster.userIntent.useSpotInstance));
+    }
     validateProviderSpec(v2Cluster.getProviderSpec(), dbCluster);
     validatePlacementSpec(v2Cluster.getPlacementSpec(), dbCluster.placementInfo);
     validateStorageSpec(v2Cluster.getStorageSpec(), dbCluster);
-    validateNetworkingSpec(v2Cluster.getNetworkingSpec(), dbCluster);
-    validateGFlags(v2Cluster.getGflags(), dbCluster.userIntent.specificGFlags);
-    validateInstanceTags(v2Cluster.getInstanceTags(), dbCluster.userIntent.instanceTags);
-    validateAuditLogConfig(v2Cluster.getAuditLogConfig(), dbCluster.userIntent.auditLogConfig);
+    validateNetworkingSpec(
+        v2Cluster.getNetworkingSpec(), dbCluster, v2PrimaryCluster.getNetworkingSpec());
+    validateGFlags(
+        v2Cluster.getGflags(), dbCluster.userIntent.specificGFlags, v2PrimaryCluster.getGflags());
+    validateInstanceTags(
+        v2Cluster.getInstanceTags(),
+        dbCluster.userIntent.instanceTags,
+        v2PrimaryCluster.getInstanceTags());
+    validateAuditLogConfig(
+        v2Cluster.getAuditLogConfig(),
+        dbCluster.userIntent.auditLogConfig,
+        v2PrimaryCluster.getAuditLogConfig());
   }
 
   private void validateProviderSpec(ClusterProviderSpec v2ProviderSpec, Cluster dbCluster) {
@@ -586,12 +628,7 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
 
   private void validatePlacementSpec(
       ClusterPlacementSpec v2PI, com.yugabyte.yw.models.helpers.PlacementInfo dbPI) {
-    if (v2PI == null) {
-      assertThat(dbPI, is(nullValue()));
-      return;
-    }
-    if (v2PI.getCloudList() == null) {
-      assertThat(dbPI.cloudList, is(nullValue()));
+    if (v2PI == null || v2PI.getCloudList() == null) {
       return;
     }
     assertThat(v2PI.getCloudList().size(), is(dbPI.cloudList.size()));
@@ -624,7 +661,13 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
     assertThat(v2StorageSpec.getThroughput(), is(dbCluster.userIntent.deviceInfo.throughput));
   }
 
-  private void validateNetworkingSpec(ClusterNetworkingSpec v2NetworkingSpec, Cluster dbCluster) {
+  private void validateNetworkingSpec(
+      ClusterNetworkingSpec v2NetworkingSpec,
+      Cluster dbCluster,
+      ClusterNetworkingSpec v2PrimaryNetworkingSpec) {
+    if (v2NetworkingSpec == null) {
+      v2NetworkingSpec = v2PrimaryNetworkingSpec;
+    }
     assertThat(
         v2NetworkingSpec.getEnableExposingService().getValue(),
         is(dbCluster.userIntent.enableExposingService.name()));
@@ -632,14 +675,27 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
   }
 
   private void validateInstanceTags(
-      Map<String, String> v2InstanceTags, Map<String, String> dbInstanceTags) {
+      Map<String, String> v2InstanceTags,
+      Map<String, String> dbInstanceTags,
+      Map<String, String> v2PrimaryInstanceTags) {
+    if (v2InstanceTags == null) {
+      v2InstanceTags = v2PrimaryInstanceTags;
+    }
+    if (v2InstanceTags == null) {
+      assertThat(dbInstanceTags, is(nullValue()));
+      return;
+    }
     assertThat(v2InstanceTags.size(), is(dbInstanceTags.size()));
     v2InstanceTags
         .entrySet()
         .forEach(e -> assertThat(dbInstanceTags, hasEntry(e.getKey(), e.getValue())));
   }
 
-  private void validateGFlags(ClusterGFlags v2GFlags, SpecificGFlags dbGFlags) {
+  private void validateGFlags(
+      ClusterGFlags v2GFlags, SpecificGFlags dbGFlags, ClusterGFlags v2PrimaryGFlags) {
+    if (v2GFlags == null) {
+      v2GFlags = v2PrimaryGFlags;
+    }
     v2GFlags
         .getMaster()
         .entrySet()
@@ -684,7 +740,11 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
 
   private void validateAuditLogConfig(
       AuditLogConfig v2AuditLogConfig,
-      com.yugabyte.yw.models.helpers.audit.AuditLogConfig dbAuditLogConfig) {
+      com.yugabyte.yw.models.helpers.audit.AuditLogConfig dbAuditLogConfig,
+      AuditLogConfig v2PrimaryAuditLogConfig) {
+    if (v2AuditLogConfig == null) {
+      v2AuditLogConfig = v2PrimaryAuditLogConfig;
+    }
     if (v2AuditLogConfig == null) {
       assertThat(dbAuditLogConfig, is(nullValue()));
       return;
@@ -850,6 +910,8 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
     assertThat(
         v2UnivInfo.getDnsName(),
         is(v1UniverseResp.getDnsName(customer, Provider.getOrBadRequest(providerUuid))));
+    validateEncryptionAtRestInfo(
+        v2UnivInfo.getEncryptionAtRestInfo(), dbUniv.encryptionAtRestConfig);
     assertThat(
         v2UnivInfo.getIsKubernetesOperatorControlled(), is(dbUniv.isKubernetesOperatorControlled));
     assertThat(v2UnivInfo.getIsSoftwareRollbackAllowed(), is(dbUniv.isSoftwareRollbackAllowed));
@@ -894,6 +956,18 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
   private void validateClusterInfo(ClusterInfo v2Cluster, Cluster dbCluster) {
     assertThat(v2Cluster.getUuid(), is(dbCluster.uuid));
     assertThat(v2Cluster.getSpotPrice(), is(dbCluster.userIntent.spotPrice));
+  }
+
+  private void validateEncryptionAtRestInfo(
+      EncryptionAtRestInfo v2EncryptionAtRestInfo,
+      EncryptionAtRestConfig dbEncryptionAtRestConfig) {
+    if (v2EncryptionAtRestInfo.getEncryptionAtRestStatus() == null) {
+      assertThat(dbEncryptionAtRestConfig.encryptionAtRestEnabled, is(false));
+    } else {
+      assertThat(
+          v2EncryptionAtRestInfo.getEncryptionAtRestStatus(),
+          is(dbEncryptionAtRestConfig.encryptionAtRestEnabled));
+    }
   }
 
   private void verifyPlacementRegion(
@@ -949,7 +1023,10 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
       // find the corresponding NodeDetail in dbNodeDetailSet
       com.yugabyte.yw.models.helpers.NodeDetails dbNodeDetail =
           dbNodeDetailsSet.stream()
-              .filter(n -> v2NodeDetail.getNodeIdx().equals(n.nodeIdx))
+              .filter(
+                  n ->
+                      v2NodeDetail.getNodeIdx().equals(n.nodeIdx)
+                          && v2NodeDetail.getPlacementUuid().equals(n.placementUuid))
               .findAny()
               .orElseThrow();
       validateNodeDetail(v2NodeDetail, dbNodeDetail);
@@ -1040,30 +1117,48 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
   }
 
   protected void validateUniverseEditSpec(
-      UniverseEditSpec universeEditSpec, UniverseConfigureTaskParams v1EditParams) {
+      UniverseEditSpec universeEditSpec,
+      UniverseConfigureTaskParams v1EditParams,
+      UniverseSpec v2dbUniverseSpec) {
     if (universeEditSpec.getExpectedUniverseVersion() == null) {
       assertThat(v1EditParams.expectedUniverseVersion, is(-1));
     } else {
       assertThat(
           universeEditSpec.getExpectedUniverseVersion(), is(v1EditParams.expectedUniverseVersion));
     }
-    validateClustersEditSpec(universeEditSpec.getClusters(), v1EditParams.clusters);
+    validateClustersEditSpec(
+        universeEditSpec.getClusters(), v1EditParams.clusters, v2dbUniverseSpec.getClusters());
   }
 
   protected void validateClustersEditSpec(
-      List<ClusterEditSpec> v2Clusters, List<Cluster> dbClusters) {
-    assertThat(v2Clusters.size(), is(dbClusters.size()));
+      List<ClusterEditSpec> v2Clusters, List<Cluster> dbClusters, List<ClusterSpec> v2dbClusters) {
+    assertThat(v2Clusters.size(), lessThanOrEqualTo(dbClusters.size()));
+    UUID primaryClsUuid =
+        dbClusters.stream()
+            .filter(c -> c.clusterType.equals(ClusterType.PRIMARY))
+            .map(c -> c.uuid)
+            .findAny()
+            .orElse(null);
+    ClusterSpec v2Primary = null;
+    if (primaryClsUuid != null) {
+      v2Primary =
+          v2dbClusters.stream()
+              .filter(c -> c.getUuid().equals(primaryClsUuid))
+              .findAny()
+              .orElse(null);
+    }
     for (ClusterEditSpec v2Cluster : v2Clusters) {
       Cluster dbCluster =
           dbClusters.stream()
               .filter(c -> c.uuid.equals(v2Cluster.getUuid()))
               .findAny()
               .orElseThrow();
-      validateClusterEditSpec(v2Cluster, dbCluster);
+      validateClusterEditSpec(v2Cluster, dbCluster, v2Primary);
     }
   }
 
-  protected void validateClusterEditSpec(ClusterEditSpec v2Cluster, Cluster dbCluster) {
+  protected void validateClusterEditSpec(
+      ClusterEditSpec v2Cluster, Cluster dbCluster, ClusterSpec v2Primary) {
     if (v2Cluster.getNumNodes() != null) {
       assertThat(v2Cluster.getNumNodes(), is(dbCluster.userIntent.numNodes));
     }
@@ -1080,7 +1175,10 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
       validateStorageSpec(v2Cluster.getStorageSpec(), dbCluster);
     }
     if (v2Cluster.getInstanceTags() != null) {
-      validateInstanceTags(v2Cluster.getInstanceTags(), dbCluster.userIntent.instanceTags);
+      Map<String, String> v2PrimaryInstanceTags =
+          v2Primary.getInstanceTags() != null ? v2Primary.getInstanceTags() : null;
+      validateInstanceTags(
+          v2Cluster.getInstanceTags(), dbCluster.userIntent.instanceTags, v2PrimaryInstanceTags);
     }
   }
 
@@ -1088,6 +1186,49 @@ public class UniverseManagementTestBase extends UniverseControllerTestBase {
       ClusterProviderEditSpec v2ProviderEditSpec, Cluster dbCluster) {
     if (v2ProviderEditSpec.getRegionList() != null) {
       assertThat(v2ProviderEditSpec.getRegionList(), is(dbCluster.userIntent.regionList));
+    }
+  }
+
+  protected void validateClusterAddSpec(
+      ClusterAddSpec v2ClusterAddSpec, Cluster dbCluster, ClusterSpec v2PrimaryCluster) {
+    if (v2ClusterAddSpec == null) {
+      return;
+    }
+    validateClusterType(v2ClusterAddSpec.getClusterType(), dbCluster.clusterType);
+    assertThat(v2ClusterAddSpec.getNumNodes(), is(dbCluster.userIntent.numNodes));
+    assertThat(v2ClusterAddSpec.getInstanceType(), is(dbCluster.userIntent.instanceType));
+    assertThat(
+        v2ClusterAddSpec.getProviderSpec().getRegionList(), is(dbCluster.userIntent.regionList));
+    if (v2ClusterAddSpec.getPlacementSpec() != null) {
+      validatePlacementSpec(v2ClusterAddSpec.getPlacementSpec(), dbCluster.placementInfo);
+    }
+    if (v2ClusterAddSpec.getStorageSpec() != null) {
+      validateStorageSpec(v2ClusterAddSpec.getStorageSpec(), dbCluster);
+    }
+    if (v2ClusterAddSpec.getInstanceTags() != null) {
+      validateInstanceTags(
+          v2ClusterAddSpec.getInstanceTags(),
+          dbCluster.userIntent.instanceTags,
+          v2PrimaryCluster.getInstanceTags());
+    }
+    if (v2ClusterAddSpec.getGflags() != null) {
+      validateGFlags(
+          v2ClusterAddSpec.getGflags(),
+          dbCluster.userIntent.specificGFlags,
+          v2PrimaryCluster.getGflags());
+    }
+  }
+
+  private void validateClusterType(
+      com.yugabyte.yba.v2.client.models.ClusterAddSpec.ClusterTypeEnum v2ClusterType,
+      ClusterType v1ClusterType) {
+    switch (v2ClusterType) {
+      case READ_REPLICA:
+        assertThat(v1ClusterType, is(ClusterType.ASYNC));
+        break;
+      case ADDON:
+        assertThat(v1ClusterType, is(ClusterType.ADDON));
+        break;
     }
   }
 }
