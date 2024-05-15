@@ -150,10 +150,7 @@ func (plat Platform) Install() error {
 	} else {
 		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
-		chownClosure := func() error {
-			return common.Chown(common.GetBaseInstall(), userName, userName, true)
-		}
-		if err := chownClosure(); err != nil {
+		if err := changeAllPermissions(userName); err != nil {
 			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
 			return err
 		}
@@ -532,16 +529,25 @@ func (plat Platform) Upgrade() error {
 	} else {
 		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
-		chownClosure := func() error {
-			return common.Chown(common.GetBaseInstall(), userName, userName, true)
-		}
-		if err := chownClosure(); err != nil {
+		if err := changeAllPermissions(userName); err != nil {
 			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
 			return err
 		}
 	}
 	err := plat.Start()
 	return err
+}
+
+// Helper function to update the data/software directories ownership to yugabyte user
+func changeAllPermissions(user string) error {
+	if err := common.Chown(common.GetBaseInstall() + "/data", user, user, true); err != nil {
+		return err
+	}
+
+	if err := common.Chown(common.GetBaseInstall() + "/software", user, user, true); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (plat Platform) MigrateFromReplicated() error {
@@ -616,10 +622,7 @@ func (plat Platform) MigrateFromReplicated() error {
 	} else {
 		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
-		chownClosure := func() error {
-			return common.Chown(common.GetBaseInstall(), userName, userName, true)
-		}
-		if err := chownClosure(); err != nil {
+		if err := changeAllPermissions(userName); err != nil {
 			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
 			return err
 		}
