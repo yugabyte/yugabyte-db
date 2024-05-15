@@ -43,6 +43,7 @@
 #include "catalog/yb_type.h"
 #include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
+#include "commands/event_trigger.h"
 #include "commands/tablegroup.h"
 #include "commands/tablecmds.h"
 #include "commands/ybccmds.h"
@@ -1138,7 +1139,8 @@ static List*
 YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						int* col, bool* needsYBAlter,
 						YBCPgStatement* rollbackHandle,
-						bool isPartitionOfAlteredTable)
+						bool isPartitionOfAlteredTable,
+						int rewrite)
 {
 	Oid relationId = RelationGetRelid(rel);
 	Oid relfileNodeId = YbGetRelfileNodeId(rel);
@@ -1296,25 +1298,10 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			break;
 		}
 
-		case AT_AlterColumnType:
-		{
-			HeapTuple			typeTuple;
-
-			/* Get current typid and typmod of the column. */
-			typeTuple = SearchSysCacheAttName(relationId, cmd->name);
-			if (!HeapTupleIsValid(typeTuple))
-			{
-				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_COLUMN),
-						errmsg("column \"%s\" of relation \"%s\" does not exist",
-								cmd->name, RelationGetRelationName(rel))));
-			}
-			ReleaseSysCache(typeTuple);
-			break;
-		}
-
 		case AT_AddIndex:
 		case AT_AddConstraint:
 		case AT_AddConstraintRecurse:
+		case AT_AlterColumnType:
 		case AT_DropConstraint:
 		case AT_DropConstraintRecurse:
 		case AT_DropOids:
@@ -1344,14 +1331,27 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 		case AT_SetTableSpace:
 		{
 			Assert(cmd->subtype != AT_DropConstraint);
+			if (cmd->subtype == AT_AlterColumnType)
+			{
+				HeapTuple			typeTuple;
 
-			/*
-			 * Excluding the ALTER ADD PRIMARY KEY use case as
-			 * the operation will update schema version itself.
-			 */
-			if (cmd->yb_is_add_primary_key)
-				return handles;
+				/* Get current typid and typmod of the column. */
+				typeTuple = SearchSysCacheAttName(relationId, cmd->name);
+				if (!HeapTupleIsValid(typeTuple))
+				{
+					ereport(ERROR, (errcode(ERRCODE_UNDEFINED_COLUMN),
+						errmsg("column \"%s\" of relation \"%s\" does not exist",
+								cmd->name, RelationGetRelationName(rel))));
+				}
+				ReleaseSysCache(typeTuple);
 
+				/*
+				 * If this ALTER TYPE operation doesn't require a rewrite
+				 * we do not need to increment the schema version.
+				 */
+				if (!(rewrite & AT_REWRITE_COLUMN_REWRITE))
+					break;
+			}
 			/*
 			 * For these cases a YugaByte metadata does not need to be updated
 			 * but we still need to increment the schema version.
@@ -1476,12 +1476,6 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					Form_pg_constraint con =
 						(Form_pg_constraint) GETSTRUCT(tuple);
 					ReleaseSysCache(tuple);
-					/*
-					 * Excluding the ALTER DROP PRIMARY KEY use case
-					 * as the operation will update schema version itself.
-					 */
-					if (con->contype == CONSTRAINT_PRIMARY)
-						return handles;
 					if (con->contype == CONSTRAINT_FOREIGN &&
 						relationId != con->confrelid)
 					{
@@ -1567,7 +1561,8 @@ YBCPrepareAlterTable(List** subcmds,
 					 int subcmds_size,
 					 Oid relationId,
 					 YBCPgStatement *rollbackHandle,
-					 bool isPartitionOfAlteredTable)
+					 bool isPartitionOfAlteredTable,
+					 int rewriteState)
 {
 	/* Appropriate lock was already taken */
 	Relation rel = relation_open(relationId, NoLock);
@@ -1595,7 +1590,7 @@ YBCPrepareAlterTable(List** subcmds,
 			handles = YBCPrepareAlterTableCmd(
 						(AlterTableCmd *) lfirst(lcmd), rel, handles,
 						&col, &needsYBAlter, rollbackHandle,
-						isPartitionOfAlteredTable);
+						isPartitionOfAlteredTable, rewriteState);
 		}
 	}
 	relation_close(rel, NoLock);

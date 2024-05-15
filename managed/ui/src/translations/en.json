@@ -1604,6 +1604,9 @@
         "sshUserPlaceholder": "ec2-user",
         "sshPort": "SSH Port",
         "sshPortPlaceholder": "22",
+        "otherConfiguration": "Other Configurations",
+        "useIMDSv2": "Use IMDSv2",
+        "useIMDSv2Info": "This should be turned on if the Image bundle requires Instance Metadata Service v2",
         "menuActions": {
           "edit": "Edit",
           "delete": "Delete",
@@ -1696,7 +1699,7 @@
         "importMethod": "Import Method",
         "location": "Location"
       },
-      "inCompleteTooltipMessage": "Kubernetes artifacts require a YugabyteDB build before the release can be used",
+      "inCompleteTooltipMessage": "Kubernetes (Helm) artifacts require a YugabyteDB build before the release can be used. Please select Add Architecture and upload the appropriate release *.tar.gz file.",
       "allowedReleases": "Show only allowed releases",
       "releaseType": "Release Type:",
       "searchVersions": "Search Versions",

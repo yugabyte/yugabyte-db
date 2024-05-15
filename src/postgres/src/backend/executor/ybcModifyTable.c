@@ -1308,6 +1308,14 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 		bool is_null = false;
 		Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
 		/*
+		 * Since we might get this tuple from the catcache, the attributes might
+		 * be TOASTed. If so, we need to detoast them before sending them to DocDB.
+		 */
+		if (!is_null && TupleDescAttr(tupleDesc, idx)->attlen == -1)
+		{
+			d = PointerGetDatum(PG_DETOAST_DATUM(d));
+		}
+		/*
 		 * Since we are assign values to non-primary-key columns, pass InvalidOid as
 		 * collation_id to skip computing collation sortkeys.
 		 */

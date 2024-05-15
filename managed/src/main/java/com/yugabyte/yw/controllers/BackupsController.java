@@ -16,21 +16,11 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
-import com.yugabyte.yw.forms.BackupRequestParams;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.DeleteBackupParams;
-import com.yugabyte.yw.forms.EditBackupParams;
-import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
-import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.RestorePreflightParams;
-import com.yugabyte.yw.forms.RestorePreflightResponse;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.YbcThrottleParameters;
-import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.filters.RestoreApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
@@ -295,6 +285,38 @@ public class BackupsController extends AuthenticatedController {
     BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
     UUID taskUuid = backupHelper.createBackupTask(customerUUID, taskParams);
     auditService().createAuditEntry(request, Json.toJson(taskParams), taskUuid);
+    return new YBPTask(taskUuid).asResult();
+  }
+
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Create a Universe Backup",
+      nickname = "Universe Backup",
+      response = YBPTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Backup Universe",
+        value = "Universe Backup data to be created",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.UniverseBackupRequestFormData",
+        paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Result backupUniverse(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    UniverseBackupRequestFormData formData =
+        parseJsonAndValidate(request, UniverseBackupRequestFormData.class);
+    UniverseBackupRequestParams taskParams =
+        new UniverseBackupRequestParams(formData, customerUUID, universeUUID);
+    UUID taskUuid = backupHelper.createUniverseBackupTask(customerUUID, taskParams);
     return new YBPTask(taskUuid).asResult();
   }
 

@@ -18,13 +18,21 @@ const useStyles = makeStyles((theme) => ({
     color: '#1A44A5'
   },
   icon: {
-    height: '14px',
-    width: '14px'
+    height: '40px',
+    width: '40px'
+  },
+  loadingBox: {
+    position: 'fixed',
+    left: '50%',
+    top: '50%',
+    width: '100%',
+    height: '100%'
   }
 }));
 
 export interface SecondaryDashboardEntryProps {
   universeUuid: string;
+  hideHeader?: boolean;
   troubleshootUuid: string;
   // TODO: any should be replaced with YBM Node Response
   universeData: Universe | any;
@@ -39,6 +47,7 @@ export const SecondaryDashboardEntry = ({
   universeData,
   appName,
   timezone,
+  hideHeader = false,
   onSelectedIssue
 }: SecondaryDashboardEntryProps) => {
   const classes = useStyles();
@@ -63,7 +72,11 @@ export const SecondaryDashboardEntry = ({
   );
 
   if (isLoading) {
-    return <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />;
+    return (
+      <Box className={classes.loadingBox}>
+        <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />
+      </Box>
+    );
   }
 
   if (isError || (isIdle && userSelectedAnomaly === undefined)) {
@@ -76,19 +89,21 @@ export const SecondaryDashboardEntry = ({
 
   return (
     <Box>
-      <Typography variant="h2" className="content-title">
-        {appName === AppName.YBA ? (
-          <YBBreadcrumb to={`/universes/${universeUuid}/troubleshoot`}>
-            {'Troubleshoot'}
-          </YBBreadcrumb>
-        ) : (
-          <Box>
-            <YBButton variant="pill" data-testid="BtnAddIPList" onClick={() => routeToPrimary()}>
+      {!hideHeader && (
+        <Typography variant="h2" className="content-title">
+          {appName === AppName.YBA ? (
+            <YBBreadcrumb to={`/universes/${universeUuid}/troubleshoot`}>
               {'Troubleshoot'}
-            </YBButton>
-          </Box>
-        )}
-      </Typography>
+            </YBBreadcrumb>
+          ) : (
+            <Box>
+              <YBButton variant="pill" data-testid="BtnAddIPList" onClick={() => routeToPrimary()}>
+                {'Troubleshoot'}
+              </YBButton>
+            </Box>
+          )}
+        </Typography>
+      )}
       {userSelectedAnomaly && (
         <SecondaryDashboardData
           anomalyData={userSelectedAnomaly}

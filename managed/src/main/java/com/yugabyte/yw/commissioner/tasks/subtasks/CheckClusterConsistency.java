@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ListLiveTabletServersResponse;
@@ -38,6 +39,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
   }
 
   public static class Params extends ServerSubTaskParams {
+    public Set<String> skipMayBeRunning = new HashSet<>();
     public boolean skipToBeRemoved = true;
   }
 
@@ -85,7 +87,9 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
         () -> {
           errors.clear();
           try {
-            errors.addAll(checkCurrentServers(ybClient, universe, false, cloudEnabled));
+            errors.addAll(
+                checkCurrentServers(
+                    ybClient, universe, taskParams().skipMayBeRunning, false, cloudEnabled));
           } catch (Exception e) {
             throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
           }
@@ -98,7 +102,12 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
   }
 
   public static List<String> checkCurrentServers(
-      YBClient ybClient, Universe universe, boolean strict, boolean cloudEnabled) throws Exception {
+      YBClient ybClient,
+      Universe universe,
+      @Nullable Set<String> skipMaybeRunning,
+      boolean strict,
+      boolean cloudEnabled)
+      throws Exception {
     List<String> errors = new ArrayList<>();
     ListMastersResponse listMastersResponse = ybClient.listMasters();
     Set<String> masterIps =
@@ -106,7 +115,12 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
 
     errors.addAll(
         checkServers(
-            masterIps, universe, UniverseTaskBase.ServerType.MASTER, strict, cloudEnabled));
+            masterIps,
+            skipMaybeRunning,
+            universe,
+            UniverseTaskBase.ServerType.MASTER,
+            strict,
+            cloudEnabled));
 
     boolean hasLeader =
         listMastersResponse.getMasters().stream().filter(m -> m.isLeader()).findFirst().isPresent();
@@ -120,12 +134,18 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
             .collect(Collectors.toSet());
     errors.addAll(
         checkServers(
-            tserverIps, universe, UniverseTaskBase.ServerType.TSERVER, strict, cloudEnabled));
+            tserverIps,
+            skipMaybeRunning,
+            universe,
+            UniverseTaskBase.ServerType.TSERVER,
+            strict,
+            cloudEnabled));
     return errors;
   }
 
   private static Set<String> checkServers(
       Set<String> currentIPs,
+      Set<String> skipMaybeRunningNodes,
       Universe universe,
       UniverseTaskBase.ServerType serverType,
       boolean strict,
@@ -156,6 +176,14 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
       if (!expectedIPs.remove(currentIP)) {
         NodeDetails nodeDetails = universe.getNodeByAnyIP(currentIP);
         if (nodeDetails != null) {
+          if (skipMaybeRunningNodes != null
+              && skipMaybeRunningNodes.contains(nodeDetails.nodeName)) {
+            log.warn(
+                "{} is running on {} but not expected, skipping because may be running",
+                serverType.name(),
+                currentIP);
+            continue;
+          }
           errors.add(
               String.format(
                   "Unexpected %s: %s, node %s is not marked as %s",

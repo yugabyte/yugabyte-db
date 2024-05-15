@@ -160,7 +160,6 @@ const OTHER_ACTONS = {
 } as const;
 
 const MAX_RELEASE_TAG_CHAR = 10;
-const MAX_RELEASE_VERSION_CHAR = 24;
 
 export const NewReleaseList = () => {
   const helperClasses = useStyles();
@@ -366,14 +365,18 @@ export const NewReleaseList = () => {
         artifact.architecture === null
           ? EDIT_ACTIONS['kubernetes']
           : EDIT_ACTIONS[artifact.architecture!];
+      const isDisabled = row.universes?.length > 0 || row.state === ReleaseState.DISABLED;
       renderedItems.push(
         <MenuItem
           key={artifact.architecture}
           value={action}
           onClick={(e: any) => {
-            onActionClick(action, row);
+            if (!isDisabled) {
+              onActionClick(action, row);
+            }
             e.stopPropagation();
           }}
+          disabled={isDisabled}
           data-testid={`ReleaseList-Action${action}`}
         >
           {action}
@@ -382,6 +385,7 @@ export const NewReleaseList = () => {
     });
 
     for (const [key, value] of Object.entries(OTHER_ACTONS)) {
+      let disabled = false;
       if (row.state === ReleaseState.ACTIVE && value === OTHER_ACTONS.ENABLE_RELEASE) {
         continue;
       }
@@ -393,14 +397,24 @@ export const NewReleaseList = () => {
         renderedItems.push(<Divider />);
       }
 
+      if (
+        row.universes?.length > 0 &&
+        (value === OTHER_ACTONS.DISABLE_RELEASE || value === OTHER_ACTONS.DELETE_RELEASE)
+      ) {
+        disabled = true;
+      }
+
       renderedItems.push(
         <MenuItem
           key={key}
           value={value}
           onClick={(e: any) => {
-            onActionClick(value, row);
+            if (!disabled) {
+              onActionClick(value, row);
+            }
             e.stopPropagation();
           }}
+          disabled={disabled}
           data-testid={`ReleaseList-Action${value}`}
         >
           {value}

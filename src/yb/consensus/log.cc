@@ -796,12 +796,15 @@ Status Log::RollOver() {
   return Status::OK();
 }
 
-std::unique_ptr<Log::LogEntryBatch> Log::Reserve(
+Result<std::unique_ptr<Log::LogEntryBatch>> Log::Reserve(
     LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch) {
   TRACE_EVENT0("log", "Log::Reserve");
   {
     PerCpuRwSharedLock read_lock(state_lock_);
-    CHECK_EQ(kLogWriting, log_state_);
+    if (log_state_ != kLogWriting) {
+      return STATUS_FORMAT(IllegalState, "Invalid log state $0, expected $1",
+          log_state_, kLogWriting);
+    }
   }
 
   // In DEBUG builds, verify that all of the entries in the batch match the specified type.  In
@@ -826,7 +829,7 @@ std::unique_ptr<Log::LogEntryBatch> Log::Reserve(
 Status Log::TEST_ReserveAndAppend(
     std::shared_ptr<LWLogEntryBatchPB> batch, const ReplicateMsgs& replicates,
     const StatusCallback& callback) {
-  auto entry = Reserve(REPLICATE, std::move(batch));
+  auto entry = VERIFY_RESULT(Reserve(REPLICATE, std::move(batch)));
   entry->SetReplicates(replicates);
   return AsyncAppend(std::move(entry), callback);
 }
@@ -835,7 +838,10 @@ Status Log::AsyncAppend(
     std::unique_ptr<LogEntryBatch> entry_batch, const StatusCallback& callback) {
   {
     PerCpuRwSharedLock read_lock(state_lock_);
-    CHECK_EQ(kLogWriting, log_state_);
+    if (log_state_ != kLogWriting) {
+      return STATUS_FORMAT(IllegalState, "Invalid log state $0, expected $1",
+          log_state_, kLogWriting);
+    }
   }
 
   entry_batch->set_callback(callback);
@@ -869,7 +875,7 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
     batch->set_mono_time(batch_mono_time.ToUInt64());
   }
 
-  auto reserved_entry_batch = Reserve(LogEntryTypePB::REPLICATE, std::move(batch));
+  auto reserved_entry_batch = VERIFY_RESULT(Reserve(LogEntryTypePB::REPLICATE, std::move(batch)));
 
   // If we're able to reserve, set the vector of replicate shared pointers in the LogEntryBatch.
   // This will make sure there's a reference for each replicate while we're appending.
@@ -1004,7 +1010,7 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
 
 Status Log::AllocateSegmentAndRollOver() {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "Start";
-  auto reserved_entry_batch = ReserveMarker(SYNC_ROLLOVER_MARKER);
+  auto reserved_entry_batch = VERIFY_RESULT(ReserveMarker(SYNC_ROLLOVER_MARKER));
   Synchronizer s;
   RETURN_NOT_OK(AsyncAppend(std::move(reserved_entry_batch), s.AsStatusCallback()));
   return s.Wait();
@@ -1012,7 +1018,7 @@ Status Log::AllocateSegmentAndRollOver() {
 
 Status Log::AsyncAllocateSegmentAndRollover() {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "Start";
-  auto reserved_entry_batch = ReserveMarker(ASYNC_ROLLOVER_AT_FLUSH_MARKER);
+  auto reserved_entry_batch = VERIFY_RESULT(ReserveMarker(ASYNC_ROLLOVER_AT_FLUSH_MARKER));
   return AsyncAppend(std::move(reserved_entry_batch), {});
 }
 
@@ -1413,7 +1419,7 @@ Status Log::Append(
   return s;
 }
 
-std::unique_ptr<Log::LogEntryBatch> Log::ReserveMarker(LogEntryTypePB type) {
+Result<std::unique_ptr<Log::LogEntryBatch>> Log::ReserveMarker(LogEntryTypePB type) {
   auto entry_batch = rpc::MakeSharedMessage<LWLogEntryBatchPB>();
   entry_batch->add_entry()->set_type(type);
   return Reserve(type, std::move(entry_batch));
@@ -1421,7 +1427,7 @@ std::unique_ptr<Log::LogEntryBatch> Log::ReserveMarker(LogEntryTypePB type) {
 
 Status Log::WaitUntilAllFlushed() {
   // In order to make sure we empty the queue we need to use the async API.
-  auto reserved_entry_batch = ReserveMarker(FLUSH_MARKER);
+  auto reserved_entry_batch = VERIFY_RESULT(ReserveMarker(FLUSH_MARKER));
   Synchronizer s;
   RETURN_NOT_OK(AsyncAppend(std::move(reserved_entry_batch), s.AsStatusCallback()));
   return s.Wait();

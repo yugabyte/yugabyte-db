@@ -219,7 +219,9 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
   // Reads conflicts for specified intent from DB.
   Status ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix) {
-    EnsureIntentIteratorCreated();
+    if (!CreateIntentIteratorIfNecessary()) {
+      return Status::OK();
+    }
 
     const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
 
@@ -303,17 +305,12 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     return intent_iter_.status();
   }
 
-  void EnsureIntentIteratorCreated() {
+  bool CreateIntentIteratorIfNecessary() {
     if (!intent_iter_.Initialized()) {
-      intent_iter_ = CreateRocksDBIterator(
-          doc_db_.intents,
-          doc_db_.key_bounds,
-          BloomFilterMode::DONT_USE_BLOOM_FILTER,
-          boost::none /* user_key_for_filter */,
-          rocksdb::kDefaultQueryId,
-          nullptr /* file_filter */,
-          &intent_key_upperbound_);
+      intent_iter_ = CreateIntentsIteratorWithHybridTimeFilter(
+          doc_db_.intents, &status_manager(), doc_db_.key_bounds, &intent_key_upperbound_);
     }
+    return intent_iter_.Initialized();
   }
 
   Result<IntentTypesContainer> GetLockStatusInfo() {
@@ -1147,7 +1144,9 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     // This is to prevent the case when we create an iterator on the regular DB where a
     // provisional record has not yet been applied, and then create an iterator the intents
     // DB where the provisional record has already been removed.
-    resolver->EnsureIntentIteratorCreated();
+    // Even in the case where there are no intents to iterate over, the following loop must be
+    // run, so we cannot return early if the following call returns false.
+    resolver->CreateIntentIteratorIfNecessary();
 
     for (const auto& i : container) {
       const Slice intent_key = i.first.AsSlice();

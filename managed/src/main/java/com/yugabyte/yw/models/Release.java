@@ -2,6 +2,7 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import autovalue.shaded.com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.apiModels.CreateRelease;
@@ -15,8 +16,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
-import java.text.DateFormat;
-import java.text.ParseException;
+import java.time.DateTimeException;
+import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
@@ -30,6 +31,9 @@ import lombok.extern.slf4j.Slf4j;
 @Setter
 @Slf4j
 public class Release extends Model {
+  // on pg14, we can't make a null value unique, so instead use this hard-coded constant
+  public static final String NULL_CONSTANT = "NULL-VALUE-DO-NOT-USE-AS-INPUT";
+
   @Id private UUID releaseUUID;
 
   @Column(nullable = false)
@@ -70,10 +74,25 @@ public class Release extends Model {
     return create(UUID.randomUUID(), version, releaseType);
   }
 
+  public static Release create(String version, String releaseType, String releaseTag) {
+    return create(UUID.randomUUID(), version, releaseType, releaseTag);
+  }
+
   public static Release create(UUID releaseUUID, String version, String releaseType) {
+    return create(releaseUUID, version, releaseType, null);
+  }
+
+  public static Release create(
+      UUID releaseUUID, String version, String releaseType, String releaseTag) {
+    if (Release.getByVersion(version, releaseTag) != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("release version %s with tag %s already exists", version, releaseTag));
+    }
     Release release = new Release();
     release.releaseUUID = releaseUUID;
     release.version = version;
+    release.releaseTag = encodeReleaseTag(releaseTag);
     release.releaseType = releaseType;
     release.yb_type = YbType.YBDB;
     release.state = ReleaseState.INCOMPLETE;
@@ -89,6 +108,18 @@ public class Release extends Model {
     } else {
       release.releaseUUID = UUID.randomUUID();
     }
+    // Validate the release doesn't already exist - either by uuid or verison/tag combo
+    if (Release.get(release.releaseUUID) != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "release with uuid " + release.releaseUUID + " already exists");
+    }
+    if (Release.getByVersion(reqRelease.version, reqRelease.release_tag) != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "release version %s with tag %s already exists",
+              reqRelease.version, reqRelease.release_tag));
+    }
 
     // Required fields
     release.version = reqRelease.version;
@@ -96,12 +127,11 @@ public class Release extends Model {
     release.yb_type = YbType.valueOf(reqRelease.yb_type);
 
     // Optional fields
-    release.releaseTag = reqRelease.release_tag;
+    release.releaseTag = encodeReleaseTag(reqRelease.release_tag);
     if (reqRelease.release_date != null) {
-      DateFormat df = DateFormat.getDateInstance();
       try {
-        release.releaseDate = df.parse(reqRelease.release_date);
-      } catch (ParseException e) {
+        release.releaseDate = Date.from(Instant.ofEpochSecond(reqRelease.release_date));
+      } catch (IllegalArgumentException | DateTimeException e) {
         log.warn("unable to parse date format", e);
       }
     }
@@ -139,8 +169,12 @@ public class Release extends Model {
   }
 
   public static Release getByVersion(String version) {
-    // TODO: Need to map between version and tag.
-    return find.query().where().eq("version", version).findOne();
+    return Release.getByVersion(version, null);
+  }
+
+  public static Release getByVersion(String version, String tag) {
+    tag = encodeReleaseTag(tag);
+    return find.query().where().eq("version", version).eq("release_tag", tag).findOne();
   }
 
   public void addArtifact(ReleaseArtifact artifact) {
@@ -177,8 +211,18 @@ public class Release extends Model {
   }
 
   public void setReleaseTag(String tag) {
-    this.releaseTag = tag;
+    this.releaseTag = encodeReleaseTag(tag);
     save();
+  }
+
+  public String getReleaseTag() {
+    return decodeReleaseTag(this.releaseTag);
+  }
+
+  // Mainly used for test validation, please use `getReleaseTag()` outside of unit tests.
+  @VisibleForTesting
+  public String getRawReleaseTag() {
+    return releaseTag;
   }
 
   public void setReleaseDate(Date date) {
@@ -237,5 +281,22 @@ public class Release extends Model {
   public Set<Universe> getUniverses() {
     String formattedVersion = this.version;
     return Universe.universeDetailsIfReleaseExists(formattedVersion);
+  }
+
+  private static String encodeReleaseTag(String releaseTag) {
+    if (releaseTag == null) {
+      return NULL_CONSTANT;
+    } else if (releaseTag.equals(NULL_CONSTANT)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "cannot set release tag to " + Release.NULL_CONSTANT);
+    }
+    return releaseTag;
+  }
+
+  private static String decodeReleaseTag(String releaseTag) {
+    if (releaseTag == null || releaseTag.equals(NULL_CONSTANT)) {
+      return null;
+    }
+    return releaseTag;
   }
 }

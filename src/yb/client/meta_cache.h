@@ -63,7 +63,6 @@
 
 #include "yb/tserver/tserver_fwd.h"
 
-#include "yb/util/capabilities.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/lockfree.h"
@@ -137,8 +136,6 @@ class RemoteTabletServer {
   // Returns the remote server's uuid.
   const std::string& permanent_uuid() const;
 
-  bool HasCapability(CapabilityId capability) const;
-
   bool IsLocalRegion() const;
 
   LocalityLevel LocalityLevelWith(const CloudInfoPB& cloud_info) const;
@@ -163,7 +160,6 @@ class RemoteTabletServer {
   ::yb::HostPort proxy_endpoint_;
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<EventStats> dns_resolve_stats_;
-  std::vector<CapabilityId> capabilities_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };
@@ -237,11 +233,14 @@ struct ReplicasCount {
 // This class is thread-safe.
 class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
  public:
+  static constexpr int64_t kUnknownOpIdIndex = -1;
+
   RemoteTablet(std::string tablet_id,
                dockv::Partition partition,
                boost::optional<PartitionListVersion> partition_list_version,
                uint64 split_depth,
-               const TabletId& split_parent_tablet_id);
+               const TabletId& split_parent_tablet_id,
+               int64_t raft_config_opid_index);
 
   ~RemoteTablet();
 
@@ -290,6 +289,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   void SetExpectedReplicas(int expected_live_replicas, int expected_read_replicas);
 
   void SetAliveReplicas(int alive_live_replicas, int alive_read_replicas);
+
+  void SetRaftConfigOpIdIndex(int64_t raft_config_opid_index);
 
   // Return the tablet server which is acting as the current LEADER for
   // this tablet, provided it hasn't failed.
@@ -349,6 +350,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   int64_t lookups_without_new_replicas() const { return lookups_without_new_replicas_; }
 
+  int64_t raft_config_opid_index() const { return raft_config_opid_index_; }
+
   // The last version of the table's partition list that we know the tablet was serving data with.
   PartitionListVersion GetLastKnownPartitionListVersion() const;
 
@@ -371,6 +374,10 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   mutable rw_spinlock mutex_;
   bool stale_;
   bool is_split_ = false;
+  // The opid of the latest committed raft config that we fetched from a tablet
+  // server. Defaulted to kUnknownOpIdIndex so when it is first created, it will be
+  // refreshed when we next try a partial update because of stale leadership or raft config.
+  int64_t raft_config_opid_index_;
   std::vector<std::shared_ptr<RemoteReplica>> replicas_;
   PartitionListVersion last_known_partition_list_version_ = 0;
 

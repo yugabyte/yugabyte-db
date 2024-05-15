@@ -422,6 +422,11 @@ Status PgAlterTable::Exec() {
   return Status::OK();
 }
 
+void PgAlterTable::InvalidateTableCacheEntry() {
+  pg_session_->InvalidateTableCache(
+      PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kTrue);
+}
+
 PgAlterTable::~PgAlterTable() {
 }
 

@@ -432,7 +432,8 @@ static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					  AlterTableUtilityContext *context);
 static void ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 							  AlterTableUtilityContext *context,
-							  List **rollbackHandles);
+							  List **rollbackHandles,
+							  List **handles);
 static void ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 					  AlterTableCmd *cmd, LOCKMODE lockmode, int cur_pass,
 					  AlterTableUtilityContext *context);
@@ -692,6 +693,7 @@ static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
 											bool skip_copy_split_options);
 static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
 									  AlteredTableInfo *tab);
+static void YbATInvalidateTableCacheAfterAlter(List *handles);
 /* ----------------------------------------------------------------
  *		DefineRelation
  *				Creates a new relation.
@@ -4711,7 +4713,6 @@ ATController(AlterTableStmt *parsetree,
 {
 	List	   *wqueue = NIL;
 	ListCell   *lcmd;
-	List *rollbackHandles = NIL;
 
 	/* Phase 1: preliminary examination of commands, create work queue */
 	foreach(lcmd, cmds)
@@ -4724,18 +4725,30 @@ ATController(AlterTableStmt *parsetree,
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
 
-	/* Phase 2: update system catalogs.
-	 *
-	 * ATRewriteCatalogs also executes changes to DocDB.
-	 * If Phase 3 fails, rollbackHandle will specify how to rollback the
-	 * changes done to DocDB.
-	 */
-	ATRewriteCatalogs(&wqueue, lockmode, context, &rollbackHandles);
+	/* Phase 2: update system catalogs */
+	List *rollbackHandles = NIL;
+	List *handles = NIL;
+	PG_TRY();
+	{
+		/*
+		 * ATRewriteCatalogs also executes changes to DocDB.
+		 * If Phase 3 fails, rollbackHandle will specify how to rollback the
+		 * changes done to DocDB.
+		 */
+		ATRewriteCatalogs(&wqueue, lockmode, context, &rollbackHandles, &handles);
+	}
+	PG_CATCH();
+	{
+		YbATInvalidateTableCacheAfterAlter(handles);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	/* Phase 3: scan/rewrite tables as needed, and run afterStmts */
 	PG_TRY();
 	{
 		ATRewriteTables(parsetree, &wqueue, lockmode, context);
+		YbATInvalidateTableCacheAfterAlter(handles);
 	}
 	PG_CATCH();
 	{
@@ -4753,6 +4766,7 @@ ATController(AlterTableStmt *parsetree,
 				YBCExecAlterTable(handle, RelationGetRelid(rel));
 			}
 		}
+		YbATInvalidateTableCacheAfterAlter(handles);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -5155,7 +5169,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 static void
 ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 				  AlterTableUtilityContext *context,
-				  List **rollbackHandles)
+				  List **rollbackHandles,
+				  List **handles)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -5172,11 +5187,12 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
 	Oid               main_relid = info->relid;
 	YBCPgStatement rollbackHandle = NULL;
-	List *handles = YBCPrepareAlterTable(info->subcmds,
+	*handles = YBCPrepareAlterTable(info->subcmds,
 										 AT_NUM_PASSES,
 										 main_relid,
 										 &rollbackHandle,
-										 false /* isPartitionOfAlteredTable */);
+										 false /* isPartitionOfAlteredTable */,
+										 info->rewrite);
 	if (rollbackHandle)
 		*rollbackHandles = lappend(*rollbackHandles, rollbackHandle);
 
@@ -5200,12 +5216,13 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 												   AT_NUM_PASSES,
 												   childrelid,
 												   &childRollbackHandle,
-												   true /*isPartitionOfAlteredTable */);
+												   true /*isPartitionOfAlteredTable */,
+												   info->rewrite);
 		ListCell *listcell = NULL;
 		foreach(listcell, child_handles)
 		{
 			YBCPgStatement child = (YBCPgStatement) lfirst(listcell);
-			handles = lappend(handles, child);
+			*handles = lappend(*handles, child);
 		}
 		if (childRollbackHandle)
 			*rollbackHandles = lappend(*rollbackHandles, childRollbackHandle);
@@ -5234,7 +5251,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		 */
 		if (pass == AT_PASS_ADD_INDEX)
 		{
-			foreach(lc, handles)
+			foreach(lc, *handles)
 			{
 				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
 				YBCExecAlterTable(handle, main_relid);
@@ -5311,7 +5328,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		 */
 		if (yb_table_cloned)
 		{
-			foreach (lc, handles)
+			foreach (lc, *handles)
 			{
 				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
 				YBCPgAlterTableSetTableId(
@@ -6040,24 +6057,6 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 									   persistence, lockmode,
 									   !tab->yb_skip_copy_split_options
 									   /* yb_copy_split_options */);
-
-			if (IsYBRelation(OldHeap))
-			{
-				/*
-				 * Increment the schema version for the old DocDB table so that
-				 * we abort any concurrent writes that happen during the
-				 * table rewrite.
-				 */
-				YBCPgStatement alter_cmd_handle = NULL;
-				HandleYBStatus(
-					YBCPgNewAlterTable(
-						YBCGetDatabaseOidByRelid(tab->relid),
-						YbGetRelfileNodeId(OldHeap),
-						&alter_cmd_handle));
-				HandleYBStatus(
-					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
-				YBCExecAlterTable(alter_cmd_handle, tab->relid);
-			}
 
 			/*
 			 * Copy the heap data into the new table with the desired
@@ -22491,5 +22490,27 @@ static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
 		if (yb_copy_split_options)
 			stmt->split_options = YbGetSplitOptions(idx_rel);
 		RelationClose(idx_rel);
+	}
+}
+
+/*
+ * Used in YB to re-invalidate table cache entries at the end of an ALTER TABLE
+ * operation.
+ */
+static void YbATInvalidateTableCacheAfterAlter(List *handles)
+{
+	if (YbDdlRollbackEnabled())
+	{
+		/*
+		 * As part of DDL transaction verification, we may have incremented
+		 * the schema version for the affected tables. So, re-invalidate
+		 * the table cache entries of the affected tables.
+		 */
+		ListCell *lc = NULL;
+		foreach(lc, handles)
+		{
+			YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+			HandleYBStatus(YBCPgAlterTableInvalidateTableCacheEntry(handle));
+		}
 	}
 }

@@ -1251,6 +1251,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
     taskParams.expectedUniverseVersion = -1;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.GFlagsUpgrade,

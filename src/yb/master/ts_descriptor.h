@@ -48,7 +48,6 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/capabilities.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -301,10 +300,6 @@ class TSDescriptor {
 
   bool IsLive() const;
 
-  bool HasCapability(CapabilityId capability) const {
-    return capabilities_.find(capability) != capabilities_.end();
-  }
-
   virtual bool IsLiveAndHasReported() const;
 
   bool HasYsqlCatalogLease() const;
@@ -409,9 +404,6 @@ class TSDescriptor {
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_;
-
-  // Capabilities of this tablet server.
-  std::set<CapabilityId> capabilities_;
 
   // We don't remove TSDescriptor's from the master's in memory map since several classes hold
   // references to this object and those would be invalidated if we remove the descriptor from

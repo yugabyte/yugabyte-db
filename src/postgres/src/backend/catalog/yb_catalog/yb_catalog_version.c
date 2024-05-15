@@ -105,6 +105,10 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change)
 	bool snapshot_set = ActiveSnapshotSet();
 	if (!snapshot_set)
 		PushActiveSnapshot(GetTransactionSnapshot());
+	if (*YBCGetGFlags()->log_ysql_catalog_versions)
+		ereport(LOG,
+				(errmsg("%s: incrementing all master db catalog versions (%sbreaking)",
+						__func__, is_breaking_change ? "" : "non")));
 	PG_TRY();
 	{
 		FunctionCallInvoke(fcinfo);

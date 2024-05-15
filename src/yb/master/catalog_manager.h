@@ -1773,20 +1773,32 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Add index info to the indexed table.
   Status AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
-                             CowWriteLock<PersistentTableInfo>* l_ptr,
+                             TableInfo::WriteLock* l_ptr,
                              const IndexInfoPB& index_info,
                              const LeaderEpoch& epoch,
                              CreateTableResponsePB* resp);
+
+  struct DeletingTableData {
+    TableInfoPtr table_info;
+    TableInfo::WriteLock write_lock = TableInfo::WriteLock();
+
+    bool remove_from_name_map = false;
+    TabletDeleteRetainerInfo delete_retainer = TabletDeleteRetainerInfo::AlwaysDelete();
+
+    std::string ToString() const;
+  };
 
   // Delete index info from the indexed table.
   Status MarkIndexInfoFromTableForDeletion(
       const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
       const LeaderEpoch& epoch,
-      DeleteTableResponsePB* resp);
+      DeleteTableResponsePB* resp,
+      std::map<TableId, DeletingTableData>* data_map_ptr);
 
   // Delete index info from the indexed table.
   Status DeleteIndexInfoFromTable(
-      const TableId& indexed_table_id, const TableId& index_table_id, const LeaderEpoch& epoch);
+      const TableId& indexed_table_id, const TableId& index_table_id, const LeaderEpoch& epoch,
+      std::map<TableId, DeletingTableData>* data_map_ptr);
 
   // Builds the TabletLocationsPB for a tablet based on the provided TabletInfo.
   // Populates locs_pb and returns true on success.
@@ -1939,15 +1951,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                        rpc::RpcContext* rpc,
                        const LeaderEpoch& epoch);
 
-  struct DeletingTableData {
-    TableInfoPtr table_info;
-    TableInfo::WriteLock write_lock;
-
-    bool remove_from_name_map = false;
-    TabletDeleteRetainerInfo delete_retainer = TabletDeleteRetainerInfo::AlwaysDelete();
-
-    std::string ToString() const;
-  };
+  // Helper function to acquire write locks in the order of table_id for table deletion.
+  Status DeleteTableInMemoryAcquireLocks(
+      const scoped_refptr<master::TableInfo>& table,
+      bool is_index_table,
+      bool update_indexed_table,
+      std::map<TableId, DeletingTableData>* data_map);
 
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
   // table are appended to the lists. The caller will be responsible for committing the change and
@@ -1960,7 +1969,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const LeaderEpoch& epoch,
       std::vector<DeletingTableData>* tables,
       DeleteTableResponsePB* resp,
-      rpc::RpcContext* rpc);
+      rpc::RpcContext* rpc,
+      std::map<TableId, DeletingTableData>* data_map_ptr);
 
   // Request tablet servers to delete all replicas of the tablet.
   void DeleteTabletReplicas(
@@ -2401,6 +2411,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_dead_;
 
   scoped_refptr<Counter> metric_create_table_too_many_tablets_;
+  scoped_refptr<Counter> metric_split_tablet_too_many_tablets_;
 
   friend class ClusterLoadBalancer;
 
@@ -2459,6 +2470,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status CanAddPartitionsToTable(
       size_t desired_partitions, const PlacementInfoPB& placement_info) override;
+
+  Status CanSupportAdditionalTablet(
+      const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const override;
+
+  void IncrementSplitBlockedByTabletLimitCounter() override;
 
  private:
   friend class SnapshotLoader;
@@ -2595,7 +2611,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);
 
   void InitializeGlobalLoadState(
-      TSDescriptorVector ts_descs, CMGlobalLoadState* state);
+      const TSDescriptorVector& ts_descs, CMGlobalLoadState* state);
 
   // Send a step down request for the sys catalog tablet to the specified master. If the step down
   // RPC response has an error, returns false. If the step down RPC is successful, returns true.

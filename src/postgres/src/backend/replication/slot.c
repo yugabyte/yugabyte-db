@@ -1647,8 +1647,17 @@ StartupReplicationSlots(void)
 			continue;
 		}
 
-		/* looks like a slot in a normal state, restore */
-		RestoreSlotFromDisk(replication_de->d_name);
+		/*
+		 * YB Note: We do not store the replication slot metadata on disk. This
+		 * directory is only used for storing spilled large txns by the
+		 * reorderbuffer. Our source of truth for replication slots is
+		 * yb-master, so we disable loading the slot from disk here.
+		 */
+		if (!YBIsEnabledInPostgresEnvVar())
+		{
+			/* looks like a slot in a normal state, restore */
+			RestoreSlotFromDisk(replication_de->d_name);
+		}
 	}
 	FreeDir(replication_dir);
 
@@ -2104,4 +2113,20 @@ RestoreSlotFromDisk(const char *name)
 		ereport(FATAL,
 				(errmsg("too many replication slots active before shutdown"),
 				 errhint("Increase max_replication_slots and try again.")));
+}
+
+char
+YBCGetReplicaIdentityForRelation(Oid relid)
+{
+	Assert(MyReplicationSlot);
+	Assert(MyReplicationSlot->data.yb_replica_identities);
+
+	bool found;
+
+	YBCPgReplicaIdentityDescriptor *value =
+		hash_search(MyReplicationSlot->data.yb_replica_identities, &relid,
+					HASH_FIND, &found);
+
+	Assert(found);
+	return value->identity_type;
 }

@@ -95,6 +95,13 @@ DEFINE_RUNTIME_double(tablet_split_min_size_ratio, 0.8,
 DEFINE_test_flag(bool, skip_partitioning_version_validation, false,
                  "When set, skips partitioning_version checks to prevent tablet splitting.");
 
+DEFINE_RUNTIME_bool(
+    split_respects_tablet_replica_limits, true,
+    "Whether to check the cluster tablet replica limit before splitting a tablet. If true, the "
+    "system will no longer split tablets when the limit machinery determines the cluster cannot "
+    "support any more tablet replicas.");
+TAG_FLAG(split_respects_tablet_replica_limits, advanced);
+
 METRIC_DEFINE_gauge_uint64(server, automatic_split_manager_time,
                            "Automatic Split Manager Time", yb::MetricUnit::kMilliseconds,
                            "Time for one run of the automatic tablet split manager.");
@@ -246,6 +253,12 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   auto replication_info = VERIFY_RESULT(filter_->GetTableReplicationInfo(table));
   auto s = filter_->CanAddPartitionsToTable(
       table->NumPartitions() + 1, replication_info.live_replicas());
+  if (s.ok() && FLAGS_split_respects_tablet_replica_limits) {
+    s = filter_->CanSupportAdditionalTablet(table, replication_info);
+    if (!s.ok()) {
+      filter_->IncrementSplitBlockedByTabletLimitCounter();
+    }
+  }
   if (!s.ok()) {
     return STATUS_FORMAT(
         IllegalState,

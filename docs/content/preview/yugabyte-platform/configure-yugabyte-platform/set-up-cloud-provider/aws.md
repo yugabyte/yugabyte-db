@@ -68,7 +68,7 @@ To create an AWS provider:
 
 1. Click **Create Config** to open the **Create AWS Provider Configuration** page.
 
-    ![Create AWS provider](/images/yb-platform/config/yba-aws-config-create.png)
+    ![Create AWS provider](/images/yb-platform/config/yba-aws-config-create-220.png)
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
@@ -83,9 +83,9 @@ To view a provider, select it in the list of AWS Configs to display the **Overvi
 To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YBA version 2.20.1 and later, if the provider has been used to create a universe, you can only edit a subset of fields, including the following:
 
 - Provider Name
-- Access Key ID
-- Secret Access Key
+- AWS credentials (Access Key ID and Secret Access Key)
 - Regions - You can add regions and zones to an in-use provider. Note that you cannot edit existing region details, delete a region if any of the region's zones are in use, or delete zones that are in use.
+- Linux version catalog
 
 To view the universes created using the provider, select **Universes**.
 
@@ -110,11 +110,6 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 You can customize your network, including the virtual network, as follows:
 
-- **AMI Type**. Choose the type of Amazon Machine Image (AMI) to use for deployments that use this configuration, as follows:
-  - Default x86
-  - Default AArch64
-  - Custom
-
 - **VPC Setup**. Choose the VPC setup to use:
   - **Specify an existing VPC**. Select this option to use a VPC that you have created in AWS.
   - **Create a new VPC** {{<badge/tp>}}. Select this option to create a new VPC using YBA. This option is not recommended for production use cases. If you use this feature and there are any classless inter-domain routing (CIDR) conflicts, the operation can fail silently. This would include, for example, doing the following:
@@ -127,9 +122,35 @@ You can customize your network, including the virtual network, as follows:
 
   For information on configuring your regions, see [Add regions](#add-regions).
 
+### Linux version catalog
+
+Specify the machine images to be used to install on nodes of universes created using this provider.
+
+To add machine images recommended and provisioned by YBA, select the **Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog** option, and choose the architectures.
+
+To add your own machine images to the catalog:
+
+1. Click **Add Linux Version**.
+
+1. Provide a name for the Linux version. You can see this name when creating universes using this provider.
+
+1. Choose a CPU architecture.
+
+1. Enter the Amazon Machine Image (AMI) ID to use for each [provider region](#regions).
+
+1. Provide the SSH user and port to use to access the machine image OS. Leave this empty to use the [default SSH user](#ssh-key-pairs).
+
+1. Click **Add Linux Version**.
+
+To edit custom Linux versions, remove Linux versions, and set a version as the default to use when creating universes, click **...** for the version you want to modify.
+
 ### SSH Key Pairs
 
-To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YBA requires SSH access. The following are two ways to provide SSH access:
+To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YBA requires SSH access.
+
+Enter the SSH user and port to use by default for machine images. You can override these values for custom Linux versions that you add to the Linux Version Catalog.
+
+You can manage SSH key pairs in the following ways:
 
 - Enable YBA to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YBA creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
 - Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content, and the corresponding SSH user. This information must be the same across all the regions you provision.
@@ -171,7 +192,6 @@ To configure a region using your own custom VPCs, click **Add Region** and do th
 1. Select the **Region**.
 1. Specify the **VPC ID** of the VPC to use for the region.
 1. Specify the **Security Group ID** to use for the region. This is attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
-1. If you chose to use a custom AMI, specify the **Custom AMI ID**.
 
 For each availability zone in which you wish to be able to deploy in the region, do the following:
 

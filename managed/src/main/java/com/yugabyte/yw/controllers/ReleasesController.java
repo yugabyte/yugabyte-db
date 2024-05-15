@@ -31,8 +31,8 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.File;
-import java.text.DateFormat;
-import java.text.ParseException;
+import java.time.DateTimeException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -75,6 +75,7 @@ public class ReleasesController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     CreateRelease reqRelease =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), CreateRelease.class);
+    // Validate the version/tag combo doesn't exist
     if (reqRelease.release_uuid == null) {
       log.trace("generating random release UUID as one was not provided");
       reqRelease.release_uuid = UUID.randomUUID();
@@ -257,14 +258,13 @@ public class ReleasesController extends AuthenticatedController {
         release.setReleaseTag(reqRelease.release_tag);
       }
       if (reqRelease.release_date != null) {
-        DateFormat df = DateFormat.getDateInstance();
         try {
-          Date releaseDate = df.parse(reqRelease.release_date);
+          Date releaseDate = Date.from(Instant.ofEpochSecond(reqRelease.release_date));
           if (!releaseDate.equals(release.getReleaseDate())) {
             log.debug("updating release date to {}", reqRelease.release_date);
             release.setReleaseDate(releaseDate);
           }
-        } catch (ParseException e) {
+        } catch (IllegalArgumentException | DateTimeException e) {
           log.warn("unable to parse date format", e);
         }
       }
@@ -376,7 +376,7 @@ public class ReleasesController extends AuthenticatedController {
     resp.release_type = release.getReleaseType();
     resp.state = release.getState().toString();
     if (release.getReleaseDate() != null) {
-      resp.release_date = release.getReleaseDate().toString();
+      resp.release_date = release.getReleaseDate().toInstant().getEpochSecond();
     }
     resp.release_notes = release.getReleaseNotes();
     resp.release_tag = release.getReleaseTag();

@@ -90,6 +90,7 @@ func init() {
 
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(auth.LoginCmd)
+	rootCmd.AddCommand(auth.RegisterCmd)
 	rootCmd.AddCommand(releases.ReleasesCmd)
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)

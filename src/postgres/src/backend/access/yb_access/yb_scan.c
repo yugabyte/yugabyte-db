@@ -1796,10 +1796,10 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 	FmgrInfo *end_cmp_fn[max_idx];
 
 	/*
-	 * find an order of relevant keys such that for the same column, an EQUAL
+	 * Find an order of relevant keys such that for the same column, an EQUAL
 	 * condition is encountered before IN or BETWEEN. is_column_bound is then
-	 * used to establish priority order EQUAL > IN > BETWEEN. IS NOT NULL is
-	 * treated as a special case of BETWEEN.
+	 * used to establish priority order ROW IN > EQUAL > IN > BETWEEN.
+	 * IS NOT NULL is treated as a special case of BETWEEN.
 	 */
 	int noffsets = 0;
 	int offsets[ybScan->nkeys + 1]; /* VLA - scratch space: +1 to avoid zero elements */
@@ -1835,7 +1835,18 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 			continue;
 		}
 
-		/* Assign key offsets */
+		/* Assign key offsets. Where n is the number of keys, and i is the
+		 * clause's index in the list (i < n):
+		 *   Clause Type |    Value
+		 *  -------------+--------------
+		 *   ROW IN      | -(n * 2 + i)
+		 *   EQUAL       |  -(n + i)
+		 *   IN          |     -i
+		 *   BETWEEN     |      i
+		 *
+		 * qsort will place the larger negative values first, and a modulo
+		 * operation will return the clause's original index.
+		 */
 		switch (key->sk_strategy)
 		{
 			case InvalidStrategy:
@@ -1852,13 +1863,13 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				if (YbIsBasicOpSearch(key) || YbIsSearchNull(key))
 				{
 					/* Use a -ve value so that qsort places EQUAL before others */
-					offsets[noffsets++] = -i;
+					offsets[noffsets++] = -(ybScan->nkeys + i);
 				}
 				else if (YbIsSearchArray(key))
 				{
 					/* Row IN expressions take priority over all. */
 					offsets[noffsets++] =
-						length_of_key > 1 ? - (i + ybScan->nkeys) : i;
+						length_of_key > 1 ? -(ybScan->nkeys * 2 + i) : -i;
 				}
 				break;
 			case BTGreaterEqualStrategyNumber:

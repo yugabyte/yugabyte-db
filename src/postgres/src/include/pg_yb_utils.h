@@ -258,11 +258,6 @@ extern bool IsYBReadCommitted();
 extern bool YBIsWaitQueueEnabled();
 
 /*
- * Whether to allow users to use SAVEPOINT commands at the query layer.
- */
-extern bool YBSavepointsEnabled();
-
-/*
  * Whether the per database catalog version mode is enabled.
  */
 extern bool YBIsDBCatalogVersionMode();
@@ -572,6 +567,11 @@ extern bool yb_explain_hide_non_deterministic_fields;
  * If true, planner sends supported expressions to DocDB for evaluation
  */
 extern bool yb_enable_saop_pushdown;
+
+/*
+ * Enables the use of TOAST compression for the Postgres catcache.
+*/
+extern int yb_toast_catcache_threshold;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
@@ -1136,6 +1136,9 @@ extern void YbGetRedactedQueryString(const char* query, int query_len,
 extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
 										bool yb_copy_split_options,
 										bool is_truncate);
+
+extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
+															char replident);
 
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 #endif /* PG_YB_UTILS_H */

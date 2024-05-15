@@ -17,7 +17,7 @@ jobs:
 
   - os: alma8
     compiler: gcc11
-    build_type: debug
+    build_type: fastdebug
     release_artifact: false
 
   - os: alma8

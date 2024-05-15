@@ -29,6 +29,7 @@
 #include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
+#include "replication/walsender_private.h"
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/memutils.h"
 
@@ -40,6 +41,7 @@ static MemoryContext unacked_txn_list_context = NULL;
 static YBCPgChangeRecordBatch *cached_records = NULL;
 static size_t cached_records_last_sent_row_idx = 0;
 static bool last_getconsistentchanges_response_empty = false;
+static TimestampTz last_getconsistentchanges_response_receipt_time;
 
 /*
  * Marker to refresh publication's tables list. If set to true call
@@ -82,6 +84,8 @@ static List *unacked_transactions = NIL;
 
 static List *YBCGetTables(List *publication_names);
 static void InitVirtualWal(List *publication_names);
+
+static void PreProcessBeforeFetchingNextBatch();
 
 static void TrackUnackedTransaction(YBCPgVirtualWalRecord *record);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
@@ -134,6 +138,7 @@ YBCInitVirtualWal(List *yb_publication_names)
 
 	unacked_transactions = NIL;
 	last_getconsistentchanges_response_empty = false;
+	last_getconsistentchanges_response_receipt_time = 0;
 
 	needs_publication_table_list_refresh = false;
 }
@@ -198,7 +203,6 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 	List					*tables;
 	Oid						*table_oids;
 
-
 	elog(DEBUG4, "YBCReadRecord");
 
 	caller_context = MemoryContextSwitchTo(cached_records_context);
@@ -213,29 +217,8 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 	if (cached_records == NULL ||
 		cached_records_last_sent_row_idx >= cached_records->row_count)
 	{
-		if (last_getconsistentchanges_response_empty)
-		{
-			elog(DEBUG4,
-				 "YBCReadRecord: Sleeping for %d ms due to empty response.",
-				 yb_walsender_poll_sleep_duration_empty_ms);
-			pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
-		}
-		else
-		{
-			elog(DEBUG4,
-				 "YBCReadRecord: Sleeping for %d ms as the last "
-				 "response was non-empty.",
-				 yb_walsender_poll_sleep_duration_nonempty_ms);
-			pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
-		}
+		PreProcessBeforeFetchingNextBatch();
 
-		elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
-
-		/* We no longer need the earlier record batch. */
-		if (cached_records)
-			MemoryContextReset(cached_records_context);
-
-		
 		if (needs_publication_table_list_refresh)
 		{
 			StartTransactionCommand();
@@ -247,8 +230,8 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 			// Get tables in publication and call UpdatePublicationTableList
 			tables = YBCGetTables(publication_names);
 			table_oids = YBCGetTableOids(tables);
-			YBCUpdatePublicationTableList(MyReplicationSlot->data.yb_stream_id, table_oids,
-					list_length(tables));
+			YBCUpdatePublicationTableList(MyReplicationSlot->data.yb_stream_id,
+										  table_oids, list_length(tables));
 
 			pfree(table_oids);
 			list_free(tables);
@@ -256,23 +239,26 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 
 			needs_publication_table_list_refresh = false;
 		}
-		
+
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
 								   &cached_records);
 
 		cached_records_last_sent_row_idx = 0;
+		YbWalSndTotalTimeInSendingMicros = 0;
+		last_getconsistentchanges_response_receipt_time = GetCurrentTimestamp();
 	}
 	Assert(cached_records);
 
 	/*
-	 * The GetConsistentChanges response has indicated that it is time to refresh the
-	 * publication's table list. Before calling the next GetConsistentChanges get
-	 * the table list as of time publication_refresh_time and notify the updated
-	 * list to Virtual Wal.
+	 * The GetConsistentChanges response has indicated that it is time to
+	 * refresh the publication's table list. Before calling the next
+	 * GetConsistentChanges get the table list as of time
+	 * publication_refresh_time and notify the updated list to Virtual Wal.
 	 */
 	if (cached_records && cached_records->needs_publication_table_list_refresh)
 	{
-		needs_publication_table_list_refresh = cached_records->needs_publication_table_list_refresh;
+		needs_publication_table_list_refresh =
+			cached_records->needs_publication_table_list_refresh;
 		publication_refresh_time = cached_records->publication_refresh_time;
 	}
 
@@ -296,6 +282,47 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 
 	MemoryContextSwitchTo(caller_context);
 	return record;
+}
+
+static void
+PreProcessBeforeFetchingNextBatch()
+{
+	long secs;
+	int microsecs;
+
+	if (last_getconsistentchanges_response_empty)
+	{
+		elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
+			 yb_walsender_poll_sleep_duration_empty_ms);
+		pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
+	}
+	else
+	{
+		elog(DEBUG4,
+			 "YBCReadRecord: Sleeping for %d ms as the last "
+			 "response was non-empty.",
+			 yb_walsender_poll_sleep_duration_nonempty_ms);
+		pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
+	}
+
+	elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
+
+	/* Log the summary of time spent in processing the previous batch. */
+	if (log_min_messages <= DEBUG1 &&
+		last_getconsistentchanges_response_receipt_time != 0)
+	{
+		TimestampDifference(last_getconsistentchanges_response_receipt_time,
+							GetCurrentTimestamp(), &secs, &microsecs);
+		elog(DEBUG1,
+			 "Walsender processing time for the last batch is (%ld s, %d us)",
+			 secs, microsecs);
+		elog(DEBUG1, "Time spent in sending data (socket): %" PRIu64 " us",
+			 YbWalSndTotalTimeInSendingMicros);
+	}
+
+	/* We no longer need the earlier record batch. */
+	if (cached_records)
+		MemoryContextReset(cached_records_context);
 }
 
 static void

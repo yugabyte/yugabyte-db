@@ -166,6 +166,17 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
   }
 }
 
+void CatalogManagerBgTasks::ClearDeadTServerMetrics() const {
+  TSDescriptorVector descs;
+  const auto& ts_manager = catalog_manager_->master_->ts_manager();
+  ts_manager->GetAllDescriptors(&descs);
+  for (auto& ts_desc : descs) {
+    if (!ts_desc->IsLive()) {
+      ts_desc->ClearMetrics();
+    }
+  }
+}
+
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
     TEST_PAUSE_IF_FLAG(TEST_pause_catalog_manager_bg_loop_start);
@@ -175,15 +186,7 @@ void CatalogManagerBgTasks::Run() {
       LOG(WARNING) << "Catalog manager background task thread going to sleep: "
                    << l.catalog_status().ToString();
     } else if (l.leader_status().ok()) {
-      // Clear metrics for dead tservers.
-      vector<shared_ptr<TSDescriptor>> descs;
-      const auto& ts_manager = catalog_manager_->master_->ts_manager();
-      ts_manager->GetAllDescriptors(&descs);
-      for (auto& ts_desc : descs) {
-        if (!ts_desc->IsLive()) {
-          ts_desc->ClearMetrics();
-        }
-      }
+      ClearDeadTServerMetrics();
 
       if (FLAGS_TEST_echo_service_enabled) {
         WARN_NOT_OK(

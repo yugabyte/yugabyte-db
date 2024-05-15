@@ -115,6 +115,8 @@ extern void heap_toast_delete(Relation rel, HeapTuple oldtup,
  */
 extern HeapTuple toast_flatten_tuple(HeapTuple tup, TupleDesc tupleDesc);
 
+extern HeapTuple yb_toast_compress_tuple(HeapTuple tup, TupleDesc tupleDesc);
+
 /* ----------
  * toast_flatten_tuple_to_datum -
  *

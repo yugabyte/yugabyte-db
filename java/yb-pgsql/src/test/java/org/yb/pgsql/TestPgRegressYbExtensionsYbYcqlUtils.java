@@ -21,26 +21,17 @@ import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressContribPgaudit extends BasePgSQLTest {
-
-  private static final String TURN_OFF_COPY_FROM_BATCH_TRANSACTION =
-      "yb_default_copy_from_rows_per_transaction=0";
+public class TestPgRegressYbExtensionsYbYcqlUtils extends BasePgSQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
     return 600;
   }
 
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_pg_conf", TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
-    return flags;
-  }
-
   @Test
   public void schedule() throws Exception {
-    runPgRegressTest(new File(TestUtils.getBuildRootDir(), "postgres_build/contrib/pgaudit"),
+    runPgRegressTest(new File(TestUtils.getBuildRootDir(),
+                              "postgres_build/yb-extensions/yb_ycql_utils"),
                      "yb_schedule");
   }
 }

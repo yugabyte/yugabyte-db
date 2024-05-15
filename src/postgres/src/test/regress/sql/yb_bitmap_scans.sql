@@ -62,6 +62,10 @@ SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or un
 SET work_mem TO '100kB';
 /*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
 SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or unique2 < 1000;
+
+SET work_mem TO '4GB';
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or unique2 < 1000;
 RESET work_mem;
 
 --
@@ -222,6 +226,24 @@ INSERT INTO test_false VALUES (1, 1), (2, 2);
 
 /*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM test_false WHERE (a <= 1 AND a = 2);
 /*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM test_false WHERE (a = 1 AND a = 2) OR b = 0;
+
+--
+-- test recheck index conditions
+--
+create table recheck_test (col int);
+create index on recheck_test (col ASC);
+
+insert into recheck_test select i from generate_series(1, 10) i;
+
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col IN (5, 6);
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col IN (5, 6) AND t.col < 3;
+
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
 
 --
 -- test colocated queries

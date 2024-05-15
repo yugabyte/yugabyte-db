@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.models.Universe;
@@ -115,15 +116,10 @@ public class ChangeMasterConfig extends UniverseTaskBase {
     }
     // If the cluster has a secondary IP, we want to ensure that we use the correct addresses.
     // The ipToUse is the address that we need to add to the config.
-    boolean hasSecondaryIp =
-        node.cloudInfo.secondary_private_ip != null
-            && !node.cloudInfo.secondary_private_ip.equals("null");
     boolean shouldUseSecondary =
-        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("false");
+        GFlagsUtil.isUseSecondaryIP(universe, node, config.getBoolean("yb.cloud.enabled"));
     String ipToUse =
-        hasSecondaryIp && shouldUseSecondary
-            ? node.cloudInfo.secondary_private_ip
-            : node.cloudInfo.private_ip;
+        shouldUseSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
     String certificate = universe.getCertificateNodetoNode();
     YbClientConfig config = ybClientConfigFactory.create(masterAddresses, certificate);
     // The call changeMasterConfig is not idempotent. The client library internally keeps retrying
