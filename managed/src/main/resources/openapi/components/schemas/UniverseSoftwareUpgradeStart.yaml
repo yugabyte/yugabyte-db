@@ -1,0 +1,21 @@
+title: UniverseSoftwareUpgradeStart
+description: Payload to start a YugabyteDB software upgrade on a Universe
+type: object
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"
+  - type: object
+    required:
+      - yugabyte_release
+    properties:
+      allow_rollback:
+        description: perform an upgrade where rollback is allowed
+        type: boolean
+        default: true
+      upgrade_system_catalog:
+        description: Upgrade the YugabyteDB Catalog
+        type: boolean
+        default: true
+      yugabyte_release:
+        description: yugabyte_release uuid for the target release version to upgrade to.
+        type: string
+        format: uuid
