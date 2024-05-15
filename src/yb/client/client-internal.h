@@ -118,10 +118,10 @@ class YBClient::Data {
                                         CoarseTimePoint deadline);
 
   Status IsCloneNamespaceInProgress(
-      YBClient* client, const std::string& source_namespace_id, int clone_seq_no,
+      YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,
       CoarseTimePoint deadline, bool* create_in_progress);
   Status WaitForCloneNamespaceToFinish(
-      YBClient* client, const std::string& source_namespace_id, int clone_seq_no,
+      YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,
       CoarseTimePoint deadline);
 
   Status CreateTable(YBClient* client,

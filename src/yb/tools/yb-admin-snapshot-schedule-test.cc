@@ -255,14 +255,15 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     std::string seq_no = VERIFY_RESULT(Get(out, "seq_no")).get().GetString();
 
     RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
-      out = VERIFY_RESULT(CallJsonAdmin("is_clone_done", source_namespace_id, seq_no));
-      std::string is_done = VERIFY_RESULT(Get(out, "is_done")).get().GetString();
-      if (is_done == "true") {
-        return true;
-      } else if (is_done == "false") {
-        return false;
-      }
-      return STATUS_FORMAT(InvalidArgument, is_done);
+      rapidjson::Document out = VERIFY_RESULT(
+          CallJsonAdmin("list_clones", source_namespace_id, seq_no));
+      const auto entries = out.GetArray();
+      SCHECK_EQ(entries.Size(), 1, IllegalState, "Wrong number of entries. Expected 1");
+      master::SysCloneStatePB::State state;
+      master::SysCloneStatePB::State_Parse(
+          VERIFY_RESULT(Get(entries[0], "aggregate_state")).get().GetString(), &state);
+      return state == master::SysCloneStatePB::ABORTED ||
+             state == master::SysCloneStatePB::RESTORED;
     }, timeout, "Wait for clone to complete"));
     return Status::OK();
   }
