@@ -100,6 +100,7 @@ set(COMMON_SRCS
   schema.cc
   schema_pbutil.cc
   snapshot.cc
+  tablet_limits.cc
   termination_monitor.cc
   transaction.cc
   transaction_error.cc
@@ -134,6 +135,7 @@ ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(placement_info-test)
 ADD_YB_TEST(schema-test)
+ADD_YB_TEST(subtxn_set_and_pb-test)
+ADD_YB_TEST(tablet_limits_test)
 ADD_YB_TEST(types-test)
 ADD_YB_TEST(wire_protocol-test)
-ADD_YB_TEST(subtxn_set_and_pb-test)

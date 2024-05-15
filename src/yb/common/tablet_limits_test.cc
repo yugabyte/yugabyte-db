@@ -13,14 +13,14 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/tserver/tablet_limits.h"
+#include "yb/common/tablet_limits.h"
 
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/uuid.h"
 
-namespace yb::tserver {
+namespace yb {
 
 TEST(ComputeTabletReplicaLimitTest, JustMemory) {
   AggregatedClusterInfo cluster_info = {
@@ -152,4 +152,4 @@ TEST(ComputeTabletReplicaLimitTest, AllEmpty) {
   EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), std::numeric_limits<int64_t>::max());
 }
 
-}  // namespace yb::tserver
+}  // namespace yb
