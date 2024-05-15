@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package api.v2.mappers;
 
-import api.v2.models.UpgradeUniverseGFlags;
+import api.v2.models.UniverseEditGFlags;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -20,16 +20,16 @@ import org.mapstruct.factory.Mappers;
 import play.mvc.Http.Status;
 
 @Mapper(uses = UpgradeOptionEnumMapper.class, config = CentralConfig.class)
-public interface UpgradeUniverseGFlagsMapper {
-  UpgradeUniverseGFlagsMapper INSTANCE = Mappers.getMapper(UpgradeUniverseGFlagsMapper.class);
+public interface UniverseEditGFlagsMapper {
+  UniverseEditGFlagsMapper INSTANCE = Mappers.getMapper(UniverseEditGFlagsMapper.class);
 
   @Mapping(target = "sleepAfterTServerRestartMillis", source = "sleepAfterTserverRestartMillis")
   @Mapping(target = "clusters", source = "source")
   GFlagsUpgradeParams copyToV1GFlagsUpgradeParams(
-      UpgradeUniverseGFlags source, @MappingTarget GFlagsUpgradeParams target);
+      UniverseEditGFlags source, @MappingTarget GFlagsUpgradeParams target);
 
   default List<Cluster> updateClusterGFlags(
-      UpgradeUniverseGFlags source, @MappingTarget List<Cluster> targetClusters) {
+      UniverseEditGFlags source, @MappingTarget List<Cluster> targetClusters) {
     if (source.getUniverseGflags() == null) {
       return targetClusters;
     }

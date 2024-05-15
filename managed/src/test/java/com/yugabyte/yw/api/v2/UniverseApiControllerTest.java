@@ -6,9 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yba.v2.client.ApiException;
-import com.yugabyte.yba.v2.client.api.UniverseManagementApi;
+import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
-import com.yugabyte.yba.v2.client.models.UniverseResp;
 import com.yugabyte.yba.v2.client.models.YBPTask;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -25,7 +24,8 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.Test;
 
-public class UniverseManagementApiControllerImpTest extends UniverseManagementTestBase {
+/** Tests for Create/Get/Delete of Universe using v2.UniverseApiControllerImp */
+public class UniverseApiControllerTest extends UniverseTestBase {
 
   @Test
   public void testGetUniverseV2() throws ApiException {
@@ -67,15 +67,16 @@ public class UniverseManagementApiControllerImpTest extends UniverseManagementTe
                   .setPerAZ(
                       Map.of(universe.getUniverseDetails().getPrimaryCluster().uuid, azFlags));
             });
-    UniverseManagementApi api = new UniverseManagementApi();
-    UniverseResp universeResp = api.getUniverse(customer.getUuid(), uUUID);
+    UniverseApi api = new UniverseApi();
+    com.yugabyte.yba.v2.client.models.Universe universeResp =
+        api.getUniverse(customer.getUuid(), uUUID);
     validateUniverseSpec(universeResp.getSpec(), dbUniverse);
     validateUniverseInfo(universeResp.getInfo(), dbUniverse);
   }
 
   @Test
   public void testCreateUniverseV2() throws ApiException {
-    UniverseManagementApi api = new UniverseManagementApi();
+    UniverseApi api = new UniverseApi();
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
 
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
@@ -90,7 +91,31 @@ public class UniverseManagementApiControllerImpTest extends UniverseManagementTe
     validateUniverseCreateSpec(universeCreateSpec, dbUniverse);
 
     // fetch the newly created Universe using v2 API and validate it once more
-    UniverseResp universeResp = api.getUniverse(customer.getUuid(), universeUUID);
+    com.yugabyte.yba.v2.client.models.Universe universeResp =
+        api.getUniverse(customer.getUuid(), universeUUID);
+    validateUniverseSpec(universeResp.getSpec(), dbUniverse);
+    validateUniverseInfo(universeResp.getInfo(), dbUniverse);
+  }
+
+  @Test
+  public void testCreateUniverseWithRRV2() throws ApiException {
+    UniverseApi api = new UniverseApi();
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecWithRRV2();
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+    YBPTask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
+    UUID universeUUID = createTask.getResourceUuid();
+    Universe dbUniverse = Universe.getOrBadRequest(universeUUID, customer);
+
+    // validate that the Universe created in the DB matches properties specified in the createSpec
+    validateUniverseCreateSpec(universeCreateSpec, dbUniverse);
+
+    // fetch the newly created Universe using v2 API and validate it once more
+    com.yugabyte.yba.v2.client.models.Universe universeResp =
+        api.getUniverse(customer.getUuid(), universeUUID);
     validateUniverseSpec(universeResp.getSpec(), dbUniverse);
     validateUniverseInfo(universeResp.getInfo(), dbUniverse);
   }

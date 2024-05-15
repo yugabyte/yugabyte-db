@@ -2,6 +2,7 @@
 package api.v2.mappers;
 
 import api.v2.models.AvailabilityZoneGFlags;
+import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterGFlags;
 import api.v2.models.ClusterNetworkingSpec;
@@ -86,19 +87,24 @@ public interface UserIntentMapper {
   UserIntent toV1UserIntentFromClusterEditSpec(
       ClusterEditSpec clusterEditSpec, @MappingTarget UserIntent userIntent);
 
+  @Mapping(target = "deviceInfo", source = "storageSpec")
+  @Mapping(target = ".", source = "providerSpec")
+  @Mapping(target = "specificGFlags", source = "clusterAddSpec")
+  UserIntent overwriteUserIntentFromClusterAddSpec(
+      ClusterAddSpec clusterAddSpec, @MappingTarget UserIntent userIntent);
+
   @InheritInverseConfiguration
   StorageType mapStorageTypeEnum(StorageTypeEnum storageType);
 
-  default SpecificGFlags clusterGFlagsToSpecificGFlags(ClusterSpec clusterSpec) {
-    ClusterGFlags clusterGFlags = clusterSpec.getGflags();
-    if (clusterGFlags == null) {
-      return null;
+  default SpecificGFlags v1SpecificGFlagsFromClusterGFlags(ClusterGFlags v2ClusterGFlags) {
+    if (v2ClusterGFlags == null) {
+      return new SpecificGFlags();
     }
     SpecificGFlags specificGFlags =
-        SpecificGFlags.construct(clusterGFlags.getMaster(), clusterGFlags.getTserver());
-    if (clusterGFlags.getAzGflags() != null) {
+        SpecificGFlags.construct(v2ClusterGFlags.getMaster(), v2ClusterGFlags.getTserver());
+    if (v2ClusterGFlags.getAzGflags() != null) {
       Map<UUID, PerProcessFlags> perAz = new HashMap<>();
-      for (Entry<String, AvailabilityZoneGFlags> entry : clusterGFlags.getAzGflags().entrySet()) {
+      for (Entry<String, AvailabilityZoneGFlags> entry : v2ClusterGFlags.getAzGflags().entrySet()) {
         PerProcessFlags perProc = new PerProcessFlags();
         perProc.value.put(ServerType.MASTER, entry.getValue().getMaster());
         perProc.value.put(ServerType.TSERVER, entry.getValue().getTserver());
@@ -106,10 +112,23 @@ public interface UserIntentMapper {
       }
       specificGFlags.setPerAZ(perAz);
     }
+    return specificGFlags;
+  }
+
+  default SpecificGFlags clusterSpecToSpecificGFlags(ClusterSpec clusterSpec) {
+    SpecificGFlags specificGFlags = v1SpecificGFlagsFromClusterGFlags(clusterSpec.getGflags());
     if (clusterSpec.getClusterType() != null
         && !clusterSpec.getClusterType().equals(ClusterTypeEnum.PRIMARY)) {
-      specificGFlags.setInheritFromPrimary(true);
+      // do not set inherit from primary as v2 manually defaults to true behaviour
+      specificGFlags.setInheritFromPrimary(false);
     }
+    return specificGFlags;
+  }
+
+  default SpecificGFlags clusterAddSpecToSpecificGFlags(ClusterAddSpec clusterAddSpec) {
+    SpecificGFlags specificGFlags = v1SpecificGFlagsFromClusterGFlags(clusterAddSpec.getGflags());
+    // do not set inherit from primary as v2 manually defaults to true behaviour
+    specificGFlags.setInheritFromPrimary(false);
     return specificGFlags;
   }
 }

@@ -1,5 +1,7 @@
 title: Edit Cloud Provider settings for the cluster
 type: object
+required:
+  - region_list
 properties:
   region_list:
     description: Edit the list of regions in the cloud provider to place data replicas
