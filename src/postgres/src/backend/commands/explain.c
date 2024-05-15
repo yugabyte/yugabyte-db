@@ -2101,6 +2101,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_BitmapIndexScan:
 			pname = sname = "Bitmap Index Scan";
 			break;
+		case T_YbBitmapIndexScan:
+			pname = sname = "Bitmap Index Scan";
+			break;
 		case T_BitmapHeapScan:
 			pname = sname = "Bitmap Heap Scan";
 			break;
@@ -2372,6 +2375,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			}
 			break;
 		case T_BitmapIndexScan:
+		case T_YbBitmapIndexScan:
 			{
 				BitmapIndexScan *bitmapindexscan = (BitmapIndexScan *) plan;
 				const char *indexname =
@@ -2721,7 +2725,13 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_BitmapIndexScan:
 			show_scan_qual(((BitmapIndexScan *) plan)->indexqualorig,
 						   "Index Cond", planstate, ancestors, es);
-			if (IsYugaByteEnabled() && es->rpc && es->analyze)
+			break;
+		case T_YbBitmapIndexScan:
+			show_scan_qual(((YbBitmapIndexScan *) plan)->indexqualorig,
+						   "Index Cond", planstate, ancestors, es);
+			show_scan_qual(((YbBitmapIndexScan *) plan)->yb_idx_pushdown.quals,
+						   "Storage Index Filter", planstate, ancestors, es);
+			if (es->rpc && es->analyze)
 				show_yb_rpc_stats(planstate, es);
 			break;
 		case T_BitmapHeapScan:
@@ -2738,22 +2748,44 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_tidbitmap_info((BitmapHeapScanState *) planstate, es);
 			break;
 		case T_YbBitmapTableScan:
-			if (((YbBitmapTableScanState *) planstate)->recheck_required)
-				show_scan_qual(((YbBitmapTableScan *) plan)->bitmapqualorig,
-							   "Recheck Cond", planstate, ancestors, es);
-			if (((YbBitmapTableScan *) plan)->bitmapqualorig)
-				show_instrumentation_count("Rows Removed by Index Recheck", 2,
-										   planstate, es);
-			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
-			if (plan->qual)
+		{
+			YbBitmapTableScanState *bitmapscanstate =
+				(YbBitmapTableScanState *) planstate;
+			YbBitmapTableScan *bitmapplan = (YbBitmapTableScan *) plan;
+			List *storage_filter = bitmapscanstate->work_mem_exceeded
+				? bitmapplan->fallback_pushdown.quals
+				: bitmapplan->rel_pushdown.quals;
+			List *local_filter = bitmapscanstate->work_mem_exceeded
+				? bitmapplan->fallback_local_quals
+				: plan->qual;
+
+			/* Storage filters are applied first, so they are output first. */
+			if (bitmapscanstate->recheck_required)
+				show_scan_qual(bitmapplan->recheck_pushdown.quals,
+							   "Storage Recheck Cond", planstate, ancestors,
+							   es);
+			show_scan_qual(storage_filter, "Storage Filter", planstate,
+						   ancestors, es);
+
+			if (bitmapscanstate->recheck_required)
+			{
+				show_scan_qual(bitmapplan->recheck_local_quals, "Recheck Cond",
+							   planstate, ancestors, es);
+				if (bitmapplan->recheck_local_quals)
+					show_instrumentation_count("Rows Removed by Index Recheck",
+											   2, planstate, es);
+			}
+
+			show_scan_qual(local_filter, "Filter", planstate, ancestors, es);
+			if (local_filter)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
 			if (es->rpc && es->analyze)
 				show_yb_rpc_stats(planstate, es);
 			if (es->analyze)
-				show_ybtidbitmap_info((YbBitmapTableScanState *) planstate, es);
+				show_ybtidbitmap_info(bitmapscanstate, es);
 			break;
-
+		}
 		case T_SampleScan:
 			show_tablesample(((SampleScan *) plan)->tablesample,
 							 planstate, ancestors, es);

@@ -1189,6 +1189,10 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
+YBCStatus YBCPgDmlHasRegularTargets(YBCPgStatement handle, bool *has_targets) {
+  return ExtractValueFromResult(pgapi->DmlHasRegularTargets(handle), has_targets);
+}
+
 YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary) {
   return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_primary));
 }

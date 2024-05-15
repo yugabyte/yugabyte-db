@@ -7275,6 +7275,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	extract_pushdown_clauses(qpquals,
 							 need_remote_index_filters ? index : NULL,
+							 false /* bitmapindex */,
 							 &local_clauses, &base_table_pushed_down_filters, &base_table_colrefs,
 							 &index_pushed_down_filters, &index_colrefs);
 

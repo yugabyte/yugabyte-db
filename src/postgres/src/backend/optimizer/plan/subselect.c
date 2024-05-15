@@ -2369,6 +2369,16 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 			 */
 			break;
 
+		case T_YbBitmapIndexScan:
+			finalize_primnode((Node *) ((YbBitmapIndexScan *) plan)->indexqual,
+							  &context);
+
+			/*
+			 * we need not look at indexqualorig, since it will have the same
+			 * param references as indexqual.
+			 */
+			break;
+
 		case T_BitmapHeapScan:
 			finalize_primnode((Node *) ((BitmapHeapScan *) plan)->bitmapqualorig,
 							  &context);
@@ -2376,11 +2386,21 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 			break;
 
 		case T_YbBitmapTableScan:
-			finalize_primnode((Node *) ((YbBitmapTableScan *) plan)->bitmapqualorig,
+		{
+			YbBitmapTableScan *bitmapscan = (YbBitmapTableScan *) plan;
+			finalize_primnode((Node *) bitmapscan->rel_pushdown.quals,
+							  &context);
+			finalize_primnode((Node *) bitmapscan->recheck_pushdown.quals,
+							  &context);
+			finalize_primnode((Node *) bitmapscan->recheck_local_quals,
+							  &context);
+			finalize_primnode((Node *) bitmapscan->fallback_pushdown.quals,
+							  &context);
+			finalize_primnode((Node *) bitmapscan->fallback_local_quals,
 							  &context);
 			context.paramids = bms_add_members(context.paramids, scan_params);
 			break;
-
+		}
 		case T_TidScan:
 			finalize_primnode((Node *) ((TidScan *) plan)->tidquals,
 							  &context);

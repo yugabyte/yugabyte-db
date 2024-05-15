@@ -68,6 +68,7 @@
 
 /* Yugabyte includes */
 #include "pg_yb_utils.h"
+#include "executor/nodeYbBitmapIndexscan.h"
 #include "executor/nodeYbSeqscan.h"
 
 static bool IndexSupportsBackwardScan(Oid indexid);
@@ -199,6 +200,11 @@ ExecReScan(PlanState *node)
 
 		case T_BitmapIndexScanState:
 			ExecReScanBitmapIndexScan((BitmapIndexScanState *) node);
+			break;
+
+
+		case T_YbBitmapIndexScanState:
+			ExecReScanYbBitmapIndexScan((YbBitmapIndexScanState *) node);
 			break;
 
 		case T_BitmapHeapScanState:

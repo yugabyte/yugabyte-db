@@ -39,6 +39,7 @@
 #include "utils/lsyscache.h"
 
 /* YB includes. */
+#include "catalog/pg_am_d.h"
 #include "catalog/yb_catalog_version.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
@@ -187,7 +188,7 @@ bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs)
  *		index described by the indexinfo.
  */
 bool
-is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo)
+is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo, bool bitmapindex)
 {
 	ListCell *lc;
 	foreach (lc, colrefs)
@@ -207,8 +208,36 @@ is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo)
 					found = true;
 					break;
 				}
-				else
-					return false;
+				/*
+				 * Special case for LSM bitmap index scans: in Yugabyte, these
+				 * indexes claim they cannot return if they are a primary index.
+				 * Generally it is simpler for primay indexes to pushdown their
+				 * conditions at the table level, rather than the index level.
+				 * Primary indexes don't need to first request ybctids, and then
+				 * request rows matching the ybctids.
+				 *
+				 * However, bitmap index scans benefit from pushing down
+				 * conditions to the index (whether its primary or secondary),
+				 * because they collect ybctids from both. If we can filter
+				 * out more ybctids earlier, it reduces network costs and the
+				 * size of the ybctid bitmap.
+				 */
+				else if (IsYugaByteEnabled() && bitmapindex &&
+						 indexinfo->relam == LSM_AM_OID)
+				{
+					Relation index;
+					index = RelationIdGetRelation(indexinfo->indexoid);
+					bool is_primary = index->rd_index->indisprimary;
+					RelationClose(index);
+
+					if (is_primary)
+					{
+						found = true;
+						break;
+					}
+				}
+
+				return false;
 			}
 		}
 		if (!found)
@@ -239,6 +268,7 @@ is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo)
 void
 extract_pushdown_clauses(List *restrictinfo_list,
 						 IndexOptInfo *indexinfo,
+						 bool bitmapindex,
 						 List **local_quals,
 						 List **rel_remote_quals,
 						 List **rel_colrefs,
@@ -272,7 +302,7 @@ extract_pushdown_clauses(List *restrictinfo_list,
 			 * necessary columns.
 			 */
 			if (indexinfo == NULL ||
-				!is_index_only_refs(colrefs, indexinfo))
+				!is_index_only_refs(colrefs, indexinfo, bitmapindex))
 			{
 				*rel_colrefs = list_concat(*rel_colrefs, colrefs);
 				*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);

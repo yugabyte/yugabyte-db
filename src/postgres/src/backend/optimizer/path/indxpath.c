@@ -39,6 +39,8 @@
 #include "pg_yb_utils.h"
 #include "access/yb_scan.h"
 #include "catalog/pg_proc.h"
+#include "executor/ybcExpr.h"
+#include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
 #include "utils/guc.h"
 #include "utils/rel.h"
@@ -109,9 +111,11 @@ static bool eclass_already_used(EquivalenceClass *parent_ec, Relids oldrelids,
 static bool bms_equal_any(Relids relids, List *relids_list);
 static void get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 							IndexOptInfo *index, IndexClauseSet *clauses,
+							List *yb_bitmap_idx_pushdowns,
 							List **bitindexpaths);
 static List *build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 							   IndexOptInfo *index, IndexClauseSet *clauses,
+							   List *yb_bitmap_idx_pushdowns,
 							   bool useful_predicate,
 							   ScanTypeControl scantype,
 							   bool *skip_nonnative_saop,
@@ -152,11 +156,13 @@ static void match_eclass_clauses_to_index(PlannerInfo *root,
 static void match_clauses_to_index(PlannerInfo *root,
 								   List *clauses,
 								   IndexOptInfo *index,
-								   IndexClauseSet *clauseset);
+								   IndexClauseSet *clauseset,
+								   List **yb_bitmap_idx_pushdowns);
 static void match_clause_to_index(PlannerInfo *root,
 								  RestrictInfo *rinfo,
 								  IndexOptInfo *index,
-								  IndexClauseSet *clauseset);
+								  IndexClauseSet *clauseset,
+								  List **yb_bitmap_idx_pushdowns);
 static IndexClause *match_clause_to_indexcol(PlannerInfo *root,
 											 RestrictInfo *rinfo,
 											 int indexcol,
@@ -288,6 +294,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 		 * bitmap paths are added to bitindexpaths to be handled below.
 		 */
 		get_index_paths(root, rel, index, &rclauseset,
+						NIL /* yb_bitmap_idx_pushdowns */,
 						&bitindexpaths);
 
 		/*
@@ -776,6 +783,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	indexpaths = build_index_paths(root, rel,
 								   index, clauses,
+								   NIL /* yb_bitmap_idx_pushdowns */,
 								   index->predOK,
 								   ST_ANYSCAN,
 								   &skip_nonnative_saop,
@@ -791,6 +799,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		indexpaths = list_concat(indexpaths,
 								 build_index_paths(root, rel,
 												   index, clauses,
+												   NIL /* yb_bitmap_idx_pushdowns */,
 												   index->predOK,
 												   ST_ANYSCAN,
 												   &skip_nonnative_saop,
@@ -916,7 +925,8 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 											bitindexpaths);
 
 	/* Build index path(s) using the collected set of clauses */
-	get_index_paths(root, rel, index, &clauseset, bitindexpaths);
+	get_index_paths(root, rel, index, &clauseset,
+					NIL /* yb_bitmap_idx_pushdowns */, bitindexpaths);
 
 	/*
 	 * Remember we considered paths for this set of relids.
@@ -974,6 +984,12 @@ bms_equal_any(Relids relids, List *relids_list)
  * Plain indexpaths are sent directly to add_path, while potential
  * bitmap indexpaths are added to *bitindexpaths for later processing.
  *
+ * YB: Conditions that could be pushed down to the index for this bitmap index
+ * path are appended to yb_bitmap_idx_pushdowns. This function is sometimes
+ * called for individual sub clauses of an OR clause, so it allows us to extract
+ * useful conditions from the subclause without being concerned by the
+ * pushability of the other sub clauses.
+ *
  * This is a fairly simple frontend to build_index_paths().  Its reason for
  * existence is mainly to handle ScalarArrayOpExpr quals properly.  If the
  * index AM supports them natively, we should just include them in simple
@@ -985,7 +1001,7 @@ bms_equal_any(Relids relids, List *relids_list)
 static void
 get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				IndexOptInfo *index, IndexClauseSet *clauses,
-				List **bitindexpaths)
+				List *yb_bitmap_idx_pushdowns, List **bitindexpaths)
 {
 	List	   *indexpaths;
 	bool		skip_nonnative_saop = false;
@@ -1000,6 +1016,7 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	indexpaths = build_index_paths(root, rel,
 								   index, clauses,
+								   yb_bitmap_idx_pushdowns,
 								   index->predOK,
 								   ST_ANYSCAN,
 								   &skip_nonnative_saop,
@@ -1015,6 +1032,7 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		indexpaths = list_concat(indexpaths,
 								 build_index_paths(root, rel,
 												   index, clauses,
+												   yb_bitmap_idx_pushdowns,
 												   index->predOK,
 												   ST_ANYSCAN,
 												   &skip_nonnative_saop,
@@ -1056,6 +1074,7 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	{
 		indexpaths = build_index_paths(root, rel,
 									   index, clauses,
+									   yb_bitmap_idx_pushdowns,
 									   false,
 									   ST_BITMAPSCAN,
 									   NULL,
@@ -1105,6 +1124,9 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
  * 'rel' is the index's heap relation
  * 'index' is the index for which we want to generate paths
  * 'clauses' is the collection of indexable clauses (IndexClause nodes)
+ * 'yb_bitmap_idx_pushdowns' is a set of pushable clauses for a bitmap index scan.
+ *    These are extracted during bitmap planning and allow pushdowns that are
+ *    not possible to determine at a later stage.
  * 'useful_predicate' indicates whether the index has a useful predicate
  * 'scantype' indicates whether we need plain or bitmap scan support
  * 'skip_nonnative_saop' indicates whether to accept SAOP if index AM doesn't
@@ -1113,6 +1135,7 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 static List *
 build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				  IndexOptInfo *index, IndexClauseSet *clauses,
+				  List *yb_bitmap_idx_pushdowns,
 				  bool useful_predicate,
 				  ScanTypeControl scantype,
 				  bool *skip_nonnative_saop,
@@ -1380,6 +1403,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	{
 		ipath = create_index_path(root, index,
 								  index_clauses,
+								  yb_bitmap_idx_pushdowns,
 								  orderbyclauses,
 								  orderbyclausecols,
 								  useful_pathkeys,
@@ -1421,6 +1445,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		{
 			ipath = create_index_path(root, index,
 									  index_clauses,
+									  yb_bitmap_idx_pushdowns,
 									  orderbyclauses,
 									  orderbyclausecols,
 									  useful_pathkeys,
@@ -1463,6 +1488,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		{
 			ipath = create_index_path(root, index,
 									  index_clauses,
+									  yb_bitmap_idx_pushdowns,
 									  NIL,
 									  NIL,
 									  useful_pathkeys,
@@ -1495,6 +1521,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			{
 				ipath = create_index_path(root, index,
 										  index_clauses,
+										  yb_bitmap_idx_pushdowns,
 										  NIL,
 										  NIL,
 										  useful_pathkeys,
@@ -1557,6 +1584,7 @@ build_paths_for_OR(PlannerInfo *root, RelOptInfo *rel,
 	{
 		IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
 		IndexClauseSet clauseset;
+		List	   *yb_bitmap_idx_pushdowns = NIL;
 		List	   *indexpaths;
 		bool		useful_predicate;
 
@@ -1599,9 +1627,35 @@ build_paths_for_OR(PlannerInfo *root, RelOptInfo *rel,
 
 		/*
 		 * Identify the restriction clauses that can match the index.
+		 * YB: Since clauses is the set of everything in this particular branch
+		 * of a logical operation, we try to collect pushdown clauses from this
+		 * list because we can't collect them later.
+		 *
+		 * For example, consider the parent clause ((q1 AND q2) OR q3).
+		 *
+		 * If q1 and q2 can be applied to this index, but q3 can't, then the
+		 * full condition ((q1 AND q2) OR q3) can't be pushed down on this
+		 * index. However, in a bitmap scan plan, a particular Bitmap Index Scan
+		 * only needs to be concerned with the quals from its portion of the
+		 * tree.
+		 *
+		 * This function is called recursively for each argument of the OR
+		 * clause and builds an Index Path. At this point, we know exactly what
+		 * conditions the bitmap index path should be concerned with and we can
+		 * choose to push them down. The first bitmap index scan covers the
+		 * (q1 AND q2) condition. In Yugabyte, we can use one as a pushdown
+		 * clause, even if it's not a good index condition.
+		 *
+		 * Because this function operates recursively on subtrees of the
+		 * original condition, it is easy to evaluate one clause of the OR
+		 * separately from the others. Whether or not q3 is pushable for this
+		 * index has no effect on whether q1 or q2 can be pushed down for the
+		 * first bitmap index scan.
 		 */
 		MemSet(&clauseset, 0, sizeof(clauseset));
-		match_clauses_to_index(root, clauses, index, &clauseset);
+		match_clauses_to_index(root, clauses, index, &clauseset,
+							   index->rel->is_yb_relation
+									? &yb_bitmap_idx_pushdowns : NULL);
 
 		/*
 		 * If no matches so far, and the index predicate isn't useful, we
@@ -1612,14 +1666,18 @@ build_paths_for_OR(PlannerInfo *root, RelOptInfo *rel,
 
 		/*
 		 * Add "other" restriction clauses to the clauseset.
+		 * YB: We do not try to collect pushdown clauses for bitmap index scans
+		 * here because those will be gathered from all clauses by
+		 * create_indexscan_plan.
 		 */
-		match_clauses_to_index(root, other_clauses, index, &clauseset);
+		match_clauses_to_index(root, other_clauses, index, &clauseset, NULL);
 
 		/*
 		 * Construct paths if possible.
 		 */
 		indexpaths = build_index_paths(root, rel,
 									   index, &clauseset,
+									   yb_bitmap_idx_pushdowns,
 									   useful_predicate,
 									   ST_BITMAPSCAN,
 									   NULL,
@@ -2484,7 +2542,8 @@ match_restriction_clauses_to_index(PlannerInfo *root,
 								   IndexClauseSet *clauseset)
 {
 	/* We can ignore clauses that are implied by the index predicate */
-	match_clauses_to_index(root, index->indrestrictinfo, index, clauseset);
+	match_clauses_to_index(root, index->indrestrictinfo, index, clauseset,
+						   NULL /* yb_bitmap_idx_pushdowns */);
 }
 
 /*
@@ -2514,7 +2573,8 @@ match_join_clauses_to_index(PlannerInfo *root,
 		if (restriction_is_or_clause(rinfo))
 			*joinorclauses = lappend(*joinorclauses, rinfo);
 		else
-			match_clause_to_index(root, rinfo, index, clauseset);
+			match_clause_to_index(root, rinfo, index, clauseset,
+								  NULL /* yb_bitmap_idx_pushdowns */);
 	}
 }
 
@@ -2552,7 +2612,8 @@ match_eclass_clauses_to_index(PlannerInfo *root, IndexOptInfo *index,
 		 * since for non-btree indexes the EC's equality operators might not
 		 * be in the index opclass (cf ec_member_matches_indexcol).
 		 */
-		match_clauses_to_index(root, clauses, index, clauseset);
+		match_clauses_to_index(root, clauses, index, clauseset,
+							   NULL /* yb_bitmap_idx_pushdowns */);
 	}
 }
 
@@ -2565,7 +2626,8 @@ static void
 match_clauses_to_index(PlannerInfo *root,
 					   List *clauses,
 					   IndexOptInfo *index,
-					   IndexClauseSet *clauseset)
+					   IndexClauseSet *clauseset,
+					   List **yb_bitmap_idx_pushdowns)
 {
 	ListCell   *lc;
 
@@ -2573,7 +2635,8 @@ match_clauses_to_index(PlannerInfo *root,
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
 
-		match_clause_to_index(root, rinfo, index, clauseset);
+		match_clause_to_index(root, rinfo, index, clauseset,
+							  yb_bitmap_idx_pushdowns);
 	}
 }
 
@@ -2598,9 +2661,11 @@ static void
 match_clause_to_index(PlannerInfo *root,
 					  RestrictInfo *rinfo,
 					  IndexOptInfo *index,
-					  IndexClauseSet *clauseset)
+					  IndexClauseSet *clauseset,
+					  List **yb_bitmap_idx_pushdowns)
 {
 	int			indexcol;
+	List	   *colrefs = NIL;
 
 	/*
 	 * Never match pseudoconstants to indexes.  (Normally a match could not
@@ -2646,6 +2711,17 @@ match_clause_to_index(PlannerInfo *root,
 			clauseset->nonempty = true;
 			return;
 		}
+	}
+
+	/*
+	 * If the restrict info cannot be directly applied to an index col, check if
+	 * it could be pushed down as a remote index filter.
+	 */
+	if (IsYugaByteEnabled() && yb_bitmap_idx_pushdowns &&
+			YbCanPushdownExpr(rinfo->clause, &colrefs) &&
+			is_index_only_refs(colrefs, index, true /* bitmapindex */)) {
+		rinfo->yb_pushable = true;
+		*yb_bitmap_idx_pushdowns = lappend(*yb_bitmap_idx_pushdowns, rinfo);
 	}
 }
 

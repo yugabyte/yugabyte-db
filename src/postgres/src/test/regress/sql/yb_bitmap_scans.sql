@@ -4,7 +4,7 @@
 SET yb_explain_hide_non_deterministic_fields = true;
 SET enable_bitmapscan = true;
 
--- tenk1 already has 4 ASC indexes: unique1, unique2, hundred, and (thousand, tenthhous)
+-- tenk1 already has 4 ASC indexes: unique1, unique2, hundred, and (thousand, tenthous)
 -- each query has an order by to make asserting results easier
 
 /*+ BitmapScan(tenk1) */ EXPLAIN ANALYZE
@@ -57,11 +57,19 @@ RESET yb_fetch_size_limit;
 --
 SET work_mem TO '4MB';
 /*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or unique2 < 1000;
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 OR unique2 < 1000;
 
 SET work_mem TO '100kB';
 /*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or unique2 < 1000;
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 OR unique2 < 1000;
+
+-- verify that remote filters still apply to sequential scan when we've exceeded work_mem.
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE ((unique1 BETWEEN 1000 AND 8000) OR unique2 < 1000) AND twothousand = 0;
+
+-- verify we still do the right thing when pushdown is disabled.
+/*+ BitmapScan(tenk1) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE ((unique1 BETWEEN 1000 AND 8000) OR unique2 < 1000) AND twothousand = 0;
 
 SET work_mem TO '4GB';
 /*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
@@ -110,6 +118,13 @@ SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
 SELECT * FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
 
 -- this query has a recheck condition, so we need to fetch the rows
+/*+ BitmapScan(tenk1) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST)
+SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
+/*+ BitmapScan(tenk1) Set(yb_enable_expression_pushdown false) */
+SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
+
+-- when the expression can be pushed down, we don't need a recheck but we do
+-- still need to send the request.
 /*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
 SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
 /*+ BitmapScan(tenk1) */
@@ -124,6 +139,14 @@ SELECT SUM(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
 SELECT MAX(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
 /*+ BitmapScan(tenk1) */
 SELECT MAX(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+
+-- when we don't need the actual value, we can avoid fetching
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
+SELECT 1 FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
+/*+ BitmapScan(tenk1) */
+SELECT 1 FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
+SELECT random() FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
 
 --
 -- test primary key queries
@@ -159,6 +182,21 @@ SELECT COUNT(*) FROM pk WHERE k = 2000 OR a < 0;
 SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
 /*+ BitmapScan(pg_authid) */
 SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
+
+
+/*+ BitmapScan(pg_roles) */ EXPLAIN ANALYZE SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
+/*+ BitmapScan(pg_roles) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
+
+SET yb_enable_expression_pushdown = false;
+
+/*+ BitmapScan(pg_roles) */ EXPLAIN ANALYZE SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
+/*+ BitmapScan(pg_roles) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
+
+RESET yb_enable_expression_pushdown;
 
 --
 -- test indexes on multiple columns / indexes with additional columns
@@ -215,6 +253,30 @@ SELECT * FROM test_limit WHERE a < 200 LIMIT 10;
 
 RESET yb_fetch_row_limit;
 RESET yb_fetch_size_limit;
+
+--
+-- test remote pushdown
+--
+
+/*+ BitmapScan(multi multi_b_c_idx) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
+/*+ BitmapScan(multi multi_b_c_idx) */
+SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
+
+/*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
+/*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */
+SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
+
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
+/*+ BitmapScan(multi) */
+SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
+
+/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
+/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */
+SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
 
 --
 -- test unsatisfiable conditions
@@ -284,3 +346,6 @@ SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123);
 SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0;
 /*+ BitmapScan(pk_colo) */
 SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0;
+
+RESET yb_explain_hide_non_deterministic_fields;
+RESET enable_bitmapscan;

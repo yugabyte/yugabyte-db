@@ -25,6 +25,7 @@
 #include "optimizer/planmain.h"
 #include "optimizer/planner.h"
 #include "optimizer/tlist.h"
+#include "pg_yb_utils.h"
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -657,6 +658,39 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 								  rtoffset, NUM_EXEC_QUAL(plan));
 			}
 			break;
+		case T_YbBitmapIndexScan:
+			{
+				YbBitmapIndexScan *splan = (YbBitmapIndexScan *) plan;
+
+				splan->scan.scanrelid += rtoffset;
+				/* no need to fix targetlist and qual */
+				Assert(splan->scan.plan.targetlist == NIL);
+				Assert(splan->scan.plan.qual == NIL);
+				splan->indexqual =
+					fix_scan_list(root, splan->indexqual, rtoffset, 1);
+				splan->indexqualorig =
+					fix_scan_list(root, splan->indexqualorig, rtoffset,
+								  NUM_EXEC_QUAL(plan));
+
+				indexed_tlist *index_itlist;
+				index_itlist = build_tlist_index(splan->indextlist);
+
+				splan->yb_idx_pushdown.quals = (List *)
+					fix_upper_expr(root,
+								   (Node *) splan->yb_idx_pushdown.quals,
+								   index_itlist,
+								   INDEX_VAR,
+								   rtoffset,
+								   NUM_EXEC_QUAL(plan));
+				splan->yb_idx_pushdown.colrefs = (List *)
+					fix_upper_expr(root,
+								   (Node *) splan->yb_idx_pushdown.colrefs,
+								   index_itlist,
+								   INDEX_VAR,
+								   rtoffset,
+								   NUM_EXEC_TLIST(plan));
+			}
+			break;
 		case T_BitmapHeapScan:
 			{
 				BitmapHeapScan *splan = (BitmapHeapScan *) plan;
@@ -684,8 +718,23 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				splan->scan.plan.qual =
 					fix_scan_list(root, splan->scan.plan.qual, rtoffset,
 								  NUM_EXEC_QUAL(plan));
-				splan->bitmapqualorig =
-					fix_scan_list(root, splan->bitmapqualorig, rtoffset,
+
+				splan->rel_pushdown.quals =
+					fix_scan_list(root, splan->rel_pushdown.quals, rtoffset,
+								  NUM_EXEC_QUAL(plan));
+
+				splan->recheck_pushdown.quals =
+					fix_scan_list(root, splan->recheck_pushdown.quals, rtoffset,
+								  NUM_EXEC_QUAL(plan));
+				splan->recheck_local_quals =
+					fix_scan_list(root, splan->recheck_local_quals, rtoffset,
+								  NUM_EXEC_QUAL(plan));
+
+				splan->fallback_pushdown.quals =
+					fix_scan_list(root, splan->fallback_pushdown.quals, rtoffset,
+								  NUM_EXEC_QUAL(plan));
+				splan->fallback_local_quals =
+					fix_scan_list(root, splan->fallback_local_quals, rtoffset,
 								  NUM_EXEC_QUAL(plan));
 			}
 			break;
