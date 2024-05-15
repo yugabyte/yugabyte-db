@@ -548,12 +548,6 @@ class ClusterAdminClient {
 
   void ResetMasterProxy(const HostPort& leader_addr = HostPort());
 
-  Result<master::DisableTabletSplittingResponsePB> DisableTabletSplitsInternal(
-      int64_t disable_duration_ms, const std::string& feature_name);
-
-  Result<master::IsTabletSplittingCompleteResponsePB> IsTabletSplittingCompleteInternal(
-      bool wait_for_parent_deletion, const MonoDelta timeout = MonoDelta());
-
   std::string master_addr_list_;
   HostPort init_master_addr_;
   const MonoDelta timeout_;
