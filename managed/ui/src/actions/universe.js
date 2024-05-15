@@ -120,9 +120,6 @@ export const GET_HEALTH_CHECK_RESPONSE = 'GET_HEALTH_CHECK_RESPONSE';
 export const SET_ENCRYPTION_KEY = 'SET_ENCRYPTION_KEY';
 export const SET_ENCRYPTION_KEY_RESPONSE = 'SET_ENCRYPTION_KEY_RESPONSE';
 
-export const SET_ALERTS_CONFIG = 'SET_ALERTS_CONFIG';
-export const SET_ALERTS_CONFIG_RESPONSE = 'SET_ALERTS_CONFIG_RESPONSE';
-
 export const UPDATE_BACKUP_STATE = 'UPDATE_BACKUP_STATE';
 export const UPDATE_BACKUP_STATE_RESPONSE = 'UPDATE_BACKUP_STATE_RESPONSE';
 
@@ -702,23 +699,6 @@ export function setEncryptionKey(universeUUID, data) {
 export function setEncryptionKeyResponse(response) {
   return {
     type: SET_ENCRYPTION_KEY_RESPONSE,
-    payload: response
-  };
-}
-
-export function setAlertsConfig(universeUUID, data) {
-  const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/config_alerts`;
-  const request = axios.post(endpoint, data);
-  return {
-    type: SET_ALERTS_CONFIG,
-    payload: request
-  };
-}
-
-export function setAlertsConfigResponse(response) {
-  return {
-    type: SET_ALERTS_CONFIG_RESPONSE,
     payload: response
   };
 }
