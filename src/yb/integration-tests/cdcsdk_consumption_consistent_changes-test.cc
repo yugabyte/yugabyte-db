@@ -2411,6 +2411,7 @@ TEST_F(
     // TSAN builds.
     if (IsTsan() && i == 0) {
       ASSERT_EQ(0, count[i]);
+      continue;
     }
     ASSERT_EQ(expected_count[i], count[i]);
   }
