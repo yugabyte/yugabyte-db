@@ -640,12 +640,12 @@ void TabletServerPathHandlers::HandleRemoteBootstrapsPage(const Webserver::WebRe
 void TabletServerPathHandlers::HandleObjectLocksPage(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  auto ts_local_lock_maganer = tserver_->ts_local_lock_maganer();
-  if (!ts_local_lock_maganer) {
+  auto ts_local_lock_manager = tserver_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
     *output << "<h2>Could not locate the TSLocalLockManager...</h2>\n";
     return;
   }
-  ts_local_lock_maganer->DumpLocksToHtml(*output);
+  ts_local_lock_manager->DumpLocksToHtml(*output);
 }
 
 namespace {

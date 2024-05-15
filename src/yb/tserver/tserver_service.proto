@@ -128,12 +128,10 @@ service TabletServerService {
 
   rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
 
-  rpc AcquireObjectLocks(AcquireObjectLockRequestPB) returns (AcquireObjectLockResponsePB) {
-    option (yb.rpc.trivial) = true;
-  }
-  rpc ReleaseObjectLocks(ReleaseObjectLockRequestPB) returns (ReleaseObjectLockResponsePB) {
-    option (yb.rpc.trivial) = true;
-  }
+  rpc AcquireObjectLocks(AcquireObjectLockRequestPB)
+      returns (AcquireObjectLockResponsePB);
+  rpc ReleaseObjectLocks(ReleaseObjectLockRequestPB)
+      returns (ReleaseObjectLockResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields

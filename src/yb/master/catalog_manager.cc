@@ -140,6 +140,7 @@
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
+#include "yb/master/object_lock.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/post_tablet_create_task_base.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
@@ -592,6 +593,8 @@ TAG_FLAG(emergency_repair_mode, unsafe);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
 DECLARE_bool(enable_pg_cron);
+
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 namespace yb {
 namespace master {
@@ -6152,6 +6155,32 @@ Status CatalogManager::DeleteIndexInfoFromTable(
 
   LOG(WARNING) << "Index " << index_table_id << " not found in indexed table " << indexed_table_id;
   return Status::OK();
+}
+
+void CatalogManager::AcquireObjectLocks(
+    const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+    rpc::RpcContext rpc) {
+  VLOG(0) << __PRETTY_FUNCTION__;
+  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+    rpc.RespondRpcFailure(
+        rpc::ErrorStatusPB::ERROR_APPLICATION,
+        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
+    return;
+  }
+  LockObject(master_, this, req, resp, std::move(rpc));
+}
+
+void CatalogManager::ReleaseObjectLocks(
+    const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+    rpc::RpcContext rpc) {
+  VLOG(0) << __PRETTY_FUNCTION__;
+  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+    rpc.RespondRpcFailure(
+        rpc::ErrorStatusPB::ERROR_APPLICATION,
+        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
+    return;
+  }
+  UnlockObject(master_, this, req, resp, std::move(rpc));
 }
 
 Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,

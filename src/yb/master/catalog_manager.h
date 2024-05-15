@@ -399,6 +399,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                      rpc::RpcContext* rpc,
                                      const LeaderEpoch& epoch);
 
+  void AcquireObjectLocks(
+      const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+      rpc::RpcContext rpc);
+  void ReleaseObjectLocks(
+      const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+      rpc::RpcContext rpc);
+
   // Gets the progress of ongoing index backfills.
   Status GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
                                   GetIndexBackfillProgressResponsePB* resp,
