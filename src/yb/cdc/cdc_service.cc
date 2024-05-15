@@ -3456,7 +3456,8 @@ Status CDCServiceImpl::CheckTabletNotOfInterest(
     return Status::OK();
   }
 
-  auto limit = GetAtomicFlag(&FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) * 1000 * 1000;
+  int64_t limit_flag = GetAtomicFlag(&FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs);
+  auto limit = limit_flag * 1000 * 1000;
   if (deletion_check) {
     // Add a little bit more to the timeout limit to determine if the cdc_state table
     // entry for this producer_tablet can be deleted. This will help avoid race conditions.
@@ -3477,8 +3478,9 @@ Status CDCServiceImpl::CheckTabletNotOfInterest(
   }
 
   VLOG(1) << "Stream: " << producer_tablet.stream_id
-          << ", unpolled for too long " << (now - last_active_time) << "micros"
-          << " for tablet: " << producer_tablet.tablet_id
+          << ", unpolled for too long " << (now - last_active_time) << " mus"
+          << ", limit was " << limit << " mus"
+          << ", for tablet: " << producer_tablet.tablet_id
           << ", active time in CDCState table: " << last_active_time << ", current time: " << now;
   return STATUS_FORMAT(
       InternalError,
