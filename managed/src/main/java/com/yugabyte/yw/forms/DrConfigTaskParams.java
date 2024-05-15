@@ -5,6 +5,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -36,6 +37,16 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
         mainTableIndexTablesMap,
         sourceTableIdTargetTableIdMap,
         pitrParams);
+    this.drConfig = drConfig;
+  }
+
+  /** DB scoped replication create method */
+  public DrConfigTaskParams(
+      DrConfig drConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      Set<String> dbs,
+      DrConfigCreateForm.PitrParams pitrParams) {
+    super(drConfig.getActiveXClusterConfig(), bootstrapParams, dbs, pitrParams);
     this.drConfig = drConfig;
   }
 
