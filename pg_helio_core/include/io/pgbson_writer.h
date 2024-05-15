@@ -15,6 +15,7 @@
 #ifndef PG_BSON_WRITER_H
 #define PG_BSON_WRITER_H
 
+#include <server/datatype/timestamp.h>
 
 /* bson writer interface */
 typedef struct
@@ -76,6 +77,8 @@ void PgbsonWriterAppendInt32(pgbson_writer *writer, const char *path, uint32_t p
 							 int value);
 void PgbsonWriterAppendUtf8(pgbson_writer *writer, const char *path, uint32_t pathLength,
 							const char *value);
+void PgbsonWriterAppendTimestampTz(pgbson_writer *writer, const char *path,
+								   uint32_t pathLength, TimestampTz timestamp);
 void PgbsonWriterAppendBool(pgbson_writer *writer, const char *path, uint32_t pathLength,
 							bool value);
 void PgbsonWriterAppendDocument(pgbson_writer *writer, const char *path,

@@ -166,7 +166,6 @@ typedef void (*NotifyUpdatedFieldPathView_HookType)(BsonUpdateTracker *tracker, 
 													const bson_value_t *value);
 extern NotifyUpdatedFieldPathView_HookType notify_updated_field_path_view_hook;
 
-
 typedef const char *(*GetDistributedApplicationName_HookType)(void);
 extern GetDistributedApplicationName_HookType get_distributed_application_name_hook;
 

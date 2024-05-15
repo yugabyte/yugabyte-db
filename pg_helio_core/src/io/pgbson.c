@@ -830,6 +830,31 @@ PgbsonWriterAppendUtf8(pgbson_writer *writer, const char *path, uint32_t pathLen
 
 
 /*
+ * Appends a given timestamp to the writer with the specified path.
+ */
+void
+PgbsonWriterAppendTimestampTz(pgbson_writer *writer, const char *path, uint32_t
+							  pathLength,
+							  TimestampTz timestamp)
+{
+	/*
+	 * NOTE: This is based on the PG timestamptz_to_time_t calculation and
+	 * should be kept in sync with the calculation there.
+	 */
+	int64_t milliSecondsSinceEpoch = timestamp / 1000 +
+									 ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) *
+									  (USECS_PER_DAY / 1000));
+
+	if (!bson_append_date_time(&(writer->innerBson), path, pathLength,
+							   milliSecondsSinceEpoch))
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						errmsg("adding value: failed due to value being too large")));
+	}
+}
+
+
+/*
  * Appends given bool to the writer with the specified path.
  */
 void
