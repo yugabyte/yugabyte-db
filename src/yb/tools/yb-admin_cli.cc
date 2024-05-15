@@ -1522,15 +1522,18 @@ Status clone_namespace_action(
   return Status::OK();
 }
 
-const auto is_clone_done_args = "<source_namespace_id> <seq_no>";
-Status is_clone_done_action(
+const auto list_clones_args = "<source_namespace_id> [<seq_no>]";
+Status list_clones_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 2));
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 2));
 
   auto source_namespace_id = args[0];
-  uint32_t seq_no = narrow_cast<uint32_t>(std::stoul(args[1]));
+  std::optional<uint32_t> seq_no;
+  if (args.size() >= 2) {
+    seq_no = narrow_cast<uint32_t>(std::stoul(args[1]));
+  }
 
-  return PrintJsonResult(client->IsCloneDone(source_namespace_id, seq_no));
+  return PrintJsonResult(client->ListClones(source_namespace_id, seq_no));
 }
 
 const auto edit_snapshot_schedule_args =
@@ -2589,7 +2592,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(delete_snapshot_schedule);
   REGISTER_COMMAND(restore_snapshot_schedule);
   REGISTER_COMMAND(clone_namespace);
-  REGISTER_COMMAND(is_clone_done);
+  REGISTER_COMMAND(list_clones);
   REGISTER_COMMAND(edit_snapshot_schedule);
   REGISTER_COMMAND(create_keyspace_snapshot);
   REGISTER_COMMAND(create_database_snapshot);

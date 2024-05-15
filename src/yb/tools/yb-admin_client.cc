@@ -2683,7 +2683,6 @@ Result<rapidjson::Document> ClusterAdminClient::CloneNamespace(
   RpcController rpc;
   rpc.set_deadline(deadline);
   master::CloneNamespaceRequestPB req;
-  master::CloneNamespaceResponsePB resp;
   master::NamespaceIdentifierPB source_namespace_identifier;
   source_namespace_identifier.set_name(source_namespace.name);
   source_namespace_identifier.set_database_type(source_namespace.db_type);
@@ -2691,15 +2690,9 @@ Result<rapidjson::Document> ClusterAdminClient::CloneNamespace(
   req.set_target_namespace_name(target_namespace_name);
   req.set_restore_ht(restore_at.ToUint64());
 
-  Status s = master_backup_proxy_->CloneNamespace(req, &resp, &rpc);
-  if (!s.ok()) {
-    RETURN_NOT_OK_PREPEND(
-        s, Format("Failed to clone namespace $0", source_namespace.name));
-  }
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &master::MasterBackupProxy::CloneNamespace, *master_backup_proxy_, req,
+      Format("Failed to clone namespace $0", source_namespace.name).c_str()));
 
   rapidjson::Document document;
   document.SetObject();
@@ -2709,31 +2702,47 @@ Result<rapidjson::Document> ClusterAdminClient::CloneNamespace(
   return document;
 }
 
-Result<rapidjson::Document> ClusterAdminClient::IsCloneDone(
-    const NamespaceId& source_namespace_id, uint32_t seq_no) {
+Result<rapidjson::Document> ClusterAdminClient::ListClones(
+    const NamespaceId& source_namespace_id, std::optional<uint32_t> seq_no) {
   auto deadline = CoarseMonoClock::now() + timeout_;
 
   RpcController rpc;
   rpc.set_deadline(deadline);
-  master::IsCloneDoneRequestPB req;
-  master::IsCloneDoneResponsePB resp;
+  master::ListClonesRequestPB req;
   req.set_source_namespace_id(source_namespace_id);
-  req.set_seq_no(seq_no);
-
-  Status s = master_backup_proxy_->IsCloneDone(req, &resp, &rpc);
-  if (!s.ok()) {
-    RETURN_NOT_OK_PREPEND(
-        s, Format("Failed to get clone status for namespace $0 and seq_no $1", source_namespace_id,
-        seq_no));
+  if (seq_no.has_value()) {
+    req.set_seq_no(*seq_no);
   }
 
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  const auto error_msg = Format(
+      "Failed to get clone status for namespace $0", source_namespace_id) +
+      (req.has_seq_no() ? Format(" and seq_no $0", seq_no) : "");
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &master::MasterBackupProxy::ListClones, *master_backup_proxy_, req, error_msg.c_str()));
 
   rapidjson::Document document;
-  document.SetObject();
-  AddStringField("is_done", resp.is_done() ? "true" : "false", &document, &document.GetAllocator());
+  document.SetArray();
+  for (const auto& entry : resp.entries()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField(
+        "aggregate_state", master::SysCloneStatePB::State_Name(entry.aggregate_state()),
+        &json_entry, &document.GetAllocator());
+    AddStringField(
+        "source_namespace_id", entry.source_namespace_id(), &json_entry, &document.GetAllocator());
+    AddStringField(
+        "seq_no", std::to_string(entry.clone_request_seq_no()), &json_entry,
+        &document.GetAllocator());
+    AddStringField(
+        "target_namespace_name", entry.target_namespace_name(), &json_entry,
+        &document.GetAllocator());
+    AddStringField(
+        "restore_time", HybridTimeToString(HybridTime(entry.restore_time())), &json_entry,
+        &document.GetAllocator());
+    if (entry.has_abort_message()) {
+      AddStringField("abort_message", entry.abort_message(), &json_entry, &document.GetAllocator());
+    }
+    document.PushBack(json_entry, document.GetAllocator());
+  }
   return document;
 }
 

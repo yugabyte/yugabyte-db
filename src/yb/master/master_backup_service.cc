@@ -48,7 +48,7 @@ class MasterBackupServiceImpl : public MasterBackupIf, public MasterServiceBase 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
       CloneStateManager,
       (CloneNamespace)
-      (IsCloneDone)
+      (ListClones)
   )
 
  private:

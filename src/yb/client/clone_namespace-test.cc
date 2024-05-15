@@ -55,19 +55,23 @@ class CloneNamespaceTest : public SnapshotScheduleTest {
     }
 
     // Wait until clone is done.
-    master::IsCloneDoneRequestPB done_req;
-    master::IsCloneDoneResponsePB done_resp;
+    master::ListClonesRequestPB done_req;
+    master::ListClonesResponsePB done_resp;
     done_req.set_seq_no(clone_resp.seq_no());
     done_req.set_source_namespace_id(clone_resp.source_namespace_id());
     RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
       controller.Reset();
-      RETURN_NOT_OK(backup_proxy.IsCloneDone(done_req, &done_resp, &controller));
+      RETURN_NOT_OK(backup_proxy.ListClones(done_req, &done_resp, &controller));
       if (done_resp.has_error()) {
         return StatusFromPB(clone_resp.error().status());
       }
-      return done_resp.is_done();
+      RSTATUS_DCHECK(
+          done_resp.entries_size() == 1, IllegalState,
+          Format("Expected 1 clone entry, got $0", done_resp.entries_size()));
+      auto state = done_resp.entries(0).aggregate_state();
+      return state == master::SysCloneStatePB::ABORTED ||
+             state == master::SysCloneStatePB::RESTORED;
     }, 60s, "Wait for clone to finish"));
-
     return Status::OK();
   }
   const std::string kTargetNamespaceName = "clone_namespace";
