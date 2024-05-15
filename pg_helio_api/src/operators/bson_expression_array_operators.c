@@ -112,6 +112,35 @@ typedef struct DollarReduceArguments
 	AggregationExpressionData initialValue;
 } DollarReduceArguments;
 
+/* Struct that represents the parsed arguments to a $zip expression. */
+typedef struct DollarZipArguments
+{
+	/* The array input to the $zip expression. */
+	AggregationExpressionData inputs;
+
+	/* The boolean value specifies whether the length of the longest array determines the number of arrays in the output array. */
+	AggregationExpressionData useLongestLength;
+
+	/* The array of default element values to use if input arrays have different lengths. */
+	AggregationExpressionData defaults;
+} DollarZipArguments;
+
+/* Struct that represents the parsed inputs argument of $zip expression. */
+/* This struct is to pass the middle result of parsed inputs argument to main logic. */
+typedef struct ZipParseInputsResult
+{
+	/* The array stores pointers to each subarray in inputs. */
+	bson_value_t **inputsElements;
+
+	/* The array stores the lengths of each subarray in inputs. */
+	int *inputsElementLengths;
+
+	/* The length of subarrays in output. */
+	/* If useLongestLength is true, this will be the length of longest subarray in inputs */
+	/* If useLongestLength is false, this will be the length of the shortest subarray in inputs */
+	int outputSubArrayLength;
+} ZipParseInputsResult;
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -165,6 +194,18 @@ static void SetResultValueForDollarMaxMin(const bson_value_t *inputArgument,
 										  bson_value_t *result, bool isFindMax);
 static void SetResultValueForDollarSumAvg(const bson_value_t *inputArgument,
 										  bson_value_t *result, bool isSum);
+static bson_value_t * ParseZipDefaultsArgument(int rowNum, bson_value_t
+											   evaluatedDefaultsArg, bool
+											   useLongestLengthArgBoolValue);
+static ZipParseInputsResult ParseZipInputsArgument(int rowNum, bson_value_t
+												   evaluatedInputsArg, bool
+												   useLongestLengthArgBoolValue);
+static void ProcessDollarZip(bson_value_t evaluatedInputsArg, bson_value_t
+							 evaluatedLongestLengthArg, bson_value_t evaluatedDefaultsArg,
+							 bson_value_t *resultPtr);
+static void SetResultArrayForDollarZip(int rowNum, ZipParseInputsResult parsedInputs,
+									   bson_value_t *defaultsElements,
+									   bson_value_t *resultPtr);
 
 /*
  * validate second and third argument of dollar slice operator
@@ -3064,4 +3105,392 @@ ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data)
 	ParseAggregationExpressionData(&arguments->initialValue, &initialValue);
 	data->operator.arguments = arguments;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/*
+ * Evaluates the output of a $zip expression.
+ * $zip is expressed as:
+ * { $zip: { inputs: <array of arrays>, useLongestLength: <bool>, defaults: <array> } }
+ */
+void
+HandlePreParsedDollarZip(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	DollarZipArguments *zipArguments = arguments;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+
+	EvaluateAggregationExpressionData(&zipArguments->inputs, doc, &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedInputsArg = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+
+	EvaluateAggregationExpressionData(&zipArguments->defaults, doc, &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedDefaultsArg = childExpression.value;
+
+	bson_value_t result = { 0 };
+	ProcessDollarZip(evaluatedInputsArg, zipArguments->useLongestLength.value,
+					 evaluatedDefaultsArg, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function parses the input for operator $zip.
+ * The input to this function is of the following format { $zip: { inputs: <expression(array of arrays)>, useLongestLength: <bool>, defaults: <expression> } }.
+ * useLongestLength and defaults are optional arguments.
+ * useLongestLength must be true if defaults is specified.
+ */
+void
+ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation34460), errmsg(
+							"$zip only supports an object as an argument, found %s",
+							BsonTypeName(
+								argument->value_type)),
+						errhint("$zip only supports an object as an argument, found %s",
+								BsonTypeName(
+									argument->value_type))));
+	}
+
+	data->operator.returnType = BSON_TYPE_ARRAY;
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t inputs = { 0 };
+	bson_value_t useLongestLength = { 0 };
+	bson_value_t defaults = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "inputs") == 0)
+		{
+			inputs = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "useLongestLength") == 0)
+		{
+			useLongestLength = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "defaults") == 0)
+		{
+			defaults = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation34464), errmsg(
+								"$zip found an unknown argument: %s", key),
+							errhint("$zip found an unknown argument: %s", key)));
+		}
+	}
+
+	if (inputs.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation34465), errmsg(
+							"$zip requires at least one input array")));
+	}
+
+	if (useLongestLength.value_type == BSON_TYPE_EOD)
+	{
+		useLongestLength.value_type = BSON_TYPE_BOOL;
+		useLongestLength.value.v_bool = false;
+	}
+	else if (useLongestLength.value_type != BSON_TYPE_BOOL)
+	{
+		ereport(ERROR, (errcode(MongoLocation34463), errmsg(
+							"useLongestLength must be a bool, found %s", BsonTypeName(
+								useLongestLength.value_type)),
+						errhint("useLongestLength must be a bool, found %s",
+								BsonTypeName(
+									useLongestLength.value_type))));
+	}
+
+	DollarZipArguments *arguments = palloc0(sizeof(DollarZipArguments));
+
+	arguments->useLongestLength.value = useLongestLength;
+	ParseAggregationExpressionData(&arguments->inputs, &inputs);
+	ParseAggregationExpressionData(&arguments->defaults, &defaults);
+
+	if (IsAggregationExpressionConstant(&arguments->inputs) &&
+		IsAggregationExpressionConstant(&arguments->defaults))
+	{
+		/* If all input arguments are constant, we can calculate the result now */
+		ProcessDollarZip(inputs, useLongestLength, defaults, &data->value);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(arguments);
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+/* Function that processes arguments for $zip and calculate result*/
+/* Validates if arguments are specified correctly */
+static void
+ProcessDollarZip(bson_value_t evaluatedInputsArg, bson_value_t evaluatedLongestLengthArg,
+				 bson_value_t evaluatedDefaultsArg, bson_value_t *resultPtr)
+{
+	bson_value_t nullValue = {
+		.value_type = BSON_TYPE_NULL
+	};
+
+	if (evaluatedInputsArg.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(MongoLocation34461), errmsg(
+							"inputs must be an array of expressions, found %s",
+							BsonTypeName(
+								evaluatedInputsArg.value_type)),
+						errhint("inputs must be an array of expressions, found %s",
+								BsonTypeName(
+									evaluatedInputsArg.value_type))));
+	}
+
+	int rowNum = BsonDocumentValueCountKeys(&evaluatedInputsArg);
+
+	if (rowNum == 0)
+	{
+		ereport(ERROR, (errcode(MongoLocation34465), errmsg(
+							"$zip requires at least one input array")));
+	}
+
+	bool useLongestLengthArgBoolValue = evaluatedLongestLengthArg.value.v_bool;
+
+	/* array to store the copy of elements in the defaults, avoid using array iterators multiple times in following loop */
+	bson_value_t *defaultsElements = ParseZipDefaultsArgument(rowNum,
+															  evaluatedDefaultsArg,
+															  useLongestLengthArgBoolValue);
+
+	/* struct to store the parsed inputs argument, avoid using array iterators multiple times in following loop */
+	ZipParseInputsResult parsedInputs = ParseZipInputsArgument(rowNum,
+															   evaluatedInputsArg,
+															   useLongestLengthArgBoolValue);
+
+	/* Early return if any of the inputs arrays resolves to a value of null or refers to a missing field */
+	if (parsedInputs.outputSubArrayLength < 0)
+	{
+		*resultPtr = nullValue;
+		pfree(defaultsElements);
+		return;
+	}
+
+	SetResultArrayForDollarZip(rowNum, parsedInputs, defaultsElements, resultPtr);
+
+	/* free the allocated memory */
+	for (int i = 0; i < rowNum; i++)
+	{
+		if (parsedInputs.inputsElements[i])
+		{
+			pfree(parsedInputs.inputsElements[i]);
+		}
+	}
+	pfree(parsedInputs.inputsElements);
+	pfree(parsedInputs.inputsElementLengths);
+	pfree(defaultsElements);
+}
+
+
+/* Function that sets result for $zip operator*/
+static void
+SetResultArrayForDollarZip(int rowNum, ZipParseInputsResult parsedInputs,
+						   bson_value_t *defaultsElements, bson_value_t *resultPtr)
+{
+	/* array to store the copy of elements in the inputs, avoid using array iterators multiple times in following loop */
+	bson_value_t **inputsElements = parsedInputs.inputsElements;
+
+	/* array to store the length of each array in inputs */
+	int *inputsElementLengths = parsedInputs.inputsElementLengths;
+
+	/* length of the output subarrays */
+	/* If useLongestLength is true, it is the length of the longest input array. */
+	/* If useLongestLength is false, it is the length of the shortest input array. */
+	int outputSubArrayLength = parsedInputs.outputSubArrayLength;
+
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	pgbson_array_writer arrayWriter;
+	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
+
+	for (int i = 0; i < outputSubArrayLength; i++)
+	{
+		pgbson_writer subWriter;
+		PgbsonWriterInit(&subWriter);
+		pgbson_array_writer subArrayWriter;
+		PgbsonWriterStartArray(&subWriter, "", 0, &subArrayWriter);
+		for (int j = 0; j < rowNum; j++)
+		{
+			if (i < inputsElementLengths[j])
+			{
+				PgbsonArrayWriterWriteValue(&subArrayWriter, &inputsElements[j][i]);
+			}
+			else
+			{
+				/* use default value or null */
+				PgbsonArrayWriterWriteValue(&subArrayWriter, &defaultsElements[j]);
+			}
+		}
+		PgbsonWriterEndArray(&subWriter, &subArrayWriter);
+		bson_value_t subArrayValue = PgbsonArrayWriterGetValue(&subArrayWriter);
+		PgbsonArrayWriterWriteValue(&arrayWriter, &subArrayValue);
+	}
+	PgbsonWriterEndArray(&writer, &arrayWriter);
+	*resultPtr = PgbsonArrayWriterGetValue(&arrayWriter);
+}
+
+
+/* Function that processes defaults argument for $zip */
+/* Validates if defaults is specified correctly */
+static bson_value_t *
+ParseZipDefaultsArgument(int rowNum, bson_value_t evaluatedDefaultsArg, bool
+						 useLongestLengthArgBoolValue)
+{
+	if (!IsExpressionResultNullOrUndefined(&evaluatedDefaultsArg))
+	{
+		if (evaluatedDefaultsArg.value_type != BSON_TYPE_ARRAY)
+		{
+			ereport(ERROR, (errcode(MongoLocation34462), errmsg(
+								"defaults must be an array of expressions, found %s",
+								BsonTypeName(
+									evaluatedDefaultsArg.value_type)),
+							errhint("defaults must be an array of expressions, found %s",
+									BsonTypeName(
+										evaluatedDefaultsArg.value_type))));
+		}
+		else if (useLongestLengthArgBoolValue == false)
+		{
+			ereport(ERROR, (errcode(MongoLocation34466), errmsg(
+								"cannot specify defaults unless useLongestLength is true")));
+		}
+		else if (BsonDocumentValueCountKeys(&evaluatedDefaultsArg) != rowNum)
+		{
+			ereport(ERROR, (errcode(MongoLocation34467), errmsg(
+								"defaults and inputs must have the same length")));
+		}
+	}
+
+	bson_value_t nullValue = {
+		.value_type = BSON_TYPE_NULL
+	};
+	bson_value_t *defaultsElements = (bson_value_t *) palloc0(rowNum *
+															  sizeof(bson_value_t));
+
+	/* In native mongo, if defaults is empty or not specified, $zip uses null as the default value. */
+	if (IsExpressionResultNullOrUndefined(&evaluatedDefaultsArg))
+	{
+		for (int i = 0; i < rowNum; i++)
+		{
+			defaultsElements[i] = nullValue;
+		}
+	}
+	else
+	{
+		bson_iter_t defaultsIter;
+		BsonValueInitIterator(&evaluatedDefaultsArg, &defaultsIter);
+
+		for (int defaultsIndex = 0; bson_iter_next(&defaultsIter); defaultsIndex++)
+		{
+			defaultsElements[defaultsIndex] = *bson_iter_value(&defaultsIter);
+		}
+	}
+	return defaultsElements;
+}
+
+
+/* Function that processes inputs argument for $zip */
+/* Validates if inputs is specified correctly */
+static ZipParseInputsResult
+ParseZipInputsArgument(int rowNum, bson_value_t evaluatedInputsArg, bool
+					   useLongestLengthArgBoolValue)
+{
+	/* array to store the copy of elements in the inputs, avoid using array iterators multiple times in following loop */
+	bson_value_t **inputsElements = (bson_value_t **) palloc0(rowNum *
+															  sizeof(bson_value_t *));
+
+	/* array to store the length of each array in inputs */
+	int *inputsElementLengths = (int *) palloc0(rowNum * sizeof(int32_t));
+
+	bson_iter_t inputsIter;
+	BsonValueInitIterator(&evaluatedInputsArg, &inputsIter);
+
+	int maxSubArrayLength = -1;
+	int minSubArrayLength = INT_MAX;
+
+	for (int inputsIndex = 0; bson_iter_next(&inputsIter); inputsIndex++)
+	{
+		const bson_value_t *inputsElem = bson_iter_value(&inputsIter);
+
+		/* The length of current subarray in inputs */
+		int currentSubArrayLen = 0;
+
+		/* In native mongo, if any of the inputs arrays resolves to a value of null or refers to a missing field, $zip returns null. */
+		if (IsExpressionResultNullOrUndefined(inputsElem))
+		{
+			ZipParseInputsResult nullValue;
+			nullValue.outputSubArrayLength = -1;
+			pfree(inputsElements);
+			pfree(inputsElementLengths);
+			return nullValue;
+		}
+
+		/* In native mongo, if any of the inputs arrays does not resolve to an array or null nor refers to a missing field, $zip returns an error. */
+		else if (inputsElem->value_type != BSON_TYPE_ARRAY)
+		{
+			ereport(ERROR, (errcode(MongoLocation34468), errmsg(
+								"$zip found a non-array expression in input: %s",
+								BsonValueToJsonForLogging(inputsElem)),
+							errhint("$zip found a non-array expression in input: %s",
+									BsonValueToJsonForLogging(inputsElem))));
+		}
+		else
+		{
+			currentSubArrayLen = BsonDocumentValueCountKeys(inputsElem);
+		}
+
+		maxSubArrayLength = Max(maxSubArrayLength, currentSubArrayLen);
+		minSubArrayLength = Min(minSubArrayLength, currentSubArrayLen);
+
+		inputsElementLengths[inputsIndex] = currentSubArrayLen;
+
+		/* handle empty array in inputs */
+		if (currentSubArrayLen > 0)
+		{
+			bson_value_t *subArrayElements = (bson_value_t *) palloc0(currentSubArrayLen *
+																	  sizeof(bson_value_t));
+			inputsElements[inputsIndex] = subArrayElements;
+
+			bson_iter_t subInputArrayIter;
+			BsonValueInitIterator(inputsElem, &subInputArrayIter);
+
+			for (int subArrayIndex = 0; bson_iter_next(&subInputArrayIter);
+				 subArrayIndex++)
+			{
+				subArrayElements[subArrayIndex] = *bson_iter_value(&subInputArrayIter);
+			}
+		}
+		else
+		{
+			inputsElements[inputsIndex] = NULL;
+		}
+	}
+
+	int outputSubArrayLength = useLongestLengthArgBoolValue ? maxSubArrayLength :
+							   minSubArrayLength;
+
+	return (ZipParseInputsResult) {
+			   .inputsElements = inputsElements,
+			   .inputsElementLengths = inputsElementLengths,
+			   .outputSubArrayLength = outputSubArrayLength
+	};
 }

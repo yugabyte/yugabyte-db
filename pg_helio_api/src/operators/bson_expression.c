@@ -348,7 +348,7 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$type", &HandleDollarType, NULL, NULL, FEATURE_AGG_OPERATOR_TYPE },
 	{ "$week", &HandleDollarWeek, NULL, NULL, FEATURE_AGG_OPERATOR_WEEK },
 	{ "$year", &HandleDollarYear, NULL, NULL, FEATURE_AGG_OPERATOR_YEAR },
-	{ "$zip", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_ZIP }
+	{ "$zip", NULL, &ParseDollarZip, &HandlePreParsedDollarZip, FEATURE_AGG_OPERATOR_ZIP }
 };
 
 static int NumberOfOperatorExpressions = sizeof(OperatorExpressions) /
