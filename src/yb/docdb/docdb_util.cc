@@ -58,6 +58,8 @@ Status SetValueFromQLBinaryWrapper(
       ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, cdc_datum_message);
 }
 
+void DeleteMemoryContextForCDCWrapper() { yb::docdb::DeleteMemoryContextIfSet(); }
+
 DocDBRocksDBUtil::DocDBRocksDBUtil() {}
 
 DocDBRocksDBUtil::DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
